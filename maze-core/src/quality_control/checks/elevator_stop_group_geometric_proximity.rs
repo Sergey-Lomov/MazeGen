@@ -1,14 +1,15 @@
-use rand::RngCore;
-use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::{Tessellation, floor_aware_distance};
-use crate::quality_control::check::Check;
-use crate::quality_control::{GeometricFloorMode, InvalidElevatorStopGroupIssue};
 use super::elevator_core::elevator_groups;
 use super::proximity_scan_core::pairwise_geometric_scan;
+use crate::Maze;
+use crate::ids::NodeId;
+use crate::quality_control::check::Check;
+use crate::quality_control::{GeometricFloorMode, InvalidElevatorStopGroupIssue};
+use crate::space::{Tessellation, floor_aware_distance};
+use rand::RngCore;
 
 pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
-pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
+pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode =
+    GeometricFloorMode::SameFloorOnly;
 
 /// Flags a pair of `EdgeKind::Elevator` stops placed too close to each other in geometric
 /// (Euclidean) space — see GitHub issue #409, part of epic #344. Distance is measured between
@@ -28,15 +29,28 @@ pub struct ElevatorStopGroupGeometricProximityCheck {
     pub floor_mode: GeometricFloorMode,
 }
 
-impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGroupGeometricProximityCheck {
-    fn check_type_id(&self) -> &'static str { "elevator_stop_group_geometric_proximity" }
+impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
+    for ElevatorStopGroupGeometricProximityCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "elevator_stop_group_geometric_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidElevatorStopGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidElevatorStopGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let candidates: Vec<(NodeId, usize, usize, T::Point)> = elevator_groups(maze)
             .into_iter()
             .enumerate()
             .flat_map(|(elevator_index, elevator)| {
-                elevator.stops.into_iter().map(move |node| (elevator_index, node))
+                elevator
+                    .stops
+                    .into_iter()
+                    .map(move |node| (elevator_index, node))
             })
             .filter_map(|(elevator_index, node)| {
                 let level = maze.field.level_index_of(node)?;
@@ -53,10 +67,17 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
             self.distance,
             |&(_, own_elevator, own_level, _), &(_, other_elevator, other_level, _)| {
                 own_elevator == other_elevator
-                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level)
+                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly
+                        && own_level != other_level)
             },
             |&(_, _, own_level, own_point), &(_, _, other_level, other_point)| {
-                floor_aware_distance::<T>(own_level, own_point, other_level, other_point, self.floor_mode.include_height())
+                floor_aware_distance::<T>(
+                    own_level,
+                    own_point,
+                    other_level,
+                    other_point,
+                    self.floor_mode.include_height(),
+                )
             },
             |&(own_node, ..), &(other_node, ..)| {
                 let mut group = vec![own_node, other_node];
@@ -79,10 +100,10 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "elevator_stop_group_geometric_proximity";
 
@@ -94,10 +115,14 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = xs.iter().copied().max().unwrap_or(0) as usize + 1;
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
+        let bottom = mf
+            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
+        let top = mf
+            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let mut ids_out = Vec::new();
         for &x in xs {
             let b = mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
@@ -110,15 +135,27 @@ mod tests {
         (Maze::new(mf, g), ids_out)
     }
 
-    fn check(distance: f64, floor_mode: GeometricFloorMode) -> ElevatorStopGroupGeometricProximityCheck {
-        ElevatorStopGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance, floor_mode }
+    fn check(
+        distance: f64,
+        floor_mode: GeometricFloorMode,
+    ) -> ElevatorStopGroupGeometricProximityCheck {
+        ElevatorStopGroupGeometricProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance,
+            floor_mode,
+        }
     }
 
     #[test]
     fn fires_when_two_elevators_closer_than_threshold() {
         let (maze, _nodes) = two_elevators_at(&[0, 1]);
         let mut issues = Vec::new();
-        check(5.0, GeometricFloorMode::AsCoordinate).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(5.0, GeometricFloorMode::AsCoordinate).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert_eq!(issues.len(), 1);
         for (group, to_remove) in &issues[0].groups {
             assert_eq!(group.len(), 2);
@@ -130,7 +167,12 @@ mod tests {
     fn silent_when_farther_than_threshold() {
         let (maze, _nodes) = two_elevators_at(&[0, 10]);
         let mut issues = Vec::new();
-        check(5.0, GeometricFloorMode::AsCoordinate).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(5.0, GeometricFloorMode::AsCoordinate).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert!(issues.is_empty());
     }
 
@@ -138,7 +180,12 @@ mod tests {
     fn silent_with_fewer_than_two_stops() {
         let (maze, _nodes) = two_elevators_at(&[0]);
         let mut issues = Vec::new();
-        check(1000.0, GeometricFloorMode::AsCoordinate).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(1000.0, GeometricFloorMode::AsCoordinate).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert!(issues.is_empty());
     }
 
@@ -149,10 +196,14 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..4)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let a0 = mf.node_at(floors[0], SquarePoint { x: 0, y: 0 }).unwrap();
         let a1 = mf.node_at(floors[1], SquarePoint { x: 0, y: 0 }).unwrap();
         let b0 = mf.node_at(floors[2], SquarePoint { x: 1, y: 0 }).unwrap();
@@ -164,8 +215,16 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let mut issues = Vec::new();
-        check(5.0, GeometricFloorMode::SameFloorOnly).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "elevator A's stops (floors 0,1) and elevator B's stops (floors 2,3) never share a floor -- SameFloorOnly must never pair them");
+        check(5.0, GeometricFloorMode::SameFloorOnly).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            issues.is_empty(),
+            "elevator A's stops (floors 0,1) and elevator B's stops (floors 2,3) never share a floor -- SameFloorOnly must never pair them"
+        );
     }
 
     #[test]
@@ -178,10 +237,16 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..4)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(41, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(
+                    Field::<SquareTessellation>::new(square_rect(41, 1), &mut ids).unwrap(),
+                )
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let a0 = mf.node_at(floors[0], SquarePoint { x: 0, y: 0 }).unwrap();
         let a1 = mf.node_at(floors[1], SquarePoint { x: 20, y: 0 }).unwrap();
         let b0 = mf.node_at(floors[3], SquarePoint { x: 1, y: 0 }).unwrap();
@@ -193,11 +258,27 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let mut ignore_issues = Vec::new();
-        check(2.0, GeometricFloorMode::Ignore).repair_check(&maze, &mut ignore_issues, &mut rng(), ());
-        assert!(!ignore_issues.is_empty(), "Ignore drops the floor gap entirely, sees only dx = 1.0 < 2.0");
+        check(2.0, GeometricFloorMode::Ignore).repair_check(
+            &maze,
+            &mut ignore_issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            !ignore_issues.is_empty(),
+            "Ignore drops the floor gap entirely, sees only dx = 1.0 < 2.0"
+        );
 
         let mut coordinate_issues = Vec::new();
-        check(2.0, GeometricFloorMode::AsCoordinate).repair_check(&maze, &mut coordinate_issues, &mut rng(), ());
-        assert!(coordinate_issues.is_empty(), "AsCoordinate folds the floor gap in, sqrt(1^2 + 3^2) = 3.16 > 2.0");
+        check(2.0, GeometricFloorMode::AsCoordinate).repair_check(
+            &maze,
+            &mut coordinate_issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            coordinate_issues.is_empty(),
+            "AsCoordinate folds the floor gap in, sqrt(1^2 + 3^2) = 3.16 > 2.0"
+        );
     }
 }

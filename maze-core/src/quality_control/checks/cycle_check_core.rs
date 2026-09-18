@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use crate::ids::EdgeId;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::graph::nav::NavGraph;
 use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
+use crate::graph::nav::NavGraph;
+use crate::ids::EdgeId;
 use crate::quality_control::issue_kinds::canonical_cycle_key;
+use crate::quality_control::{CycleKind, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::space::Tessellation;
+use std::collections::HashMap;
 
 /// Shared cycle-enumeration/issue-building skeleton for the loop-based checks
 /// (`MinLoopLengthCheck`, `MaxLoopLengthCheck`, `LoopDistanceFromStartCheck`,
@@ -25,7 +25,9 @@ pub fn find_invalid_cycles<T: Tessellation>(
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let cycles = find_deduped_simple_cycles(&nav)?;
 
-    let flagged: Vec<usize> = cycles.iter().enumerate()
+    let flagged: Vec<usize> = cycles
+        .iter()
+        .enumerate()
         .filter(|(_, cycle)| cycle_kind.matches(&nav, cycle) && invalid(&nav, cycle))
         .map(|(idx, _)| idx)
         .collect();
@@ -56,29 +58,41 @@ pub fn build_issue(
     detail_value: impl ToString,
     requirement: InvalidLoopRequirement,
 ) -> InvalidLoopIssue {
-    let (all, invalid, invalid_sources) = if requirement.contains(InvalidLoopRequirement::VALID_CYCLES) {
+    let (all, invalid, invalid_sources) = if requirement
+        .contains(InvalidLoopRequirement::VALID_CYCLES)
+    {
         let all = resolve_to_edge_ids(nav, cycles, graph);
-        debug_assert!(flagged.iter().all(|&idx| idx < all.len()),
-            "flagged must only contain valid indices into all — built from the same `cycles` it resolves");
+        debug_assert!(
+            flagged.iter().all(|&idx| idx < all.len()),
+            "flagged must only contain valid indices into all — built from the same `cycles` it resolves"
+        );
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &flagged {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(instance_id.to_string());
+            invalid_sources
+                .entry(canonical_cycle_key(&all[idx]))
+                .or_default()
+                .push(instance_id.to_string());
         }
         (all, flagged, invalid_sources)
     } else {
-        let flagged_cycles: Vec<Vec<usize>> = flagged.iter().map(|&idx| cycles[idx].clone()).collect();
+        let flagged_cycles: Vec<Vec<usize>> =
+            flagged.iter().map(|&idx| cycles[idx].clone()).collect();
         let all = resolve_to_edge_ids(nav, &flagged_cycles, graph);
         let invalid: Vec<usize> = (0..all.len()).collect();
         (all, invalid, HashMap::new())
     };
-    InvalidLoopIssue::new_from_check(instance_id, all, invalid, invalid_sources)
-        .with_detail(instance_id, detail_key, detail_value.to_string())
+    InvalidLoopIssue::new_from_check(instance_id, all, invalid, invalid_sources).with_detail(
+        instance_id,
+        detail_key,
+        detail_value.to_string(),
+    )
 }
 
 /// Tile-length of a nav-edge cycle: sum of each edge's tile-hop count (`path.len() - 1`),
 /// measured in base-graph tile-hops, not nav-edge count.
 pub fn tile_length(nav: &NavGraph, cycle: &[usize]) -> u32 {
-    cycle.iter()
+    cycle
+        .iter()
         .map(|&idx| (nav.edge_by_idx(idx).path.len() as u32).saturating_sub(1))
         .sum()
 }

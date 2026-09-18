@@ -1,12 +1,16 @@
-use std::collections::HashSet;
+use super::classify::{GeometricNodeClass, classify_node};
+use crate::graph::Graph;
 use crate::ids::NodeId;
 use crate::space::{LevelId, MultiLevelField, Tessellation};
-use crate::graph::Graph;
-use super::classify::{GeometricNodeClass, classify_node};
+use std::collections::HashSet;
 
 /// Whether `node` belongs to the floor `stats.rs`'s per-floor functions are restricted to —
 /// `level` of `None` means "maze-wide, no restriction" (every existing single-floor call site).
-fn in_scope<T: Tessellation>(field: &MultiLevelField<T>, node: NodeId, level: Option<LevelId>) -> bool {
+fn in_scope<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    node: NodeId,
+    level: Option<LevelId>,
+) -> bool {
     level.is_none_or(|l| field.level_of(node) == Some(l))
 }
 
@@ -61,7 +65,10 @@ pub struct VerticalStats {
     pub cross_floor_teleports: usize,
 }
 
-pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> GeometricNodeStats {
+pub fn compute_node_stats<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+) -> GeometricNodeStats {
     compute_node_stats_scoped(graph, field, None)
 }
 
@@ -69,11 +76,16 @@ pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelFiel
 /// only if it belongs to `level`; a `Teleport` edge counts toward `teleport_entries` only if its
 /// destination is on `level` too (GitHub issue #364: a cross-floor teleport target isn't "this
 /// floor's" teleport entry, mirrors `compute_spatial_edge_stats_scoped`'s own edge-scoping rule).
-pub fn compute_node_stats_scoped<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>, level: Option<LevelId>) -> GeometricNodeStats {
+pub fn compute_node_stats_scoped<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    level: Option<LevelId>,
+) -> GeometricNodeStats {
     let mut dead_ends = 0usize;
     let mut straight = 0usize;
     let mut turns = 0usize;
-    let mut junction_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut junction_map: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
     let mut node_count = 0usize;
 
     for node in graph.nodes() {
@@ -92,12 +104,19 @@ pub fn compute_node_stats_scoped<T: Tessellation>(graph: &Graph, field: &MultiLe
     let mut junctions: Vec<(usize, usize)> = junction_map.into_iter().collect();
     junctions.sort_unstable_by_key(|&(deg, _)| deg);
 
-    let teleport_entries: HashSet<NodeId> = graph.edges()
+    let teleport_entries: HashSet<NodeId> = graph
+        .edges()
         .filter(|e| e.kind == super::EdgeKind::Teleport && in_scope(field, e.to, level))
         .map(|e| e.to)
         .collect();
 
-    let stats = GeometricNodeStats { dead_ends, straight, turns, junctions, teleport_entries: teleport_entries.len() };
+    let stats = GeometricNodeStats {
+        dead_ends,
+        straight,
+        turns,
+        junctions,
+        teleport_entries: teleport_entries.len(),
+    };
 
     debug_assert!(
         stats.dead_ends
@@ -113,7 +132,11 @@ pub fn compute_node_stats_scoped<T: Tessellation>(graph: &Graph, field: &MultiLe
 /// `field.neighbors` is purely spatial adjacency (same tessellation face), which never crosses a
 /// floor boundary by construction — `VerticalPassage`/`Elevator` are graph edges, not field
 /// adjacency — so restricting to `level` only needs to check one endpoint.
-fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>, level: Option<LevelId>) -> Vec<(NodeId, NodeId)> {
+fn adjacency_pairs<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    level: Option<LevelId>,
+) -> Vec<(NodeId, NodeId)> {
     let mut seen: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut pairs = Vec::new();
     for node in graph.nodes() {
@@ -134,12 +157,19 @@ fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>, l
     pairs
 }
 
-pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> SpatialEdgeStats {
+pub fn compute_spatial_edge_stats<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+) -> SpatialEdgeStats {
     compute_spatial_edge_stats_scoped(graph, field, None)
 }
 
 /// Same as `compute_spatial_edge_stats`, restricted to `level`'s own floor when `Some`.
-pub fn compute_spatial_edge_stats_scoped<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>, level: Option<LevelId>) -> SpatialEdgeStats {
+pub fn compute_spatial_edge_stats_scoped<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    level: Option<LevelId>,
+) -> SpatialEdgeStats {
     let pairs = adjacency_pairs(graph, field, level);
     let total = pairs.len();
     let mut bidirectional = 0usize;
@@ -150,15 +180,20 @@ pub fn compute_spatial_edge_stats_scoped<T: Tessellation>(graph: &Graph, field: 
         let ab = graph.edge_between(*a, *b).is_some();
         let ba = graph.edge_between(*b, *a).is_some();
         match (ab, ba) {
-            (true, true)   => bidirectional += 1,
+            (true, true) => bidirectional += 1,
             (false, false) => walls += 1,
-            _              => one_way_passages += 1,
+            _ => one_way_passages += 1,
         }
     }
 
     debug_assert!(bidirectional + one_way_passages + walls == total);
 
-    SpatialEdgeStats { bidirectional, one_way_passages, walls, total_pairs: total }
+    SpatialEdgeStats {
+        bidirectional,
+        one_way_passages,
+        walls,
+        total_pairs: total,
+    }
 }
 
 pub fn compute_teleport_edge_stats(graph: &Graph) -> TeleportEdgeStats {
@@ -168,11 +203,20 @@ pub fn compute_teleport_edge_stats(graph: &Graph) -> TeleportEdgeStats {
 /// Same as `compute_teleport_edge_stats`, restricted to `level`'s own floor — a teleport pair
 /// counts only if *both* ends are on `level` (GitHub issue #364: a cross-floor teleport is
 /// excluded from either floor's own count entirely, not attributed to one side).
-pub fn compute_teleport_edge_stats_scoped<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>, level: LevelId) -> TeleportEdgeStats {
-    compute_teleport_edge_stats_impl(graph, |a, b| in_scope(field, a, Some(level)) && in_scope(field, b, Some(level)))
+pub fn compute_teleport_edge_stats_scoped<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    level: LevelId,
+) -> TeleportEdgeStats {
+    compute_teleport_edge_stats_impl(graph, |a, b| {
+        in_scope(field, a, Some(level)) && in_scope(field, b, Some(level))
+    })
 }
 
-fn compute_teleport_edge_stats_impl(graph: &Graph, in_scope_edge: impl Fn(NodeId, NodeId) -> bool) -> TeleportEdgeStats {
+fn compute_teleport_edge_stats_impl(
+    graph: &Graph,
+    in_scope_edge: impl Fn(NodeId, NodeId) -> bool,
+) -> TeleportEdgeStats {
     let mut seen: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut two_way = 0usize;
     let mut one_way = 0usize;
@@ -181,11 +225,17 @@ fn compute_teleport_edge_stats_impl(graph: &Graph, in_scope_edge: impl Fn(NodeId
         if edge.kind != super::EdgeKind::Teleport || !in_scope_edge(edge.from, edge.to) {
             continue;
         }
-        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        let pair = if edge.from < edge.to {
+            (edge.from, edge.to)
+        } else {
+            (edge.to, edge.from)
+        };
         if !seen.insert(pair) {
             continue;
         }
-        let reverse = graph.edge_between_kind(edge.to, edge.from, &super::EdgeKind::Teleport).is_some();
+        let reverse = graph
+            .edge_between_kind(edge.to, edge.from, &super::EdgeKind::Teleport)
+            .is_some();
         if reverse {
             two_way += 1;
         } else {
@@ -197,7 +247,10 @@ fn compute_teleport_edge_stats_impl(graph: &Graph, in_scope_edge: impl Fn(NodeId
 }
 
 /// Maze-wide `VerticalPassage`/`Elevator`/cross-floor-`Teleport` statistics — see `VerticalStats`.
-pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> VerticalStats {
+pub fn compute_vertical_stats<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+) -> VerticalStats {
     let mut seen_passage_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut bidirectional_passages = 0usize;
     let mut one_way_passages_up = 0usize;
@@ -207,11 +260,17 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
         if edge.kind != super::EdgeKind::VerticalPassage {
             continue;
         }
-        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        let pair = if edge.from < edge.to {
+            (edge.from, edge.to)
+        } else {
+            (edge.to, edge.from)
+        };
         if !seen_passage_pairs.insert(pair) {
             continue;
         }
-        let reverse = graph.edge_between_kind(edge.to, edge.from, &super::EdgeKind::VerticalPassage).is_some();
+        let reverse = graph
+            .edge_between_kind(edge.to, edge.from, &super::EdgeKind::VerticalPassage)
+            .is_some();
         if reverse {
             bidirectional_passages += 1;
         } else {
@@ -237,10 +296,16 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
     let mut seen_teleport_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut cross_floor_teleports = 0usize;
     for edge in graph.edges() {
-        if edge.kind != super::EdgeKind::Teleport || field.level_of(edge.from) == field.level_of(edge.to) {
+        if edge.kind != super::EdgeKind::Teleport
+            || field.level_of(edge.from) == field.level_of(edge.to)
+        {
             continue;
         }
-        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        let pair = if edge.from < edge.to {
+            (edge.from, edge.to)
+        } else {
+            (edge.to, edge.from)
+        };
         if seen_teleport_pairs.insert(pair) {
             cross_floor_teleports += 1;
         }
@@ -266,8 +331,13 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
 /// Takes `elevator_groups` (the caller's own `Graph::elevator_groups()` result) rather than
 /// recomputing it — that's a union-find pass over every `Elevator` edge, not worth repeating once
 /// per floor when a caller needs several floors' counts from the same snapshot.
-pub fn compute_elevator_stop_count_scoped<T: Tessellation>(elevator_groups: &[HashSet<NodeId>], field: &MultiLevelField<T>, level: LevelId) -> usize {
-    elevator_groups.iter()
+pub fn compute_elevator_stop_count_scoped<T: Tessellation>(
+    elevator_groups: &[HashSet<NodeId>],
+    field: &MultiLevelField<T>,
+    level: LevelId,
+) -> usize {
+    elevator_groups
+        .iter()
         .flat_map(|group| group.iter())
         .filter(|&&node| in_scope(field, node, Some(level)))
         .count()
@@ -281,12 +351,12 @@ pub fn average_degree(graph: &Graph) -> f64 {
     if node_count == 0 {
         return 0.0;
     }
-    let total_degree: usize = graph.nodes()
+    let total_degree: usize = graph
+        .nodes()
         .map(|n| crate::graph::classify::unique_neighbors(graph, n.id).len())
         .sum();
     total_degree as f64 / node_count as f64
 }
-
 
 #[cfg(test)]
 #[path = "stats_tests.rs"]

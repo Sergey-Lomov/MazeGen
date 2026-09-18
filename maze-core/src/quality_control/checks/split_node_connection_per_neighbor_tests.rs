@@ -1,20 +1,23 @@
 use super::*;
-use rand::SeedableRng;
 use crate::graph::EdgeKind;
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
-use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+use rand::SeedableRng;
 
 const TEST_ID: &str = "split_node_connection_per_neighbor";
 
 fn maze_with_split_and_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
     let level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 1 };
     let slot0 = field.node_at(level, p).unwrap();
     let extra = field.add_node_at(level, p, &mut ids);
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
     let left = field.node_at(level, SquarePoint { x: 0, y: 1 }).unwrap();
     let right = field.node_at(level, SquarePoint { x: 2, y: 1 }).unwrap();
     let maze = Maze::new(field, g);
@@ -24,12 +27,18 @@ fn maze_with_split_and_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId,
 #[test]
 fn silent_when_no_split_points() {
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = SplitNodeConnectionPerNeighborCheck { instance_id: TEST_ID.to_string(), max: 1 };
+    let check = SplitNodeConnectionPerNeighborCheck {
+        instance_id: TEST_ID.to_string(),
+        max: 1,
+    };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -44,7 +53,10 @@ fn silent_when_neighbor_connection_count_at_or_below_max() {
     maze.graph.add_edge(slot0, left, EdgeKind::Basic);
     maze.graph.add_edge(extra, right, EdgeKind::Basic);
 
-    let check = SplitNodeConnectionPerNeighborCheck { instance_id: TEST_ID.to_string(), max: 1 };
+    let check = SplitNodeConnectionPerNeighborCheck {
+        instance_id: TEST_ID.to_string(),
+        max: 1,
+    };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -58,7 +70,10 @@ fn fires_when_two_split_nodes_connect_to_the_same_outside_neighbor() {
     maze.graph.add_edge(slot0, left, EdgeKind::Basic);
     maze.graph.add_edge(extra, left, EdgeKind::Basic);
 
-    let check = SplitNodeConnectionPerNeighborCheck { instance_id: TEST_ID.to_string(), max: 1 };
+    let check = SplitNodeConnectionPerNeighborCheck {
+        instance_id: TEST_ID.to_string(),
+        max: 1,
+    };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -74,9 +89,13 @@ fn ignores_sibling_edges_between_nodes_of_the_same_split() {
     let (mut maze, slot0, extra, _left, _right) = maze_with_split_and_neighbors();
     // slot0 <-> extra is a sibling edge within the same split point -- must never count as an
     // "outside neighbor" connection.
-    maze.graph.add_bidirectional_edge(slot0, extra, EdgeKind::Basic);
+    maze.graph
+        .add_bidirectional_edge(slot0, extra, EdgeKind::Basic);
 
-    let check = SplitNodeConnectionPerNeighborCheck { instance_id: TEST_ID.to_string(), max: 1 };
+    let check = SplitNodeConnectionPerNeighborCheck {
+        instance_id: TEST_ID.to_string(),
+        max: 1,
+    };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -91,7 +110,10 @@ fn ignores_incoming_edges_from_the_neighbor() {
     maze.graph.add_edge(left, slot0, EdgeKind::Basic);
     maze.graph.add_edge(left, extra, EdgeKind::Basic);
 
-    let check = SplitNodeConnectionPerNeighborCheck { instance_id: TEST_ID.to_string(), max: 1 };
+    let check = SplitNodeConnectionPerNeighborCheck {
+        instance_id: TEST_ID.to_string(),
+        max: 1,
+    };
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check.repair_check(&maze, &mut issues, &mut rng, ());

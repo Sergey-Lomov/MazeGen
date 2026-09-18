@@ -1,15 +1,22 @@
-use crate::space::{SquareTessellation, SquarePoint};
 use crate::Maze;
+use crate::space::{SquarePoint, SquareTessellation};
 
 pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
     let level = maze.field.single_level_id();
-    let field = maze.field.field_of(level).expect("single_level_id always resolves");
+    let field = maze
+        .field
+        .field_of(level)
+        .expect("single_level_id always resolves");
     let (width, height) = {
         let mut max_x = 0i32;
         let mut max_y = 0i32;
         for p in field.all_points() {
-            if p.x > max_x { max_x = p.x; }
-            if p.y > max_y { max_y = p.y; }
+            if p.x > max_x {
+                max_x = p.x;
+            }
+            if p.y > max_y {
+                max_y = p.y;
+            }
         }
         ((max_x + 1) as usize, (max_y + 1) as usize)
     };
@@ -32,14 +39,23 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             let (ch0, ch1, ch2) = if y == 0 || y == height {
                 ('-', '-', '-')
             } else {
-                let point_a = SquarePoint { x: x as i32, y: y as i32 };
-                let point_b = SquarePoint { x: x as i32, y: y as i32 - 1 };
-                match (field.nodes_at(point_a).first().copied(), field.nodes_at(point_b).first().copied()) {
+                let point_a = SquarePoint {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                let point_b = SquarePoint {
+                    x: x as i32,
+                    y: y as i32 - 1,
+                };
+                match (
+                    field.nodes_at(point_a).first().copied(),
+                    field.nodes_at(point_b).first().copied(),
+                ) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();
                         match (ab, ba) {
-                            (true, true)  => (' ', ' ', ' '),
+                            (true, true) => (' ', ' ', ' '),
                             (true, false) => (' ', 'v', ' '),
                             (false, true) => (' ', '^', ' '),
                             (false, false) => ('-', '-', '-'),
@@ -60,14 +76,23 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             let ch = if x == 0 || x == width {
                 '|'
             } else {
-                let point_a = SquarePoint { x: x as i32, y: y as i32 };
-                let point_b = SquarePoint { x: x as i32 - 1, y: y as i32 };
-                match (field.nodes_at(point_a).first().copied(), field.nodes_at(point_b).first().copied()) {
+                let point_a = SquarePoint {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                let point_b = SquarePoint {
+                    x: x as i32 - 1,
+                    y: y as i32,
+                };
+                match (
+                    field.nodes_at(point_a).first().copied(),
+                    field.nodes_at(point_b).first().copied(),
+                ) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();
                         match (ab, ba) {
-                            (true, true)  => ' ',
+                            (true, true) => ' ',
                             (true, false) => '<',
                             (false, true) => '>',
                             (false, false) => '|',

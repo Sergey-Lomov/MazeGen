@@ -44,7 +44,13 @@ pub fn discover() -> QualityIds {
         rule_param_ids.insert(p.id.to_string());
     }
 
-    QualityIds { check_ids, strategy_ids, rule_param_ids, issue_kind_ids, param_ids }
+    QualityIds {
+        check_ids,
+        strategy_ids,
+        rule_param_ids,
+        issue_kind_ids,
+        param_ids,
+    }
 }
 
 pub fn generate_ts_file(ids: &QualityIds) -> String {
@@ -81,26 +87,58 @@ pub struct MissingEntry {
 /// pulling in a TS parser.
 pub fn find_missing(ids: &QualityIds, qualityi18n_source: &str) -> Vec<MissingEntry> {
     let mut missing = Vec::new();
-    collect_missing(&mut missing, "checkI18n", &ids.check_ids, qualityi18n_source);
-    collect_missing(&mut missing, "strategyI18n", &ids.strategy_ids, qualityi18n_source);
-    collect_missing(&mut missing, "issueI18n", &ids.issue_kind_ids, qualityi18n_source);
-    collect_missing(&mut missing, "paramI18n", &ids.param_ids, qualityi18n_source);
+    collect_missing(
+        &mut missing,
+        "checkI18n",
+        &ids.check_ids,
+        qualityi18n_source,
+    );
+    collect_missing(
+        &mut missing,
+        "strategyI18n",
+        &ids.strategy_ids,
+        qualityi18n_source,
+    );
+    collect_missing(
+        &mut missing,
+        "issueI18n",
+        &ids.issue_kind_ids,
+        qualityi18n_source,
+    );
+    collect_missing(
+        &mut missing,
+        "paramI18n",
+        &ids.param_ids,
+        qualityi18n_source,
+    );
     missing
 }
 
-fn collect_missing(out: &mut Vec<MissingEntry>, registry: &'static str, ids: &BTreeSet<String>, source: &str) {
+fn collect_missing(
+    out: &mut Vec<MissingEntry>,
+    registry: &'static str,
+    ids: &BTreeSet<String>,
+    source: &str,
+) {
     let Some(registry_start) = source.find(&format!("export const {registry}")) else {
         // Registry object itself not found — every id is trivially "missing", but that almost
         // certainly means the registry was renamed, not that every entry was deleted; report
         // nothing rather than a wall of false positives that would mask the real problem.
         return;
     };
-    let registry_body_end = source[registry_start..].find("\n};").map(|i| registry_start + i).unwrap_or(source.len());
+    let registry_body_end = source[registry_start..]
+        .find("\n};")
+        .map(|i| registry_start + i)
+        .unwrap_or(source.len());
     let registry_body = &source[registry_start..registry_body_end];
     for id in ids {
-        let key_present = registry_body.contains(&format!("\n  {id}:")) || registry_body.contains(&format!("\n  \"{id}\":"));
+        let key_present = registry_body.contains(&format!("\n  {id}:"))
+            || registry_body.contains(&format!("\n  \"{id}\":"));
         if !key_present {
-            out.push(MissingEntry { registry, id: id.clone() });
+            out.push(MissingEntry {
+                registry,
+                id: id.clone(),
+            });
         }
     }
 }
@@ -117,12 +155,25 @@ fn collect_missing(out: &mut Vec<MissingEntry>, registry: &'static str, ids: &BT
 /// explicitly as `NO_DETAIL_CHECKS` instead. Ids in that set are excluded from the diff entirely
 /// (not required to have a real, and not flagged if they don't) — everything else still needs a
 /// real `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry.
-pub fn find_missing_issue_registry(ids: &QualityIds, issue_registry_source: &str) -> Vec<MissingEntry> {
+pub fn find_missing_issue_registry(
+    ids: &QualityIds,
+    issue_registry_source: &str,
+) -> Vec<MissingEntry> {
     let no_detail = no_detail_checks(issue_registry_source);
     let checked_ids: BTreeSet<String> = ids.check_ids.difference(&no_detail).cloned().collect();
     let mut missing = Vec::new();
-    collect_missing(&mut missing, "DETAIL_LABELS", &checked_ids, issue_registry_source);
-    collect_missing(&mut missing, "DETAIL_DESCRIPTIONS", &checked_ids, issue_registry_source);
+    collect_missing(
+        &mut missing,
+        "DETAIL_LABELS",
+        &checked_ids,
+        issue_registry_source,
+    );
+    collect_missing(
+        &mut missing,
+        "DETAIL_DESCRIPTIONS",
+        &checked_ids,
+        issue_registry_source,
+    );
     missing
 }
 
@@ -163,7 +214,10 @@ fn no_detail_checks(source: &str) -> BTreeSet<String> {
 /// one table instead of hand-syncing them). A check id absent from this table can never be
 /// selected by `config.checks`, the same class of silent gap `qualityI18n.ts`'s registries close
 /// for the UI side.
-pub fn find_missing_check_factory(ids: &QualityIds, qc_kind_registry_source: &str) -> Vec<MissingEntry> {
+pub fn find_missing_check_factory(
+    ids: &QualityIds,
+    qc_kind_registry_source: &str,
+) -> Vec<MissingEntry> {
     let mut missing = Vec::new();
     // Anchored on a line-start `qc_kind_registry! {` (the macro *call*) rather than a bare
     // substring search — `macro_rules! qc_kind_registry { ... }` (the macro's own *definition*,
@@ -176,12 +230,18 @@ pub fn find_missing_check_factory(ids: &QualityIds, qc_kind_registry_source: &st
         // deleted; report nothing rather than a wall of false positives masking the real problem.
         return missing;
     };
-    let invocation_end = qc_kind_registry_source[invocation_start..].find("\n}").map(|i| invocation_start + i).unwrap_or(qc_kind_registry_source.len());
+    let invocation_end = qc_kind_registry_source[invocation_start..]
+        .find("\n}")
+        .map(|i| invocation_start + i)
+        .unwrap_or(qc_kind_registry_source.len());
     let invocation_body = &qc_kind_registry_source[invocation_start..invocation_end];
     for id in &ids.check_ids {
         let entry_present = invocation_body.contains(&format!("\"{id}\""));
         if !entry_present {
-            missing.push(MissingEntry { registry: "qc_kind_registry", id: id.clone() });
+            missing.push(MissingEntry {
+                registry: "qc_kind_registry",
+                id: id.clone(),
+            });
         }
     }
     missing
@@ -209,14 +269,22 @@ fn message_prefix_for(registry: &str) -> Option<&'static str> {
 /// scan approach as `find_missing`/`collect_missing`: insertion point is right after the last
 /// existing entry for that registry (found by scanning for `"\n<prefix>.` occurrences), so the
 /// stub lands in the same block a human would have added it to, keeping the diff readable.
-pub fn scaffold(missing: &[MissingEntry], qualityi18n_source: &str, en_source: &str, ru_source: &str) -> (String, String, String) {
+pub fn scaffold(
+    missing: &[MissingEntry],
+    qualityi18n_source: &str,
+    en_source: &str,
+    ru_source: &str,
+) -> (String, String, String) {
     let mut ts = qualityi18n_source.to_string();
     let mut en = en_source.to_string();
     let mut ru = ru_source.to_string();
 
     for m in missing {
         let Some(prefix) = message_prefix_for(m.registry) else {
-            eprintln!("codegen: --scaffold: no message-key prefix known for registry \"{}\" — skipped id \"{}\"", m.registry, m.id);
+            eprintln!(
+                "codegen: --scaffold: no message-key prefix known for registry \"{}\" — skipped id \"{}\"",
+                m.registry, m.id
+            );
             continue;
         };
         ts = insert_ts_entry(&ts, m.registry, &m.id, prefix);
@@ -316,7 +384,10 @@ mod tests {
 
     #[test]
     fn scaffold_appends_stub_entry_and_message_keys() {
-        let missing = vec![MissingEntry { registry: "checkI18n", id: "new_check".to_string() }];
+        let missing = vec![MissingEntry {
+            registry: "checkI18n",
+            id: "new_check".to_string(),
+        }];
         let ts_source = "export const checkI18n: Record<string, X> = {\n  missing_endpoints: {\n    label: 1,\n  },\n};\n";
         let en_source = "{\n  \"check.missing_endpoints.label\": \"Foo\",\n  \"check.missing_endpoints.description\": \"Bar\"\n}\n";
         let ru_source = "{\n  \"check.missing_endpoints.label\": \"Фу\",\n  \"check.missing_endpoints.description\": \"Бар\"\n}\n";
@@ -336,7 +407,10 @@ mod tests {
 
     #[test]
     fn scaffold_inserts_message_keys_before_closing_brace_when_prefix_absent() {
-        let missing = vec![MissingEntry { registry: "strategyI18n", id: "brand_new".to_string() }];
+        let missing = vec![MissingEntry {
+            registry: "strategyI18n",
+            id: "brand_new".to_string(),
+        }];
         let ts_source = "export const strategyI18n: Record<string, X> = {\n  no_fix: {\n    label: 1,\n  },\n};\n";
         let en_source = "{\n  \"other.key\": \"Val\"\n}\n";
         let ru_source = "{\n  \"other.key\": \"Знач\"\n}\n";
@@ -362,8 +436,16 @@ mod tests {
         let source = "export const DETAIL_LABELS: Record<string, X> = {\n  missing_endpoints: (d) => d,\n};\n\nexport const DETAIL_DESCRIPTIONS: Record<string, X> = {\n  missing_endpoints: () => \"x\",\n};\n";
         let missing = find_missing_issue_registry(&ids, source);
         assert_eq!(missing.len(), 2);
-        assert!(missing.iter().any(|m| m.registry == "DETAIL_LABELS" && m.id == "unreachable_finish"));
-        assert!(missing.iter().any(|m| m.registry == "DETAIL_DESCRIPTIONS" && m.id == "unreachable_finish"));
+        assert!(
+            missing
+                .iter()
+                .any(|m| m.registry == "DETAIL_LABELS" && m.id == "unreachable_finish")
+        );
+        assert!(
+            missing
+                .iter()
+                .any(|m| m.registry == "DETAIL_DESCRIPTIONS" && m.id == "unreachable_finish")
+        );
     }
 
     #[test]
@@ -393,7 +475,10 @@ mod tests {
     fn no_detail_checks_parses_quoted_ids_from_the_array_literal() {
         let source = "const NO_DETAIL_CHECKS = [\"a\", \"b\", \"c\"] as const;\n";
         let ids = no_detail_checks(source);
-        assert_eq!(ids, BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]));
+        assert_eq!(
+            ids,
+            BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()])
+        );
     }
 
     #[test]
@@ -440,7 +525,10 @@ mod tests {
 
     #[test]
     fn scaffold_skips_an_entry_for_an_unknown_registry_without_touching_other_sources() {
-        let missing = vec![MissingEntry { registry: "unknownI18n", id: "orphan".to_string() }];
+        let missing = vec![MissingEntry {
+            registry: "unknownI18n",
+            id: "orphan".to_string(),
+        }];
         let ts_source = "export const checkI18n: Record<string, X> = {\n};\n";
         let en_source = "{\n  \"other.key\": \"Val\"\n}\n";
         let ru_source = "{\n  \"other.key\": \"Знач\"\n}\n";
@@ -455,17 +543,24 @@ mod tests {
     #[test]
     fn insert_ts_entry_is_a_no_op_when_the_registry_is_not_found() {
         let source = "export const someOtherI18n: Record<string, X> = {\n};\n";
-        assert_eq!(insert_ts_entry(source, "checkI18n", "new_id", "check"), source);
+        assert_eq!(
+            insert_ts_entry(source, "checkI18n", "new_id", "check"),
+            source
+        );
     }
 
     #[test]
     fn insert_ts_entry_is_a_no_op_when_the_registry_has_no_closing_brace() {
         let source = "export const checkI18n: Record<string, X> = {\n  missing_endpoints: {\n    label: 1,\n  },\n";
-        assert_eq!(insert_ts_entry(source, "checkI18n", "new_id", "check"), source);
+        assert_eq!(
+            insert_ts_entry(source, "checkI18n", "new_id", "check"),
+            source
+        );
     }
 
     #[test]
-    fn insert_message_keys_appends_at_end_when_prefix_key_is_the_last_line_with_no_trailing_newline() {
+    fn insert_message_keys_appends_at_end_when_prefix_key_is_the_last_line_with_no_trailing_newline()
+     {
         let source = "{\n  \"check.missing_endpoints.label\": \"Foo\"".to_string() + "\"";
         let out = insert_message_keys(&source, "check", "new_check");
         assert!(out.ends_with("\"check.new_check.label\": \"TODO_new_check\",\n  \"check.new_check.description\": \"TODO\",\n"));
@@ -475,7 +570,12 @@ mod tests {
     fn insert_message_keys_appends_at_end_when_no_prefix_key_and_no_closing_brace_exist() {
         let source = "not really json";
         let out = insert_message_keys(source, "check", "new_check");
-        assert_eq!(out, format!("{source}  \"check.new_check.label\": \"TODO_new_check\",\n  \"check.new_check.description\": \"TODO\",\n"));
+        assert_eq!(
+            out,
+            format!(
+                "{source}  \"check.new_check.label\": \"TODO_new_check\",\n  \"check.new_check.description\": \"TODO\",\n"
+            )
+        );
     }
 
     #[test]

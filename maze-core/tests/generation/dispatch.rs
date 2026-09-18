@@ -1,5 +1,7 @@
-use maze_core::generation::{generate_maze, GenerationAlgorithm, GenerationConfig, GenerationParams};
 use super::helpers::*;
+use maze_core::generation::{
+    GenerationAlgorithm, GenerationConfig, GenerationParams, generate_maze,
+};
 
 #[test]
 fn generate_maze_dispatches_all_algorithms() {
@@ -12,8 +14,20 @@ fn generate_maze_dispatches_all_algorithms() {
     for algo in algorithms {
         let (mut graph, mut field, start, mut ids) = build_with_ids(4, 4);
         let node_count = graph.nodes().count();
-        let config = GenerationConfig { algorithm: algo, elements: no_one_way_elements(), ..GenerationConfig::default() };
-        generate_maze(&mut graph, &mut field, &mut ids, 42, start, config, &empty_preset());
+        let config = GenerationConfig {
+            algorithm: algo,
+            elements: no_one_way_elements(),
+            ..GenerationConfig::default()
+        };
+        generate_maze(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            42,
+            start,
+            config,
+            &empty_preset(),
+        );
         assert_perfect_maze(&graph, node_count);
     }
 }

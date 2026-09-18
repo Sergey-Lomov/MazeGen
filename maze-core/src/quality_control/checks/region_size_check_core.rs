@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
+use crate::graph::region_class::{ALL_REGION_CLASSES, RegionClass};
 use crate::quality_control::RegionNeedsExpansionIssue;
+use crate::space::Tessellation;
+use std::collections::HashMap;
 
 /// Shared region-filtering/issue-building logic for `MinRegionSizeCheck` and
 /// `MinRegionRatioCheck` — see GitHub issue #108. Each check owns only its threshold predicate
@@ -28,12 +28,21 @@ pub fn find_invalid_regions<T: Tessellation>(
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return None;
         }
-        Some(maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta))
+        Some(
+            maze.analysis
+                .region_classes(&maze.graph, &maze.field, &maze.meta),
+        )
     };
-    let invalid: Vec<usize> = scc.components.iter().enumerate()
+    let invalid: Vec<usize> = scc
+        .components
+        .iter()
+        .enumerate()
         .filter(|(idx, region)| {
             undersized(region.len())
-                && classes.as_ref().is_none_or(|c| c.get(idx).is_some_and(|class| region_classes.contains(class)))
+                && classes.as_ref().is_none_or(|c| {
+                    c.get(idx)
+                        .is_some_and(|class| region_classes.contains(class))
+                })
         })
         .map(|(idx, _)| idx)
         .collect();
@@ -60,14 +69,20 @@ pub fn build_issue<T: Tessellation>(
 ) -> RegionNeedsExpansionIssue {
     let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
     for &idx in &invalid {
-        invalid_sources.entry(idx).or_default().push(instance_id.to_string());
+        invalid_sources
+            .entry(idx)
+            .or_default()
+            .push(instance_id.to_string());
     }
 
-    let classes = (maze.meta.start.is_some() && maze.meta.finish.is_some())
-        .then(|| maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta));
+    let classes = (maze.meta.start.is_some() && maze.meta.finish.is_some()).then(|| {
+        maze.analysis
+            .region_classes(&maze.graph, &maze.field, &maze.meta)
+    });
 
     if let Some(classes) = classes {
-        let mut detail_classes: Vec<&'static str> = invalid.iter()
+        let mut detail_classes: Vec<&'static str> = invalid
+            .iter()
             .filter_map(|idx| classes.get(idx))
             .map(|c| c.as_str())
             .collect();

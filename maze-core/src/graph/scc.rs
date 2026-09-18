@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
-use crate::ids::NodeId;
 use super::Graph;
+use crate::ids::NodeId;
+use std::collections::{HashMap, HashSet};
 
 pub type ComponentId = usize;
 
@@ -53,7 +53,13 @@ impl TarjanIter {
     }
 
     fn push_node(&mut self, v: NodeId, neighbors: Vec<NodeId>) {
-        self.node_state.insert(v, NodeState { index: self.index_counter, lowlink: self.index_counter });
+        self.node_state.insert(
+            v,
+            NodeState {
+                index: self.index_counter,
+                lowlink: self.index_counter,
+            },
+        );
         self.index_counter += 1;
         self.tarjan_stack.push(v);
         self.on_stack.insert(v);
@@ -140,5 +146,8 @@ pub fn build_scc(graph: &Graph) -> ConnectedComponents {
         }
     }
 
-    ConnectedComponents { components: state.components, node_component }
+    ConnectedComponents {
+        components: state.components,
+        node_component,
+    }
 }

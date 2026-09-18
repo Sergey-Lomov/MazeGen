@@ -1,8 +1,8 @@
-use rand::RngCore;
+use super::dead_end_priority::apply_src_mode;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use super::dead_end_priority::apply_src_mode;
+use rand::RngCore;
 
 /// Shared candidate-pool abstraction for element-adding strategies (GitHub issue #521, part of
 /// epic #520). Wraps the ordering (`apply_src_mode`: dead-end-priority vs shuffled) and
@@ -28,7 +28,9 @@ impl Pool {
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
     ) -> Self {
-        Pool { items: apply_src_mode(maze, candidates, src_mode, rng) }
+        Pool {
+            items: apply_src_mode(maze, candidates, src_mode, rng),
+        }
     }
 
     /// Removes and returns the next candidate to try, or `None` once the pool is exhausted.
@@ -44,19 +46,22 @@ impl Pool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
-    use crate::Graph;
     use super::super::dead_end_priority::SRC_MODE_RANDOM;
+    use super::*;
+    use crate::Graph;
+    use crate::IdGenerator;
+    use crate::random::MazeRng;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 

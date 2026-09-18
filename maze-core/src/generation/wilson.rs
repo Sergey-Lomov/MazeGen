@@ -1,14 +1,19 @@
 #[path = "wilson_wire.rs"]
 mod wilson_wire;
 
-use std::collections::{HashSet, HashMap};
-use rand::{Rng, SeedableRng};
-use crate::random::MazeRng;
-use crate::ids::NodeId;
+use super::{
+    PresetState, bidirectional_edge_feasible, split_aware_neighbors, try_add_bidirectional_edge,
+};
+use crate::event_log::{
+    DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta,
+    DebugVertexOp, EventLog,
+};
 use crate::graph::Graph;
+use crate::ids::NodeId;
+use crate::random::MazeRng;
 use crate::space::{MultiLevelField, Tessellation};
-use crate::event_log::{DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EventLog};
-use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
+use rand::{Rng, SeedableRng};
+use std::collections::{HashMap, HashSet};
 
 /// Narration-level events for Wilson's algorithm (see GitHub issue #145). Wilson's decision shape
 /// is a two-level loop — an outer "pick an unvisited node and loop-erased-random-walk from it"
@@ -60,7 +65,11 @@ pub enum WilsonEvent {
     /// `try_add_bidirectional_edge` succeeds) — carried explicitly so replay consumers don't have
     /// to assume it.
     #[wire(tag = 5, mutating)]
-    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
+    EdgeAdded {
+        from: NodeId,
+        to: NodeId,
+        bidirectional: bool,
+    },
     /// A node was marked as part of the maze while committing the loop-erased path. Emitted under
     /// the walk's `"commit"` sub-scope.
     #[wire(tag = 6, mutating, name = "id")]
@@ -77,7 +86,9 @@ pub const WALK_HEAD: &str = "walk_head";
 impl DebugValueDelta<NodeId> for WilsonEvent {
     fn debug_value_deltas(&self) -> Vec<(&'static str, DebugValueOp, NodeId)> {
         match self {
-            WilsonEvent::StartVisited(id) | WilsonEvent::NodeVisited(id) => vec![(VISITED, DebugValueOp::Insert, *id)],
+            WilsonEvent::StartVisited(id) | WilsonEvent::NodeVisited(id) => {
+                vec![(VISITED, DebugValueOp::Insert, *id)]
+            }
             _ => Vec::new(),
         }
     }
@@ -96,7 +107,9 @@ impl DebugMapDelta<NodeId> for WilsonEvent {
     fn debug_map_deltas(&self) -> Vec<(&'static str, DebugMapOp<NodeId>)> {
         match self {
             WilsonEvent::WalkStartPicked(_) => vec![(CURRENT_WALK, DebugMapOp::Clear)],
-            WilsonEvent::StepTaken { from, to } => vec![(CURRENT_WALK, DebugMapOp::Set(*from, *to))],
+            WilsonEvent::StepTaken { from, to } => {
+                vec![(CURRENT_WALK, DebugMapOp::Set(*from, *to))]
+            }
             _ => Vec::new(),
         }
     }
@@ -169,18 +182,26 @@ fn compute_components<T: Tessellation>(
     let mut component_of: HashMap<NodeId, usize> = HashMap::new();
     let mut next_component = 0usize;
     for &root in all_nodes {
-        if component_of.contains_key(&root) { continue; }
+        if component_of.contains_key(&root) {
+            continue;
+        }
         let mut stack = vec![root];
         component_of.insert(root, next_component);
         while let Some(node) = stack.pop() {
-            let teleport_dsts = preset_state.preset_teleports.get(&node).map(Vec::as_slice).unwrap_or(&[]);
+            let teleport_dsts = preset_state
+                .preset_teleports
+                .get(&node)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let teleport_reverse_srcs = teleport_srcs.get(&node).map(Vec::as_slice).unwrap_or(&[]);
             let neighbors = split_aware_neighbors(field, graph, node)
                 .into_iter()
                 .chain(teleport_dsts.iter().copied())
                 .chain(teleport_reverse_srcs.iter().copied());
             for n in neighbors {
-                if component_of.contains_key(&n) { continue; }
+                if component_of.contains_key(&n) {
+                    continue;
+                }
                 component_of.insert(n, next_component);
                 stack.push(n);
             }
@@ -228,8 +249,15 @@ pub fn generate<T: Tessellation>(
         log.emit(WilsonEvent::StartVisited(start));
     }
 
-    let mut unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|&n| !visited.contains(&n)).collect();
-    let mut visited_components: HashSet<usize> = visited.iter().filter_map(|n| component_of.get(n).copied()).collect();
+    let mut unvisited: Vec<NodeId> = all_nodes
+        .iter()
+        .copied()
+        .filter(|&n| !visited.contains(&n))
+        .collect();
+    let mut visited_components: HashSet<usize> = visited
+        .iter()
+        .filter_map(|n| component_of.get(n).copied())
+        .collect();
 
     while !unvisited.is_empty() {
         // Only a node whose component already contains a visited node can safely be walked from —
@@ -244,15 +272,23 @@ pub fn generate<T: Tessellation>(
         // `walkable` scans all of `unvisited` — already the same order of cost as the pre-existing
         // `unvisited.retain(...)` below (each successful walk already did an O(n) scan to drop its
         // visited nodes), so this doesn't change the loop's asymptotic behavior, only its constant.
-        let walkable: Vec<usize> = unvisited.iter().enumerate()
-            .filter(|(_, n)| component_of.get(n).is_some_and(|c| visited_components.contains(c)))
+        let walkable: Vec<usize> = unvisited
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| {
+                component_of
+                    .get(n)
+                    .is_some_and(|c| visited_components.contains(c))
+            })
             .map(|(i, _)| i)
             .collect();
         let walk_start = if walkable.is_empty() {
             let pick_idx = rng.random_range(0..unvisited.len());
             let new_root = unvisited.swap_remove(pick_idx);
             visited.insert(new_root);
-            if let Some(c) = component_of.get(&new_root) { visited_components.insert(*c); }
+            if let Some(c) = component_of.get(&new_root) {
+                visited_components.insert(*c);
+            }
             if let Some(log) = event_log.as_deref_mut() {
                 log.emit(WilsonEvent::StartVisited(new_root));
             }
@@ -261,7 +297,9 @@ pub fn generate<T: Tessellation>(
             unvisited[walkable[rng.random_range(0..walkable.len())]]
         };
 
-        let mut walk_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("walk"));
+        let mut walk_scope = event_log
+            .as_deref_mut()
+            .map(|log| log.enter_numbered("walk"));
         if let Some(g) = walk_scope.as_mut() {
             g.emit(WilsonEvent::WalkStartPicked(walk_start));
         }
@@ -276,8 +314,15 @@ pub fn generate<T: Tessellation>(
             // shorten its borrow to its last use.
             let mut search_scope = walk_scope.as_mut().map(|g| g.enter("search"));
             loop {
-                let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
-                let teleport_reverse_srcs = teleport_srcs.get(&current).map(Vec::as_slice).unwrap_or(&[]);
+                let teleport_dsts = preset_state
+                    .preset_teleports
+                    .get(&current)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let teleport_reverse_srcs = teleport_srcs
+                    .get(&current)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
                 // Preset-teleport destinations already have their edge in the graph —
                 // traversable regardless of `bidirectional_edge_feasible` (see GitHub issue #226).
                 // The reverse of a one-way preset teleport is also traversable for search purposes,
@@ -306,7 +351,10 @@ pub fn generate<T: Tessellation>(
                 } else {
                     let chosen = neighbors[rng.random_range(0..neighbors.len())];
                     if let Some(g) = search_scope.as_mut() {
-                        g.emit(WilsonEvent::StepTaken { from: current, to: chosen });
+                        g.emit(WilsonEvent::StepTaken {
+                            from: current,
+                            to: chosen,
+                        });
                     }
                     let erased_loop = next.contains_key(&chosen);
                     next.insert(current, chosen);
@@ -322,7 +370,9 @@ pub fn generate<T: Tessellation>(
                         false
                     }
                 };
-                if dead_end { break; }
+                if dead_end {
+                    break;
+                }
             }
         }
 
@@ -335,18 +385,30 @@ pub fn generate<T: Tessellation>(
             let mut commit_scope = walk_scope.as_mut().map(|g| g.enter("commit"));
             let mut node = walk_start;
             while !visited.contains(&node) {
-                let Some(&dst) = next.get(&node) else { break; };
+                let Some(&dst) = next.get(&node) else {
+                    break;
+                };
                 // A preset-teleport step already has its edge in the graph — skip adding it again,
                 // whether the walk used it forward (`node -> dst`) or, for a one-way teleport,
                 // backward through the reverse side (`dst -> node`, see `teleport_srcs` above).
-                let is_preset_teleport = preset_state.preset_teleports.get(&node).is_some_and(|dsts| dsts.contains(&dst))
-                    || preset_state.preset_teleports.get(&dst).is_some_and(|dsts| dsts.contains(&node));
+                let is_preset_teleport = preset_state
+                    .preset_teleports
+                    .get(&node)
+                    .is_some_and(|dsts| dsts.contains(&dst))
+                    || preset_state
+                        .preset_teleports
+                        .get(&dst)
+                        .is_some_and(|dsts| dsts.contains(&node));
                 if !is_preset_teleport {
                     try_add_bidirectional_edge(graph, node, dst, preset_state);
                 }
                 visited.insert(node);
                 if let Some(g) = commit_scope.as_mut() {
-                    g.emit(WilsonEvent::EdgeAdded { from: node, to: dst, bidirectional: true });
+                    g.emit(WilsonEvent::EdgeAdded {
+                        from: node,
+                        to: dst,
+                        bidirectional: true,
+                    });
                     g.emit(WilsonEvent::NodeVisited(node));
                 }
                 node = dst;

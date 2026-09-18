@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
+use crate::graph::distance_map::{DistanceDirection, compute_distance_map_filtered_bounded};
 use crate::graph::nav::{NavEdge, NavGraph, NavNodeId};
 use crate::ids::NodeId;
+use std::collections::HashSet;
 
 /// Shared pairwise proximity scan for topological (nav-graph, own-hop-excluded) QC checks — see
 /// GitHub issue #413. Mirrors `ElevatorStopGroupGraphProximityCheck`'s and
@@ -22,17 +22,28 @@ pub fn pairwise_graph_proximity_scan<C, K>(
     mut pair_excluded: impl FnMut(&C, &C) -> bool,
     mut on_close: impl FnMut(&C, &C) -> (Vec<K>, u32),
 ) -> Vec<(Vec<K>, u32)> {
-    let is_not_a_hop = |edge: &NavEdge| !(edge.path.len() == 2 && hop_pairs.contains(&(edge.path[0], edge.path[1])));
+    let is_not_a_hop = |edge: &NavEdge| {
+        !(edge.path.len() == 2 && hop_pairs.contains(&(edge.path[0], edge.path[1])))
+    };
     let max_dist = distance as usize;
     let mut groups = Vec::new();
 
     for own in candidates {
-        let dist_map = compute_distance_map_filtered_bounded(nav, own_nav_node(own), DistanceDirection::Forward, is_not_a_hop, max_dist);
+        let dist_map = compute_distance_map_filtered_bounded(
+            nav,
+            own_nav_node(own),
+            DistanceDirection::Forward,
+            is_not_a_hop,
+            max_dist,
+        );
         for other in candidates {
             if pair_excluded(own, other) {
                 continue;
             }
-            if dist_map.get(&own_nav_node(other)).is_some_and(|&d| (d as u32) < distance) {
+            if dist_map
+                .get(&own_nav_node(other))
+                .is_some_and(|&d| (d as u32) < distance)
+            {
                 groups.push(on_close(own, other));
                 break;
             }
@@ -91,7 +102,11 @@ mod tests {
             |a, b| (a - b).abs(),
             |a, b| (vec![*a as i64, *b as i64], 1),
         );
-        assert_eq!(groups.len(), 2, "0.0 and 1.0 both find each other close (dist 1.0 < 5.0); 10.0 finds nothing");
+        assert_eq!(
+            groups.len(),
+            2,
+            "0.0 and 1.0 both find each other close (dist 1.0 < 5.0); 10.0 finds nothing"
+        );
     }
 
     #[test]
@@ -102,11 +117,18 @@ mod tests {
             &candidates,
             5.0,
             |a, b| a == b,
-            |a, b| { visits += 1; (a - b).abs() },
+            |a, b| {
+                visits += 1;
+                (a - b).abs()
+            },
             |a, b| (vec![*a as i64, *b as i64], 1),
         );
         assert_eq!(groups.len(), 3, "every candidate finds a close partner");
-        assert_eq!(visits, 1 + 1 + 1, "each own candidate stops scanning right after its first close other, never visiting the remaining candidates");
+        assert_eq!(
+            visits,
+            1 + 1 + 1,
+            "each own candidate stops scanning right after its first close other, never visiting the remaining candidates"
+        );
     }
 
     #[test]
@@ -126,7 +148,13 @@ mod tests {
     #[test]
     fn empty_candidates_produce_no_groups() {
         let candidates: Vec<f64> = Vec::new();
-        let groups = pairwise_geometric_scan(&candidates, 5.0, |_, _| false, |a, b| (a - b).abs(), |a, b| (vec![*a as i64, *b as i64], 1));
+        let groups = pairwise_geometric_scan(
+            &candidates,
+            5.0,
+            |_, _| false,
+            |a, b| (a - b).abs(),
+            |a, b| (vec![*a as i64, *b as i64], 1),
+        );
         assert!(groups.is_empty());
     }
 }

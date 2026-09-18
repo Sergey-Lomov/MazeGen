@@ -1,16 +1,16 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
-use rand::RngCore;
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::generation::PresetState;
-use crate::generation::pipeline::{TimingEntry, TimingNode};
-use crate::repair::RepairResult;
-use crate::quality_control::issue_kinds::RepairLimitKind;
 use super::engine::RepairBudget;
 use super::event::QcEvent;
 use super::issue::Issue;
-use super::rule::{RuleTrait, RuleIterationOutcome};
+use super::rule::{RuleIterationOutcome, RuleTrait};
+use crate::Maze;
+use crate::generation::PresetState;
+use crate::generation::pipeline::{TimingEntry, TimingNode};
+use crate::quality_control::issue_kinds::RepairLimitKind;
+use crate::repair::RepairResult;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Result of one `Stage::run_repair` call — what happened to this stage's own fixpoint loop.
 /// `QualityControlEngine::run_repair_stages` decides what to do next (advance, or stop the whole
@@ -21,8 +21,13 @@ use super::rule::{RuleTrait, RuleIterationOutcome};
 /// pass that finds nothing and returns `Done`) doesn't increment it, matching `run_repair`'s own
 /// `iteration` counter semantics.
 pub(crate) enum StageOutcome {
-    Done { iterations: u32 },
-    LimitReached { kind: RepairLimitKind, iterations: u32 },
+    Done {
+        iterations: u32,
+    },
+    LimitReached {
+        kind: RepairLimitKind,
+        iterations: u32,
+    },
 }
 
 /// Per-rule timing accumulated across an entire fixpoint loop (all iterations summed) — see
@@ -37,11 +42,20 @@ pub(crate) struct RuleTimingAcc {
 
 impl RuleTimingAcc {
     fn into_node(self, rule_id: &str) -> TimingNode {
-        let mut children: Vec<TimingNode> = self.per_check.into_iter()
-            .map(|(id, (total_ms, calls))| TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new()))
+        let mut children: Vec<TimingNode> = self
+            .per_check
+            .into_iter()
+            .map(|(id, (total_ms, calls))| {
+                TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new())
+            })
             .collect();
-        children.extend(self.per_strategy.into_iter()
-            .map(|(id, (total_ms, calls))| TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new())));
+        children.extend(
+            self.per_strategy
+                .into_iter()
+                .map(|(id, (total_ms, calls))| {
+                    TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new())
+                }),
+        );
         let entry = TimingEntry {
             total_ms: children.iter().map(|c| c.entry.total_ms).sum(),
             calls: 0,
@@ -54,11 +68,16 @@ impl RuleTimingAcc {
 /// actually ran. `None` (not an empty `TimingNode`) when no rule in this stage ran at all — a
 /// stage never dispatched during this pass has nothing to show in the tree. `iterations` becomes
 /// this node's own `calls` — see `StageOutcome`'s doc comment.
-pub(crate) fn stage_node(stage_id: &str, rules: HashMap<String, RuleTimingAcc>, iterations: u32) -> Option<TimingNode> {
+pub(crate) fn stage_node(
+    stage_id: &str,
+    rules: HashMap<String, RuleTimingAcc>,
+    iterations: u32,
+) -> Option<TimingNode> {
     if rules.is_empty() {
         return None;
     }
-    let children: Vec<TimingNode> = rules.into_iter()
+    let children: Vec<TimingNode> = rules
+        .into_iter()
         .map(|(rule_id, acc)| acc.into_node(&rule_id))
         .collect();
     let entry = TimingEntry {
@@ -116,7 +135,10 @@ impl<T: Tessellation> Stage<T> {
                 if let Some(log) = event_log.as_mut() {
                     log.emit(QcEvent::IterationLimitReached(limit));
                 }
-                return StageOutcome::LimitReached { kind: limit, iterations: iteration };
+                return StageOutcome::LimitReached {
+                    kind: limit,
+                    iterations: iteration,
+                };
             }
             budget.iterations_done += 1;
 
@@ -124,15 +146,28 @@ impl<T: Tessellation> Stage<T> {
             // block so the guard doesn't stay borrowed into the next loop pass (see
             // `Specs/event_log.md`'s `ScopeGuard::enter` caveat).
             {
-                let mut iteration_scope = event_log.as_mut().map(|log| log.enter_numbered("iteration"));
+                let mut iteration_scope = event_log
+                    .as_mut()
+                    .map(|log| log.enter_numbered("iteration"));
                 if let Some(g) = iteration_scope.as_mut() {
                     g.emit(QcEvent::IterationStarted(iteration));
                 }
 
-                let found_any = self.check_and_dispatch(maze, rng, preset_state, timing, now_ms, &mut failed, iteration_scope.as_mut(), debug_state.as_deref_mut());
+                let found_any = self.check_and_dispatch(
+                    maze,
+                    rng,
+                    preset_state,
+                    timing,
+                    now_ms,
+                    &mut failed,
+                    iteration_scope.as_mut(),
+                    debug_state.as_deref_mut(),
+                );
 
                 if !found_any {
-                    return StageOutcome::Done { iterations: iteration };
+                    return StageOutcome::Done {
+                        iterations: iteration,
+                    };
                 }
             }
             iteration += 1;
@@ -195,11 +230,18 @@ impl<T: Tessellation> Stage<T> {
                 continue;
             }
             let version_before = maze.graph.version();
-            let mut rule_scope = event_log.as_mut().map(|g| g.enter(format!("rule {}", rule.id())));
+            let mut rule_scope = event_log
+                .as_mut()
+                .map(|g| g.enter(format!("rule {}", rule.id())));
             let rule_acc = timing.entry(rule.id().to_string()).or_default();
             let outcome = rule.check_and_repair(
-                maze, rng, preset_state, &mut rule_acc.per_check, &mut rule_acc.per_strategy,
-                now_ms, rule_scope.as_mut(),
+                maze,
+                rng,
+                preset_state,
+                &mut rule_acc.per_check,
+                &mut rule_acc.per_strategy,
+                now_ms,
+                rule_scope.as_mut(),
                 debug_state.as_deref_mut(),
             );
             match outcome {
@@ -212,7 +254,9 @@ impl<T: Tessellation> Stage<T> {
                 RuleIterationOutcome::Repaired(result, _outcome) => {
                     found_any = true;
                     match result {
-                        RepairResult::Failed => { failed.insert(rule.id().to_string()); }
+                        RepairResult::Failed => {
+                            failed.insert(rule.id().to_string());
+                        }
                         RepairResult::Fixed { .. } => {}
                     }
                 }
@@ -256,9 +300,27 @@ mod timing_tree_tests {
         assert_eq!(node.entry.calls, 0);
         assert_eq!(node.children.len(), 3);
         let child = |id: &str| node.children.iter().find(|c| c.id == id).unwrap();
-        assert_eq!(child("check_a").entry, TimingEntry { total_ms: 10.0, calls: 2 });
-        assert_eq!(child("check_b").entry, TimingEntry { total_ms: 5.0, calls: 1 });
-        assert_eq!(child("strategy_a").entry, TimingEntry { total_ms: 7.0, calls: 3 });
+        assert_eq!(
+            child("check_a").entry,
+            TimingEntry {
+                total_ms: 10.0,
+                calls: 2
+            }
+        );
+        assert_eq!(
+            child("check_b").entry,
+            TimingEntry {
+                total_ms: 5.0,
+                calls: 1
+            }
+        );
+        assert_eq!(
+            child("strategy_a").entry,
+            TimingEntry {
+                total_ms: 7.0,
+                calls: 3
+            }
+        );
     }
 
     #[test]

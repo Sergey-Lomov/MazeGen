@@ -1,5 +1,5 @@
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKind, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_GROUP};
+use crate::quality_control::issue::{INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_GROUP, IssueKind};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`group_select_apply` instantiation for

@@ -1,9 +1,13 @@
-use crate::ids::NodeId;
 use crate::graph::EdgeKind;
-use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
+use crate::ids::NodeId;
 use crate::quality_control::issue::IssueKind;
 use crate::quality_control::issue_kinds::RepairLimitKind;
-use crate::quality_control::issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload, CrossElementPayloadEntry};
+use crate::quality_control::issue_payload::{
+    CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
+    IssuePayload, IssueRegionPayload, IssueRoutePayload, IssueSplitGroupPayload,
+    IssueSplitTilePayload,
+};
+use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 
 /// Binary wire-encoding helpers for `QcEvent`'s custom-codec fields (`qc_wire.rs`'s
 /// `use super::write_*` imports these) — split out of `event.rs` (GitHub issue #147's
@@ -43,7 +47,11 @@ pub(crate) fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>])
 /// list of leaves — the shape common to `write_str_keyed_edge_pairs`/`write_str_keyed_node_lists`/
 /// `write_str_keyed_flat_node_lists`/`write_str_keyed_routes` below, which differ only in how one
 /// leaf value is encoded.
-fn write_str_keyed_lists<T>(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<T>>, mut write_item: impl FnMut(&mut Vec<u8>, &T)) {
+fn write_str_keyed_lists<T>(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<T>>,
+    mut write_item: impl FnMut(&mut Vec<u8>, &T),
+) {
     out.extend_from_slice(&(map.len() as u32).to_le_bytes());
     for (key, items) in map {
         write_str(out, key);
@@ -136,7 +144,10 @@ fn write_edge_group_payload(out: &mut Vec<u8>, group: &IssueEdgeGroupPayload) {
     out.push(group.preset_locked as u8);
 }
 
-fn write_str_keyed_edge_pairs(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueEdgeGroupPayload>>) {
+fn write_str_keyed_edge_pairs(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<IssueEdgeGroupPayload>>,
+) {
     write_str_keyed_lists(out, map, |out, group| write_edge_group_payload(out, group));
 }
 
@@ -152,7 +163,10 @@ fn write_details(out: &mut Vec<u8>, details: &std::collections::HashMap<&'static
 
 /// Encodes a merged issue's full details map, keyed by contributing check instance id (GitHub
 /// issue #171) — mirrors `Issue::details()`'s own shape one level up.
-pub(crate) fn write_details_map(out: &mut Vec<u8>, map: &std::collections::HashMap<String, std::collections::HashMap<&'static str, String>>) {
+pub(crate) fn write_details_map(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, std::collections::HashMap<&'static str, String>>,
+) {
     out.extend_from_slice(&(map.len() as u32).to_le_bytes());
     for (check_id, details) in map {
         write_str(out, check_id);
@@ -166,7 +180,10 @@ pub(crate) fn write_details_map(out: &mut Vec<u8>, map: &std::collections::HashM
 /// is attempted here; a wire-shape change like this one is a normal, unversioned edit. Wire order
 /// per region: the `region` node list, then a trailing 1-byte `preset_locked` flag (0/1 — GitHub
 /// issue #245's region extension), mirroring `write_edge_group_payload`'s own trailing flag.
-fn write_str_keyed_node_lists(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueRegionPayload>>) {
+fn write_str_keyed_node_lists(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<IssueRegionPayload>>,
+) {
     write_str_keyed_lists(out, map, |out, region: &IssueRegionPayload| {
         out.extend_from_slice(&(region.region.len() as u32).to_le_bytes());
         for &node in &region.region {
@@ -192,7 +209,10 @@ fn write_split_tile_payload(out: &mut Vec<u8>, tile: &IssueSplitTilePayload) {
 /// (`write_split_tile_payload`'s shape), then a trailing 1-byte group-level `preset_locked` flag
 /// (0/1 — GitHub issue #245's split extension, review fix preserving tile/group boundaries instead
 /// of flattening).
-fn write_str_keyed_split_groups(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueSplitGroupPayload>>) {
+fn write_str_keyed_split_groups(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<IssueSplitGroupPayload>>,
+) {
     write_str_keyed_lists(out, map, |out, group: &IssueSplitGroupPayload| {
         out.extend_from_slice(&(group.tiles.len() as u32).to_le_bytes());
         for tile in &group.tiles {
@@ -207,7 +227,10 @@ fn write_str_keyed_split_groups(out: &mut Vec<u8>, map: &std::collections::HashM
 /// (0/1), then a trailing 1-byte `preset_locked` flag (0/1) for the whole route. Edge order is
 /// preserved exactly as stored (a route is a path, not a set — unlike every other
 /// `write_str_keyed_*` helper here, which encodes unordered cycles/groups).
-fn write_str_keyed_routes(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueRoutePayload>>) {
+fn write_str_keyed_routes(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<IssueRoutePayload>>,
+) {
     write_str_keyed_lists(out, map, |out, route: &IssueRoutePayload| {
         out.extend_from_slice(&(route.edges.len() as u32).to_le_bytes());
         for edge in &route.edges {
@@ -233,14 +256,15 @@ fn write_str_keyed_bools(out: &mut Vec<u8>, map: &std::collections::HashMap<Stri
 
 /// Encodes `IssuePayload::AreaDeficit`'s `areas` field — one presence byte per entry (0 = `None`,
 /// no floor to highlight; 1 = `Some`, followed by the floor's `levels_ordered()` index as `u32` LE).
-fn write_str_keyed_area_deficits(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<Option<u32>>>) {
-    write_str_keyed_lists(out, map, |out, area: &Option<u32>| {
-        match area {
-            None => out.push(0),
-            Some(idx) => {
-                out.push(1);
-                out.extend_from_slice(&idx.to_le_bytes());
-            }
+fn write_str_keyed_area_deficits(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<Option<u32>>>,
+) {
+    write_str_keyed_lists(out, map, |out, area: &Option<u32>| match area {
+        None => out.push(0),
+        Some(idx) => {
+            out.push(1);
+            out.extend_from_slice(&idx.to_le_bytes());
         }
     });
 }
@@ -249,7 +273,10 @@ fn write_str_keyed_area_deficits(out: &mut Vec<u8>, map: &std::collections::Hash
 /// flagged elevator stop-deficit: the elevator's live edge fan (`write_edge_pairs`'s shape), a
 /// 4-byte LE `missing` count, a length-prefixed `available` node-id list, then a trailing 1-byte
 /// `preset_locked` flag (0/1), mirroring `write_edge_group_payload`'s own trailing flag.
-fn write_missing_elevator_stops_payload(out: &mut Vec<u8>, entry: &IssueMissingElevatorStopsPayload) {
+fn write_missing_elevator_stops_payload(
+    out: &mut Vec<u8>,
+    entry: &IssueMissingElevatorStopsPayload,
+) {
     write_edge_pairs(out, &entry.edges);
     out.extend_from_slice(&entry.missing.to_le_bytes());
     out.extend_from_slice(&(entry.available.len() as u32).to_le_bytes());
@@ -259,8 +286,13 @@ fn write_missing_elevator_stops_payload(out: &mut Vec<u8>, entry: &IssueMissingE
     out.push(entry.preset_locked as u8);
 }
 
-fn write_str_keyed_missing_elevator_stops(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueMissingElevatorStopsPayload>>) {
-    write_str_keyed_lists(out, map, |out, entry| write_missing_elevator_stops_payload(out, entry));
+fn write_str_keyed_missing_elevator_stops(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<IssueMissingElevatorStopsPayload>>,
+) {
+    write_str_keyed_lists(out, map, |out, entry| {
+        write_missing_elevator_stops_payload(out, entry)
+    });
 }
 
 /// Encodes one `CrossElementPayloadEntry` (GitHub issue #376) — the `kind` string, then the edge
@@ -288,7 +320,10 @@ fn write_cross_element_entry(out: &mut Vec<u8>, entry: &CrossElementPayloadEntry
 /// Encodes `IssuePayload::InvalidCrossElementGroup`'s `groups` field (GitHub issue #376) — one
 /// entry per flagged pair: a length-prefixed list of `CrossElementPayloadEntry`
 /// (`write_cross_element_entry`'s shape), always two.
-fn write_str_keyed_cross_element_groups(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>) {
+fn write_str_keyed_cross_element_groups(
+    out: &mut Vec<u8>,
+    map: &std::collections::HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>,
+) {
     write_str_keyed_lists(out, map, |out, pair: &Vec<CrossElementPayloadEntry>| {
         out.extend_from_slice(&(pair.len() as u32).to_le_bytes());
         for entry in pair {
@@ -313,7 +348,14 @@ pub(crate) fn write_repair_limit_kind(out: &mut Vec<u8>, kind: &RepairLimitKind)
 /// fields: `codegen`'s whitelist has no shape for "one `Option` wrapping 3 heterogeneous values",
 /// so this single named codec covers the whole field (see `CheckIssueCodec` in
 /// `codegen/src/codecs.rs`).
-pub(crate) fn write_check_issue(out: &mut Vec<u8>, issue: &Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)>) {
+pub(crate) fn write_check_issue(
+    out: &mut Vec<u8>,
+    issue: &Option<(
+        IssueKind,
+        IssuePayload,
+        std::collections::HashMap<&'static str, String>,
+    )>,
+) {
     match issue {
         None => out.push(0),
         Some((kind, payload, details)) => {

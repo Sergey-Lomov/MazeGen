@@ -1,13 +1,13 @@
-use std::collections::HashSet;
-use rand::RngCore;
+use super::elevator_core::elevator_groups;
+use super::proximity_scan_core::pairwise_graph_proximity_scan;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::check::Check;
 use crate::quality_control::InvalidElevatorStopGroupIssue;
-use super::elevator_core::elevator_groups;
-use super::proximity_scan_core::pairwise_graph_proximity_scan;
+use crate::quality_control::check::Check;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashSet;
 
 pub const ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
 
@@ -29,12 +29,24 @@ pub struct ElevatorStopGroupGraphProximityCheck {
     pub distance: u32,
 }
 
-impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGroupGraphProximityCheck {
-    fn check_type_id(&self) -> &'static str { "elevator_stop_group_graph_proximity" }
+impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
+    for ElevatorStopGroupGraphProximityCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "elevator_stop_group_graph_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidElevatorStopGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidElevatorStopGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let elevator_pairs: HashSet<(NodeId, NodeId)> = maze.graph.edges()
+        let elevator_pairs: HashSet<(NodeId, NodeId)> = maze
+            .graph
+            .edges()
             .filter(|e| e.kind == EdgeKind::Elevator)
             .map(|e| (e.from, e.to))
             .collect();
@@ -43,7 +55,10 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
             .into_iter()
             .enumerate()
             .flat_map(|(elevator_index, elevator)| {
-                elevator.stops.into_iter().map(move |node| (elevator_index, node))
+                elevator
+                    .stops
+                    .into_iter()
+                    .map(move |node| (elevator_index, node))
             })
             .filter_map(|(elevator_index, node)| {
                 let nav_node = nav.nav_node_for(node)?;
@@ -82,11 +97,11 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::graph::distance_map::{DistanceDirection, compute_distance_map_filtered_bounded};
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "elevator_stop_group_graph_proximity";
 
@@ -99,10 +114,14 @@ mod tests {
     fn maze_with_two_elevators(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(len, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(len, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(len, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(len, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let b = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
         let t = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
         for i in 0..len - 1 {
@@ -116,7 +135,10 @@ mod tests {
     }
 
     fn check(distance: u32) -> ElevatorStopGroupGraphProximityCheck {
-        ElevatorStopGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance }
+        ElevatorStopGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance,
+        }
     }
 
     #[test]
@@ -139,10 +161,14 @@ mod tests {
     fn silent_with_fewer_than_two_stops() {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let b0 = mf.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
         let t0 = mf.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         g.add_edge(b0, t0, EdgeKind::Elevator);
@@ -162,11 +188,18 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         for i in 0..nodes.len() {
             for j in (i + 1)..nodes.len() {
                 g.add_edge(nodes[i], nodes[j], EdgeKind::Elevator);
@@ -177,7 +210,10 @@ mod tests {
 
         let mut issues = Vec::new();
         check(5).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "all three stops belong to the same elevator -- same-elevator pairs are never compared");
+        assert!(
+            issues.is_empty(),
+            "all three stops belong to the same elevator -- same-elevator pairs are never compared"
+        );
     }
 
     #[test]
@@ -192,10 +228,14 @@ mod tests {
         // unrelated bug, is what keeps those extra pairs from flagging in the filtered check.
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let bot = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
         let top_n = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
         let a0 = bot(0);
@@ -212,7 +252,10 @@ mod tests {
         let mut filtered_issues = Vec::new();
         check(5).repair_check(&maze, &mut filtered_issues, &mut rng(), ());
         let filtered_pairs: usize = filtered_issues.iter().map(|i| i.groups.len()).sum();
-        assert_eq!(filtered_pairs, 1, "with elevator hops excluded, only the direct a1-b1 Basic hop is close enough to flag");
+        assert_eq!(
+            filtered_pairs, 1,
+            "with elevator hops excluded, only the direct a1-b1 Basic hop is close enough to flag"
+        );
 
         // Control: run the same pairwise scan but with elevator hops left in the traversal
         // (mirrors repair_check's own loop, minus the hop filter) -- more pairs must flag once
@@ -224,15 +267,26 @@ mod tests {
         let mut unfiltered_pairs = 0;
         for &own in &candidates {
             let own_nav = nav.nav_node_for(own).unwrap();
-            let dist_map = compute_distance_map_filtered_bounded(&nav, own_nav, DistanceDirection::Forward, |_| true, 5);
+            let dist_map = compute_distance_map_filtered_bounded(
+                &nav,
+                own_nav,
+                DistanceDirection::Forward,
+                |_| true,
+                5,
+            );
             for &other in &candidates {
-                if other == own { continue; }
+                if other == own {
+                    continue;
+                }
                 let other_nav = nav.nav_node_for(other).unwrap();
                 if dist_map.get(&other_nav).is_some_and(|&d| (d as u32) < 5) {
                     unfiltered_pairs += 1;
                 }
             }
         }
-        assert!(unfiltered_pairs > 2, "without hop exclusion, a0/b0 must also come within distance 5 of the opposite landing, flagging more directed pairs than the a1<->b1 pair alone (2, one per direction)");
+        assert!(
+            unfiltered_pairs > 2,
+            "without hop exclusion, a0/b0 must also come within distance 5 of the opposite landing, flagging more directed pairs than the a1<->b1 pair alone (2, one per direction)"
+        );
     }
 }

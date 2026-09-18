@@ -1,19 +1,19 @@
-use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::generation::PresetState;
-use crate::repair::MutationCommand;
-use crate::event_log::ScopeGuard;
 use super::event::QcEvent;
+use crate::Maze;
+use crate::event_log::ScopeGuard;
+use crate::generation::PresetState;
+use crate::ids::NodeId;
+use crate::repair::MutationCommand;
+use crate::space::Tessellation;
 
 #[cfg(test)]
-use std::collections::HashMap;
+use super::rule::Rule;
+#[cfg(test)]
+use crate::repair::{NestedStrategyConfig, RepairResult, RepairStrategy, params::StrategyParams};
 #[cfg(test)]
 use rand::RngCore;
 #[cfg(test)]
-use crate::repair::{RepairStrategy, RepairResult, NestedStrategyConfig, params::StrategyParams};
-#[cfg(test)]
-use super::rule::Rule;
+use std::collections::HashMap;
 
 /// How many of a strategy's proposed `MutationCommand`s actually applied — see GitHub issue #118,
 /// `Specs/repair.md`. Carried on `RuleIterationOutcome::Repaired` back to the caller.
@@ -59,8 +59,9 @@ pub fn apply_commands<T: Tessellation>(
             MutationCommand::RemoveEdge { id }
             | MutationCommand::RemoveEdgeWithReverse { id }
             | MutationCommand::RemoveTeleportWithReverse { id }
-            | MutationCommand::RemoveVerticalPassageWithReverse { id } =>
-                maze.graph.edge(*id).map(|e| (e.from, e.to)),
+            | MutationCommand::RemoveVerticalPassageWithReverse { id } => {
+                maze.graph.edge(*id).map(|e| (e.from, e.to))
+            }
             _ => None,
         };
         // `ReplacePointNodes`'s `old_nodes` (every node currently at `at`'s point) must be resolved
@@ -68,9 +69,11 @@ pub fn apply_commands<T: Tessellation>(
         // `edge_endpoints` above — `field.point_of`/`nodes_at` no longer return the old nodes once
         // `try_replace_point_nodes` has replaced them.
         let old_point_nodes = match &cmd {
-            MutationCommand::ReplacePointNodes { at, .. } =>
-                maze.field.level_of(*at).zip(maze.field.point_of(*at))
-                    .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
+            MutationCommand::ReplacePointNodes { at, .. } => maze
+                .field
+                .level_of(*at)
+                .zip(maze.field.point_of(*at))
+                .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
             _ => None,
         };
         // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
@@ -88,92 +91,184 @@ pub fn apply_commands<T: Tessellation>(
         let endpoints_live = match &cmd {
             MutationCommand::AddDirectedEdge { from, to }
             | MutationCommand::AddDirectedTeleport { from, to }
-            | MutationCommand::AddDirectedVerticalPassage { from, to } =>
-                maze.field.point_of(*from).is_some() && maze.field.point_of(*to).is_some(),
+            | MutationCommand::AddDirectedVerticalPassage { from, to } => {
+                maze.field.point_of(*from).is_some() && maze.field.point_of(*to).is_some()
+            }
             MutationCommand::AddBidirectionalEdge { a, b }
             | MutationCommand::AddBidirectionalTeleport { a, b }
             | MutationCommand::AddBidirectionalVerticalPassage { a, b }
-            | MutationCommand::AddBidirectionalElevator { a, b } =>
-                maze.field.point_of(*a).is_some() && maze.field.point_of(*b).is_some(),
+            | MutationCommand::AddBidirectionalElevator { a, b } => {
+                maze.field.point_of(*a).is_some() && maze.field.point_of(*b).is_some()
+            }
             _ => true,
         };
 
         let mut reverse_removed = false;
         let mut replaced_nodes: Option<Vec<NodeId>> = None;
-        let ok = if !endpoints_live { false } else { match cmd {
-            MutationCommand::AddDirectedEdge { from, to } =>
-                crate::generation::try_add_directed_edge(&mut maze.graph, from, to, preset_state),
-            MutationCommand::AddBidirectionalEdge { a, b } =>
-                crate::generation::try_add_bidirectional_edge(&mut maze.graph, a, b, preset_state),
-            MutationCommand::AddDirectedTeleport { from, to } =>
-                crate::generation::try_add_directed_teleport(&mut maze.graph, from, to, preset_state),
-            MutationCommand::AddBidirectionalTeleport { a, b } =>
-                crate::generation::try_add_bidirectional_teleport(&mut maze.graph, a, b, preset_state),
-            MutationCommand::AddDirectedVerticalPassage { from, to } =>
-                crate::generation::try_add_directed_vertical_passage(&mut maze.graph, from, to, preset_state),
-            MutationCommand::AddBidirectionalVerticalPassage { a, b } =>
-                crate::generation::try_add_bidirectional_vertical_passage(&mut maze.graph, a, b, preset_state),
-            MutationCommand::AddBidirectionalElevator { a, b } =>
-                crate::generation::try_add_bidirectional_elevator(&mut maze.graph, a, b, preset_state),
-            MutationCommand::RemoveEdge { id } =>
-                crate::generation::try_remove_edge_by_id(&mut maze.graph, id, preset_state),
-            MutationCommand::RemoveEdgeBetween { from, to } =>
-                crate::generation::try_remove_edge(&mut maze.graph, from, to, preset_state),
-            MutationCommand::RemoveEdgeWithReverse { id } => {
-                let removed = crate::generation::try_remove_edge_with_reverse(&mut maze.graph, id, preset_state);
-                reverse_removed = removed.len() > 1;
-                !removed.is_empty()
-            }
-            MutationCommand::RemoveTeleportWithReverse { id } => {
-                let removed = crate::generation::try_remove_teleport_with_reverse(&mut maze.graph, id, preset_state);
-                reverse_removed = removed.len() > 1;
-                !removed.is_empty()
-            }
-            MutationCommand::RemoveVerticalPassageWithReverse { id } => {
-                let removed = crate::generation::try_remove_vertical_passage_with_reverse(&mut maze.graph, id, preset_state);
-                reverse_removed = removed.len() > 1;
-                !removed.is_empty()
-            }
-            MutationCommand::SetStart(node) => {
-                if maze.meta.start.is_none() { maze.meta.start = Some(node); }
-                true
-            }
-            MutationCommand::SetFinish(node) => {
-                if maze.meta.finish.is_none() { maze.meta.finish = Some(node); }
-                true
-            }
-            MutationCommand::RemoveNode { node } => {
-                // Note the node's own coordinates into the ledger (GitHub issue #271) *before*
-                // removal, same "resolve while it's still live" reasoning as `old_point_nodes`
-                // above — `field.point_of` returns `None` once `try_remove_node` has removed it.
-                // Needed for a node that was never itself minted mid-run (e.g. the field's own
-                // original base nodes), whose coordinates otherwise exist nowhere once gone from
-                // both `Field` and the final snapshot.
-                if let (Some(state), Some(point)) = (debug_state.as_deref_mut(), maze.field.point_of(node)) {
-                    state.note(node, point);
+        let ok = if !endpoints_live {
+            false
+        } else {
+            match cmd {
+                MutationCommand::AddDirectedEdge { from, to } => {
+                    crate::generation::try_add_directed_edge(
+                        &mut maze.graph,
+                        from,
+                        to,
+                        preset_state,
+                    )
                 }
-                crate::generation::try_remove_node(&mut maze.field, &mut maze.graph, node, preset_state)
-            }
-            MutationCommand::ReplacePointNodes { at, ref nodes } => {
-                // Note every old node's coordinates into the ledger (GitHub issue #271) *before*
-                // replacement — same rationale as `RemoveNode` above. `old_point_nodes` was already
-                // resolved while still live; its point is `at`'s own (every old node lives there).
-                if let (Some(state), Some(old_nodes)) = (debug_state.as_deref_mut(), old_point_nodes.as_ref()) {
-                    if let Some(point) = maze.field.point_of(at) {
-                        for &old in old_nodes {
-                            state.note(old, point);
+                MutationCommand::AddBidirectionalEdge { a, b } => {
+                    crate::generation::try_add_bidirectional_edge(
+                        &mut maze.graph,
+                        a,
+                        b,
+                        preset_state,
+                    )
+                }
+                MutationCommand::AddDirectedTeleport { from, to } => {
+                    crate::generation::try_add_directed_teleport(
+                        &mut maze.graph,
+                        from,
+                        to,
+                        preset_state,
+                    )
+                }
+                MutationCommand::AddBidirectionalTeleport { a, b } => {
+                    crate::generation::try_add_bidirectional_teleport(
+                        &mut maze.graph,
+                        a,
+                        b,
+                        preset_state,
+                    )
+                }
+                MutationCommand::AddDirectedVerticalPassage { from, to } => {
+                    crate::generation::try_add_directed_vertical_passage(
+                        &mut maze.graph,
+                        from,
+                        to,
+                        preset_state,
+                    )
+                }
+                MutationCommand::AddBidirectionalVerticalPassage { a, b } => {
+                    crate::generation::try_add_bidirectional_vertical_passage(
+                        &mut maze.graph,
+                        a,
+                        b,
+                        preset_state,
+                    )
+                }
+                MutationCommand::AddBidirectionalElevator { a, b } => {
+                    crate::generation::try_add_bidirectional_elevator(
+                        &mut maze.graph,
+                        a,
+                        b,
+                        preset_state,
+                    )
+                }
+                MutationCommand::RemoveEdge { id } => {
+                    crate::generation::try_remove_edge_by_id(&mut maze.graph, id, preset_state)
+                }
+                MutationCommand::RemoveEdgeBetween { from, to } => {
+                    crate::generation::try_remove_edge(&mut maze.graph, from, to, preset_state)
+                }
+                MutationCommand::RemoveEdgeWithReverse { id } => {
+                    let removed = crate::generation::try_remove_edge_with_reverse(
+                        &mut maze.graph,
+                        id,
+                        preset_state,
+                    );
+                    reverse_removed = removed.len() > 1;
+                    !removed.is_empty()
+                }
+                MutationCommand::RemoveTeleportWithReverse { id } => {
+                    let removed = crate::generation::try_remove_teleport_with_reverse(
+                        &mut maze.graph,
+                        id,
+                        preset_state,
+                    );
+                    reverse_removed = removed.len() > 1;
+                    !removed.is_empty()
+                }
+                MutationCommand::RemoveVerticalPassageWithReverse { id } => {
+                    let removed = crate::generation::try_remove_vertical_passage_with_reverse(
+                        &mut maze.graph,
+                        id,
+                        preset_state,
+                    );
+                    reverse_removed = removed.len() > 1;
+                    !removed.is_empty()
+                }
+                MutationCommand::SetStart(node) => {
+                    if maze.meta.start.is_none() {
+                        maze.meta.start = Some(node);
+                    }
+                    true
+                }
+                MutationCommand::SetFinish(node) => {
+                    if maze.meta.finish.is_none() {
+                        maze.meta.finish = Some(node);
+                    }
+                    true
+                }
+                MutationCommand::RemoveNode { node } => {
+                    // Note the node's own coordinates into the ledger (GitHub issue #271) *before*
+                    // removal, same "resolve while it's still live" reasoning as `old_point_nodes`
+                    // above — `field.point_of` returns `None` once `try_remove_node` has removed it.
+                    // Needed for a node that was never itself minted mid-run (e.g. the field's own
+                    // original base nodes), whose coordinates otherwise exist nowhere once gone from
+                    // both `Field` and the final snapshot.
+                    if let (Some(state), Some(point)) =
+                        (debug_state.as_deref_mut(), maze.field.point_of(node))
+                    {
+                        state.note(node, point);
+                    }
+                    crate::generation::try_remove_node(
+                        &mut maze.field,
+                        &mut maze.graph,
+                        node,
+                        preset_state,
+                    )
+                }
+                MutationCommand::ReplacePointNodes { at, ref nodes } => {
+                    // Note every old node's coordinates into the ledger (GitHub issue #271) *before*
+                    // replacement — same rationale as `RemoveNode` above. `old_point_nodes` was already
+                    // resolved while still live; its point is `at`'s own (every old node lives there).
+                    if let (Some(state), Some(old_nodes)) =
+                        (debug_state.as_deref_mut(), old_point_nodes.as_ref())
+                    {
+                        if let Some(point) = maze.field.point_of(at) {
+                            for &old in old_nodes {
+                                state.note(old, point);
+                            }
                         }
                     }
+                    let new_nodes = crate::generation::try_replace_point_nodes(
+                        &mut maze.field,
+                        &mut maze.graph,
+                        &mut maze.ids,
+                        at,
+                        nodes,
+                        preset_state,
+                        debug_state.as_deref_mut(),
+                    );
+                    let ok = new_nodes.is_some();
+                    replaced_nodes = new_nodes;
+                    ok
                 }
-                let new_nodes = crate::generation::try_replace_point_nodes(&mut maze.field, &mut maze.graph, &mut maze.ids, at, nodes, preset_state, debug_state.as_deref_mut());
-                let ok = new_nodes.is_some();
-                replaced_nodes = new_nodes;
-                ok
             }
-        }};
-        if ok { applied += 1; }
+        };
+        if ok {
+            applied += 1;
+        }
         if let Some(log) = event_log.as_mut() {
-            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints, reverse_removed, old_point_nodes, replaced_nodes) {
+            if let Some(event) = qc_event_for_command(
+                &cmd,
+                ok,
+                edge_endpoints,
+                reverse_removed,
+                old_point_nodes,
+                replaced_nodes,
+            ) {
                 log.emit(event);
             }
         }
@@ -196,32 +291,137 @@ pub fn apply_commands<T: Tessellation>(
 /// (`applyQc` in `qc.ts`) know whether to also clear the reverse `(to, from)` pair from its own
 /// accumulator instead of guessing and risking a phantom removed-edge entry for a direction that
 /// was never actually there.
-fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>, reverse_removed: bool, old_point_nodes: Option<Vec<NodeId>>, replaced_nodes: Option<Vec<NodeId>>) -> Option<QcEvent> {
+fn qc_event_for_command(
+    cmd: &MutationCommand,
+    applied: bool,
+    edge_endpoints: Option<(NodeId, NodeId)>,
+    reverse_removed: bool,
+    old_point_nodes: Option<Vec<NodeId>>,
+    replaced_nodes: Option<Vec<NodeId>>,
+) -> Option<QcEvent> {
     Some(match (cmd, applied) {
-        (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded { from: *from, to: *to },
-        (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined { from: *from, to: *to },
-        (MutationCommand::AddBidirectionalEdge { a, b }, true) => QcEvent::BidirectionalEdgeAdded { a: *a, b: *b },
-        (MutationCommand::AddBidirectionalEdge { a, b }, false) => QcEvent::BidirectionalEdgeDeclined { a: *a, b: *b },
-        (MutationCommand::AddDirectedTeleport { from, to }, true) => QcEvent::DirectedTeleportAdded { from: *from, to: *to },
-        (MutationCommand::AddDirectedTeleport { from, to }, false) => QcEvent::DirectedTeleportDeclined { from: *from, to: *to },
-        (MutationCommand::AddBidirectionalTeleport { a, b }, true) => QcEvent::BidirectionalTeleportAdded { a: *a, b: *b },
-        (MutationCommand::AddBidirectionalTeleport { a, b }, false) => QcEvent::BidirectionalTeleportDeclined { a: *a, b: *b },
-        (MutationCommand::AddDirectedVerticalPassage { from, to }, true) => QcEvent::DirectedVerticalPassageAdded { from: *from, to: *to },
-        (MutationCommand::AddDirectedVerticalPassage { from, to }, false) => QcEvent::DirectedVerticalPassageDeclined { from: *from, to: *to },
-        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, true) => QcEvent::BidirectionalVerticalPassageAdded { a: *a, b: *b },
-        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, false) => QcEvent::BidirectionalVerticalPassageDeclined { a: *a, b: *b },
-        (MutationCommand::AddBidirectionalElevator { a, b }, true) => QcEvent::BidirectionalElevatorAdded { a: *a, b: *b },
-        (MutationCommand::AddBidirectionalElevator { a, b }, false) => QcEvent::BidirectionalElevatorDeclined { a: *a, b: *b },
-        (MutationCommand::RemoveEdge { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoved { from, to } }
-        (MutationCommand::RemoveEdge { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveDeclined { from, to } }
-        (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
-        (MutationCommand::RemoveEdgeBetween { from, to }, false) => QcEvent::EdgeRemoveBetweenDeclined { from: *from, to: *to },
-        (MutationCommand::RemoveEdgeWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemovedWithReverse { from, to, reverse_removed } }
-        (MutationCommand::RemoveEdgeWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveWithReverseDeclined { from, to, reverse_removed } }
-        (MutationCommand::RemoveTeleportWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed } }
-        (MutationCommand::RemoveTeleportWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } }
-        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::VerticalPassageRemovedWithReverse { from, to, reverse_removed } }
-        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::VerticalPassageRemoveWithReverseDeclined { from, to, reverse_removed } }
+        (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded {
+            from: *from,
+            to: *to,
+        },
+        (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined {
+            from: *from,
+            to: *to,
+        },
+        (MutationCommand::AddBidirectionalEdge { a, b }, true) => {
+            QcEvent::BidirectionalEdgeAdded { a: *a, b: *b }
+        }
+        (MutationCommand::AddBidirectionalEdge { a, b }, false) => {
+            QcEvent::BidirectionalEdgeDeclined { a: *a, b: *b }
+        }
+        (MutationCommand::AddDirectedTeleport { from, to }, true) => {
+            QcEvent::DirectedTeleportAdded {
+                from: *from,
+                to: *to,
+            }
+        }
+        (MutationCommand::AddDirectedTeleport { from, to }, false) => {
+            QcEvent::DirectedTeleportDeclined {
+                from: *from,
+                to: *to,
+            }
+        }
+        (MutationCommand::AddBidirectionalTeleport { a, b }, true) => {
+            QcEvent::BidirectionalTeleportAdded { a: *a, b: *b }
+        }
+        (MutationCommand::AddBidirectionalTeleport { a, b }, false) => {
+            QcEvent::BidirectionalTeleportDeclined { a: *a, b: *b }
+        }
+        (MutationCommand::AddDirectedVerticalPassage { from, to }, true) => {
+            QcEvent::DirectedVerticalPassageAdded {
+                from: *from,
+                to: *to,
+            }
+        }
+        (MutationCommand::AddDirectedVerticalPassage { from, to }, false) => {
+            QcEvent::DirectedVerticalPassageDeclined {
+                from: *from,
+                to: *to,
+            }
+        }
+        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, true) => {
+            QcEvent::BidirectionalVerticalPassageAdded { a: *a, b: *b }
+        }
+        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, false) => {
+            QcEvent::BidirectionalVerticalPassageDeclined { a: *a, b: *b }
+        }
+        (MutationCommand::AddBidirectionalElevator { a, b }, true) => {
+            QcEvent::BidirectionalElevatorAdded { a: *a, b: *b }
+        }
+        (MutationCommand::AddBidirectionalElevator { a, b }, false) => {
+            QcEvent::BidirectionalElevatorDeclined { a: *a, b: *b }
+        }
+        (MutationCommand::RemoveEdge { .. }, true) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::EdgeRemoved { from, to }
+        }
+        (MutationCommand::RemoveEdge { .. }, false) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::EdgeRemoveDeclined { from, to }
+        }
+        (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween {
+            from: *from,
+            to: *to,
+        },
+        (MutationCommand::RemoveEdgeBetween { from, to }, false) => {
+            QcEvent::EdgeRemoveBetweenDeclined {
+                from: *from,
+                to: *to,
+            }
+        }
+        (MutationCommand::RemoveEdgeWithReverse { .. }, true) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::EdgeRemovedWithReverse {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
+        (MutationCommand::RemoveEdgeWithReverse { .. }, false) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::EdgeRemoveWithReverseDeclined {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
+        (MutationCommand::RemoveTeleportWithReverse { .. }, true) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::TeleportRemovedWithReverse {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
+        (MutationCommand::RemoveTeleportWithReverse { .. }, false) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::TeleportRemoveWithReverseDeclined {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
+        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, true) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::VerticalPassageRemovedWithReverse {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
+        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, false) => {
+            let (from, to) = edge_endpoints?;
+            QcEvent::VerticalPassageRemoveWithReverseDeclined {
+                from,
+                to,
+                reverse_removed,
+            }
+        }
         (MutationCommand::SetStart(node), true) => QcEvent::StartSet(*node),
         (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
         (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
@@ -231,11 +431,20 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::ReplacePointNodes { at, nodes }, true) => {
             let new_nodes = replaced_nodes?;
             let old_nodes = old_point_nodes?;
-            QcEvent::PointNodesReplaced { at: *at, old_nodes, new_nodes, nodes: nodes.clone() }
+            QcEvent::PointNodesReplaced {
+                at: *at,
+                old_nodes,
+                new_nodes,
+                nodes: nodes.clone(),
+            }
         }
         (MutationCommand::ReplacePointNodes { at, nodes }, false) => {
             let old_nodes = old_point_nodes.unwrap_or_default();
-            QcEvent::PointNodesReplaceDeclined { at: *at, old_nodes, nodes: nodes.clone() }
+            QcEvent::PointNodesReplaceDeclined {
+                at: *at,
+                old_nodes,
+                nodes: nodes.clone(),
+            }
         }
     })
 }
@@ -251,20 +460,45 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
 /// `unwrap_or_default` — node id `0` is a real, valid id, so a fabricated pair would be
 /// indistinguishable from a genuine edge; `apply_commands`'s own revalidation declines the stale
 /// command anyway, so skipping the proposal narration here loses nothing meaningful.
-pub(super) fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &Maze<T>) -> Option<QcEvent> {
+pub(super) fn qc_event_proposed_for_command<T: Tessellation>(
+    cmd: &MutationCommand,
+    maze: &Maze<T>,
+) -> Option<QcEvent> {
     Some(match cmd {
-        MutationCommand::AddDirectedEdge { from, to } => QcEvent::DirectedEdgeProposed { from: *from, to: *to },
-        MutationCommand::AddBidirectionalEdge { a, b } => QcEvent::BidirectionalEdgeProposed { a: *a, b: *b },
-        MutationCommand::AddDirectedTeleport { from, to } => QcEvent::DirectedTeleportProposed { from: *from, to: *to },
-        MutationCommand::AddBidirectionalTeleport { a, b } => QcEvent::BidirectionalTeleportProposed { a: *a, b: *b },
-        MutationCommand::AddDirectedVerticalPassage { from, to } => QcEvent::DirectedVerticalPassageProposed { from: *from, to: *to },
-        MutationCommand::AddBidirectionalVerticalPassage { a, b } => QcEvent::BidirectionalVerticalPassageProposed { a: *a, b: *b },
-        MutationCommand::AddBidirectionalElevator { a, b } => QcEvent::BidirectionalElevatorProposed { a: *a, b: *b },
+        MutationCommand::AddDirectedEdge { from, to } => QcEvent::DirectedEdgeProposed {
+            from: *from,
+            to: *to,
+        },
+        MutationCommand::AddBidirectionalEdge { a, b } => {
+            QcEvent::BidirectionalEdgeProposed { a: *a, b: *b }
+        }
+        MutationCommand::AddDirectedTeleport { from, to } => QcEvent::DirectedTeleportProposed {
+            from: *from,
+            to: *to,
+        },
+        MutationCommand::AddBidirectionalTeleport { a, b } => {
+            QcEvent::BidirectionalTeleportProposed { a: *a, b: *b }
+        }
+        MutationCommand::AddDirectedVerticalPassage { from, to } => {
+            QcEvent::DirectedVerticalPassageProposed {
+                from: *from,
+                to: *to,
+            }
+        }
+        MutationCommand::AddBidirectionalVerticalPassage { a, b } => {
+            QcEvent::BidirectionalVerticalPassageProposed { a: *a, b: *b }
+        }
+        MutationCommand::AddBidirectionalElevator { a, b } => {
+            QcEvent::BidirectionalElevatorProposed { a: *a, b: *b }
+        }
         MutationCommand::RemoveEdge { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::EdgeRemoveProposed { from, to }
         }
-        MutationCommand::RemoveEdgeBetween { from, to } => QcEvent::EdgeRemoveBetweenProposed { from: *from, to: *to },
+        MutationCommand::RemoveEdgeBetween { from, to } => QcEvent::EdgeRemoveBetweenProposed {
+            from: *from,
+            to: *to,
+        },
         MutationCommand::RemoveEdgeWithReverse { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::EdgeRemoveWithReverseProposed { from, to }
@@ -281,9 +515,17 @@ pub(super) fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationComma
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
         MutationCommand::RemoveNode { node } => QcEvent::NodeRemoveProposed(*node),
         MutationCommand::ReplacePointNodes { at, nodes } => {
-            let old_nodes = maze.field.level_of(*at).zip(maze.field.point_of(*at))
-                .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()).unwrap_or_default();
-            QcEvent::PointNodesReplaceProposed { at: *at, old_nodes, nodes: nodes.clone() }
+            let old_nodes = maze
+                .field
+                .level_of(*at)
+                .zip(maze.field.point_of(*at))
+                .map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
+                .unwrap_or_default();
+            QcEvent::PointNodesReplaceProposed {
+                at: *at,
+                old_nodes,
+                nodes: nodes.clone(),
+            }
         }
     })
 }

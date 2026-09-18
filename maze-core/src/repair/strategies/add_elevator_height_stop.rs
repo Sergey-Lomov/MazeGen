@@ -1,16 +1,16 @@
-use rand::RngCore;
-use rand::seq::IndexedRandom;
+use super::elevator_utils::find_elevator_by_stop;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::MissingElevatorHeightIssue;
 use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
+use crate::ids::NodeId;
+use crate::quality_control::MissingElevatorHeightIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::elevator_utils::find_elevator_by_stop;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
+use rand::seq::IndexedRandom;
 
 pub const PARAM_BALANCED_GROWTH: &str = "balanced_growth";
 pub const PARAM_ALLOW_INCOMPLETE: &str = "allow_incomplete";
@@ -70,8 +70,12 @@ static PARAMS: &[StrategyParam] = &[
 /// success counts as success** -- one entry failing doesn't fail the whole strategy.
 pub struct AddElevatorHeightStopStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddElevatorHeightStopStrategy {
-    fn strategy_id(&self) -> &'static str { "add_elevator_height_stop" }
+impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue>
+    for AddElevatorHeightStopStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "add_elevator_height_stop"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -86,9 +90,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let balanced_growth = matches!(params.get(PARAM_BALANCED_GROWTH), Some(StrategyParamValue::Bool(true)));
-        let allow_incomplete = !matches!(params.get(PARAM_ALLOW_INCOMPLETE), Some(StrategyParamValue::Bool(false)));
-        let max_compactness = matches!(params.get(PARAM_MAX_COMPACTNESS), Some(StrategyParamValue::Bool(true)));
+        let balanced_growth = matches!(
+            params.get(PARAM_BALANCED_GROWTH),
+            Some(StrategyParamValue::Bool(true))
+        );
+        let allow_incomplete = !matches!(
+            params.get(PARAM_ALLOW_INCOMPLETE),
+            Some(StrategyParamValue::Bool(false))
+        );
+        let max_compactness = matches!(
+            params.get(PARAM_MAX_COMPACTNESS),
+            Some(StrategyParamValue::Bool(true))
+        );
 
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
@@ -99,7 +112,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
         // `InvalidElevatorIssue`). Growing the same elevator once per entry would compound (e.g. 4
         // stops added instead of 2), so entries are folded down to one per elevator here, keeping
         // the largest `min_height` demanded of it.
-        let mut by_elevator: Vec<(&crate::quality_control::issue_kinds::ElevatorNodes, u32)> = Vec::new();
+        let mut by_elevator: Vec<(&crate::quality_control::issue_kinds::ElevatorNodes, u32)> =
+            Vec::new();
         for (elevator_key, &min_height) in issue.missing.iter().map(|(k, h)| (k, h)) {
             match by_elevator.iter_mut().find(|(k, _)| k == &elevator_key) {
                 Some((_, existing)) => *existing = (*existing).max(min_height),
@@ -109,17 +123,31 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
 
         for (elevator_key, min_height) in &by_elevator {
             let min_height = *min_height;
-            let Some(&any_stop) = elevator_key.0.first() else { continue };
-            let Some(elevator) = find_elevator_by_stop(maze, any_stop) else { continue };
-            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else { continue };
+            let Some(&any_stop) = elevator_key.0.first() else {
+                continue;
+            };
+            let Some(elevator) = find_elevator_by_stop(maze, any_stop) else {
+                continue;
+            };
+            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else {
+                continue;
+            };
 
-            let nodes_by_index: Vec<Option<NodeId>> = maze.field.levels_ordered()
+            let nodes_by_index: Vec<Option<NodeId>> = maze
+                .field
+                .levels_ordered()
                 .map(|level| maze.field.node_at(level, point))
                 .collect();
-            let existing_indices: Vec<usize> = elevator.stops.iter()
+            let existing_indices: Vec<usize> = elevator
+                .stops
+                .iter()
                 .filter_map(|&n| maze.field.level_index_of(n))
                 .collect();
-            let (Some(&bottom), Some(&top)) = (existing_indices.iter().min(), existing_indices.iter().max()) else { continue };
+            let (Some(&bottom), Some(&top)) =
+                (existing_indices.iter().min(), existing_indices.iter().max())
+            else {
+                continue;
+            };
             let edge_bottom = match nodes_by_index.iter().position(|n| n.is_some()) {
                 Some(i) => i,
                 None => continue,
@@ -145,14 +173,21 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
                 if hi >= lo && hi - lo + 1 >= min_height.saturating_sub(2) as usize {
                     break;
                 }
-                let placeable_floors_below = |from: usize| (edge_bottom..from).rev()
-                    .filter_map(|i| nodes_by_index[i])
-                    .filter(|&n| reserved_or_feasible(maze, n, &current_stops, preset_state))
-                    .take(2).count();
-                let placeable_floors_above = |from: usize| ((from + 1)..=edge_top)
-                    .filter_map(|i| nodes_by_index[i])
-                    .filter(|&n| reserved_or_feasible(maze, n, &current_stops, preset_state))
-                    .take(2).count();
+                let placeable_floors_below = |from: usize| {
+                    (edge_bottom..from)
+                        .rev()
+                        .filter_map(|i| nodes_by_index[i])
+                        .filter(|&n| reserved_or_feasible(maze, n, &current_stops, preset_state))
+                        .take(2)
+                        .count()
+                };
+                let placeable_floors_above = |from: usize| {
+                    ((from + 1)..=edge_top)
+                        .filter_map(|i| nodes_by_index[i])
+                        .filter(|&n| reserved_or_feasible(maze, n, &current_stops, preset_state))
+                        .take(2)
+                        .count()
+                };
                 let down_eligible = lo > edge_bottom && placeable_floors_below(lo) >= 2;
                 let up_eligible = hi < edge_top && placeable_floors_above(hi) >= 2;
                 if !down_eligible && !up_eligible {
@@ -161,14 +196,24 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
                 let grow_up = match preferred_dir {
                     Some(true) if up_eligible => true,
                     Some(false) if down_eligible => false,
-                    _ => if down_eligible && up_eligible { rng.next_u32() % 2 == 0 } else { up_eligible },
+                    _ => {
+                        if down_eligible && up_eligible {
+                            rng.next_u32() % 2 == 0
+                        } else {
+                            up_eligible
+                        }
+                    }
                 };
                 if grow_up {
                     hi += 1;
                 } else {
                     lo -= 1;
                 }
-                preferred_dir = if balanced_growth { Some(!grow_up) } else { None };
+                preferred_dir = if balanced_growth {
+                    Some(!grow_up)
+                } else {
+                    None
+                };
             }
 
             let interval_len = if hi >= lo { hi - lo + 1 } else { 0 };
@@ -179,10 +224,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
             let mut added_here = 0u32;
             let mut current_stops_grown = current_stops.clone();
 
-            let below_pool: Vec<NodeId> = (edge_bottom..lo).filter_map(|i| nodes_by_index[i])
+            let below_pool: Vec<NodeId> = (edge_bottom..lo)
+                .filter_map(|i| nodes_by_index[i])
                 .filter(|&n| reserved_or_feasible(maze, n, &current_stops_grown, preset_state))
                 .collect();
-            let above_pool: Vec<NodeId> = ((hi + 1)..=edge_top).filter_map(|i| nodes_by_index[i])
+            let above_pool: Vec<NodeId> = ((hi + 1)..=edge_top)
+                .filter_map(|i| nodes_by_index[i])
                 .filter(|&n| reserved_or_feasible(maze, n, &current_stops_grown, preset_state))
                 .collect();
 
@@ -194,13 +241,15 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
             if let Some(node) = below_pick {
                 if !current_stops_grown.contains(&node) {
                     for &other in &current_stops_grown {
-                        commands.push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
+                        commands
+                            .push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
                     }
                     current_stops_grown.push(node);
                     added_here += 1;
                 }
             }
-            let above_pool: Vec<NodeId> = above_pool.into_iter()
+            let above_pool: Vec<NodeId> = above_pool
+                .into_iter()
                 .filter(|&n| reserved_or_feasible(maze, n, &current_stops_grown, preset_state))
                 .collect();
             let above_pick = if max_compactness {
@@ -211,7 +260,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
             if let Some(node) = above_pick {
                 if !current_stops_grown.contains(&node) {
                     for &other in &current_stops_grown {
-                        commands.push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
+                        commands
+                            .push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
                     }
                     added_here += 1;
                 }
@@ -229,7 +279,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue> for AddEleva
 
 crate::impl_erased_repair_strategy!(AddElevatorHeightStopStrategy, MissingElevatorHeightIssue);
 
-fn stop_feasible<T: Tessellation>(maze: &Maze<T>, candidate: NodeId, current_stops: &[NodeId], preset_state: &PresetState) -> bool {
+fn stop_feasible<T: Tessellation>(
+    maze: &Maze<T>,
+    candidate: NodeId,
+    current_stops: &[NodeId],
+    preset_state: &PresetState,
+) -> bool {
     current_stops.iter().all(|&other| {
         maze.graph.edge_between(candidate, other).is_none()
             && maze.graph.edge_between(other, candidate).is_none()
@@ -241,47 +296,81 @@ fn stop_feasible<T: Tessellation>(maze: &Maze<T>, candidate: NodeId, current_sto
 /// already one of the elevator's own existing stops (that floor is "occupied", not "blocked" --
 /// it doesn't need a new stop, but it still counts toward the 2-floor reserve growth needs, and
 /// showing up in a placement pool is harmless since the pick step skips already-occupied floors).
-fn reserved_or_feasible<T: Tessellation>(maze: &Maze<T>, candidate: NodeId, current_stops: &[NodeId], preset_state: &PresetState) -> bool {
-    stop_feasible(maze, candidate, current_stops, preset_state) || current_stops.contains(&candidate)
+fn reserved_or_feasible<T: Tessellation>(
+    maze: &Maze<T>,
+    candidate: NodeId,
+    current_stops: &[NodeId],
+    preset_state: &PresetState,
+) -> bool {
+    stop_feasible(maze, candidate, current_stops, preset_state)
+        || current_stops.contains(&candidate)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::quality_control::checks::elevator_core::elevator_groups;
     use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
-    use crate::quality_control::checks::elevator_core::elevator_groups;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
-    fn params_with(balanced_growth: Option<&str>, allow_incomplete: Option<&str>) -> StrategyParams {
+    fn params_with(
+        balanced_growth: Option<&str>,
+        allow_incomplete: Option<&str>,
+    ) -> StrategyParams {
         params_with_compactness(balanced_growth, allow_incomplete, None)
     }
 
-    fn params_with_compactness(balanced_growth: Option<&str>, allow_incomplete: Option<&str>, max_compactness: Option<&str>) -> StrategyParams {
+    fn params_with_compactness(
+        balanced_growth: Option<&str>,
+        allow_incomplete: Option<&str>,
+        max_compactness: Option<&str>,
+    ) -> StrategyParams {
         let mut overrides = std::collections::HashMap::new();
-        if let Some(v) = balanced_growth { overrides.insert(PARAM_BALANCED_GROWTH.to_string(), v.to_string()); }
-        if let Some(v) = allow_incomplete { overrides.insert(PARAM_ALLOW_INCOMPLETE.to_string(), v.to_string()); }
-        if let Some(v) = max_compactness { overrides.insert(PARAM_MAX_COMPACTNESS.to_string(), v.to_string()); }
+        if let Some(v) = balanced_growth {
+            overrides.insert(PARAM_BALANCED_GROWTH.to_string(), v.to_string());
+        }
+        if let Some(v) = allow_incomplete {
+            overrides.insert(PARAM_ALLOW_INCOMPLETE.to_string(), v.to_string());
+        }
+        if let Some(v) = max_compactness {
+            overrides.insert(PARAM_MAX_COMPACTNESS.to_string(), v.to_string());
+        }
         build_params(
-            <AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, MissingElevatorHeightIssue>>::params(&AddElevatorHeightStopStrategy),
+            <AddElevatorHeightStopStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingElevatorHeightIssue,
+            >>::params(&AddElevatorHeightStopStrategy),
             Some(&overrides),
         )
     }
 
-    fn maze_with_elevator(floor_count: usize, stop_floor_indices: &[usize]) -> (Maze<SquareTessellation>, Vec<NodeId>, Vec<crate::space::LevelId>) {
+    fn maze_with_elevator(
+        floor_count: usize,
+        stop_floor_indices: &[usize],
+    ) -> (
+        Maze<SquareTessellation>,
+        Vec<NodeId>,
+        Vec<crate::space::LevelId>,
+    ) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..floor_count)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = stop_floor_indices.iter()
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = stop_floor_indices
+            .iter()
             .map(|&i| mf.node_at(floors[i], SquarePoint { x: 0, y: 0 }).unwrap())
             .collect();
         for i in 0..nodes.len() {
@@ -302,13 +391,28 @@ mod tests {
         let (mut maze, nodes, _floors) = maze_with_elevator(11, &[3, 5]);
         let issue = MissingElevatorHeightIssue::new_from_check(
             "min_elevator_height",
-            vec![(ElevatorNodes::new(nodes.clone()), 4), (ElevatorNodes::new(nodes.clone()), 6)],
+            vec![
+                (ElevatorNodes::new(nodes.clone()), 4),
+                (ElevatorNodes::new(nodes.clone()), 6),
+            ],
         );
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, None), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, None),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 4, "grown once (2 new stops), not twice (4 new stops)");
+        assert_eq!(
+            groups[0].stops.len(),
+            4,
+            "grown once (2 new stops), not twice (4 new stops)"
+        );
     }
 
     #[test]
@@ -320,13 +424,28 @@ mod tests {
         let (mut maze, nodes, _floors) = maze_with_elevator(3, &[0, 2]);
         let issue = MissingElevatorHeightIssue::new_from_check(
             "min_elevator_height",
-            vec![(ElevatorNodes::new(nodes.clone()), 10), (ElevatorNodes::new(nodes.clone()), 8)],
+            vec![
+                (ElevatorNodes::new(nodes.clone()), 10),
+                (ElevatorNodes::new(nodes.clone()), 8),
+            ],
         );
         let mut rng = MazeRng::seed_from_u64(8);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, Some("false")), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, Some("false")),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 2, "no stops added -- interval [0,2] already covers the whole 3-floor field, can't reach width 8");
+        assert_eq!(
+            groups[0].stops.len(),
+            2,
+            "no stops added -- interval [0,2] already covers the whole 3-floor field, can't reach width 8"
+        );
     }
 
     #[test]
@@ -335,46 +454,110 @@ mod tests {
         // (unlike a field sized exactly to the required span) there's slack on both sides, so this
         // isolates the "needs both ends" growth path from the separate "runs out of field" case.
         let (mut maze, nodes, _floors) = maze_with_elevator(9, &[4, 6]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 6)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, None), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, None),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        let indices: Vec<usize> = groups[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
+        let indices: Vec<usize> = groups[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
         let span = indices.iter().max().unwrap() - indices.iter().min().unwrap() + 1;
         // Matches `MinElevatorHeightCheck`'s own `top - bottom + 1` span definition -- this is
         // the exact quantity that must reach `min_height` for the check to stop re-firing.
-        assert!(span >= 6, "min_height 6 requires an inclusive floor span of at least 6, got {span}");
-        assert!(indices.iter().min().unwrap() < &4, "must have grown below the original bottom stop at floor 4");
-        assert!(indices.iter().max().unwrap() > &6, "must have grown above the original top stop at floor 6");
+        assert!(
+            span >= 6,
+            "min_height 6 requires an inclusive floor span of at least 6, got {span}"
+        );
+        assert!(
+            indices.iter().min().unwrap() < &4,
+            "must have grown below the original bottom stop at floor 4"
+        );
+        assert!(
+            indices.iter().max().unwrap() > &6,
+            "must have grown above the original top stop at floor 6"
+        );
     }
 
     #[test]
     fn stops_growing_once_interval_is_wide_enough() {
         let (mut maze, nodes, _floors) = maze_with_elevator(10, &[4, 5]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 4)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 4)],
+        );
         let mut rng = MazeRng::seed_from_u64(2);
-        apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, None), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, None),
+            &PresetState::empty(),
+            &[],
+        );
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 4, "needed_len = min_height-2 = 2; interval [4,5] already wide enough, then adds one below + one above");
+        assert_eq!(
+            groups[0].stops.len(),
+            4,
+            "needed_len = min_height-2 = 2; interval [4,5] already wide enough, then adds one below + one above"
+        );
     }
 
     #[test]
     fn allow_incomplete_off_skips_entry_that_cannot_reach_needed_width() {
         let (mut maze, nodes, _floors) = maze_with_elevator(3, &[0, 2]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 10)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 10)],
+        );
         let mut rng = MazeRng::seed_from_u64(3);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, Some("false")), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, Some("false")),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
     #[test]
     fn allow_incomplete_on_still_adds_available_endpoints_when_width_unreachable() {
         let (mut maze, nodes, _floors) = maze_with_elevator(3, &[0, 2]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 10)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 10)],
+        );
         let mut rng = MazeRng::seed_from_u64(4);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, Some("true")), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed), "interval [0,2] already covers every floor -- no below/above floor remains to add");
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, Some("true")),
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "interval [0,2] already covers every floor -- no below/above floor remains to add"
+        );
     }
 
     #[test]
@@ -385,17 +568,37 @@ mod tests {
         // grown interval's *width* only (already reached needed_len here) -- it says nothing about
         // how many edge stops end up placeable, so this is a full success with a 1-stop addition.
         let (mut maze, nodes, floors) = maze_with_elevator(7, &[2, 5]);
-        let blocked_node = maze.field.node_at(floors[6], SquarePoint { x: 0, y: 0 }).unwrap();
+        let blocked_node = maze
+            .field
+            .node_at(floors[6], SquarePoint { x: 0, y: 0 })
+            .unwrap();
         maze.graph.add_node(blocked_node);
-        maze.graph.add_edge(nodes[0], blocked_node, EdgeKind::Elevator);
-        maze.graph.add_edge(blocked_node, nodes[0], EdgeKind::Elevator);
+        maze.graph
+            .add_edge(nodes[0], blocked_node, EdgeKind::Elevator);
+        maze.graph
+            .add_edge(blocked_node, nodes[0], EdgeKind::Elevator);
 
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 6)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, Some("false")), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, Some("false")),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 4, "needed_len already met -- below stop (floor 1) added despite the above side being preset-blocked");
+        assert_eq!(
+            groups[0].stops.len(),
+            4,
+            "needed_len already met -- below stop (floor 1) added despite the above side being preset-blocked"
+        );
     }
 
     #[test]
@@ -407,12 +610,27 @@ mod tests {
         // commit the single reachable above stop (floor 6) instead of discarding the whole entry,
         // since the width requirement is met.
         let (mut maze, nodes, _floors) = maze_with_elevator(7, &[0, 3]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 5)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 5)],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, Some("false")), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, Some("false")),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 3, "one edge stop added above (floor 6); below pool had no room since bottom (floor 0) is already the field edge");
+        assert_eq!(
+            groups[0].stops.len(),
+            3,
+            "one edge stop added above (floor 6); below pool had no room since bottom (floor 0) is already the field edge"
+        );
     }
 
     #[test]
@@ -426,14 +644,33 @@ mod tests {
         // elevator's own existing top stop -- so the "closest" pick there is a no-op: the floor
         // right past the window is already a stop, not a new one to add.
         let (mut maze, nodes, _floors) = maze_with_elevator(25, &[10, 12]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 4)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 4)],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with_compactness(None, None, Some("true")), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with_compactness(None, None, Some("true")),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        let mut indices: Vec<usize> = groups[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
+        let mut indices: Vec<usize> = groups[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
         indices.sort();
-        assert_eq!(indices, vec![9, 10, 12], "below edge stop (9) lands directly adjacent to the grown window's lower bound (10); no new above stop since floor 12 (the window's upper neighbor) is already the original top stop");
+        assert_eq!(
+            indices,
+            vec![9, 10, 12],
+            "below edge stop (9) lands directly adjacent to the grown window's lower bound (10); no new above stop since floor 12 (the window's upper neighbor) is already the original top stop"
+        );
     }
 
     #[test]
@@ -445,26 +682,57 @@ mod tests {
         // step is forced to the opposite side, so growth away from the initial stops must reach
         // roughly symmetric distances rather than drifting entirely to one side.
         let (mut maze, nodes, _floors) = maze_with_elevator(21, &[7, 9]);
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 12)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 12)],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(Some("true"), None), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(Some("true"), None),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
-        let indices: Vec<usize> = groups[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
+        let indices: Vec<usize> = groups[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
         let below_reach = 7 - indices.iter().min().unwrap();
         let above_reach = indices.iter().max().unwrap() - 9;
-        assert!(below_reach.abs_diff(above_reach) <= 1, "balanced growth must keep both sides within 1 floor of each other, got below={below_reach} above={above_reach}");
+        assert!(
+            below_reach.abs_diff(above_reach) <= 1,
+            "balanced growth must keep both sides within 1 floor of each other, got below={below_reach} above={above_reach}"
+        );
     }
 
     #[test]
     fn apply_skips_an_entry_whose_elevator_no_longer_exists() {
         let (mut maze, nodes, _floors) = maze_with_elevator(7, &[3, 5]);
-        maze.graph.remove_edge(maze.graph.edge_between(nodes[0], nodes[1]).unwrap());
-        maze.graph.remove_edge(maze.graph.edge_between(nodes[1], nodes[0]).unwrap());
+        maze.graph
+            .remove_edge(maze.graph.edge_between(nodes[0], nodes[1]).unwrap());
+        maze.graph
+            .remove_edge(maze.graph.edge_between(nodes[1], nodes[0]).unwrap());
 
-        let issue = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(ElevatorNodes::new(nodes.clone()), 6)]);
+        let issue = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(ElevatorNodes::new(nodes.clone()), 6)],
+        );
         let mut rng = MazeRng::seed_from_u64(5);
-        let result = apply_and_commit(&AddElevatorHeightStopStrategy, &issue, &mut maze, &mut rng, &params_with(None, None), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorHeightStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(None, None),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 }

@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::{HashMap, HashSet};
 
 /// Which shape of teleport connection a `SplitTeleportIntersectionCheck` instance considers a
 /// hit against a split cell — evaluated per node, per neighbor: a `Teleport(neighbor -> node)`
@@ -35,9 +35,17 @@ pub struct SplitTeleportIntersectionCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersectionCheck {
-    fn check_type_id(&self) -> &'static str { "split_teleport_intersection" }
+    fn check_type_id(&self) -> &'static str {
+        "split_teleport_intersection"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitTileIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut outgoing: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
         let mut incoming: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
         for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
@@ -50,25 +58,35 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
             let inn = incoming.get(&node);
             match self.direction {
                 SplitTeleportDirection::Incoming => inn.is_some_and(|neighbors| {
-                    neighbors.iter().any(|n| !out.is_some_and(|o| o.contains(n)))
+                    neighbors
+                        .iter()
+                        .any(|n| !out.is_some_and(|o| o.contains(n)))
                 }),
                 SplitTeleportDirection::Outgoing => out.is_some_and(|neighbors| {
-                    neighbors.iter().any(|n| !inn.is_some_and(|i| i.contains(n)))
+                    neighbors
+                        .iter()
+                        .any(|n| !inn.is_some_and(|i| i.contains(n)))
                 }),
-                SplitTeleportDirection::Bidirectional => out.is_some_and(|o| {
-                    inn.is_some_and(|i| o.intersection(i).next().is_some())
-                }),
+                SplitTeleportDirection::Bidirectional => {
+                    out.is_some_and(|o| inn.is_some_and(|i| o.intersection(i).next().is_some()))
+                }
                 SplitTeleportDirection::Any => out.is_some() || inn.is_some(),
             }
         };
 
         let mut seen_points = HashSet::new();
-        let invalid: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+        let invalid: Vec<SplitTileNodes> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { return None; }
-                if !nodes.iter().any(|&n| node_matches(n)) { return None; }
+                if nodes.len() < 2 {
+                    return None;
+                }
+                if !nodes.iter().any(|&n| node_matches(n)) {
+                    return None;
+                }
                 Some(SplitTileNodes::new(nodes.to_vec()))
             })
             .collect();
@@ -76,22 +94,26 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
         if invalid.is_empty() {
             return;
         }
-        issues.push(InvalidSplitTileIssue::new_from_check(&self.instance_id, invalid));
+        issues.push(InvalidSplitTileIssue::new_from_check(
+            &self.instance_id,
+            invalid,
+        ));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "split_teleport_intersection";
 
     fn split_field(width: usize) -> (MultiLevelField<SquareTessellation>, IdGenerator, NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
         let _base = field.node_at(level, split_point).unwrap();
@@ -99,9 +121,16 @@ mod tests {
         (field, ids, extra)
     }
 
-    fn run(field: MultiLevelField<SquareTessellation>, g: Graph, direction: SplitTeleportDirection) -> Vec<InvalidSplitTileIssue> {
+    fn run(
+        field: MultiLevelField<SquareTessellation>,
+        g: Graph,
+        direction: SplitTeleportDirection,
+    ) -> Vec<InvalidSplitTileIssue> {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = SplitTeleportIntersectionCheck { instance_id: TEST_ID.to_string(), direction };
+        let check = SplitTeleportIntersectionCheck {
+            instance_id: TEST_ID.to_string(),
+            direction,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -111,10 +140,13 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Any).is_empty());
@@ -125,7 +157,9 @@ mod tests {
         let (field, _ids, _extra) = split_field(3);
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(1), p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Any).is_empty());
@@ -137,12 +171,17 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Incoming);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])]);
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])]
+        );
     }
 
     #[test]
@@ -151,7 +190,9 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Incoming).is_empty());
@@ -164,7 +205,9 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         g.add_edge(base, p(2), EdgeKind::Teleport);
@@ -177,12 +220,17 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(2), EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Outgoing);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])]);
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])]
+        );
     }
 
     #[test]
@@ -191,7 +239,9 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Outgoing).is_empty());
@@ -203,7 +253,9 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), base, EdgeKind::Teleport);
@@ -216,13 +268,18 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), base, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Bidirectional);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])]);
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])]
+        );
     }
 
     #[test]
@@ -233,7 +290,9 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(3), base, EdgeKind::Teleport);
@@ -246,12 +305,17 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(3), EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])]);
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])]
+        );
     }
 
     #[test]
@@ -262,13 +326,18 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), extra, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])]);
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])]
+        );
     }
 
     #[test]
@@ -277,12 +346,18 @@ mod tests {
         let level = field.single_level_id();
         let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         g.add_edge(p(3), extra, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);
         assert_eq!(issues.len(), 1, "one merged issue from a single check call");
-        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![base, extra])], "tile counted once even with 2 teleports touching it");
+        assert_eq!(
+            issues[0].invalid,
+            vec![SplitTileNodes::new(vec![base, extra])],
+            "tile counted once even with 2 teleports touching it"
+        );
     }
 }

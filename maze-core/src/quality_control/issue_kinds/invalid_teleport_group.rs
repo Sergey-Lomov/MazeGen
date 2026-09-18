@@ -1,5 +1,5 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKind, INVALID_TELEPORT, INVALID_TELEPORT_GROUP};
+use crate::quality_control::issue::{INVALID_TELEPORT, INVALID_TELEPORT_GROUP, IssueKind};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
@@ -55,8 +55,14 @@ mod tests {
         let b = InvalidTeleportGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&vec![0, 1]), Some(&vec!["rule_1:a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&vec![2, 3]), Some(&vec!["rule_1:b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&vec![0, 1]),
+            Some(&vec!["rule_1:a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&vec![2, 3]),
+            Some(&vec!["rule_1:b".to_string()])
+        );
     }
 
     #[test]
@@ -65,7 +71,11 @@ mod tests {
         let b = InvalidTeleportGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same pair flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 1)],
+            "the same pair flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
@@ -76,6 +86,11 @@ mod tests {
         let b = InvalidTeleportGroupIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups.len(), 1, "(0,1) and (1,0) must collapse to a single unordered pair: {:?}", a.groups);
+        assert_eq!(
+            a.groups.len(),
+            1,
+            "(0,1) and (1,0) must collapse to a single unordered pair: {:?}",
+            a.groups
+        );
     }
 }

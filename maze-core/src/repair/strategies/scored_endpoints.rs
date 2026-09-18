@@ -1,17 +1,19 @@
-use std::collections::{HashMap, HashSet};
-use rand::RngCore;
 use crate::Maze;
+use crate::generation::PresetState;
+use crate::graph::nav::{NavEdge, NavGraph, NavNodeId};
+use crate::graph::pathfinding::{
+    build_outgoing_index, dijkstra_with_prev, route_aware_junction_flags,
+};
+use crate::graph::{EdgeKind, Graph};
 use crate::ids::NodeId;
-use crate::space::{MultiLevelField, Tessellation};
-use crate::graph::{Graph, EdgeKind};
-use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
-use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index, route_aware_junction_flags};
 use crate::quality_control::MissingEndpointsIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use crate::generation::PresetState;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::{MultiLevelField, Tessellation};
+use rand::RngCore;
+use std::collections::{HashMap, HashSet};
 
 pub const PARAM_PATH_WEIGHT: &str = "path_weight";
 pub const PARAM_JUNCTION_WEIGHT: &str = "junction_weight";
@@ -35,42 +37,74 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_PATH_WEIGHT,
         label: "Path length weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_PATH_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_PATH_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_JUNCTION_WEIGHT,
         label: "Junction weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_JUNCTION_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_JUNCTION_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_ONEWAY_WEIGHT,
         label: "One-way passage weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_ONEWAY_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_ONEWAY_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_CROSS_FLOOR_WEIGHT,
         label: "Cross-floor weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_CROSS_FLOOR_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_CROSS_FLOOR_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_SPLIT_WEIGHT,
         label: "Split tile weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_SPLIT_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_SPLIT_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_TELEPORT_WEIGHT,
         label: "Teleport weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_TELEPORT_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_TELEPORT_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_ELEVATOR_STOP_WEIGHT,
         label: "Elevator stop count weight",
-        kind: StrategyParamKind::Float { default: DEFAULT_ELEVATOR_STOP_WEIGHT, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_ELEVATOR_STOP_WEIGHT,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_MIN_SCORE,
         label: "Minimum score",
-        kind: StrategyParamKind::Float { default: DEFAULT_MIN_SCORE, min: 0.0, max: 100_000.0 },
+        kind: StrategyParamKind::Float {
+            default: DEFAULT_MIN_SCORE,
+            min: 0.0,
+            max: 100_000.0,
+        },
     },
 ];
 
@@ -104,7 +138,9 @@ pub fn score_for_route<T: Tessellation>(
 pub struct ScoredEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpointsStrategy {
-    fn strategy_id(&self) -> &'static str { "scored_endpoints" }
+    fn strategy_id(&self) -> &'static str {
+        "scored_endpoints"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -153,31 +189,44 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             }
         };
 
-        let Some((s, f, achieved_score)) = ctx.best_pair(nav, fixed_start, fixed_finish, &weights) else {
+        let Some((s, f, achieved_score)) = ctx.best_pair(nav, fixed_start, fixed_finish, &weights)
+        else {
             return (RepairResult::Failed, vec![]);
         };
 
-        let min_score = params.get(PARAM_MIN_SCORE).and_then(|v| v.as_float()).unwrap_or(DEFAULT_MIN_SCORE);
+        let min_score = params
+            .get(PARAM_MIN_SCORE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(DEFAULT_MIN_SCORE);
         if achieved_score < min_score {
             return (RepairResult::Failed, vec![]);
         }
 
         let mut commands = Vec::new();
-        if issue.missing_start { commands.push(MutationCommand::SetStart(nav.nodes[s].node_id)); }
-        if issue.missing_finish { commands.push(MutationCommand::SetFinish(nav.nodes[f].node_id)); }
+        if issue.missing_start {
+            commands.push(MutationCommand::SetStart(nav.nodes[s].node_id));
+        }
+        if issue.missing_finish {
+            commands.push(MutationCommand::SetFinish(nav.nodes[f].node_id));
+        }
 
-        (RepairResult::Fixed { score: Some(achieved_score) }, commands)
+        (
+            RepairResult::Fixed {
+                score: Some(achieved_score),
+            },
+            commands,
+        )
     }
 }
 
 crate::impl_erased_repair_strategy!(ScoredEndpointsStrategy, MissingEndpointsIssue);
 
 pub struct ScoreWeights {
-    pub path_weight:    f64,
+    pub path_weight: f64,
     pub junction_weight: f64,
-    pub oneway_weight:  f64,
+    pub oneway_weight: f64,
     pub cross_floor_weight: f64,
-    pub split_weight:   f64,
+    pub split_weight: f64,
     pub teleport_weight: f64,
     pub elevator_stop_weight: f64,
 }
@@ -185,13 +234,34 @@ pub struct ScoreWeights {
 impl ScoreWeights {
     fn from_params(params: &StrategyParams) -> Self {
         Self {
-            path_weight: params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_PATH_WEIGHT),
-            junction_weight: params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_JUNCTION_WEIGHT),
-            oneway_weight: params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ONEWAY_WEIGHT),
-            cross_floor_weight: params.get(PARAM_CROSS_FLOOR_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_CROSS_FLOOR_WEIGHT),
-            split_weight: params.get(PARAM_SPLIT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_SPLIT_WEIGHT),
-            teleport_weight: params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_TELEPORT_WEIGHT),
-            elevator_stop_weight: params.get(PARAM_ELEVATOR_STOP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ELEVATOR_STOP_WEIGHT),
+            path_weight: params
+                .get(PARAM_PATH_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_PATH_WEIGHT),
+            junction_weight: params
+                .get(PARAM_JUNCTION_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_JUNCTION_WEIGHT),
+            oneway_weight: params
+                .get(PARAM_ONEWAY_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_ONEWAY_WEIGHT),
+            cross_floor_weight: params
+                .get(PARAM_CROSS_FLOOR_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_CROSS_FLOOR_WEIGHT),
+            split_weight: params
+                .get(PARAM_SPLIT_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_SPLIT_WEIGHT),
+            teleport_weight: params
+                .get(PARAM_TELEPORT_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_TELEPORT_WEIGHT),
+            elevator_stop_weight: params
+                .get(PARAM_ELEVATOR_STOP_WEIGHT)
+                .and_then(|v| v.as_float())
+                .unwrap_or(DEFAULT_ELEVATOR_STOP_WEIGHT),
         }
     }
 
@@ -201,14 +271,17 @@ impl ScoreWeights {
     /// caller that only has the raw `StrategyConfig.params` from a project's rule config, not a
     /// live `RepairStrategy::apply` call).
     pub fn from_raw_overrides(overrides: &std::collections::HashMap<String, String>) -> Self {
-        Self::from_params(&crate::repair::params::build_params(PARAMS, Some(overrides)))
+        Self::from_params(&crate::repair::params::build_params(
+            PARAMS,
+            Some(overrides),
+        ))
     }
 }
 
 /// Precomputed data derived from NavGraph for scoring endpoint pairs.
 struct ScoredPathContext<'a> {
-    edges:           Vec<&'a NavEdge>,
-    oneway_flags:    Vec<bool>,
+    edges: Vec<&'a NavEdge>,
+    oneway_flags: Vec<bool>,
     /// Per-edge flag: edge crosses a floor boundary — true for any single-hop `VerticalPassage`-
     /// or `Elevator`-kind edge (`NavEdge::is_vertical`/`is_elevator`), regardless of
     /// directionality or, for elevators, how many stops the elevator has (GitHub issue #535
@@ -222,10 +295,10 @@ struct ScoredPathContext<'a> {
     /// per-edge counts sum to the split occurrences on the full tile path without double-counting
     /// the shared node between consecutive edges (mirrors `routing::build_maze_path`'s split).
     /// Does not cover the route's own start node — see `split_flags`.
-    split_counts:    Vec<usize>,
+    split_counts: Vec<usize>,
     /// Per-nav-node split flag — only ever consulted for a route's start nav node (the one node
     /// `split_counts` structurally excludes from every edge).
-    split_flags:     Vec<bool>,
+    split_flags: Vec<bool>,
     /// Per-edge elevator-stop bonus count: for a single-hop `Elevator`-kind edge, `max(0, stops -
     /// 2)` where `stops` is that elevator's total distinct-floor stop count (not just the two
     /// endpoints of this hop) — a 2-stop elevator is no more of a choice than a plain vertical
@@ -236,18 +309,28 @@ struct ScoredPathContext<'a> {
 }
 
 impl<'a> ScoredPathContext<'a> {
-    fn build<T: Tessellation>(nav: &'a NavGraph, field: &MultiLevelField<T>, graph: &Graph) -> Self {
+    fn build<T: Tessellation>(
+        nav: &'a NavGraph,
+        field: &MultiLevelField<T>,
+        graph: &Graph,
+    ) -> Self {
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
-        let oneway_flags   = oneway_flags(&edges);
+        let oneway_flags = oneway_flags(&edges);
         let cross_floor_flags = cross_floor_flags(&edges);
         let teleport_flags = teleport_flags(&edges);
-        let split_counts   = split_counts(&edges, field);
-        let split_flags    = nav_node_split_flags(nav, field);
+        let split_counts = split_counts(&edges, field);
+        let split_flags = nav_node_split_flags(nav, field);
         let elevator_stop_counts = elevator_stop_counts(&edges, graph, field);
         let outgoing_by_node = build_outgoing_index(nav, &edges);
         Self {
-            edges, oneway_flags, cross_floor_flags, teleport_flags,
-            split_counts, split_flags, elevator_stop_counts, outgoing_by_node,
+            edges,
+            oneway_flags,
+            cross_floor_flags,
+            teleport_flags,
+            split_counts,
+            split_flags,
+            elevator_stop_counts,
+            outgoing_by_node,
         }
     }
 
@@ -281,16 +364,26 @@ impl<'a> ScoredPathContext<'a> {
             };
 
             for f in finishes {
-                if f == s { continue; }
-                if dist[f] == usize::MAX { continue; }
+                if f == s {
+                    continue;
+                }
+                if dist[f] == usize::MAX {
+                    continue;
+                }
 
                 let path_edges = reconstruct_path_edges(&self.edges, &prev_edge, s, f);
                 let score = score_path(
-                    nav, &self.oneway_flags,
-                    &self.cross_floor_flags, &self.teleport_flags,
-                    &self.split_counts, &self.split_flags,
+                    nav,
+                    &self.oneway_flags,
+                    &self.cross_floor_flags,
+                    &self.teleport_flags,
+                    &self.split_counts,
+                    &self.split_flags,
                     &self.elevator_stop_counts,
-                    &path_edges, &self.edges, dist[f], weights,
+                    &path_edges,
+                    &self.edges,
+                    dist[f],
+                    weights,
                     &mut elevator_group_cache,
                 );
 
@@ -307,14 +400,20 @@ impl<'a> ScoredPathContext<'a> {
 
 fn oneway_flags(edges: &[&NavEdge]) -> Vec<bool> {
     let pairs: HashSet<(NavNodeId, NavNodeId)> = edges.iter().map(|e| (e.from, e.to)).collect();
-    edges.iter().map(|e| !pairs.contains(&(e.to, e.from))).collect()
+    edges
+        .iter()
+        .map(|e| !pairs.contains(&(e.to, e.from)))
+        .collect()
 }
 
 /// True for a single-hop edge crossing a floor boundary — `VerticalPassage`- or `Elevator`-kind
 /// (`NavEdge::is_vertical`/`is_elevator`), independent of directionality (GitHub issue #535
 /// follow-up).
 fn cross_floor_flags(edges: &[&NavEdge]) -> Vec<bool> {
-    edges.iter().map(|e| e.is_vertical || e.is_elevator).collect()
+    edges
+        .iter()
+        .map(|e| e.is_vertical || e.is_elevator)
+        .collect()
 }
 
 fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
@@ -323,7 +422,9 @@ fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
 
 /// True if `field.point_of(node_id)` is a split tile (a field point with >= 2 nodes).
 fn is_split_node<T: Tessellation>(field: &MultiLevelField<T>, node_id: crate::ids::NodeId) -> bool {
-    field.level_of(node_id).zip(field.point_of(node_id))
+    field
+        .level_of(node_id)
+        .zip(field.point_of(node_id))
         .is_some_and(|(level, point)| field.nodes_at(level, point).len() >= 2)
 }
 
@@ -331,7 +432,10 @@ fn is_split_node<T: Tessellation>(field: &MultiLevelField<T>, node_id: crate::id
 /// (`score_path`'s `nav_nodes_on_path[0]`, mirroring how `junction_flags` covers it), since
 /// `split_counts` below deliberately excludes each edge's `from` node.
 fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &MultiLevelField<T>) -> Vec<bool> {
-    nav.nodes.iter().map(|n| is_split_node(field, n.node_id)).collect()
+    nav.nodes
+        .iter()
+        .map(|n| is_split_node(field, n.node_id))
+        .collect()
 }
 
 /// Per-edge count of split-tile occurrences (a field point with >= 2 nodes) among the edge's own
@@ -342,9 +446,16 @@ fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &MultiLevelField
 /// must add `nav_node_split_flags` for that node separately, the same way `score_path` adds edge
 /// 0's `from` to `nav_nodes_on_path` for `junction_count`.
 fn split_counts<T: Tessellation>(edges: &[&NavEdge], field: &MultiLevelField<T>) -> Vec<usize> {
-    edges.iter().map(|e| {
-        e.path.iter().skip(1).filter(|&&node_id| is_split_node(field, node_id)).count()
-    }).collect()
+    edges
+        .iter()
+        .map(|e| {
+            e.path
+                .iter()
+                .skip(1)
+                .filter(|&&node_id| is_split_node(field, node_id))
+                .count()
+        })
+        .collect()
 }
 
 /// Maps every node that is an `Elevator` stop to that elevator's total distinct-floor stop count
@@ -352,7 +463,10 @@ fn split_counts<T: Tessellation>(edges: &[&NavEdge], field: &MultiLevelField<T>)
 /// directly from `graph`/`field` rather than a full `Maze`, since callers here only ever have the
 /// two separately — see `score_for_route`). One entry per stop node; nodes belonging to the same
 /// elevator all map to the same count.
-fn elevator_stop_counts_by_node<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> HashMap<NodeId, usize> {
+fn elevator_stop_counts_by_node<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+) -> HashMap<NodeId, usize> {
     let mut adjacency: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
     for edge in graph.edges().filter(|e| e.kind == EdgeKind::Elevator) {
         adjacency.entry(edge.from).or_default().push(edge.to);
@@ -363,22 +477,33 @@ fn elevator_stop_counts_by_node<T: Tessellation>(graph: &Graph, field: &MultiLev
     let mut result: HashMap<NodeId, usize> = HashMap::new();
 
     for &start in adjacency.keys() {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
         let mut stack = vec![start];
         let mut component: Vec<NodeId> = Vec::new();
         while let Some(node) = stack.pop() {
-            if !visited.insert(node) { continue; }
+            if !visited.insert(node) {
+                continue;
+            }
             component.push(node);
             for &neighbor in adjacency.get(&node).into_iter().flatten() {
-                if !visited.contains(&neighbor) { stack.push(neighbor); }
+                if !visited.contains(&neighbor) {
+                    stack.push(neighbor);
+                }
             }
         }
 
-        let mut floors: Vec<usize> = component.iter().filter_map(|&n| field.level_index_of(n)).collect();
+        let mut floors: Vec<usize> = component
+            .iter()
+            .filter_map(|&n| field.level_index_of(n))
+            .collect();
         floors.sort_unstable();
         floors.dedup();
         let stop_count = floors.len();
-        for node in component { result.insert(node, stop_count); }
+        for node in component {
+            result.insert(node, stop_count);
+        }
     }
 
     result
@@ -386,12 +511,23 @@ fn elevator_stop_counts_by_node<T: Tessellation>(graph: &Graph, field: &MultiLev
 
 /// Per-edge elevator-stop bonus count — see `ScoredPathContext::elevator_stop_counts`' doc
 /// comment for the `max(0, stops - 2)` rule.
-fn elevator_stop_counts<T: Tessellation>(edges: &[&NavEdge], graph: &Graph, field: &MultiLevelField<T>) -> Vec<usize> {
+fn elevator_stop_counts<T: Tessellation>(
+    edges: &[&NavEdge],
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+) -> Vec<usize> {
     let by_node = elevator_stop_counts_by_node(graph, field);
-    edges.iter().map(|e| {
-        if !e.is_elevator { return 0; }
-        by_node.get(&e.path[0]).map_or(0, |&stops| stops.saturating_sub(2))
-    }).collect()
+    edges
+        .iter()
+        .map(|e| {
+            if !e.is_elevator {
+                return 0;
+            }
+            by_node
+                .get(&e.path[0])
+                .map_or(0, |&stops| stops.saturating_sub(2))
+        })
+        .collect()
 }
 
 fn score_path(
@@ -406,7 +542,10 @@ fn score_path(
     edges: &[&NavEdge],
     path_tiles: usize,
     weights: &ScoreWeights,
-    elevator_group_cache: &mut HashMap<NavNodeId, std::rc::Rc<std::collections::HashSet<NavNodeId>>>,
+    elevator_group_cache: &mut HashMap<
+        NavNodeId,
+        std::rc::Rc<std::collections::HashSet<NavNodeId>>,
+    >,
 ) -> f64 {
     if path_edge_indices.is_empty() {
         return 0.0;
@@ -414,34 +553,53 @@ fn score_path(
 
     let mut nav_nodes_on_path: Vec<NavNodeId> = Vec::new();
     for (i, &ei) in path_edge_indices.iter().enumerate() {
-        if i == 0 { nav_nodes_on_path.push(edges[ei].from); }
+        if i == 0 {
+            nav_nodes_on_path.push(edges[ei].from);
+        }
         nav_nodes_on_path.push(edges[ei].to);
     }
 
-    let junction_count = route_aware_junction_flags(nav, &nav_nodes_on_path, path_edge_indices, edges, elevator_group_cache)
-        .into_iter().filter(|&j| j).count() as f64;
+    let junction_count = route_aware_junction_flags(
+        nav,
+        &nav_nodes_on_path,
+        path_edge_indices,
+        edges,
+        elevator_group_cache,
+    )
+    .into_iter()
+    .filter(|&j| j)
+    .count() as f64;
 
-    let oneway_count = path_edge_indices.iter()
+    let oneway_count = path_edge_indices
+        .iter()
         .filter(|&&ei| oneway_flags[ei])
         .count() as f64;
 
-    let cross_floor_count = path_edge_indices.iter()
+    let cross_floor_count = path_edge_indices
+        .iter()
         .filter(|&&ei| cross_floor_flags[ei])
         .count() as f64;
 
-    let teleport_count = path_edge_indices.iter()
+    let teleport_count = path_edge_indices
+        .iter()
         .filter(|&&ei| teleport_flags[ei])
         .count() as f64;
 
     // split_counts covers every edge's own tiles except its `from` node (see split_counts' doc
     // comment) -- the route's very first node (nav_nodes_on_path[0], i.e. edge 0's `from`) is
     // added separately via split_flags, mirroring how nav_nodes_on_path itself includes it above.
-    let split_count = path_edge_indices.iter()
+    let split_count = path_edge_indices
+        .iter()
         .map(|&ei| split_counts[ei])
         .sum::<usize>() as f64
-        + if split_flags[nav_nodes_on_path[0]] { 1.0 } else { 0.0 };
+        + if split_flags[nav_nodes_on_path[0]] {
+            1.0
+        } else {
+            0.0
+        };
 
-    let elevator_stop_count = path_edge_indices.iter()
+    let elevator_stop_count = path_edge_indices
+        .iter()
         .map(|&ei| elevator_stop_counts[ei])
         .sum::<usize>() as f64;
 

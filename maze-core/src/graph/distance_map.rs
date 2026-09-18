@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use crate::ids::NodeId;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
 use super::pathfinding::{
-    dijkstra_forward, dijkstra_forward_filtered_bounded,
-    dijkstra_reverse, dijkstra_reverse_filtered_bounded,
+    dijkstra_forward, dijkstra_forward_filtered_bounded, dijkstra_reverse,
+    dijkstra_reverse_filtered_bounded,
 };
+use crate::ids::NodeId;
+use std::collections::HashMap;
 
 /// Direction of traversal relative to `source`, following directed nav-edge semantics
 /// (never treated as undirected).
@@ -27,13 +27,18 @@ pub enum DistanceDirection {
 ///
 /// Unreachable nodes are absent from the map (no key), rather than represented by a sentinel
 /// value — query with `.get()`.
-pub(crate) fn compute_distance_map(nav: &NavGraph, source: NavNodeId, direction: DistanceDirection) -> HashMap<NavNodeId, usize> {
+pub(crate) fn compute_distance_map(
+    nav: &NavGraph,
+    source: NavNodeId,
+    direction: DistanceDirection,
+) -> HashMap<NavNodeId, usize> {
     let nav_dist = match direction {
         DistanceDirection::Forward => dijkstra_forward(nav, source),
         DistanceDirection::Reverse => dijkstra_reverse(nav, source),
     };
 
-    nav_dist.into_iter()
+    nav_dist
+        .into_iter()
         .enumerate()
         .filter(|&(_, dist)| dist != usize::MAX)
         .collect()
@@ -53,11 +58,16 @@ pub(crate) fn compute_distance_map_filtered_bounded(
     max_dist: usize,
 ) -> HashMap<NavNodeId, usize> {
     let nav_dist = match direction {
-        DistanceDirection::Forward => dijkstra_forward_filtered_bounded(nav, source, edge_filter, Some(max_dist)),
-        DistanceDirection::Reverse => dijkstra_reverse_filtered_bounded(nav, source, edge_filter, Some(max_dist)),
+        DistanceDirection::Forward => {
+            dijkstra_forward_filtered_bounded(nav, source, edge_filter, Some(max_dist))
+        }
+        DistanceDirection::Reverse => {
+            dijkstra_reverse_filtered_bounded(nav, source, edge_filter, Some(max_dist))
+        }
     };
 
-    nav_dist.into_iter()
+    nav_dist
+        .into_iter()
         .enumerate()
         .filter(|&(_, dist)| dist != usize::MAX)
         .collect()
@@ -70,8 +80,13 @@ pub(crate) fn compute_distance_map_filtered_bounded(
 ///
 /// Shared by `LoopDistanceFromStartCheck`/`LoopDistanceFromFinishCheck` — both need the same
 /// "closest point of the cycle" reduction, just over a different `dist_map`.
-pub(crate) fn cycle_min_distance(nav: &NavGraph, cycle: &[usize], dist_map: &HashMap<NavNodeId, usize>) -> usize {
-    cycle.iter()
+pub(crate) fn cycle_min_distance(
+    nav: &NavGraph,
+    cycle: &[usize],
+    dist_map: &HashMap<NavNodeId, usize>,
+) -> usize {
+    cycle
+        .iter()
         .flat_map(|&idx| {
             let edge = nav.edge_by_idx(idx);
             [edge.from, edge.to]
@@ -140,7 +155,11 @@ pub(crate) fn exact_tile_distance(
     for &(from_nav, from_offset) in &from_exits {
         let remaining = max_dist.map(|m| m.saturating_sub(from_offset));
         let nav_dist = compute_distance_map_filtered_bounded(
-            nav, from_nav, DistanceDirection::Forward, |_| true, remaining.unwrap_or(usize::MAX),
+            nav,
+            from_nav,
+            DistanceDirection::Forward,
+            |_| true,
+            remaining.unwrap_or(usize::MAX),
         );
         for &(to_nav, to_offset) in &to_entries {
             if let Some(&d) = nav_dist.get(&to_nav) {
@@ -169,21 +188,24 @@ pub(crate) fn min_optional_distance(a: Option<usize>, b: Option<usize>) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
+    use crate::graph::cycles::{CycleSearchResult, find_all_simple_cycles};
     use crate::graph::nav::build_nav_graph;
-    use crate::graph::cycles::{find_all_simple_cycles, CycleSearchResult};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
 
     /// Triangle a->b->c->a, with `a` also pinned (degree-2 corridor exemption is irrelevant
     /// here since every node in a 3-cycle has exactly one outgoing/incoming edge, already a
     /// nav-node). Returns the nav graph and the (single) cycle's nav-edge indices.
     fn triangle_cycle() -> (NavGraph, Vec<usize>) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         g.add_edge(p(1), p(2), EdgeKind::Basic);
@@ -235,12 +257,19 @@ mod tests {
 
     fn line_graph(len: usize) -> (Graph, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let nodes: Vec<crate::ids::NodeId> = (0..len)
-            .map(|x| field.node_at(level, SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .map(|x| {
+                field
+                    .node_at(level, SquarePoint { x: x as i32, y: 0 })
+                    .unwrap()
+            })
             .collect();
         for i in 0..len - 1 {
             g.add_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
@@ -273,10 +302,13 @@ mod tests {
     #[test]
     fn unreachable_node_absent_from_map() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let a = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let b = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let c = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
@@ -295,10 +327,13 @@ mod tests {
     #[test]
     fn directed_only_one_way_edge_blocks_reverse_distance() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let a = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let b = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.add_edge(a, b, EdgeKind::Basic); // one-way a -> b only
@@ -323,7 +358,11 @@ mod tests {
         let (g, nodes) = line_graph(10);
         let nav = build_nav_graph(&g);
         assert_eq!(exact_tile_distance(&nav, nodes[2], nodes[7], None), Some(5));
-        assert_eq!(exact_tile_distance(&nav, nodes[7], nodes[2], None), Some(5), "bidirectional corridor, symmetric");
+        assert_eq!(
+            exact_tile_distance(&nav, nodes[7], nodes[2], None),
+            Some(5),
+            "bidirectional corridor, symmetric"
+        );
     }
 
     #[test]
@@ -337,17 +376,27 @@ mod tests {
     fn exact_tile_distance_respects_max_dist_bound() {
         let (g, nodes) = line_graph(10);
         let nav = build_nav_graph(&g);
-        assert_eq!(exact_tile_distance(&nav, nodes[0], nodes[9], Some(20)), Some(9));
-        assert_eq!(exact_tile_distance(&nav, nodes[0], nodes[9], Some(3)), None, "true distance 9 exceeds the bound");
+        assert_eq!(
+            exact_tile_distance(&nav, nodes[0], nodes[9], Some(20)),
+            Some(9)
+        );
+        assert_eq!(
+            exact_tile_distance(&nav, nodes[0], nodes[9], Some(3)),
+            None,
+            "true distance 9 exceeds the bound"
+        );
     }
 
     #[test]
     fn exact_tile_distance_one_way_corridor_blocks_the_reverse_direction() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let nodes: Vec<crate::ids::NodeId> = (0..5)
             .map(|x| field.node_at(level, SquarePoint { x, y: 0 }).unwrap())
             .collect();
@@ -356,6 +405,10 @@ mod tests {
         }
         let nav = build_nav_graph(&g);
         assert_eq!(exact_tile_distance(&nav, nodes[1], nodes[3], None), Some(2));
-        assert_eq!(exact_tile_distance(&nav, nodes[3], nodes[1], None), None, "no directed path backwards along a one-way corridor");
+        assert_eq!(
+            exact_tile_distance(&nav, nodes[3], nodes[1], None),
+            None,
+            "no directed path backwards along a one-way corridor"
+        );
     }
 }

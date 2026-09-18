@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::ids::NodeId;
+use std::collections::HashMap;
 
 pub type NavNodeId = usize;
 
@@ -92,15 +92,39 @@ impl NavGraph {
         id
     }
 
-    pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>, is_teleport: bool, is_elevator: bool, is_vertical: bool) {
+    pub(super) fn add_edge(
+        &mut self,
+        from_nav: NavNodeId,
+        to_nav: NavNodeId,
+        path: Vec<NodeId>,
+        is_teleport: bool,
+        is_elevator: bool,
+        is_vertical: bool,
+    ) {
         let edge_idx = self.edges.len();
         // Index all interior corridor nodes to the destination nav node (coarse lookup), plus
         // their exact index within this edge's path (precise lookup — see `corridor_positions`).
-        for (i, &corridor_node) in path.iter().enumerate().take(path.len().saturating_sub(1)).skip(1) {
+        for (i, &corridor_node) in path
+            .iter()
+            .enumerate()
+            .take(path.len().saturating_sub(1))
+            .skip(1)
+        {
             self.corridor_index.entry(corridor_node).or_insert(to_nav);
-            self.corridor_positions.entry(corridor_node).or_default().push((edge_idx, i));
+            self.corridor_positions
+                .entry(corridor_node)
+                .or_default()
+                .push((edge_idx, i));
         }
-        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None, is_teleport, is_elevator, is_vertical });
+        self.edges.push(NavEdge {
+            from: from_nav,
+            to: to_nav,
+            path,
+            reverse_edge: None,
+            is_teleport,
+            is_elevator,
+            is_vertical,
+        });
         self.outgoing[from_nav].push(edge_idx);
         self.incoming[to_nav].push(edge_idx);
     }
@@ -143,21 +167,35 @@ impl NavGraph {
     /// within a single `NavEdge`'s `path` is ever valid (going the other way requires the reverse
     /// edge, indexed separately). Empty for a junction/nav node itself (callers should treat it as
     /// already being at its own `NavNodeId`, offset 0).
-    pub fn corridor_exit_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
-        self.corridor_positions.get(&node_id).into_iter().flatten().map(|&(edge_idx, i)| {
-            let edge = &self.edges[edge_idx];
-            (edge.to, edge.path.len() - 1 - i)
-        })
+    pub fn corridor_exit_offsets(
+        &self,
+        node_id: NodeId,
+    ) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
+        self.corridor_positions
+            .get(&node_id)
+            .into_iter()
+            .flatten()
+            .map(|&(edge_idx, i)| {
+                let edge = &self.edges[edge_idx];
+                (edge.to, edge.path.len() - 1 - i)
+            })
     }
 
     /// Like `corridor_exit_offsets`, but the other direction: every `(nav_node, forward_hops)`
     /// pair such that continuing forward from `nav_node` along its corridor edge reaches
     /// `node_id` — `forward_hops` is the exact tile-hop count from `nav_node` to `node_id`.
-    pub fn corridor_entry_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
-        self.corridor_positions.get(&node_id).into_iter().flatten().map(|&(edge_idx, i)| {
-            let edge = &self.edges[edge_idx];
-            (edge.from, i)
-        })
+    pub fn corridor_entry_offsets(
+        &self,
+        node_id: NodeId,
+    ) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
+        self.corridor_positions
+            .get(&node_id)
+            .into_iter()
+            .flatten()
+            .map(|&(edge_idx, i)| {
+                let edge = &self.edges[edge_idx];
+                (edge.from, i)
+            })
     }
 
     /// Every raw `(edge_idx, index_within_path)` pair `node_id` is interior to — the same data
@@ -165,8 +203,15 @@ impl NavGraph {
     /// from, exposed directly so a caller can detect "these two corridor-interior nodes sit on
     /// the very same edge" (shared `edge_idx`) and take the direct in-path distance between them,
     /// instead of always routing through each side's nav-node endpoint.
-    pub fn corridor_edge_positions(&self, node_id: NodeId) -> impl Iterator<Item = (usize, usize)> + '_ {
-        self.corridor_positions.get(&node_id).into_iter().flatten().copied()
+    pub fn corridor_edge_positions(
+        &self,
+        node_id: NodeId,
+    ) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.corridor_positions
+            .get(&node_id)
+            .into_iter()
+            .flatten()
+            .copied()
     }
 
     /// For each edge, find its reverse (same path reversed, same `is_teleport`/`is_elevator`/
@@ -181,12 +226,27 @@ impl NavGraph {
     pub(super) fn link_reverse_edges(&mut self) {
         let mut path_to_idx: HashMap<(Vec<NodeId>, bool, bool, bool), usize> = HashMap::new();
         for (i, edge) in self.edges.iter().enumerate() {
-            path_to_idx.insert((edge.path.clone(), edge.is_teleport, edge.is_elevator, edge.is_vertical), i);
+            path_to_idx.insert(
+                (
+                    edge.path.clone(),
+                    edge.is_teleport,
+                    edge.is_elevator,
+                    edge.is_vertical,
+                ),
+                i,
+            );
         }
         for i in 0..self.edges.len() {
-            if self.edges[i].reverse_edge.is_some() { continue; }
+            if self.edges[i].reverse_edge.is_some() {
+                continue;
+            }
             let rev_path: Vec<NodeId> = self.edges[i].path.iter().rev().copied().collect();
-            if let Some(&j) = path_to_idx.get(&(rev_path, self.edges[i].is_teleport, self.edges[i].is_elevator, self.edges[i].is_vertical)) {
+            if let Some(&j) = path_to_idx.get(&(
+                rev_path,
+                self.edges[i].is_teleport,
+                self.edges[i].is_elevator,
+                self.edges[i].is_vertical,
+            )) {
                 if i != j {
                     self.edges[i].reverse_edge = Some(j);
                     self.edges[j].reverse_edge = Some(i);

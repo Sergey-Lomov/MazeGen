@@ -1,4 +1,6 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, EXCESSIVE_SCC_COUNT};
+use crate::quality_control::issue::{
+    EXCESSIVE_SCC_COUNT, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
 
 /// Produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — mandatory for this kind:
 /// `max_scc_count` is the configured threshold the check compared against, needed by
@@ -13,11 +15,17 @@ pub struct ExcessiveSccCountIssue {
 
 impl ExcessiveSccCountIssue {
     pub fn new_from_check(source_check: &str, max_scc_count: u32) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), max_scc_count }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            max_scc_count,
+        }
     }
 
     pub fn with_data(max_scc_count: u32) -> Self {
-        Self { meta: IssueMeta::new(), max_scc_count }
+        Self {
+            meta: IssueMeta::new(),
+            max_scc_count,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -57,7 +65,10 @@ mod tests {
         let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 8);
         let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 5);
         a.merge(b);
-        assert_eq!(a.max_scc_count, 5, "the stricter (smaller) threshold must win, not silently keep self");
+        assert_eq!(
+            a.max_scc_count, 5,
+            "the stricter (smaller) threshold must win, not silently keep self"
+        );
     }
 
     #[test]
@@ -70,14 +81,33 @@ mod tests {
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 8)
-            .with_detail("scc_count_1", "max_scc_count", "8".to_string());
-        let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 5)
-            .with_detail("scc_count_2", "max_scc_count", "5".to_string());
+        let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 8).with_detail(
+            "scc_count_1",
+            "max_scc_count",
+            "8".to_string(),
+        );
+        let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 5).with_detail(
+            "scc_count_2",
+            "max_scc_count",
+            "5".to_string(),
+        );
         a.merge(b);
 
-        assert_eq!(a.source_checks(), vec!["scc_count_1".to_string(), "scc_count_2".to_string()]);
-        assert_eq!(a.details().get("scc_count_1").and_then(|kv| kv.get("max_scc_count")), Some(&"8".to_string()));
-        assert_eq!(a.details().get("scc_count_2").and_then(|kv| kv.get("max_scc_count")), Some(&"5".to_string()));
+        assert_eq!(
+            a.source_checks(),
+            vec!["scc_count_1".to_string(), "scc_count_2".to_string()]
+        );
+        assert_eq!(
+            a.details()
+                .get("scc_count_1")
+                .and_then(|kv| kv.get("max_scc_count")),
+            Some(&"8".to_string())
+        );
+        assert_eq!(
+            a.details()
+                .get("scc_count_2")
+                .and_then(|kv| kv.get("max_scc_count")),
+            Some(&"5".to_string())
+        );
     }
 }

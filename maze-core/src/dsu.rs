@@ -6,7 +6,10 @@ pub struct Dsu {
 
 impl Dsu {
     pub fn new(n: usize) -> Self {
-        Self { parent: (0..n).collect(), size: vec![1; n] }
+        Self {
+            parent: (0..n).collect(),
+            size: vec![1; n],
+        }
     }
 
     pub fn find(&mut self, x: usize) -> usize {
@@ -21,7 +24,9 @@ impl Dsu {
     pub fn union_by_size(&mut self, a: usize, b: usize) {
         let ra = self.find(a);
         let rb = self.find(b);
-        if ra == rb { return; }
+        if ra == rb {
+            return;
+        }
         if self.size[ra] >= self.size[rb] {
             self.parent[rb] = ra;
             self.size[ra] += self.size[rb];
@@ -36,7 +41,9 @@ impl Dsu {
     pub fn union_by_min(&mut self, a: usize, b: usize) {
         let ra = self.find(a);
         let rb = self.find(b);
-        if ra == rb { return; }
+        if ra == rb {
+            return;
+        }
         if ra < rb {
             self.parent[rb] = ra;
         } else {

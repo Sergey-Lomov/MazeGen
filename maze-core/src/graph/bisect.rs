@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use super::Graph;
 use crate::dsu::Dsu;
 use crate::ids::NodeId;
-use super::Graph;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Groups `nodes` by merging every pair joined by an edge (either direction, present in `graph`)
 /// that `is_unremovable` flags — e.g. a preset-protected or route-critical connection. Two nodes
@@ -39,7 +39,8 @@ pub fn group_by_unremovable_edges(
     // Re-key by each group's own lowest-`NodeId` member — deterministic, independent of `Dsu`'s
     // internal root choice (`union_by_min` already picks the lower index, but re-deriving the key
     // from `NodeId` values keeps this function's output independent of that implementation detail).
-    groups.into_values()
+    groups
+        .into_values()
         .map(|mut members| {
             members.sort_unstable();
             (members[0], members)
@@ -65,7 +66,8 @@ pub fn farthest_pair_across_groups(
     if groups.len() < 2 {
         return None;
     }
-    let node_group: HashMap<NodeId, NodeId> = groups.iter()
+    let node_group: HashMap<NodeId, NodeId> = groups
+        .iter()
         .flat_map(|(&key, members)| members.iter().map(move |&n| (n, key)))
         .collect();
     let all_nodes: Vec<NodeId> = node_group.keys().copied().collect();
@@ -98,7 +100,9 @@ fn farthest_node(
 
     while let Some(current) = queue.pop_front() {
         let d = dist[&current];
-        let neighbors = graph.outgoing_neighbors(current).chain(graph.incoming_neighbors(current));
+        let neighbors = graph
+            .outgoing_neighbors(current)
+            .chain(graph.incoming_neighbors(current));
         for neighbor in neighbors {
             if !node_group.contains_key(&neighbor) {
                 continue;
@@ -138,7 +142,11 @@ mod tests {
         let g = chain(4); // 0-1-2-3
         let nodes: Vec<NodeId> = (0..4).collect();
         let groups = group_by_unremovable_edges(&g, &nodes, |_, _| false);
-        assert_eq!(groups.len(), 4, "no unremovable edges: every node its own group");
+        assert_eq!(
+            groups.len(),
+            4,
+            "no unremovable edges: every node its own group"
+        );
     }
 
     #[test]
@@ -146,7 +154,8 @@ mod tests {
         let g = chain(4); // 0-1-2-3
         let nodes: Vec<NodeId> = (0..4).collect();
         // Mark 1-2 unremovable: merges 1 and 2 into one group, 0 and 3 stay alone.
-        let groups = group_by_unremovable_edges(&g, &nodes, |a, b| (a, b) == (1, 2) || (a, b) == (2, 1));
+        let groups =
+            group_by_unremovable_edges(&g, &nodes, |a, b| (a, b) == (1, 2) || (a, b) == (2, 1));
         assert_eq!(groups.len(), 3);
         let sizes: Vec<usize> = {
             let mut s: Vec<usize> = groups.values().map(|v| v.len()).collect();
@@ -182,7 +191,8 @@ mod tests {
         let g = chain(5); // 0-1-2-3-4
         let nodes: Vec<NodeId> = (0..5).collect();
         // Merge 3 and 4 together so the "farthest" endpoint 4 is unusable alone.
-        let groups = group_by_unremovable_edges(&g, &nodes, |a, b| (a, b) == (3, 4) || (a, b) == (4, 3));
+        let groups =
+            group_by_unremovable_edges(&g, &nodes, |a, b| (a, b) == (3, 4) || (a, b) == (4, 3));
         let (a, b) = farthest_pair_across_groups(&g, &groups).unwrap();
         let group_of = |n: NodeId| groups.iter().find(|(_, m)| m.contains(&n)).unwrap().0;
         assert_ne!(group_of(a), group_of(b));
@@ -203,9 +213,17 @@ mod tests {
         // Every edge unremovable, including 3-4 (4 is outside `nodes`) -- 4 must never affect
         // grouping since it was never in the input set to begin with.
         let groups = group_by_unremovable_edges(&g, &nodes, |_, _| true);
-        assert_eq!(groups.len(), 1, "the whole subset 0..4 still merges into one group");
+        assert_eq!(
+            groups.len(),
+            1,
+            "the whole subset 0..4 still merges into one group"
+        );
         let members = groups.values().next().unwrap();
-        assert_eq!(members.len(), 4, "node 4 must never be pulled into a group it was never a member of");
+        assert_eq!(
+            members.len(),
+            4,
+            "node 4 must never be pulled into a group it was never a member of"
+        );
         assert!(!members.contains(&4));
     }
 

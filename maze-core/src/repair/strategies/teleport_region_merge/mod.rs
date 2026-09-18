@@ -1,20 +1,20 @@
-use rand::{Rng, RngCore};
-use std::collections::{HashMap, HashSet, VecDeque};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::LevelId;
+use crate::generation::PresetState;
 use crate::graph::Graph;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
-use crate::space::Tessellation;
+use crate::ids::NodeId;
 use crate::quality_control::RegionNeedsExpansionIssue;
-use crate::generation::PresetState;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
 use crate::repair::strategies::region_merge_core::{
-    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM,
+    self, MODE_OPTIONS, MODE_RANDOM, PARAM_PREFER_PARTIALLY_CONNECTED, PARAM_TARGET_MODE,
 };
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::LevelId;
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[cfg(test)]
 mod tests;
@@ -34,23 +34,31 @@ struct PendingTeleports {
 impl PendingTeleports {
     /// Every proposed-so-far outgoing pair from `node`, alongside the real graph's own.
     fn outgoing_from(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        self.added.iter().filter(move |&&(from, _)| from == node).map(|&(_, to)| to)
+        self.added
+            .iter()
+            .filter(move |&&(from, _)| from == node)
+            .map(|&(_, to)| to)
     }
 
     /// Every proposed-so-far incoming pair into `node`, alongside the real graph's own.
     fn incoming_to(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        self.added.iter().filter(move |&&(_, to)| to == node).map(|&(from, _)| from)
+        self.added
+            .iter()
+            .filter(move |&&(_, to)| to == node)
+            .map(|&(from, _)| from)
     }
 
     fn add_directed(&mut self, from: NodeId, to: NodeId) {
         self.added.insert((from, to));
-        self.commands.push(MutationCommand::AddDirectedTeleport { from, to });
+        self.commands
+            .push(MutationCommand::AddDirectedTeleport { from, to });
     }
 
     fn add_bidirectional(&mut self, a: NodeId, b: NodeId) {
         self.added.insert((a, b));
         self.added.insert((b, a));
-        self.commands.push(MutationCommand::AddBidirectionalTeleport { a, b });
+        self.commands
+            .push(MutationCommand::AddBidirectionalTeleport { a, b });
     }
 }
 
@@ -72,12 +80,18 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_TARGET_MODE,
         label: "Target selection mode",
-        kind: StrategyParamKind::Enum { options: MODE_OPTIONS, default: MODE_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: MODE_OPTIONS,
+            default: MODE_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_DIRECTION_MODE,
         label: "Teleport direction mode",
-        kind: StrategyParamKind::Enum { options: DIRECTION_OPTIONS, default: DIRECTION_TWO_WAY },
+        kind: StrategyParamKind::Enum {
+            options: DIRECTION_OPTIONS,
+            default: DIRECTION_TWO_WAY,
+        },
     },
     StrategyParam {
         id: PARAM_PREFER_PARTIALLY_CONNECTED,
@@ -87,7 +101,11 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_MIN_DISTANCE,
         label: "Minimum logical distance between teleport endpoints",
-        kind: StrategyParamKind::Float { default: 1.0, min: 0.0, max: 1000.0 },
+        kind: StrategyParamKind::Float {
+            default: 1.0,
+            min: 0.0,
+            max: 1000.0,
+        },
     },
     StrategyParam {
         id: PARAM_ALLOW_CROSS_FLOOR,
@@ -112,7 +130,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct TeleportRegionMergeStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportRegionMergeStrategy {
-    fn strategy_id(&self) -> &'static str { "teleport_region_merge" }
+    fn strategy_id(&self) -> &'static str {
+        "teleport_region_merge"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -162,8 +182,19 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
         let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
-                region, region_idx, &scc, maze, preset_state, mode, direction_mode,
-                prefer_partial, min_distance, allow_cross_floor, needy, rng, &mut pending,
+                region,
+                region_idx,
+                &scc,
+                maze,
+                preset_state,
+                mode,
+                direction_mode,
+                prefer_partial,
+                min_distance,
+                allow_cross_floor,
+                needy,
+                rng,
+                &mut pending,
             )
         });
 
@@ -184,7 +215,9 @@ fn filter_nodes_on_levels<T: Tessellation>(
     nodes: &[NodeId],
     levels: &HashSet<LevelId>,
 ) -> Vec<NodeId> {
-    nodes.iter().copied()
+    nodes
+        .iter()
+        .copied()
         .filter(|&n| field.level_of(n).is_some_and(|l| levels.contains(&l)))
         .collect()
 }
@@ -204,7 +237,10 @@ struct NeighborInfo {
 
 impl NeighborInfo {
     fn empty() -> Self {
-        NeighborInfo { outbound: None, inbound: None }
+        NeighborInfo {
+            outbound: None,
+            inbound: None,
+        }
     }
 }
 
@@ -224,16 +260,34 @@ fn collect_neighbors(
 ) -> HashMap<ComponentId, NeighborInfo> {
     let mut by_neighbor: HashMap<ComponentId, NeighborInfo> = HashMap::new();
     for &node in region {
-        for other in graph.outgoing_neighbors(node).chain(pending.outgoing_from(node)) {
-            let Some(other_idx) = scc.component_of(other) else { continue };
-            if other_idx == region_idx { continue; }
-            let entry = by_neighbor.entry(other_idx).or_insert_with(NeighborInfo::empty);
+        for other in graph
+            .outgoing_neighbors(node)
+            .chain(pending.outgoing_from(node))
+        {
+            let Some(other_idx) = scc.component_of(other) else {
+                continue;
+            };
+            if other_idx == region_idx {
+                continue;
+            }
+            let entry = by_neighbor
+                .entry(other_idx)
+                .or_insert_with(NeighborInfo::empty);
             entry.outbound.get_or_insert((node, other));
         }
-        for other in graph.incoming_neighbors(node).chain(pending.incoming_to(node)) {
-            let Some(other_idx) = scc.component_of(other) else { continue };
-            if other_idx == region_idx { continue; }
-            let entry = by_neighbor.entry(other_idx).or_insert_with(NeighborInfo::empty);
+        for other in graph
+            .incoming_neighbors(node)
+            .chain(pending.incoming_to(node))
+        {
+            let Some(other_idx) = scc.component_of(other) else {
+                continue;
+            };
+            if other_idx == region_idx {
+                continue;
+            }
+            let entry = by_neighbor
+                .entry(other_idx)
+                .or_insert_with(NeighborInfo::empty);
             entry.inbound.get_or_insert((other, node));
         }
     }
@@ -283,20 +337,27 @@ fn find_merge_candidate<T: Tessellation>(
     // components alone would still allow a cross-floor pair when the chosen neighbor spans
     // several floors.
     let region_levels: Option<HashSet<LevelId>> = (!allow_cross_floor).then(|| {
-        region.iter().filter_map(|&n| maze.field.level_of(n)).collect()
+        region
+            .iter()
+            .filter_map(|&n| maze.field.level_of(n))
+            .collect()
     });
     if let Some(region_levels) = &region_levels {
         keys.retain(|&idx| {
-            scc.components[idx]
-                .iter()
-                .any(|&n| maze.field.level_of(n).is_some_and(|l| region_levels.contains(&l)))
+            scc.components[idx].iter().any(|&n| {
+                maze.field
+                    .level_of(n)
+                    .is_some_and(|l| region_levels.contains(&l))
+            })
         });
         if keys.is_empty() {
             return None;
         }
     }
 
-    let partial: Vec<ComponentId> = keys.iter().copied()
+    let partial: Vec<ComponentId> = keys
+        .iter()
+        .copied()
         .filter(|i| {
             let info = &by_neighbor[i];
             info.outbound.is_some() != info.inbound.is_some()
@@ -321,7 +382,17 @@ fn find_merge_candidate<T: Tessellation>(
         None => (region, neighbor),
     };
 
-    let applied = apply_teleport(maze, region_pool, neighbor_pool, info, direction_mode, min_distance, preset_state, rng, pending);
+    let applied = apply_teleport(
+        maze,
+        region_pool,
+        neighbor_pool,
+        info,
+        direction_mode,
+        min_distance,
+        preset_state,
+        rng,
+        pending,
+    );
 
     Some((chosen, applied))
 }
@@ -371,40 +442,97 @@ fn apply_teleport<T: Tessellation>(
                 (Some(existing_out), None) => {
                     // Only the inbound direction is missing -- pick its pair away from the
                     // existing outbound pair, independently in each region.
-                    let Some(region_node) = pick_node_away_from(&maze.graph, region, existing_out.0, min_distance, rng) else { return false };
-                    let Some(neighbor_node) = pick_node_away_from(&maze.graph, neighbor, existing_out.1, min_distance, rng) else { return false };
+                    let Some(region_node) =
+                        pick_node_away_from(&maze.graph, region, existing_out.0, min_distance, rng)
+                    else {
+                        return false;
+                    };
+                    let Some(neighbor_node) = pick_node_away_from(
+                        &maze.graph,
+                        neighbor,
+                        existing_out.1,
+                        min_distance,
+                        rng,
+                    ) else {
+                        return false;
+                    };
                     (None, Some((neighbor_node, region_node)))
                 }
                 (None, Some(existing_in)) => {
-                    let Some(region_node) = pick_node_away_from(&maze.graph, region, existing_in.1, min_distance, rng) else { return false };
-                    let Some(neighbor_node) = pick_node_away_from(&maze.graph, neighbor, existing_in.0, min_distance, rng) else { return false };
+                    let Some(region_node) =
+                        pick_node_away_from(&maze.graph, region, existing_in.1, min_distance, rng)
+                    else {
+                        return false;
+                    };
+                    let Some(neighbor_node) = pick_node_away_from(
+                        &maze.graph,
+                        neighbor,
+                        existing_in.0,
+                        min_distance,
+                        rng,
+                    ) else {
+                        return false;
+                    };
                     (Some((region_node, neighbor_node)), None)
                 }
                 (None, None) => {
                     // Neither exists -- both directions needed, through two distinct pairs, each
                     // one away from the other (there's nothing else occupied yet).
-                    if region.is_empty() || neighbor.is_empty() { return false; }
+                    if region.is_empty() || neighbor.is_empty() {
+                        return false;
+                    }
                     let out_region_node = region[rng.random_range(0..region.len())];
                     let out_neighbor_node = neighbor[rng.random_range(0..neighbor.len())];
-                    let Some(in_region_node) = pick_node_away_from(&maze.graph, region, out_region_node, min_distance, rng) else { return false };
-                    let Some(in_neighbor_node) = pick_node_away_from(&maze.graph, neighbor, out_neighbor_node, min_distance, rng) else { return false };
-                    (Some((out_region_node, out_neighbor_node)), Some((in_neighbor_node, in_region_node)))
+                    let Some(in_region_node) = pick_node_away_from(
+                        &maze.graph,
+                        region,
+                        out_region_node,
+                        min_distance,
+                        rng,
+                    ) else {
+                        return false;
+                    };
+                    let Some(in_neighbor_node) = pick_node_away_from(
+                        &maze.graph,
+                        neighbor,
+                        out_neighbor_node,
+                        min_distance,
+                        rng,
+                    ) else {
+                        return false;
+                    };
+                    (
+                        Some((out_region_node, out_neighbor_node)),
+                        Some((in_neighbor_node, in_region_node)),
+                    )
                 }
-                (Some(_), Some(_)) => unreachable!("both-directions-present case already returned above"),
+                (Some(_), Some(_)) => {
+                    unreachable!("both-directions-present case already returned above")
+                }
             };
             let (out_pair, in_pair) = pairs;
-            let out_blocked = out_pair.map(|(a, b)| !crate::generation::directed_edge_feasible(preset_state, a, b)).unwrap_or(false);
-            let in_blocked = in_pair.map(|(a, b)| !crate::generation::directed_edge_feasible(preset_state, a, b)).unwrap_or(false);
+            let out_blocked = out_pair
+                .map(|(a, b)| !crate::generation::directed_edge_feasible(preset_state, a, b))
+                .unwrap_or(false);
+            let in_blocked = in_pair
+                .map(|(a, b)| !crate::generation::directed_edge_feasible(preset_state, a, b))
+                .unwrap_or(false);
             if out_blocked || in_blocked {
                 return false;
             }
-            if let Some((a, b)) = out_pair { pending.add_directed(a, b); }
-            if let Some((a, b)) = in_pair { pending.add_directed(a, b); }
+            if let Some((a, b)) = out_pair {
+                pending.add_directed(a, b);
+            }
+            if let Some((a, b)) = in_pair {
+                pending.add_directed(a, b);
+            }
             true
         }
         _ => {
             // two_way: one shared pair for both directions.
-            if region.is_empty() || neighbor.is_empty() { return false; }
+            if region.is_empty() || neighbor.is_empty() {
+                return false;
+            }
             let (a, b) = match (info.outbound, info.inbound) {
                 (None, None) => (
                     region[rng.random_range(0..region.len())],

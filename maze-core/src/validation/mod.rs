@@ -1,6 +1,6 @@
-use std::collections::{HashSet, VecDeque};
-use crate::ids::NodeId;
 use crate::graph::Graph;
+use crate::ids::NodeId;
+use std::collections::{HashSet, VecDeque};
 
 // BFS over the union of outgoing and incoming edges — correct for both
 // fully bidirectional mazes and graphs with one-way edges.
@@ -16,7 +16,10 @@ pub fn is_connected(graph: &Graph, start: NodeId) -> bool {
     queue.push_back(start);
 
     while let Some(current) = queue.pop_front() {
-        for neighbor in graph.outgoing_neighbors(current).chain(graph.incoming_neighbors(current)) {
+        for neighbor in graph
+            .outgoing_neighbors(current)
+            .chain(graph.incoming_neighbors(current))
+        {
             if visited.insert(neighbor) {
                 queue.push_back(neighbor);
             }

@@ -1,14 +1,17 @@
-#[path = "qc_wire.rs"]
-mod qc_wire;
 #[path = "event_encode.rs"]
 mod event_encode;
+#[path = "qc_wire.rs"]
+mod qc_wire;
 
-use crate::ids::NodeId;
-use crate::repair::command::SplitNodeEdge;
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
 use super::issue_payload::IssuePayload;
-pub(crate) use event_encode::{write_check_issue, write_details_map, write_issue_kind, write_issue_payload, write_repair_limit_kind, write_split_nodes};
+use crate::ids::NodeId;
+use crate::repair::command::SplitNodeEdge;
+pub(crate) use event_encode::{
+    write_check_issue, write_details_map, write_issue_kind, write_issue_payload,
+    write_repair_limit_kind, write_split_nodes,
+};
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
 /// `Specs/quality_control.md` for `Stage`/`Rule`/`QualityControlEngine`'s own structure and
@@ -45,7 +48,11 @@ pub enum QcEvent {
     CheckRan {
         check_id: String,
         #[wire(custom = "CheckIssueCodec")]
-        issue: Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)>,
+        issue: Option<(
+            IssueKind,
+            IssuePayload,
+            std::collections::HashMap<&'static str, String>,
+        )>,
     },
     /// Two or more of a rule's checks each found an issue of the same `kind` this iteration, and
     /// `IssueMerge::merge` folded them into one — emitted once per rule iteration, only when a
@@ -136,7 +143,12 @@ pub enum QcEvent {
     /// the `i`th new node's own edges, `nodes[0]` becoming the new slot-0) before any new node
     /// itself exists (there is no id to carry yet, unlike `NodeRemoveProposed`).
     #[wire(tag = 44)]
-    PointNodesReplaceProposed { at: NodeId, old_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaceProposed {
+        at: NodeId,
+        old_nodes: Vec<NodeId>,
+        #[wire(custom = "SplitNodeEdgesCodec")]
+        nodes: Vec<Vec<SplitNodeEdge>>,
+    },
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
@@ -173,16 +185,28 @@ pub enum QcEvent {
     /// clearing `(to,from)` too would fabricate a phantom removed-edge entry when the reverse was
     /// never real.
     #[wire(tag = 35, mutating)]
-    EdgeRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
+    EdgeRemovedWithReverse {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` — see `EdgeRemovedWithReverse`'s own doc comment, same
     /// rationale, sourced from `try_remove_teleport_with_reverse`'s `Vec<EdgeId>` length instead.
     #[wire(tag = 12, mutating)]
-    TeleportRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
+    TeleportRemovedWithReverse {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemovedWithReverse`'s doc comment.
     /// See GitHub issue #343.
     #[wire(tag = 50, mutating)]
-    VerticalPassageRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
+    VerticalPassageRemovedWithReverse {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     #[wire(tag = 13, mutating, name = "id")]
     StartSet(NodeId),
     #[wire(tag = 14, mutating, name = "id")]
@@ -197,7 +221,13 @@ pub enum QcEvent {
     /// apply time, unlike every other mutating variant's identity, which is always resolved from
     /// state that already existed before the command ran).
     #[wire(tag = 42, mutating)]
-    PointNodesReplaced { at: NodeId, old_nodes: Vec<NodeId>, new_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaced {
+        at: NodeId,
+        old_nodes: Vec<NodeId>,
+        new_nodes: Vec<NodeId>,
+        #[wire(custom = "SplitNodeEdgesCodec")]
+        nodes: Vec<Vec<SplitNodeEdge>>,
+    },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -231,16 +261,28 @@ pub enum QcEvent {
     /// mutating mirror `EdgeRemovedWithReverse` — see that type's own doc comment for why the
     /// field exists at all.
     #[wire(tag = 36)]
-    EdgeRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
+    EdgeRemoveWithReverseDeclined {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` — same "always `false`, carried for field-shape symmetry" note
     /// as `EdgeRemoveWithReverseDeclined`'s own doc comment.
     #[wire(tag = 21)]
-    TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
+    TeleportRemoveWithReverseDeclined {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseDeclined`'s doc
     /// comment. See GitHub issue #343.
     #[wire(tag = 53)]
-    VerticalPassageRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
+    VerticalPassageRemoveWithReverseDeclined {
+        from: NodeId,
+        to: NodeId,
+        reverse_removed: bool,
+    },
     #[wire(tag = 22, name = "id")]
     StartSetDeclined(NodeId),
     #[wire(tag = 23, name = "id")]
@@ -255,9 +297,13 @@ pub enum QcEvent {
     /// preset-feasible by the time `apply_commands` ran). No node was replaced at all — `old_nodes`
     /// is empty when `at`'s point itself no longer resolves (there was nothing to report).
     #[wire(tag = 43)]
-    PointNodesReplaceDeclined { at: NodeId, old_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaceDeclined {
+        at: NodeId,
+        old_nodes: Vec<NodeId>,
+        #[wire(custom = "SplitNodeEdgesCodec")]
+        nodes: Vec<Vec<SplitNodeEdge>>,
+    },
 }
-
 
 #[cfg(test)]
 #[path = "event_tests.rs"]

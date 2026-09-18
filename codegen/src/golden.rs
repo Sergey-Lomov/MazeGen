@@ -49,8 +49,14 @@ fn golden_for_variant(enum_name: &str, v: &crate::schema::Variant) -> Option<Gol
             Some(GoldenEntry {
                 variant_name: v.name.clone(),
                 rust_construct_expr: format!("{enum_name}::{}({})", v.name, ex.rust_lit),
-                example_value_json: format!("{{\"kind\":\"{}\",\"{}\":{}}}", v.name, field.name, ex.json_lit),
-                example_value_ts: format!("{{ kind: \"{}\", {}: {} }}", v.name, field_camel, ex.ts_lit),
+                example_value_json: format!(
+                    "{{\"kind\":\"{}\",\"{}\":{}}}",
+                    v.name, field.name, ex.json_lit
+                ),
+                example_value_ts: format!(
+                    "{{ kind: \"{}\", {}: {} }}",
+                    v.name, field_camel, ex.ts_lit
+                ),
                 expected_bytes: ex.bytes,
             })
         }
@@ -58,7 +64,11 @@ fn golden_for_variant(enum_name: &str, v: &crate::schema::Variant) -> Option<Gol
     }
 }
 
-fn golden_for_struct(enum_name: &str, v: &crate::schema::Variant, fields: &[Field]) -> Option<GoldenEntry> {
+fn golden_for_struct(
+    enum_name: &str,
+    v: &crate::schema::Variant,
+    fields: &[Field],
+) -> Option<GoldenEntry> {
     let mut bytes = Vec::new();
     let mut rust_fields = Vec::new();
     let mut json_fields = Vec::new();
@@ -92,17 +102,44 @@ struct FieldExample {
 /// Deterministic example value — wire bytes plus Rust/JSON/TS literal forms — for standard types
 /// only. `None` for `FieldType::Custom` (see module doc).
 fn example_for(ty: &FieldType) -> Option<FieldExample> {
-    let FieldType::Standard(t) = ty else { return None };
+    let FieldType::Standard(t) = ty else {
+        return None;
+    };
     Some(match *t {
-        "NodeId" | "u64" => FieldExample { bytes: 7u64.to_le_bytes().to_vec(), rust_lit: "7".into(), json_lit: "7".into(), ts_lit: "7n".into() },
-        "u32" | "usize" => FieldExample { bytes: 7u32.to_le_bytes().to_vec(), rust_lit: "7".into(), json_lit: "7".into(), ts_lit: "7".into() },
-        "f64" => FieldExample { bytes: 1.5f64.to_le_bytes().to_vec(), rust_lit: "1.5".into(), json_lit: "1.5".into(), ts_lit: "1.5".into() },
-        "bool" => FieldExample { bytes: vec![1u8], rust_lit: "true".into(), json_lit: "true".into(), ts_lit: "true".into() },
+        "NodeId" | "u64" => FieldExample {
+            bytes: 7u64.to_le_bytes().to_vec(),
+            rust_lit: "7".into(),
+            json_lit: "7".into(),
+            ts_lit: "7n".into(),
+        },
+        "u32" | "usize" => FieldExample {
+            bytes: 7u32.to_le_bytes().to_vec(),
+            rust_lit: "7".into(),
+            json_lit: "7".into(),
+            ts_lit: "7".into(),
+        },
+        "f64" => FieldExample {
+            bytes: 1.5f64.to_le_bytes().to_vec(),
+            rust_lit: "1.5".into(),
+            json_lit: "1.5".into(),
+            ts_lit: "1.5".into(),
+        },
+        "bool" => FieldExample {
+            bytes: vec![1u8],
+            rust_lit: "true".into(),
+            json_lit: "true".into(),
+            ts_lit: "true".into(),
+        },
         "String" => {
             let s = "x";
             let mut b = (s.len() as u32).to_le_bytes().to_vec();
             b.extend(s.as_bytes());
-            FieldExample { bytes: b, rust_lit: "\"x\".to_string()".into(), json_lit: "\"x\"".into(), ts_lit: "\"x\"".into() }
+            FieldExample {
+                bytes: b,
+                rust_lit: "\"x\".to_string()".into(),
+                json_lit: "\"x\"".into(),
+                ts_lit: "\"x\"".into(),
+            }
         }
         "Vec<NodeId>" => {
             let ids = [3u64, 5u64];
@@ -110,7 +147,12 @@ fn example_for(ty: &FieldType) -> Option<FieldExample> {
             for id in ids {
                 b.extend(id.to_le_bytes());
             }
-            FieldExample { bytes: b, rust_lit: "vec![3, 5]".into(), json_lit: "[3,5]".into(), ts_lit: "[3n, 5n]".into() }
+            FieldExample {
+                bytes: b,
+                rust_lit: "vec![3, 5]".into(),
+                json_lit: "[3,5]".into(),
+                ts_lit: "[3n, 5n]".into(),
+            }
         }
         "Vec<f64>" => {
             let vals = [1.0f64];
@@ -118,17 +160,32 @@ fn example_for(ty: &FieldType) -> Option<FieldExample> {
             for v in vals {
                 b.extend(v.to_le_bytes());
             }
-            FieldExample { bytes: b, rust_lit: "vec![1.0]".into(), json_lit: "[1]".into(), ts_lit: "[1]".into() }
+            FieldExample {
+                bytes: b,
+                rust_lit: "vec![1.0]".into(),
+                json_lit: "[1]".into(),
+                ts_lit: "[1]".into(),
+            }
         }
         "Option<NodeId>" => {
             let mut b = vec![1u8];
             b.extend(9u64.to_le_bytes());
-            FieldExample { bytes: b, rust_lit: "Some(9)".into(), json_lit: "9".into(), ts_lit: "9n".into() }
+            FieldExample {
+                bytes: b,
+                rust_lit: "Some(9)".into(),
+                json_lit: "9".into(),
+                ts_lit: "9n".into(),
+            }
         }
         "Option<usize>" => {
             let mut b = vec![1u8];
             b.extend(9u32.to_le_bytes());
-            FieldExample { bytes: b, rust_lit: "Some(9)".into(), json_lit: "9".into(), ts_lit: "9".into() }
+            FieldExample {
+                bytes: b,
+                rust_lit: "Some(9)".into(),
+                json_lit: "9".into(),
+                ts_lit: "9".into(),
+            }
         }
         _ => return None,
     })
@@ -169,11 +226,30 @@ mod tests {
     fn generate_golden_skips_variants_with_a_custom_field() {
         let source = EventSource {
             enum_name: "TestEvent".to_string(),
-            location: SourceLocation { rust_file: "test.rs".to_string(), stem: "test".to_string() },
+            location: SourceLocation {
+                rust_file: "test.rs".to_string(),
+                stem: "test".to_string(),
+            },
             mutating_mode: MutatingMode::PerVariant,
             variants: vec![
-                Variant { name: "Standard".to_string(), tag: 1, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "id".to_string(), ty: FieldType::Standard("NodeId") }) },
-                Variant { name: "Custom".to_string(), tag: 2, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "value".to_string(), ty: FieldType::Custom("IssuePayloadCodec".to_string()) }) },
+                Variant {
+                    name: "Standard".to_string(),
+                    tag: 1,
+                    mutating: false,
+                    shape: VariantShape::NewtypeTuple(Field {
+                        name: "id".to_string(),
+                        ty: FieldType::Standard("NodeId"),
+                    }),
+                },
+                Variant {
+                    name: "Custom".to_string(),
+                    tag: 2,
+                    mutating: false,
+                    shape: VariantShape::NewtypeTuple(Field {
+                        name: "value".to_string(),
+                        ty: FieldType::Custom("IssuePayloadCodec".to_string()),
+                    }),
+                },
             ],
         };
         let entries = generate_golden(&source);

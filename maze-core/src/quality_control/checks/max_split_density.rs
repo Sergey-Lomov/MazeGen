@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::{LevelId, Tessellation};
 use crate::graph::cycles::density_per_100;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes, FloorScope};
 use crate::quality_control::floor_group::floor_point_count;
+use crate::quality_control::{FloorScope, InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const MAX_SPLIT_DENSITY_DEFAULT: f64 = 30.0;
 pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
@@ -24,15 +24,29 @@ pub struct MaxSplitDensityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCheck {
-    fn check_type_id(&self) -> &'static str { "max_split_density" }
+    fn check_type_id(&self) -> &'static str {
+        "max_split_density"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitTileGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<(LevelId, SplitTileNodes)> = maze.field.all_points_with_level()
+        let tiles: Vec<(LevelId, SplitTileNodes)> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { None } else { Some((level, SplitTileNodes::new(nodes.to_vec()))) }
+                if nodes.len() < 2 {
+                    None
+                } else {
+                    Some((level, SplitTileNodes::new(nodes.to_vec())))
+                }
             })
             .collect();
 
@@ -75,20 +89,32 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
                 for (level, tile) in tiles {
                     tiles_by_level.entry(level).or_default().push(tile);
                 }
-                let groups: Vec<(Vec<SplitTileNodes>, u32)> = over_budget.into_iter()
+                let groups: Vec<(Vec<SplitTileNodes>, u32)> = over_budget
+                    .into_iter()
                     .filter_map(|(level, to_remove)| {
-                        tiles_by_level.remove(&level).map(|tiles| (tiles, to_remove))
+                        tiles_by_level
+                            .remove(&level)
+                            .map(|tiles| (tiles, to_remove))
                     })
                     .collect();
                 let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, groups)
-                    .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
+                    .with_detail(
+                        &self.instance_id,
+                        "max_density",
+                        self.max_density.to_string(),
+                    );
                 issues.push(issue);
                 return;
             }
         };
 
-        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
-            .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
+        let issue =
+            InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
+                .with_detail(
+                    &self.instance_id,
+                    "max_density",
+                    self.max_density.to_string(),
+                );
         issues.push(issue);
     }
 }
@@ -112,10 +138,10 @@ impl MaxSplitDensityCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::quality_control::Issue;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "max_split_density";
 
@@ -126,13 +152,16 @@ mod tests {
     /// 10 field cells, `count` of them carrying a split tile (one extra node each).
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for x in 0..count as i32 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -140,14 +169,24 @@ mod tests {
     fn fires_and_flags_every_split_tile_when_density_exceeds_max() {
         // 3 split tiles / 10 cells = 30% density.
         let maze = maze_with_split_tiles(3);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 20.0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].groups[0].0.len(), 3);
-        assert_eq!(issues[0].groups[0].1, 1, "collapsing 1 tile brings density to 20%, at the max");
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_density")),
+            issues[0].groups[0].1, 1,
+            "collapsing 1 tile brings density to 20%, at the max"
+        );
+        assert_eq!(
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("max_density")),
             Some(&"20".to_string()),
         );
     }
@@ -155,16 +194,27 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_split_tiles(2);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 20.0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "20% density must not fire against a max of 20");
+        assert!(
+            issues.is_empty(),
+            "20% density must not fire against a max of 20"
+        );
     }
 
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0.0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 0.0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -175,13 +225,16 @@ mod tests {
     /// rounding step.
     fn maze_with_300_of_1000_split_tiles() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for x in 0..300 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -191,25 +244,48 @@ mod tests {
         // must fire (density exceeds it fractionally) -- pins that the gate compares the true
         // density, not one rounded to a whole percentage first.
         let maze = maze_with_300_of_1000_split_tiles();
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.1, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 30.1,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "30% density must not exceed a fractional maximum of 30.1");
+        assert!(
+            issues.is_empty(),
+            "30% density must not exceed a fractional maximum of 30.1"
+        );
 
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 29.9, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 29.9,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "30% density must exceed a fractional maximum of 29.9");
-        assert_eq!(issues[0].groups[0].1, 1, "target_count=round(29.9*1000/100)=299, to_remove=300-299=1");
+        assert_eq!(
+            issues.len(),
+            1,
+            "30% density must exceed a fractional maximum of 29.9"
+        );
+        assert_eq!(
+            issues[0].groups[0].1, 1,
+            "target_count=round(29.9*1000/100)=299, to_remove=300-299=1"
+        );
     }
 
     /// Each floor is 10 field cells; `bottom_count`/`top_count` of them carry a split tile.
-    fn maze_with_split_tiles_on_two_floors(bottom_count: usize, top_count: usize) -> Maze<SquareTessellation> {
+    fn maze_with_split_tiles_on_two_floors(
+        bottom_count: usize,
+        top_count: usize,
+    ) -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
         for x in 0..bottom_count as i32 {
             mf.add_node_at(bottom, SquarePoint { x, y: 0 }, &mut ids);
         }
@@ -217,7 +293,9 @@ mod tests {
             mf.add_node_at(top, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(mf, g)
     }
 
@@ -225,16 +303,30 @@ mod tests {
     fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
         // Bottom: 3/10 = 30% density (to_remove 1 to reach 20%). Top: 4/10 = 40% (to_remove 2).
         let maze = maze_with_split_tiles_on_two_floors(3, 4);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::PerFloor };
+        let check = MaxSplitDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 20.0,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         let mut groups = issues[0].groups.clone();
         groups.sort_by_key(|(g, _)| g.len());
-        assert_eq!(groups.len(), 2, "each over-budget floor must get its own independent group");
+        assert_eq!(
+            groups.len(),
+            2,
+            "each over-budget floor must get its own independent group"
+        );
         assert_eq!(groups[0].0.len(), 3, "bottom floor's own tiles only");
-        assert_eq!(groups[0].1, 1, "bottom floor's own to_remove, not the max across floors");
+        assert_eq!(
+            groups[0].1, 1,
+            "bottom floor's own to_remove, not the max across floors"
+        );
         assert_eq!(groups[1].0.len(), 4, "top floor's own tiles only");
-        assert_eq!(groups[1].1, 2, "top floor's own to_remove, not the max across floors");
+        assert_eq!(
+            groups[1].1, 2,
+            "top floor's own to_remove, not the max across floors"
+        );
     }
 }

@@ -1,18 +1,22 @@
-use rand::{Rng, RngCore};
-use rand::seq::IteratorRandom;
-use std::collections::{HashMap, HashSet};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::scc::{ComponentId, ConnectedComponents};
-use crate::space::Tessellation;
-use crate::quality_control::RegionNeedsExpansionIssue;
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams, StrategyParamValue, PriorityLevel};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
+use crate::graph::scc::{ComponentId, ConnectedComponents};
+use crate::ids::NodeId;
+use crate::quality_control::RegionNeedsExpansionIssue;
+use crate::quality_control::checks::elevator_core::{Elevator, elevator_groups};
 use crate::repair::command::MutationCommand;
-use crate::repair::strategies::region_merge_core::{self, PARAM_TARGET_MODE, MODE_OPTIONS, MODE_RANDOM};
-use crate::quality_control::checks::elevator_core::{elevator_groups, Elevator};
+use crate::repair::params::{
+    PriorityLevel, StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams,
+};
+use crate::repair::result::RepairResult;
+use crate::repair::strategies::region_merge_core::{
+    self, MODE_OPTIONS, MODE_RANDOM, PARAM_TARGET_MODE,
+};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::seq::IteratorRandom;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 mod tests;
@@ -23,12 +27,17 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_TARGET_MODE,
         label: "Target selection mode",
-        kind: StrategyParamKind::Enum { options: MODE_OPTIONS, default: MODE_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: MODE_OPTIONS,
+            default: MODE_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_USE_EXISTING_ELEVATORS,
         label: "Use existing elevators",
-        kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
+        kind: StrategyParamKind::Priority {
+            default: PriorityLevel::Indifferent,
+        },
     },
 ];
 
@@ -65,7 +74,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct ElevatorRegionMergeStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorRegionMergeStrategy {
-    fn strategy_id(&self) -> &'static str { "elevator_region_merge" }
+    fn strategy_id(&self) -> &'static str {
+        "elevator_region_merge"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -89,7 +100,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => MODE_RANDOM,
         };
-        let use_existing = params.get(PARAM_USE_EXISTING_ELEVATORS).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
+        let use_existing = params
+            .get(PARAM_USE_EXISTING_ELEVATORS)
+            .and_then(|v| v.as_priority())
+            .unwrap_or(PriorityLevel::Indifferent);
 
         // One fixed snapshot for the whole apply() call — same immutable-snapshot contract every
         // other region-merge strategy follows (`Specs/repair.md`).
@@ -112,7 +126,8 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
         let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
             let region = scc.components.get(region_idx)?;
             let region_root = planned_union.find(region_idx);
-            let candidates = discover_target_candidates(region, region_root, &scc, &mut planned_union, maze);
+            let candidates =
+                discover_target_candidates(region, region_root, &scc, &mut planned_union, maze);
             if candidates.is_empty() {
                 return None;
             }
@@ -124,7 +139,17 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ElevatorR
 
             let target_region = scc.components.get(chosen).map(Vec::as_slice).unwrap_or(&[]);
             let before = commands.len();
-            let applied = try_merge_via_elevator(maze, region, target_region, shared_points, use_existing, preset_state, rng, &planned, &mut commands);
+            let applied = try_merge_via_elevator(
+                maze,
+                region,
+                target_region,
+                shared_points,
+                use_existing,
+                preset_state,
+                rng,
+                &planned,
+                &mut commands,
+            );
             for cmd in &commands[before..] {
                 if let MutationCommand::AddBidirectionalElevator { a, b } = *cmd {
                     planned.push((a, b));
@@ -170,14 +195,22 @@ fn discover_target_candidates<T: Tessellation>(
     let mut by_component: HashMap<ComponentId, HashSet<T::Point>> = HashMap::new();
 
     for &node in region {
-        let Some(point) = maze.field.point_of(node) else { continue };
-        let Some(own_level) = maze.field.level_of(node) else { continue };
+        let Some(point) = maze.field.point_of(node) else {
+            continue;
+        };
+        let Some(own_level) = maze.field.level_of(node) else {
+            continue;
+        };
         for &level in &levels {
             if level == own_level {
                 continue;
             }
-            let Some(target_node) = maze.field.node_at(level, point) else { continue };
-            let Some(target_idx) = scc.component_of(target_node) else { continue };
+            let Some(target_node) = maze.field.node_at(level, point) else {
+                continue;
+            };
+            let Some(target_idx) = scc.component_of(target_node) else {
+                continue;
+            };
             if planned_union.find(target_idx) == region_root {
                 continue;
             }
@@ -197,7 +230,9 @@ struct PlannedUnion {
 
 impl PlannedUnion {
     fn new(scc: &ConnectedComponents) -> Self {
-        Self { parent: (0..scc.components.len()).collect() }
+        Self {
+            parent: (0..scc.components.len()).collect(),
+        }
     }
 
     fn find(&mut self, id: ComponentId) -> ComponentId {
@@ -245,11 +280,49 @@ fn try_merge_via_elevator<T: Tessellation>(
     let allow_new = !matches!(use_existing, PriorityLevel::Required);
 
     if existing_first {
-        (allow_existing && try_reuse_existing_elevator(maze, &region_set, &target_set, target_points, preset_state, rng, planned, commands))
-            || (allow_new && try_build_new_elevator(maze, &region_set, &target_set, target_points, preset_state, rng, commands))
+        (allow_existing
+            && try_reuse_existing_elevator(
+                maze,
+                &region_set,
+                &target_set,
+                target_points,
+                preset_state,
+                rng,
+                planned,
+                commands,
+            ))
+            || (allow_new
+                && try_build_new_elevator(
+                    maze,
+                    &region_set,
+                    &target_set,
+                    target_points,
+                    preset_state,
+                    rng,
+                    commands,
+                ))
     } else {
-        (allow_new && try_build_new_elevator(maze, &region_set, &target_set, target_points, preset_state, rng, commands))
-            || (allow_existing && try_reuse_existing_elevator(maze, &region_set, &target_set, target_points, preset_state, rng, planned, commands))
+        (allow_new
+            && try_build_new_elevator(
+                maze,
+                &region_set,
+                &target_set,
+                target_points,
+                preset_state,
+                rng,
+                commands,
+            ))
+            || (allow_existing
+                && try_reuse_existing_elevator(
+                    maze,
+                    &region_set,
+                    &target_set,
+                    target_points,
+                    preset_state,
+                    rng,
+                    planned,
+                    commands,
+                ))
     }
 }
 
@@ -277,8 +350,13 @@ fn try_reuse_existing_elevator<T: Tessellation>(
     commands: &mut Vec<MutationCommand>,
 ) -> bool {
     let elevators = elevator_groups_with_planned(maze, planned);
-    let mut candidates: Vec<&Elevator> = elevators.iter()
-        .filter(|e| e.stops.iter().any(|&s| region_set.contains(&s) || target_set.contains(&s)))
+    let mut candidates: Vec<&Elevator> = elevators
+        .iter()
+        .filter(|e| {
+            e.stops
+                .iter()
+                .any(|&s| region_set.contains(&s) || target_set.contains(&s))
+        })
         .collect();
     // `elevator_groups_with_planned` walks a `HashMap`'s keys, so its output order isn't stable
     // across runs -- sorted here (by each elevator's own already-sorted `stops`) before the
@@ -299,7 +377,10 @@ fn try_reuse_existing_elevator<T: Tessellation>(
 
         // An elevator is a single vertical shaft at one fixed field point -- every stop must sit
         // at that same point (`elevator_point`), never merely somewhere in `target_points`.
-        let Some(elevator_point) = elevator.stops.first().and_then(|&s| maze.field.point_of(s)) else { continue };
+        let Some(elevator_point) = elevator.stops.first().and_then(|&s| maze.field.point_of(s))
+        else {
+            continue;
+        };
         if !target_points.contains(&elevator_point) {
             continue;
         }
@@ -308,15 +389,25 @@ fn try_reuse_existing_elevator<T: Tessellation>(
         // (and vice versa) -- placed on the elevator's own point, the only point the new stop can
         // legally join the shaft at.
         let need_region_side = !has_region_stop;
-        let mut candidate_nodes: Vec<NodeId> = maze.field.levels_ordered()
+        let mut candidate_nodes: Vec<NodeId> = maze
+            .field
+            .levels_ordered()
             .filter_map(|level| maze.field.node_at(level, elevator_point))
             .filter(|n| !elevator.stops.contains(n))
-            .filter(|n| if need_region_side { region_set.contains(n) } else { target_set.contains(n) })
+            .filter(|n| {
+                if need_region_side {
+                    region_set.contains(n)
+                } else {
+                    target_set.contains(n)
+                }
+            })
             .collect();
         candidate_nodes.sort_unstable();
 
         if let Some(&new_stop) = candidate_nodes.iter().choose(rng) {
-            if let Some(cmds) = add_stop_command_checked(maze, elevator, new_stop, preset_state, planned) {
+            if let Some(cmds) =
+                add_stop_command_checked(maze, elevator, new_stop, preset_state, planned)
+            {
                 commands.extend(cmds);
                 return true;
             }
@@ -338,17 +429,31 @@ fn add_stop_command_checked<T: Tessellation>(
     planned: &[(NodeId, NodeId)],
 ) -> Option<Vec<MutationCommand>> {
     for &stop in &elevator.stops {
-        if maze.graph.edge_between(stop, new_stop).is_some() || maze.graph.edge_between(new_stop, stop).is_some() {
+        if maze.graph.edge_between(stop, new_stop).is_some()
+            || maze.graph.edge_between(new_stop, stop).is_some()
+        {
             return None;
         }
-        if planned.iter().any(|&(a, b)| (a == stop && b == new_stop) || (a == new_stop && b == stop)) {
+        if planned
+            .iter()
+            .any(|&(a, b)| (a == stop && b == new_stop) || (a == new_stop && b == stop))
+        {
             return None;
         }
         if !crate::generation::bidirectional_edge_feasible(preset_state, stop, new_stop) {
             return None;
         }
     }
-    Some(elevator.stops.iter().map(|&stop| MutationCommand::AddBidirectionalElevator { a: stop, b: new_stop }).collect())
+    Some(
+        elevator
+            .stops
+            .iter()
+            .map(|&stop| MutationCommand::AddBidirectionalElevator {
+                a: stop,
+                b: new_stop,
+            })
+            .collect(),
+    )
 }
 
 /// Builds a brand-new 2-stop elevator on a random shared point: one stop on the region's own floor,
@@ -371,31 +476,50 @@ fn try_build_new_elevator<T: Tessellation>(
     // `HashSet`, whose iteration order isn't stable across runs/hasher states, so sorting first
     // keeps `apply()` deterministic for a fixed seed regardless of that (see the matching fix in
     // `try_reuse_existing_elevator` for the full GitHub issue #431 follow-up rationale).
-    let mut region_points: Vec<(NodeId, T::Point)> = target_points.iter()
-        .filter_map(|&point| region_set.iter().find(|&&n| maze.field.point_of(n) == Some(point)).map(|&n| (n, point)))
+    let mut region_points: Vec<(NodeId, T::Point)> = target_points
+        .iter()
+        .filter_map(|&point| {
+            region_set
+                .iter()
+                .find(|&&n| maze.field.point_of(n) == Some(point))
+                .map(|&n| (n, point))
+        })
         .collect();
     region_points.sort_unstable_by_key(|&(n, _)| n);
     use rand::seq::SliceRandom;
     region_points.shuffle(rng);
 
     for (region_node, point) in region_points {
-        let Some(region_level) = maze.field.level_of(region_node) else { continue };
+        let Some(region_level) = maze.field.level_of(region_node) else {
+            continue;
+        };
 
         for level in maze.field.levels_ordered() {
             if level == region_level {
                 continue;
             }
-            let Some(target_node) = maze.field.node_at(level, point) else { continue };
+            let Some(target_node) = maze.field.node_at(level, point) else {
+                continue;
+            };
             if !target_set.contains(&target_node) {
                 continue;
             }
-            if maze.graph.edge_between(region_node, target_node).is_some() || maze.graph.edge_between(target_node, region_node).is_some() {
+            if maze.graph.edge_between(region_node, target_node).is_some()
+                || maze.graph.edge_between(target_node, region_node).is_some()
+            {
                 continue;
             }
-            if !crate::generation::bidirectional_edge_feasible(preset_state, region_node, target_node) {
+            if !crate::generation::bidirectional_edge_feasible(
+                preset_state,
+                region_node,
+                target_node,
+            ) {
                 continue;
             }
-            commands.push(MutationCommand::AddBidirectionalElevator { a: region_node, b: target_node });
+            commands.push(MutationCommand::AddBidirectionalElevator {
+                a: region_node,
+                b: target_node,
+            });
             return true;
         }
     }
@@ -407,7 +531,10 @@ fn try_build_new_elevator<T: Tessellation>(
 /// (`planned`) — mirrors `add_elevator_stop::groups_with_planned` so an elevator built moments ago
 /// in this same call is still visible to the reuse branch, not just what's already committed to
 /// `maze`.
-fn elevator_groups_with_planned<T: Tessellation>(maze: &Maze<T>, planned: &[(NodeId, NodeId)]) -> Vec<Elevator> {
+fn elevator_groups_with_planned<T: Tessellation>(
+    maze: &Maze<T>,
+    planned: &[(NodeId, NodeId)],
+) -> Vec<Elevator> {
     if planned.is_empty() {
         return elevator_groups(maze);
     }
@@ -448,7 +575,10 @@ fn elevator_groups_with_planned<T: Tessellation>(maze: &Maze<T>, planned: &[(Nod
         }
         let mut stops: Vec<NodeId> = component.into_iter().collect();
         stops.sort_unstable();
-        groups.push(Elevator { stops, edges: Vec::new() });
+        groups.push(Elevator {
+            stops,
+            edges: Vec::new(),
+        });
     }
     groups
 }

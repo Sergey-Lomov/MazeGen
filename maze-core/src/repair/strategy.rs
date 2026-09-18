@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use rand::RngCore;
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueKind, IssueRequirement};
-use crate::generation::PresetState;
+use super::command::MutationCommand;
 use super::params::{StrategyParam, StrategyParams};
 use super::result::RepairResult;
-use super::command::MutationCommand;
+use crate::Maze;
+use crate::generation::PresetState;
+use crate::quality_control::{Issue, IssueKind, IssueRequirement};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
 /// synthetic issue the parent builds for it will carry, and how many strategies may fill this

@@ -1,5 +1,7 @@
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKind, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP};
+use crate::quality_control::issue::{
+    INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, IssueKind,
+};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
@@ -31,7 +33,8 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidElevatorStopGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let mut a =
+            InvalidElevatorStopGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
         let b = InvalidElevatorStopGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
@@ -40,10 +43,15 @@ mod tests {
 
     #[test]
     fn merge_deduplicates_identical_group() {
-        let mut a = InvalidElevatorStopGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let mut a =
+            InvalidElevatorStopGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
         let b = InvalidElevatorStopGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 1)],
+            "the same group flagged by both checks must not be duplicated"
+        );
     }
 }

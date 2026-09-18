@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes, FloorScope};
+use crate::quality_control::{FloorScope, InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const MAX_SPLIT_COUNT_DEFAULT: u32 = 20;
 pub const MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
@@ -23,15 +23,29 @@ pub struct MaxSplitCountCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountCheck {
-    fn check_type_id(&self) -> &'static str { "max_split_count" }
+    fn check_type_id(&self) -> &'static str {
+        "max_split_count"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitTileGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<(LevelId, SplitTileNodes)> = maze.field.all_points_with_level()
+        let tiles: Vec<(LevelId, SplitTileNodes)> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { None } else { Some((level, SplitTileNodes::new(nodes.to_vec()))) }
+                if nodes.len() < 2 {
+                    None
+                } else {
+                    Some((level, SplitTileNodes::new(nodes.to_vec())))
+                }
             })
             .collect();
 
@@ -62,25 +76,40 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountChec
                 for (level, tile) in tiles {
                     tiles_by_level.entry(level).or_default().push(tile);
                 }
-                let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = per_floor_count.into_iter()
+                let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = per_floor_count
+                    .into_iter()
                     .filter(|&(_, count)| count > self.max_split_count)
                     .filter_map(|(level, count)| {
                         let to_remove = count - self.max_split_count;
-                        tiles_by_level.remove(&level).map(|tiles| (tiles, to_remove))
+                        tiles_by_level
+                            .remove(&level)
+                            .map(|tiles| (tiles, to_remove))
                     })
                     .collect();
                 if groups.is_empty() {
                     return;
                 }
-                let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, std::mem::take(&mut groups))
-                    .with_detail(&self.instance_id, "max_split_count", self.max_split_count.to_string());
+                let issue = InvalidSplitTileGroupIssue::new_from_check(
+                    &self.instance_id,
+                    std::mem::take(&mut groups),
+                )
+                .with_detail(
+                    &self.instance_id,
+                    "max_split_count",
+                    self.max_split_count.to_string(),
+                );
                 issues.push(issue);
                 return;
             }
         };
 
-        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
-            .with_detail(&self.instance_id, "max_split_count", self.max_split_count.to_string());
+        let issue =
+            InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
+                .with_detail(
+                    &self.instance_id,
+                    "max_split_count",
+                    self.max_split_count.to_string(),
+                );
         issues.push(issue);
     }
 }
@@ -88,10 +117,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountChec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::quality_control::Issue;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "max_split_count";
 
@@ -101,28 +130,45 @@ mod tests {
 
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(count.max(1) + 1, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(count.max(1) + 1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for x in 0..count as i32 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
     #[test]
     fn fires_and_flags_every_split_tile_when_count_exceeds_max() {
         let maze = maze_with_split_tiles(3);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 1, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitCountCheck {
+            instance_id: TEST_ID.to_string(),
+            max_split_count: 1,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].groups.len(), 1);
-        assert_eq!(issues[0].groups[0].0.len(), 3, "every split tile must be offered to the repair strategy");
-        assert_eq!(issues[0].groups[0].1, 2, "to_remove must equal the excess tile count over the max");
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_split_count")),
+            issues[0].groups[0].0.len(),
+            3,
+            "every split tile must be offered to the repair strategy"
+        );
+        assert_eq!(
+            issues[0].groups[0].1, 2,
+            "to_remove must equal the excess tile count over the max"
+        );
+        assert_eq!(
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("max_split_count")),
             Some(&"1".to_string()),
         );
     }
@@ -130,7 +176,11 @@ mod tests {
     #[test]
     fn silent_when_count_at_or_below_max() {
         let maze = maze_with_split_tiles(2);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 2, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitCountCheck {
+            instance_id: TEST_ID.to_string(),
+            max_split_count: 2,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "count equal to the max must not fire");
@@ -139,18 +189,31 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitCountCheck {
+            instance_id: TEST_ID.to_string(),
+            max_split_count: 0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
     }
 
-    fn maze_with_split_tiles_on_two_floors(bottom_count: usize, top_count: usize) -> Maze<SquareTessellation> {
+    fn maze_with_split_tiles_on_two_floors(
+        bottom_count: usize,
+        top_count: usize,
+    ) -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(bottom_count.max(1) + 1, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(top_count.max(1) + 1, 1), &mut ids).unwrap());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(square_rect(bottom_count.max(1) + 1, 1), &mut ids)
+                .unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(square_rect(top_count.max(1) + 1, 1), &mut ids)
+                .unwrap(),
+        );
         for x in 0..bottom_count as i32 {
             mf.add_node_at(bottom, SquarePoint { x, y: 0 }, &mut ids);
         }
@@ -158,7 +221,9 @@ mod tests {
             mf.add_node_at(top, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(mf, g)
     }
 
@@ -166,16 +231,30 @@ mod tests {
     fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_excess() {
         // Bottom floor: 3 split tiles (excess 2 over max 1). Top floor: 2 split tiles (excess 1).
         let maze = maze_with_split_tiles_on_two_floors(3, 2);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 1, floor_scope: FloorScope::PerFloor };
+        let check = MaxSplitCountCheck {
+            instance_id: TEST_ID.to_string(),
+            max_split_count: 1,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         let mut groups = issues[0].groups.clone();
         groups.sort_by_key(|(g, _)| g.len());
-        assert_eq!(groups.len(), 2, "each over-budget floor must get its own independent group");
+        assert_eq!(
+            groups.len(),
+            2,
+            "each over-budget floor must get its own independent group"
+        );
         assert_eq!(groups[0].0.len(), 2, "top floor's own tiles only");
-        assert_eq!(groups[0].1, 1, "top floor's own excess, not the max across floors");
+        assert_eq!(
+            groups[0].1, 1,
+            "top floor's own excess, not the max across floors"
+        );
         assert_eq!(groups[1].0.len(), 3, "bottom floor's own tiles only");
-        assert_eq!(groups[1].1, 2, "bottom floor's own excess, not the max across floors");
+        assert_eq!(
+            groups[1].1, 2,
+            "bottom floor's own excess, not the max across floors"
+        );
     }
 }

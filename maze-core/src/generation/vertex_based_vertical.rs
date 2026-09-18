@@ -1,11 +1,11 @@
-use rand::Rng;
-use crate::ids::NodeId;
-use crate::graph::{Graph, EdgeKind};
-use crate::space::{LevelId, MultiLevelField, Tessellation};
-use crate::event_log::ScopeGuard;
 use super::super::{ElementsConfig, PresetState, can_connect};
-use super::{GenState, add_to_frontier};
 use super::vertex_based_event::VertexBasedEvent;
+use super::{GenState, add_to_frontier};
+use crate::event_log::ScopeGuard;
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::NodeId;
+use crate::space::{LevelId, MultiLevelField, Tessellation};
+use rand::Rng;
 
 // --- Vertical connections (GitHub issue #337) ---
 
@@ -29,15 +29,28 @@ pub(super) fn roll_vertical_balance(
     let roll = state.rng.random::<f64>();
     let is_elevator = roll < elements.vertical_passage_elevator_balance;
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::VerticalBalanceRolled { src, roll, balance: elements.vertical_passage_elevator_balance, is_elevator });
+        log.emit(VertexBasedEvent::VerticalBalanceRolled {
+            src,
+            roll,
+            balance: elements.vertical_passage_elevator_balance,
+            is_elevator,
+        });
     }
-    if is_elevator { VerticalKind::Elevator } else { VerticalKind::Passage }
+    if is_elevator {
+        VerticalKind::Elevator
+    } else {
+        VerticalKind::Passage
+    }
 }
 
 /// The adjacent-floor neighbor (by position in `levels_ordered()`, never by raw `LevelId` — see
 /// `Specs/space.md`) `src`'s level has in the given direction. `None` at a boundary (first/last
 /// floor) where that direction doesn't exist.
-pub(super) fn adjacent_level<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId, upward: bool) -> Option<LevelId> {
+pub(super) fn adjacent_level<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    src: NodeId,
+    upward: bool,
+) -> Option<LevelId> {
     let levels: Vec<LevelId> = field.levels_ordered().collect();
     let src_level = field.level_of(src)?;
     let idx = levels.iter().position(|&l| l == src_level)?;
@@ -55,7 +68,11 @@ pub(super) fn adjacent_level<T: Tessellation>(field: &MultiLevelField<T>, src: N
 /// `try_vertical_cyclic_edge`). Returns `None` if that direction has no floor, or `node_at`
 /// doesn't resolve a node there (different shape/custom cells between floors) — both are
 /// `VerticalPassage` failure per the plan, never a coordinate lookup of our own.
-pub(super) fn resolve_vertical_passage_target<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId, upward: bool) -> Option<NodeId> {
+pub(super) fn resolve_vertical_passage_target<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    src: NodeId,
+    upward: bool,
+) -> Option<NodeId> {
     let point = field.point_of(src)?;
     let level = adjacent_level(field, src, upward)?;
     field.node_at(level, point)
@@ -78,14 +95,22 @@ pub(super) fn add_vertical_passage_edge(
     let one_way_roll = state.rng.random::<f64>();
     let one_way = one_way_roll < elements.one_way_vertical_passage_chance;
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::VerticalPassageOneWayRolled { roll: one_way_roll, one_way_chance: elements.one_way_vertical_passage_chance, fired: one_way });
+        log.emit(VertexBasedEvent::VerticalPassageOneWayRolled {
+            roll: one_way_roll,
+            one_way_chance: elements.one_way_vertical_passage_chance,
+            fired: one_way,
+        });
     }
     let mut upward = true;
     if one_way {
         let dir_roll = state.rng.random::<f64>();
         upward = dir_roll < elements.vertical_up_down_balance;
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::VerticalPassageDirectionRolled { roll: dir_roll, balance: elements.vertical_up_down_balance, upward });
+            log.emit(VertexBasedEvent::VerticalPassageDirectionRolled {
+                roll: dir_roll,
+                balance: elements.vertical_up_down_balance,
+                upward,
+            });
         }
         let (from, to) = if upward { (src, dst) } else { (dst, src) };
         graph.add_edge(from, to, EdgeKind::VerticalPassage);
@@ -93,7 +118,12 @@ pub(super) fn add_vertical_passage_edge(
         graph.add_bidirectional_edge(src, dst, EdgeKind::VerticalPassage);
     }
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::VerticalPassageAdded { src, dst, one_way, upward });
+        log.emit(VertexBasedEvent::VerticalPassageAdded {
+            src,
+            dst,
+            one_way,
+            upward,
+        });
     }
 }
 
@@ -114,22 +144,49 @@ pub(super) fn try_vertical_growth_connect<T: Tessellation>(
     let kind = roll_vertical_balance(elements, state, src, scope.as_deref_mut());
     match kind {
         VerticalKind::Passage => {
-            if try_growth_vertical_passage(graph, field, elements, preset_state, state, src, scope.as_deref_mut()) {
+            if try_growth_vertical_passage(
+                graph,
+                field,
+                elements,
+                preset_state,
+                state,
+                src,
+                scope.as_deref_mut(),
+            ) {
                 return;
             }
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::VerticalPassageFailed { src, elevator_fallback_allowed: elements.vertical_passage_elevator_balance != 0.0 });
+                log.emit(VertexBasedEvent::VerticalPassageFailed {
+                    src,
+                    elevator_fallback_allowed: elements.vertical_passage_elevator_balance != 0.0,
+                });
             }
             if elements.vertical_passage_elevator_balance != 0.0 {
                 try_growth_elevator(graph, field, elements, preset_state, state, src, scope);
             }
         }
         VerticalKind::Elevator => {
-            if try_growth_elevator(graph, field, elements, preset_state, state, src, scope.as_deref_mut()) {
+            if try_growth_elevator(
+                graph,
+                field,
+                elements,
+                preset_state,
+                state,
+                src,
+                scope.as_deref_mut(),
+            ) {
                 return;
             }
             if elements.vertical_passage_elevator_balance != 1.0 {
-                try_growth_vertical_passage(graph, field, elements, preset_state, state, src, scope);
+                try_growth_vertical_passage(
+                    graph,
+                    field,
+                    elements,
+                    preset_state,
+                    state,
+                    src,
+                    scope,
+                );
             }
         }
     }
@@ -147,8 +204,11 @@ pub(super) fn try_growth_vertical_passage<T: Tessellation>(
     src: NodeId,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
-    let candidates: Vec<(bool, NodeId)> = [true, false].into_iter()
-        .filter_map(|upward| resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n)))
+    let candidates: Vec<(bool, NodeId)> = [true, false]
+        .into_iter()
+        .filter_map(|upward| {
+            resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n))
+        })
         .filter(|&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
         .collect();
     let Some(&(_, dst)) = (if candidates.len() <= 1 {
@@ -164,7 +224,10 @@ pub(super) fn try_growth_vertical_passage<T: Tessellation>(
     state.in_reserve.remove(&dst);
     add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::NodeVisited { node: dst, parent: src });
+        log.emit(VertexBasedEvent::NodeVisited {
+            node: dst,
+            parent: src,
+        });
     }
     true
 }
@@ -186,10 +249,17 @@ pub(super) fn try_vertical_cyclic_edge<T: Tessellation>(
     let kind = roll_vertical_balance(elements, state, src, scope.as_deref_mut());
     match kind {
         VerticalKind::Passage => {
-            let candidates: Vec<(bool, NodeId)> = [true, false].into_iter()
-                .filter_map(|upward| resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n)))
-                .filter(|&(_, n)| state.visited.contains(&n) && can_connect(src, n, preset_state)
-                    && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+            let candidates: Vec<(bool, NodeId)> = [true, false]
+                .into_iter()
+                .filter_map(|upward| {
+                    resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n))
+                })
+                .filter(|&(_, n)| {
+                    state.visited.contains(&n)
+                        && can_connect(src, n, preset_state)
+                        && graph.edge_between(src, n).is_none()
+                        && graph.edge_between(n, src).is_none()
+                })
                 .collect();
             let Some(&(_, dst)) = (if candidates.len() <= 1 {
                 candidates.first()
@@ -201,18 +271,33 @@ pub(super) fn try_vertical_cyclic_edge<T: Tessellation>(
             add_vertical_passage_edge(graph, elements, state, src, dst, scope);
             true
         }
-        VerticalKind::Elevator => {
-            try_elevator(graph, field, elements, preset_state, state, src, true, scope)
-        }
+        VerticalKind::Elevator => try_elevator(
+            graph,
+            field,
+            elements,
+            preset_state,
+            state,
+            src,
+            true,
+            scope,
+        ),
     }
 }
 
 /// Every other floor (besides `src`'s own) that resolves a node at `src`'s x-y via `node_at`,
 /// paired with whether that node is unvisited. Ordered by position in `levels_ordered()`.
-pub(super) fn elevator_floor_candidates<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId) -> Vec<(LevelId, NodeId)> {
-    let Some(point) = field.point_of(src) else { return Vec::new(); };
-    let Some(src_level) = field.level_of(src) else { return Vec::new(); };
-    field.levels_ordered()
+pub(super) fn elevator_floor_candidates<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    src: NodeId,
+) -> Vec<(LevelId, NodeId)> {
+    let Some(point) = field.point_of(src) else {
+        return Vec::new();
+    };
+    let Some(src_level) = field.level_of(src) else {
+        return Vec::new();
+    };
+    field
+        .levels_ordered()
         .filter(|&l| l != src_level)
         .filter_map(|l| field.node_at(l, point).map(|n| (l, n)))
         .collect()
@@ -222,10 +307,19 @@ pub(super) fn elevator_floor_candidates<T: Tessellation>(field: &MultiLevelField
 /// `levels_ordered()` position) — used to clamp the unvisited pool when
 /// `allow_non_consecutive_elevator_floors` is false, computed *before* the branching roll so
 /// `floor_count` is never drawn from an unreachable range.
-pub(super) fn longest_consecutive_run<T: Tessellation>(field: &MultiLevelField<T>, candidates: &[NodeId]) -> Vec<NodeId> {
+pub(super) fn longest_consecutive_run<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    candidates: &[NodeId],
+) -> Vec<NodeId> {
     let levels: Vec<LevelId> = field.levels_ordered().collect();
-    let mut positions: Vec<(usize, NodeId)> = candidates.iter()
-        .filter_map(|&n| field.level_of(n).and_then(|l| levels.iter().position(|&x| x == l)).map(|p| (p, n)))
+    let mut positions: Vec<(usize, NodeId)> = candidates
+        .iter()
+        .filter_map(|&n| {
+            field
+                .level_of(n)
+                .and_then(|l| levels.iter().position(|&x| x == l))
+                .map(|p| (p, n))
+        })
         .collect();
     positions.sort_by_key(|&(p, _)| p);
     let mut best: Vec<NodeId> = Vec::new();
@@ -235,12 +329,16 @@ pub(super) fn longest_consecutive_run<T: Tessellation>(field: &MultiLevelField<T
         if prev.map(|p| pos == p + 1).unwrap_or(true) {
             current.push(node);
         } else {
-            if current.len() > best.len() { best = current.clone(); }
+            if current.len() > best.len() {
+                best = current.clone();
+            }
             current = vec![node];
         }
         prev = Some(pos);
     }
-    if current.len() > best.len() { best = current; }
+    if current.len() > best.len() {
+        best = current;
+    }
     best
 }
 
@@ -259,18 +357,28 @@ pub(super) fn try_elevator<T: Tessellation>(
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
     let all_candidates = elevator_floor_candidates(field, src);
-    let unvisited_all: Vec<NodeId> = all_candidates.iter()
+    let unvisited_all: Vec<NodeId> = all_candidates
+        .iter()
         .filter(|&&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
         .map(|&(_, n)| n)
         .collect();
-    let visited_all: Vec<NodeId> = all_candidates.iter()
-        .filter(|&&(_, n)| state.visited.contains(&n) && can_connect(src, n, preset_state)
-            && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+    let visited_all: Vec<NodeId> = all_candidates
+        .iter()
+        .filter(|&&(_, n)| {
+            state.visited.contains(&n)
+                && can_connect(src, n, preset_state)
+                && graph.edge_between(src, n).is_none()
+                && graph.edge_between(n, src).is_none()
+        })
         .map(|&(_, n)| n)
         .collect();
 
     let has_cyclic_visited = from_cyclic && !visited_all.is_empty();
-    let cyclic_visited_node = if has_cyclic_visited { Some(visited_all[0]) } else { None };
+    let cyclic_visited_node = if has_cyclic_visited {
+        Some(visited_all[0])
+    } else {
+        None
+    };
     if from_cyclic && !has_cyclic_visited {
         // Cyclic elevator attempt with no visited floor available at all — nothing to realize.
         return false;
@@ -289,14 +397,24 @@ pub(super) fn try_elevator<T: Tessellation>(
     let max_slots_clamped = max_slots.min(elements.elevator_span_max);
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::ElevatorSlotsComputed {
-            src, unvisited_pool_size: unvisited_pool.len(), has_cyclic_visited,
-            max_slots: max_slots_clamped, span_min: elements.elevator_span_min,
+            src,
+            unvisited_pool_size: unvisited_pool.len(),
+            has_cyclic_visited,
+            max_slots: max_slots_clamped,
+            span_min: elements.elevator_span_min,
         });
     }
     if max_slots_clamped < elements.elevator_span_min {
-        let fallback_allowed = if from_cyclic { true } else { elements.vertical_passage_elevator_balance != 1.0 };
+        let fallback_allowed = if from_cyclic {
+            true
+        } else {
+            elements.vertical_passage_elevator_balance != 1.0
+        };
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::ElevatorSlotsFailed { src, fallback_allowed });
+            log.emit(VertexBasedEvent::ElevatorSlotsFailed {
+                src,
+                fallback_allowed,
+            });
         }
         return false;
     }
@@ -321,7 +439,11 @@ pub(super) fn try_elevator<T: Tessellation>(
     // entries here (one of which is the guaranteed cyclic floor, when present).
     let chosen_needed = floor_count.saturating_sub(1);
     let mut chosen: Vec<NodeId> = Vec::with_capacity(chosen_needed);
-    let unvisited_needed = if has_cyclic_visited { chosen_needed.saturating_sub(1) } else { chosen_needed };
+    let unvisited_needed = if has_cyclic_visited {
+        chosen_needed.saturating_sub(1)
+    } else {
+        chosen_needed
+    };
     let mut pool = unvisited_pool.clone();
     for _ in 0..unvisited_needed.min(pool.len()) {
         let idx = state.rng.random_range(0..pool.len());
@@ -337,7 +459,9 @@ pub(super) fn try_elevator<T: Tessellation>(
     for i in 0..nodes.len() {
         for j in (i + 1)..nodes.len() {
             let (a, b) = (nodes[i], nodes[j]);
-            if !can_connect(a, b, preset_state) || !can_connect(b, a, preset_state) { continue; }
+            if !can_connect(a, b, preset_state) || !can_connect(b, a, preset_state) {
+                continue;
+            }
             if graph.edge_between(a, b).is_none() {
                 graph.add_edge(a, b, EdgeKind::Elevator);
                 edges_added += 1;
@@ -349,7 +473,10 @@ pub(super) fn try_elevator<T: Tessellation>(
         }
     }
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::ElevatorAdded { nodes: nodes.clone(), edges_added });
+        log.emit(VertexBasedEvent::ElevatorAdded {
+            nodes: nodes.clone(),
+            edges_added,
+        });
     }
 
     for &n in &chosen {
@@ -358,7 +485,10 @@ pub(super) fn try_elevator<T: Tessellation>(
             state.in_reserve.remove(&n);
             add_to_frontier(n, Some(src), &mut state.frontier, &mut state.in_frontier);
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::NodeVisited { node: n, parent: src });
+                log.emit(VertexBasedEvent::NodeVisited {
+                    node: n,
+                    parent: src,
+                });
             }
         }
     }
@@ -374,5 +504,14 @@ pub(super) fn try_growth_elevator<T: Tessellation>(
     src: NodeId,
     scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
-    try_elevator(graph, field, elements, preset_state, state, src, false, scope)
+    try_elevator(
+        graph,
+        field,
+        elements,
+        preset_state,
+        state,
+        src,
+        false,
+        scope,
+    )
 }

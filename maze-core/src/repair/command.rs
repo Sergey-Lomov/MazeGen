@@ -1,5 +1,5 @@
-use crate::ids::{EdgeId, NodeId};
 use crate::graph::EdgeKind;
+use crate::ids::{EdgeId, NodeId};
 
 /// A proposed mutation a `RepairStrategy::apply` returns instead of mutating `Maze` in place —
 /// see GitHub issue #118 and `Specs/repair.md`'s mutation-command contract. One variant per
@@ -21,33 +21,65 @@ use crate::graph::EdgeKind;
 /// apply or neither, that must be one variant, not two.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MutationCommand {
-    AddDirectedEdge { from: NodeId, to: NodeId },
-    AddBidirectionalEdge { a: NodeId, b: NodeId },
-    AddDirectedTeleport { from: NodeId, to: NodeId },
-    AddBidirectionalTeleport { a: NodeId, b: NodeId },
-    AddDirectedVerticalPassage { from: NodeId, to: NodeId },
-    AddBidirectionalVerticalPassage { a: NodeId, b: NodeId },
+    AddDirectedEdge {
+        from: NodeId,
+        to: NodeId,
+    },
+    AddBidirectionalEdge {
+        a: NodeId,
+        b: NodeId,
+    },
+    AddDirectedTeleport {
+        from: NodeId,
+        to: NodeId,
+    },
+    AddBidirectionalTeleport {
+        a: NodeId,
+        b: NodeId,
+    },
+    AddDirectedVerticalPassage {
+        from: NodeId,
+        to: NodeId,
+    },
+    AddBidirectionalVerticalPassage {
+        a: NodeId,
+        b: NodeId,
+    },
     /// Adds a two-way `Elevator` edge between one pair of an elevator's stops — see GitHub issue
     /// #401. No directed variant, mirrors `try_add_bidirectional_elevator`'s own no-directed-
     /// variant rationale.
-    AddBidirectionalElevator { a: NodeId, b: NodeId },
+    AddBidirectionalElevator {
+        a: NodeId,
+        b: NodeId,
+    },
     /// By `EdgeId` — mirrors `try_remove_edge_by_id`'s contract (never ambiguous between a
     /// `Basic`/`Teleport` edge coexisting in the same direction).
-    RemoveEdge { id: EdgeId },
+    RemoveEdge {
+        id: EdgeId,
+    },
     /// By node pair — mirrors `try_remove_edge`'s contract (removes whatever single edge exists
     /// between the pair, regardless of kind).
-    RemoveEdgeBetween { from: NodeId, to: NodeId },
+    RemoveEdgeBetween {
+        from: NodeId,
+        to: NodeId,
+    },
     /// Removes an edge and, if it's one direction of a two-way connection between the same pair,
     /// its reverse — mirrors `try_remove_edge_with_reverse`. Used by loop-cutting strategies
     /// (GitHub issue #185) so cutting a bidirectional passage is one atomic command, not two
     /// independently revalidated `RemoveEdge`s.
-    RemoveEdgeWithReverse { id: EdgeId },
+    RemoveEdgeWithReverse {
+        id: EdgeId,
+    },
     /// Removes a `Teleport` edge and, if it's one direction of a two-way teleport, its reverse —
     /// mirrors `try_remove_teleport_with_reverse`.
-    RemoveTeleportWithReverse { id: EdgeId },
+    RemoveTeleportWithReverse {
+        id: EdgeId,
+    },
     /// Removes a `VerticalPassage` edge and, if it's one direction of a two-way vertical passage,
     /// its reverse — mirrors `try_remove_vertical_passage_with_reverse`. See GitHub issue #343.
-    RemoveVerticalPassageWithReverse { id: EdgeId },
+    RemoveVerticalPassageWithReverse {
+        id: EdgeId,
+    },
     /// Idempotent — applied only if `meta.start` is still unset at apply time. Deliberately has
     /// no paired `cmd_*`/`try_*` helper: it mutates `MazeMeta`, not `Graph`, so there is no
     /// edge-feasibility check to share.
@@ -64,7 +96,9 @@ pub enum MutationCommand {
     /// param) must propose the replacement `AddDirectedEdge`/`AddBidirectionalEdge` commands
     /// itself, ahead of this one in its own returned batch — this command only ever deletes, it
     /// never redirects.
-    RemoveNode { node: NodeId },
+    RemoveNode {
+        node: NodeId,
+    },
     /// Replaces every node currently at `at`'s point (all of them — slot-0 included, not just
     /// extra siblings) with a brand-new set of nodes, wiring each one's own edges in one atomic
     /// step — see GitHub issue #247, `AddSplitStrategy`. `at` only identifies which point is
@@ -95,7 +129,10 @@ pub enum MutationCommand {
     /// `meta` pointing at a stale `NodeId` — the same accepted, pre-existing gap
     /// `RemoveNode`/`RemoveSplitStrategy` already has (neither checks meta before removing a node
     /// either).
-    ReplacePointNodes { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
+    ReplacePointNodes {
+        at: NodeId,
+        nodes: Vec<Vec<SplitNodeEdge>>,
+    },
 }
 
 /// One edge a newly minted split node (`MutationCommand::ReplacePointNodes`) gets wired with —
@@ -147,13 +184,16 @@ pub enum SplitNodeEdgeDirection {
 /// is simply re-offered and discovered already-cut later), just worth knowing it's no longer a
 /// teleport-only corner case.
 pub fn removed_edge_ids(commands: &[MutationCommand]) -> Vec<EdgeId> {
-    commands.iter().filter_map(|cmd| match cmd {
-        MutationCommand::RemoveEdge { id } => Some(*id),
-        MutationCommand::RemoveEdgeWithReverse { id } => Some(*id),
-        MutationCommand::RemoveTeleportWithReverse { id } => Some(*id),
-        MutationCommand::RemoveVerticalPassageWithReverse { id } => Some(*id),
-        _ => None,
-    }).collect()
+    commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            MutationCommand::RemoveEdge { id } => Some(*id),
+            MutationCommand::RemoveEdgeWithReverse { id } => Some(*id),
+            MutationCommand::RemoveTeleportWithReverse { id } => Some(*id),
+            MutationCommand::RemoveVerticalPassageWithReverse { id } => Some(*id),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -174,7 +214,10 @@ mod tests {
 
     #[test]
     fn removed_edge_ids_empty_for_no_removal_commands() {
-        let commands = vec![MutationCommand::SetStart(1), MutationCommand::AddBidirectionalEdge { a: 1, b: 2 }];
+        let commands = vec![
+            MutationCommand::SetStart(1),
+            MutationCommand::AddBidirectionalEdge { a: 1, b: 2 },
+        ];
         assert!(removed_edge_ids(&commands).is_empty());
     }
 }

@@ -1,15 +1,19 @@
-use std::collections::HashSet;
-use rand::Rng;
-use crate::ids::{IdGenerator, NodeId};
-use crate::graph::{Graph, EdgeKind};
-use crate::space::{MultiLevelField, LevelId, Tessellation};
-use crate::event_log::ScopeGuard;
-use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
-use super::split_pattern::{SplitGenerationConfig, SplitPattern, SplitFaceRequirement, OneWayDirection};
-use super::vertex_based::{VertexBasedEvent, GenState};
 use super::split_logic::{SplitOutcome, StartReassignment};
-use super::split_shared::{mint_split_nodes, sync_all_nodes, maybe_reassign_start, mark_connected, apply_split_teleport};
+use super::split_pattern::{
+    OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern,
+};
+use super::split_shared::{
+    apply_split_teleport, mark_connected, maybe_reassign_start, mint_split_nodes, sync_all_nodes,
+};
+use super::vertex_based::{GenState, VertexBasedEvent};
+use super::{ElementsConfig, GenerationParams, PresetState};
+use crate::event_log::ScopeGuard;
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::{IdGenerator, NodeId};
+use crate::space::{LevelId, MultiLevelField, Tessellation};
+use rand::Rng;
+use std::collections::HashSet;
 
 /// One face resolved against `src`'s actual field position for one candidate adaptation —
 /// intermediate representation `enumerate_adaptations` builds and `adaptation_respects_presets`/
@@ -58,18 +62,40 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
     let cyclic_roll = state.rng.random::<f64>();
     let cyclic_fired = cyclic_roll < params.cyclicity;
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitCyclicRolled { src, roll: cyclic_roll, cyclicity: params.cyclicity, fired: cyclic_fired });
+        log.emit(VertexBasedEvent::SplitCyclicRolled {
+            src,
+            roll: cyclic_roll,
+            cyclicity: params.cyclicity,
+            fired: cyclic_fired,
+        });
     }
 
     let mut remaining: Vec<usize> = (0..split_config.patterns.len()).collect();
     while !remaining.is_empty() {
-        let weights: Vec<f64> = remaining.iter().map(|&i| split_config.patterns[i].weight).collect();
+        let weights: Vec<f64> = remaining
+            .iter()
+            .map(|&i| split_config.patterns[i].weight)
+            .collect();
         let pattern_idx = remaining[crate::math::weighted_index(&weights, &mut state.rng)];
         let pattern = &split_config.patterns[pattern_idx];
 
-        let adaptations = enumerate_adaptations(graph, field, preset_state, &state.visited, pattern, src, bridge, parent, cyclic_fired);
+        let adaptations = enumerate_adaptations(
+            graph,
+            field,
+            preset_state,
+            &state.visited,
+            pattern,
+            src,
+            bridge,
+            parent,
+            cyclic_fired,
+        );
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::PatternAdaptationsComputed { src, pattern: pattern_idx, count: adaptations.len() });
+            log.emit(VertexBasedEvent::PatternAdaptationsComputed {
+                src,
+                pattern: pattern_idx,
+                count: adaptations.len(),
+            });
         }
         if adaptations.is_empty() {
             remaining.retain(|&i| i != pattern_idx);
@@ -78,13 +104,31 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
 
         let chosen = &adaptations[state.rng.random_range(0..adaptations.len())];
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::PatternAdaptationChosen { src, pattern: pattern_idx, rotation: chosen.rotation, mirror: chosen.mirror });
+            log.emit(VertexBasedEvent::PatternAdaptationChosen {
+                src,
+                pattern: pattern_idx,
+                rotation: chosen.rotation,
+                mirror: chosen.mirror,
+            });
         }
         let node_count = pattern.node_count;
         let faces = chosen.faces.clone();
         apply_pattern_adaptation(
-            graph, field, ids, elements, preset_state, state,
-            src, parent, node_count, &faces, pattern_idx, start, start_reassignment, scope, debug_state,
+            graph,
+            field,
+            ids,
+            elements,
+            preset_state,
+            state,
+            src,
+            parent,
+            node_count,
+            &faces,
+            pattern_idx,
+            start,
+            start_reassignment,
+            scope,
+            debug_state,
         );
         return SplitOutcome::Handled;
     }
@@ -123,7 +167,9 @@ fn resolve_face<T: Tessellation>(
     mirror: Option<usize>,
     builder: &mut AdaptationBuilder,
 ) -> bool {
-    let Some(resolved_index) = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror) else {
+    let Some(resolved_index) =
+        crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)
+    else {
         return false;
     };
     let Some(tess_face) = T::face_at(resolved_index) else {
@@ -145,15 +191,27 @@ fn resolve_face<T: Tessellation>(
 
     match face.requirement {
         SplitFaceRequirement::Wall => {
-            builder.faces.push(ResolvedFace { node_index, requirement: face.requirement, sibling_target: None, neighbor: None });
+            builder.faces.push(ResolvedFace {
+                node_index,
+                requirement: face.requirement,
+                sibling_target: None,
+                neighbor: None,
+            });
             true
         }
         SplitFaceRequirement::Unspecified => {
-            builder.faces.push(ResolvedFace { node_index, requirement: face.requirement, sibling_target: None, neighbor });
+            builder.faces.push(ResolvedFace {
+                node_index,
+                requirement: face.requirement,
+                sibling_target: None,
+                neighbor,
+            });
             true
         }
         SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-            let Some(neighbor) = neighbor else { return false; };
+            let Some(neighbor) = neighbor else {
+                return false;
+            };
             if !builder.used_neighbors.insert(neighbor) {
                 return false;
             }
@@ -168,8 +226,12 @@ fn resolve_face<T: Tessellation>(
                 // reinterpreted as a fresh connection.
                 let matches = match face.requirement {
                     SplitFaceRequirement::Passage => parent_fwd && parent_bwd,
-                    SplitFaceRequirement::OneWay(OneWayDirection::Forward) => parent_fwd && !parent_bwd,
-                    SplitFaceRequirement::OneWay(OneWayDirection::Backward) => parent_bwd && !parent_fwd,
+                    SplitFaceRequirement::OneWay(OneWayDirection::Forward) => {
+                        parent_fwd && !parent_bwd
+                    }
+                    SplitFaceRequirement::OneWay(OneWayDirection::Backward) => {
+                        parent_bwd && !parent_fwd
+                    }
                     SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => false,
                 };
                 if !matches {
@@ -186,7 +248,12 @@ fn resolve_face<T: Tessellation>(
                 }
                 builder.visited_face_used = true;
             }
-            builder.faces.push(ResolvedFace { node_index, requirement: face.requirement, sibling_target: None, neighbor: Some(neighbor) });
+            builder.faces.push(ResolvedFace {
+                node_index,
+                requirement: face.requirement,
+                sibling_target: None,
+                neighbor: Some(neighbor),
+            });
             true
         }
     }
@@ -222,8 +289,20 @@ fn try_adaptation<T: Tessellation>(
     for (node_index, node_faces) in pattern.faces.iter().enumerate() {
         for face in node_faces {
             let ok = resolve_face(
-                field, level, point, visited, bridge, parent, parent_fwd, parent_bwd, cyclic_fired,
-                node_index, face, rotation, mirror, &mut builder,
+                field,
+                level,
+                point,
+                visited,
+                bridge,
+                parent,
+                parent_fwd,
+                parent_bwd,
+                cyclic_fired,
+                node_index,
+                face,
+                rotation,
+                mirror,
+                &mut builder,
             );
             if !ok {
                 return None;
@@ -238,7 +317,11 @@ fn try_adaptation<T: Tessellation>(
         return None;
     }
 
-    Some(Adaptation { rotation, mirror, faces: builder.faces })
+    Some(Adaptation {
+        rotation,
+        mirror,
+        faces: builder.faces,
+    })
 }
 
 /// Deterministically enumerates every `rotation x mirror` combination of `pattern` against `src`'s
@@ -270,8 +353,12 @@ fn enumerate_adaptations<T: Tessellation>(
     parent: Option<NodeId>,
     cyclic_fired: bool,
 ) -> Vec<Adaptation> {
-    let Some(level) = field.level_of(src) else { return Vec::new(); };
-    let Some(point) = field.point_of(src) else { return Vec::new(); };
+    let Some(level) = field.level_of(src) else {
+        return Vec::new();
+    };
+    let Some(point) = field.point_of(src) else {
+        return Vec::new();
+    };
     let degree = T::faces().len();
     if degree == 0 {
         return Vec::new();
@@ -280,13 +367,28 @@ fn enumerate_adaptations<T: Tessellation>(
     let parent_fwd = parent.is_some_and(|p| graph.edge_between(src, p).is_some());
     let parent_bwd = parent.is_some_and(|p| graph.edge_between(p, src).is_some());
 
-    let mirror_choices: Vec<Option<usize>> = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some)).collect();
+    let mirror_choices: Vec<Option<usize>> = std::iter::once(None)
+        .chain((0..T::mirror_symmetries().len()).map(Some))
+        .collect();
 
     let mut results = Vec::new();
     for rotation in 0..T::rotation_symmetries().len() {
         for &mirror in &mirror_choices {
             if let Some(adaptation) = try_adaptation(
-                field, preset_state, visited, pattern, src, level, point, bridge, parent, parent_fwd, parent_bwd, cyclic_fired, rotation, mirror,
+                field,
+                preset_state,
+                visited,
+                pattern,
+                src,
+                level,
+                point,
+                bridge,
+                parent,
+                parent_fwd,
+                parent_bwd,
+                cyclic_fired,
+                rotation,
+                mirror,
             ) {
                 results.push(adaptation);
             }
@@ -300,12 +402,18 @@ fn enumerate_adaptations<T: Tessellation>(
 /// exist yet at preset-resolution time. `locked_out`/`locked_in` on `src` forbids node 0 from an
 /// outgoing/incoming `Passage`/`OneWay` face; a `blocked` pair forbids node 0's face toward that
 /// specific neighbor in that direction.
-fn adaptation_respects_presets(src: NodeId, faces: &[ResolvedFace], preset_state: &PresetState) -> bool {
+fn adaptation_respects_presets(
+    src: NodeId,
+    faces: &[ResolvedFace],
+    preset_state: &PresetState,
+) -> bool {
     for face in faces {
         if face.node_index != 0 {
             continue;
         }
-        let Some(neighbor) = face.neighbor else { continue; };
+        let Some(neighbor) = face.neighbor else {
+            continue;
+        };
         match face.requirement {
             SplitFaceRequirement::Passage => {
                 // A Passage needs both directions free — unlike `can_connect`'s "at least one
@@ -322,12 +430,18 @@ fn adaptation_respects_presets(src: NodeId, faces: &[ResolvedFace], preset_state
                 }
             }
             SplitFaceRequirement::OneWay(OneWayDirection::Forward) => {
-                if preset_state.locked_out.contains(&src) || preset_state.blocked.contains(&(src, neighbor)) || preset_state.locked_in.contains(&neighbor) {
+                if preset_state.locked_out.contains(&src)
+                    || preset_state.blocked.contains(&(src, neighbor))
+                    || preset_state.locked_in.contains(&neighbor)
+                {
                     return false;
                 }
             }
             SplitFaceRequirement::OneWay(OneWayDirection::Backward) => {
-                if preset_state.locked_in.contains(&src) || preset_state.blocked.contains(&(neighbor, src)) || preset_state.locked_out.contains(&neighbor) {
+                if preset_state.locked_in.contains(&src)
+                    || preset_state.blocked.contains(&(neighbor, src))
+                    || preset_state.locked_out.contains(&neighbor)
+                {
                     return false;
                 }
             }
@@ -367,7 +481,11 @@ fn try_relocate_parent_edge(
         }
     }
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitParentEdgeRelocated { parent, src, taken_by: node });
+        log.emit(VertexBasedEvent::SplitParentEdgeRelocated {
+            parent,
+            src,
+            taken_by: node,
+        });
     }
     mark_connected(state, parent, node, nodes, scope);
     true
@@ -387,22 +505,34 @@ fn apply_face_requirement(
 ) {
     match requirement {
         SplitFaceRequirement::Passage => {
-            let Some(dst) = dst else { return; };
+            let Some(dst) = dst else {
+                return;
+            };
             graph.add_bidirectional_edge(node, dst, EdgeKind::Basic);
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded { src: node, dst, bidirectional: true });
+                log.emit(VertexBasedEvent::EdgeAdded {
+                    src: node,
+                    dst,
+                    bidirectional: true,
+                });
             }
             mark_connected(state, dst, node, nodes, scope);
         }
         SplitFaceRequirement::OneWay(dir) => {
-            let Some(dst) = dst else { return; };
+            let Some(dst) = dst else {
+                return;
+            };
             let (from, to) = match dir {
                 OneWayDirection::Forward => (node, dst),
                 OneWayDirection::Backward => (dst, node),
             };
             graph.add_edge(from, to, EdgeKind::Basic);
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded { src: from, dst: to, bidirectional: false });
+                log.emit(VertexBasedEvent::EdgeAdded {
+                    src: from,
+                    dst: to,
+                    bidirectional: false,
+                });
             }
             let other = if from == node { dst } else { from };
             mark_connected(state, other, node, nodes, scope);
@@ -450,9 +580,20 @@ fn apply_pattern_adaptation<T: Tessellation>(
     let nodes = mint_split_nodes(graph, field, ids, src, node_count, debug_state);
     sync_all_nodes(state, &nodes[1..]);
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitNodesCreated { src, nodes: nodes.clone(), pattern: Some(pattern_idx) });
+        log.emit(VertexBasedEvent::SplitNodesCreated {
+            src,
+            nodes: nodes.clone(),
+            pattern: Some(pattern_idx),
+        });
     }
-    maybe_reassign_start(src, &nodes, start, start_reassignment, state, scope.as_deref_mut());
+    maybe_reassign_start(
+        src,
+        &nodes,
+        start,
+        start_reassignment,
+        state,
+        scope.as_deref_mut(),
+    );
 
     // Every node this pattern mints is fully resolved by this same event — every one of its faces
     // (Passage/OneWay/Wall/Unspecified) is already decided by the chosen adaptation, unlike an
@@ -480,11 +621,28 @@ fn apply_pattern_adaptation<T: Tessellation>(
         // `node == src`, `add_edge`'s own dedup makes this a no-op) or leave the stale
         // `src<->parent` edge behind entirely (if `node != src`). `dst.is_some()` guards against
         // `parent: None` spuriously matching a Wall/sibling_target face's `dst: None`.
-        if try_relocate_parent_edge(graph, state, src, node, dst, parent, &nodes, scope.as_deref_mut()) {
+        if try_relocate_parent_edge(
+            graph,
+            state,
+            src,
+            node,
+            dst,
+            parent,
+            &nodes,
+            scope.as_deref_mut(),
+        ) {
             continue;
         }
 
-        apply_face_requirement(graph, state, node, dst, face.requirement, &nodes, scope.as_deref_mut());
+        apply_face_requirement(
+            graph,
+            state,
+            node,
+            dst,
+            face.requirement,
+            &nodes,
+            scope.as_deref_mut(),
+        );
     }
 
     // Neither `src` nor any sibling ever enters `frontier` directly (GitHub issue #222 follow-up)

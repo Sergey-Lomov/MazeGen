@@ -3,7 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use codegen::{check, dto_ts, golden, id_enum, issue_payload_check, naming::to_camel_case, parser, quality_i18n, rust_emitter, scaffold_new, ts_emitter};
+use codegen::{
+    check, dto_ts, golden, id_enum, issue_payload_check, naming::to_camel_case, parser,
+    quality_i18n, rust_emitter, scaffold_new, ts_emitter,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -13,12 +16,21 @@ fn main() -> ExitCode {
     let new_strategy_id = flag_value(&args, "--new-strategy");
 
     if check_only && scaffold {
-        eprintln!("codegen: --check and --scaffold are mutually exclusive (--check must stay read-only)");
+        eprintln!(
+            "codegen: --check and --scaffold are mutually exclusive (--check must stay read-only)"
+        );
         return ExitCode::FAILURE;
     }
 
-    if scaffold_flag_conflicts(new_check_id.is_some(), new_strategy_id.is_some(), check_only, scaffold) {
-        eprintln!("codegen: --new-check/--new-strategy must be run alone, not combined with --check/--scaffold/each other");
+    if scaffold_flag_conflicts(
+        new_check_id.is_some(),
+        new_strategy_id.is_some(),
+        check_only,
+        scaffold,
+    ) {
+        eprintln!(
+            "codegen: --new-check/--new-strategy must be run alone, not combined with --check/--scaffold/each other"
+        );
         return ExitCode::FAILURE;
     }
 
@@ -32,9 +44,18 @@ fn main() -> ExitCode {
     }
 
     let maze_core_src = repo_root.join("maze-core").join("src");
-    let ts_out_dir = repo_root.join("maze-web").join("src").join("debug").join("eventTape").join("generated");
+    let ts_out_dir = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("debug")
+        .join("eventTape")
+        .join("generated");
     let golden_out_dir = repo_root.join("codegen").join("golden");
-    let id_enum_ts_out_dir = repo_root.join("maze-web").join("src").join("wasm").join("generated");
+    let id_enum_ts_out_dir = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("wasm")
+        .join("generated");
 
     let sources = match parser::discover_sources(&maze_core_src) {
         Ok(s) => s,
@@ -58,7 +79,11 @@ fn main() -> ExitCode {
     }
 
     for source in &sources {
-        let rust_wire_path = repo_root.join("maze-core").join("src").join(parent_dir_of(&source.location.rust_file)).join(format!("{}_wire.rs", source.location.stem));
+        let rust_wire_path = repo_root
+            .join("maze-core")
+            .join("src")
+            .join(parent_dir_of(&source.location.rust_file))
+            .join(format!("{}_wire.rs", source.location.stem));
         let new_rust_text = rust_emitter::generate_rust_wire_file(source);
 
         if let Ok(old_text) = fs::read_to_string(&rust_wire_path) {
@@ -79,9 +104,14 @@ fn main() -> ExitCode {
         }
 
         if !check_only {
-            let source_file_path = repo_root.join("maze-core").join("src").join(&source.location.rust_file);
+            let source_file_path = repo_root
+                .join("maze-core")
+                .join("src")
+                .join(&source.location.rust_file);
             if let Ok(existing) = fs::read_to_string(&source_file_path) {
-                if let Some(updated) = rust_emitter::ensure_mod_declared(&existing, &source.location.stem) {
+                if let Some(updated) =
+                    rust_emitter::ensure_mod_declared(&existing, &source.location.stem)
+                {
                     let _ = fs::write(&source_file_path, updated);
                 }
             }
@@ -105,9 +135,16 @@ fn main() -> ExitCode {
         }
 
         let stem_camel = to_camel_case(&source.location.stem);
-        if let Some(golden_test_text) = ts_emitter::generate_golden_test_file(source, &format!("./{stem_camel}")) {
+        if let Some(golden_test_text) =
+            ts_emitter::generate_golden_test_file(source, &format!("./{stem_camel}"))
+        {
             let golden_test_path = ts_out_dir.join(format!("{stem_camel}.golden.test.ts"));
-            write_or_check(&golden_test_path, &golden_test_text, check_only, &mut had_errors);
+            write_or_check(
+                &golden_test_path,
+                &golden_test_text,
+                check_only,
+                &mut had_errors,
+            );
         }
     }
 
@@ -120,7 +157,11 @@ fn main() -> ExitCode {
     };
 
     for source in &id_enum_sources {
-        let rust_ids_path = repo_root.join("maze-core").join("src").join(parent_dir_of(&source.rust_file)).join(format!("{}_ids.rs", to_snake_case_stem(&source.enum_name)));
+        let rust_ids_path = repo_root
+            .join("maze-core")
+            .join("src")
+            .join(parent_dir_of(&source.rust_file))
+            .join(format!("{}_ids.rs", to_snake_case_stem(&source.enum_name)));
         let rust_text = id_enum::generate_rust_ids_file(source);
         let had_errors_before_rust = had_errors;
         write_or_check(&rust_ids_path, &rust_text, check_only, &mut had_errors);
@@ -129,16 +170,24 @@ fn main() -> ExitCode {
         }
 
         if !check_only {
-            let source_file_path = repo_root.join("maze-core").join("src").join(&source.rust_file);
+            let source_file_path = repo_root
+                .join("maze-core")
+                .join("src")
+                .join(&source.rust_file);
             if let Ok(existing) = fs::read_to_string(&source_file_path) {
-                if let Some(updated) = id_enum::ensure_mod_declared(&existing, &to_snake_case_stem(&source.enum_name)) {
+                if let Some(updated) =
+                    id_enum::ensure_mod_declared(&existing, &to_snake_case_stem(&source.enum_name))
+                {
                     let _ = fs::write(&source_file_path, updated);
                 }
             }
         }
 
         let ts_text = id_enum::generate_ts_ids_file(source);
-        let ts_path = id_enum_ts_out_dir.join(format!("{}.ts", to_camel_case(&to_snake_case_stem(&source.enum_name))));
+        let ts_path = id_enum_ts_out_dir.join(format!(
+            "{}.ts",
+            to_camel_case(&to_snake_case_stem(&source.enum_name))
+        ));
         write_or_check(&ts_path, &ts_text, check_only, &mut had_errors);
     }
 
@@ -170,15 +219,24 @@ fn main() -> ExitCode {
     }
     match dto_parse_result {
         Ok(dto_items) => {
-            let dto_ts_text = dto_ts::generate_ts_file(&dto_items, "maze-wasm/src/dto.rs", &[
-                ("IssueKindId", "./issueKind"),
-                ("RegionClass", "../types"),
-                ("CheckInstanceConfig", "../types"),
-                ("WasmTessellationConfig", "../types"),
-                ("PresetConnection", "../types"),
-                ("StrategyConfig", "../types"),
-            ]);
-            let dto_ts_path = repo_root.join("maze-web").join("src").join("wasm").join("generated").join("dto.ts");
+            let dto_ts_text = dto_ts::generate_ts_file(
+                &dto_items,
+                "maze-wasm/src/dto.rs",
+                &[
+                    ("IssueKindId", "./issueKind"),
+                    ("RegionClass", "../types"),
+                    ("CheckInstanceConfig", "../types"),
+                    ("WasmTessellationConfig", "../types"),
+                    ("PresetConnection", "../types"),
+                    ("StrategyConfig", "../types"),
+                ],
+            );
+            let dto_ts_path = repo_root
+                .join("maze-web")
+                .join("src")
+                .join("wasm")
+                .join("generated")
+                .join("dto.ts");
             write_or_check(&dto_ts_path, &dto_ts_text, check_only, &mut had_errors);
         }
         Err(e) => {
@@ -189,38 +247,73 @@ fn main() -> ExitCode {
 
     let quality_ids = quality_i18n::discover();
     let quality_ts_text = quality_i18n::generate_ts_file(&quality_ids);
-    let quality_ts_path = repo_root.join("maze-web").join("src").join("components").join("features").join("generated").join("qualityIds.ts");
-    write_or_check(&quality_ts_path, &quality_ts_text, check_only, &mut had_errors);
+    let quality_ts_path = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("components")
+        .join("features")
+        .join("generated")
+        .join("qualityIds.ts");
+    write_or_check(
+        &quality_ts_path,
+        &quality_ts_text,
+        check_only,
+        &mut had_errors,
+    );
 
     // `qualityI18n.ts` was decomposed into `qualityI18n/{checks,issues,params,strategies}.ts`
     // (one file per `export const *I18n` registry) — `find_missing`/`scaffold` are per-registry
     // text scans that no-op on a file missing their target registry, so running them once per
     // sub-file (instead of once against a single monolithic file that no longer exists) is safe:
     // each call only ever matches its own registry's home file.
-    let quality_i18n_dir = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n");
+    let quality_i18n_dir = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("components")
+        .join("features")
+        .join("qualityI18n");
     let en_messages_path = repo_root.join("maze-web").join("messages").join("en.json");
     let ru_messages_path = repo_root.join("maze-web").join("messages").join("ru.json");
     for file_name in ["checks.ts", "issues.ts", "params.ts", "strategies.ts"] {
         let quality_i18n_path = quality_i18n_dir.join(file_name);
-        let Ok(existing) = fs::read_to_string(&quality_i18n_path) else { continue };
+        let Ok(existing) = fs::read_to_string(&quality_i18n_path) else {
+            continue;
+        };
         let missing = quality_i18n::find_missing(&quality_ids, &existing);
         if scaffold && !missing.is_empty() {
-            match (fs::read_to_string(&en_messages_path), fs::read_to_string(&ru_messages_path)) {
+            match (
+                fs::read_to_string(&en_messages_path),
+                fs::read_to_string(&ru_messages_path),
+            ) {
                 (Ok(en_existing), Ok(ru_existing)) => {
-                    let (new_ts, new_en, new_ru) = quality_i18n::scaffold(&missing, &existing, &en_existing, &ru_existing);
+                    let (new_ts, new_en, new_ru) =
+                        quality_i18n::scaffold(&missing, &existing, &en_existing, &ru_existing);
                     if let Err(e) = fs::write(&quality_i18n_path, &new_ts) {
-                        eprintln!("codegen: failed to write {}: {e}", quality_i18n_path.display());
+                        eprintln!(
+                            "codegen: failed to write {}: {e}",
+                            quality_i18n_path.display()
+                        );
                         had_errors = true;
                     }
                     if let Err(e) = fs::write(&en_messages_path, &new_en) {
-                        eprintln!("codegen: failed to write {}: {e}", en_messages_path.display());
+                        eprintln!(
+                            "codegen: failed to write {}: {e}",
+                            en_messages_path.display()
+                        );
                         had_errors = true;
                     }
                     if let Err(e) = fs::write(&ru_messages_path, &new_ru) {
-                        eprintln!("codegen: failed to write {}: {e}", ru_messages_path.display());
+                        eprintln!(
+                            "codegen: failed to write {}: {e}",
+                            ru_messages_path.display()
+                        );
                         had_errors = true;
                     }
-                    println!("codegen: scaffolded {} qualityI18n/{file_name} entr{}", missing.len(), if missing.len() == 1 { "y" } else { "ies" });
+                    println!(
+                        "codegen: scaffolded {} qualityI18n/{file_name} entr{}",
+                        missing.len(),
+                        if missing.len() == 1 { "y" } else { "ies" }
+                    );
                 }
                 _ => {
                     eprintln!("codegen: --scaffold could not read en.json/ru.json — skipped");
@@ -229,21 +322,42 @@ fn main() -> ExitCode {
             }
         } else {
             for m in &missing {
-                report_missing_entry(&format!("qualityI18n/{file_name}"), m, check_only, &mut had_errors);
+                report_missing_entry(
+                    &format!("qualityI18n/{file_name}"),
+                    m,
+                    check_only,
+                    &mut had_errors,
+                );
             }
         }
     }
 
-    let issue_registry_path = repo_root.join("maze-web").join("src").join("components").join("issueRegistry.ts");
+    let issue_registry_path = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("components")
+        .join("issueRegistry.ts");
     if let Ok(existing) = fs::read_to_string(&issue_registry_path) {
         for m in quality_i18n::find_missing_issue_registry(&quality_ids, &existing) {
             report_missing_entry("issueRegistry.ts", &m, check_only, &mut had_errors);
         }
     }
 
-    let issue_payload_rust_path = repo_root.join("maze-core").join("src").join("quality_control").join("event_encode.rs");
-    let issue_payload_ts_path = repo_root.join("maze-web").join("src").join("debug").join("eventTape").join("qcCustom.ts");
-    match (fs::read_to_string(&issue_payload_rust_path), fs::read_to_string(&issue_payload_ts_path)) {
+    let issue_payload_rust_path = repo_root
+        .join("maze-core")
+        .join("src")
+        .join("quality_control")
+        .join("event_encode.rs");
+    let issue_payload_ts_path = repo_root
+        .join("maze-web")
+        .join("src")
+        .join("debug")
+        .join("eventTape")
+        .join("qcCustom.ts");
+    match (
+        fs::read_to_string(&issue_payload_rust_path),
+        fs::read_to_string(&issue_payload_ts_path),
+    ) {
         (Ok(rust_src), Ok(ts_src)) => {
             for err in issue_payload_check::check_tags(&rust_src, &ts_src) {
                 eprintln!("codegen: check error: {}", err.0);
@@ -251,11 +365,17 @@ fn main() -> ExitCode {
             }
         }
         _ => {
-            eprintln!("codegen: WARNING: could not read event_encode.rs/qcCustom.ts — skipped IssuePayload tag check");
+            eprintln!(
+                "codegen: WARNING: could not read event_encode.rs/qcCustom.ts — skipped IssuePayload tag check"
+            );
         }
     }
 
-    let qc_kind_registry_path = repo_root.join("maze-runner").join("src").join("runner").join("qc_kind_registry.rs");
+    let qc_kind_registry_path = repo_root
+        .join("maze-runner")
+        .join("src")
+        .join("runner")
+        .join("qc_kind_registry.rs");
     if let Ok(existing) = fs::read_to_string(&qc_kind_registry_path) {
         for m in quality_i18n::find_missing_check_factory(&quality_ids, &existing) {
             report_missing_entry("qc_kind_registry.rs", &m, check_only, &mut had_errors);
@@ -269,7 +389,11 @@ fn main() -> ExitCode {
     if had_errors {
         ExitCode::FAILURE
     } else {
-        println!("codegen: generated {} wire source(s), {} id-enum source(s)", sources.len(), id_enum_sources.len());
+        println!(
+            "codegen: generated {} wire source(s), {} id-enum source(s)",
+            sources.len(),
+            id_enum_sources.len()
+        );
         ExitCode::SUCCESS
     }
 }
@@ -292,7 +416,10 @@ fn write_or_check(path: &Path, text: &str, check_only: bool, had_errors: &mut bo
         // sides to `\n` before comparing is what makes this a real content diff, not line-ending
         // noise.
         if normalize_line_endings(&on_disk) != normalize_line_endings(text) {
-            eprintln!("codegen: {} is stale — run codegen without --check to regenerate it", path.display());
+            eprintln!(
+                "codegen: {} is stale — run codegen without --check to regenerate it",
+                path.display()
+            );
             *had_errors = true;
         }
     } else {
@@ -314,8 +441,16 @@ fn normalize_line_endings(s: &str) -> String {
 /// missing from) — a hard `--check` error, or a plain-run warning. Shared by every completeness
 /// diff (`qualityI18n.ts`, `issueRegistry.ts`, `qc_kind_registry.rs`) so the three call sites agree
 /// on wording and on what counts as fatal.
-fn report_missing_entry(source_label: &str, entry: &quality_i18n::MissingEntry, check_only: bool, had_errors: &mut bool) {
-    let msg = format!("{source_label}: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", entry.registry, entry.id);
+fn report_missing_entry(
+    source_label: &str,
+    entry: &quality_i18n::MissingEntry,
+    check_only: bool,
+    had_errors: &mut bool,
+) {
+    let msg = format!(
+        "{source_label}: {} has no entry for id \"{}\" (see generated/qualityIds.ts)",
+        entry.registry, entry.id
+    );
     if check_only {
         eprintln!("codegen: {msg}");
         *had_errors = true;
@@ -328,14 +463,23 @@ fn report_missing_entry(source_label: &str, entry: &quality_i18n::MissingEntry, 
 /// (which must stay read-only) or `--scaffold` (a different, unrelated write mode) would silently
 /// run only the scaffold path while the other flag's request is dropped on the floor, so the
 /// combination is rejected instead of the extra flag being ignored.
-fn scaffold_flag_conflicts(has_new_check: bool, has_new_strategy: bool, check_only: bool, scaffold: bool) -> bool {
-    (has_new_check || has_new_strategy) && (check_only || scaffold || (has_new_check && has_new_strategy))
+fn scaffold_flag_conflicts(
+    has_new_check: bool,
+    has_new_strategy: bool,
+    check_only: bool,
+    scaffold: bool,
+) -> bool {
+    (has_new_check || has_new_strategy)
+        && (check_only || scaffold || (has_new_check && has_new_strategy))
 }
 
 /// Returns the value following `flag` in `args` (e.g. `--new-check min_region_size` -> Some
 /// `"min_region_size"`), or `None` if `flag` isn't present or has nothing after it.
 fn flag_value(args: &[String], flag: &str) -> Option<String> {
-    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1))
+        .cloned()
 }
 
 /// `snake_case` only, matching every existing check/strategy id — scaffolding a file from an id
@@ -344,32 +488,53 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
 fn is_valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.chars().next().is_some_and(|c| c.is_ascii_lowercase())
-        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 fn run_new_check(repo_root: &Path, id: &str) -> ExitCode {
     if !is_valid_id(id) {
-        eprintln!("codegen: --new-check id must be snake_case (lowercase letters, digits, underscores), got \"{id}\"");
+        eprintln!(
+            "codegen: --new-check id must be snake_case (lowercase letters, digits, underscores), got \"{id}\""
+        );
         return ExitCode::FAILURE;
     }
-    let checks_dir = repo_root.join("maze-core").join("src").join("quality_control").join("checks");
+    let checks_dir = repo_root
+        .join("maze-core")
+        .join("src")
+        .join("quality_control")
+        .join("checks");
     let scaffold = scaffold_new::new_check(id, &checks_dir);
     write_new_scaffold(scaffold, &checks_dir.join("mod.rs"), id)
 }
 
 fn run_new_strategy(repo_root: &Path, id: &str) -> ExitCode {
     if !is_valid_id(id) {
-        eprintln!("codegen: --new-strategy id must be snake_case (lowercase letters, digits, underscores), got \"{id}\"");
+        eprintln!(
+            "codegen: --new-strategy id must be snake_case (lowercase letters, digits, underscores), got \"{id}\""
+        );
         return ExitCode::FAILURE;
     }
-    let strategies_dir = repo_root.join("maze-core").join("src").join("repair").join("strategies");
+    let strategies_dir = repo_root
+        .join("maze-core")
+        .join("src")
+        .join("repair")
+        .join("strategies");
     let scaffold = scaffold_new::new_strategy(id, &strategies_dir);
     write_new_scaffold(scaffold, &strategies_dir.join("mod.rs"), id)
 }
 
-fn write_new_scaffold(scaffold: scaffold_new::NewFileScaffold, mod_rs_path: &Path, id: &str) -> ExitCode {
+fn write_new_scaffold(
+    scaffold: scaffold_new::NewFileScaffold,
+    mod_rs_path: &Path,
+    id: &str,
+) -> ExitCode {
     if scaffold.path.exists() {
-        eprintln!("codegen: {} already exists — refusing to overwrite", scaffold.path.display());
+        eprintln!(
+            "codegen: {} already exists — refusing to overwrite",
+            scaffold.path.display()
+        );
         return ExitCode::FAILURE;
     }
     if let Some(parent) = scaffold.path.parent() {
@@ -388,7 +553,10 @@ fn write_new_scaffold(scaffold: scaffold_new::NewFileScaffold, mod_rs_path: &Pat
             }
         }
     } else {
-        eprintln!("codegen: WARNING: could not read {} — add `pub mod {id};` by hand", mod_rs_path.display());
+        eprintln!(
+            "codegen: WARNING: could not read {} — add `pub mod {id};` by hand",
+            mod_rs_path.display()
+        );
     }
 
     println!("{}", scaffold.checklist);
@@ -400,7 +568,10 @@ fn to_snake_case_stem(enum_name: &str) -> String {
 }
 
 fn parent_dir_of(rel_file: &str) -> PathBuf {
-    Path::new(rel_file).parent().map(|p| p.to_path_buf()).unwrap_or_default()
+    Path::new(rel_file)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default()
 }
 
 fn find_repo_root() -> PathBuf {
@@ -410,7 +581,9 @@ fn find_repo_root() -> PathBuf {
             return dir;
         }
         if !dir.pop() {
-            panic!("codegen: could not locate repo root (looked for a directory containing both Cargo.toml and maze-core/)");
+            panic!(
+                "codegen: could not locate repo root (looked for a directory containing both Cargo.toml and maze-core/)"
+            );
         }
     }
 }
@@ -459,7 +632,10 @@ mod report_missing_entry_tests {
 
     #[test]
     fn check_only_sets_had_errors() {
-        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let entry = quality_i18n::MissingEntry {
+            registry: "checkI18n",
+            id: "foo".to_string(),
+        };
         let mut had_errors = false;
         report_missing_entry("qualityI18n.ts", &entry, true, &mut had_errors);
         assert!(had_errors);
@@ -467,7 +643,10 @@ mod report_missing_entry_tests {
 
     #[test]
     fn plain_run_does_not_set_had_errors() {
-        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let entry = quality_i18n::MissingEntry {
+            registry: "checkI18n",
+            id: "foo".to_string(),
+        };
         let mut had_errors = false;
         report_missing_entry("qualityI18n.ts", &entry, false, &mut had_errors);
         assert!(!had_errors);
@@ -475,7 +654,10 @@ mod report_missing_entry_tests {
 
     #[test]
     fn had_errors_already_true_stays_true_on_plain_run() {
-        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let entry = quality_i18n::MissingEntry {
+            registry: "checkI18n",
+            id: "foo".to_string(),
+        };
         let mut had_errors = true;
         report_missing_entry("qualityI18n.ts", &entry, false, &mut had_errors);
         assert!(had_errors);
@@ -523,8 +705,15 @@ mod flag_value_tests {
 
     #[test]
     fn returns_the_value_following_the_flag() {
-        let args = vec!["codegen".to_string(), "--new-check".to_string(), "min_region_size".to_string()];
-        assert_eq!(flag_value(&args, "--new-check"), Some("min_region_size".to_string()));
+        let args = vec![
+            "codegen".to_string(),
+            "--new-check".to_string(),
+            "min_region_size".to_string(),
+        ];
+        assert_eq!(
+            flag_value(&args, "--new-check"),
+            Some("min_region_size".to_string())
+        );
     }
 
     #[test]

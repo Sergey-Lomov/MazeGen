@@ -1,19 +1,19 @@
-use rand::RngCore;
-use std::collections::HashMap;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::scc::ComponentId;
-use crate::space::Tessellation;
-use crate::quality_control::RegionNeedsExpansionIssue;
 use crate::generation::PresetState;
+use crate::graph::scc::ComponentId;
+use crate::graph::scc::ConnectedComponents;
+use crate::ids::NodeId;
+use crate::quality_control::RegionNeedsExpansionIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
 use crate::repair::strategies::region_merge_core::{
-    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM,
+    self, MODE_OPTIONS, MODE_RANDOM, PARAM_PREFER_PARTIALLY_CONNECTED, PARAM_TARGET_MODE,
 };
-use crate::graph::scc::ConnectedComponents;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 #[cfg(test)]
@@ -38,13 +38,15 @@ impl PendingEdges {
 
     fn add_directed(&mut self, from: NodeId, to: NodeId) {
         self.added.insert((from, to));
-        self.commands.push(MutationCommand::AddDirectedEdge { from, to });
+        self.commands
+            .push(MutationCommand::AddDirectedEdge { from, to });
     }
 
     fn add_bidirectional(&mut self, a: NodeId, b: NodeId) {
         self.added.insert((a, b));
         self.added.insert((b, a));
-        self.commands.push(MutationCommand::AddBidirectionalEdge { a, b });
+        self.commands
+            .push(MutationCommand::AddBidirectionalEdge { a, b });
     }
 }
 
@@ -59,12 +61,18 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_TARGET_MODE,
         label: "Target selection mode",
-        kind: StrategyParamKind::Enum { options: MODE_OPTIONS, default: MODE_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: MODE_OPTIONS,
+            default: MODE_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_CONNECTION_MODE,
         label: "Connection mode",
-        kind: StrategyParamKind::Enum { options: CONNECTION_OPTIONS, default: CONNECTION_PASSAGE },
+        kind: StrategyParamKind::Enum {
+            options: CONNECTION_OPTIONS,
+            default: CONNECTION_PASSAGE,
+        },
     },
     StrategyParam {
         id: PARAM_PREFER_PARTIALLY_CONNECTED,
@@ -83,7 +91,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct ExpandRegionPassageStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ExpandRegionPassageStrategy {
-    fn strategy_id(&self) -> &'static str { "expand_region_passage" }
+    fn strategy_id(&self) -> &'static str {
+        "expand_region_passage"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -128,7 +138,17 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for ExpandReg
         let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
-                region, region_idx, &scc, maze, preset_state, mode, connection_mode, prefer_partial, needy, rng, &mut pending,
+                region,
+                region_idx,
+                &scc,
+                maze,
+                preset_state,
+                mode,
+                connection_mode,
+                prefer_partial,
+                needy,
+                rng,
+                &mut pending,
             )
         });
 
@@ -164,16 +184,19 @@ fn scan_neighbor_pairs<'a, T: Tessellation>(
     preset_state: &'a PresetState,
 ) -> impl Iterator<Item = (NodeId, NodeId, ComponentId)> + 'a {
     region.iter().flat_map(move |&node| {
-        field.neighbors(node).into_iter().filter_map(move |neighbor_node| {
-            let neighbor_idx = scc.component_of(neighbor_node)?;
-            if neighbor_idx == region_idx {
-                return None;
-            }
-            if !pair_connectable(node, neighbor_node, preset_state) {
-                return None;
-            }
-            Some((node, neighbor_node, neighbor_idx))
-        })
+        field
+            .neighbors(node)
+            .into_iter()
+            .filter_map(move |neighbor_node| {
+                let neighbor_idx = scc.component_of(neighbor_node)?;
+                if neighbor_idx == region_idx {
+                    return None;
+                }
+                if !pair_connectable(node, neighbor_node, preset_state) {
+                    return None;
+                }
+                Some((node, neighbor_node, neighbor_idx))
+            })
     })
 }
 
@@ -193,11 +216,13 @@ fn collect_neighbors<T: Tessellation>(
     let found: Vec<(NodeId, NodeId, ComponentId)> =
         scan_neighbor_pairs(region, region_idx, scc, &maze.field, preset_state).collect();
     for (node, neighbor_node, neighbor_idx) in found {
-        let entry = by_neighbor.entry(neighbor_idx).or_insert_with(|| NeighborInfo {
-            pairs: Vec::new(),
-            has_outbound: false,
-            has_inbound: false,
-        });
+        let entry = by_neighbor
+            .entry(neighbor_idx)
+            .or_insert_with(|| NeighborInfo {
+                pairs: Vec::new(),
+                has_outbound: false,
+                has_inbound: false,
+            });
         entry.pairs.push((node, neighbor_node));
         if pending.has_edge(maze, node, neighbor_node) {
             entry.has_outbound = true;
@@ -250,7 +275,9 @@ fn find_merge_candidate<T: Tessellation>(
 
     // First priority level (only relevant to `one_way`, where a partial connection is
     // meaningful): partially-connected neighbors, if any and requested.
-    let partial: Vec<ComponentId> = keys.iter().copied()
+    let partial: Vec<ComponentId> = keys
+        .iter()
+        .copied()
         .filter(|i| {
             let info = &by_neighbor[i];
             info.has_outbound != info.has_inbound // exactly one direction present
@@ -319,10 +346,16 @@ fn apply_one_way<T: Tessellation>(
         // Partial: only need the missing direction, via a pair distinct from every pair
         // already carrying the existing edge (there can be more than one, e.g. from manual
         // preset/post-edit edges predating this repair pass).
-        let existing_pairs: Vec<(NodeId, NodeId)> = info.pairs.iter().copied()
+        let existing_pairs: Vec<(NodeId, NodeId)> = info
+            .pairs
+            .iter()
+            .copied()
             .filter(|&(a, b)| {
-                if info.has_outbound { pending.has_edge(maze, a, b) }
-                else { pending.has_edge(maze, b, a) }
+                if info.has_outbound {
+                    pending.has_edge(maze, a, b)
+                } else {
+                    pending.has_edge(maze, b, a)
+                }
             })
             .collect();
         if existing_pairs.is_empty() {
@@ -330,7 +363,9 @@ fn apply_one_way<T: Tessellation>(
         }
 
         let candidate = farthest_pair(&info.pairs, &existing_pairs, maze);
-        let Some((a, b)) = candidate else { return false };
+        let Some((a, b)) = candidate else {
+            return false;
+        };
 
         let (from, to) = if info.has_outbound { (b, a) } else { (a, b) };
         if pair_edge_blocked(from, to, preset_state) {
@@ -343,7 +378,9 @@ fn apply_one_way<T: Tessellation>(
         if info.pairs.len() < 2 {
             return false;
         }
-        let Some((p1, p2)) = farthest_pair_combination(&info.pairs, maze) else { return false };
+        let Some((p1, p2)) = farthest_pair_combination(&info.pairs, maze) else {
+            return false;
+        };
         let (a1, b1) = p1;
         let (a2, b2) = p2;
         // All-or-nothing: `one_way` means two independently-cut directions, not "whichever one
@@ -375,19 +412,23 @@ fn farthest_pair<T: Tessellation>(
     references: &[(NodeId, NodeId)],
     maze: &Maze<T>,
 ) -> Option<(NodeId, NodeId)> {
-    let ref_points: Vec<(f64, f64)> = references.iter()
+    let ref_points: Vec<(f64, f64)> = references
+        .iter()
         .filter_map(|r| maze.field.point_of(r.0))
         .map(T::cartesian)
         .collect();
     if ref_points.is_empty() {
         return None;
     }
-    pairs.iter().copied()
+    pairs
+        .iter()
+        .copied()
         .filter(|p| !references.contains(p))
         .filter_map(|(a, b)| {
             let point = maze.field.point_of(a)?;
             let (px, py) = T::cartesian(point);
-            let min_dist = ref_points.iter()
+            let min_dist = ref_points
+                .iter()
                 .map(|&(rx, ry)| ((px - rx).powi(2) + (py - ry).powi(2)).sqrt())
                 .fold(f64::INFINITY, f64::min);
             Some(((a, b), min_dist))
@@ -407,7 +448,8 @@ fn farthest_pair_combination<T: Tessellation>(
     if pairs.len() < 2 {
         return None;
     }
-    let points: Vec<Option<(f64, f64)>> = pairs.iter()
+    let points: Vec<Option<(f64, f64)>> = pairs
+        .iter()
         .map(|&(a, _)| maze.field.point_of(a).map(T::cartesian))
         .collect();
     let mut best: Option<((NodeId, NodeId), (NodeId, NodeId), f64)> = None;

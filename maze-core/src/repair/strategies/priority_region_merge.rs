@@ -1,16 +1,18 @@
-use std::collections::HashSet;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::{RegionNeedsExpansionIssue, Issue, REGION_NEEDS_EXPANSION};
 use crate::generation::PresetState;
 use crate::graph::scc::ConnectedComponents;
-use crate::repair::params::{StrategyParam, StrategyParams};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
+use crate::quality_control::{Issue, REGION_NEEDS_EXPANSION, RegionNeedsExpansionIssue};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::params::{StrategyParam, StrategyParams};
+use crate::repair::result::RepairResult;
 use crate::repair::strategies::region_merge_core;
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashSet;
 
 /// Slot id for the nested region-merge strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Its own constant, not a reuse of
@@ -19,9 +21,13 @@ use crate::repair::strategies::region_merge_core;
 /// string value happens to coincide.
 pub const SLOT_MERGE_TARGET: &str = "merge_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_MERGE_TARGET, kind: REGION_NEEDS_EXPANSION, min: 1, max: None, dispatch_kind: NestedDispatchKind::Priority },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_MERGE_TARGET,
+    kind: REGION_NEEDS_EXPANSION,
+    min: 1,
+    max: None,
+    dispatch_kind: NestedDispatchKind::Priority,
+}];
 
 /// Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #259, the priority-fallback companion to
 /// `WeightedRegionMergeStrategy` (issue #90). Same role — picks *which* nested region-merge
@@ -49,17 +55,24 @@ pub struct PriorityRegionMergeStrategy;
 /// mutation actually connects to — see `weighted_region_merge::merged_neighbor`. Both dispatchers
 /// share `region_merge_core::mutation_command_endpoints` (GitHub issue #391 postmortem — each used
 /// to carry its own copy of this match and both missed vertical-passage commands the same way).
-fn merged_neighbor(commands: &[MutationCommand], scc: &ConnectedComponents, region_idx: usize) -> Option<usize> {
+fn merged_neighbor(
+    commands: &[MutationCommand],
+    scc: &ConnectedComponents,
+    region_idx: usize,
+) -> Option<usize> {
     commands.iter().find_map(|cmd| {
         let (a, b) = region_merge_core::mutation_command_endpoints(cmd)?;
-        [a, b].into_iter()
+        [a, b]
+            .into_iter()
             .filter_map(|node| scc.component_of(node))
             .find(|&idx| idx != region_idx)
     })
 }
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityRegionMergeStrategy {
-    fn strategy_id(&self) -> &'static str { "priority_region_merge" }
+    fn strategy_id(&self) -> &'static str {
+        "priority_region_merge"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &[]
@@ -85,8 +98,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
 
         // Defensive runtime filter, not the primary validation — see
         // `WeightedRegionMergeStrategy::apply`'s identical comment for the rationale.
-        let candidates: Vec<&NestedStrategyConfig<T>> =
-            nested.iter().filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET).collect();
+        let candidates: Vec<&NestedStrategyConfig<T>> = nested
+            .iter()
+            .filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET)
+            .collect();
         if candidates.is_empty() {
             return (RepairResult::Failed, vec![]);
         }
@@ -107,7 +122,11 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
 
             let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
             let (result, commands) = dispatch_priority(
-                &single_region_issue as &dyn Issue, maze, rng, preset_state, &candidates,
+                &single_region_issue as &dyn Issue,
+                maze,
+                rng,
+                preset_state,
+                &candidates,
                 &std::collections::HashMap::new(),
             );
 
@@ -135,19 +154,25 @@ crate::impl_erased_repair_strategy!(PriorityRegionMergeStrategy, RegionNeedsExpa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
+    use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::repair::strategies::{ExpandRegionPassageStrategy, TeleportRegionMergeStrategy};
     use crate::repair::strategy::ErasedRepairStrategy;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use rand::SeedableRng;
     use std::collections::HashMap;
-    use crate::repair::strategies::test_utils::apply_and_commit;
 
     fn no_params() -> StrategyParams {
-        build_params(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, RegionNeedsExpansionIssue>>::params(&PriorityRegionMergeStrategy), None)
+        build_params(
+            <PriorityRegionMergeStrategy as RepairStrategy<
+                SquareTessellation,
+                RegionNeedsExpansionIssue,
+            >>::params(&PriorityRegionMergeStrategy),
+            None,
+        )
     }
 
     /// 1x4 row of cells, no edges at all -> 4 singleton SCC components, all geometrically
@@ -156,7 +181,9 @@ mod tests {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -164,8 +191,15 @@ mod tests {
         RegionNeedsExpansionIssue::new_from_check("test", invalid, Default::default())
     }
 
-    fn nested_with(strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>) -> NestedStrategyConfig<SquareTessellation> {
-        NestedStrategyConfig { slot: &NESTED_SLOTS[0], strategy, param_overrides: HashMap::new(), nested: vec![] }
+    fn nested_with(
+        strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>,
+    ) -> NestedStrategyConfig<SquareTessellation> {
+        NestedStrategyConfig {
+            slot: &NESTED_SLOTS[0],
+            strategy,
+            param_overrides: HashMap::new(),
+            nested: vec![],
+        }
     }
 
     #[test]
@@ -175,10 +209,22 @@ mod tests {
         let mut rng_a = MazeRng::seed_from_u64(1);
         let mut rng_b = MazeRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
-        assert_eq!(rng_a.next_u64(), rng_b.next_u64(), "rng must not be consumed on the empty-invalid idempotency path");
+        assert_eq!(
+            rng_a.next_u64(),
+            rng_b.next_u64(),
+            "rng must not be consumed on the empty-invalid idempotency path"
+        );
     }
 
     #[test]
@@ -186,7 +232,15 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -195,14 +249,28 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: None, dispatch_kind: NestedDispatchKind::Priority };
+        static OTHER_SLOT: NestedSlot = NestedSlot {
+            slot_id: "some_other_slot",
+            kind: REGION_NEEDS_EXPANSION,
+            min: 1,
+            max: None,
+            dispatch_kind: NestedDispatchKind::Priority,
+        };
         let nested = vec![NestedStrategyConfig {
             slot: &OTHER_SLOT,
             strategy: Box::new(ExpandRegionPassageStrategy),
             param_overrides: HashMap::new(),
             nested: vec![],
         }];
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -213,9 +281,20 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy))];
         let edges_before = maze.graph.edges().count();
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert!(maze.graph.edges().count() > edges_before, "delegate must have actually merged the region");
+        assert!(
+            maze.graph.edges().count() > edges_before,
+            "delegate must have actually merged the region"
+        );
     }
 
     #[test]
@@ -225,9 +304,21 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy))];
         let edges_before = maze.graph.edges().count();
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert_eq!(maze.graph.edges().count() - edges_before, 4, "both regions in the batch must have been merged, not just the first");
+        assert_eq!(
+            maze.graph.edges().count() - edges_before,
+            4,
+            "both regions in the batch must have been merged, not just the first"
+        );
     }
 
     #[test]
@@ -238,7 +329,13 @@ mod tests {
         // geometry-bound). ExpandRegionPassageStrategy is listed first — its failure must fall
         // through to the second candidate, not abort the whole dispatch.
         let mut maze = maze_4_singletons();
-        let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
+        let nodes: Vec<_> = maze
+            .field
+            .field_of(maze.field.single_level_id())
+            .unwrap()
+            .all_points()
+            .map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap())
+            .collect();
         let mut preset_state = PresetState::empty();
         preset_state.blocked.insert((nodes[0], nodes[1]));
         preset_state.blocked.insert((nodes[1], nodes[0]));
@@ -249,12 +346,26 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy)),
             nested_with(Box::new(TeleportRegionMergeStrategy)),
         ];
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &nested);
-        assert!(matches!(result, RepairResult::Fixed { .. }), "the priority-second teleport candidate must succeed after the first, geometry-blocked candidate fails");
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &nested,
+        );
+        assert!(
+            matches!(result, RepairResult::Fixed { .. }),
+            "the priority-second teleport candidate must succeed after the first, geometry-blocked candidate fails"
+        );
         let has_basic_bridge = maze.graph.edges().any(|e| {
             (e.from == nodes[0] && e.to == nodes[1]) || (e.from == nodes[1] && e.to == nodes[0])
         });
-        assert!(!has_basic_bridge, "the blocked pair must never have been bridged — the failed first candidate's attempt must be rolled back");
+        assert!(
+            !has_basic_bridge,
+            "the blocked pair must never have been bridged — the failed first candidate's attempt must be rolled back"
+        );
     }
 
     #[test]
@@ -271,18 +382,37 @@ mod tests {
             nested_with(Box::new(TeleportRegionMergeStrategy)),
         ];
         let edges_before = maze.graph.edges().count();
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert_eq!(maze.graph.edges().count() - edges_before, 2, "exactly one bidirectional passage from the first (priority) candidate must land");
-        assert!(maze.graph.edges().all(|e| e.kind != EdgeKind::Teleport), "the second candidate (teleport) must never have run");
+        assert_eq!(
+            maze.graph.edges().count() - edges_before,
+            2,
+            "exactly one bidirectional passage from the first (priority) candidate must land"
+        );
+        assert!(
+            maze.graph.edges().all(|e| e.kind != EdgeKind::Teleport),
+            "the second candidate (teleport) must never have run"
+        );
     }
 
     fn maze_two_floor_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let fields: Vec<_> = (0..2).map(|_| crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap()).collect();
+        let fields: Vec<_> = (0..2)
+            .map(|_| crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap())
+            .collect();
         let field = MultiLevelField::<SquareTessellation>::new(fields);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -298,9 +428,21 @@ mod tests {
         let issue = issue_for(invalid);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(VerticalPassageRegionMergeStrategy))];
-        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert_eq!(maze.graph.edges().count(), 2, "exactly one bidirectional vertical passage (2 directed edges) expected, not a duplicate merge");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "exactly one bidirectional vertical passage (2 directed edges) expected, not a duplicate merge"
+        );
     }
 
     #[test]
@@ -313,7 +455,15 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy)),
             nested_with(Box::new(TeleportRegionMergeStrategy)),
         ];
-        apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &nested_a);
+        apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze_a,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &nested_a,
+        );
 
         let mut maze_b = maze_4_singletons();
         let mut rng_b = MazeRng::seed_from_u64(99);
@@ -321,7 +471,15 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy)),
             nested_with(Box::new(TeleportRegionMergeStrategy)),
         ];
-        apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &nested_b);
+        apply_and_commit(
+            &PriorityRegionMergeStrategy,
+            &issue,
+            &mut maze_b,
+            &mut rng_b,
+            &no_params(),
+            &PresetState::empty(),
+            &nested_b,
+        );
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();

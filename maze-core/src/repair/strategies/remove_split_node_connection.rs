@@ -1,12 +1,12 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::InvalidSplitNodeConnectionIssue;
 use crate::generation::PresetState;
+use crate::quality_control::InvalidSplitNodeConnectionIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 /// Handles `INVALID_SPLIT_NODE_CONNECTION` — see GitHub issue #251, epic #246. The nested-slot
 /// target `SplitNodeConnectionGroupSelectStrategy` delegates each candidate connection's removal
@@ -31,8 +31,12 @@ use crate::repair::command::MutationCommand;
 /// there is no other channel to learn which edge to remove. No configurable parameters.
 pub struct RemoveSplitNodeConnectionStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionIssue> for RemoveSplitNodeConnectionStrategy {
-    fn strategy_id(&self) -> &'static str { "remove_split_node_connection" }
+impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionIssue>
+    for RemoveSplitNodeConnectionStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "remove_split_node_connection"
+    }
 
     fn apply(
         &self,
@@ -44,15 +48,21 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionIssue> for Rem
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
         let removal_feasible = |id: &crate::ids::EdgeId| -> bool {
-            let Some(e) = maze.graph.edge(*id) else { return false };
+            let Some(e) = maze.graph.edge(*id) else {
+                return false;
+            };
             let forward_ok = !preset_state.is_preset_edge(e.from, e.to);
             let reverse_exists = maze.graph.edge_between(e.to, e.from).is_some();
             let reverse_ok = reverse_exists && !preset_state.is_preset_edge(e.to, e.from);
             forward_ok || reverse_ok
         };
-        let commands: Vec<MutationCommand> = issue.invalid.iter()
+        let commands: Vec<MutationCommand> = issue
+            .invalid
+            .iter()
             .filter(|id| removal_feasible(id))
-            .flat_map(|&id| crate::generation::cmd_remove_edge_with_reverse(&maze.graph, id, preset_state))
+            .flat_map(|&id| {
+                crate::generation::cmd_remove_edge_with_reverse(&maze.graph, id, preset_state)
+            })
             .collect();
         // A preset-protected connection can never be removed -- if every flagged edge is such a
         // case, nothing can be fixed, so this must report Failed rather than Fixed with an empty
@@ -66,33 +76,49 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionIssue> for Rem
     }
 }
 
-crate::impl_erased_repair_strategy!(RemoveSplitNodeConnectionStrategy, InvalidSplitNodeConnectionIssue);
+crate::impl_erased_repair_strategy!(
+    RemoveSplitNodeConnectionStrategy,
+    InvalidSplitNodeConnectionIssue
+);
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::random::MazeRng;
     use crate::repair::strategies::test_utils::apply_and_commit_default;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     #[test]
     fn apply_removes_the_flagged_edge() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         let edge_id = g.add_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = InvalidSplitNodeConnectionIssue::new_from_check("test", vec![edge_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit_default(&RemoveSplitNodeConnectionStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit_default(
+            &RemoveSplitNodeConnectionStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &PresetState::empty(),
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge(edge_id).is_none());
     }
@@ -100,22 +126,41 @@ mod tests {
     #[test]
     fn apply_removes_both_directions_of_a_bidirectional_connection() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         g.add_bidirectional_edge(a, b, EdgeKind::Basic);
         let forward_id = g.edge_between(a, b).unwrap();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = InvalidSplitNodeConnectionIssue::new_from_check("test", vec![forward_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit_default(&RemoveSplitNodeConnectionStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit_default(
+            &RemoveSplitNodeConnectionStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &PresetState::empty(),
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert!(maze.graph.edge_between(a, b).is_none(), "forward direction must be removed");
-        assert!(maze.graph.edge_between(b, a).is_none(), "reverse direction must also be removed");
+        assert!(
+            maze.graph.edge_between(a, b).is_none(),
+            "forward direction must be removed"
+        );
+        assert!(
+            maze.graph.edge_between(b, a).is_none(),
+            "reverse direction must also be removed"
+        );
     }
 
     #[test]
@@ -126,12 +171,19 @@ mod tests {
         // always-propose behavior, or it would falsely report Fixed and loop the repair fixpoint
         // to its limit (GitHub issue #251 bug report).
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         let edge_id = g.add_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut preset_state = PresetState::empty();
@@ -139,22 +191,40 @@ mod tests {
 
         let issue = InvalidSplitNodeConnectionIssue::new_from_check("test", vec![edge_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit_default(&RemoveSplitNodeConnectionStrategy, &issue, &mut maze, &mut rng, &preset_state);
+        let result = apply_and_commit_default(
+            &RemoveSplitNodeConnectionStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &preset_state,
+        );
         assert!(matches!(result, RepairResult::Failed));
-        assert!(maze.graph.edge(edge_id).is_some(), "preset-protected edge must survive");
+        assert!(
+            maze.graph.edge(edge_id).is_some(),
+            "preset-protected edge must survive"
+        );
     }
 
     #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = InvalidSplitNodeConnectionIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit_default(&RemoveSplitNodeConnectionStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit_default(
+            &RemoveSplitNodeConnectionStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &PresetState::empty(),
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 }

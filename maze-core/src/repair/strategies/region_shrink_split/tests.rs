@@ -1,19 +1,26 @@
 use super::*;
-use std::collections::HashMap as StdHashMap;
-use rand::SeedableRng;
-use crate::random::MazeRng;
-use crate::graph::{Graph, EdgeKind as EK};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+use crate::graph::{EdgeKind as EK, Graph};
+use crate::random::MazeRng;
 use crate::repair::strategies::test_utils::apply_and_commit_default;
+use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+use rand::SeedableRng;
+use std::collections::HashMap as StdHashMap;
 
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
-        let field_level = field.single_level_id();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     (Maze::new(field, g), nodes)
 }
 
@@ -36,7 +43,15 @@ fn apply_fixed_immediately_when_invalid_is_empty() {
     let issue = issue_for(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
+    let result = apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: true,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &PresetState::empty(),
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
@@ -44,31 +59,61 @@ fn apply_fixed_immediately_when_invalid_is_empty() {
 #[test]
 fn apply_splits_chain_region_into_two_sccs() {
     let (mut maze, nodes) = maze_chain_region(6);
-    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[0])
+        .unwrap();
     assert_eq!(maze.analysis.scc(&maze.graph).components.len(), 1);
 
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(3);
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
+    let result = apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: true,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &PresetState::empty(),
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let scc_after = maze.analysis.scc(&maze.graph);
-    assert!(scc_after.components.len() >= 2, "chain region must split into at least two SCCs");
+    assert!(
+        scc_after.components.len() >= 2,
+        "chain region must split into at least two SCCs"
+    );
 }
 
 #[test]
 fn apply_never_cuts_a_preset_edge() {
     let (mut maze, nodes) = maze_chain_region(4); // 0-1-2-3
-    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[0])
+        .unwrap();
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(5);
 
     let mut preset_edges = std::collections::HashSet::new();
     preset_edges.insert((nodes[1], nodes[2]));
     preset_edges.insert((nodes[2], nodes[1]));
-    let preset_state = PresetState { preset_edges, ..PresetState::empty() };
+    let preset_state = PresetState {
+        preset_edges,
+        ..PresetState::empty()
+    };
 
-    apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &preset_state);
+    apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: true,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &preset_state,
+    );
 
     // Whatever happened, the preset passage between nodes[1] and nodes[2] must survive intact.
     assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_some());
@@ -78,7 +123,11 @@ fn apply_never_cuts_a_preset_edge() {
 #[test]
 fn apply_failed_when_whole_region_is_one_unremovable_group() {
     let (mut maze, nodes) = maze_chain_region(3); // 0-1-2
-    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[0])
+        .unwrap();
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(9);
 
@@ -88,12 +137,27 @@ fn apply_failed_when_whole_region_is_one_unremovable_group() {
         preset_edges.insert((w[0], w[1]));
         preset_edges.insert((w[1], w[0]));
     }
-    let preset_state = PresetState { preset_edges, ..PresetState::empty() };
+    let preset_state = PresetState {
+        preset_edges,
+        ..PresetState::empty()
+    };
 
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &preset_state);
+    let result = apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: true,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &preset_state,
+    );
     assert!(matches!(result, RepairResult::Failed));
-    assert_eq!(maze.graph.edges().count(), edges_before, "a Failed strategy must not mutate the graph");
+    assert_eq!(
+        maze.graph.edges().count(),
+        edges_before,
+        "a Failed strategy must not mutate the graph"
+    );
 }
 
 #[test]
@@ -101,13 +165,28 @@ fn apply_failed_when_whole_route_is_protected_and_covers_the_whole_region() {
     let (mut maze, nodes) = maze_chain_region(4); // 0-1-2-3, no branches: the only route is the whole chain
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[3]);
-    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[0])
+        .unwrap();
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(11);
 
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
-    assert!(matches!(result, RepairResult::Failed), "every edge sits on the only start-finish route -> one unremovable group");
+    let result = apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: true,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &PresetState::empty(),
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "every edge sits on the only start-finish route -> one unremovable group"
+    );
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
 
@@ -116,12 +195,27 @@ fn apply_splits_route_when_protect_route_is_disabled() {
     let (mut maze, nodes) = maze_chain_region(4); // 0-1-2-3
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[3]);
-    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+    let region_idx = maze
+        .analysis
+        .scc(&maze.graph)
+        .component_of(nodes[0])
+        .unwrap();
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(13);
 
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: false }, &issue, &mut maze, &mut rng, &PresetState::empty());
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "with route protection disabled the chain can still be split");
+    let result = apply_and_commit_default(
+        &RegionShrinkSplitStrategy {
+            protect_route: false,
+        },
+        &issue,
+        &mut maze,
+        &mut rng,
+        &PresetState::empty(),
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "with route protection disabled the chain can still be split"
+    );
 
     let scc_after = maze.analysis.scc(&maze.graph);
     assert!(scc_after.components.len() >= 2);
@@ -145,7 +239,8 @@ fn star_graph_with_hub_group() -> (Graph, HashMap<NodeId, Vec<NodeId>>, HashMap<
     for &spoke in &[10u64, 20, 30, 40] {
         groups.insert(spoke, vec![spoke]);
     }
-    let group_key_of: HashMap<NodeId, NodeId> = groups.iter()
+    let group_key_of: HashMap<NodeId, NodeId> = groups
+        .iter()
         .flat_map(|(&key, members)| members.iter().map(move |&n| (n, key)))
         .collect();
     (g, groups, group_key_of)
@@ -161,9 +256,17 @@ fn grow_balanced_sides_splits_star_topology_through_the_hub() {
     let side_a = grow_balanced_sides(&g, &region, &groups, &group_key_of, 10, 30);
     let side_a_set: HashSet<NodeId> = side_a.iter().copied().collect();
 
-    assert_eq!(side_a.len() + (region.len() - side_a.len()), region.len(), "every region node assigned to exactly one side");
+    assert_eq!(
+        side_a.len() + (region.len() - side_a.len()),
+        region.len(),
+        "every region node assigned to exactly one side"
+    );
     // Hub group (0, 1) never gets split across sides.
-    assert_eq!(side_a_set.contains(&0), side_a_set.contains(&1), "hub group must stay together");
+    assert_eq!(
+        side_a_set.contains(&0),
+        side_a_set.contains(&1),
+        "hub group must stay together"
+    );
     // Seed groups end up on opposite sides.
     assert_ne!(side_a_set.contains(&10), side_a_set.contains(&30));
 }
@@ -175,7 +278,8 @@ fn grow_balanced_sides_splits_star_topology_through_the_hub() {
 /// forcing the `!claimed` fallback to award a group to side "b" *while `take_a` was true*
 /// (`grow_balanced_sides`' `claim_one(&mut queue_b, ...)` cross-claim branch), not just the
 /// mirror-image case the hub-star fixture above already covers.
-fn lopsided_graph_with_dead_end_seed() -> (Graph, HashMap<NodeId, Vec<NodeId>>, HashMap<NodeId, NodeId>) {
+fn lopsided_graph_with_dead_end_seed()
+-> (Graph, HashMap<NodeId, Vec<NodeId>>, HashMap<NodeId, NodeId>) {
     let mut g = Graph::new();
     // 999 exists in the graph but is deliberately left out of every group/region below, so
     // `group_neighbors`' `!region_set.contains(&neighbor) { continue; }` guard has a real
@@ -184,7 +288,7 @@ fn lopsided_graph_with_dead_end_seed() -> (Graph, HashMap<NodeId, Vec<NodeId>>, 
         g.add_node(n);
     }
     g.add_bidirectional_edge(0, 100, EK::Basic); // hub <-> dead-end leaf (side "a"'s seed)
-    g.add_bidirectional_edge(0, 10, EK::Basic);  // hub <-> head of side "b"'s chain
+    g.add_bidirectional_edge(0, 10, EK::Basic); // hub <-> head of side "b"'s chain
     g.add_bidirectional_edge(10, 20, EK::Basic);
     g.add_bidirectional_edge(20, 30, EK::Basic);
     g.add_bidirectional_edge(30, 40, EK::Basic);
@@ -194,7 +298,8 @@ fn lopsided_graph_with_dead_end_seed() -> (Graph, HashMap<NodeId, Vec<NodeId>>, 
     for &n in &[0u64, 10, 20, 30, 40, 100] {
         groups.insert(n, vec![n]); // every node its own singleton group
     }
-    let group_key_of: HashMap<NodeId, NodeId> = groups.iter()
+    let group_key_of: HashMap<NodeId, NodeId> = groups
+        .iter()
         .flat_map(|(&key, members)| members.iter().map(move |&n| (n, key)))
         .collect();
     (g, groups, group_key_of)
@@ -209,15 +314,32 @@ fn grow_balanced_sides_cross_claims_for_side_a_when_its_own_frontier_is_exhauste
     let side_a = grow_balanced_sides(&g, &region, &groups, &group_key_of, 100, 10);
     let side_a_set: HashSet<NodeId> = side_a.iter().copied().collect();
 
-    assert_eq!(side_a_set.len(), side_a.len(), "no duplicate node in side a");
-    assert_eq!(side_a.len() + (region.len() - side_a.len()), region.len(), "every node assigned exactly once");
+    assert_eq!(
+        side_a_set.len(),
+        side_a.len(),
+        "no duplicate node in side a"
+    );
+    assert_eq!(
+        side_a.len() + (region.len() - side_a.len()),
+        region.len(),
+        "every node assigned exactly once"
+    );
     // Side "a" can only ever grow by claiming the hub (0) from its dead end -- everything past the
     // hub belongs to side "b", proving the hub itself was the one cross-claimed group side "a" got
     // via the `!claimed` fallback, not a group it could have reached through its own frontier alone.
     assert!(side_a_set.contains(&100));
-    assert!(side_a_set.contains(&0), "side a's only reachable extension (the hub) must be claimed by it, not stranded");
-    assert!(!side_a_set.contains(&40), "the far end of side b's chain must never end up on side a");
-    assert!(!side_a_set.contains(&999), "a node outside the region must never be pulled into either side");
+    assert!(
+        side_a_set.contains(&0),
+        "side a's only reachable extension (the hub) must be claimed by it, not stranded"
+    );
+    assert!(
+        !side_a_set.contains(&40),
+        "the far end of side b's chain must never end up on side a"
+    );
+    assert!(
+        !side_a_set.contains(&999),
+        "a node outside the region must never be pulled into either side"
+    );
 }
 
 #[test]
@@ -237,8 +359,14 @@ fn split_region_ignores_edges_leaving_the_region_when_collecting_the_cut_set() {
     let region: Vec<NodeId> = nodes.clone();
     let cut = split_region(&maze, &region, &PresetState::empty(), true).unwrap();
     for &(from, to) in &cut {
-        assert_ne!(from, outsider, "the cut set must never mention a node outside the region");
-        assert_ne!(to, outsider, "the cut set must never mention a node outside the region");
+        assert_ne!(
+            from, outsider,
+            "the cut set must never mention a node outside the region"
+        );
+        assert_ne!(
+            to, outsider,
+            "the cut set must never mention a node outside the region"
+        );
     }
 }
 
@@ -251,6 +379,9 @@ fn split_region_never_returns_a_boundary_edge_when_groups_collapse() {
         preset_edges.insert((w[0], w[1]));
         preset_edges.insert((w[1], w[0]));
     }
-    let preset_state = PresetState { preset_edges, ..PresetState::empty() };
+    let preset_state = PresetState {
+        preset_edges,
+        ..PresetState::empty()
+    };
     assert!(split_region(&maze, &region, &preset_state, true).is_none());
 }

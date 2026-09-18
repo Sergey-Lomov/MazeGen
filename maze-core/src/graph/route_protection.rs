@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
+use std::collections::HashSet;
 
 /// True if `edge_id` is one of the hops on the maze's current start->finish route (per
 /// `MazeAnalysis::route_info`, reusing its cache rather than recomputing the path). `false` when
@@ -11,12 +11,17 @@ use crate::space::Tessellation;
 /// route hops from a non-teleport mutation (e.g. `RegionShrinkSplitStrategy`'s split-edge
 /// selection, which must never sever the critical path) needs the same check for `Basic` edges.
 pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> bool {
-    let Some(edge) = maze.graph.edge(edge_id) else { return false; };
-    let Some(route) = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta) else { return false; };
+    let Some(edge) = maze.graph.edge(edge_id) else {
+        return false;
+    };
+    let Some(route) = maze
+        .analysis
+        .route_info(&maze.graph, &maze.field, &maze.meta)
+    else {
+        return false;
+    };
 
-    let hops: HashSet<(NodeId, NodeId)> = route.path.windows(2)
-        .map(|w| (w[0], w[1]))
-        .collect();
+    let hops: HashSet<(NodeId, NodeId)> = route.path.windows(2).map(|w| (w[0], w[1])).collect();
     hops.contains(&(edge.from, edge.to))
 }
 
@@ -28,7 +33,12 @@ pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> boo
 /// candidate), as opposed to `RegionShrinkSplitStrategy`'s use of `is_edge_on_route`, which avoids
 /// *cutting* a specific route hop.
 pub fn is_node_on_route<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool {
-    let Some(route) = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta) else { return false; };
+    let Some(route) = maze
+        .analysis
+        .route_info(&maze.graph, &maze.field, &maze.meta)
+    else {
+        return false;
+    };
     route.path.contains(&node)
 }
 
@@ -63,8 +73,14 @@ pub fn is_teleport_route_protected<T: Tessellation>(maze: &Maze<T>, edge_id: Edg
 /// Used by a strategy that must downgrade a route-critical passage to a one-way without severing
 /// the route — the removed direction must be the *other* one, never the route's own direction
 /// (`MissingOneWaysFromPassageStrategy`, GitHub issue #201's follow-up).
-pub fn route_direction<T: Tessellation>(maze: &Maze<T>, a: NodeId, b: NodeId) -> Option<(NodeId, NodeId)> {
-    let route = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)?;
+pub fn route_direction<T: Tessellation>(
+    maze: &Maze<T>,
+    a: NodeId,
+    b: NodeId,
+) -> Option<(NodeId, NodeId)> {
+    let route = maze
+        .analysis
+        .route_info(&maze.graph, &maze.field, &maze.meta)?;
     route.path.windows(2).find_map(|w| {
         let (from, to) = (w[0], w[1]);
         if (from, to) == (a, b) || (from, to) == (b, a) {
@@ -78,32 +94,46 @@ pub fn route_direction<T: Tessellation>(maze: &Maze<T>, a: NodeId, b: NodeId) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Graph, EdgeKind};
-    use crate::meta::MazeMeta;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::IdGenerator;
+    use crate::graph::{EdgeKind, Graph};
+    use crate::meta::MazeMeta;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 
     /// 1x3 corridor: n0 -> n1 -> n2, start = n0, finish = n2.
     fn maze_with_corridor_route() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2) };
+        maze.meta = MazeMeta {
+            start: Some(n0),
+            finish: Some(n2),
+        };
         (maze, n0, n1, n2)
     }
 
     #[test]
     fn route_direction_returns_the_routes_own_order_regardless_of_argument_order() {
         let (maze, n0, n1, _) = maze_with_corridor_route();
-        assert_eq!(route_direction(&maze, n0, n1), Some((n0, n1)), "args already in route order");
-        assert_eq!(route_direction(&maze, n1, n0), Some((n0, n1)), "args reversed from route order must still resolve to the route's own (from, to)");
+        assert_eq!(
+            route_direction(&maze, n0, n1),
+            Some((n0, n1)),
+            "args already in route order"
+        );
+        assert_eq!(
+            route_direction(&maze, n1, n0),
+            Some((n0, n1)),
+            "args reversed from route order must still resolve to the route's own (from, to)"
+        );
     }
 
     #[test]
@@ -116,17 +146,23 @@ mod tests {
     #[test]
     fn route_direction_is_none_for_a_pair_not_on_the_route() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
         let (n0, n1) = (p(0, 0), p(1, 0));
         let (n2, n3) = (p(0, 1), p(1, 1));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n2, n3, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1) };
+        maze.meta = MazeMeta {
+            start: Some(n0),
+            finish: Some(n1),
+        };
 
         // n2/n3 form a disconnected side passage, never touched by the n0->n1 route.
         assert_eq!(route_direction(&maze, n2, n3), None);
@@ -137,7 +173,11 @@ mod tests {
         let (maze, n0, n1, _) = maze_with_corridor_route();
         let mut maze = maze;
         maze.meta.finish = None;
-        assert_eq!(route_direction(&maze, n0, n1), None, "no finish set -> no route -> None");
+        assert_eq!(
+            route_direction(&maze, n0, n1),
+            None,
+            "no finish set -> no route -> None"
+        );
     }
 
     #[test]

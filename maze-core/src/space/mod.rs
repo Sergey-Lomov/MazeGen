@@ -1,17 +1,17 @@
+use crate::graph::Graph;
+use crate::ids::{IdGenerator, NodeId};
 use std::collections::HashMap;
 use std::hash::Hash;
-use crate::ids::{NodeId, IdGenerator};
-use crate::graph::Graph;
 
-pub mod square;
 pub mod hex;
-pub mod triangle;
 pub mod multi_level;
+pub mod square;
+pub mod triangle;
 
-pub use square::{SquareTessellation, SquarePoint, SquareFace, square_rect};
-pub use hex::{HexTessellation, HexPoint, HexFace, hex_parallelogram, hex_hexagon};
-pub use triangle::{TriTessellation, TriPoint, TriFace, tri_rect, tri_triangle, tri_hexagon};
+pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
+pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
+pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 
 pub trait Tessellation {
     type Point: Copy + Eq + Hash;
@@ -118,7 +118,11 @@ pub trait Tessellation {
 /// No `degree` parameter — `T::faces().len()` is the single source of truth (every caller used to
 /// compute and pass it separately, a redundant value that could in principle drift from `T`'s own
 /// tables; `rotation_symmetries`'s doc comment states the invariant this relies on).
-pub fn transform_face_index<T: Tessellation>(face_index: usize, rotation: usize, mirror: Option<usize>) -> Option<usize> {
+pub fn transform_face_index<T: Tessellation>(
+    face_index: usize,
+    rotation: usize,
+    mirror: Option<usize>,
+) -> Option<usize> {
     if face_index >= T::faces().len() {
         return None;
     }
@@ -144,7 +148,12 @@ pub fn geometric_distance<T: Tessellation>(a: T::Point, b: T::Point) -> f64 {
 /// `geometric_distance` (node-to-node): an edge's visual position is its border crossing, not
 /// either endpoint node, so measuring edge proximity via node distance would systematically
 /// underestimate how far apart two edges actually render.
-pub fn geometric_edge_distance<T: Tessellation>(a_from: T::Point, a_to: T::Point, b_from: T::Point, b_to: T::Point) -> f64 {
+pub fn geometric_edge_distance<T: Tessellation>(
+    a_from: T::Point,
+    a_to: T::Point,
+    b_from: T::Point,
+    b_to: T::Point,
+) -> f64 {
     let (ax, ay) = T::edge_position(a_from, a_to);
     let (bx, by) = T::edge_position(b_from, b_to);
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
@@ -165,7 +174,13 @@ pub fn floor_aware_distance<T: Tessellation>(
     b: T::Point,
     include_height: bool,
 ) -> f64 {
-    floor_aware_xy_distance(a_level, T::cartesian(a), b_level, T::cartesian(b), include_height)
+    floor_aware_xy_distance(
+        a_level,
+        T::cartesian(a),
+        b_level,
+        T::cartesian(b),
+        include_height,
+    )
 }
 
 /// Euclidean distance between two edges' `Tessellation::edge_position`s, each on its own floor —
@@ -180,7 +195,13 @@ pub fn floor_aware_edge_distance<T: Tessellation>(
     b_to: T::Point,
     include_height: bool,
 ) -> f64 {
-    floor_aware_xy_distance(a_level, T::edge_position(a_from, a_to), b_level, T::edge_position(b_from, b_to), include_height)
+    floor_aware_xy_distance(
+        a_level,
+        T::edge_position(a_from, a_to),
+        b_level,
+        T::edge_position(b_from, b_to),
+        include_height,
+    )
 }
 
 /// Shared core of `floor_aware_distance`/`floor_aware_edge_distance` — both ultimately compare two
@@ -196,7 +217,11 @@ pub fn floor_aware_xy_distance(
     b_xy: (f64, f64),
     include_height: bool,
 ) -> f64 {
-    let dz = if include_height { b_level as f64 - a_level as f64 } else { 0.0 };
+    let dz = if include_height {
+        b_level as f64 - a_level as f64
+    } else {
+        0.0
+    };
     ((b_xy.0 - a_xy.0).powi(2) + (b_xy.1 - a_xy.1).powi(2) + dz.powi(2)).sqrt()
 }
 
@@ -240,7 +265,10 @@ impl<T: Tessellation> Field<T> {
         if point_to_nodes.is_empty() {
             return Err("field is empty");
         }
-        Ok(Self { point_to_nodes, node_to_point })
+        Ok(Self {
+            point_to_nodes,
+            node_to_point,
+        })
     }
 
     pub fn node_count(&self) -> usize {
@@ -284,13 +312,18 @@ impl<T: Tessellation> Field<T> {
         let mut node_to_point = HashMap::new();
         for (id, point) in entries {
             debug_assert!(
-                node_to_point.get(&id).is_none_or(|&existing| existing == point),
+                node_to_point
+                    .get(&id)
+                    .is_none_or(|&existing| existing == point),
                 "from_id_points: duplicate NodeId {id:?} across two different points",
             );
             point_to_nodes.entry(point).or_default().push(id);
             node_to_point.insert(id, point);
         }
-        Self { point_to_nodes, node_to_point }
+        Self {
+            point_to_nodes,
+            node_to_point,
+        }
     }
 
     /// Adds another `NodeId` to an already-existing point — see GitHub issue #219. The point
@@ -307,7 +340,9 @@ impl<T: Tessellation> Field<T> {
     /// exist in the `Graph` until something also calls `graph.add_node` for it. In production code
     /// that's `Maze::add_node_at`, which does both atomically.
     pub fn add_node_at(&mut self, point: T::Point, ids: &mut IdGenerator) -> NodeId {
-        let nodes = self.point_to_nodes.get_mut(&point)
+        let nodes = self
+            .point_to_nodes
+            .get_mut(&point)
             .unwrap_or_else(|| panic!("add_node_at: point not in field"));
         let id = ids.next_id();
         nodes.push(id);
@@ -333,9 +368,13 @@ impl<T: Tessellation> Field<T> {
     /// their `NodeId` — those never change) — a caller holding an index into `nodes_at`'s slice
     /// rather than a `NodeId` must account for the shift.
     pub fn remove_node_at(&mut self, point: T::Point, node: NodeId) {
-        let nodes = self.point_to_nodes.get_mut(&point)
+        let nodes = self
+            .point_to_nodes
+            .get_mut(&point)
             .unwrap_or_else(|| panic!("remove_node_at: point not in field"));
-        let idx = nodes.iter().position(|&id| id == node)
+        let idx = nodes
+            .iter()
+            .position(|&id| id == node)
             .unwrap_or_else(|| panic!("remove_node_at: node does not belong to point"));
         if nodes.len() == 1 {
             panic!("remove_node_at: cannot remove a point's last remaining node");
@@ -349,7 +388,9 @@ impl<T: Tessellation> Field<T> {
     /// iteration order. Empty slice if the point isn't in the field. No allocation — borrows from
     /// the field's internal storage.
     pub fn nodes_at(&self, point: T::Point) -> &[NodeId] {
-        self.point_to_nodes.get(&point).map_or(&[], |v| v.as_slice())
+        self.point_to_nodes
+            .get(&point)
+            .map_or(&[], |v| v.as_slice())
     }
 
     /// Replaces every node at `point` with `new_ids`, wholesale — unlike `remove_node_at`, this has
@@ -360,9 +401,15 @@ impl<T: Tessellation> Field<T> {
     /// (a point must always have at least one node — this method replaces, it does not delete a
     /// point's presence in the field).
     pub fn replace_nodes_at(&mut self, point: T::Point, new_ids: Vec<NodeId>) {
-        assert!(!new_ids.is_empty(), "replace_nodes_at: new_ids must not be empty");
-        let old_nodes = self.point_to_nodes.get(&point)
-            .unwrap_or_else(|| panic!("replace_nodes_at: point not in field")).clone();
+        assert!(
+            !new_ids.is_empty(),
+            "replace_nodes_at: new_ids must not be empty"
+        );
+        let old_nodes = self
+            .point_to_nodes
+            .get(&point)
+            .unwrap_or_else(|| panic!("replace_nodes_at: point not in field"))
+            .clone();
         for old in &old_nodes {
             self.node_to_point.remove(old);
         }
@@ -405,11 +452,21 @@ impl<T: Tessellation> Field<T> {
     }
 
     pub fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool {
-        let Some(fp) = self.node_to_point.get(&from) else { return false; };
-        let Some(vp) = self.node_to_point.get(&via)  else { return false; };
-        let Some(tp) = self.node_to_point.get(&to)   else { return false; };
-        let Some(face_in)  = T::face_between(*fp, *vp) else { return false; };
-        let Some(face_out) = T::face_between(*vp, *tp) else { return false; };
+        let Some(fp) = self.node_to_point.get(&from) else {
+            return false;
+        };
+        let Some(vp) = self.node_to_point.get(&via) else {
+            return false;
+        };
+        let Some(tp) = self.node_to_point.get(&to) else {
+            return false;
+        };
+        let Some(face_in) = T::face_between(*fp, *vp) else {
+            return false;
+        };
+        let Some(face_out) = T::face_between(*vp, *tp) else {
+            return false;
+        };
         face_in == face_out
     }
 
@@ -454,7 +511,6 @@ impl<T: Tessellation> Field<T> {
         self.nodes_at(point).first().copied()
     }
 }
-
 
 #[cfg(test)]
 #[path = "space_tests.rs"]

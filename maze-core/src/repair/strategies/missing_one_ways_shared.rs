@@ -1,10 +1,10 @@
-use rand::{Rng, RngCore};
-use std::collections::HashSet;
+use super::dead_end_priority::apply_src_mode;
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
 use crate::quality_control::RepairArea;
-use super::dead_end_priority::apply_src_mode;
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
 /// Shared random-candidate-pair search for `MissingOneWaysFromPassageStrategy`/
 /// `MissingOneWaysFromWallStrategy` — see GitHub issue #201. Both strategies need the same "pick a
@@ -36,7 +36,9 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
     max_failed_attempts: usize,
     mut try_pair: impl FnMut(NodeId, NodeId, &mut dyn RngCore) -> bool,
 ) -> u32 {
-    let eligible: Vec<NodeId> = maze.field.all_node_ids()
+    let eligible: Vec<NodeId> = maze
+        .field
+        .all_node_ids()
         .filter(|&n| match area {
             RepairArea::WholeMaze => true,
             RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
@@ -52,7 +54,9 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
         // candidates sit at this end when `dead_end_priority` is active; a random-index pick would
         // destroy that ordering. Every neighbor of `src` is offered below regardless of outcome,
         // so `src` is never worth revisiting this call either way.
-        let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
+        let src = pool
+            .pop()
+            .expect("pool.is_empty() already checked by the while condition");
 
         let mut neighbors = maze.field.neighbors(src);
         let mut connected = false;
@@ -90,21 +94,25 @@ pub(super) type ProposedPairs = HashSet<(NodeId, NodeId)>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::graph::Graph;
+    use crate::random::MazeRng;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     /// 1x3 corridor, all three nodes in the pool but only the middle one (n1) has two neighbors
     /// (n0, n2) — isolates the "reject one neighbor, retry the next" branch from pool eviction
     /// (a 1-neighbor node can only ever hit accept-immediately or evict, never a retry).
-    fn maze_with_middle_node_having_two_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
+    fn maze_with_middle_node_having_two_neighbors()
+    -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -125,18 +133,32 @@ mod tests {
         // instead of retrying the rest, n1 would be evicted empty-handed too, and the whole pool
         // would exhaust with `found` stuck at 0.
         let mut n1_first_candidate: Option<NodeId> = None;
-        let found = pick_random_pairs(&maze, &mut rng, 1, RepairArea::WholeMaze, super::super::dead_end_priority::SRC_MODE_RANDOM, usize::MAX, |src, dst, _rng| {
-            if src != n1 {
-                return false;
-            }
-            if n1_first_candidate.is_none() {
-                n1_first_candidate = Some(dst);
-                return false;
-            }
-            true
-        });
+        let found = pick_random_pairs(
+            &maze,
+            &mut rng,
+            1,
+            RepairArea::WholeMaze,
+            super::super::dead_end_priority::SRC_MODE_RANDOM,
+            usize::MAX,
+            |src, dst, _rng| {
+                if src != n1 {
+                    return false;
+                }
+                if n1_first_candidate.is_none() {
+                    n1_first_candidate = Some(dst);
+                    return false;
+                }
+                true
+            },
+        );
 
-        assert_eq!(found, 1, "n1's rejected first neighbor must not evict it -- it must retry and pair via its second neighbor");
-        assert!(n1_first_candidate == Some(n0) || n1_first_candidate == Some(n2), "sanity check: n1 must have been tried as src with one of its two neighbors first");
+        assert_eq!(
+            found, 1,
+            "n1's rejected first neighbor must not evict it -- it must retry and pair via its second neighbor"
+        );
+        assert!(
+            n1_first_candidate == Some(n0) || n1_first_candidate == Some(n2),
+            "sanity check: n1 must have been tried as src with one of its two neighbors first"
+        );
     }
 }

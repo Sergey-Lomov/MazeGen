@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_SPLIT_NODE};
+use crate::quality_control::issue::{
+    INVALID_SPLIT_NODE, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced by any check that flags a single split node (any node of a split tile, slot-0
 /// included — see the epic #246 doc comment: slot-0 is an equal member of the tile for every
@@ -20,8 +22,15 @@ pub struct InvalidSplitNodeIssue {
 
 impl InvalidSplitNodeIssue {
     pub fn new_from_check(source_check: &str, invalid: Vec<NodeId>) -> Self {
-        let invalid_sources = invalid.iter().map(|&id| (id, vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+        let invalid_sources = invalid
+            .iter()
+            .map(|&id| (id, vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -43,7 +52,12 @@ crate::impl_issue!(InvalidSplitNodeIssue);
 impl IssueMerge for InvalidSplitNodeIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+        super::merge_id_sets(
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.invalid,
+            other.invalid_sources,
+        );
     }
 }
 
@@ -68,8 +82,14 @@ mod tests {
         let b = InvalidSplitNodeIssue::new_from_check("split_node_connection_count_b", vec![1]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&0), Some(&vec!["split_node_connection_count_a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&1), Some(&vec!["split_node_connection_count_b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&0),
+            Some(&vec!["split_node_connection_count_a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&1),
+            Some(&vec!["split_node_connection_count_b".to_string()])
+        );
     }
 
     #[test]
@@ -78,6 +98,10 @@ mod tests {
         let b = InvalidSplitNodeIssue::new_from_check("split_node_connection_count_b", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same node id flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "the same node id flagged by both checks must not be duplicated"
+        );
     }
 }

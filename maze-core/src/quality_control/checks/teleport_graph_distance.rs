@@ -1,13 +1,13 @@
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
+use crate::graph::distance_map::{DistanceDirection, compute_distance_map_filtered_bounded};
 use crate::graph::nav::NavEdge;
 use crate::graph::route_protection::is_teleport_route_protected;
-use crate::space::Tessellation;
+use crate::quality_control::InvalidTeleportIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::InvalidTeleportIssue;
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const TELEPORT_GRAPH_DISTANCE_DEFAULT: u32 = 0;
 pub const TELEPORT_GRAPH_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -47,21 +47,40 @@ fn is_not_this_teleport(edge: &NavEdge, from: crate::ids::NodeId, to: crate::ids
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGraphDistanceCheck {
-    fn check_type_id(&self) -> &'static str { "teleport_graph_distance" }
+    fn check_type_id(&self) -> &'static str {
+        "teleport_graph_distance"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidTeleportIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
 
-        let invalid: Vec<_> = maze.graph.edges()
+        let invalid: Vec<_> = maze
+            .graph
+            .edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|t| {
-                let (Some(from_nav), Some(to_nav)) = (nav.nav_node_for(t.from), nav.nav_node_for(t.to)) else {
+                let (Some(from_nav), Some(to_nav)) =
+                    (nav.nav_node_for(t.from), nav.nav_node_for(t.to))
+                else {
                     return false;
                 };
                 let filter = |edge: &NavEdge| is_not_this_teleport(edge, t.from, t.to);
-                compute_distance_map_filtered_bounded(&nav, from_nav, DistanceDirection::Forward, filter, usize::MAX)
-                    .get(&to_nav).copied()
-                    .is_some_and(|d| self.comparison.compare(d as u32, self.distance))
+                compute_distance_map_filtered_bounded(
+                    &nav,
+                    from_nav,
+                    DistanceDirection::Forward,
+                    filter,
+                    usize::MAX,
+                )
+                .get(&to_nav)
+                .copied()
+                .is_some_and(|d| self.comparison.compare(d as u32, self.distance))
             })
             .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
@@ -70,8 +89,11 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGraphDistanceCh
         if invalid.is_empty() {
             return;
         }
-        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid).with_detail(
+            &self.instance_id,
+            "distance",
+            self.distance.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -79,22 +101,27 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGraphDistanceCh
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "teleport_graph_distance";
 
     /// Line of `len` nodes connected by basic edges, plus a teleport from the last node back to
     /// the first — the teleport's own entry/exit sit `len - 1` tile-hops apart via the corridor,
     /// entirely independent of the teleport edge itself.
-    fn maze_with_corridor_and_teleport(len: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
+    fn maze_with_corridor_and_teleport(
+        len: usize,
+    ) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let nodes: Vec<_> = (0..len as i32).map(p).collect();
         for i in 0..len - 1 {
@@ -108,19 +135,34 @@ mod tests {
     #[test]
     fn lt_fires_when_graph_distance_shorter_than_threshold() {
         let (maze, _) = maze_with_corridor_and_teleport(3); // entry<->exit distance 2 via corridor
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
+        let teleport_id = maze
+            .graph
+            .edges()
+            .find(|e| e.kind == EdgeKind::Teleport)
+            .unwrap()
+            .id;
         assert_eq!(issues[0].invalid, vec![teleport_id]);
     }
 
     #[test]
     fn lt_silent_when_graph_distance_longer_than_threshold() {
         let (maze, _) = maze_with_corridor_and_teleport(10); // distance 9 via corridor
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -130,7 +172,12 @@ mod tests {
     #[test]
     fn gt_fires_when_graph_distance_longer_than_threshold() {
         let (maze, _) = maze_with_corridor_and_teleport(10); // distance 9 via corridor
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Gt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -140,7 +187,12 @@ mod tests {
     #[test]
     fn gt_silent_when_graph_distance_shorter_than_threshold() {
         let (maze, _) = maze_with_corridor_and_teleport(3); // distance 2 via corridor
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Gt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -153,20 +205,35 @@ mod tests {
         // graph distance is undefined (unreachable), not 1 (which a naive "count this edge" bug
         // would report).
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 5, y: 5 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 5, y: 5 })
+            .unwrap();
         g.add_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 1000, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 1000,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "an unreachable pair (teleport is the only connection) must never be flagged");
+        assert!(
+            issues.is_empty(),
+            "an unreachable pair (teleport is the only connection) must never be flagged"
+        );
     }
 
     #[test]
@@ -174,46 +241,81 @@ mod tests {
         // Two-way teleport (both directions), nothing else connects the pair -- graph distance
         // must stay undefined for both directions, not 1 via the opposite-direction edge.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 5, y: 5 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 5, y: 5 })
+            .unwrap();
         g.add_bidirectional_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 1000, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 1000,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "a two-way teleport with no other connection must never be flagged, whichever direction is scanned");
+        assert!(
+            issues.is_empty(),
+            "a two-way teleport with no other connection must never be flagged, whichever direction is scanned"
+        );
     }
 
     #[test]
     fn silent_when_threshold_is_zero() {
         let (maze, _) = maze_with_corridor_and_teleport(3);
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 0, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 0,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "a threshold of 0 should never flag any teleport");
+        assert!(
+            issues.is_empty(),
+            "a threshold of 0 should never flag any teleport"
+        );
     }
 
     #[test]
     fn lt_protect_route_excludes_a_route_critical_short_teleport() {
         let (mut maze, nodes) = maze_with_corridor_and_teleport(3);
-        let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap();
+        let teleport = maze
+            .graph
+            .edges()
+            .find(|e| e.kind == EdgeKind::Teleport)
+            .unwrap();
         let (start, finish) = (teleport.from, teleport.to);
         maze.meta.start = Some(start);
         maze.meta.finish = Some(finish);
         let _ = nodes;
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+        assert!(
+            issues.is_empty(),
+            "route-critical teleport must not be flagged when protect_route is enabled"
+        );
     }
 
     #[test]
@@ -222,38 +324,71 @@ mod tests {
         // teleport must not hide this genuine pedestrian passage, since the pair is one Basic hop
         // apart regardless of the teleport's presence.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         g.add_edge(a, b, EdgeKind::Basic);
         g.add_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 1000, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 1000,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1, "parallel Basic edge means the pair is 1 hop apart, which is < 1000");
-        let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
+        assert_eq!(
+            issues.len(),
+            1,
+            "parallel Basic edge means the pair is 1 hop apart, which is < 1000"
+        );
+        let teleport_id = maze
+            .graph
+            .edges()
+            .find(|e| e.kind == EdgeKind::Teleport)
+            .unwrap()
+            .id;
         assert_eq!(issues[0].invalid, vec![teleport_id]);
     }
 
     #[test]
     fn ignores_basic_edges() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         g.add_edge(a, b, EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 100, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 100,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -264,18 +399,36 @@ mod tests {
     fn fires_for_both_directions_of_a_two_way_short_teleport() {
         let (mut maze, nodes) = maze_with_corridor_and_teleport(3);
         // Add the reverse teleport direction too.
-        maze.graph.build_initial_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        maze.graph
+            .build_initial_edge(nodes[0], nodes[2], EdgeKind::Teleport);
 
-        let check = TeleportGraphDistanceCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, distance: 5, protect_route: true };
+        let check = TeleportGraphDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            distance: 5,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
 
-        assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
-        let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();
+        assert_eq!(
+            issues.len(),
+            1,
+            "both directions merge into one issue from a single check call"
+        );
+        let mut teleport_ids: Vec<_> = maze
+            .graph
+            .edges()
+            .filter(|e| e.kind == EdgeKind::Teleport)
+            .map(|e| e.id)
+            .collect();
         teleport_ids.sort_unstable();
         let mut flagged = issues[0].invalid.clone();
         flagged.sort_unstable();
-        assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one");
+        assert_eq!(
+            flagged, teleport_ids,
+            "both teleport directions must be flagged, not just one"
+        );
     }
 }

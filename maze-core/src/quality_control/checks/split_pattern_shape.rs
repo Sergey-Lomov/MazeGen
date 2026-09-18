@@ -1,10 +1,10 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::generation::SplitPattern;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
 use crate::quality_control::split_pattern_match::split_tile_matches_any;
+use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 /// Flags a split tile whose current shape no longer structurally matches any declared pattern
 /// (any rotation/mirror — see `split_tile_matches_any`) — GitHub issue #382, part of epic #246.
@@ -32,19 +32,31 @@ pub struct SplitPatternShapeCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitPatternShapeCheck {
-    fn check_type_id(&self) -> &'static str { "split_pattern_shape" }
+    fn check_type_id(&self) -> &'static str {
+        "split_pattern_shape"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitTileIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         if self.patterns.is_empty() {
             return;
         }
 
         let mut seen_points = std::collections::HashSet::new();
-        let invalid: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+        let invalid: Vec<SplitTileNodes> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { return None; }
+                if nodes.len() < 2 {
+                    return None;
+                }
                 if split_tile_matches_any(&maze.graph, &maze.field, nodes, &self.patterns) {
                     return None;
                 }
@@ -63,11 +75,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitPatternShapeCheck
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
+    use crate::generation::{OneWayDirection, SplitFaceRequirement, SplitPatternFace};
     use crate::graph::EdgeKind;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-    use crate::generation::{SplitFaceRequirement, SplitPatternFace, OneWayDirection};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "split_pattern_shape";
 
@@ -81,8 +93,16 @@ mod tests {
         SplitPattern {
             node_count: 2,
             faces: vec![
-                vec![SplitPatternFace { face_index: 2, requirement: req, sibling_target: None }],
-                vec![SplitPatternFace { face_index: 3, requirement: req, sibling_target: None }],
+                vec![SplitPatternFace {
+                    face_index: 2,
+                    requirement: req,
+                    sibling_target: None,
+                }],
+                vec![SplitPatternFace {
+                    face_index: 3,
+                    requirement: req,
+                    sibling_target: None,
+                }],
             ],
             weight: 1.0,
         }
@@ -92,12 +112,15 @@ mod tests {
     /// matches `through_pattern(Passage)` exactly.
     fn maze_with_middle_split() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let west = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let east = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         let slot0 = field.nodes_at(level, mid)[0];
@@ -109,7 +132,10 @@ mod tests {
     #[test]
     fn silent_when_patterns_list_is_empty() {
         let maze = maze_with_middle_split();
-        let check = SplitPatternShapeCheck { instance_id: TEST_ID.to_string(), patterns: vec![] };
+        let check = SplitPatternShapeCheck {
+            instance_id: TEST_ID.to_string(),
+            patterns: vec![],
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "no declared pattern to validate against");
@@ -137,7 +163,10 @@ mod tests {
         let level = maze.field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let nodes = maze.field.nodes_at(level, mid).to_vec();
-        let east = maze.field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
+        let east = maze
+            .field
+            .node_at(level, SquarePoint { x: 2, y: 0 })
+            .unwrap();
         let edge = maze.graph.edge_between(nodes[1], east).unwrap();
         maze.graph.remove_edge(edge);
         let edge_rev = maze.graph.edge_between(east, nodes[1]).unwrap();
@@ -161,8 +190,14 @@ mod tests {
         let level = maze.field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let nodes = maze.field.nodes_at(level, mid).to_vec();
-        let west = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let east = maze.field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
+        let west = maze
+            .field
+            .node_at(level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let east = maze
+            .field
+            .node_at(level, SquarePoint { x: 2, y: 0 })
+            .unwrap();
         // Turn both edges into one-ways pointing outward, matching a differently-shaped pattern.
         let fwd1 = maze.graph.edge_between(nodes[0], west).unwrap();
         maze.graph.remove_edge(fwd1);
@@ -172,26 +207,43 @@ mod tests {
         let one_way_pattern = SplitPattern {
             node_count: 2,
             faces: vec![
-                vec![SplitPatternFace { face_index: 3, requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward), sibling_target: None }],
-                vec![SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward), sibling_target: None }],
+                vec![SplitPatternFace {
+                    face_index: 3,
+                    requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward),
+                    sibling_target: None,
+                }],
+                vec![SplitPatternFace {
+                    face_index: 2,
+                    requirement: SplitFaceRequirement::OneWay(OneWayDirection::Backward),
+                    sibling_target: None,
+                }],
             ],
             weight: 1.0,
         };
         let check = SplitPatternShapeCheck {
             instance_id: TEST_ID.to_string(),
-            patterns: vec![through_pattern(SplitFaceRequirement::Passage), one_way_pattern],
+            patterns: vec![
+                through_pattern(SplitFaceRequirement::Passage),
+                one_way_pattern,
+            ],
         };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "tile now matches the second declared pattern");
+        assert!(
+            issues.is_empty(),
+            "tile now matches the second declared pattern"
+        );
     }
 
     #[test]
     fn silent_when_no_split_tiles_exist() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = SplitPatternShapeCheck {
             instance_id: TEST_ID.to_string(),

@@ -15,7 +15,13 @@ pub enum Comparison {
 }
 
 impl Comparison {
-    pub const ALL: [Comparison; 5] = [Comparison::Lt, Comparison::Gt, Comparison::Le, Comparison::Ge, Comparison::Eq];
+    pub const ALL: [Comparison; 5] = [
+        Comparison::Lt,
+        Comparison::Gt,
+        Comparison::Le,
+        Comparison::Ge,
+        Comparison::Eq,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {

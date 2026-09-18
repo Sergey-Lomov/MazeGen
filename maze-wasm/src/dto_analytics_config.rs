@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use serde::Deserialize;
-use maze_core_macros::Dto;
 use crate::generation_config::TessellationConfig;
+use maze_core_macros::Dto;
+use serde::Deserialize;
+use std::collections::HashMap;
 
 /// One endpoint of a post-edit edge — either a plain existing `NodeId`, or a reference to one of
 /// a split point's extra nodes by its stable `slot_id` (GitHub issue #221). The web side never
@@ -16,8 +16,15 @@ use crate::generation_config::TessellationConfig;
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[dto(rename_ts = "PostEditEndpointWasmDto")]
 pub enum PostEditEndpointDto {
-    Node { id: u32 },
-    Split { point: [i32; 2], slot_id: u32, #[serde(default)] level: u32 },
+    Node {
+        id: u32,
+    },
+    Split {
+        point: [i32; 2],
+        slot_id: u32,
+        #[serde(default)]
+        level: u32,
+    },
 }
 
 #[derive(Deserialize, Dto)]

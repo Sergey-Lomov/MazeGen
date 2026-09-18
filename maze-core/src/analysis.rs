@@ -4,15 +4,57 @@ use crate::meta::MazeMeta;
 use crate::space;
 
 pub struct MazeAnalysis {
-    nav_graph: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, graph::nav::NavGraph)>>,
+    nav_graph: std::cell::RefCell<
+        Option<(
+            u64,
+            Option<ids::NodeId>,
+            Option<ids::NodeId>,
+            graph::nav::NavGraph,
+        )>,
+    >,
     scc: std::cell::RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
-    route_info: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, Option<graph::routing::RouteInfo>)>>,
-    graph_analytics: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, GraphAnalytics)>>,
-    distance_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
-    distance_from_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
-    region_classes: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, std::collections::HashMap<graph::scc::ComponentId, RegionClass>)>>,
-    reachable_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
-    reachable_to_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
+    route_info: std::cell::RefCell<
+        Option<(
+            u64,
+            Option<ids::NodeId>,
+            Option<ids::NodeId>,
+            Option<graph::routing::RouteInfo>,
+        )>,
+    >,
+    graph_analytics: std::cell::RefCell<
+        Option<(
+            u64,
+            Option<ids::NodeId>,
+            Option<ids::NodeId>,
+            GraphAnalytics,
+        )>,
+    >,
+    distance_from_start: std::cell::RefCell<
+        Option<(
+            u64,
+            ids::NodeId,
+            std::collections::HashMap<graph::nav::NavNodeId, usize>,
+        )>,
+    >,
+    distance_from_finish: std::cell::RefCell<
+        Option<(
+            u64,
+            ids::NodeId,
+            std::collections::HashMap<graph::nav::NavNodeId, usize>,
+        )>,
+    >,
+    region_classes: std::cell::RefCell<
+        Option<(
+            u64,
+            Option<ids::NodeId>,
+            Option<ids::NodeId>,
+            std::collections::HashMap<graph::scc::ComponentId, RegionClass>,
+        )>,
+    >,
+    reachable_from_start:
+        std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
+    reachable_to_finish:
+        std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -46,8 +88,12 @@ impl MazeAnalysis {
         let mut cache = self.nav_graph.borrow_mut();
         if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
             let mut pinned = std::collections::HashSet::new();
-            if let Some(s) = meta.start { pinned.insert(s); }
-            if let Some(f) = meta.finish { pinned.insert(f); }
+            if let Some(s) = meta.start {
+                pinned.insert(s);
+            }
+            if let Some(f) = meta.finish {
+                pinned.insert(f);
+            }
             let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
             *cache = Some((key.0, key.1, key.2, nav));
         }
@@ -71,11 +117,17 @@ impl MazeAnalysis {
     ///
     /// Returns `None` if either `meta.start` or `meta.finish` is unset, or if no route exists
     /// between them.
-    pub fn route_info<T: space::Tessellation>(&self, graph: &Graph, field: &space::MultiLevelField<T>, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
+    pub fn route_info<T: space::Tessellation>(
+        &self,
+        graph: &Graph,
+        field: &space::MultiLevelField<T>,
+        meta: &MazeMeta,
+    ) -> Option<graph::routing::RouteInfo> {
         let (start, finish) = (meta.start?, meta.finish?);
         let version = graph.version();
         let mut cache = self.route_info.borrow_mut();
-        if !matches!(&*cache, Some((v, s, f, _)) if *v == version && *s == Some(start) && *f == Some(finish)) {
+        if !matches!(&*cache, Some((v, s, f, _)) if *v == version && *s == Some(start) && *f == Some(finish))
+        {
             let mut pinned = std::collections::HashSet::new();
             pinned.insert(start);
             pinned.insert(finish);
@@ -116,15 +168,25 @@ impl MazeAnalysis {
     ///
     /// Returns an empty map if either `meta.start` or `meta.finish` is unset — there is no
     /// start/finish to classify regions relative to.
-    pub fn region_classes<T: space::Tessellation>(&self, graph: &Graph, field: &space::MultiLevelField<T>, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
-        let Some(start) = meta.start else { return std::collections::HashMap::new(); };
-        let Some(finish) = meta.finish else { return std::collections::HashMap::new(); };
+    pub fn region_classes<T: space::Tessellation>(
+        &self,
+        graph: &Graph,
+        field: &space::MultiLevelField<T>,
+        meta: &MazeMeta,
+    ) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
+        let Some(start) = meta.start else {
+            return std::collections::HashMap::new();
+        };
+        let Some(finish) = meta.finish else {
+            return std::collections::HashMap::new();
+        };
         let key = (graph.version(), Some(start), Some(finish));
         let mut cache = self.region_classes.borrow_mut();
         if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
             let scc = self.scc(graph);
             let route = self.route_info(graph, field, meta);
-            let classes = graph::region_class::classify_regions(graph, &scc, route.as_ref(), start, finish);
+            let classes =
+                graph::region_class::classify_regions(graph, &scc, route.as_ref(), start, finish);
             *cache = Some((key.0, key.1, key.2, classes));
         }
         cache.as_ref().unwrap().3.clone()
@@ -162,15 +224,24 @@ impl MazeAnalysis {
     ///
     /// Distance is computed via directed graph traversal (`compute_distance_map`) on the
     /// pinned nav graph, never geometric/coordinate distance — see `graph-analytics.md`.
-    pub fn distance_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
+    pub fn distance_from_start(
+        &self,
+        graph: &Graph,
+        meta: &MazeMeta,
+    ) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
         let start = meta.start?;
         let version = graph.version();
         let mut cache = self.distance_from_start.borrow_mut();
         if !matches!(&*cache, Some((v, s, _)) if *v == version && *s == start) {
             let nav = self.nav_graph(graph, meta);
-            let source = nav.nav_node_for(start)
+            let source = nav
+                .nav_node_for(start)
                 .expect("nav_graph always pins meta.start as a NavNode when meta.start is Some");
-            let dist = graph::distance_map::compute_distance_map(&nav, source, graph::distance_map::DistanceDirection::Forward);
+            let dist = graph::distance_map::compute_distance_map(
+                &nav,
+                source,
+                graph::distance_map::DistanceDirection::Forward,
+            );
             *cache = Some((version, start, dist));
         }
         Some(cache.as_ref().unwrap().2.clone())
@@ -179,15 +250,24 @@ impl MazeAnalysis {
     /// Builds and caches the per-nav-node shortest-path distance (in tiles) TO `meta.finish`,
     /// keyed on `(graph.version(), meta.finish)` — same invalidation contract and nav-domain
     /// rationale as `distance_from_start`. Returns `None` if `meta.finish` isn't set.
-    pub fn distance_from_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
+    pub fn distance_from_finish(
+        &self,
+        graph: &Graph,
+        meta: &MazeMeta,
+    ) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
         let finish = meta.finish?;
         let version = graph.version();
         let mut cache = self.distance_from_finish.borrow_mut();
         if !matches!(&*cache, Some((v, f, _)) if *v == version && *f == finish) {
             let nav = self.nav_graph(graph, meta);
-            let source = nav.nav_node_for(finish)
+            let source = nav
+                .nav_node_for(finish)
                 .expect("nav_graph always pins meta.finish as a NavNode when meta.finish is Some");
-            let dist = graph::distance_map::compute_distance_map(&nav, source, graph::distance_map::DistanceDirection::Reverse);
+            let dist = graph::distance_map::compute_distance_map(
+                &nav,
+                source,
+                graph::distance_map::DistanceDirection::Reverse,
+            );
             *cache = Some((version, finish, dist));
         }
         Some(cache.as_ref().unwrap().2.clone())
@@ -201,12 +281,17 @@ impl MazeAnalysis {
     /// Independent of `meta.finish` — unlike `route_info`/`region_classes`, which need both
     /// endpoints, this is single-node reachability and stays useful with only `start` set (e.g.
     /// `RandomEndpointsStrategy` searching for a `finish` candidate before one is chosen).
-    pub fn reachable_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashSet<ids::NodeId>> {
+    pub fn reachable_from_start(
+        &self,
+        graph: &Graph,
+        meta: &MazeMeta,
+    ) -> Option<std::collections::HashSet<ids::NodeId>> {
         let start = meta.start?;
         let version = graph.version();
         let mut cache = self.reachable_from_start.borrow_mut();
         if !matches!(&*cache, Some((v, s, _)) if *v == version && *s == start) {
-            let reachable: std::collections::HashSet<ids::NodeId> = graph.reachable_from(start).into_iter().collect();
+            let reachable: std::collections::HashSet<ids::NodeId> =
+                graph.reachable_from(start).into_iter().collect();
             *cache = Some((version, start, reachable));
         }
         Some(cache.as_ref().unwrap().2.clone())
@@ -217,12 +302,17 @@ impl MazeAnalysis {
     /// `(graph.version(), meta.finish)`, same invalidation contract as `reachable_from_start`.
     /// Returns `None` if `meta.finish` isn't set. Independent of `meta.start`, for the same
     /// reason as `reachable_from_start`.
-    pub fn reachable_to_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashSet<ids::NodeId>> {
+    pub fn reachable_to_finish(
+        &self,
+        graph: &Graph,
+        meta: &MazeMeta,
+    ) -> Option<std::collections::HashSet<ids::NodeId>> {
         let finish = meta.finish?;
         let version = graph.version();
         let mut cache = self.reachable_to_finish.borrow_mut();
         if !matches!(&*cache, Some((v, f, _)) if *v == version && *f == finish) {
-            let reachable: std::collections::HashSet<ids::NodeId> = graph.reachable_to(finish).into_iter().collect();
+            let reachable: std::collections::HashSet<ids::NodeId> =
+                graph.reachable_to(finish).into_iter().collect();
             *cache = Some((version, finish, reachable));
         }
         Some(cache.as_ref().unwrap().2.clone())

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct StrategyConfig {
@@ -68,17 +68,19 @@ pub struct TessellationConfig {
 
 impl Default for TessellationConfig {
     fn default() -> Self {
-        TessellationConfig { tessellation_type: TessellationType::Square }
+        TessellationConfig {
+            tessellation_type: TessellationType::Square,
+        }
     }
 }
 
 #[derive(Deserialize, Default)]
 pub struct GenerationParamsConfig {
-    pub depth_first:     Option<f64>,
+    pub depth_first: Option<f64>,
     pub corridor_chance: Option<f64>,
-    pub branching:       Option<f64>,
-    pub directionality:  Option<f64>,
-    pub cyclicity:       Option<f64>,
+    pub branching: Option<f64>,
+    pub directionality: Option<f64>,
+    pub cyclicity: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -136,7 +138,9 @@ pub struct SplitPatternDto {
     pub weight: f64,
 }
 
-fn default_pattern_weight() -> f64 { 1.0 }
+fn default_pattern_weight() -> f64 {
+    1.0
+}
 
 /// Wire shape for `maze_core::generation::SplitGenerationConfig`.
 #[derive(Deserialize, Default)]
@@ -177,7 +181,7 @@ pub struct PresetEndpointDto {
 #[derive(Deserialize)]
 pub struct PresetConnectionDto {
     pub from: PresetEndpointDto,
-    pub to:   PresetEndpointDto,
+    pub to: PresetEndpointDto,
     pub state: PresetConnectionStateDto,
 }
 
@@ -195,7 +199,7 @@ pub enum VerticalPassageDirectionDto {
 #[derive(Deserialize)]
 pub struct PresetVerticalPassageDto {
     pub from: PresetEndpointDto,
-    pub to:   PresetEndpointDto,
+    pub to: PresetEndpointDto,
     #[serde(default)]
     pub one_way: Option<VerticalPassageDirectionDto>,
 }
@@ -218,7 +222,7 @@ pub enum NodeLockKindDto {
 #[derive(Deserialize)]
 pub struct LockedNodeDto {
     pub point: PresetEndpointDto,
-    pub kind:  NodeLockKindDto,
+    pub kind: NodeLockKindDto,
 }
 
 #[derive(Deserialize)]
@@ -244,6 +248,8 @@ pub fn default_level_fields() -> Vec<Vec<[i32; 2]>> {
     let h = 10i32;
     let ox = w / 2;
     let oy = h / 2;
-    let points: Vec<[i32; 2]> = (0..w).flat_map(|x| (0..h).map(move |y| [x - ox, y - oy])).collect();
+    let points: Vec<[i32; 2]> = (0..w)
+        .flat_map(|x| (0..h).map(move |y| [x - ox, y - oy]))
+        .collect();
     vec![points]
 }

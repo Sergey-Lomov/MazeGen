@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod field_clone_tests {
     use super::super::*;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{SquarePoint, SquareTessellation, square_rect};
 
     /// `Field<T>`'s manual `Clone` impl (GitHub issue #118, needed by `Maze::draft()`) must
     /// produce an independent copy of both internal maps — mutating one `Field`'s node/point
@@ -30,7 +30,7 @@ mod field_clone_tests {
 #[cfg(test)]
 mod from_id_points_tests {
     use super::super::*;
-    use crate::space::{SquareTessellation, SquarePoint};
+    use crate::space::{SquarePoint, SquareTessellation};
 
     #[test]
     fn preserves_the_given_ids_instead_of_minting_new_ones() {
@@ -53,11 +53,7 @@ mod from_id_points_tests {
     #[test]
     fn groups_entries_by_point_preserving_given_order_as_creation_order() {
         let p = SquarePoint { x: 0, y: 0 };
-        let field: Field<SquareTessellation> = Field::from_id_points([
-            (5, p),
-            (7, p),
-            (9, p),
-        ]);
+        let field: Field<SquareTessellation> = Field::from_id_points([(5, p), (7, p), (9, p)]);
 
         assert_eq!(field.nodes_at(p), &[5, 7, 9]);
     }
@@ -74,7 +70,7 @@ mod from_id_points_tests {
 #[cfg(test)]
 mod remove_node_at_tests {
     use super::super::*;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{SquarePoint, SquareTessellation, square_rect};
 
     #[test]
     fn removes_the_node_from_the_point_and_from_lookup() {
@@ -133,7 +129,7 @@ mod remove_node_at_tests {
 #[cfg(test)]
 mod all_node_ids_tests {
     use super::super::*;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{SquarePoint, SquareTessellation, square_rect};
 
     // GitHub issue #232: `all_points().flat_map(|p| nodes_at(p))` repeats a split point's nodes
     // once per its own node count (N times via `all_points()`, each re-expanded to N nodes via
@@ -149,7 +145,11 @@ mod all_node_ids_tests {
 
         let all: Vec<NodeId> = field.all_node_ids().collect();
 
-        assert_eq!(all.len(), 4, "2 plain points + 2 extra split nodes = 4 total, not 2*3=6");
+        assert_eq!(
+            all.len(),
+            4,
+            "2 plain points + 2 extra split nodes = 4 total, not 2*3=6"
+        );
         assert!(all.contains(&extra1));
         assert!(all.contains(&extra2));
         let mut sorted = all.clone();
@@ -171,7 +171,7 @@ mod all_node_ids_tests {
 #[cfg(test)]
 mod geometric_distance_tests {
     use super::super::*;
-    use crate::space::{SquarePoint, HexPoint, TriPoint};
+    use crate::space::{HexPoint, SquarePoint, TriPoint};
 
     #[test]
     fn square_adjacent_cells_are_one_tile_apart() {
@@ -211,10 +211,8 @@ mod geometric_distance_tests {
         // (0,0) -E-> (1,0) is a direct neighbor (HexFace::E). Center-to-center distance for a
         // flat_top hex at unit tile scale (circumradius 1.0) is TILE_SIZE * sqrt(3) — same
         // geometric relationship `maze-web`'s hexCenter formula produces at pixel scale.
-        let d = geometric_distance::<HexTessellation>(
-            HexPoint { q: 0, r: 0 },
-            HexPoint { q: 1, r: 0 },
-        );
+        let d =
+            geometric_distance::<HexTessellation>(HexPoint { q: 0, r: 0 }, HexPoint { q: 1, r: 0 });
         assert!((d - 3f64.sqrt()).abs() < 1e-9, "distance was {d}");
     }
 
@@ -222,13 +220,20 @@ mod geometric_distance_tests {
     fn hex_all_six_neighbors_are_equidistant() {
         let center = HexPoint { q: 0, r: 0 };
         let neighbors = [
-            HexPoint { q: 1, r: 0 }, HexPoint { q: 1, r: -1 }, HexPoint { q: 0, r: -1 },
-            HexPoint { q: -1, r: 0 }, HexPoint { q: -1, r: 1 }, HexPoint { q: 0, r: 1 },
+            HexPoint { q: 1, r: 0 },
+            HexPoint { q: 1, r: -1 },
+            HexPoint { q: 0, r: -1 },
+            HexPoint { q: -1, r: 0 },
+            HexPoint { q: -1, r: 1 },
+            HexPoint { q: 0, r: 1 },
         ];
         let expected = 3f64.sqrt();
         for n in neighbors {
             let d = geometric_distance::<HexTessellation>(center, n);
-            assert!((d - expected).abs() < 1e-9, "neighbor {n:?} at distance {d}, expected {expected}");
+            assert!(
+                (d - expected).abs() < 1e-9,
+                "neighbor {n:?} at distance {d}, expected {expected}"
+            );
         }
     }
 
@@ -242,7 +247,10 @@ mod geometric_distance_tests {
             TriPoint { col: 1, row: 0 },
         );
         let expected = 2.0 / 3f64.sqrt();
-        assert!((d - expected).abs() < 1e-9, "distance was {d}, expected {expected}");
+        assert!(
+            (d - expected).abs() < 1e-9,
+            "distance was {d}, expected {expected}"
+        );
     }
 
     #[test]
@@ -261,7 +269,10 @@ mod edge_position_tests {
 
     #[test]
     fn square_edge_position_is_the_midpoint_of_its_endpoints() {
-        let pos = SquareTessellation::edge_position(SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
+        let pos = SquareTessellation::edge_position(
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+        );
         assert!((pos.0 - 0.5).abs() < 1e-9);
         assert!((pos.1 - 0.0).abs() < 1e-9);
     }
@@ -277,11 +288,14 @@ mod edge_position_tests {
     }
 
     #[test]
-    fn geometric_edge_distance_between_two_edges_sharing_a_node_is_half_a_tile_apart_on_a_straight_line() {
+    fn geometric_edge_distance_between_two_edges_sharing_a_node_is_half_a_tile_apart_on_a_straight_line()
+     {
         // 0->1 and 1->2, collinear on the x-axis: edge midpoints are (0.5,0) and (1.5,0).
         let d = geometric_edge_distance::<SquareTessellation>(
-            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
-            SquarePoint { x: 1, y: 0 }, SquarePoint { x: 2, y: 0 },
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 2, y: 0 },
         );
         assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
     }
@@ -290,8 +304,10 @@ mod edge_position_tests {
     fn geometric_edge_distance_between_disjoint_parallel_edges() {
         // 0->1 on row y=0, 0->1 on row y=1: midpoints (0.5,0) and (0.5,1).
         let d = geometric_edge_distance::<SquareTessellation>(
-            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
-            SquarePoint { x: 0, y: 1 }, SquarePoint { x: 1, y: 1 },
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 0, y: 1 },
+            SquarePoint { x: 1, y: 1 },
         );
         assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
     }
@@ -299,8 +315,10 @@ mod edge_position_tests {
     #[test]
     fn geometric_edge_distance_to_self_is_zero() {
         let d = geometric_edge_distance::<SquareTessellation>(
-            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
-            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 0, y: 0 },
+            SquarePoint { x: 1, y: 0 },
         );
         assert_eq!(d, 0.0);
     }
@@ -340,7 +358,11 @@ mod edge_position_tests {
         let n2 = HexPoint { q: 2, r: 0 };
         let d = geometric_edge_distance::<HexTessellation>(n0, n1, n1, n2);
         let node_distance = geometric_distance::<HexTessellation>(n0, n2);
-        assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
+        assert!(
+            (d - node_distance / 2.0).abs() < 1e-9,
+            "distance was {d}, expected {}",
+            node_distance / 2.0
+        );
     }
 
     #[test]
@@ -350,14 +372,18 @@ mod edge_position_tests {
         let n2 = TriPoint { col: 2, row: 0 };
         let d = geometric_edge_distance::<TriTessellation>(n0, n1, n1, n2);
         let node_distance = geometric_distance::<TriTessellation>(n0, n2);
-        assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
+        assert!(
+            (d - node_distance / 2.0).abs() < 1e-9,
+            "distance was {d}, expected {}",
+            node_distance / 2.0
+        );
     }
 }
 
 #[cfg(test)]
 mod floor_aware_distance_tests {
     use super::super::*;
-    use crate::space::{SquarePoint, HexPoint, TriPoint};
+    use crate::space::{HexPoint, SquarePoint, TriPoint};
 
     #[test]
     fn include_height_false_matches_geometric_distance_exactly() {
@@ -367,7 +393,10 @@ mod floor_aware_distance_tests {
         let same_floor = floor_aware_distance::<SquareTessellation>(0, a, 0, b, false);
         let diff_floor = floor_aware_distance::<SquareTessellation>(0, a, 2, b, false);
         assert_eq!(same_floor, plain);
-        assert_eq!(diff_floor, plain, "include_height=false must ignore the floor difference");
+        assert_eq!(
+            diff_floor, plain,
+            "include_height=false must ignore the floor difference"
+        );
     }
 
     #[test]
@@ -382,18 +411,30 @@ mod floor_aware_distance_tests {
     fn include_height_true_combines_xy_and_floor_distance_pythagorean() {
         // x-y distance 1.0 (adjacent cells), one floor apart -> sqrt(1^2 + 1^2).
         let d = floor_aware_distance::<SquareTessellation>(
-            0, SquarePoint { x: 0, y: 0 },
-            1, SquarePoint { x: 1, y: 0 },
+            0,
+            SquarePoint { x: 0, y: 0 },
+            1,
+            SquarePoint { x: 1, y: 0 },
             true,
         );
-        assert!((d - 2f64.sqrt()).abs() < 1e-9, "distance was {d}, expected {}", 2f64.sqrt());
+        assert!(
+            (d - 2f64.sqrt()).abs() < 1e-9,
+            "distance was {d}, expected {}",
+            2f64.sqrt()
+        );
     }
 
     #[test]
     fn same_floor_and_point_is_zero_regardless_of_include_height() {
         let p = HexPoint { q: 2, r: -1 };
-        assert_eq!(floor_aware_distance::<HexTessellation>(0, p, 0, p, false), 0.0);
-        assert_eq!(floor_aware_distance::<HexTessellation>(3, p, 3, p, true), 0.0);
+        assert_eq!(
+            floor_aware_distance::<HexTessellation>(0, p, 0, p, false),
+            0.0
+        );
+        assert_eq!(
+            floor_aware_distance::<HexTessellation>(3, p, 3, p, true),
+            0.0
+        );
     }
 
     #[test]
@@ -401,7 +442,10 @@ mod floor_aware_distance_tests {
         let a = TriPoint { col: 0, row: 0 };
         let b = TriPoint { col: 1, row: 0 };
         let plain = geometric_distance::<TriTessellation>(a, b);
-        assert_eq!(floor_aware_distance::<TriTessellation>(0, a, 0, b, false), plain);
+        assert_eq!(
+            floor_aware_distance::<TriTessellation>(0, a, 0, b, false),
+            plain
+        );
     }
 
     #[test]
@@ -409,8 +453,13 @@ mod floor_aware_distance_tests {
         let (a_from, a_to) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
         let (b_from, b_to) = (SquarePoint { x: 0, y: 1 }, SquarePoint { x: 1, y: 1 });
         let plain = geometric_edge_distance::<SquareTessellation>(a_from, a_to, b_from, b_to);
-        let d = floor_aware_edge_distance::<SquareTessellation>(0, a_from, a_to, 5, b_from, b_to, false);
-        assert_eq!(d, plain, "include_height=false must ignore the floor difference");
+        let d = floor_aware_edge_distance::<SquareTessellation>(
+            0, a_from, a_to, 5, b_from, b_to, false,
+        );
+        assert_eq!(
+            d, plain,
+            "include_height=false must ignore the floor difference"
+        );
     }
 
     #[test]
@@ -430,12 +479,15 @@ mod floor_aware_distance_tests {
 #[cfg(test)]
 mod transform_face_index_tests {
     use super::super::*;
-    use crate::space::{SquareFace, HexFace, TriFace};
+    use crate::space::{HexFace, SquareFace, TriFace};
 
     #[test]
     fn identity_rotation_and_no_mirror_is_a_no_op_for_every_tessellation() {
         for i in 0..SquareTessellation::faces().len() {
-            assert_eq!(transform_face_index::<SquareTessellation>(i, 0, None), Some(i));
+            assert_eq!(
+                transform_face_index::<SquareTessellation>(i, 0, None),
+                Some(i)
+            );
         }
         for i in 0..HexTessellation::faces().len() {
             assert_eq!(transform_face_index::<HexTessellation>(i, 0, None), Some(i));
@@ -455,10 +507,22 @@ mod transform_face_index_tests {
         let w = SquareTessellation::face_index(SquareFace::W).unwrap();
 
         let ns_axis = 0; // mirror_symmetries()[0]: N-S axis, per SquareTessellation's own doc comment
-        assert_eq!(transform_face_index::<SquareTessellation>(n, 0, Some(ns_axis)), Some(n));
-        assert_eq!(transform_face_index::<SquareTessellation>(s, 0, Some(ns_axis)), Some(s));
-        assert_eq!(transform_face_index::<SquareTessellation>(e, 0, Some(ns_axis)), Some(w));
-        assert_eq!(transform_face_index::<SquareTessellation>(w, 0, Some(ns_axis)), Some(e));
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(n, 0, Some(ns_axis)),
+            Some(n)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(s, 0, Some(ns_axis)),
+            Some(s)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(e, 0, Some(ns_axis)),
+            Some(w)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(w, 0, Some(ns_axis)),
+            Some(e)
+        );
     }
 
     #[test]
@@ -469,10 +533,22 @@ mod transform_face_index_tests {
         let w = SquareTessellation::face_index(SquareFace::W).unwrap();
 
         let rot_90 = 1; // rotation_symmetries()[1]
-        assert_eq!(transform_face_index::<SquareTessellation>(n, rot_90, None), Some(e));
-        assert_eq!(transform_face_index::<SquareTessellation>(e, rot_90, None), Some(s));
-        assert_eq!(transform_face_index::<SquareTessellation>(s, rot_90, None), Some(w));
-        assert_eq!(transform_face_index::<SquareTessellation>(w, rot_90, None), Some(n));
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(n, rot_90, None),
+            Some(e)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(e, rot_90, None),
+            Some(s)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(s, rot_90, None),
+            Some(w)
+        );
+        assert_eq!(
+            transform_face_index::<SquareTessellation>(w, rot_90, None),
+            Some(n)
+        );
     }
 
     #[test]
@@ -485,12 +561,30 @@ mod transform_face_index_tests {
         let se = HexTessellation::face_index(HexFace::SE).unwrap();
 
         let ew_axis = 0; // mirror_symmetries()[0]: E-W axis, per HexTessellation's own doc comment
-        assert_eq!(transform_face_index::<HexTessellation>(e, 0, Some(ew_axis)), Some(e));
-        assert_eq!(transform_face_index::<HexTessellation>(w, 0, Some(ew_axis)), Some(w));
-        assert_eq!(transform_face_index::<HexTessellation>(ne, 0, Some(ew_axis)), Some(se));
-        assert_eq!(transform_face_index::<HexTessellation>(se, 0, Some(ew_axis)), Some(ne));
-        assert_eq!(transform_face_index::<HexTessellation>(nw, 0, Some(ew_axis)), Some(sw));
-        assert_eq!(transform_face_index::<HexTessellation>(sw, 0, Some(ew_axis)), Some(nw));
+        assert_eq!(
+            transform_face_index::<HexTessellation>(e, 0, Some(ew_axis)),
+            Some(e)
+        );
+        assert_eq!(
+            transform_face_index::<HexTessellation>(w, 0, Some(ew_axis)),
+            Some(w)
+        );
+        assert_eq!(
+            transform_face_index::<HexTessellation>(ne, 0, Some(ew_axis)),
+            Some(se)
+        );
+        assert_eq!(
+            transform_face_index::<HexTessellation>(se, 0, Some(ew_axis)),
+            Some(ne)
+        );
+        assert_eq!(
+            transform_face_index::<HexTessellation>(nw, 0, Some(ew_axis)),
+            Some(sw)
+        );
+        assert_eq!(
+            transform_face_index::<HexTessellation>(sw, 0, Some(ew_axis)),
+            Some(nw)
+        );
     }
 
     #[test]
@@ -499,7 +593,10 @@ mod transform_face_index_tests {
         let rot_60 = 1; // rotation_symmetries()[1]
         for i in 0..faces.len() {
             let expected = (i + 1) % faces.len();
-            assert_eq!(transform_face_index::<HexTessellation>(i, rot_60, None), Some(expected));
+            assert_eq!(
+                transform_face_index::<HexTessellation>(i, rot_60, None),
+                Some(expected)
+            );
         }
     }
 
@@ -515,9 +612,18 @@ mod transform_face_index_tests {
         let base = TriTessellation::face_index(TriFace::Base).unwrap();
 
         let rot_120 = 1; // rotation_symmetries()[1]
-        assert_eq!(transform_face_index::<TriTessellation>(left, rot_120, None), Some(right));
-        assert_eq!(transform_face_index::<TriTessellation>(right, rot_120, None), Some(base));
-        assert_eq!(transform_face_index::<TriTessellation>(base, rot_120, None), Some(left));
+        assert_eq!(
+            transform_face_index::<TriTessellation>(left, rot_120, None),
+            Some(right)
+        );
+        assert_eq!(
+            transform_face_index::<TriTessellation>(right, rot_120, None),
+            Some(base)
+        );
+        assert_eq!(
+            transform_face_index::<TriTessellation>(base, rot_120, None),
+            Some(left)
+        );
     }
 
     #[test]
@@ -527,14 +633,36 @@ mod transform_face_index_tests {
                 assert_eq!(perm.len(), degree, "permutation length must match degree");
                 let mut sorted = perm.to_vec();
                 sorted.sort_unstable();
-                assert_eq!(sorted, (0..degree).collect::<Vec<_>>(), "table must be a permutation of 0..degree: {perm:?}");
+                assert_eq!(
+                    sorted,
+                    (0..degree).collect::<Vec<_>>(),
+                    "table must be a permutation of 0..degree: {perm:?}"
+                );
             }
         }
-        check_permutations::<SquareTessellation>(SquareTessellation::rotation_symmetries(), SquareTessellation::faces().len());
-        check_permutations::<SquareTessellation>(SquareTessellation::mirror_symmetries(), SquareTessellation::faces().len());
-        check_permutations::<HexTessellation>(HexTessellation::rotation_symmetries(), HexTessellation::faces().len());
-        check_permutations::<HexTessellation>(HexTessellation::mirror_symmetries(), HexTessellation::faces().len());
-        check_permutations::<TriTessellation>(TriTessellation::rotation_symmetries(), TriTessellation::faces().len());
-        check_permutations::<TriTessellation>(TriTessellation::mirror_symmetries(), TriTessellation::faces().len());
+        check_permutations::<SquareTessellation>(
+            SquareTessellation::rotation_symmetries(),
+            SquareTessellation::faces().len(),
+        );
+        check_permutations::<SquareTessellation>(
+            SquareTessellation::mirror_symmetries(),
+            SquareTessellation::faces().len(),
+        );
+        check_permutations::<HexTessellation>(
+            HexTessellation::rotation_symmetries(),
+            HexTessellation::faces().len(),
+        );
+        check_permutations::<HexTessellation>(
+            HexTessellation::mirror_symmetries(),
+            HexTessellation::faces().len(),
+        );
+        check_permutations::<TriTessellation>(
+            TriTessellation::rotation_symmetries(),
+            TriTessellation::faces().len(),
+        );
+        check_permutations::<TriTessellation>(
+            TriTessellation::mirror_symmetries(),
+            TriTessellation::faces().len(),
+        );
     }
 }

@@ -1,9 +1,9 @@
+use maze_core::generation::{GenerationConfig, PresetState, generate_maze};
+use maze_core::graph::EdgeKind;
 use maze_core::graph::Graph;
 use maze_core::graph::nav::{build_nav_graph, build_nav_graph_pinned};
-use maze_core::graph::EdgeKind;
 use maze_core::ids::IdGenerator;
-use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationConfig, PresetState};
+use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
     g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
@@ -39,7 +39,11 @@ fn linear_corridor_bidirectional() {
     let nav = build_nav_graph(&g);
 
     assert_eq!(nav.nodes.len(), 2, "expected 2 nav nodes (endpoints only)");
-    assert_eq!(nav.edges().count(), 2, "expected 2 nav edges (forward + backward)");
+    assert_eq!(
+        nav.edges().count(),
+        2,
+        "expected 2 nav edges (forward + backward)"
+    );
 
     for e in nav.edges() {
         assert_eq!(e.path.len(), 4, "each corridor path spans all 4 nodes");
@@ -101,7 +105,11 @@ fn pure_ring() {
         assert_eq!(e.from, e.to, "ring edges are self-edges");
         // path visits all 3 nodes + closes back = 4 entries
         assert_eq!(e.path.len(), 4);
-        assert_eq!(e.path[0], e.path[e.path.len() - 1], "ring path starts and ends at anchor");
+        assert_eq!(
+            e.path[0],
+            e.path[e.path.len() - 1],
+            "ring path starts and ends at anchor"
+        );
     }
 }
 
@@ -160,12 +168,27 @@ fn deterministic() {
 #[test]
 fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::<SquareTessellation>::single_level(square_rect(10, 10), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::<SquareTessellation>::single_level(square_rect(10, 10), &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
-    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    generate_maze(&mut graph, &mut field, &mut ids, 42, start, GenerationConfig::default(), &PresetState::empty());
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
+    let start = field
+        .nodes_at(level, SquarePoint { x: 0, y: 0 })
+        .first()
+        .copied()
+        .unwrap();
+    generate_maze(
+        &mut graph,
+        &mut field,
+        &mut ids,
+        42,
+        start,
+        GenerationConfig::default(),
+        &PresetState::empty(),
+    );
 
     let maze_nodes: std::collections::HashSet<u64> = graph.nodes().map(|n| n.id).collect();
     let nav = build_nav_graph(&graph);
@@ -226,8 +249,8 @@ fn nav_ring_with_one_way_closing_edge_no_phantom_step() {
         for window in edge.path.windows(2) {
             let a = window[0];
             let b = window[1];
-            let connected = g.outgoing_neighbors(a).any(|n| n == b)
-                || g.outgoing_neighbors(b).any(|n| n == a);
+            let connected =
+                g.outgoing_neighbors(a).any(|n| n == b) || g.outgoing_neighbors(b).any(|n| n == a);
             assert!(connected, "phantom step: {a} -> {b}");
         }
     }
@@ -288,12 +311,22 @@ fn corridor_seed_does_not_false_ring_via_back_edge() {
     let nav = build_nav_graph(&g);
 
     // 0 and 3 are junctions (degree 1), 1 and 2 are corridor
-    assert_eq!(nav.nodes.len(), 2, "only endpoints 0 and 3 should be nav nodes");
+    assert_eq!(
+        nav.nodes.len(),
+        2,
+        "only endpoints 0 and 3 should be nav nodes"
+    );
     let nav_ids: std::collections::HashSet<u64> = nav.nodes.iter().map(|n| n.node_id).collect();
     assert!(nav_ids.contains(&0), "node 0 (dead end) must be nav node");
     assert!(nav_ids.contains(&3), "node 3 (dead end) must be nav node");
-    assert!(!nav_ids.contains(&1), "node 1 is corridor, must not be nav node");
-    assert!(!nav_ids.contains(&2), "node 2 is corridor, must not be nav node");
+    assert!(
+        !nav_ids.contains(&1),
+        "node 1 is corridor, must not be nav node"
+    );
+    assert!(
+        !nav_ids.contains(&2),
+        "node 2 is corridor, must not be nav node"
+    );
 }
 
 // Regression: find_component_start without prev-filter would walk 0→1→0 (back-edge) == seed
@@ -304,10 +337,10 @@ fn corridor_seed_does_not_false_ring_via_back_edge() {
 fn corridor_seed_low_id_does_not_false_ring() {
     // nodes 0..5
     let mut g = make_graph(6);
-    bi(&mut g, 0, 1);       // corridor
-    bi(&mut g, 3, 0);       // junction 3 anchors corridor left end; node 0 gets neighbors {1,3}
-    bi(&mut g, 3, 4);       // junction 3: third neighbor
-    bi(&mut g, 3, 5);       // junction 3: fourth neighbor (definitely not corridor)
+    bi(&mut g, 0, 1); // corridor
+    bi(&mut g, 3, 0); // junction 3 anchors corridor left end; node 0 gets neighbors {1,3}
+    bi(&mut g, 3, 4); // junction 3: third neighbor
+    bi(&mut g, 3, 5); // junction 3: fourth neighbor (definitely not corridor)
     // node 2 is dead-end (no edges) → junction; node 1 has only neighbor 0 → junction
     // Actually: node 1: out={0}, in={0} → 1 neighbor → junction (dead end)
     // node 0: out={1,3}, in={1,3} → corridor
@@ -315,12 +348,22 @@ fn corridor_seed_low_id_does_not_false_ring() {
     let nav = build_nav_graph(&g);
 
     let nav_ids: std::collections::HashSet<u64> = nav.nodes.iter().map(|n| n.node_id).collect();
-    assert!(!nav_ids.contains(&0), "node 0 is corridor, must not be nav node");
-    assert!(nav_ids.contains(&1), "node 1 is isolated dead-end (0 edges), must be nav node");
+    assert!(
+        !nav_ids.contains(&0),
+        "node 0 is corridor, must not be nav node"
+    );
+    assert!(
+        nav_ids.contains(&1),
+        "node 1 is isolated dead-end (0 edges), must be nav node"
+    );
     assert!(nav_ids.contains(&3), "node 3 is junction, must be nav node");
 
     let mut covered: std::collections::HashSet<u64> = nav_ids.clone();
-    for e in nav.edges() { for &n in &e.path { covered.insert(n); } }
+    for e in nav.edges() {
+        for &n in &e.path {
+            covered.insert(n);
+        }
+    }
     assert_eq!(covered.len(), 6, "all 6 nodes must be covered");
 }
 
@@ -339,10 +382,17 @@ fn ring_pinned_node_becomes_anchor_over_min_id() {
     let nav = build_nav_graph_pinned(&g, &pinned);
 
     assert_eq!(nav.nodes.len(), 1, "ring with one pinned node → 1 nav node");
-    assert_eq!(nav.nodes[0].node_id, 2, "pinned node 2 must be anchor, not min-id node 0");
+    assert_eq!(
+        nav.nodes[0].node_id, 2,
+        "pinned node 2 must be anchor, not min-id node 0"
+    );
     assert_eq!(nav.edges().count(), 2, "two self-edges");
     for e in nav.edges() {
         assert_eq!(e.path[0], 2, "ring path must start at pinned anchor 2");
-        assert_eq!(e.path[e.path.len()-1], 2, "ring path must end at pinned anchor 2");
+        assert_eq!(
+            e.path[e.path.len() - 1],
+            2,
+            "ring path must end at pinned anchor 2"
+        );
     }
 }

@@ -1,7 +1,9 @@
-use std::collections::HashMap;
-use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP_GROUP};
 use super::canonical_cycle_key;
+use crate::ids::EdgeId;
+use crate::quality_control::issue::{
+    INVALID_LOOP_GROUP, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced by any check that flags cycles as part of a group-level decision across every loop on
 /// the field (currently only `MaxLoopDensityCheck`'s excess field-density) — pairs with
@@ -26,7 +28,12 @@ impl InvalidLoopGroupIssue {
         valid: Vec<Vec<EdgeId>>,
         invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
     ) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, valid, invalid_sources }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            valid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -68,7 +75,11 @@ impl IssueMerge for InvalidLoopGroupIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
 
-        let mut invalid_keys: std::collections::HashSet<Vec<EdgeId>> = self.invalid.iter().map(|c| canonical_cycle_key(c)).collect();
+        let mut invalid_keys: std::collections::HashSet<Vec<EdgeId>> = self
+            .invalid
+            .iter()
+            .map(|c| canonical_cycle_key(c))
+            .collect();
         for cycle in other.invalid {
             let key = canonical_cycle_key(&cycle);
             if invalid_keys.insert(key) {
@@ -76,7 +87,8 @@ impl IssueMerge for InvalidLoopGroupIssue {
             }
         }
 
-        let mut valid_keys: std::collections::HashSet<Vec<EdgeId>> = self.valid.iter().map(|c| canonical_cycle_key(c)).collect();
+        let mut valid_keys: std::collections::HashSet<Vec<EdgeId>> =
+            self.valid.iter().map(|c| canonical_cycle_key(c)).collect();
         for cycle in other.valid {
             let key = canonical_cycle_key(&cycle);
             if valid_keys.insert(key) {
@@ -84,7 +96,8 @@ impl IssueMerge for InvalidLoopGroupIssue {
             }
         }
         // Drop any valid cycle (from either side) that ended up flagged invalid by the other side.
-        self.valid.retain(|cycle| !invalid_keys.contains(&canonical_cycle_key(cycle)));
+        self.valid
+            .retain(|cycle| !invalid_keys.contains(&canonical_cycle_key(cycle)));
 
         for (key, sources) in other.invalid_sources {
             let entry = self.invalid_sources.entry(key).or_default();
@@ -101,17 +114,27 @@ impl IssueMerge for InvalidLoopGroupIssue {
 mod tests {
     use super::*;
 
-    fn issue(source_check: &str, invalid: Vec<Vec<EdgeId>>, valid: Vec<Vec<EdgeId>>) -> InvalidLoopGroupIssue {
+    fn issue(
+        source_check: &str,
+        invalid: Vec<Vec<EdgeId>>,
+        valid: Vec<Vec<EdgeId>>,
+    ) -> InvalidLoopGroupIssue {
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for cycle in &invalid {
-            invalid_sources.entry(canonical_cycle_key(cycle)).or_default().push(source_check.to_string());
+            invalid_sources
+                .entry(canonical_cycle_key(cycle))
+                .or_default()
+                .push(source_check.to_string());
         }
         InvalidLoopGroupIssue::new_from_check(source_check, invalid, valid, invalid_sources)
     }
 
     #[test]
     fn default_requirement_is_all_flags_set() {
-        assert_eq!(InvalidLoopGroupRequirement::default(), InvalidLoopGroupRequirement::all());
+        assert_eq!(
+            InvalidLoopGroupRequirement::default(),
+            InvalidLoopGroupRequirement::all()
+        );
     }
 
     #[test]
@@ -120,7 +143,11 @@ mod tests {
         let b = issue("max_loop_density", vec![vec![4, 5, 6]], vec![]);
         a.merge(b);
 
-        assert_eq!(a.invalid.len(), 2, "disjoint invalid cycles must not collapse");
+        assert_eq!(
+            a.invalid.len(),
+            2,
+            "disjoint invalid cycles must not collapse"
+        );
     }
 
     #[test]
@@ -129,7 +156,11 @@ mod tests {
         let b = issue("max_loop_density", vec![vec![3, 1, 2]], vec![]);
         a.merge(b);
 
-        assert_eq!(a.invalid.len(), 1, "identical cycle (as an edge set) must not be duplicated");
+        assert_eq!(
+            a.invalid.len(),
+            1,
+            "identical cycle (as an edge set) must not be duplicated"
+        );
     }
 
     #[test]
@@ -148,8 +179,15 @@ mod tests {
         let b = issue("check_b", vec![vec![1, 2, 3]], vec![]);
         a.merge(b);
 
-        assert_eq!(a.invalid.len(), 1, "cycle flagged invalid by either side ends up invalid");
-        assert!(a.valid.is_empty(), "must not remain in valid once promoted to invalid");
+        assert_eq!(
+            a.invalid.len(),
+            1,
+            "cycle flagged invalid by either side ends up invalid"
+        );
+        assert!(
+            a.valid.is_empty(),
+            "must not remain in valid once promoted to invalid"
+        );
     }
 
     #[test]
@@ -158,7 +196,11 @@ mod tests {
         let b = issue("check_b", vec![], vec![vec![3, 1, 2]]);
         a.merge(b);
 
-        assert_eq!(a.valid.len(), 1, "identical valid cycle must not be duplicated");
+        assert_eq!(
+            a.valid.len(),
+            1,
+            "identical valid cycle must not be duplicated"
+        );
     }
 
     #[test]
@@ -167,6 +209,10 @@ mod tests {
         let b = issue("check_b", vec![], vec![vec![4, 5, 6]]);
         a.merge(b);
 
-        assert_eq!(a.valid.len(), 2, "two distinct valid cycles must both survive the merge");
+        assert_eq!(
+            a.valid.len(),
+            2,
+            "two distinct valid cycles must both survive the merge"
+        );
     }
 }

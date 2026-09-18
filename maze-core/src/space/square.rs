@@ -22,10 +22,22 @@ impl Tessellation for SquareTessellation {
 
     fn step(point: SquarePoint, face: SquareFace) -> SquarePoint {
         match face {
-            SquareFace::N => SquarePoint { x: point.x, y: point.y + 1 },
-            SquareFace::S => SquarePoint { x: point.x, y: point.y - 1 },
-            SquareFace::E => SquarePoint { x: point.x + 1, y: point.y },
-            SquareFace::W => SquarePoint { x: point.x - 1, y: point.y },
+            SquareFace::N => SquarePoint {
+                x: point.x,
+                y: point.y + 1,
+            },
+            SquareFace::S => SquarePoint {
+                x: point.x,
+                y: point.y - 1,
+            },
+            SquareFace::E => SquarePoint {
+                x: point.x + 1,
+                y: point.y,
+            },
+            SquareFace::W => SquarePoint {
+                x: point.x - 1,
+                y: point.y,
+            },
         }
     }
 
@@ -35,11 +47,11 @@ impl Tessellation for SquareTessellation {
 
     fn face_between(from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
         match (to.x - from.x, to.y - from.y) {
-            (0, 1)  => Some(SquareFace::N),
+            (0, 1) => Some(SquareFace::N),
             (0, -1) => Some(SquareFace::S),
-            (1, 0)  => Some(SquareFace::E),
+            (1, 0) => Some(SquareFace::E),
             (-1, 0) => Some(SquareFace::W),
-            _       => None,
+            _ => None,
         }
     }
 
@@ -68,6 +80,11 @@ impl Tessellation for SquareTessellation {
 
 pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {
     (0..height)
-        .flat_map(|y| (0..width).map(move |x| SquarePoint { x: x as i32, y: y as i32 }))
+        .flat_map(|y| {
+            (0..width).map(move |x| SquarePoint {
+                x: x as i32,
+                y: y as i32,
+            })
+        })
         .collect()
 }

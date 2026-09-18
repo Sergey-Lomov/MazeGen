@@ -8,6 +8,9 @@ pub struct MazeMeta {
 
 impl MazeMeta {
     pub fn empty() -> Self {
-        Self { start: None, finish: None }
+        Self {
+            start: None,
+            finish: None,
+        }
     }
 }

@@ -1,19 +1,19 @@
-﻿use std::collections::HashMap;
-use rand::{Rng, RngCore};
+use super::cycle_cut_set::{
+    PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_NEUTRAL, VERTICAL_PASSAGE_PRIORITY_OPTIONS,
+    apply_vertical_passage_priority, candidate_edges, discard_cycles_with_edge, edge_to_cycles_map,
+};
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::PresetState;
 use crate::graph::gf2_basis::{GF2Basis, set_bit};
+use crate::ids::EdgeId;
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::cycle_cut_set::{
-    edge_to_cycles_map, discard_cycles_with_edge, candidate_edges, apply_vertical_passage_priority,
-    PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_PRIORITY_OPTIONS, VERTICAL_PASSAGE_NEUTRAL,
-};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::HashMap;
 
 pub const PARAM_INVALID_OVERLAP_WEIGHT: &str = "invalid_overlap_weight";
 pub const PARAM_VALID_OVERLAP_WEIGHT: &str = "valid_overlap_weight";
@@ -22,17 +22,28 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_INVALID_OVERLAP_WEIGHT,
         label: "Shared invalid-loop weight",
-        kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: 5.0,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_VALID_OVERLAP_WEIGHT,
         label: "Shared valid-loop penalty",
-        kind: StrategyParamKind::Float { default: 6.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: 6.0,
+            min: 0.0,
+            max: 100.0,
+        },
     },
     StrategyParam {
         id: PARAM_VERTICAL_PASSAGE_PRIORITY,
         label: "Vertical passage priority",
-        kind: StrategyParamKind::Enum { options: VERTICAL_PASSAGE_PRIORITY_OPTIONS, default: VERTICAL_PASSAGE_NEUTRAL },
+        kind: StrategyParamKind::Enum {
+            options: VERTICAL_PASSAGE_PRIORITY_OPTIONS,
+            default: VERTICAL_PASSAGE_NEUTRAL,
+        },
     },
 ];
 
@@ -58,7 +69,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct InvalidLoopScoredStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredStrategy {
-    fn strategy_id(&self) -> &'static str { "invalid_loop_scored" }
+    fn strategy_id(&self) -> &'static str {
+        "invalid_loop_scored"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -82,8 +95,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
     ) -> (RepairResult, Vec<MutationCommand>) {
         let (all, invalid) = (&issue.all, &issue.invalid);
 
-        let invalid_overlap_weight = params.get(PARAM_INVALID_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
-        let valid_overlap_weight = params.get(PARAM_VALID_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
+        let invalid_overlap_weight = params
+            .get(PARAM_INVALID_OVERLAP_WEIGHT)
+            .and_then(|v| v.as_float())
+            .unwrap_or(5.0);
+        let valid_overlap_weight = params
+            .get(PARAM_VALID_OVERLAP_WEIGHT)
+            .and_then(|v| v.as_float())
+            .unwrap_or(6.0);
         let vertical_priority = match params.get(PARAM_VERTICAL_PASSAGE_PRIORITY) {
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => VERTICAL_PASSAGE_NEUTRAL,
@@ -98,8 +117,12 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
             let is_valid_basis_member = !is_invalid && valid_basis_indices.contains(&idx);
             for &eid in cycle {
                 let entry = overlap.entry(eid).or_insert((0, 0));
-                if is_invalid { entry.0 += 1; }
-                if is_valid_basis_member { entry.1 += 1; }
+                if is_invalid {
+                    entry.0 += 1;
+                }
+                if is_valid_basis_member {
+                    entry.1 += 1;
+                }
             }
         }
 
@@ -110,7 +133,18 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
 
         while let Some(idx) = pending.pop() {
             let Some(cycle) = all.get(idx) else { continue };
-            if let Some((cut, reverse)) = apply_cut(cycle, &overlap, invalid_overlap_weight, valid_overlap_weight, maze, rng, preset_state, &already_cut, vertical_priority, &mut commands) {
+            if let Some((cut, reverse)) = apply_cut(
+                cycle,
+                &overlap,
+                invalid_overlap_weight,
+                valid_overlap_weight,
+                maze,
+                rng,
+                preset_state,
+                &already_cut,
+                vertical_priority,
+                &mut commands,
+            ) {
                 already_cut.insert(cut);
                 discard_cycles_with_edge(&mut pending, &owners, cut);
                 if let Some(reverse) = reverse {
@@ -142,7 +176,10 @@ crate::impl_erased_repair_strategy!(InvalidLoopScoredStrategy, InvalidLoopIssue)
 /// nav-edge-index basis — this domain is base-`Graph` `EdgeId`s, where a forward and reverse
 /// edge are already two distinct `EdgeId`s with no automatic pairing, and the penalty is about
 /// concrete cut `EdgeId`s, not physical corridors, so no such merging is needed or wanted here.
-fn valid_cycle_basis_indices(all: &[Vec<EdgeId>], invalid_set: &std::collections::HashSet<usize>) -> std::collections::HashSet<usize> {
+fn valid_cycle_basis_indices(
+    all: &[Vec<EdgeId>],
+    invalid_set: &std::collections::HashSet<usize>,
+) -> std::collections::HashSet<usize> {
     let mut remap: HashMap<EdgeId, usize> = HashMap::new();
     for (idx, cycle) in all.iter().enumerate() {
         if invalid_set.contains(&idx) {
@@ -173,7 +210,12 @@ fn valid_cycle_basis_indices(all: &[Vec<EdgeId>], invalid_set: &std::collections
 /// Pure scoring formula, kept standalone so new terms can be unit-tested in isolation as the
 /// strategy grows (see the struct-level doc comment on why this is meant to be additive).
 /// `invalid_overlap`/`valid_overlap` are the counts from the `overlap` map for one candidate edge.
-fn score(invalid_overlap: u32, valid_overlap: u32, invalid_overlap_weight: f64, valid_overlap_weight: f64) -> f64 {
+fn score(
+    invalid_overlap: u32,
+    valid_overlap: u32,
+    invalid_overlap_weight: f64,
+    valid_overlap_weight: f64,
+) -> f64 {
     invalid_overlap as f64 * invalid_overlap_weight - valid_overlap as f64 * valid_overlap_weight
 }
 
@@ -214,10 +256,13 @@ fn apply_cut<T: Tessellation>(
         // that they actually share a cut. Cutting `id` always also cuts its reverse (see the
         // `RemoveEdgeWithReverse` dispatch below), so a candidate's real overlap is its own
         // entry's plus its reverse's.
-        let scores: Vec<f64> = candidates.iter()
+        let scores: Vec<f64> = candidates
+            .iter()
             .map(|&id| {
                 let (invalid_overlap, valid_overlap) = overlap.get(&id).copied().unwrap_or((0, 0));
-                let reverse_overlap = maze.graph.edge(id)
+                let reverse_overlap = maze
+                    .graph
+                    .edge(id)
                     .and_then(|edge| maze.graph.edge_between(edge.to, edge.from))
                     .filter(|&rev| rev != id)
                     .and_then(|rev| overlap.get(&rev))
@@ -225,12 +270,19 @@ fn apply_cut<T: Tessellation>(
                     .unwrap_or((0, 0));
                 let invalid_overlap = invalid_overlap + reverse_overlap.0;
                 let valid_overlap = valid_overlap + reverse_overlap.1;
-                score(invalid_overlap, valid_overlap, invalid_overlap_weight, valid_overlap_weight)
+                score(
+                    invalid_overlap,
+                    valid_overlap,
+                    invalid_overlap_weight,
+                    valid_overlap_weight,
+                )
             })
             .collect();
         let best_score = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
-        let best_indices: Vec<usize> = scores.iter().enumerate()
+        let best_indices: Vec<usize> = scores
+            .iter()
+            .enumerate()
             .filter(|&(_, &s)| s == best_score)
             .map(|(i, _)| i)
             .collect();
@@ -260,7 +312,6 @@ fn apply_cut<T: Tessellation>(
     }
     None
 }
-
 
 #[cfg(test)]
 #[path = "invalid_loop_scored_tests.rs"]

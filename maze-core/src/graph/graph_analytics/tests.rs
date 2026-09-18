@@ -1,6 +1,6 @@
 use super::*;
-use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::{build_nav_graph, build_nav_graph_pinned};
+use crate::graph::{EdgeKind, Graph};
 use crate::ids::NodeId;
 
 fn analyze(g: &Graph) -> GraphAnalytics {
@@ -41,11 +41,24 @@ fn two_disjoint_bowtie_clusters_have_two_cycle_regions() {
     let g = two_bowtie_clusters();
     let analytics = analyze(&g);
 
-    assert_eq!(analytics.node_count, 8, "8 distinct nav-nodes, no compression in two bowties");
-    assert_eq!(analytics.edge_count, 10, "6 directed edges per cluster, but B<->C is a paired reverse (counts once) — 5 corridors per cluster");
-    assert_eq!(analytics.cycle_count, 4, "two cycles per cluster, two clusters");
+    assert_eq!(
+        analytics.node_count, 8,
+        "8 distinct nav-nodes, no compression in two bowties"
+    );
+    assert_eq!(
+        analytics.edge_count, 10,
+        "6 directed edges per cluster, but B<->C is a paired reverse (counts once) — 5 corridors per cluster"
+    );
+    assert_eq!(
+        analytics.cycle_count, 4,
+        "two cycles per cluster, two clusters"
+    );
     assert_eq!(analytics.cycle_region_count, 2, "clusters are disconnected");
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 8, "all 8 nodes participate in a cycle");
+    assert_eq!(
+        analytics.pure_cycle_nav_nodes.len(),
+        8,
+        "all 8 nodes participate in a cycle"
+    );
 }
 
 /// GitHub issue #284: `pure_cycle_basis` must contain exactly `cycle_count` cycles (never the
@@ -54,7 +67,11 @@ fn two_disjoint_bowtie_clusters_have_two_cycle_regions() {
 fn pure_cycle_basis_matches_cycle_count_on_bowtie_clusters() {
     let g = two_bowtie_clusters();
     let analytics = analyze(&g);
-    assert_eq!(analytics.pure_cycle_basis.len(), analytics.cycle_count, "basis size must equal the independent cycle count");
+    assert_eq!(
+        analytics.pure_cycle_basis.len(),
+        analytics.cycle_count,
+        "basis size must equal the independent cycle count"
+    );
     assert_eq!(analytics.pure_cycle_basis.len(), 4);
 }
 
@@ -66,13 +83,18 @@ fn pure_cycle_basis_matches_cycle_count_on_bowtie_clusters() {
 #[test]
 fn elevator_fan_across_three_floors_has_no_cycles() {
     let mut g = Graph::new();
-    for n in [0, 1, 2] { g.add_node(n); }
+    for n in [0, 1, 2] {
+        g.add_node(n);
+    }
     g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
     g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
     g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
 
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 0, "elevator fan is not a real detour loop");
+    assert_eq!(
+        analytics.cycle_count, 0,
+        "elevator fan is not a real detour loop"
+    );
     assert_eq!(analytics.pure_cycle_basis.len(), 0);
     assert!(analytics.pure_cycle_nav_nodes.is_empty());
     assert!(analytics.pure_cycle_edge_indices.is_empty());
@@ -83,7 +105,9 @@ fn elevator_fan_across_three_floors_has_no_cycles() {
 #[test]
 fn elevator_fan_across_four_floors_has_no_cycles() {
     let mut g = Graph::new();
-    for n in 0..4 { g.add_node(n); }
+    for n in 0..4 {
+        g.add_node(n);
+    }
     for i in 0..4 {
         for j in (i + 1)..4 {
             g.add_bidirectional_edge(i, j, EdgeKind::Elevator);
@@ -91,7 +115,10 @@ fn elevator_fan_across_four_floors_has_no_cycles() {
     }
 
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 0, "elevator fan is not a real detour loop, regardless of floor count");
+    assert_eq!(
+        analytics.cycle_count, 0,
+        "elevator fan is not a real detour loop, regardless of floor count"
+    );
 }
 
 /// A real (non-elevator) cycle elsewhere in the graph must stay counted even while an unrelated
@@ -99,18 +126,25 @@ fn elevator_fan_across_four_floors_has_no_cycles() {
 #[test]
 fn elevator_fan_does_not_suppress_a_genuine_cycle_elsewhere() {
     let mut g = Graph::new();
-    for n in 0..3 { g.add_node(n); }
+    for n in 0..3 {
+        g.add_node(n);
+    }
     g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
     g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
     g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
 
-    for n in 10..13 { g.add_node(n); }
+    for n in 10..13 {
+        g.add_node(n);
+    }
     g.add_edge(10, 11, EdgeKind::Basic);
     g.add_edge(11, 12, EdgeKind::Basic);
     g.add_edge(12, 10, EdgeKind::Basic);
 
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 1, "the genuine basic-edge triangle stays counted, the elevator fan does not");
+    assert_eq!(
+        analytics.cycle_count, 1,
+        "the genuine basic-edge triangle stays counted, the elevator fan does not"
+    );
 }
 
 /// A cycle that mixes an `Elevator` edge with ordinary geometric edges is a genuine detour (the
@@ -121,13 +155,18 @@ fn elevator_fan_does_not_suppress_a_genuine_cycle_elsewhere() {
 #[test]
 fn cycle_mixing_elevator_and_basic_edges_still_counts() {
     let mut g = Graph::new();
-    for n in 0..3 { g.add_node(n); }
+    for n in 0..3 {
+        g.add_node(n);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Elevator);
 
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 1, "a basic+elevator loop is a genuine detour, must stay counted");
+    assert_eq!(
+        analytics.cycle_count, 1,
+        "a basic+elevator loop is a genuine detour, must stay counted"
+    );
 }
 
 /// Two triangles on "different floors" bridged by a single bidirectional VerticalPassage — the
@@ -135,7 +174,9 @@ fn cycle_mixing_elevator_and_basic_edges_still_counts() {
 #[test]
 fn two_triangles_bridged_by_vertical_passage_has_two_cycles() {
     let mut g = Graph::new();
-    for id in 0..6u64 { g.add_node(id); }
+    for id in 0..6u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic);
@@ -146,7 +187,10 @@ fn two_triangles_bridged_by_vertical_passage_has_two_cycles() {
     g.add_edge(3, 0, EdgeKind::VerticalPassage);
 
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 2, "the bridge itself must not count as a third cycle");
+    assert_eq!(
+        analytics.cycle_count, 2,
+        "the bridge itself must not count as a third cycle"
+    );
     assert_eq!(analytics.pure_cycle_basis.len(), 2);
 }
 
@@ -156,7 +200,9 @@ fn two_triangles_bridged_by_vertical_passage_has_two_cycles() {
 #[test]
 fn dangling_vertical_passage_off_a_triangle_is_not_a_cycle() {
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic);
@@ -166,10 +212,16 @@ fn dangling_vertical_passage_off_a_triangle_is_not_a_cycle() {
     let nav = build_nav_graph(&g);
     let dead_end_nav_id = nav.nav_node_for(3);
     let analytics = analyze(&g);
-    assert_eq!(analytics.cycle_count, 1, "only the triangle is a real cycle");
+    assert_eq!(
+        analytics.cycle_count, 1,
+        "only the triangle is a real cycle"
+    );
     assert_eq!(analytics.pure_cycle_basis.len(), 1);
     if let Some(dead_end) = dead_end_nav_id {
-        assert!(!analytics.pure_cycle_nav_nodes.contains(&dead_end), "the vertical passage's dead-end node must not be in the cycle core");
+        assert!(
+            !analytics.pure_cycle_nav_nodes.contains(&dead_end),
+            "the vertical passage's dead-end node must not be in the cycle core"
+        );
     }
 }
 
@@ -181,14 +233,22 @@ fn dangling_vertical_passage_off_a_triangle_is_not_a_cycle() {
 fn simple_cycle_count_is_fully_deduped_not_double_counted() {
     let g = two_bowtie_clusters();
     let analytics = analyze(&g);
-    assert_eq!(analytics.simple_cycle_count, 6, "3 simple cycles per bowtie (2 triangles + composite) times 2 clusters");
-    assert!(analytics.simple_cycle_count > analytics.cycle_count, "composite-inclusive count must exceed the independent count");
+    assert_eq!(
+        analytics.simple_cycle_count, 6,
+        "3 simple cycles per bowtie (2 triangles + composite) times 2 clusters"
+    );
+    assert!(
+        analytics.simple_cycle_count > analytics.cycle_count,
+        "composite-inclusive count must exceed the independent count"
+    );
 }
 
 #[test]
 fn pure_cycle_basis_empty_on_acyclic_graph() {
     let mut g = Graph::new();
-    for id in 0..3 { g.add_node(id); }
+    for id in 0..3 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     let analytics = analyze(&g);
@@ -208,10 +268,43 @@ fn pure_cycle_basis_empty_on_empty_graph() {
 /// Cycle A: 1-7-8-14-13-12-6-0-1. Cycle B: 34-28-22-21-20-26-27-33-34.
 fn user_reported_two_cycle_graph() -> (Graph, HashSet<NodeId>) {
     let bidir: &[(NodeId, NodeId)] = &[
-        (21,20),(20,26),(26,27),(21,22),(22,16),(22,23),(22,28),(28,34),(34,33),
-        (26,25),(23,29),(29,35),(33,27),(33,32),(32,31),(31,30),(30,24),(24,18),
-        (18,12),(12,13),(13,14),(14,8),(25,19),(12,6),(8,7),(7,1),(8,9),(16,15),
-        (16,10),(10,11),(11,17),(1,2),(2,3),(6,0),(10,4),(4,5),(0,1),
+        (21, 20),
+        (20, 26),
+        (26, 27),
+        (21, 22),
+        (22, 16),
+        (22, 23),
+        (22, 28),
+        (28, 34),
+        (34, 33),
+        (26, 25),
+        (23, 29),
+        (29, 35),
+        (33, 27),
+        (33, 32),
+        (32, 31),
+        (31, 30),
+        (30, 24),
+        (24, 18),
+        (18, 12),
+        (12, 13),
+        (13, 14),
+        (14, 8),
+        (25, 19),
+        (12, 6),
+        (8, 7),
+        (7, 1),
+        (8, 9),
+        (16, 15),
+        (16, 10),
+        (10, 11),
+        (11, 17),
+        (1, 2),
+        (2, 3),
+        (6, 0),
+        (10, 4),
+        (4, 5),
+        (0, 1),
     ];
     let mut g = Graph::new();
     for id in 0..36 {
@@ -231,10 +324,43 @@ fn user_reported_two_cycle_graph() -> (Graph, HashSet<NodeId>) {
 /// (they now share nodes 22,23,29,35,34) while still being two independent cycles.
 fn user_reported_merged_two_cycle_graph() -> (Graph, HashSet<NodeId>) {
     let bidir: &[(NodeId, NodeId)] = &[
-        (21,20),(20,26),(26,27),(21,22),(22,16),(22,23),(22,28),(28,34),(34,33),
-        (26,25),(23,29),(29,35),(33,27),(33,32),(32,31),(31,30),(30,24),(24,18),
-        (18,12),(12,13),(13,14),(14,8),(25,19),(12,6),(8,7),(7,1),(8,9),(16,15),
-        (16,10),(10,11),(11,17),(1,2),(2,3),(6,0),(10,4),(4,5),(34,35),
+        (21, 20),
+        (20, 26),
+        (26, 27),
+        (21, 22),
+        (22, 16),
+        (22, 23),
+        (22, 28),
+        (28, 34),
+        (34, 33),
+        (26, 25),
+        (23, 29),
+        (29, 35),
+        (33, 27),
+        (33, 32),
+        (32, 31),
+        (31, 30),
+        (30, 24),
+        (24, 18),
+        (18, 12),
+        (12, 13),
+        (13, 14),
+        (14, 8),
+        (25, 19),
+        (12, 6),
+        (8, 7),
+        (7, 1),
+        (8, 9),
+        (16, 15),
+        (16, 10),
+        (10, 11),
+        (11, 17),
+        (1, 2),
+        (2, 3),
+        (6, 0),
+        (10, 4),
+        (4, 5),
+        (34, 35),
     ];
     let mut g = Graph::new();
     for id in 0..36 {
@@ -254,8 +380,14 @@ fn real_maze_merged_cycles_have_two_cycles_in_one_region() {
     let (g, pinned) = user_reported_merged_two_cycle_graph();
     let analytics = analyze_pinned(&g, &pinned);
 
-    assert_eq!(analytics.cycle_region_count, 1, "the two cycles now share nodes — one region");
-    assert_eq!(analytics.cycle_count, 2, "still two independent cycles (beta_1 = E - V + C)");
+    assert_eq!(
+        analytics.cycle_region_count, 1,
+        "the two cycles now share nodes — one region"
+    );
+    assert_eq!(
+        analytics.cycle_count, 2,
+        "still two independent cycles (beta_1 = E - V + C)"
+    );
 }
 
 #[test]
@@ -264,7 +396,10 @@ fn real_maze_two_disjoint_simple_cycles_have_two_cycle_regions() {
     let analytics = analyze_pinned(&g, &pinned);
 
     assert_eq!(analytics.cycle_count, 2, "two independent simple cycles");
-    assert_eq!(analytics.cycle_region_count, 2, "the two cycles share no node — must be 2 regions");
+    assert_eq!(
+        analytics.cycle_region_count, 2,
+        "the two cycles share no node — must be 2 regions"
+    );
 }
 
 #[test]
@@ -273,7 +408,11 @@ fn two_disjoint_bowtie_clusters_have_nonempty_pure_cycle_core() {
     let analytics = analyze(&g);
 
     // No bridges: every node has degree >= 2 inside its bowtie, shared edge is on two cycles.
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 8, "no bridges in a bowtie — all nodes are pure-cycle");
+    assert_eq!(
+        analytics.pure_cycle_nav_nodes.len(),
+        8,
+        "no bridges in a bowtie — all nodes are pure-cycle"
+    );
     assert!(!analytics.pure_cycle_edge_indices.is_empty());
 }
 
@@ -286,7 +425,9 @@ fn parallel_corridors_between_same_junction_pair_compress_to_two_nav_edges() {
     // Net result: 2 junctions, 2 parallel nav-edges between them — exactly the "direct
     // path plus a longer detour" shape called out in the e_core hybrid-counting comment.
     let mut g = Graph::new();
-    for id in 0..6 { g.add_node(id); } // A=0 B=1 branchA=2 branchB=3 detour=4,5
+    for id in 0..6 {
+        g.add_node(id);
+    } // A=0 B=1 branchA=2 branchB=3 detour=4,5
     g.add_bidirectional_edge(0, 1, EdgeKind::Basic); // A<->B direct
     g.add_bidirectional_edge(0, 4, EdgeKind::Basic);
     g.add_bidirectional_edge(4, 5, EdgeKind::Basic);
@@ -295,10 +436,23 @@ fn parallel_corridors_between_same_junction_pair_compress_to_two_nav_edges() {
     g.add_bidirectional_edge(1, 3, EdgeKind::Basic); // branch off B
     let analytics = analyze(&g);
 
-    assert_eq!(analytics.node_count, 4, "detour nodes 4,5 compress away, A,B,branchA,branchB survive");
-    assert_eq!(analytics.edge_count, 4, "A-B direct, A-B detour, A-branchA, B-branchB are 4 distinct corridors");
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 2, "detour nodes 4,5 compress away, only A,B survive as junctions");
-    assert_eq!(analytics.cycle_count, 1, "direct edge + detour = one independent cycle");
+    assert_eq!(
+        analytics.node_count, 4,
+        "detour nodes 4,5 compress away, A,B,branchA,branchB survive"
+    );
+    assert_eq!(
+        analytics.edge_count, 4,
+        "A-B direct, A-B detour, A-branchA, B-branchB are 4 distinct corridors"
+    );
+    assert_eq!(
+        analytics.pure_cycle_nav_nodes.len(),
+        2,
+        "detour nodes 4,5 compress away, only A,B survive as junctions"
+    );
+    assert_eq!(
+        analytics.cycle_count, 1,
+        "direct edge + detour = one independent cycle"
+    );
 }
 
 #[test]
@@ -310,15 +464,24 @@ fn two_one_way_edges_of_different_kind_between_same_pair_form_a_pure_2_cycle() {
     // instead of corridor-compressing away. Regression for issue #396: count_core_edges
     // used to dedup unpaired edges by bare node-pair, undercounting this to E_core=1.
     let mut g = Graph::new();
-    for id in 0..4 { g.add_node(id); }
+    for id in 0..4 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic); // A -> B, one-way
     g.add_edge(1, 0, EdgeKind::Elevator); // B -> A, one-way, different kind
     g.add_bidirectional_edge(0, 2, EdgeKind::Basic); // branch off A
     g.add_bidirectional_edge(1, 3, EdgeKind::Basic); // branch off B
     let analytics = analyze(&g);
 
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 2, "A,B both lie on the 2-cycle");
-    assert_eq!(analytics.cycle_count, 1, "Basic A->B plus Elevator B->A is one independent cycle");
+    assert_eq!(
+        analytics.pure_cycle_nav_nodes.len(),
+        2,
+        "A,B both lie on the 2-cycle"
+    );
+    assert_eq!(
+        analytics.cycle_count, 1,
+        "Basic A->B plus Elevator B->A is one independent cycle"
+    );
 }
 
 #[test]
@@ -364,23 +527,37 @@ fn self_loop_counts_as_its_own_cycle() {
     // 0 -> 0 self-loop, plus a real cycle 0->1->2->0. The self-loop is now a first-class
     // cycle: it adds 1 to edge_count and 1 to cycle_count (β1) on top of the 0->1->2->0 ring.
     let mut g = Graph::new();
-    for id in 0..3 { g.add_node(id); }
+    for id in 0..3 {
+        g.add_node(id);
+    }
     g.add_edge(0, 0, EdgeKind::Basic); // self-loop
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic);
     let analytics = analyze(&g);
 
-    assert_eq!(analytics.edge_count, 4, "self-loop counts as its own corridor");
-    assert_eq!(analytics.cycle_count, 2, "self-loop ring + 0->1->2->0 ring = two independent cycles");
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 3, "self-loop node is also on the real cycle — no extra cyclic node");
+    assert_eq!(
+        analytics.edge_count, 4,
+        "self-loop counts as its own corridor"
+    );
+    assert_eq!(
+        analytics.cycle_count, 2,
+        "self-loop ring + 0->1->2->0 ring = two independent cycles"
+    );
+    assert_eq!(
+        analytics.pure_cycle_nav_nodes.len(),
+        3,
+        "self-loop node is also on the real cycle — no extra cyclic node"
+    );
 }
 
 #[test]
 fn three_disjoint_simple_cycles_have_three_cycle_regions() {
     // Three disjoint triangles, no shared nodes or edges between them.
     let mut g = Graph::new();
-    for id in 0..9 { g.add_node(id); }
+    for id in 0..9 {
+        g.add_node(id);
+    }
     for &base in &[0, 3, 6] {
         g.add_edge(base, base + 1, EdgeKind::Basic);
         g.add_edge(base + 1, base + 2, EdgeKind::Basic);
@@ -389,7 +566,10 @@ fn three_disjoint_simple_cycles_have_three_cycle_regions() {
     let analytics = analyze(&g);
 
     assert_eq!(analytics.cycle_count, 3, "three independent simple cycles");
-    assert_eq!(analytics.cycle_region_count, 3, "three disjoint regions, no shared nodes");
+    assert_eq!(
+        analytics.cycle_region_count, 3,
+        "three disjoint regions, no shared nodes"
+    );
 }
 
 #[cfg(test)]

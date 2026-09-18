@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_ELEVATOR};
+use crate::quality_control::issue::{
+    INVALID_ELEVATOR, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// One elevator's full stop-node set, canonicalized (sorted) on construction so two
 /// `ElevatorNodes` built from the same node set in different orders compare/hash equal — mirrors
@@ -34,8 +36,15 @@ pub struct InvalidElevatorIssue {
 
 impl InvalidElevatorIssue {
     pub fn new_from_check(source_check: &str, invalid: Vec<ElevatorNodes>) -> Self {
-        let invalid_sources = invalid.iter().map(|e| (e.clone(), vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+        let invalid_sources = invalid
+            .iter()
+            .map(|e| (e.clone(), vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -61,7 +70,8 @@ impl IssueMerge for InvalidElevatorIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
 
-        let mut seen: std::collections::HashSet<ElevatorNodes> = self.invalid.iter().cloned().collect();
+        let mut seen: std::collections::HashSet<ElevatorNodes> =
+            self.invalid.iter().cloned().collect();
         for elevator in other.invalid {
             if seen.insert(elevator.clone()) {
                 self.invalid.push(elevator);
@@ -88,8 +98,14 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_elevators() {
-        let mut a = InvalidElevatorIssue::new_from_check("elevator_stop_count_a", vec![elevator(vec![0, 1])]);
-        let b = InvalidElevatorIssue::new_from_check("elevator_stop_count_b", vec![elevator(vec![2, 3])]);
+        let mut a = InvalidElevatorIssue::new_from_check(
+            "elevator_stop_count_a",
+            vec![elevator(vec![0, 1])],
+        );
+        let b = InvalidElevatorIssue::new_from_check(
+            "elevator_stop_count_b",
+            vec![elevator(vec![2, 3])],
+        );
         a.merge(b);
 
         assert_eq!(a.invalid.len(), 2);
@@ -99,21 +115,40 @@ mod tests {
 
     #[test]
     fn merge_deduplicates_shared_elevator() {
-        let mut a = InvalidElevatorIssue::new_from_check("elevator_stop_count_a", vec![elevator(vec![0, 1])]);
-        let b = InvalidElevatorIssue::new_from_check("elevator_stop_count_b", vec![elevator(vec![0, 1])]);
+        let mut a = InvalidElevatorIssue::new_from_check(
+            "elevator_stop_count_a",
+            vec![elevator(vec![0, 1])],
+        );
+        let b = InvalidElevatorIssue::new_from_check(
+            "elevator_stop_count_b",
+            vec![elevator(vec![0, 1])],
+        );
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![elevator(vec![0, 1])], "the same elevator flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.invalid,
+            vec![elevator(vec![0, 1])],
+            "the same elevator flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
     fn merge_attributes_each_elevator_to_only_its_own_flagging_check() {
-        let mut a = InvalidElevatorIssue::new_from_check("elevator_stop_count_a", vec![elevator(vec![0, 1])]);
+        let mut a = InvalidElevatorIssue::new_from_check(
+            "elevator_stop_count_a",
+            vec![elevator(vec![0, 1])],
+        );
         let b = InvalidElevatorIssue::new_from_check("elevator_span_b", vec![elevator(vec![2, 3])]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&elevator(vec![0, 1])), Some(&vec!["elevator_stop_count_a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&elevator(vec![2, 3])), Some(&vec!["elevator_span_b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&elevator(vec![0, 1])),
+            Some(&vec!["elevator_stop_count_a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&elevator(vec![2, 3])),
+            Some(&vec!["elevator_span_b".to_string()])
+        );
     }
 
     #[test]

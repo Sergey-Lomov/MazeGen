@@ -1,8 +1,10 @@
-use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP};
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
+use crate::quality_control::issue::{
+    INVALID_LOOP, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced by any check that flags cycles invalid for a check-specific reason (currently
 /// `MinLoopLengthCheck`/`MaxLoopLengthCheck`; future checks may flag cycles invalid for other
@@ -33,7 +35,12 @@ impl InvalidLoopIssue {
         invalid: Vec<usize>,
         invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
     ) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), all, invalid, invalid_sources }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            all,
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -88,21 +95,28 @@ impl IssueMerge for InvalidLoopIssue {
         self.meta.merge_from(other.meta);
         super::merge_cycle_sets(
             "InvalidLoopIssue",
-            &mut self.all, &mut self.invalid, &mut self.invalid_sources,
-            other.all, other.invalid, other.invalid_sources,
+            &mut self.all,
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.all,
+            other.invalid,
+            other.invalid_sources,
         );
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::canonical_cycle_key;
+    use super::*;
 
     fn issue(source_check: &str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> InvalidLoopIssue {
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check.to_string());
+            invalid_sources
+                .entry(canonical_cycle_key(&all[idx]))
+                .or_default()
+                .push(source_check.to_string());
         }
         InvalidLoopIssue::new_from_check(source_check, all, invalid, invalid_sources)
     }
@@ -113,19 +127,38 @@ mod tests {
     /// relies on this exact meaning and has no other way to be caught if it silently regressed.
     #[test]
     fn default_requirement_is_all_flags_set() {
-        assert_eq!(InvalidLoopRequirement::default(), InvalidLoopRequirement::all());
+        assert_eq!(
+            InvalidLoopRequirement::default(),
+            InvalidLoopRequirement::all()
+        );
     }
 
     #[test]
     fn merge_keeps_each_source_checks_details_after_merge() {
-        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0])
-            .with_detail("min_loop_length", "threshold", "10".to_string());
-        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0])
-            .with_detail("max_loop_length", "threshold", "100".to_string());
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0]).with_detail(
+            "min_loop_length",
+            "threshold",
+            "10".to_string(),
+        );
+        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0]).with_detail(
+            "max_loop_length",
+            "threshold",
+            "100".to_string(),
+        );
         a.merge(b);
 
-        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
-        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+        assert_eq!(
+            a.details()
+                .get("min_loop_length")
+                .and_then(|kv| kv.get("threshold")),
+            Some(&"10".to_string())
+        );
+        assert_eq!(
+            a.details()
+                .get("max_loop_length")
+                .and_then(|kv| kv.get("threshold")),
+            Some(&"100".to_string())
+        );
     }
 
     #[test]
@@ -135,8 +168,18 @@ mod tests {
         a.merge(b);
 
         assert_eq!(a.all.len(), 2, "disjoint cycles must not collapse");
-        assert_eq!(a.invalid.len(), 2, "both cycles are invalid, from different sources");
-        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()]);
+        assert_eq!(
+            a.invalid.len(),
+            2,
+            "both cycles are invalid, from different sources"
+        );
+        assert_eq!(
+            a.source_checks(),
+            vec![
+                "missing_endpoints".to_string(),
+                "unreachable_finish".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -146,18 +189,34 @@ mod tests {
         let b = issue("unreachable_finish", vec![vec![3, 1, 2]], vec![0]);
         a.merge(b);
 
-        assert_eq!(a.all.len(), 1, "identical cycle (as an edge set) must not be duplicated");
-        assert_eq!(a.invalid, vec![0], "both sides' invalid index must collapse onto the same merged index");
+        assert_eq!(
+            a.all.len(),
+            1,
+            "identical cycle (as an edge set) must not be duplicated"
+        );
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "both sides' invalid index must collapse onto the same merged index"
+        );
     }
 
     #[test]
     fn merge_keeps_valid_cycles_distinct_from_invalid_ones() {
-        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
+        let mut a = issue(
+            "missing_endpoints",
+            vec![vec![1, 2, 3], vec![7, 8, 9]],
+            vec![0],
+        ); // second cycle valid
         let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
         a.merge(b);
 
         assert_eq!(a.all.len(), 3);
-        assert_eq!(a.invalid.len(), 2, "only the two flagged cycles are invalid; the valid one stays out of `invalid`");
+        assert_eq!(
+            a.invalid.len(),
+            2,
+            "only the two flagged cycles are invalid; the valid one stays out of `invalid`"
+        );
     }
 
     #[test]
@@ -165,7 +224,11 @@ mod tests {
         let mut a = issue("missing_endpoints", vec![], vec![]);
         let b = issue("missing_endpoints", vec![], vec![]);
         a.merge(b);
-        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string()], "merging the same source twice must not duplicate it");
+        assert_eq!(
+            a.source_checks(),
+            vec!["missing_endpoints".to_string()],
+            "merging the same source twice must not duplicate it"
+        );
     }
 
     #[test]
@@ -177,7 +240,10 @@ mod tests {
         a.merge(b);
 
         let key = canonical_cycle_key(&[1, 2, 3]);
-        let sources = a.invalid_sources.get(&key).expect("merged cycle must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&key)
+            .expect("merged cycle must have recorded sources");
         assert_eq!(sources.len(), 2);
         assert!(sources.contains(&"min_loop_length".to_string()));
         assert!(sources.contains(&"max_loop_length".to_string()));
@@ -190,7 +256,10 @@ mod tests {
         a.merge(b);
 
         let key = canonical_cycle_key(&[1, 2, 3]);
-        assert_eq!(a.invalid_sources.get(&key), Some(&vec!["missing_endpoints".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&key),
+            Some(&vec!["missing_endpoints".to_string()])
+        );
     }
 
     #[test]
@@ -214,7 +283,14 @@ mod tests {
             sources
         };
         assert_eq!(extract_sorted(&left_first), extract_sorted(&right_first));
-        assert_eq!(extract_sorted(&left_first), vec!["min_loops_count".to_string(), "missing_endpoints".to_string(), "unreachable_finish".to_string()]);
+        assert_eq!(
+            extract_sorted(&left_first),
+            vec![
+                "min_loops_count".to_string(),
+                "missing_endpoints".to_string(),
+                "unreachable_finish".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -237,6 +313,10 @@ mod tests {
         a.merge(b);
 
         assert_eq!(a.all.len(), 2, "both cycles still end up in the merged all");
-        assert_eq!(a.invalid, vec![1], "the out-of-range index is dropped; only check_b's valid index survives");
+        assert_eq!(
+            a.invalid,
+            vec![1],
+            "the out-of-range index is dropped; only check_b's valid index survives"
+        );
     }
 }

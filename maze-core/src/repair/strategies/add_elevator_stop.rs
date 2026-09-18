@@ -1,19 +1,23 @@
-use std::collections::{HashMap, HashSet};
-use rand::{Rng, RngCore};
-use rand::seq::SliceRandom;
-use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::{LevelId, Tessellation};
-use crate::quality_control::{AreaMissingElevatorStopsIssue, RepairArea, MISSING_ELEVATORS, MissingElevatorsIssue};
-use crate::quality_control::checks::elevator_core::{elevator_groups, stop_floors, Elevator};
-use crate::generation::{PresetState, bidirectional_edge_feasible};
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
-use crate::repair::command::MutationCommand;
-use crate::repair::nested_dispatch::nested_params;
 use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{self, attempts_limit};
+use crate::Maze;
+use crate::generation::{PresetState, bidirectional_edge_feasible};
+use crate::ids::NodeId;
+use crate::quality_control::checks::elevator_core::{Elevator, elevator_groups, stop_floors};
+use crate::quality_control::{
+    AreaMissingElevatorStopsIssue, MISSING_ELEVATORS, MissingElevatorsIssue, RepairArea,
+};
+use crate::repair::command::MutationCommand;
+use crate::repair::nested_dispatch::nested_params;
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::result::RepairResult;
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::{LevelId, Tessellation};
+use rand::seq::SliceRandom;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet};
 
 pub const PARAM_EXISTING_REUSE_BALANCE: &str = "existing_reuse_balance";
 pub const PARAM_ALLOW_SPAN_EXTENSION: &str = "allow_span_extension";
@@ -21,7 +25,11 @@ pub const PARAM_ALLOW_SPAN_EXTENSION: &str = "allow_span_extension";
 const EXISTING_REUSE_BALANCE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_EXISTING_REUSE_BALANCE,
     label: "Existing-reuse balance",
-    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+    kind: StrategyParamKind::Float {
+        default: 0.5,
+        min: 0.0,
+        max: 1.0,
+    },
 };
 
 const ALLOW_SPAN_EXTENSION_PARAM: StrategyParam = StrategyParam {
@@ -45,9 +53,13 @@ static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(no_src_mode:
 /// nothing, so a "removal"-flavored name here would mislead.
 pub const SLOT_ADD_ELEVATOR_STRATEGY: &str = "add_elevator_strategy";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_ADD_ELEVATOR_STRATEGY, kind: MISSING_ELEVATORS, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_ADD_ELEVATOR_STRATEGY,
+    kind: MISSING_ELEVATORS,
+    min: 1,
+    max: Some(1),
+    dispatch_kind: NestedDispatchKind::Unordered,
+}];
 
 /// Handles `AREA_MISSING_ELEVATOR_STOPS` (GitHub issue #408, epic #344) by either building a
 /// brand-new elevator (delegating to a nested `MISSING_ELEVATORS` strategy, typically
@@ -80,7 +92,9 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 pub struct AddElevatorStopStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddElevatorStopStrategy {
-    fn strategy_id(&self) -> &'static str { "add_elevator_stop" }
+    fn strategy_id(&self) -> &'static str {
+        "add_elevator_stop"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &PARAMS
@@ -107,8 +121,14 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let existing_reuse_balance = params.get(PARAM_EXISTING_REUSE_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
-        let allow_span_extension = matches!(params.get(PARAM_ALLOW_SPAN_EXTENSION), Some(StrategyParamValue::Bool(true)) | None);
+        let existing_reuse_balance = params
+            .get(PARAM_EXISTING_REUSE_BALANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5);
+        let allow_span_extension = matches!(
+            params.get(PARAM_ALLOW_SPAN_EXTENSION),
+            Some(StrategyParamValue::Bool(true)) | None
+        );
         let max_failed_attempts = attempts_limit(params);
 
         // Standard add params owned for the nested add-elevator strategy (GitHub issue #486): it
@@ -116,7 +136,9 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
         // injects them into every nested call via `nested_params`.
         let inherited_overrides = standard_add_params::inherited_overrides(params);
 
-        let add_target = nested.iter().find(|n| n.slot.slot_id == SLOT_ADD_ELEVATOR_STRATEGY);
+        let add_target = nested
+            .iter()
+            .find(|n| n.slot.slot_id == SLOT_ADD_ELEVATOR_STRATEGY);
 
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
@@ -146,15 +168,43 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
                 let planned = planned_elevator_pairs(&commands);
 
                 let (mut ok, mut cmds) = if reuse_first {
-                    try_reuse_existing(maze, &planned, area, allow_span_extension, preset_state, rng)
+                    try_reuse_existing(
+                        maze,
+                        &planned,
+                        area,
+                        allow_span_extension,
+                        preset_state,
+                        rng,
+                    )
                 } else {
-                    try_add_new(maze, add_target, &inherited_overrides, preset_state, rng, area)
+                    try_add_new(
+                        maze,
+                        add_target,
+                        &inherited_overrides,
+                        preset_state,
+                        rng,
+                        area,
+                    )
                 };
                 if !ok {
                     (ok, cmds) = if reuse_first {
-                        try_add_new(maze, add_target, &inherited_overrides, preset_state, rng, area)
+                        try_add_new(
+                            maze,
+                            add_target,
+                            &inherited_overrides,
+                            preset_state,
+                            rng,
+                            area,
+                        )
                     } else {
-                        try_reuse_existing(maze, &planned, area, allow_span_extension, preset_state, rng)
+                        try_reuse_existing(
+                            maze,
+                            &planned,
+                            area,
+                            allow_span_extension,
+                            preset_state,
+                            rng,
+                        )
                     };
                 }
 
@@ -201,8 +251,13 @@ crate::impl_erased_repair_strategy!(AddElevatorStopStrategy, AreaMissingElevator
 /// (commands queued by earlier iterations of this same `apply()` call, per the planned-elevator
 /// overlay `try_reuse_existing` also relies on — without folding those in too, a stop added last
 /// iteration looks "new" again this iteration since it never touches the real `maze`).
-fn touched_floors<T: Tessellation>(maze: &Maze<T>, prior_cmds: &[MutationCommand], new_cmds: &[MutationCommand]) -> Vec<LevelId> {
-    let mut existing_stops: HashSet<NodeId> = elevator_groups(maze).into_iter()
+fn touched_floors<T: Tessellation>(
+    maze: &Maze<T>,
+    prior_cmds: &[MutationCommand],
+    new_cmds: &[MutationCommand],
+) -> Vec<LevelId> {
+    let mut existing_stops: HashSet<NodeId> = elevator_groups(maze)
+        .into_iter()
         .flat_map(|e| e.stops)
         .collect();
     for cmd in prior_cmds {
@@ -212,7 +267,8 @@ fn touched_floors<T: Tessellation>(maze: &Maze<T>, prior_cmds: &[MutationCommand
         }
     }
 
-    let mut floors: Vec<LevelId> = new_cmds.iter()
+    let mut floors: Vec<LevelId> = new_cmds
+        .iter()
         .filter_map(|cmd| match cmd {
             MutationCommand::AddBidirectionalElevator { a, b } => Some([*a, *b]),
             _ => None,
@@ -243,8 +299,18 @@ fn try_add_new<T: Tessellation>(
     };
     let synthetic = MissingElevatorsIssue::new_from_check("add_elevator_stop", vec![(area, 1)]);
     let nested_params = nested_params(add_target, inherited_overrides);
-    let (result, cmds) = add_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, rng, &nested_params, preset_state, &add_target.nested);
-    (matches!(result, RepairResult::Fixed { .. }) && !cmds.is_empty(), cmds)
+    let (result, cmds) = add_target.strategy.apply(
+        &synthetic as &dyn crate::quality_control::Issue,
+        maze,
+        rng,
+        &nested_params,
+        preset_state,
+        &add_target.nested,
+    );
+    (
+        matches!(result, RepairResult::Fixed { .. }) && !cmds.is_empty(),
+        cmds,
+    )
 }
 
 /// Every `AddBidirectionalElevator` pair queued so far this `apply()` call — the planned-elevator
@@ -252,7 +318,8 @@ fn try_add_new<T: Tessellation>(
 /// (and grow) an elevator it built moments ago in this same call, not just what's already in
 /// `maze`. See `apply()`'s own comment on why `maze` alone isn't enough.
 fn planned_elevator_pairs(commands: &[MutationCommand]) -> Vec<(NodeId, NodeId)> {
-    commands.iter()
+    commands
+        .iter()
         .filter_map(|cmd| match *cmd {
             MutationCommand::AddBidirectionalElevator { a, b } => Some((a, b)),
             _ => None,
@@ -265,7 +332,10 @@ fn planned_elevator_pairs(commands: &[MutationCommand]) -> Vec<(NodeId, NodeId)>
 /// candidate, merged with any real stops it's already connected to. `edges` is left empty for
 /// groups that gained any planned member (real `EdgeId`s don't exist for a not-yet-applied pair,
 /// and nothing in the reuse branch reads `.edges`).
-fn groups_with_planned<T: Tessellation>(maze: &Maze<T>, planned: &[(NodeId, NodeId)]) -> Vec<Elevator> {
+fn groups_with_planned<T: Tessellation>(
+    maze: &Maze<T>,
+    planned: &[(NodeId, NodeId)],
+) -> Vec<Elevator> {
     if planned.is_empty() {
         return elevator_groups(maze);
     }
@@ -306,7 +376,10 @@ fn groups_with_planned<T: Tessellation>(maze: &Maze<T>, planned: &[(NodeId, Node
         }
         let mut stops: Vec<NodeId> = component.into_iter().collect();
         stops.sort_unstable();
-        groups.push(Elevator { stops, edges: Vec::new() });
+        groups.push(Elevator {
+            stops,
+            edges: Vec::new(),
+        });
     }
     groups
 }
@@ -330,10 +403,15 @@ fn add_stop_command_with_planned<T: Tessellation>(
     }
 
     for &stop in &elevator.stops {
-        if maze.graph.edge_between(stop, new_stop).is_some() || maze.graph.edge_between(new_stop, stop).is_some() {
+        if maze.graph.edge_between(stop, new_stop).is_some()
+            || maze.graph.edge_between(new_stop, stop).is_some()
+        {
             return None;
         }
-        if planned.iter().any(|&(a, b)| (a == stop && b == new_stop) || (a == new_stop && b == stop)) {
+        if planned
+            .iter()
+            .any(|&(a, b)| (a == stop && b == new_stop) || (a == new_stop && b == stop))
+        {
             return None;
         }
         if !bidirectional_edge_feasible(preset_state, stop, new_stop) {
@@ -341,7 +419,16 @@ fn add_stop_command_with_planned<T: Tessellation>(
         }
     }
 
-    Some(elevator.stops.iter().map(|&stop| MutationCommand::AddBidirectionalElevator { a: stop, b: new_stop }).collect())
+    Some(
+        elevator
+            .stops
+            .iter()
+            .map(|&stop| MutationCommand::AddBidirectionalElevator {
+                a: stop,
+                b: new_stop,
+            })
+            .collect(),
+    )
 }
 
 /// Picks one candidate elevator at random and adds it a stop — `RepairArea::WholeMaze` picks any
@@ -382,8 +469,12 @@ fn try_reuse_existing<T: Tessellation>(
                     (Some(&min), Some(&max)) => (min, max),
                     _ => continue,
                 };
-                let mut free_floors: Vec<LevelId> = levels.iter().enumerate()
-                    .filter(|&(i, _)| !stopped.contains(&i) && (allow_span_extension || (i > min && i < max)))
+                let mut free_floors: Vec<LevelId> = levels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| {
+                        !stopped.contains(&i) && (allow_span_extension || (i > min && i < max))
+                    })
                     .map(|(_, &l)| l)
                     .collect();
                 if free_floors.is_empty() {
@@ -391,7 +482,9 @@ fn try_reuse_existing<T: Tessellation>(
                 }
                 free_floors.shuffle(rng);
                 for target in free_floors {
-                    if let Some(cmds) = add_stop_command_with_planned(maze, planned, elevator, target, preset_state) {
+                    if let Some(cmds) =
+                        add_stop_command_with_planned(maze, planned, elevator, target, preset_state)
+                    {
                         return (true, cmds);
                     }
                 }
@@ -399,10 +492,21 @@ fn try_reuse_existing<T: Tessellation>(
             (false, vec![])
         }
         RepairArea::Level(target_level) => {
-            let mut candidates = candidate_elevators_for_level(maze, &all_elevators, target_level, allow_span_extension);
+            let mut candidates = candidate_elevators_for_level(
+                maze,
+                &all_elevators,
+                target_level,
+                allow_span_extension,
+            );
             candidates.shuffle(rng);
             for elevator in candidates.drain(..) {
-                if let Some(cmds) = add_stop_command_with_planned(maze, planned, elevator, target_level, preset_state) {
+                if let Some(cmds) = add_stop_command_with_planned(
+                    maze,
+                    planned,
+                    elevator,
+                    target_level,
+                    preset_state,
+                ) {
                     return (true, cmds);
                 }
             }
@@ -431,19 +535,24 @@ fn candidate_elevators_for_level<'a, T: Tessellation>(
         return vec![];
     };
 
-    elevators.iter().filter(|elevator| {
-        let floors = stop_floors(elevator, maze);
-        let (Some(&min), Some(&max)) = (floors.first(), floors.last()) else { return false };
-        if floors.contains(&target_index) {
-            return false;
-        }
-        let is_gap = target_index > min && target_index < max;
-        if allow_span_extension {
-            is_gap || target_index + 1 == min || target_index == max + 1
-        } else {
-            is_gap
-        }
-    }).collect()
+    elevators
+        .iter()
+        .filter(|elevator| {
+            let floors = stop_floors(elevator, maze);
+            let (Some(&min), Some(&max)) = (floors.first(), floors.last()) else {
+                return false;
+            };
+            if floors.contains(&target_index) {
+                return false;
+            }
+            let is_gap = target_index > min && target_index < max;
+            if allow_span_extension {
+                is_gap || target_index + 1 == min || target_index == max + 1
+            } else {
+                is_gap
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

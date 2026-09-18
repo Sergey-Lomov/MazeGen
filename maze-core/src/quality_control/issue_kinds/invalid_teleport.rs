@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_TELEPORT};
+use crate::quality_control::issue::{
+    INVALID_TELEPORT, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced by any check that flags a teleport edge (`EdgeKind::Teleport`) invalid for a
 /// check-specific reason — currently `TeleportDuplicatesConnectionCheck`,
@@ -28,8 +30,15 @@ pub struct InvalidTeleportIssue {
 
 impl InvalidTeleportIssue {
     pub fn new_from_check(source_check: &str, invalid: Vec<EdgeId>) -> Self {
-        let invalid_sources = invalid.iter().map(|&id| (id, vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+        let invalid_sources = invalid
+            .iter()
+            .map(|&id| (id, vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -56,7 +65,12 @@ impl IssueMerge for InvalidTeleportIssue {
     /// `InvalidLoopIssue`'s `invalid_sources` merge.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+        super::merge_id_sets(
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.invalid,
+            other.invalid_sources,
+        );
     }
 }
 
@@ -86,8 +100,14 @@ mod tests {
         let b = InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", vec![1]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&0), Some(&vec!["teleport_duplicates_connection".to_string()]));
-        assert_eq!(a.invalid_sources.get(&1), Some(&vec!["teleport_waypoint_distance".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&0),
+            Some(&vec!["teleport_duplicates_connection".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&1),
+            Some(&vec!["teleport_waypoint_distance".to_string()])
+        );
     }
 
     #[test]
@@ -99,7 +119,10 @@ mod tests {
         let b = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&0), Some(&vec!["teleport_duplicates_connection".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&0),
+            Some(&vec!["teleport_duplicates_connection".to_string()])
+        );
     }
 
     #[test]
@@ -108,7 +131,10 @@ mod tests {
         let b = InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", vec![0]);
         a.merge(b);
 
-        let sources = a.invalid_sources.get(&0).expect("merged edge must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&0)
+            .expect("merged edge must have recorded sources");
         assert_eq!(sources.len(), 2);
         assert!(sources.contains(&"teleport_duplicates_connection".to_string()));
         assert!(sources.contains(&"teleport_waypoint_distance".to_string()));
@@ -122,6 +148,10 @@ mod tests {
         let b = InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same edge id flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "the same edge id flagged by both checks must not be duplicated"
+        );
     }
 }

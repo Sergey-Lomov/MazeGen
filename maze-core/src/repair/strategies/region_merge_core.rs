@@ -1,8 +1,8 @@
-use rand::{Rng, RngCore};
-use std::collections::HashSet;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::ids::NodeId;
 use crate::repair::command::MutationCommand;
+use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
 /// Shared `target_mode` param id/values/selection logic for every strategy that merges an
 /// undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` — geometric
@@ -37,11 +37,22 @@ pub fn pick_by_mode(
         return None;
     }
     match mode {
-        MODE_LARGEST => pool.iter().copied().max_by_key(|i| scc.components[*i].len()),
-        MODE_SMALLEST => pool.iter().copied().min_by_key(|i| scc.components[*i].len()),
+        MODE_LARGEST => pool
+            .iter()
+            .copied()
+            .max_by_key(|i| scc.components[*i].len()),
+        MODE_SMALLEST => pool
+            .iter()
+            .copied()
+            .min_by_key(|i| scc.components[*i].len()),
         MODE_PREFER_NEEDY => {
-            let needy_candidates: Vec<ComponentId> = pool.iter().copied().filter(|i| needy.contains(i)).collect();
-            let sub_pool = if needy_candidates.is_empty() { pool } else { &needy_candidates };
+            let needy_candidates: Vec<ComponentId> =
+                pool.iter().copied().filter(|i| needy.contains(i)).collect();
+            let sub_pool = if needy_candidates.is_empty() {
+                pool
+            } else {
+                &needy_candidates
+            };
             Some(sub_pool[rng.random_range(0..sub_pool.len())])
         }
         _ => Some(pool[rng.random_range(0..pool.len())]),
@@ -58,7 +69,11 @@ pub fn narrow_to_partial<'a>(
     partial: &'a [ComponentId],
     prefer_partial: bool,
 ) -> &'a [ComponentId] {
-    if prefer_partial && !partial.is_empty() { partial } else { pool }
+    if prefer_partial && !partial.is_empty() {
+        partial
+    } else {
+        pool
+    }
 }
 
 /// Runs the shared "merge every flagged region into a chosen neighbor" loop: pops region ids
@@ -86,10 +101,15 @@ pub fn run_merge_loop(
             continue;
         }
 
-        let needy: HashSet<ComponentId> =
-            invalid.iter().copied().filter(|i| *i != region_idx && !merged_away.contains(i)).collect();
+        let needy: HashSet<ComponentId> = invalid
+            .iter()
+            .copied()
+            .filter(|i| *i != region_idx && !merged_away.contains(i))
+            .collect();
 
-        let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy) else { continue };
+        let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy) else {
+            continue;
+        };
         if !applied {
             continue;
         }
@@ -149,14 +169,17 @@ pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use crate::random::MazeRng;
+    use rand::SeedableRng;
 
     /// `pick_by_mode`'s `random`/`prefer_needy`/unrecognized-mode arms never read
     /// `scc.components` (only `largest`/`smallest` do) -- a trivial empty `ConnectedComponents`
     /// is enough for every test in this module, avoiding a real `Graph`/`build_scc` setup.
     fn empty_scc() -> ConnectedComponents {
-        ConnectedComponents { components: vec![], node_component: std::collections::HashMap::new() }
+        ConnectedComponents {
+            components: vec![],
+            node_component: std::collections::HashMap::new(),
+        }
     }
 
     #[test]
@@ -184,7 +207,10 @@ mod tests {
     fn pick_by_mode_empty_pool_returns_none() {
         let mut rng = MazeRng::seed_from_u64(1);
         let needy = HashSet::new();
-        assert_eq!(pick_by_mode(&[], &empty_scc(), MODE_RANDOM, &needy, &mut rng), None);
+        assert_eq!(
+            pick_by_mode(&[], &empty_scc(), MODE_RANDOM, &needy, &mut rng),
+            None
+        );
     }
 
     #[test]
@@ -212,7 +238,11 @@ mod tests {
         for seed in 0..20 {
             let mut rng = MazeRng::seed_from_u64(seed);
             let picked = pick_by_mode(&pool, &empty_scc(), MODE_PREFER_NEEDY, &needy, &mut rng);
-            assert_eq!(picked, Some(1), "seed {seed}: must always pick the sole needy candidate");
+            assert_eq!(
+                picked,
+                Some(1),
+                "seed {seed}: must always pick the sole needy candidate"
+            );
         }
     }
 
@@ -223,7 +253,10 @@ mod tests {
         for seed in 0..20 {
             let mut rng = MazeRng::seed_from_u64(seed);
             let picked = pick_by_mode(&pool, &empty_scc(), MODE_PREFER_NEEDY, &needy, &mut rng);
-            assert!(picked.is_some_and(|p| pool.contains(&p)), "seed {seed}: must fall back to the whole pool when nothing is needy");
+            assert!(
+                picked.is_some_and(|p| pool.contains(&p)),
+                "seed {seed}: must fall back to the whole pool when nothing is needy"
+            );
         }
     }
 
@@ -237,9 +270,12 @@ mod tests {
     #[test]
     fn run_merge_loop_returns_true_when_at_least_one_region_merges() {
         let invalid = vec![0, 1];
-        let any_fixed = run_merge_loop(&invalid, |region, _needy| {
-            if region == 0 { Some((99, true)) } else { None }
-        });
+        let any_fixed = run_merge_loop(
+            &invalid,
+            |region, _needy| {
+                if region == 0 { Some((99, true)) } else { None }
+            },
+        );
         assert!(any_fixed);
     }
 
@@ -263,10 +299,18 @@ mod tests {
         let calls: RefCell<Vec<ComponentId>> = RefCell::new(Vec::new());
         let any_fixed = run_merge_loop(&invalid, |region, _needy| {
             calls.borrow_mut().push(region);
-            if region == 0 { Some((1, true)) } else { Some((99, true)) }
+            if region == 0 {
+                Some((1, true))
+            } else {
+                Some((99, true))
+            }
         });
         assert!(any_fixed);
-        assert_eq!(calls.into_inner(), vec![0], "region 1 must never be dispatched -- it was merged away as region 0's neighbor");
+        assert_eq!(
+            calls.into_inner(),
+            vec![0],
+            "region 1 must never be dispatched -- it was merged away as region 0's neighbor"
+        );
     }
 
     #[test]
@@ -288,30 +332,91 @@ mod tests {
             if region == 2 { Some((1, true)) } else { None }
         });
         let seen = seen.into_inner();
-        assert_eq!(seen[0], (2, vec![0, 1]), "region 2's needy set is every other flagged region");
-        assert_eq!(seen[1], (0, vec![2]), "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy");
+        assert_eq!(
+            seen[0],
+            (2, vec![0, 1]),
+            "region 2's needy set is every other flagged region"
+        );
+        assert_eq!(
+            seen[1],
+            (0, vec![2]),
+            "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy"
+        );
     }
 
     #[test]
     fn mutation_command_endpoints_extracts_both_nodes_for_every_connecting_command_kind() {
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedEdge { from: 1, to: 2 }), Some((1, 2)));
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalEdge { a: 1, b: 2 }), Some((1, 2)));
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedTeleport { from: 1, to: 2 }), Some((1, 2)));
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalTeleport { a: 1, b: 2 }), Some((1, 2)));
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedVerticalPassage { from: 1, to: 2 }), Some((1, 2)));
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalVerticalPassage { a: 1, b: 2 }), Some((1, 2)));
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddDirectedEdge { from: 1, to: 2 }),
+            Some((1, 2))
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddBidirectionalEdge { a: 1, b: 2 }),
+            Some((1, 2))
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddDirectedTeleport { from: 1, to: 2 }),
+            Some((1, 2))
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddBidirectionalTeleport { a: 1, b: 2 }),
+            Some((1, 2))
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddDirectedVerticalPassage {
+                from: 1,
+                to: 2
+            }),
+            Some((1, 2))
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddBidirectionalVerticalPassage {
+                a: 1,
+                b: 2
+            }),
+            Some((1, 2))
+        );
     }
 
     #[test]
     fn mutation_command_endpoints_returns_none_for_every_non_connecting_command_kind() {
-        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalElevator { a: 1, b: 2 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdge { id: 7 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdgeBetween { from: 1, to: 2 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdgeWithReverse { id: 7 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveTeleportWithReverse { id: 7 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveVerticalPassageWithReverse { id: 7 }), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::SetStart(1)), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::SetFinish(1)), None);
-        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveNode { node: 1 }), None);
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::AddBidirectionalElevator { a: 1, b: 2 }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveEdge { id: 7 }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveEdgeBetween { from: 1, to: 2 }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveEdgeWithReverse { id: 7 }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveTeleportWithReverse { id: 7 }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveVerticalPassageWithReverse {
+                id: 7
+            }),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::SetStart(1)),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::SetFinish(1)),
+            None
+        );
+        assert_eq!(
+            mutation_command_endpoints(&MutationCommand::RemoveNode { node: 1 }),
+            None
+        );
     }
 }

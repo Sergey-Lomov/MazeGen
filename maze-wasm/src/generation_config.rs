@@ -1,8 +1,7 @@
 // Re-export all config types from maze-runner — no duplication.
-pub use maze_runner::config::{
-    CheckInstanceConfig, QcRuleConfig, StageConfig,
-    TessellationType, TessellationConfig,
-    GenerateConfig, PresetConnectionDto, PresetEndpointDto,
-    build_repair_limits, build_generation_config,
-};
 pub(crate) use maze_runner::config::StrategyConfig;
+pub use maze_runner::config::{
+    CheckInstanceConfig, GenerateConfig, PresetConnectionDto, PresetEndpointDto, QcRuleConfig,
+    StageConfig, TessellationConfig, TessellationType, build_generation_config,
+    build_repair_limits,
+};

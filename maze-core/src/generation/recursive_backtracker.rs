@@ -1,14 +1,16 @@
 #[path = "recursive_backtracker_wire.rs"]
 mod recursive_backtracker_wire;
 
-use std::collections::HashSet;
-use rand::{Rng, SeedableRng};
-use crate::random::MazeRng;
-use crate::ids::NodeId;
-use crate::graph::Graph;
-use crate::space::{MultiLevelField, Tessellation};
+use super::{
+    PresetState, bidirectional_edge_feasible, split_aware_neighbors, try_add_bidirectional_edge,
+};
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp, EventLog};
-use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
+use crate::graph::Graph;
+use crate::ids::NodeId;
+use crate::random::MazeRng;
+use crate::space::{MultiLevelField, Tessellation};
+use rand::{Rng, SeedableRng};
+use std::collections::HashSet;
 
 /// Narration-level events for Recursive Backtracker (see GitHub issue #123). The algorithm has
 /// no `corridor_chance`/`branching`-style params (unlike `CustomVertexBased`) — each processed
@@ -38,7 +40,11 @@ pub enum RecursiveBacktrackerEvent {
     /// succeeds) — carried explicitly so replay consumers (e.g. the web debug view, #125) don't
     /// have to rely on implicit knowledge that RB always double-adds.
     #[wire(tag = 5, mutating)]
-    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
+    EdgeAdded {
+        from: NodeId,
+        to: NodeId,
+        bidirectional: bool,
+    },
     /// A vertex was marked visited.
     #[wire(tag = 6, mutating, name = "id")]
     VertexVisited(NodeId),
@@ -67,9 +73,15 @@ const VISITED: &str = "visited";
 impl DebugValueDelta<NodeId> for RecursiveBacktrackerEvent {
     fn debug_value_deltas(&self) -> Vec<(&'static str, DebugValueOp, NodeId)> {
         match self {
-            RecursiveBacktrackerEvent::VertexPushed(id) => vec![(RECURSION_STACK, DebugValueOp::Insert, *id)],
-            RecursiveBacktrackerEvent::VertexPopped(id) => vec![(RECURSION_STACK, DebugValueOp::Remove, *id)],
-            RecursiveBacktrackerEvent::VertexVisited(id) => vec![(VISITED, DebugValueOp::Insert, *id)],
+            RecursiveBacktrackerEvent::VertexPushed(id) => {
+                vec![(RECURSION_STACK, DebugValueOp::Insert, *id)]
+            }
+            RecursiveBacktrackerEvent::VertexPopped(id) => {
+                vec![(RECURSION_STACK, DebugValueOp::Remove, *id)]
+            }
+            RecursiveBacktrackerEvent::VertexVisited(id) => {
+                vec![(VISITED, DebugValueOp::Insert, *id)]
+            }
             _ => Vec::new(),
         }
     }
@@ -86,7 +98,10 @@ impl DebugValueDelta<NodeId> for RecursiveBacktrackerEvent {
 /// `"recursion_stack"` is `Sequence` — insertion order matters (it's the actual DFS stack).
 /// `"visited"` is `Region` — an unordered set with no relationship between members.
 pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
-    &[(RECURSION_STACK, DebugValueKind::Sequence), (VISITED, DebugValueKind::Region)]
+    &[
+        (RECURSION_STACK, DebugValueKind::Sequence),
+        (VISITED, DebugValueKind::Region),
+    ]
 }
 
 pub fn generate<T: Tessellation>(
@@ -117,17 +132,31 @@ pub fn generate<T: Tessellation>(
         // it as `chosen` (`CandidateChosen`/`VertexVisited`/`VertexPushed`), which doesn't apply to
         // either root.
         if stack.is_empty() {
-            let unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|n| !visited.contains(n)).collect();
-            if unvisited.is_empty() { break; }
+            let unvisited: Vec<NodeId> = all_nodes
+                .iter()
+                .copied()
+                .filter(|n| !visited.contains(n))
+                .collect();
+            if unvisited.is_empty() {
+                break;
+            }
             let new_root = unvisited[rng.random_range(0..unvisited.len())];
             visited.insert(new_root);
             stack.push(new_root);
         }
         let &current = stack.last().unwrap();
-        let mut step_guard = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
-        if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexSelected(current)); }
+        let mut step_guard = event_log
+            .as_deref_mut()
+            .map(|log| log.enter_numbered("step"));
+        if let Some(g) = step_guard.as_mut() {
+            g.emit(RecursiveBacktrackerEvent::VertexSelected(current));
+        }
 
-        let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
+        let teleport_dsts = preset_state
+            .preset_teleports
+            .get(&current)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
         let unvisited: Vec<NodeId> = split_aware_neighbors(field, graph, current)
             .into_iter()
             .filter(|&n| !visited.contains(&n)
@@ -153,32 +182,50 @@ pub fn generate<T: Tessellation>(
             // which doesn't apply here — see GitHub issue #226).
             .chain(teleport_dsts.iter().copied().filter(|n| !visited.contains(n)))
             .collect();
-        if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidatesComputed(unvisited.clone())); }
+        if let Some(g) = step_guard.as_mut() {
+            g.emit(RecursiveBacktrackerEvent::CandidatesComputed(
+                unvisited.clone(),
+            ));
+        }
 
         if unvisited.is_empty() {
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::DeadEnd); }
+            if let Some(g) = step_guard.as_mut() {
+                g.emit(RecursiveBacktrackerEvent::DeadEnd);
+            }
             stack.pop();
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPopped(current)); }
+            if let Some(g) = step_guard.as_mut() {
+                g.emit(RecursiveBacktrackerEvent::VertexPopped(current));
+            }
         } else {
             let chosen = unvisited[rng.random_range(0..unvisited.len())];
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen)); }
+            if let Some(g) = step_guard.as_mut() {
+                g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen));
+            }
             // A preset edge between this exact pair already exists in the graph — skip adding it
             // again. Checked directly on the pair (not the flat `preset_connected` set — see the
             // candidate filter's doc comment above) so a split node never has its own bidirectional
             // edge silently skipped just because it happens to share `preset_connected` membership
             // with `chosen` via an unrelated preset.
-            let already_edged = graph.edge_between(current, chosen).is_some() || graph.edge_between(chosen, current).is_some();
+            let already_edged = graph.edge_between(current, chosen).is_some()
+                || graph.edge_between(chosen, current).is_some();
             if !already_edged && !teleport_dsts.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
                 if let Some(g) = step_guard.as_mut() {
-                    g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true });
+                    g.emit(RecursiveBacktrackerEvent::EdgeAdded {
+                        from: current,
+                        to: chosen,
+                        bidirectional: true,
+                    });
                 }
             }
             visited.insert(chosen);
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen)); }
+            if let Some(g) = step_guard.as_mut() {
+                g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen));
+            }
             stack.push(chosen);
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen)); }
+            if let Some(g) = step_guard.as_mut() {
+                g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen));
+            }
         }
     }
 }
-

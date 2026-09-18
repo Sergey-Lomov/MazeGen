@@ -1,16 +1,16 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use rand::RngCore;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::RegionNeedsShrinkIssue;
 use crate::generation::PresetState;
-use crate::graph::bisect::{group_by_unremovable_edges, farthest_pair_across_groups};
+use crate::graph::bisect::{farthest_pair_across_groups, group_by_unremovable_edges};
 use crate::graph::route_protection::is_edge_on_route;
+use crate::ids::NodeId;
+use crate::quality_control::RegionNeedsShrinkIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[cfg(test)]
 mod tests;
@@ -43,7 +43,9 @@ pub struct RegionShrinkSplitStrategy {
 }
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsShrinkIssue> for RegionShrinkSplitStrategy {
-    fn strategy_id(&self) -> &'static str { "region_shrink_split" }
+    fn strategy_id(&self) -> &'static str {
+        "region_shrink_split"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &[]
@@ -69,10 +71,14 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsShrinkIssue> for RegionShrink
         let mut any_fixed = false;
 
         for &region_idx in &issue.invalid {
-            let Some(region) = scc.components.get(region_idx) else { continue };
+            let Some(region) = scc.components.get(region_idx) else {
+                continue;
+            };
             if let Some(cut_edges) = split_region(maze, region, preset_state, protect_route) {
                 for (from, to) in cut_edges {
-                    let Some(id) = maze.graph.edge_between(from, to) else { continue };
+                    let Some(id) = maze.graph.edge_between(from, to) else {
+                        continue;
+                    };
                     commands.push(MutationCommand::RemoveEdgeWithReverse { id });
                 }
                 any_fixed = true;
@@ -91,14 +97,22 @@ crate::impl_erased_repair_strategy!(RegionShrinkSplitStrategy, RegionNeedsShrink
 
 /// Whether `from -> to` must never be cut: always true for a preset (Basic) connection; true for a
 /// hop on the maze's current start->finish route only when `protect_route` is enabled.
-fn is_unremovable<T: Tessellation>(maze: &Maze<T>, preset_state: &PresetState, protect_route: bool, from: NodeId, to: NodeId) -> bool {
+fn is_unremovable<T: Tessellation>(
+    maze: &Maze<T>,
+    preset_state: &PresetState,
+    protect_route: bool,
+    from: NodeId,
+    to: NodeId,
+) -> bool {
     if preset_state.is_preset_edge(from, to) {
         return true;
     }
     if !protect_route {
         return false;
     }
-    let Some(id) = maze.graph.edge_between(from, to) else { return false };
+    let Some(id) = maze.graph.edge_between(from, to) else {
+        return false;
+    };
     is_edge_on_route(maze, id)
 }
 
@@ -112,23 +126,29 @@ pub(crate) fn split_region<T: Tessellation>(
     preset_state: &PresetState,
     protect_route: bool,
 ) -> Option<Vec<(NodeId, NodeId)>> {
-    let groups = group_by_unremovable_edges(
-        &maze.graph,
-        region,
-        |a, b| is_unremovable(maze, preset_state, protect_route, a, b),
-    );
+    let groups = group_by_unremovable_edges(&maze.graph, region, |a, b| {
+        is_unremovable(maze, preset_state, protect_route, a, b)
+    });
     if groups.len() < 2 {
         return None;
     }
 
     let (seed_a, seed_b) = farthest_pair_across_groups(&maze.graph, &groups)?;
-    let group_key_of: HashMap<NodeId, NodeId> = groups.iter()
+    let group_key_of: HashMap<NodeId, NodeId> = groups
+        .iter()
         .flat_map(|(&key, members)| members.iter().map(move |&n| (n, key)))
         .collect();
     let seed_a_key = group_key_of[&seed_a];
     let seed_b_key = group_key_of[&seed_b];
 
-    let side_a = grow_balanced_sides(&maze.graph, region, &groups, &group_key_of, seed_a_key, seed_b_key);
+    let side_a = grow_balanced_sides(
+        &maze.graph,
+        region,
+        &groups,
+        &group_key_of,
+        seed_a_key,
+        seed_b_key,
+    );
 
     let region_set: HashSet<NodeId> = region.iter().copied().collect();
     let side_a_set: HashSet<NodeId> = side_a.iter().copied().collect();
@@ -179,7 +199,9 @@ fn grow_balanced_sides(
     let group_neighbors = |key: NodeId| -> Vec<NodeId> {
         let mut neighbor_keys: HashSet<NodeId> = HashSet::new();
         for &member in &groups[&key] {
-            let all_neighbors = graph.outgoing_neighbors(member).chain(graph.incoming_neighbors(member));
+            let all_neighbors = graph
+                .outgoing_neighbors(member)
+                .chain(graph.incoming_neighbors(member));
             for neighbor in all_neighbors {
                 if !region_set.contains(&neighbor) {
                     continue;
@@ -222,18 +244,46 @@ fn grow_balanced_sides(
     while side.len() < groups.len() {
         let take_a = size_a <= size_b;
         let claimed = if take_a {
-            claim_one(&mut queue_a, true, &mut side, groups, &group_neighbors, &mut size_a)
+            claim_one(
+                &mut queue_a,
+                true,
+                &mut side,
+                groups,
+                &group_neighbors,
+                &mut size_a,
+            )
         } else {
-            claim_one(&mut queue_b, false, &mut side, groups, &group_neighbors, &mut size_b)
+            claim_one(
+                &mut queue_b,
+                false,
+                &mut side,
+                groups,
+                &group_neighbors,
+                &mut size_b,
+            )
         };
         if !claimed {
             // Preferred side's frontier is exhausted; let the other side try instead. If both
             // frontiers are exhausted the region wasn't group-connected (shouldn't happen for a
             // real SCC region) — the leftover-group fallback below handles it.
             let other_claimed = if take_a {
-                claim_one(&mut queue_b, false, &mut side, groups, &group_neighbors, &mut size_b)
+                claim_one(
+                    &mut queue_b,
+                    false,
+                    &mut side,
+                    groups,
+                    &group_neighbors,
+                    &mut size_b,
+                )
             } else {
-                claim_one(&mut queue_a, true, &mut side, groups, &group_neighbors, &mut size_a)
+                claim_one(
+                    &mut queue_a,
+                    true,
+                    &mut side,
+                    groups,
+                    &group_neighbors,
+                    &mut size_a,
+                )
             };
             if !other_claimed {
                 break;
@@ -248,7 +298,8 @@ fn grow_balanced_sides(
         side.entry(key).or_insert_with(|| size_a <= size_b);
     }
 
-    groups.iter()
+    groups
+        .iter()
         .filter(|(key, _)| side[key])
         .flat_map(|(_, members)| members.iter().copied())
         .collect()

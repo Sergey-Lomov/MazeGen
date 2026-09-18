@@ -1,25 +1,25 @@
 pub(crate) mod check_factory;
-pub(crate) mod strategy_factory;
 pub(crate) mod qc_kind_registry;
 pub(crate) mod rule_factory;
 pub(crate) mod rule_params;
+pub(crate) mod strategy_factory;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use crate::config::{
+    GenerateConfig, PresetEndpointDto, TessellationType, build_generation_config,
+    build_repair_limits,
+};
 use maze_core::{
+    GenerationTiming, RegionClass,
+    event_log::{DebugTape, EventLog},
+    generation::{GenerationConfig, PresetEndpoint, build_preset_state, generate_maze},
     graph::Graph,
     ids::IdGenerator,
-    space::{MultiLevelField, Tessellation},
-    generation::{generate_maze, build_preset_state, GenerationConfig, PresetEndpoint},
-    RegionClass, GenerationTiming,
     quality_control::{Issue, QcEvent},
-    event_log::{EventLog, DebugTape},
+    space::{MultiLevelField, Tessellation},
 };
-use crate::config::{
-    GenerateConfig, TessellationType, PresetEndpointDto,
-    build_generation_config, build_repair_limits,
-};
+use std::collections::HashMap;
 
 pub use rule_factory::build_qc_and_repair;
 
@@ -48,13 +48,20 @@ pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
     let n = points.len() as i32;
     let cx = points.iter().map(|&p| to_xy(p).0).sum::<i32>() / n;
     let cy = points.iter().map(|&p| to_xy(p).1).sum::<i32>() / n;
-    *points.iter().min_by_key(|&&p| {
-        let (x, y) = to_xy(p);
-        (x - cx) * (x - cx) + (y - cy) * (y - cy)
-    }).unwrap()
+    *points
+        .iter()
+        .min_by_key(|&&p| {
+            let (x, y) = to_xy(p);
+            (x - cx) * (x - cx) + (y - cy) * (y - cy)
+        })
+        .unwrap()
 }
 
-pub fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy: impl Fn(P) -> (i32, i32)) -> P {
+pub fn resolve_start<P: Copy>(
+    pts: &[P],
+    gen_source_xy: Option<[i32; 2]>,
+    to_xy: impl Fn(P) -> (i32, i32),
+) -> P {
     if let Some([px, py]) = gen_source_xy {
         if let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py)) {
             return p;
@@ -64,7 +71,11 @@ pub fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy:
 }
 
 fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
-    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot, level: dto.level }
+    PresetEndpoint {
+        point: (dto.point[0], dto.point[1]),
+        slot: dto.slot,
+        level: dto.level,
+    }
 }
 
 fn run_generate_typed<T: Tessellation + 'static>(
@@ -82,10 +93,14 @@ fn run_generate_typed<T: Tessellation + 'static>(
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
 
     let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
 
     let mut preset_state = build_preset_state(
-        &mut graph, &mut field, &mut ids,
+        &mut graph,
+        &mut field,
+        &mut ids,
         &gen_config.preset_connections,
         &gen_config.preset_vertical_passages,
         &gen_config.preset_elevators,
@@ -101,8 +116,12 @@ fn run_generate_typed<T: Tessellation + 'static>(
     // the split node `build_preset_state` just created above, which `resolve_start` (geometry
     // only, no `Field`/`NodeId` access) can't have resolved on its own.
     let level = field.single_level_id();
-    let start_id = config.preset_gen_source.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
+    let start_id = config
+        .preset_gen_source
+        .as_ref()
+        .and_then(|dto| {
+            preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+        })
         .or_else(|| field.nodes_at(level, start).first().copied())
         .ok_or_else(|| "start node not found".to_string())?;
 
@@ -111,7 +130,15 @@ fn run_generate_typed<T: Tessellation + 'static>(
     // `build_preset_state` above (preset connections only) is fed straight into `build_maze`.
     let mut start_reassignment = None;
     if !config.qc_experiment {
-        start_reassignment = generate_maze(&mut graph, &mut field, &mut ids, seed, start_id, gen_config, &preset_state);
+        start_reassignment = generate_maze(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            seed,
+            start_id,
+            gen_config,
+            &preset_state,
+        );
     }
 
     let qc_engine = build_qc_and_repair::<T>(config)?;
@@ -120,10 +147,12 @@ fn run_generate_typed<T: Tessellation + 'static>(
     // user's pinned choice, distinct from a generator-chosen endpoint. Recorded on `PresetState`
     // so the issue-payload resolver can flag a pinned `start`/`finish` element `preset_locked`
     // (GitHub issue #376 follow-up).
-    let pinned_start = config.preset_start.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
-    let pinned_finish = config.preset_finish.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    let pinned_start = config.preset_start.as_ref().and_then(|dto| {
+        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+    });
+    let pinned_finish = config.preset_finish.as_ref().and_then(|dto| {
+        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+    });
     preset_state.preset_start = pinned_start;
     preset_state.preset_finish = pinned_finish;
 
@@ -134,8 +163,16 @@ fn run_generate_typed<T: Tessellation + 'static>(
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let mut qc_log = config.debug_events.then(EventLog::new);
     let (maze, remaining_issues, timing) = build_maze(
-        field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish,
-        qc_log.as_mut(), None,
+        field,
+        graph,
+        seed,
+        qc_engine,
+        &repair_preset_state,
+        limits,
+        preset_start,
+        preset_finish,
+        qc_log.as_mut(),
+        None,
     );
     let qc_tape = qc_log.map(EventLog::finish);
 
@@ -145,16 +182,29 @@ fn run_generate_typed<T: Tessellation + 'static>(
 
     if start_node.is_some() && finish_node.is_some() {
         let scc = maze.analysis.scc(&maze.graph);
-        let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+        let classes = maze
+            .analysis
+            .region_classes(&maze.graph, &maze.field, &maze.meta);
         for (&comp_id, &cls) in &classes {
-            region_sizes.entry(cls).or_default().push(scc.components[comp_id].len());
+            region_sizes
+                .entry(cls)
+                .or_default()
+                .push(scc.components[comp_id].len());
         }
         for sizes in region_sizes.values_mut() {
             sizes.sort_unstable_by(|a, b| b.cmp(a));
         }
     }
 
-    Ok(MazeRunResult { remaining_issues, timing, region_sizes, start: start_node, finish: finish_node, graph: maze.graph.clone(), qc_tape })
+    Ok(MazeRunResult {
+        remaining_issues,
+        timing,
+        region_sizes,
+        start: start_node,
+        finish: finish_node,
+        graph: maze.graph.clone(),
+        qc_tape,
+    })
 }
 
 /// Parse JSON config and run the full generation+repair pipeline for the given seed.
@@ -165,59 +215,88 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
 
     let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
 
-    if config.level_fields.is_empty() { return Err("level_fields must not be empty".to_string()); }
+    if config.level_fields.is_empty() {
+        return Err("level_fields must not be empty".to_string());
+    }
 
     match config.tessellation.tessellation_type {
         TessellationType::Square => {
-            use maze_core::space::{SquareTessellation, SquarePoint};
+            use maze_core::space::{SquarePoint, SquareTessellation};
             let to_pts = |raw: &[[i32; 2]]| -> Vec<SquarePoint> {
                 raw.iter().map(|&[x, y]| SquarePoint { x, y }).collect()
             };
             let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            if first_pts.is_empty() {
+                return Err("level_fields[0] must not be empty".to_string());
+            }
             let start = resolve_start(&first_pts, gen_source_xy, |p| (p.x, p.y));
-            let mut field = MultiLevelField::<SquareTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            let mut field =
+                MultiLevelField::<SquareTessellation>::single_level(first_pts, &mut ids)
+                    .map_err(|e| e.to_string())?;
             for raw in &config.level_fields[1..] {
                 let pts = to_pts(raw);
-                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
-                let level = maze_core::space::Field::<SquareTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                if pts.is_empty() {
+                    return Err("level_fields entry must not be empty".to_string());
+                }
+                let level = maze_core::space::Field::<SquareTessellation>::new(pts, &mut ids)
+                    .map_err(|e| e.to_string())?;
                 field.add_level(level);
             }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| SquarePoint { x, y })
+            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| {
+                SquarePoint { x, y }
+            })
         }
         TessellationType::Hex => {
-            use maze_core::space::{HexTessellation, HexPoint};
+            use maze_core::space::{HexPoint, HexTessellation};
             let to_pts = |raw: &[[i32; 2]]| -> Vec<HexPoint> {
                 raw.iter().map(|&[q, r]| HexPoint { q, r }).collect()
             };
             let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            if first_pts.is_empty() {
+                return Err("level_fields[0] must not be empty".to_string());
+            }
             let start = resolve_start(&first_pts, gen_source_xy, |p| (p.q, p.r));
-            let mut field = MultiLevelField::<HexTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            let mut field = MultiLevelField::<HexTessellation>::single_level(first_pts, &mut ids)
+                .map_err(|e| e.to_string())?;
             for raw in &config.level_fields[1..] {
                 let pts = to_pts(raw);
-                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
-                let level = maze_core::space::Field::<HexTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                if pts.is_empty() {
+                    return Err("level_fields entry must not be empty".to_string());
+                }
+                let level = maze_core::space::Field::<HexTessellation>::new(pts, &mut ids)
+                    .map_err(|e| e.to_string())?;
                 field.add_level(level);
             }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| HexPoint { q, r })
+            run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| {
+                HexPoint { q, r }
+            })
         }
         TessellationType::Tri => {
-            use maze_core::space::{TriTessellation, TriPoint};
+            use maze_core::space::{TriPoint, TriTessellation};
             let to_pts = |raw: &[[i32; 2]]| -> Vec<TriPoint> {
-                raw.iter().map(|&[col, row]| TriPoint { col, row }).collect()
+                raw.iter()
+                    .map(|&[col, row]| TriPoint { col, row })
+                    .collect()
             };
             let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            if first_pts.is_empty() {
+                return Err("level_fields[0] must not be empty".to_string());
+            }
             let start = resolve_start(&first_pts, gen_source_xy, |p| (p.col, p.row));
-            let mut field = MultiLevelField::<TriTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            let mut field = MultiLevelField::<TriTessellation>::single_level(first_pts, &mut ids)
+                .map_err(|e| e.to_string())?;
             for raw in &config.level_fields[1..] {
                 let pts = to_pts(raw);
-                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
-                let level = maze_core::space::Field::<TriTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                if pts.is_empty() {
+                    return Err("level_fields entry must not be empty".to_string());
+                }
+                let level = maze_core::space::Field::<TriTessellation>::new(pts, &mut ids)
+                    .map_err(|e| e.to_string())?;
                 field.add_level(level);
             }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| TriPoint { col, row })
+            run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| {
+                TriPoint { col, row }
+            })
         }
     }
 }

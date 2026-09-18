@@ -1,16 +1,16 @@
-use std::collections::HashMap;
-use rand::RngCore;
-use rand::seq::SliceRandom;
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::generation::PresetState;
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
 use crate::quality_control::InvalidSplitTileIssue;
-use crate::generation::PresetState;
+use crate::repair::command::{MutationCommand, SplitNodeEdge, SplitNodeEdgeDirection};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::{MutationCommand, SplitNodeEdge, SplitNodeEdgeDirection};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
+use rand::seq::SliceRandom;
+use std::collections::HashMap;
 
 pub const PARAM_SELECTION: &str = "selection";
 
@@ -20,17 +20,20 @@ pub const SELECTION_MOST_CONNECTED: &str = "most_connected";
 pub const SELECTION_MERGE: &str = "merge";
 
 pub static SELECTION_OPTIONS: &[&str] = &[
-    SELECTION_RANDOM, SELECTION_LEAST_CONNECTED,
-    SELECTION_MOST_CONNECTED, SELECTION_MERGE,
+    SELECTION_RANDOM,
+    SELECTION_LEAST_CONNECTED,
+    SELECTION_MOST_CONNECTED,
+    SELECTION_MERGE,
 ];
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_SELECTION,
-        label: "Connection selection",
-        kind: StrategyParamKind::Enum { options: SELECTION_OPTIONS, default: SELECTION_MOST_CONNECTED },
+static PARAMS: &[StrategyParam] = &[StrategyParam {
+    id: PARAM_SELECTION,
+    label: "Connection selection",
+    kind: StrategyParamKind::Enum {
+        options: SELECTION_OPTIONS,
+        default: SELECTION_MOST_CONNECTED,
     },
-];
+}];
 
 /// Handles `INVALID_SPLIT_TILE` — see GitHub issue #248, epic #246 (issue #260: the issue's unit
 /// of work is a whole tile, `SplitTileNodes`). Collapses each flagged tile back into a single
@@ -61,7 +64,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct RemoveSplitStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileIssue> for RemoveSplitStrategy {
-    fn strategy_id(&self) -> &'static str { "remove_split" }
+    fn strategy_id(&self) -> &'static str {
+        "remove_split"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -99,7 +104,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileIssue> for RemoveSplitSt
                 merged_edges(&edges)
             } else {
                 let survivor = pick_survivor(&tile.0, &edges, selection, rng);
-                edges.iter().filter(|e| e.owner == survivor).map(|e| e.edge).collect()
+                edges
+                    .iter()
+                    .filter(|e| e.owner == survivor)
+                    .map(|e| e.edge)
+                    .collect()
             };
 
             // Checked here up front, mirroring `replace_point_nodes_feasible`'s own all-or-nothing
@@ -111,7 +120,12 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileIssue> for RemoveSplitSt
             // always being declined, spinning the repair fixpoint loop until the iteration/time
             // budget is exhausted instead of failing fast.
             let nodes = vec![node_edges];
-            if !crate::generation::replace_point_nodes_feasible(&maze.field, preset_state, at, &nodes) {
+            if !crate::generation::replace_point_nodes_feasible(
+                &maze.field,
+                preset_state,
+                at,
+                &nodes,
+            ) {
                 continue;
             }
             commands.push(MutationCommand::ReplacePointNodes { at, nodes });
@@ -143,16 +157,38 @@ struct TileEdge {
 /// the tile (impossible in practice today, since sibling edges are never bidirectional by
 /// construction, but not assumed) and any edge whose other end is itself a tile node are both
 /// dropped as self-loops.
-fn tile_edges<T: Tessellation>(maze: &Maze<T>, tile_nodes: &std::collections::HashSet<NodeId>) -> Vec<TileEdge> {
+fn tile_edges<T: Tessellation>(
+    maze: &Maze<T>,
+    tile_nodes: &std::collections::HashSet<NodeId>,
+) -> Vec<TileEdge> {
     let mut out = Vec::new();
     for &owner in tile_nodes {
-        for edge in maze.graph.edges().filter(|e| e.from == owner || e.to == owner) {
-            let target = if edge.from == owner { edge.to } else { edge.from };
+        for edge in maze
+            .graph
+            .edges()
+            .filter(|e| e.from == owner || e.to == owner)
+        {
+            let target = if edge.from == owner {
+                edge.to
+            } else {
+                edge.from
+            };
             if tile_nodes.contains(&target) {
                 continue; // self-loop onto another node of the same tile
             }
-            let direction = if edge.from == owner { SplitNodeEdgeDirection::Forward } else { SplitNodeEdgeDirection::Backward };
-            out.push(TileEdge { owner, edge: SplitNodeEdge { target, direction, kind: edge.kind } });
+            let direction = if edge.from == owner {
+                SplitNodeEdgeDirection::Forward
+            } else {
+                SplitNodeEdgeDirection::Backward
+            };
+            out.push(TileEdge {
+                owner,
+                edge: SplitNodeEdge {
+                    target,
+                    direction,
+                    kind: edge.kind,
+                },
+            });
         }
     }
     out
@@ -163,7 +199,12 @@ fn tile_edges<T: Tessellation>(maze: &Maze<T>, tile_nodes: &std::collections::Ha
 /// degree (a bidirectional pair to the same target counts once, not twice — see `node_degree`).
 /// Ties (including every node having zero edges) resolve by shuffling `tile` first, so the winner
 /// among equals is still random, not first-in-list.
-fn pick_survivor(tile: &[NodeId], edges: &[TileEdge], selection: &str, rng: &mut dyn RngCore) -> NodeId {
+fn pick_survivor(
+    tile: &[NodeId],
+    edges: &[TileEdge],
+    selection: &str,
+    rng: &mut dyn RngCore,
+) -> NodeId {
     let mut candidates = tile.to_vec();
     candidates.shuffle(rng);
     if selection == SELECTION_LEAST_CONNECTED || selection == SELECTION_MOST_CONNECTED {
@@ -185,7 +226,8 @@ fn pick_survivor(tile: &[NodeId], edges: &[TileEdge], selection: &str, rng: &mut
 /// strategy picks a *survivor to keep whole*, so a passage and a one-way to the same neighbor of
 /// the same kind should weigh the same, one connection each.
 fn node_degree(edges: &[TileEdge]) -> HashMap<NodeId, usize> {
-    let mut seen: std::collections::HashSet<(NodeId, NodeId, EdgeKind)> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<(NodeId, NodeId, EdgeKind)> =
+        std::collections::HashSet::new();
     let mut degree: HashMap<NodeId, usize> = HashMap::new();
     for e in edges {
         let key = (e.owner, e.edge.target, e.edge.kind);
@@ -207,11 +249,19 @@ fn merged_edges(edges: &[TileEdge]) -> Vec<SplitNodeEdge> {
     let mut merged: HashMap<(NodeId, EdgeKind), SplitNodeEdgeDirection> = HashMap::new();
     for e in edges {
         let key = (e.edge.target, e.edge.kind);
-        merged.entry(key)
+        merged
+            .entry(key)
             .and_modify(|dir| *dir = union_direction(*dir, e.edge.direction))
             .or_insert(e.edge.direction);
     }
-    merged.into_iter().map(|((target, kind), direction)| SplitNodeEdge { target, direction, kind }).collect()
+    merged
+        .into_iter()
+        .map(|((target, kind), direction)| SplitNodeEdge {
+            target,
+            direction,
+            kind,
+        })
+        .collect()
 }
 
 /// `Passage` if the two directions disagree (one `Forward`, one `Backward`) or either already is

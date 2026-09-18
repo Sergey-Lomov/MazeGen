@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
+use crate::graph::region_class::{ALL_REGION_CLASSES, RegionClass};
+use crate::quality_control::MissingRegionsIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingRegionsIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const MIN_REGION_COUNT_DEFAULT: u32 = 0;
 
@@ -20,13 +20,23 @@ pub struct MinRegionCountCheck {
 }
 
 impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
-    fn check_type_id(&self) -> &'static str { "min_region_count" }
+    fn check_type_id(&self) -> &'static str {
+        "min_region_count"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingRegionsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<MissingRegionsIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return;
         }
-        let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+        let classes = maze
+            .analysis
+            .region_classes(&maze.graph, &maze.field, &maze.meta);
 
         let mut balance_by_class: HashMap<RegionClass, i32> = HashMap::new();
         for class in ALL_REGION_CLASSES {
@@ -55,12 +65,17 @@ impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
             return;
         }
 
-        let mut detail_classes: Vec<&RegionClass> = balance_by_class.iter()
+        let mut detail_classes: Vec<&RegionClass> = balance_by_class
+            .iter()
             .filter(|&(_, &b)| b < 0)
             .map(|(c, _)| c)
             .collect();
         detail_classes.sort_by_key(|c| c.as_str());
-        let detail = detail_classes.iter().map(|c| c.as_str()).collect::<Vec<_>>().join(",");
+        let detail = detail_classes
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
 
         // Single-deficit-class case only: the exact configured minimum for that one class, so
         // the UI can render "fewer than required (N)" instead of just naming the class. With
@@ -85,12 +100,12 @@ impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
+    use crate::quality_control::Issue;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "min_region_count";
 
@@ -101,13 +116,24 @@ mod tests {
     /// 5 cells in a line, all one-way: 0 -> 1 -> 2 -> 3 -> 4. Each node its own SCC.
     /// start=0, finish=2: nodes 0,1,2 are Path; nodes 3,4 are reachable from start but can't
     /// reach finish (finish=2 is upstream of them) -> both Trap.
-    fn maze_with_trap_tail() -> (Maze<SquareTessellation>, crate::ids::NodeId, crate::ids::NodeId) {
+    fn maze_with_trap_tail() -> (
+        Maze<SquareTessellation>,
+        crate::ids::NodeId,
+        crate::ids::NodeId,
+    ) {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
@@ -121,20 +147,29 @@ mod tests {
     }
 
     fn check(min_counts: Vec<(RegionClass, u32)>) -> MinRegionCountCheck {
-        MinRegionCountCheck { instance_id: TEST_ID.to_string(), min_counts: min_counts.into_iter().collect() }
+        MinRegionCountCheck {
+            instance_id: TEST_ID.to_string(),
+            min_counts: min_counts.into_iter().collect(),
+        }
     }
 
     #[test]
     fn silent_when_skipped_without_endpoints() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let maze = Maze::new(field, g);
         let c = check(vec![(RegionClass::Trap, 1)]);
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "endpoints unset — classification unavailable, not this check's failure mode");
+        assert!(
+            issues.is_empty(),
+            "endpoints unset — classification unavailable, not this check's failure mode"
+        );
     }
 
     #[test]
@@ -143,7 +178,10 @@ mod tests {
         let c = check(vec![(RegionClass::Trap, 2)]);
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "nodes 3 and 4 are both Trap regions, meeting a minimum of 2 exactly");
+        assert!(
+            issues.is_empty(),
+            "nodes 3 and 4 are both Trap regions, meeting a minimum of 2 exactly"
+        );
     }
 
     #[test]
@@ -152,7 +190,10 @@ mod tests {
         let c = check(vec![(RegionClass::Unreachable, 0)]);
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "min_count=0 means this class is never checked, even at 0 unreachable regions");
+        assert!(
+            issues.is_empty(),
+            "min_count=0 means this class is never checked, even at 0 unreachable regions"
+        );
     }
 
     #[test]
@@ -163,7 +204,11 @@ mod tests {
         c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1)]), "2 trap regions found, 3 required -> -1");
+        assert_eq!(
+            issues[0].balance_by_class,
+            HashMap::from([(RegionClass::Trap, -1)]),
+            "2 trap regions found, 3 required -> -1"
+        );
     }
 
     #[test]
@@ -173,17 +218,29 @@ mod tests {
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
         let details = &issues[0].details()[TEST_ID];
-        assert_eq!(details.get("min_count"), Some(&"3".to_string()), "single deficit class -- UI needs the exact configured minimum to render \"fewer than required (N)\"");
+        assert_eq!(
+            details.get("min_count"),
+            Some(&"3".to_string()),
+            "single deficit class -- UI needs the exact configured minimum to render \"fewer than required (N)\""
+        );
     }
 
     #[test]
     fn multiple_deficit_classes_carry_no_min_count_detail() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut maze = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
@@ -195,7 +252,11 @@ mod tests {
         c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         let details = &issues[0].details()[TEST_ID];
-        assert_eq!(details.get("min_count"), None, "two deficit classes at once -- no single min_count to report");
+        assert_eq!(
+            details.get("min_count"),
+            None,
+            "two deficit classes at once -- no single min_count to report"
+        );
     }
 
     #[test]
@@ -207,7 +268,10 @@ mod tests {
         let c = check(vec![(RegionClass::Trap, 1)]);
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "2 trap regions found, 1 required -> +1 surplus, no deficit anywhere -- must not fire");
+        assert!(
+            issues.is_empty(),
+            "2 trap regions found, 1 required -> +1 surplus, no deficit anywhere -- must not fire"
+        );
     }
 
     #[test]
@@ -217,7 +281,14 @@ mod tests {
         let c = check(vec![(RegionClass::Trap, 3), (RegionClass::Path, 1)]);
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "one instance, one issue, even with multiple classes off-target");
-        assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1), (RegionClass::Path, 2)]));
+        assert_eq!(
+            issues.len(),
+            1,
+            "one instance, one issue, even with multiple classes off-target"
+        );
+        assert_eq!(
+            issues[0].balance_by_class,
+            HashMap::from([(RegionClass::Trap, -1), (RegionClass::Path, 2)])
+        );
     }
 }

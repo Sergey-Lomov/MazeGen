@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use super::cycles::{CycleSearchResult, dedup_bidirectional_pairs, find_all_simple_cycles};
+use super::nav::{NavEdge, NavGraph, NavNodeId};
+use crate::dsu::Dsu;
 #[cfg(test)]
 use std::collections::VecDeque;
-use super::nav::{NavEdge, NavGraph, NavNodeId};
-use super::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, CycleSearchResult};
-use crate::dsu::Dsu;
+use std::collections::{HashMap, HashSet};
 
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
 /// physical corridor and are yielded once (via the lower edge index); edges with no reverse
@@ -55,15 +55,23 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
     let mut removed = vec![false; n];
     let mut queue: VecDeque<NavNodeId> = VecDeque::new();
     for nid in 0..n {
-        if degree[nid] <= 1 { queue.push_back(nid); }
+        if degree[nid] <= 1 {
+            queue.push_back(nid);
+        }
     }
     while let Some(nid) = queue.pop_front() {
-        if removed[nid] { continue; }
+        if removed[nid] {
+            continue;
+        }
         removed[nid] = true;
         for &nb in &adj[nid] {
-            if removed[nb] { continue; }
+            if removed[nb] {
+                continue;
+            }
             degree[nb] = degree[nb].saturating_sub(1);
-            if degree[nb] <= 1 { queue.push_back(nb); }
+            if degree[nb] <= 1 {
+                queue.push_back(nb);
+            }
         }
     }
 
@@ -96,7 +104,9 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 /// a CW and CCW walk of the same physical loop are two separate entries in the raw cycle list
 /// (needed for the Euler-formula core above), which would double-count every bidirectional
 /// cycle in this UI-facing count if left undeduped.
-fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>, Vec<Vec<usize>>, usize)> {
+fn cycle_core(
+    nav: &NavGraph,
+) -> Option<(HashSet<NavNodeId>, HashSet<usize>, Vec<Vec<usize>>, usize)> {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let (cycles, basis) = match find_all_simple_cycles(nav) {
         CycleSearchResult::Cycles { cycles, basis } => (cycles, basis),
@@ -204,8 +214,16 @@ fn count_core_edges(nav: &NavGraph, core_edges: &HashSet<usize>) -> usize {
 }
 
 /// Number of connected components (WCC) of the pure-cycle core subgraph, via DSU.
-fn count_core_regions(core_nodes: &[NavNodeId], nav: &NavGraph, core_edges: &HashSet<usize>) -> usize {
-    let node_to_idx: HashMap<NavNodeId, usize> = core_nodes.iter().enumerate().map(|(i, &v)| (v, i)).collect();
+fn count_core_regions(
+    core_nodes: &[NavNodeId],
+    nav: &NavGraph,
+    core_edges: &HashSet<usize>,
+) -> usize {
+    let node_to_idx: HashMap<NavNodeId, usize> = core_nodes
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (v, i))
+        .collect();
     let mut dsu = Dsu::new(core_nodes.len());
     for (_, edge) in distinct_undirected_edges(nav, |idx| core_edges.contains(&idx)) {
         let a = node_to_idx[&edge.from];
@@ -220,7 +238,11 @@ fn count_core_regions(core_nodes: &[NavNodeId], nav: &NavGraph, core_edges: &Has
 /// the cycle count or region count.
 /// cycle_count = E_core - V_core + C_core (number of independent cycles).
 /// cycle_region_count = number of connected components in the pure-cycle core (undirected).
-fn compute_cycle_metrics(nav: &NavGraph, core_nodes: &HashSet<NavNodeId>, core_edges: &HashSet<usize>) -> (usize, usize) {
+fn compute_cycle_metrics(
+    nav: &NavGraph,
+    core_nodes: &HashSet<NavNodeId>,
+    core_edges: &HashSet<usize>,
+) -> (usize, usize) {
     if core_nodes.is_empty() {
         return (0, 0);
     }
@@ -249,7 +271,9 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     // Pure-cycle core — nodes/edges participating in real directed cycles (no bridges).
     // `None` means cycle enumeration overflowed (see `cycle_core`'s doc comment) — surface
     // empty placeholders plus the overflow flag rather than propagating a hang.
-    let Some((pure_cycle_nav_nodes, pure_cycle_edge_indices, pure_cycle_basis, simple_cycle_count)) = cycle_core(nav) else {
+    let Some((pure_cycle_nav_nodes, pure_cycle_edge_indices, pure_cycle_basis, simple_cycle_count)) =
+        cycle_core(nav)
+    else {
         return GraphAnalytics {
             node_count: n,
             edge_count,

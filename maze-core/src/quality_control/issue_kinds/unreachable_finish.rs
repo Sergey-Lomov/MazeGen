@@ -1,4 +1,6 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, UNREACHABLE_FINISH};
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, UNREACHABLE_FINISH,
+};
 
 /// The finish is set but not reachable from the start — see `UNREACHABLE_FINISH`'s doc comment.
 /// Carries no data beyond `IssueMeta`.
@@ -9,7 +11,9 @@ pub struct UnreachableFinishIssue {
 
 impl UnreachableFinishIssue {
     pub fn new_from_check(source_check: &str) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check) }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+        }
     }
 }
 

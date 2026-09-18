@@ -1,5 +1,5 @@
 use maze_core::IdGenerator;
-use maze_core::space::{Field, HexTessellation, HexPoint, hex_parallelogram, hex_hexagon};
+use maze_core::space::{Field, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 
 fn make_parallelogram(cols: usize, rows: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
@@ -16,28 +16,46 @@ fn make_hexagon(radius: usize) -> Field<HexTessellation> {
 #[test]
 fn parallelogram_corner_has_three_neighbors() {
     let field = make_parallelogram(3, 3);
-    let node = field.nodes_at(HexPoint { q: 0, r: 2 }).first().copied().unwrap();
+    let node = field
+        .nodes_at(HexPoint { q: 0, r: 2 })
+        .first()
+        .copied()
+        .unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
 }
 
 #[test]
 fn parallelogram_edge_has_four_neighbors() {
     let field = make_parallelogram(3, 3);
-    let node = field.nodes_at(HexPoint { q: 1, r: 0 }).first().copied().unwrap();
+    let node = field
+        .nodes_at(HexPoint { q: 1, r: 0 })
+        .first()
+        .copied()
+        .unwrap();
     assert_eq!(field.neighbors(node).len(), 4);
 }
 
 #[test]
 fn parallelogram_interior_has_six_neighbors() {
     let field = make_parallelogram(3, 3);
-    let node = field.nodes_at(HexPoint { q: 1, r: 1 }).first().copied().unwrap();
+    let node = field
+        .nodes_at(HexPoint { q: 1, r: 1 })
+        .first()
+        .copied()
+        .unwrap();
     assert_eq!(field.neighbors(node).len(), 6);
 }
 
 #[test]
 fn parallelogram_node_at_unknown_point_is_none() {
     let field = make_parallelogram(3, 3);
-    assert!(field.nodes_at(HexPoint { q: 10, r: 10 }).first().copied().is_none());
+    assert!(
+        field
+            .nodes_at(HexPoint { q: 10, r: 10 })
+            .first()
+            .copied()
+            .is_none()
+    );
 }
 
 #[test]
@@ -60,7 +78,13 @@ fn parallelogram_node_count_matches_size() {
 fn hexagon_radius0_has_one_node() {
     let field = make_hexagon(0);
     assert_eq!(field.node_count(), 1);
-    assert!(field.nodes_at(HexPoint { q: 0, r: 0 }).first().copied().is_some());
+    assert!(
+        field
+            .nodes_at(HexPoint { q: 0, r: 0 })
+            .first()
+            .copied()
+            .is_some()
+    );
 }
 
 #[test]
@@ -84,14 +108,22 @@ fn hexagon_radius3_has_thirtyseven_nodes() {
 #[test]
 fn hexagon_center_has_six_neighbors() {
     let field = make_hexagon(2);
-    let center = field.nodes_at(HexPoint { q: 0, r: 0 }).first().copied().unwrap();
+    let center = field
+        .nodes_at(HexPoint { q: 0, r: 0 })
+        .first()
+        .copied()
+        .unwrap();
     assert_eq!(field.neighbors(center).len(), 6);
 }
 
 #[test]
 fn hexagon_edge_node_has_fewer_neighbors() {
     let field = make_hexagon(2);
-    let corner = field.nodes_at(HexPoint { q: 2, r: 0 }).first().copied().unwrap();
+    let corner = field
+        .nodes_at(HexPoint { q: 2, r: 0 })
+        .first()
+        .copied()
+        .unwrap();
     assert!(field.neighbors(corner).len() < 6);
 }
 

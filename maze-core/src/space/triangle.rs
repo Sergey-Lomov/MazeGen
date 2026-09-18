@@ -22,13 +22,27 @@ impl Tessellation for TriTessellation {
     fn step(point: TriPoint, face: TriFace) -> TriPoint {
         let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
         match face {
-            TriFace::Left  => TriPoint { col: point.col - 1, row: point.row },
-            TriFace::Right => TriPoint { col: point.col + 1, row: point.row },
-            TriFace::Base  => if pointing_up {
-                TriPoint { col: point.col, row: point.row - 1 }
-            } else {
-                TriPoint { col: point.col, row: point.row + 1 }
+            TriFace::Left => TriPoint {
+                col: point.col - 1,
+                row: point.row,
             },
+            TriFace::Right => TriPoint {
+                col: point.col + 1,
+                row: point.row,
+            },
+            TriFace::Base => {
+                if pointing_up {
+                    TriPoint {
+                        col: point.col,
+                        row: point.row - 1,
+                    }
+                } else {
+                    TriPoint {
+                        col: point.col,
+                        row: point.row + 1,
+                    }
+                }
+            }
         }
     }
 
@@ -40,8 +54,10 @@ impl Tessellation for TriTessellation {
         let pointing_up = (from.col + from.row).rem_euclid(2) == 0;
         match (to.col - from.col, to.row - from.row) {
             (-1, 0) => Some(TriFace::Left),
-            (1, 0)  => Some(TriFace::Right),
-            (0, dy) if (pointing_up && dy == -1) || (!pointing_up && dy == 1) => Some(TriFace::Base),
+            (1, 0) => Some(TriFace::Right),
+            (0, dy) if (pointing_up && dy == -1) || (!pointing_up && dy == 1) => {
+                Some(TriFace::Base)
+            }
             _ => None,
         }
     }
@@ -58,7 +74,11 @@ impl Tessellation for TriTessellation {
         let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
         let (col, row) = (point.col as f64, point.row as f64);
         let cx = col * s / 2.0 + s / 4.0;
-        let cy = if pointing_up { -(row * h + h / 3.0) } else { -(row * h + 2.0 * h / 3.0) };
+        let cy = if pointing_up {
+            -(row * h + h / 3.0)
+        } else {
+            -(row * h + 2.0 * h / 3.0)
+        };
         (cx, cy)
     }
 
@@ -82,7 +102,12 @@ impl Tessellation for TriTessellation {
 
 pub fn tri_rect(cols: usize, rows: usize) -> Vec<TriPoint> {
     (0..rows)
-        .flat_map(|row| (0..cols).map(move |col| TriPoint { col: col as i32, row: row as i32 }))
+        .flat_map(|row| {
+            (0..cols).map(move |col| TriPoint {
+                col: col as i32,
+                row: row as i32,
+            })
+        })
         .collect()
 }
 
@@ -96,7 +121,10 @@ pub fn tri_triangle(side: usize) -> Vec<TriPoint> {
     (0..side)
         .flat_map(move |row| {
             let indent = n - 1 - row as i32 + shift;
-            (indent..=indent + 2 * row as i32).map(move |col| TriPoint { col, row: row as i32 })
+            (indent..=indent + 2 * row as i32).map(move |col| TriPoint {
+                col,
+                row: row as i32,
+            })
         })
         .collect()
 }

@@ -1,14 +1,14 @@
-use rand::Rng;
-use crate::ids::{IdGenerator, NodeId};
-use crate::graph::Graph;
-use crate::space::{MultiLevelField, Tessellation};
-use crate::event_log::ScopeGuard;
-use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
-use super::split_pattern::SplitGenerationConfig;
-use super::vertex_based::{VertexBasedEvent, GenState};
 use super::split_non_pattern::handle_non_pattern_split;
+use super::split_pattern::SplitGenerationConfig;
 use super::split_pattern_logic::handle_pattern_split;
+use super::vertex_based::{GenState, VertexBasedEvent};
+use super::{ElementsConfig, GenerationParams, PresetState};
+use crate::event_log::ScopeGuard;
+use crate::graph::Graph;
+use crate::ids::{IdGenerator, NodeId};
+use crate::space::{MultiLevelField, Tessellation};
+use rand::Rng;
 
 /// Result of a split attempt — a 3-way outcome (rather than a plain bool/`Option`) purely so unit
 /// tests can assert *why* a split didn't happen without parsing the event log. Every variant other
@@ -50,8 +50,12 @@ pub(crate) fn split_is_eligible<T: Tessellation>(
     if preset_state.locked_out.contains(&src) || preset_state.locked_in.contains(&src) {
         return false;
     }
-    let Some(level) = field.level_of(src) else { return false; };
-    let Some(point) = field.point_of(src) else { return false; };
+    let Some(level) = field.level_of(src) else {
+        return false;
+    };
+    let Some(point) = field.point_of(src) else {
+        return false;
+    };
     field.nodes_at(level, point).len() <= 1
 }
 
@@ -91,7 +95,13 @@ pub(super) fn try_split_src<T: Tessellation>(
     let fired = roll < elements.split_chance;
     let eligible = fired && split_is_eligible(field, preset_state, src);
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitRolled { src, roll, split_chance: elements.split_chance, fired, eligible });
+        log.emit(VertexBasedEvent::SplitRolled {
+            src,
+            roll,
+            split_chance: elements.split_chance,
+            fired,
+            eligible,
+        });
     }
     if !fired {
         return SplitOutcome::Miss;
@@ -102,13 +112,38 @@ pub(super) fn try_split_src<T: Tessellation>(
 
     if split_config.pattern_mode {
         handle_pattern_split(
-            graph, field, ids, params, elements, split_config, preset_state, state,
-            src, bridge, parent, start, start_reassignment, scope, debug_state,
+            graph,
+            field,
+            ids,
+            params,
+            elements,
+            split_config,
+            preset_state,
+            state,
+            src,
+            bridge,
+            parent,
+            start,
+            start_reassignment,
+            scope,
+            debug_state,
         )
     } else {
         handle_non_pattern_split(
-            graph, field, ids, params, elements, split_config, preset_state, state,
-            src, bridge, start, start_reassignment, scope, debug_state,
+            graph,
+            field,
+            ids,
+            params,
+            elements,
+            split_config,
+            preset_state,
+            state,
+            src,
+            bridge,
+            start,
+            start_reassignment,
+            scope,
+            debug_state,
         );
         SplitOutcome::Handled
     }

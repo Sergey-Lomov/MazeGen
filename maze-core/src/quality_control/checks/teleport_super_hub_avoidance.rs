@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::check::Check;
 use crate::quality_control::InvalidTeleportIssue;
+use crate::quality_control::check::Check;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT: u32 = 1_000;
 
@@ -40,15 +40,25 @@ pub struct TeleportSuperHubAvoidanceCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportSuperHubAvoidanceCheck {
-    fn check_type_id(&self) -> &'static str { "teleport_super_hub_avoidance" }
+    fn check_type_id(&self) -> &'static str {
+        "teleport_super_hub_avoidance"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidTeleportIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut outgoing_count: HashMap<NodeId, u32> = HashMap::new();
         for edge in maze.graph.edges() {
             *outgoing_count.entry(edge.from).or_insert(0) += 1;
         }
 
-        let invalid: Vec<_> = maze.graph.edges()
+        let invalid: Vec<_> = maze
+            .graph
+            .edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|t| {
                 let entry_count = outgoing_count.get(&t.from).copied().unwrap_or(0);
@@ -67,8 +77,11 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportSuperHubAvoidan
         if invalid.is_empty() {
             return;
         }
-        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid)
-            .with_detail(&self.instance_id, "max_connections", self.max_connections.to_string());
+        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid).with_detail(
+            &self.instance_id,
+            "max_connections",
+            self.max_connections.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -76,20 +89,28 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportSuperHubAvoidan
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "teleport_super_hub_avoidance";
 
     #[test]
     fn silent_when_no_teleport() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 1,
+            edge: TeleportHubEdgeSelector::EntryOrExit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -100,22 +121,40 @@ mod tests {
     fn fires_when_entry_vertex_exceeds_max_connections() {
         // node[1] (entry) has 3 outgoing edges: to node[0], node[2], and the teleport target.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 2,
+            edge: TeleportHubEdgeSelector::Entry,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
+        let teleport_id = maze
+            .graph
+            .edges()
+            .find(|e| e.kind == EdgeKind::Teleport)
+            .unwrap()
+            .id;
         assert_eq!(issues[0].invalid, vec![teleport_id]);
     }
 
@@ -124,11 +163,19 @@ mod tests {
         // Same busy-hub setup, but the teleport 1->3 is the maze's only start->finish route
         // (start=1, finish=3) -- with protect_route enabled it must not be flagged.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
@@ -136,25 +183,46 @@ mod tests {
         maze.meta.start = Some(nodes[1]);
         maze.meta.finish = Some(nodes[3]);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 2,
+            edge: TeleportHubEdgeSelector::Entry,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+        assert!(
+            issues.is_empty(),
+            "route-critical teleport must not be flagged when protect_route is enabled"
+        );
     }
 
     #[test]
     fn silent_when_entry_vertex_at_or_below_max_connections() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 1,
+            edge: TeleportHubEdgeSelector::Entry,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -167,22 +235,38 @@ mod tests {
         // (node[0], a single outgoing edge -- the teleport itself) is checked, so it must stay
         // silent even though the exit side alone would exceed max_connections.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 2,
+            edge: TeleportHubEdgeSelector::Entry,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "exit hub with 3 outgoing must not be considered under Entry, and entry's own 1 outgoing (the teleport) does not exceed max_connections=2");
+        assert!(
+            issues.is_empty(),
+            "exit hub with 3 outgoing must not be considered under Entry, and entry's own 1 outgoing (the teleport) does not exceed max_connections=2"
+        );
     }
 
     #[test]
@@ -191,38 +275,67 @@ mod tests {
         // outgoing edges of its own -- the teleport itself (from=0) never contributes to node[3]'s
         // outgoing count, so it must NOT be double counted.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 5, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 5,
+            edge: TeleportHubEdgeSelector::Exit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "entry hub with 3 outgoing must not be considered under ExitOnly, and exit's own 1 outgoing must not exceed max_connections=5");
+        assert!(
+            issues.is_empty(),
+            "entry hub with 3 outgoing must not be considered under ExitOnly, and exit's own 1 outgoing must not exceed max_connections=5"
+        );
     }
 
     #[test]
     fn exit_only_fires_when_exit_vertex_exceeds_max_connections() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 1,
+            edge: TeleportHubEdgeSelector::Exit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -232,36 +345,66 @@ mod tests {
     #[test]
     fn entry_or_exit_flags_when_only_exit_exceeds_max() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 1,
+            edge: TeleportHubEdgeSelector::EntryOrExit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1, "exit exceeding max must be caught even though entry alone (1 outgoing, the teleport) does not");
+        assert_eq!(
+            issues.len(),
+            1,
+            "exit exceeding max must be caught even though entry alone (1 outgoing, the teleport) does not"
+        );
     }
 
     #[test]
     fn ignores_basic_edges() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 0, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 0,
+            edge: TeleportHubEdgeSelector::EntryOrExit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -273,27 +416,52 @@ mod tests {
         // Each direction of a two-way teleport is its own Teleport edge and must be flagged
         // independently, since the check operates per-edge, not per-pair.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[1], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
+        let check = TeleportSuperHubAvoidanceCheck {
+            instance_id: TEST_ID.to_string(),
+            max_connections: 2,
+            edge: TeleportHubEdgeSelector::EntryOrExit,
+            protect_route: true,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
 
-        assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
-        let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();
+        assert_eq!(
+            issues.len(),
+            1,
+            "both directions merge into one issue from a single check call"
+        );
+        let mut teleport_ids: Vec<_> = maze
+            .graph
+            .edges()
+            .filter(|e| e.kind == EdgeKind::Teleport)
+            .map(|e| e.id)
+            .collect();
         teleport_ids.sort_unstable();
         let mut flagged = issues[0].invalid.clone();
         flagged.sort_unstable();
-        assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one (node[1]->node[3] via Entry=3, node[3]->node[1] via Exit=3)");
+        assert_eq!(
+            flagged, teleport_ids,
+            "both teleport directions must be flagged, not just one (node[1]->node[3] via Entry=3, node[3]->node[1] via Exit=3)"
+        );
     }
 }

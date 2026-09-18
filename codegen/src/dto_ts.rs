@@ -30,7 +30,12 @@ pub struct DtoParseError {
 #[derive(Debug, Clone)]
 pub enum DtoField {
     /// A struct field or named-enum-variant field, resolved to a TS type expression.
-    Named { name: String, ts_type: String, optional: bool, doc: Vec<String> },
+    Named {
+        name: String,
+        ts_type: String,
+        optional: bool,
+        doc: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -38,26 +43,52 @@ pub enum DtoItem {
     /// A plain struct -> TS interface. `rust_name` is the original Rust identifier (before any
     /// `#[dto(rename_ts = "...")]`) — kept so a *different* item's field referencing this type by
     /// its Rust name can still be resolved to the renamed `ts_name` (see `build_rename_map`).
-    Struct { rust_name: String, ts_name: String, doc: Vec<String>, generics: Vec<String>, fields: Vec<DtoField> },
+    Struct {
+        rust_name: String,
+        ts_name: String,
+        doc: Vec<String>,
+        generics: Vec<String>,
+        fields: Vec<DtoField>,
+    },
     /// A unit-only enum with `#[serde(rename_all = "snake_case")]` -> TS string-literal union.
-    StringUnion { rust_name: String, ts_name: String, doc: Vec<String>, variants: Vec<String> },
+    StringUnion {
+        rust_name: String,
+        ts_name: String,
+        doc: Vec<String>,
+        variants: Vec<String>,
+    },
     /// A `#[serde(tag = "kind", rename_all = "snake_case")]` enum -> TS discriminated union.
-    TaggedUnion { rust_name: String, ts_name: String, doc: Vec<String>, tag_variants: Vec<(String, Vec<DtoField>)> },
+    TaggedUnion {
+        rust_name: String,
+        ts_name: String,
+        doc: Vec<String>,
+        tag_variants: Vec<(String, Vec<DtoField>)>,
+    },
 }
 
 impl DtoItem {
     fn rust_and_ts_name(&self) -> (&str, &str) {
         match self {
-            DtoItem::Struct { rust_name, ts_name, .. }
-            | DtoItem::StringUnion { rust_name, ts_name, .. }
-            | DtoItem::TaggedUnion { rust_name, ts_name, .. } => (rust_name, ts_name),
+            DtoItem::Struct {
+                rust_name, ts_name, ..
+            }
+            | DtoItem::StringUnion {
+                rust_name, ts_name, ..
+            }
+            | DtoItem::TaggedUnion {
+                rust_name, ts_name, ..
+            } => (rust_name, ts_name),
         }
     }
 }
 
 pub fn parse_dto_file(path: &Path) -> Result<Vec<DtoItem>, DtoParseError> {
-    let text = fs::read_to_string(path).map_err(|e| DtoParseError { message: format!("{}: {e}", path.display()) })?;
-    let file = syn::parse_file(&text).map_err(|e| DtoParseError { message: format!("{}: {e}", path.display()) })?;
+    let text = fs::read_to_string(path).map_err(|e| DtoParseError {
+        message: format!("{}: {e}", path.display()),
+    })?;
+    let file = syn::parse_file(&text).map_err(|e| DtoParseError {
+        message: format!("{}: {e}", path.display()),
+    })?;
 
     let mut items = Vec::new();
     for item in &file.items {
@@ -73,8 +104,16 @@ pub fn parse_dto_file(path: &Path) -> Result<Vec<DtoItem>, DtoParseError> {
 fn has_serde_derive(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|a| {
         a.path().is_ident("derive")
-            && a.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
-                .is_ok_and(|paths| paths.iter().any(|p| p.segments.last().is_some_and(|s| s.ident == "Serialize" || s.ident == "Deserialize")))
+            && a.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|paths| {
+                paths.iter().any(|p| {
+                    p.segments
+                        .last()
+                        .is_some_and(|s| s.ident == "Serialize" || s.ident == "Deserialize")
+                })
+            })
     })
 }
 
@@ -82,15 +121,27 @@ fn parse_struct(s: &syn::ItemStruct) -> Result<DtoItem, DtoParseError> {
     let rust_name = s.ident.to_string();
     let ts_name = rename_ts(&s.attrs).unwrap_or_else(|| rust_name.clone());
     let doc = doc_lines(&s.attrs);
-    let generics: Vec<String> = s.generics.type_params().map(|p| p.ident.to_string()).collect();
+    let generics: Vec<String> = s
+        .generics
+        .type_params()
+        .map(|p| p.ident.to_string())
+        .collect();
     let Fields::Named(named) = &s.fields else {
-        return Err(DtoParseError { message: format!("{}: only named-field structs are supported", s.ident) });
+        return Err(DtoParseError {
+            message: format!("{}: only named-field structs are supported", s.ident),
+        });
     };
     let mut fields = Vec::new();
     for f in &named.named {
         fields.push(parse_field(f)?);
     }
-    Ok(DtoItem::Struct { rust_name, ts_name, doc, generics, fields })
+    Ok(DtoItem::Struct {
+        rust_name,
+        ts_name,
+        doc,
+        generics,
+        fields,
+    })
 }
 
 fn parse_field(f: &syn::Field) -> Result<DtoField, DtoParseError> {
@@ -100,45 +151,80 @@ fn parse_field(f: &syn::Field) -> Result<DtoField, DtoParseError> {
     // keeps emitting the Rust field name unchanged — a silent Rust<->TS desync. Not supported
     // today (no field in dto.rs uses it), so fail loudly instead of emitting a wrong key.
     if let Some(renamed) = find_serde_string_value(&f.attrs, "rename") {
-        return Err(DtoParseError { message: format!("field `{name}`: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire key from the emitted TS field name. Add explicit support in dto_ts::parse_field, or rename the Rust field itself instead.") });
+        return Err(DtoParseError {
+            message: format!(
+                "field `{name}`: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire key from the emitted TS field name. Add explicit support in dto_ts::parse_field, or rename the Rust field itself instead."
+            ),
+        });
     }
     let optional_flag = has_dto_flag(&f.attrs, "optional");
     let ts_type = if let Some(explicit) = find_dto_string_attr(&f.attrs, "ts_type") {
         explicit
     } else {
-        resolve_type(&f.ty).map_err(|msg| DtoParseError { message: format!("field `{name}`: {msg}") })?
+        resolve_type(&f.ty).map_err(|msg| DtoParseError {
+            message: format!("field `{name}`: {msg}"),
+        })?
     };
     // Plain `Option<T>` (no `#[serde(default)]`) is nullable but NOT key-optional: serde still
     // requires the JSON key present (as `null` or a value) on Deserialize. Only `#[serde(default)]`
     // (or an explicit `#[dto(optional)]`) makes the key itself omittable.
     let optional = optional_flag || has_serde_flag(&f.attrs, "default");
-    Ok(DtoField::Named { name, ts_type, optional, doc })
+    Ok(DtoField::Named {
+        name,
+        ts_type,
+        optional,
+        doc,
+    })
 }
 
 fn has_serde_flag(attrs: &[syn::Attribute], flag: &str) -> bool {
-    attrs.iter().filter(|a| a.path().is_ident("serde")).any(|a| {
-        let Meta::List(list) = &a.meta else { return false };
-        list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
-            .is_ok_and(|metas| metas.iter().any(|m| matches!(m, Meta::Path(p) if p.is_ident(flag))))
-    })
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("serde"))
+        .any(|a| {
+            let Meta::List(list) = &a.meta else {
+                return false;
+            };
+            list.parse_args_with(
+                syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|metas| {
+                metas
+                    .iter()
+                    .any(|m| matches!(m, Meta::Path(p) if p.is_ident(flag)))
+            })
+        })
 }
 
 /// Reads `#[serde(<key> = "...")]`'s string value off any `#[serde(...)]` attribute — used to
 /// detect (and reject) `rename`, which `dto_ts` doesn't act on.
 fn find_serde_string_value(attrs: &[syn::Attribute], key: &str) -> Option<String> {
-    attrs.iter().filter(|a| a.path().is_ident("serde")).find_map(|a| {
-        let Meta::List(list) = &a.meta else { return None };
-        let metas = list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated).ok()?;
-        metas.iter().find_map(|m| {
-            let Meta::NameValue(nv) = m else { return None };
-            if !nv.path.is_ident(key) {
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("serde"))
+        .find_map(|a| {
+            let Meta::List(list) = &a.meta else {
                 return None;
-            }
-            let syn::Expr::Lit(expr_lit) = &nv.value else { return None };
-            let syn::Lit::Str(lit_str) = &expr_lit.lit else { return None };
-            Some(lit_str.value())
+            };
+            let metas = list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            metas.iter().find_map(|m| {
+                let Meta::NameValue(nv) = m else { return None };
+                if !nv.path.is_ident(key) {
+                    return None;
+                }
+                let syn::Expr::Lit(expr_lit) = &nv.value else {
+                    return None;
+                };
+                let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+                    return None;
+                };
+                Some(lit_str.value())
+            })
         })
-    })
 }
 
 fn parse_enum(e: &syn::ItemEnum) -> Result<DtoItem, DtoParseError> {
@@ -155,7 +241,12 @@ fn parse_enum(e: &syn::ItemEnum) -> Result<DtoItem, DtoParseError> {
             // Rust<->TS desync on the discriminant literal itself. Not supported today (no
             // variant in dto.rs uses it), so fail loudly instead of emitting a wrong tag.
             if let Some(renamed) = find_serde_string_value(&v.attrs, "rename") {
-                return Err(DtoParseError { message: format!("{}::{}: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire tag from the emitted TS discriminant literal. Add explicit support in dto_ts::parse_enum, or rename the Rust variant itself instead.", e.ident, v.ident) });
+                return Err(DtoParseError {
+                    message: format!(
+                        "{}::{}: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire tag from the emitted TS discriminant literal. Add explicit support in dto_ts::parse_enum, or rename the Rust variant itself instead.",
+                        e.ident, v.ident
+                    ),
+                });
             }
             let variant_id = to_snake_case(&v.ident.to_string());
             let fields = match &v.fields {
@@ -168,41 +259,79 @@ fn parse_enum(e: &syn::ItemEnum) -> Result<DtoItem, DtoParseError> {
                     out
                 }
                 Fields::Unnamed(_) => {
-                    return Err(DtoParseError { message: format!("{}::{}: tuple variants are not supported in tagged unions", e.ident, v.ident) });
+                    return Err(DtoParseError {
+                        message: format!(
+                            "{}::{}: tuple variants are not supported in tagged unions",
+                            e.ident, v.ident
+                        ),
+                    });
                 }
             };
             tag_variants.push((variant_id, fields));
         }
-        Ok(DtoItem::TaggedUnion { rust_name, ts_name, doc, tag_variants })
+        Ok(DtoItem::TaggedUnion {
+            rust_name,
+            ts_name,
+            doc,
+            tag_variants,
+        })
     } else {
         let mut variants = Vec::new();
         for v in &e.variants {
             if !matches!(v.fields, Fields::Unit) {
-                return Err(DtoParseError { message: format!("{}::{}: non-unit variant requires #[serde(tag = \"...\")] on the enum", e.ident, v.ident) });
+                return Err(DtoParseError {
+                    message: format!(
+                        "{}::{}: non-unit variant requires #[serde(tag = \"...\")] on the enum",
+                        e.ident, v.ident
+                    ),
+                });
             }
             if let Some(renamed) = find_serde_string_value(&v.attrs, "rename") {
-                return Err(DtoParseError { message: format!("{}::{}: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire value from the emitted TS string-literal union member. Add explicit support in dto_ts::parse_enum, or rename the Rust variant itself instead.", e.ident, v.ident) });
+                return Err(DtoParseError {
+                    message: format!(
+                        "{}::{}: #[serde(rename = \"{renamed}\")] is not supported by dto_ts — it would silently desync the wire value from the emitted TS string-literal union member. Add explicit support in dto_ts::parse_enum, or rename the Rust variant itself instead.",
+                        e.ident, v.ident
+                    ),
+                });
             }
             variants.push(to_snake_case(&v.ident.to_string()));
         }
-        Ok(DtoItem::StringUnion { rust_name, ts_name, doc, variants })
+        Ok(DtoItem::StringUnion {
+            rust_name,
+            ts_name,
+            doc,
+            variants,
+        })
     }
 }
 
 fn find_serde_tag(attrs: &[syn::Attribute]) -> Option<String> {
-    attrs.iter().filter(|a| a.path().is_ident("serde")).find_map(|a| {
-        let Meta::List(list) = &a.meta else { return None };
-        let metas = list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated).ok()?;
-        metas.iter().find_map(|m| {
-            let Meta::NameValue(nv) = m else { return None };
-            if !nv.path.is_ident("tag") {
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("serde"))
+        .find_map(|a| {
+            let Meta::List(list) = &a.meta else {
                 return None;
-            }
-            let syn::Expr::Lit(expr_lit) = &nv.value else { return None };
-            let syn::Lit::Str(lit_str) = &expr_lit.lit else { return None };
-            Some(lit_str.value())
+            };
+            let metas = list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            metas.iter().find_map(|m| {
+                let Meta::NameValue(nv) = m else { return None };
+                if !nv.path.is_ident("tag") {
+                    return None;
+                }
+                let syn::Expr::Lit(expr_lit) = &nv.value else {
+                    return None;
+                };
+                let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+                    return None;
+                };
+                Some(lit_str.value())
+            })
         })
-    })
 }
 
 fn rename_ts(attrs: &[syn::Attribute]) -> Option<String> {
@@ -211,38 +340,66 @@ fn rename_ts(attrs: &[syn::Attribute]) -> Option<String> {
 
 fn has_dto_flag(attrs: &[syn::Attribute], flag: &str) -> bool {
     attrs.iter().filter(|a| a.path().is_ident("dto")).any(|a| {
-        let Meta::List(list) = &a.meta else { return false };
+        let Meta::List(list) = &a.meta else {
+            return false;
+        };
         list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
-            .is_ok_and(|metas| metas.iter().any(|m| matches!(m, Meta::Path(p) if p.is_ident(flag))))
+            .is_ok_and(|metas| {
+                metas
+                    .iter()
+                    .any(|m| matches!(m, Meta::Path(p) if p.is_ident(flag)))
+            })
     })
 }
 
 fn find_dto_string_attr(attrs: &[syn::Attribute], key: &str) -> Option<String> {
-    attrs.iter().filter(|a| a.path().is_ident("dto")).find_map(|a| {
-        let Meta::List(list) = &a.meta else { return None };
-        let metas = list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated).ok()?;
-        metas.iter().find_map(|m| {
-            let Meta::NameValue(nv) = m else { return None };
-            if !nv.path.is_ident(key) {
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("dto"))
+        .find_map(|a| {
+            let Meta::List(list) = &a.meta else {
                 return None;
-            }
-            let syn::Expr::Lit(expr_lit) = &nv.value else { return None };
-            let syn::Lit::Str(lit_str) = &expr_lit.lit else { return None };
-            Some(lit_str.value())
+            };
+            let metas = list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            metas.iter().find_map(|m| {
+                let Meta::NameValue(nv) = m else { return None };
+                if !nv.path.is_ident(key) {
+                    return None;
+                }
+                let syn::Expr::Lit(expr_lit) = &nv.value else {
+                    return None;
+                };
+                let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+                    return None;
+                };
+                Some(lit_str.value())
+            })
         })
-    })
 }
 
 /// `///` doc comments as plain text lines, in source order.
 fn doc_lines(attrs: &[syn::Attribute]) -> Vec<String> {
-    attrs.iter().filter(|a| a.path().is_ident("doc")).filter_map(|a| {
-        let Meta::NameValue(nv) = &a.meta else { return None };
-        let syn::Expr::Lit(expr_lit) = &nv.value else { return None };
-        let syn::Lit::Str(lit_str) = &expr_lit.lit else { return None };
-        Some(lit_str.value().trim().to_string())
-    }).collect()
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("doc"))
+        .filter_map(|a| {
+            let Meta::NameValue(nv) = &a.meta else {
+                return None;
+            };
+            let syn::Expr::Lit(expr_lit) = &nv.value else {
+                return None;
+            };
+            let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+                return None;
+            };
+            Some(lit_str.value().trim().to_string())
+        })
+        .collect()
 }
-
 
 fn path_ident_and_args(ty: &Type) -> Option<(&syn::Ident, &PathArguments)> {
     let Type::Path(p) = ty else { return None };
@@ -251,11 +408,16 @@ fn path_ident_and_args(ty: &Type) -> Option<(&syn::Ident, &PathArguments)> {
 }
 
 fn generic_args(args: &PathArguments) -> Vec<&Type> {
-    let PathArguments::AngleBracketed(a) = args else { return Vec::new() };
-    a.args.iter().filter_map(|ga| match ga {
-        GenericArgument::Type(t) => Some(t),
-        _ => None,
-    }).collect()
+    let PathArguments::AngleBracketed(a) = args else {
+        return Vec::new();
+    };
+    a.args
+        .iter()
+        .filter_map(|ga| match ga {
+            GenericArgument::Type(t) => Some(t),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Structurally resolves a Rust type to its TS equivalent. Primitives are hardcoded; any other
@@ -267,7 +429,11 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
     match ty {
         Type::Array(arr) => {
             let elem = resolve_type(&arr.elem)?;
-            let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(n), .. }) = &arr.len else {
+            let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Int(n),
+                ..
+            }) = &arr.len
+            else {
                 return Err("array length must be an integer literal".to_string());
             };
             let n: usize = n.base10_parse().map_err(|e: syn::Error| e.to_string())?;
@@ -281,15 +447,19 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
             Ok(format!("[{}]", parts.join(", ")))
         }
         Type::Path(_) => {
-            let (ident, args) = path_ident_and_args(ty).ok_or_else(|| "unresolvable type path".to_string())?;
+            let (ident, args) =
+                path_ident_and_args(ty).ok_or_else(|| "unresolvable type path".to_string())?;
             let name = ident.to_string();
             let generics = generic_args(args);
             match name.as_str() {
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "usize" | "isize" | "f32" | "f64" => Ok("number".to_string()),
+                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "usize" | "isize"
+                | "f32" | "f64" => Ok("number".to_string()),
                 "bool" => Ok("boolean".to_string()),
                 "String" => Ok("string".to_string()),
                 "Vec" => {
-                    let inner = generics.first().ok_or_else(|| "Vec<..> missing type argument".to_string())?;
+                    let inner = generics
+                        .first()
+                        .ok_or_else(|| "Vec<..> missing type argument".to_string())?;
                     let inner_ts = resolve_type(inner)?;
                     if inner_ts.contains(" | ") {
                         Ok(format!("({inner_ts})[]"))
@@ -298,7 +468,9 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
                     }
                 }
                 "Option" => {
-                    let inner = generics.first().ok_or_else(|| "Option<..> missing type argument".to_string())?;
+                    let inner = generics
+                        .first()
+                        .ok_or_else(|| "Option<..> missing type argument".to_string())?;
                     Ok(format!("{} | null", resolve_type(inner)?))
                 }
                 "HashMap" => {
@@ -307,7 +479,9 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
                     }
                     let key = resolve_type(generics[0])?;
                     if key != "string" {
-                        return Err(format!("HashMap key type must resolve to `string` (got `{key}`) — TS `Record` keys are always string"));
+                        return Err(format!(
+                            "HashMap key type must resolve to `string` (got `{key}`) — TS `Record` keys are always string"
+                        ));
                     }
                     let value = resolve_type(generics[1])?;
                     Ok(format!("Record<string, {value}>"))
@@ -318,7 +492,8 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
                 // param inside a generic struct's own field (e.g. `FloorScoped<T>`'s `total: T`)
                 // has no generics of its own and falls through unchanged, as before.
                 _ if !generics.is_empty() => {
-                    let args: Result<Vec<String>, String> = generics.iter().map(|g| resolve_type(g)).collect();
+                    let args: Result<Vec<String>, String> =
+                        generics.iter().map(|g| resolve_type(g)).collect();
                     Ok(format!("{name}<{}>", args?.join(", ")))
                 }
                 _ => Ok(name),
@@ -355,12 +530,20 @@ fn apply_renames(items: &mut [DtoItem], renames: &std::collections::HashMap<Stri
 /// (`"PostEditEndpointDto[]"` -> `"PostEditEndpointWasmDto[]"`) — identifiers are delimited by
 /// non-identifier characters (`[`, `]`, `<`, `>`, `,`, ` `, `|`), which is every punctuation
 /// character `resolve_type` ever emits around a named type.
-fn rename_type_string(ts_type: &str, renames: &std::collections::HashMap<String, String>) -> String {
+fn rename_type_string(
+    ts_type: &str,
+    renames: &std::collections::HashMap<String, String>,
+) -> String {
     let mut out = String::new();
     let mut ident = String::new();
     let flush = |ident: &mut String, out: &mut String| {
         if !ident.is_empty() {
-            out.push_str(renames.get(ident.as_str()).map(String::as_str).unwrap_or(ident.as_str()));
+            out.push_str(
+                renames
+                    .get(ident.as_str())
+                    .map(String::as_str)
+                    .unwrap_or(ident.as_str()),
+            );
             ident.clear();
         }
     };
@@ -385,7 +568,11 @@ fn rename_type_string(ts_type: &str, renames: &std::collections::HashMap<String,
 /// history, not a per-run exact set, so unconditionally emitting all of them would leave a stale
 /// `import type` behind (and trip `noUnusedLocals` in `maze-web`'s `tsconfig.json`) the moment a
 /// field naming one stops existing.
-pub fn generate_ts_file(items: &[DtoItem], source_rel_path: &str, imports: &[(&str, &str)]) -> String {
+pub fn generate_ts_file(
+    items: &[DtoItem],
+    source_rel_path: &str,
+    imports: &[(&str, &str)],
+) -> String {
     let mut items = items.to_vec();
     let renames = build_rename_map(&items);
     apply_renames(&mut items, &renames);
@@ -397,8 +584,13 @@ pub fn generate_ts_file(items: &[DtoItem], source_rel_path: &str, imports: &[(&s
     }
 
     let mut out = String::new();
-    out.push_str(&format!("// @generated by codegen/ — DO NOT EDIT. Source: {source_rel_path}\n\n"));
-    let used_imports: Vec<_> = imports.iter().filter(|(ty, _)| type_name_appears_in(&body, ty)).collect();
+    out.push_str(&format!(
+        "// @generated by codegen/ — DO NOT EDIT. Source: {source_rel_path}\n\n"
+    ));
+    let used_imports: Vec<_> = imports
+        .iter()
+        .filter(|(ty, _)| type_name_appears_in(&body, ty))
+        .collect();
     for (ty, module) in &used_imports {
         out.push_str(&format!("import type {{ {ty} }} from \"{module}\";\n"));
     }
@@ -434,10 +626,13 @@ fn type_name_appears_in(text: &str, name: &str) -> bool {
 /// overridden) TS name — only items whose name actually changed are included, since
 /// `rename_type_string` only needs to rewrite occurrences that differ.
 fn build_rename_map(items: &[DtoItem]) -> std::collections::HashMap<String, String> {
-    items.iter().filter_map(|i| {
-        let (rust_name, ts_name) = i.rust_and_ts_name();
-        (rust_name != ts_name).then(|| (rust_name.to_string(), ts_name.to_string()))
-    }).collect()
+    items
+        .iter()
+        .filter_map(|i| {
+            let (rust_name, ts_name) = i.rust_and_ts_name();
+            (rust_name != ts_name).then(|| (rust_name.to_string(), ts_name.to_string()))
+        })
+        .collect()
 }
 
 fn emit_doc(doc: &[String], indent: &str) -> String {
@@ -456,7 +651,12 @@ fn emit_doc(doc: &[String], indent: &str) -> String {
 }
 
 fn emit_field_line(field: &DtoField, indent: &str) -> String {
-    let DtoField::Named { name, ts_type, optional, doc } = field;
+    let DtoField::Named {
+        name,
+        ts_type,
+        optional,
+        doc,
+    } = field;
     let mut out = emit_doc(doc, indent);
     let q = if *optional { "?" } else { "" };
     out.push_str(&format!("{indent}{name}{q}: {ts_type};\n"));
@@ -465,9 +665,19 @@ fn emit_field_line(field: &DtoField, indent: &str) -> String {
 
 fn emit_item(item: &DtoItem) -> String {
     match item {
-        DtoItem::Struct { ts_name, doc, generics, fields, .. } => {
+        DtoItem::Struct {
+            ts_name,
+            doc,
+            generics,
+            fields,
+            ..
+        } => {
             let mut out = emit_doc(doc, "");
-            let generics_suffix = if generics.is_empty() { String::new() } else { format!("<{}>", generics.join(", ")) };
+            let generics_suffix = if generics.is_empty() {
+                String::new()
+            } else {
+                format!("<{}>", generics.join(", "))
+            };
             out.push_str(&format!("export interface {ts_name}{generics_suffix} {{\n"));
             for f in fields {
                 out.push_str(&emit_field_line(f, "  "));
@@ -475,7 +685,12 @@ fn emit_item(item: &DtoItem) -> String {
             out.push_str("}\n");
             out
         }
-        DtoItem::StringUnion { ts_name, doc, variants, .. } => {
+        DtoItem::StringUnion {
+            ts_name,
+            doc,
+            variants,
+            ..
+        } => {
             let mut out = emit_doc(doc, "");
             out.push_str(&format!("export type {ts_name} =\n"));
             for (i, v) in variants.iter().enumerate() {
@@ -484,7 +699,12 @@ fn emit_item(item: &DtoItem) -> String {
             }
             out
         }
-        DtoItem::TaggedUnion { ts_name, doc, tag_variants, .. } => {
+        DtoItem::TaggedUnion {
+            ts_name,
+            doc,
+            tag_variants,
+            ..
+        } => {
             let mut out = emit_doc(doc, "");
             out.push_str(&format!("export type {ts_name} =\n"));
             for (tag, fields) in tag_variants {
@@ -530,95 +750,131 @@ mod tests {
 
     #[test]
     fn struct_fields_resolve_primitives() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub id: u32,
                 pub name: String,
                 pub ok: bool,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         assert_eq!(fields.len(), 3);
-        let DtoField::Named { ts_type, optional, .. } = &fields[0];
+        let DtoField::Named {
+            ts_type, optional, ..
+        } = &fields[0];
         assert_eq!(ts_type, "number");
         assert!(!optional);
     }
 
     #[test]
     fn plain_option_field_is_nullable_but_not_key_optional() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub score: Option<f64>,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
-        let DtoField::Named { ts_type, optional, .. } = &fields[0];
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
+        let DtoField::Named {
+            ts_type, optional, ..
+        } = &fields[0];
         assert_eq!(ts_type, "number | null");
-        assert!(!optional, "plain Option<T> without #[serde(default)] must stay a required (non-`?`) key");
+        assert!(
+            !optional,
+            "plain Option<T> without #[serde(default)] must stay a required (non-`?`) key"
+        );
     }
 
     #[test]
     fn serde_default_marks_a_non_option_field_optional() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Deserialize)]
             pub struct Foo {
                 #[serde(default)]
                 pub split_points: Vec<u32>,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
-        let DtoField::Named { ts_type, optional, .. } = &fields[0];
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
+        let DtoField::Named {
+            ts_type, optional, ..
+        } = &fields[0];
         assert_eq!(ts_type, "number[]");
         assert!(*optional);
     }
 
     #[test]
     fn dto_optional_flag_marks_a_non_option_field_optional() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 #[dto(optional)]
                 pub level: u32,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
-        let DtoField::Named { ts_type, optional, .. } = &fields[0];
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
+        let DtoField::Named {
+            ts_type, optional, ..
+        } = &fields[0];
         assert_eq!(ts_type, "number");
         assert!(*optional);
     }
 
     #[test]
     fn dto_ts_type_overrides_resolution() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Deserialize)]
             pub struct Foo {
                 #[dto(ts_type = "WasmTessellationConfig")]
                 pub tessellation: TessellationConfig,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "WasmTessellationConfig");
     }
 
     #[test]
     fn rename_ts_overrides_the_emitted_type_name() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Deserialize)]
             #[dto(rename_ts = "BarWasmDto")]
             pub struct Bar {
                 pub x: u32,
             }
-        "#);
-        let DtoItem::Struct { ts_name, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { ts_name, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         assert_eq!(ts_name, "BarWasmDto");
     }
 
     #[test]
     fn rename_ts_propagates_to_a_field_referencing_the_renamed_type_by_its_rust_name() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Deserialize)]
             #[dto(rename_ts = "BarWasmDto")]
             pub struct Bar {
@@ -630,75 +886,97 @@ mod tests {
                 pub bar: Bar,
                 pub bars: Vec<Bar>,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[]);
         assert!(text.contains("export interface BarWasmDto"));
         assert!(text.contains("bar: BarWasmDto;"));
         assert!(text.contains("bars: BarWasmDto[];"));
-        assert!(!text.contains("Bar;"), "unrenamed `Bar` must not remain in the output: {text}");
+        assert!(
+            !text.contains("Bar;"),
+            "unrenamed `Bar` must not remain in the output: {text}"
+        );
     }
 
     #[test]
     fn vec_of_named_type_resolves_as_array() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub nodes: Vec<NodeDto>,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "NodeDto[]");
     }
 
     #[test]
     fn hashmap_string_key_resolves_to_record() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub node_component: HashMap<String, usize>,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "Record<string, number>");
     }
 
     #[test]
     fn fixed_size_array_resolves_as_tuple() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub edge: [u32; 2],
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "[number, number]");
     }
 
     #[test]
     fn plain_tuple_resolves_positionally() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Deserialize)]
             pub struct Foo {
                 pub split_points: Vec<([i32; 2], u32, u32)>,
             }
-        "#);
-        let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
+        "#,
+        );
+        let DtoItem::Struct { fields, .. } = &items[0] else {
+            panic!("expected struct")
+        };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "[[number, number], number, number][]");
     }
 
     #[test]
     fn generic_struct_emits_type_param_on_the_interface() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct FloorScoped<T> {
                 pub total: T,
                 pub by_floor: HashMap<String, T>,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[]);
         assert!(text.contains("export interface FloorScoped<T> {"), "{text}");
         assert!(text.contains("total: T;"), "{text}");
@@ -707,7 +985,8 @@ mod tests {
 
     #[test]
     fn field_referencing_a_generic_type_carries_its_type_argument() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct FloorScoped<T> {
                 pub total: T,
@@ -722,36 +1001,51 @@ mod tests {
             pub struct MazeStatisticsDto {
                 pub node_stats: FloorScoped<NodeStatsDto>,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[]);
-        assert!(text.contains("node_stats: FloorScoped<NodeStatsDto>;"), "{text}");
+        assert!(
+            text.contains("node_stats: FloorScoped<NodeStatsDto>;"),
+            "{text}"
+        );
     }
 
     #[test]
     fn unit_only_enum_is_a_string_union() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             #[serde(rename_all = "snake_case")]
             pub enum EdgeKindDto {
                 Basic,
                 VerticalPassage,
             }
-        "#);
-        let DtoItem::StringUnion { variants, .. } = &items[0] else { panic!("expected string union") };
-        assert_eq!(variants, &vec!["basic".to_string(), "vertical_passage".to_string()]);
+        "#,
+        );
+        let DtoItem::StringUnion { variants, .. } = &items[0] else {
+            panic!("expected string union")
+        };
+        assert_eq!(
+            variants,
+            &vec!["basic".to_string(), "vertical_passage".to_string()]
+        );
     }
 
     #[test]
     fn tagged_enum_is_a_discriminated_union() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Debug, Serialize)]
             #[serde(tag = "kind", rename_all = "snake_case")]
             pub enum SplitFaceRequirementDto {
                 Passage,
                 OneWay { direction: OneWayDirectionDto },
             }
-        "#);
-        let DtoItem::TaggedUnion { tag_variants, .. } = &items[0] else { panic!("expected tagged union") };
+        "#,
+        );
+        let DtoItem::TaggedUnion { tag_variants, .. } = &items[0] else {
+            panic!("expected tagged union")
+        };
         assert_eq!(tag_variants.len(), 2);
         assert_eq!(tag_variants[0].0, "passage");
         assert!(tag_variants[0].1.is_empty());
@@ -761,52 +1055,64 @@ mod tests {
 
     #[test]
     fn field_doc_comment_becomes_jsdoc() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 /// hello
                 pub x: u32,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[]);
         assert!(text.contains("/** hello */"));
     }
 
     #[test]
     fn unused_import_candidate_is_omitted() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 pub x: u32,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[("NeverReferenced", "./nowhere")]);
-        assert!(!text.contains("NeverReferenced"), "an import candidate absent from the body must not be emitted: {text}");
+        assert!(
+            !text.contains("NeverReferenced"),
+            "an import candidate absent from the body must not be emitted: {text}"
+        );
         assert!(!text.contains("import type"));
     }
 
     #[test]
     fn used_import_candidate_is_emitted() {
-        let items = parse_source(r#"
+        let items = parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 #[dto(ts_type = "IssueKindId")]
                 pub kind: String,
             }
-        "#);
+        "#,
+        );
         let text = generate_ts_file(&items, "foo.rs", &[("IssueKindId", "./issueKind")]);
         assert!(text.contains("import type { IssueKindId } from \"./issueKind\";"));
     }
 
     #[test]
     fn serde_rename_on_a_field_is_a_parse_error() {
-        let err = try_parse_source(r#"
+        let err = try_parse_source(
+            r#"
             #[derive(Serialize)]
             pub struct Foo {
                 #[serde(rename = "renamedField")]
                 pub x: u32,
             }
-        "#).expect_err("#[serde(rename = ...)] on a field must be rejected, not silently ignored");
+        "#,
+        )
+        .expect_err("#[serde(rename = ...)] on a field must be rejected, not silently ignored");
         assert!(err.message.contains("renamedField"), "{}", err.message);
     }
 

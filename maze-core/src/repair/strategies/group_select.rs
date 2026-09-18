@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::{Issue, InvalidGroupIssue, InvalidGroupIssueKind};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParams, StrategyParamValue};
+use crate::quality_control::{InvalidGroupIssue, InvalidGroupIssueKind, Issue};
+use crate::repair::command::MutationCommand;
+use crate::repair::params::{StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::NestedStrategyConfig;
-use crate::repair::command::MutationCommand;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const PARAM_PRIORITY: &str = "priority";
 
@@ -40,7 +40,8 @@ pub fn order_by_priority<E: Clone + Eq + std::hash::Hash>(
             candidates.shuffle(rng);
         }
         if priority == PRIORITY_PROBLEMATIC {
-            candidates.sort_by_key(|id| std::cmp::Reverse(membership.get(id).copied().unwrap_or(0)));
+            candidates
+                .sort_by_key(|id| std::cmp::Reverse(membership.get(id).copied().unwrap_or(0)));
         }
     }
 }
@@ -123,7 +124,10 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
     element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
 ) -> (RepairResult, Vec<MutationCommand>) {
-    let nested_params = crate::repair::params::build_params(nested.strategy.params(), Some(&nested.param_overrides));
+    let nested_params = crate::repair::params::build_params(
+        nested.strategy.params(),
+        Some(&nested.param_overrides),
+    );
     // Single-slot special case of `multi_target_group_select_apply`: `nested_for` ignores the
     // element itself and always hands back the one configured slot (with the same synthetic
     // issue `build_nested_issue` produced), or `None` when `element_allowed` rejects it — which
@@ -140,7 +144,11 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
             if !element_allowed(element) {
                 return None;
             }
-            Some((nested, &nested_params, build_nested_issue("group_select", element, others)))
+            Some((
+                nested,
+                &nested_params,
+                build_nested_issue("group_select", element, others),
+            ))
         },
         element_invalidated,
         order_candidates,
@@ -181,7 +189,14 @@ pub fn multi_target_group_select_apply<'a, T: Tessellation, K: InvalidGroupIssue
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
-    nested_for: impl Fn(&K::Element, &[K::Element]) -> Option<(&'a NestedStrategyConfig<T>, &'a StrategyParams, Box<dyn Issue>)>,
+    nested_for: impl Fn(
+        &K::Element,
+        &[K::Element],
+    ) -> Option<(
+        &'a NestedStrategyConfig<T>,
+        &'a StrategyParams,
+        Box<dyn Issue>,
+    )>,
     element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
@@ -217,7 +232,14 @@ fn run_group_candidate_pass<'a, T: Tessellation, K: InvalidGroupIssueKind>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
-    nested_for: impl Fn(&K::Element, &[K::Element]) -> Option<(&'a NestedStrategyConfig<T>, &'a StrategyParams, Box<dyn Issue>)>,
+    nested_for: impl Fn(
+        &K::Element,
+        &[K::Element],
+    ) -> Option<(
+        &'a NestedStrategyConfig<T>,
+        &'a StrategyParams,
+        Box<dyn Issue>,
+    )>,
     element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
@@ -285,7 +307,9 @@ where
     let mut any_succeeded = false;
 
     for target in candidates {
-        let still_needed = groups_by_element.get(&target).is_some_and(|gs| gs.iter().any(|&gi| remaining[gi] > 0));
+        let still_needed = groups_by_element
+            .get(&target)
+            .is_some_and(|gs| gs.iter().any(|&gi| remaining[gi] > 0));
         if !still_needed {
             continue;
         }
@@ -294,7 +318,8 @@ where
         // still-live candidates" -- an element whose every group already hit its budget stays a
         // `groups_by_element` key until it's itself picked or invalidated, but it's not a live
         // candidate anymore and must not leak stale context into `nested_for`.
-        let mut others: Vec<K::Element> = groups_by_element.iter()
+        let mut others: Vec<K::Element> = groups_by_element
+            .iter()
             .filter(|(id, gs)| **id != target && gs.iter().any(|&gi| remaining[gi] > 0))
             .map(|(id, _)| id.clone())
             .collect();
@@ -308,7 +333,12 @@ where
             continue;
         };
         let (nested_result, nested_commands) = cfg.strategy.apply(
-            synthetic.as_ref(), maze, rng, params, preset_state, &cfg.nested,
+            synthetic.as_ref(),
+            maze,
+            rng,
+            params,
+            preset_state,
+            &cfg.nested,
         );
 
         if matches!(nested_result, RepairResult::Fixed { .. }) {
@@ -318,7 +348,11 @@ where
             // other still-live candidate `element_invalidated` flags from this fix's own commands.
             // A shared/overlapping candidate can retire budget in several groups from a single fix.
             let mut invalidated: Vec<K::Element> = vec![target.clone()];
-            invalidated.extend(others.into_iter().filter(|id| element_invalidated(id, &nested_commands, maze)));
+            invalidated.extend(
+                others
+                    .into_iter()
+                    .filter(|id| element_invalidated(id, &nested_commands, maze)),
+            );
             for id in &invalidated {
                 if let Some(group_ids) = groups_by_element.remove(id) {
                     for gi in group_ids {
@@ -347,16 +381,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::EdgeId;
+    use crate::quality_control::issue::{INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, IssueKind};
+    use crate::quality_control::{InvalidGroupIssue, InvalidGroupIssueKind, InvalidOneWayIssue};
+    use crate::random::MazeRng;
+    use crate::repair::strategy::{
+        NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+    };
+    use crate::space::{SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
     use std::cell::RefCell;
     use std::rc::Rc;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::ids::EdgeId;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, square_rect};
-    use crate::quality_control::issue::{IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
-    use crate::quality_control::{InvalidOneWayIssue, InvalidGroupIssue, InvalidGroupIssueKind};
-    use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 
     struct TestKind;
     impl InvalidGroupIssueKind for TestKind {
@@ -367,13 +403,22 @@ mod tests {
     }
     type TestIssue = InvalidGroupIssue<TestKind>;
 
-    static TEST_SLOT: NestedSlot = NestedSlot { slot_id: "test_fix_target", kind: INVALID_ONE_WAY, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered };
+    static TEST_SLOT: NestedSlot = NestedSlot {
+        slot_id: "test_fix_target",
+        kind: INVALID_ONE_WAY,
+        min: 1,
+        max: Some(1),
+        dispatch_kind: NestedDispatchKind::Unordered,
+    };
 
     fn empty_maze() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = crate::space::MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            crate::space::MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -381,17 +426,28 @@ mod tests {
     /// early without making any nested call at all.
     struct UnreachableStrategy;
     impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for UnreachableStrategy {
-        fn strategy_id(&self) -> &'static str { "unreachable_stub" }
+        fn strategy_id(&self) -> &'static str {
+            "unreachable_stub"
+        }
         fn apply(
-            &self, _issue: &InvalidOneWayIssue, _maze: &Maze<T>, _rng: &mut dyn RngCore,
-            _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>],
+            &self,
+            _issue: &InvalidOneWayIssue,
+            _maze: &Maze<T>,
+            _rng: &mut dyn RngCore,
+            _params: &StrategyParams,
+            _preset_state: &PresetState,
+            _nested: &[NestedStrategyConfig<T>],
         ) -> (RepairResult, Vec<MutationCommand>) {
             panic!("group_select_apply must not make a nested call for an empty issue.groups");
         }
     }
     crate::impl_erased_repair_strategy!(UnreachableStrategy, InvalidOneWayIssue);
 
-    fn no_order(candidates: &mut Vec<EdgeId>, _membership: &HashMap<EdgeId, usize>, _rng: &mut dyn RngCore) {
+    fn no_order(
+        candidates: &mut Vec<EdgeId>,
+        _membership: &HashMap<EdgeId, usize>,
+        _rng: &mut dyn RngCore,
+    ) {
         candidates.sort_unstable();
     }
 
@@ -407,11 +463,19 @@ mod tests {
             nested: vec![],
         };
         let (result, commands) = group_select_apply::<SquareTessellation, TestKind>(
-            &issue, &maze, &mut rng, &PresetState::empty(), &nested,
+            &issue,
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
+            &nested,
             |_| true,
-            |check, target, others| Box::new(InvalidOneWayIssue::new_from_check(check, {
-                let mut v = vec![*target]; v.extend_from_slice(others); v
-            })),
+            |check, target, others| {
+                Box::new(InvalidOneWayIssue::new_from_check(check, {
+                    let mut v = vec![*target];
+                    v.extend_from_slice(others);
+                    v
+                }))
+            },
             |_, _, _| false,
             no_order,
         );
@@ -435,38 +499,70 @@ mod tests {
             others_seen: Rc<RefCell<Vec<Vec<EdgeId>>>>,
         }
         impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for CapturingStrategy {
-            fn strategy_id(&self) -> &'static str { "capturing_stub" }
+            fn strategy_id(&self) -> &'static str {
+                "capturing_stub"
+            }
             fn apply(
-                &self, issue: &InvalidOneWayIssue, _maze: &Maze<T>, _rng: &mut dyn RngCore,
-                _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>],
+                &self,
+                issue: &InvalidOneWayIssue,
+                _maze: &Maze<T>,
+                _rng: &mut dyn RngCore,
+                _params: &StrategyParams,
+                _preset_state: &PresetState,
+                _nested: &[NestedStrategyConfig<T>],
             ) -> (RepairResult, Vec<MutationCommand>) {
                 // issue.invalid[0] is the target, the rest is `others` (see build_nested_issue below).
-                self.others_seen.borrow_mut().push(issue.invalid[1..].to_vec());
-                (RepairResult::Fixed { score: None }, vec![MutationCommand::RemoveEdge { id: issue.invalid[0] }])
+                self.others_seen
+                    .borrow_mut()
+                    .push(issue.invalid[1..].to_vec());
+                (
+                    RepairResult::Fixed { score: None },
+                    vec![MutationCommand::RemoveEdge {
+                        id: issue.invalid[0],
+                    }],
+                )
             }
         }
         crate::impl_erased_repair_strategy!(CapturingStrategy, InvalidOneWayIssue);
 
         let nested = NestedStrategyConfig {
             slot: &TEST_SLOT,
-            strategy: Box::new(CapturingStrategy { others_seen: others_seen_clone }),
+            strategy: Box::new(CapturingStrategy {
+                others_seen: others_seen_clone,
+            }),
             param_overrides: HashMap::new(),
             nested: vec![],
         };
         let (result, _commands) = group_select_apply::<SquareTessellation, TestKind>(
-            &issue, &maze, &mut rng, &PresetState::empty(), &nested,
+            &issue,
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
+            &nested,
             |_| true,
-            |check, target, others| Box::new(InvalidOneWayIssue::new_from_check(check, {
-                let mut v = vec![*target]; v.extend_from_slice(others); v
-            })),
+            |check, target, others| {
+                Box::new(InvalidOneWayIssue::new_from_check(check, {
+                    let mut v = vec![*target];
+                    v.extend_from_slice(others);
+                    v
+                }))
+            },
             |_, _, _| false,
             no_order,
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         let calls = others_seen.borrow();
-        assert_eq!(calls.len(), 2, "two candidates (e0, e2) expected -- e1 must never be picked as its own target since e0 resolves group A first");
-        assert!(!calls[1].contains(&1), "e1's group was already fully resolved by e0 -- it must not appear in a later call's `others`: {:?}", calls[1]);
+        assert_eq!(
+            calls.len(),
+            2,
+            "two candidates (e0, e2) expected -- e1 must never be picked as its own target since e0 resolves group A first"
+        );
+        assert!(
+            !calls[1].contains(&1),
+            "e1's group was already fully resolved by e0 -- it must not appear in a later call's `others`: {:?}",
+            calls[1]
+        );
     }
 
     #[test]
@@ -477,7 +573,10 @@ mod tests {
         let membership: HashMap<EdgeId, usize> = [(0, 1), (1, 3), (2, 1)].into_iter().collect();
         let mut rng = MazeRng::seed_from_u64(1);
         order(&mut candidates, &membership, &mut rng);
-        assert_eq!(candidates[0], 1, "highest-membership candidate must be visited first under problematic priority");
+        assert_eq!(
+            candidates[0], 1,
+            "highest-membership candidate must be visited first under problematic priority"
+        );
     }
 
     // ---- multi_target_group_select_apply ----------------------------------------------------
@@ -486,12 +585,24 @@ mod tests {
     /// stand-in for any concrete `Remove*` nested strategy.
     struct RemoveFirstStrategy;
     impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for RemoveFirstStrategy {
-        fn strategy_id(&self) -> &'static str { "remove_first_stub" }
+        fn strategy_id(&self) -> &'static str {
+            "remove_first_stub"
+        }
         fn apply(
-            &self, issue: &InvalidOneWayIssue, _maze: &Maze<T>, _rng: &mut dyn RngCore,
-            _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>],
+            &self,
+            issue: &InvalidOneWayIssue,
+            _maze: &Maze<T>,
+            _rng: &mut dyn RngCore,
+            _params: &StrategyParams,
+            _preset_state: &PresetState,
+            _nested: &[NestedStrategyConfig<T>],
         ) -> (RepairResult, Vec<MutationCommand>) {
-            (RepairResult::Fixed { score: None }, vec![MutationCommand::RemoveEdge { id: issue.invalid[0] }])
+            (
+                RepairResult::Fixed { score: None },
+                vec![MutationCommand::RemoveEdge {
+                    id: issue.invalid[0],
+                }],
+            )
         }
     }
     crate::impl_erased_repair_strategy!(RemoveFirstStrategy, InvalidOneWayIssue);
@@ -523,8 +634,18 @@ mod tests {
         };
         let params = crate::repair::params::build_params(&[], None);
         let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &[], &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
-            |_, _| Some((&cfg, &params, Box::new(InvalidOneWayIssue::new_from_check("c", vec![0])))),
+            &[],
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
+            |_, _| {
+                Some((
+                    &cfg,
+                    &params,
+                    Box::new(InvalidOneWayIssue::new_from_check("c", vec![0])),
+                ))
+            },
             |_, _, _| false,
             no_order,
             false,
@@ -543,8 +664,15 @@ mod tests {
         let params = crate::repair::params::build_params(&[], None);
         let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
         let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &groups, &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
-            |_, _| { let _ = (&cfg, &params); None },
+            &groups,
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
+            |_, _| {
+                let _ = (&cfg, &params);
+                None
+            },
             |_, _, _| false,
             no_order,
             false,
@@ -563,7 +691,11 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
         let (result, _commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &groups, &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
+            &groups,
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
             |_, _| None,
             |_, _, _| false,
             no_order,
@@ -582,8 +714,18 @@ mod tests {
         let params = crate::repair::params::build_params(&[], None);
         let groups = vec![(vec![0_usize, 1_usize], 1_u32), (vec![2_usize], 1_u32)];
         let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &groups, &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
-            |e, others| if *e == 2 { Some((&cfg, &params, one_way_issue("b", e, others))) } else { None },
+            &groups,
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
+            |e, others| {
+                if *e == 2 {
+                    Some((&cfg, &params, one_way_issue("b", e, others)))
+                } else {
+                    None
+                }
+            },
             |_, _, _| false,
             no_order,
             false,
@@ -603,9 +745,16 @@ mod tests {
         // Count only real fix attempts (non-empty `others`), not the empty-slice index-build probes.
         let fix_targets: Rc<RefCell<Vec<EdgeId>>> = Rc::new(RefCell::new(Vec::new()));
         let fix_targets_seen = fix_targets.clone();
-        let groups = vec![(vec![0_usize, 1_usize], 1_u32), (vec![0_usize, 2_usize], 1_u32)];
+        let groups = vec![
+            (vec![0_usize, 1_usize], 1_u32),
+            (vec![0_usize, 2_usize], 1_u32),
+        ];
         let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &groups, &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
+            &groups,
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
             |e, others| {
                 if !others.is_empty() {
                     fix_targets_seen.borrow_mut().push(*e);
@@ -621,7 +770,11 @@ mod tests {
         );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(commands, vec![MutationCommand::RemoveEdge { id: 0 }]);
-        assert_eq!(*fix_targets.borrow(), vec![0], "only the shared element e0 is fixed; both groups' budgets retire from that single call");
+        assert_eq!(
+            *fix_targets.borrow(),
+            vec![0],
+            "only the shared element e0 is fixed; both groups' budgets retire from that single call"
+        );
     }
 
     #[test]
@@ -633,15 +786,27 @@ mod tests {
 
         struct FailForZero;
         impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for FailForZero {
-            fn strategy_id(&self) -> &'static str { "fail_for_zero_stub" }
+            fn strategy_id(&self) -> &'static str {
+                "fail_for_zero_stub"
+            }
             fn apply(
-                &self, issue: &InvalidOneWayIssue, _maze: &Maze<T>, _rng: &mut dyn RngCore,
-                _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>],
+                &self,
+                issue: &InvalidOneWayIssue,
+                _maze: &Maze<T>,
+                _rng: &mut dyn RngCore,
+                _params: &StrategyParams,
+                _preset_state: &PresetState,
+                _nested: &[NestedStrategyConfig<T>],
             ) -> (RepairResult, Vec<MutationCommand>) {
                 if issue.invalid[0] == 0 {
                     (RepairResult::Failed, vec![])
                 } else {
-                    (RepairResult::Fixed { score: None }, vec![MutationCommand::RemoveEdge { id: issue.invalid[0] }])
+                    (
+                        RepairResult::Fixed { score: None },
+                        vec![MutationCommand::RemoveEdge {
+                            id: issue.invalid[0],
+                        }],
+                    )
                 }
             }
         }
@@ -654,7 +819,11 @@ mod tests {
         };
         let groups = vec![(vec![0_usize, 1_usize], 1_u32)];
         let (result, commands) = multi_target_group_select_apply::<SquareTessellation, TestKind>(
-            &groups, &HashMap::new(), &maze, &mut rng, &PresetState::empty(),
+            &groups,
+            &HashMap::new(),
+            &maze,
+            &mut rng,
+            &PresetState::empty(),
             |e, others| Some((&cfg, &params, one_way_issue("c", e, others))),
             |_, _, _| false,
             no_order,

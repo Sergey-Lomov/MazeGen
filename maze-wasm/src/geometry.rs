@@ -1,7 +1,7 @@
-use wasm_bindgen::prelude::*;
-use serde::Deserialize;
-use maze_core::space::{SquareTessellation, SquarePoint, HexPoint, TriPoint, Tessellation};
 use crate::generation_config::TessellationType;
+use maze_core::space::{HexPoint, SquarePoint, SquareTessellation, Tessellation, TriPoint};
+use serde::Deserialize;
+use wasm_bindgen::prelude::*;
 
 /// Wire shape for `cartesian_coords` — a standalone point list plus its tessellation kind,
 /// independent of `GenerateConfig`'s own `TessellationConfig`/`level_fields` (which carry no
@@ -24,19 +24,25 @@ pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
     let cfg: CartesianCoordsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
     let coords: Vec<[f64; 2]> = match cfg.tessellation_type {
-        TessellationType::Square => cfg.points.iter()
+        TessellationType::Square => cfg
+            .points
+            .iter()
             .map(|&[x, y]| {
                 let (cx, cy) = SquareTessellation::cartesian(SquarePoint { x, y });
                 [cx, cy]
             })
             .collect(),
-        TessellationType::Hex => cfg.points.iter()
+        TessellationType::Hex => cfg
+            .points
+            .iter()
             .map(|&[q, r]| {
                 let (cx, cy) = maze_core::space::HexTessellation::cartesian(HexPoint { q, r });
                 [cx, cy]
             })
             .collect(),
-        TessellationType::Tri => cfg.points.iter()
+        TessellationType::Tri => cfg
+            .points
+            .iter()
             .map(|&[col, row]| {
                 let (cx, cy) = maze_core::space::TriTessellation::cartesian(TriPoint { col, row });
                 [cx, cy]

@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use crate::ids::NodeId;
 use super::super::{EdgeKind, Graph};
 use super::graph::NavGraph;
+use crate::ids::NodeId;
+use std::collections::HashSet;
 
 /// Every node touching (as `from` or `to`) any `Teleport`, `Elevator`, or `VerticalPassage` edge
 /// in `graph` — computed once per `build_nav_graph_pinned` call and threaded through as a lookup
@@ -10,8 +10,14 @@ use super::graph::NavGraph;
 /// for large fields). See `is_corridor_node`'s own doc comment for why each of these three kinds
 /// needs the exemption.
 fn non_corridor_endpoints(graph: &Graph) -> HashSet<NodeId> {
-    graph.edges()
-        .filter(|e| matches!(e.kind, EdgeKind::Teleport | EdgeKind::Elevator | EdgeKind::VerticalPassage))
+    graph
+        .edges()
+        .filter(|e| {
+            matches!(
+                e.kind,
+                EdgeKind::Teleport | EdgeKind::Elevator | EdgeKind::VerticalPassage
+            )
+        })
         .flat_map(|e| [e.from, e.to])
         .collect()
 }
@@ -46,9 +52,18 @@ fn non_corridor_endpoints(graph: &Graph) -> HashSet<NodeId> {
 /// `None` for it and any caller keying off the endpoint's own `NavNodeId` (routing, QC distance
 /// checks, cross-floor badge placement in the web renderers) resolved a neighboring corridor node
 /// instead — GitHub issue #517.
-fn is_corridor_node(graph: &Graph, node: NodeId, pinned: &HashSet<NodeId>, non_corridor_endpoints: &HashSet<NodeId>) -> bool {
-    if pinned.contains(&node) { return false; }
-    if non_corridor_endpoints.contains(&node) { return false; }
+fn is_corridor_node(
+    graph: &Graph,
+    node: NodeId,
+    pinned: &HashSet<NodeId>,
+    non_corridor_endpoints: &HashSet<NodeId>,
+) -> bool {
+    if pinned.contains(&node) {
+        return false;
+    }
+    if non_corridor_endpoints.contains(&node) {
+        return false;
+    }
     let out: Vec<NodeId> = graph.outgoing_neighbors(node).collect();
     let inc: Vec<NodeId> = graph.incoming_neighbors(node).collect();
     if out.len() != 2 || inc.len() != 2 {
@@ -62,7 +77,10 @@ fn is_corridor_node(graph: &Graph, node: NodeId, pinned: &HashSet<NodeId>, non_c
 /// Advance one step along a chain: pick the outgoing neighbor of `current` that is not `prev`.
 /// Returns `None` if no such neighbor exists (dead end or all neighbors are `prev`).
 fn advance_chain(graph: &Graph, current: NodeId, prev: NodeId) -> Option<NodeId> {
-    graph.outgoing_neighbors(current).filter(|&n| n != prev).min()
+    graph
+        .outgoing_neighbors(current)
+        .filter(|&n| n != prev)
+        .min()
 }
 
 /// Walk a directed corridor from `start` in direction `next_node`, collecting the path
@@ -82,7 +100,9 @@ fn walk_corridor(
     let mut next = next_node;
 
     loop {
-        if visited_corridor.contains(&next) || !is_corridor_node(graph, next, pinned, non_corridor_endpoints) {
+        if visited_corridor.contains(&next)
+            || !is_corridor_node(graph, next, pinned, non_corridor_endpoints)
+        {
             // next is a junction or already visited (ring close)
             path.push(next);
             return (path, next);
@@ -108,11 +128,20 @@ pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGra
     let non_corridor_endpoints = non_corridor_endpoints(graph);
 
     while !remaining.is_empty() {
-        let component_start = find_component_start(graph, &remaining, pinned, &non_corridor_endpoints);
+        let component_start =
+            find_component_start(graph, &remaining, pinned, &non_corridor_endpoints);
 
         match component_start {
             ComponentStart::Junction(junction) => {
-                dfs_from_junction(graph, junction, &mut nav, &mut remaining, &mut visited_junctions, pinned, &non_corridor_endpoints);
+                dfs_from_junction(
+                    graph,
+                    junction,
+                    &mut nav,
+                    &mut remaining,
+                    &mut visited_junctions,
+                    pinned,
+                    &non_corridor_endpoints,
+                );
             }
             ComponentStart::Ring(ring_start) => {
                 build_ring(graph, ring_start, &mut nav, &mut remaining, pinned);
@@ -130,7 +159,12 @@ enum ComponentStart {
 }
 
 /// Walk from any node in `remaining` until we find a junction or loop back to start.
-fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>, pinned: &HashSet<NodeId>, non_corridor_endpoints: &HashSet<NodeId>) -> ComponentStart {
+fn find_component_start(
+    graph: &Graph,
+    remaining: &HashSet<NodeId>,
+    pinned: &HashSet<NodeId>,
+    non_corridor_endpoints: &HashSet<NodeId>,
+) -> ComponentStart {
     let seed = *remaining.iter().min().unwrap();
 
     // If seed itself is a junction, done
@@ -207,23 +241,44 @@ fn process_outgoing(
     pinned: &HashSet<NodeId>,
     non_corridor_endpoints: &HashSet<NodeId>,
 ) {
-    let (path, terminal, is_teleport, is_elevator, is_vertical) = if is_corridor_node(graph, next, pinned, non_corridor_endpoints) {
-        let mut visited_corridor: HashSet<NodeId> = HashSet::new();
-        visited_corridor.insert(junction);
-        let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned, non_corridor_endpoints);
-        // Corridor-interior hops are always Basic (teleport/elevator/vertical-passage endpoints are never corridor nodes).
-        (path, terminal, false, false, false)
-    } else {
-        (vec![junction, next], next, first_kind == EdgeKind::Teleport, first_kind == EdgeKind::Elevator, first_kind == EdgeKind::VerticalPassage)
-    };
+    let (path, terminal, is_teleport, is_elevator, is_vertical) =
+        if is_corridor_node(graph, next, pinned, non_corridor_endpoints) {
+            let mut visited_corridor: HashSet<NodeId> = HashSet::new();
+            visited_corridor.insert(junction);
+            let (path, terminal) = walk_corridor(
+                graph,
+                junction,
+                next,
+                &mut visited_corridor,
+                pinned,
+                non_corridor_endpoints,
+            );
+            // Corridor-interior hops are always Basic (teleport/elevator/vertical-passage endpoints are never corridor nodes).
+            (path, terminal, false, false, false)
+        } else {
+            (
+                vec![junction, next],
+                next,
+                first_kind == EdgeKind::Teleport,
+                first_kind == EdgeKind::Elevator,
+                first_kind == EdgeKind::VerticalPassage,
+            )
+        };
 
     for &n in &path[1..] {
         remaining.remove(&n);
     }
 
     let from_nav = nav.add_node(junction);
-    let to_nav   = nav.add_node(terminal);
-    nav.add_edge(from_nav, to_nav, path, is_teleport, is_elevator, is_vertical);
+    let to_nav = nav.add_node(terminal);
+    nav.add_edge(
+        from_nav,
+        to_nav,
+        path,
+        is_teleport,
+        is_elevator,
+        is_vertical,
+    );
 
     enqueue_junction(terminal, visited_junctions, junction_stack);
 }
@@ -247,29 +302,57 @@ fn dfs_from_junction(
         remaining.remove(&junction);
         nav.add_node(junction);
 
-        let outgoing: Vec<(NodeId, EdgeKind)> = graph.outgoing_edges(junction)
+        let outgoing: Vec<(NodeId, EdgeKind)> = graph
+            .outgoing_edges(junction)
             .map(|e| (e.to, e.kind.clone()))
             .collect();
         for (next, kind) in outgoing {
-            process_outgoing(graph, junction, next, kind, nav, remaining, visited_junctions, &mut junction_stack, pinned, non_corridor_endpoints);
+            process_outgoing(
+                graph,
+                junction,
+                next,
+                kind,
+                nav,
+                remaining,
+                visited_junctions,
+                &mut junction_stack,
+                pinned,
+                non_corridor_endpoints,
+            );
         }
     }
 }
 
 /// Walk the ring from `ring_start` to find the first pinned node. Returns ring_start if none found.
 /// Only walks through nodes in `remaining` to stay within the current ring component.
-fn find_ring_anchor(graph: &Graph, ring_start: NodeId, pinned: &HashSet<NodeId>, remaining: &HashSet<NodeId>) -> NodeId {
-    let Some(first) = graph.outgoing_neighbors(ring_start).filter(|n| remaining.contains(n) || *n == ring_start).min() else {
+fn find_ring_anchor(
+    graph: &Graph,
+    ring_start: NodeId,
+    pinned: &HashSet<NodeId>,
+    remaining: &HashSet<NodeId>,
+) -> NodeId {
+    let Some(first) = graph
+        .outgoing_neighbors(ring_start)
+        .filter(|n| remaining.contains(n) || *n == ring_start)
+        .min()
+    else {
         return ring_start;
     };
-    if first == ring_start { return ring_start; }
+    if first == ring_start {
+        return ring_start;
+    }
     let mut walk = first;
     let mut walk_prev = ring_start;
     loop {
-        if pinned.contains(&walk) { return walk; }
+        if pinned.contains(&walk) {
+            return walk;
+        }
         match advance_chain(graph, walk, walk_prev) {
             Some(n) if n == ring_start => return ring_start,
-            Some(n) if remaining.contains(&n) => { walk_prev = walk; walk = n; }
+            Some(n) if remaining.contains(&n) => {
+                walk_prev = walk;
+                walk = n;
+            }
             _ => return ring_start,
         }
     }

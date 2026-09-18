@@ -1,6 +1,8 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_SPLIT_TILES};
-use crate::quality_control::RepairArea;
 use super::merge_repair_area_deficits;
+use crate::quality_control::RepairArea;
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_SPLIT_TILES,
+};
 
 /// Produced by any check that flags the maze as short on split tiles overall (currently only
 /// `SplitCountCheck`/`SplitDensityCheck`; future checks needing more split tiles added may reuse
@@ -14,7 +16,10 @@ pub struct MissingSplitTilesIssue {
 
 impl MissingSplitTilesIssue {
     pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), missing }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            missing,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -47,22 +52,47 @@ mod tests {
 
     #[test]
     fn merge_takes_the_larger_missing_value_for_the_same_area() {
-        let mut a = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)]);
-        let b = MissingSplitTilesIssue::new_from_check("split_density", vec![(RepairArea::WholeMaze, 8)]);
+        let mut a =
+            MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)]);
+        let b = MissingSplitTilesIssue::new_from_check(
+            "split_density",
+            vec![(RepairArea::WholeMaze, 8)],
+        );
         a.merge(b);
-        assert_eq!(a.missing, vec![(RepairArea::WholeMaze, 8)], "must not silently keep the smaller self value");
+        assert_eq!(
+            a.missing,
+            vec![(RepairArea::WholeMaze, 8)],
+            "must not silently keep the smaller self value"
+        );
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)])
-            .with_detail("split_count", "missing", "5".to_string());
-        let b = MissingSplitTilesIssue::new_from_check("split_density", vec![(RepairArea::WholeMaze, 8)])
-            .with_detail("split_density", "missing", "8".to_string());
+        let mut a =
+            MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)])
+                .with_detail("split_count", "missing", "5".to_string());
+        let b = MissingSplitTilesIssue::new_from_check(
+            "split_density",
+            vec![(RepairArea::WholeMaze, 8)],
+        )
+        .with_detail("split_density", "missing", "8".to_string());
         a.merge(b);
 
-        assert_eq!(a.source_checks(), vec!["split_count".to_string(), "split_density".to_string()]);
-        assert_eq!(a.details().get("split_count").and_then(|kv| kv.get("missing")), Some(&"5".to_string()));
-        assert_eq!(a.details().get("split_density").and_then(|kv| kv.get("missing")), Some(&"8".to_string()));
+        assert_eq!(
+            a.source_checks(),
+            vec!["split_count".to_string(), "split_density".to_string()]
+        );
+        assert_eq!(
+            a.details()
+                .get("split_count")
+                .and_then(|kv| kv.get("missing")),
+            Some(&"5".to_string())
+        );
+        assert_eq!(
+            a.details()
+                .get("split_density")
+                .and_then(|kv| kv.get("missing")),
+            Some(&"8".to_string())
+        );
     }
 }

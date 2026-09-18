@@ -75,7 +75,11 @@ Verify with: cargo run -p codegen -- --check
 "#
     );
 
-    NewFileScaffold { path: checks_dir.join(format!("{id}.rs")), contents, checklist }
+    NewFileScaffold {
+        path: checks_dir.join(format!("{id}.rs")),
+        contents,
+        checklist,
+    }
 }
 
 /// Builds the skeleton `RepairStrategy<T, I>` impl + checklist for a new strategy id.
@@ -137,7 +141,11 @@ Verify with: cargo run -p codegen -- --check
 "#
     );
 
-    NewFileScaffold { path: strategies_dir.join(format!("{id}.rs")), contents, checklist }
+    NewFileScaffold {
+        path: strategies_dir.join(format!("{id}.rs")),
+        contents,
+        checklist,
+    }
 }
 
 /// Appends `pub mod <id>;` to `mod_rs_text` right after the last existing `mod `/`pub mod ` line
@@ -157,8 +165,13 @@ pub fn ensure_mod_declared(mod_rs_text: &str, id: &str) -> Option<String> {
         return None;
     }
 
-    let last_mod_line_idx = mod_rs_text.lines().enumerate()
-        .filter(|(_, l)| { let t = l.trim(); t.starts_with("mod ") || t.starts_with("pub mod ") })
+    let last_mod_line_idx = mod_rs_text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| {
+            let t = l.trim();
+            t.starts_with("mod ") || t.starts_with("pub mod ")
+        })
         .map(|(i, _)| i)
         .last();
 
@@ -180,7 +193,10 @@ mod tests {
         assert!(scaffold.contents.contains("pub struct MinRegionSizeCheck"));
         assert!(scaffold.contents.contains("MinRegionSizeIssue"));
         assert!(scaffold.contents.contains(r#""min_region_size""#));
-        assert_eq!(scaffold.path, PathBuf::from("checks").join("min_region_size.rs"));
+        assert_eq!(
+            scaffold.path,
+            PathBuf::from("checks").join("min_region_size.rs")
+        );
     }
 
     #[test]
@@ -197,9 +213,16 @@ mod tests {
     #[test]
     fn new_strategy_names_struct_from_id() {
         let scaffold = new_strategy("farthest_endpoints", &PathBuf::from("strategies"));
-        assert!(scaffold.contents.contains("pub struct FarthestEndpointsStrategy"));
+        assert!(
+            scaffold
+                .contents
+                .contains("pub struct FarthestEndpointsStrategy")
+        );
         assert!(scaffold.contents.contains(r#""farthest_endpoints""#));
-        assert_eq!(scaffold.path, PathBuf::from("strategies").join("farthest_endpoints.rs"));
+        assert_eq!(
+            scaffold.path,
+            PathBuf::from("strategies").join("farthest_endpoints.rs")
+        );
     }
 
     #[test]
@@ -216,7 +239,10 @@ mod tests {
     fn ensure_mod_declared_appends_after_last_mod_line() {
         let text = "pub mod a;\npub mod b;\nmod c;\n\npub use a::A;\n";
         let updated = ensure_mod_declared(text, "d").expect("id absent, should insert");
-        assert_eq!(updated, "pub mod a;\npub mod b;\nmod c;\npub mod d;\n\npub use a::A;\n");
+        assert_eq!(
+            updated,
+            "pub mod a;\npub mod b;\nmod c;\npub mod d;\n\npub use a::A;\n"
+        );
     }
 
     #[test]

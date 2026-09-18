@@ -24,28 +24,53 @@ impl Tessellation for HexTessellation {
 
     fn step(point: HexPoint, face: HexFace) -> HexPoint {
         match face {
-            HexFace::E  => HexPoint { q: point.q + 1, r: point.r },
-            HexFace::NE => HexPoint { q: point.q + 1, r: point.r - 1 },
-            HexFace::NW => HexPoint { q: point.q,     r: point.r - 1 },
-            HexFace::W  => HexPoint { q: point.q - 1, r: point.r },
-            HexFace::SW => HexPoint { q: point.q - 1, r: point.r + 1 },
-            HexFace::SE => HexPoint { q: point.q,     r: point.r + 1 },
+            HexFace::E => HexPoint {
+                q: point.q + 1,
+                r: point.r,
+            },
+            HexFace::NE => HexPoint {
+                q: point.q + 1,
+                r: point.r - 1,
+            },
+            HexFace::NW => HexPoint {
+                q: point.q,
+                r: point.r - 1,
+            },
+            HexFace::W => HexPoint {
+                q: point.q - 1,
+                r: point.r,
+            },
+            HexFace::SW => HexPoint {
+                q: point.q - 1,
+                r: point.r + 1,
+            },
+            HexFace::SE => HexPoint {
+                q: point.q,
+                r: point.r + 1,
+            },
         }
     }
 
     fn faces() -> &'static [HexFace] {
-        &[HexFace::E, HexFace::NE, HexFace::NW, HexFace::W, HexFace::SW, HexFace::SE]
+        &[
+            HexFace::E,
+            HexFace::NE,
+            HexFace::NW,
+            HexFace::W,
+            HexFace::SW,
+            HexFace::SE,
+        ]
     }
 
     fn face_between(from: HexPoint, to: HexPoint) -> Option<HexFace> {
         match (to.q - from.q, to.r - from.r) {
-            (1, 0)   => Some(HexFace::E),
-            (1, -1)  => Some(HexFace::NE),
-            (0, -1)  => Some(HexFace::NW),
-            (-1, 0)  => Some(HexFace::W),
-            (-1, 1)  => Some(HexFace::SW),
-            (0, 1)   => Some(HexFace::SE),
-            _        => None,
+            (1, 0) => Some(HexFace::E),
+            (1, -1) => Some(HexFace::NE),
+            (0, -1) => Some(HexFace::NW),
+            (-1, 0) => Some(HexFace::W),
+            (-1, 1) => Some(HexFace::SW),
+            (0, 1) => Some(HexFace::SE),
+            _ => None,
         }
     }
 
@@ -86,7 +111,12 @@ impl Tessellation for HexTessellation {
 
 pub fn hex_parallelogram(cols: usize, rows: usize) -> Vec<HexPoint> {
     (0..rows)
-        .flat_map(|r| (0..cols).map(move |q| HexPoint { q: q as i32, r: r as i32 }))
+        .flat_map(|r| {
+            (0..cols).map(move |q| HexPoint {
+                q: q as i32,
+                r: r as i32,
+            })
+        })
         .collect()
 }
 

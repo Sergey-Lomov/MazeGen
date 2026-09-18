@@ -1,10 +1,10 @@
-use std::collections::{HashMap, VecDeque};
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::ids::{EdgeId, NodeId};
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidSplitRouteIssue, SplitRouteEdge};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::{HashMap, VecDeque};
 
 pub const SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT: u32 = 10;
 
@@ -77,14 +77,26 @@ fn capped_path<T: Tessellation>(
     None
 }
 
-impl<T: Tessellation> Check<T, InvalidSplitRouteIssue> for SplitNodeConnectionTraversalDistanceCheck {
-    fn check_type_id(&self) -> &'static str { "split_node_connection_traversal_distance" }
+impl<T: Tessellation> Check<T, InvalidSplitRouteIssue>
+    for SplitNodeConnectionTraversalDistanceCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "split_node_connection_traversal_distance"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitRouteIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitRouteIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let max_steps = self.min_detour.saturating_sub(1) as usize;
 
         let mut seen_points = std::collections::HashSet::new();
-        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze.field.all_points_with_level()
+        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter(|&(level, point)| maze.field.nodes_at(level, point).len() >= 2)
             .collect();
@@ -102,13 +114,13 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue> for SplitNodeConnectionTr
                         continue;
                     }
                     if let Some(path) = capped_path(maze, a, b, max_steps) {
-                        let route: Vec<SplitRouteEdge> = path.into_iter()
+                        let route: Vec<SplitRouteEdge> = path
+                            .into_iter()
                             .map(|edge_id| {
-                                let is_split_edge = maze.graph.edge(edge_id)
-                                    .is_some_and(|e| {
-                                        maze.field.point_of(e.from) == Some(point)
-                                            || maze.field.point_of(e.to) == Some(point)
-                                    });
+                                let is_split_edge = maze.graph.edge(edge_id).is_some_and(|e| {
+                                    maze.field.point_of(e.from) == Some(point)
+                                        || maze.field.point_of(e.to) == Some(point)
+                                });
                                 (edge_id, is_split_edge)
                             })
                             .collect();
@@ -121,8 +133,11 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue> for SplitNodeConnectionTr
         if routes.is_empty() {
             return;
         }
-        let issue = InvalidSplitRouteIssue::new_from_check(&self.instance_id, routes)
-            .with_detail(&self.instance_id, "min_detour", self.min_detour.to_string());
+        let issue = InvalidSplitRouteIssue::new_from_check(&self.instance_id, routes).with_detail(
+            &self.instance_id,
+            "min_detour",
+            self.min_detour.to_string(),
+        );
         issues.push(issue);
     }
 }

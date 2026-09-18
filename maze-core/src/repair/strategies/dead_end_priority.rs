@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use rand::RngCore;
-use rand::seq::SliceRandom;
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
 use crate::repair::params::{StrategyParam, StrategyParamKind};
+use crate::space::Tessellation;
+use rand::RngCore;
+use rand::seq::SliceRandom;
+use std::collections::HashSet;
 
 pub const PARAM_SRC_MODE: &str = "src_mode";
 
@@ -19,7 +19,10 @@ pub static SRC_MODE_OPTIONS: &[&str] = &[SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIO
 pub const SRC_MODE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_SRC_MODE,
     label: "Source selection mode",
-    kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
+    kind: StrategyParamKind::Enum {
+        options: SRC_MODE_OPTIONS,
+        default: SRC_MODE_RANDOM,
+    },
 };
 
 /// Shared by `MissingLoopsRandomStrategy` and `MissingLoopsSplitStrategy` (GitHub issue #254
@@ -54,7 +57,8 @@ pub fn apply_src_mode<T: Tessellation>(
         pool.shuffle(rng);
         return pool;
     }
-    let (mut rest, mut dead_ends): (Vec<NodeId>, Vec<NodeId>) = pool.into_iter().partition(|&n| !is_dead_end(maze, n));
+    let (mut rest, mut dead_ends): (Vec<NodeId>, Vec<NodeId>) =
+        pool.into_iter().partition(|&n| !is_dead_end(maze, n));
     rest.shuffle(rng);
     dead_ends.shuffle(rng);
     rest.extend(dead_ends);
@@ -65,7 +69,9 @@ pub fn apply_src_mode<T: Tessellation>(
 /// deduplicated by partner `NodeId`) — shared with `missing_teleports.rs`'s own `entry_pick`/
 /// `exit_pick` dead-end bias (GitHub issue #537).
 pub(crate) fn is_dead_end<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool {
-    let neighbors: HashSet<NodeId> = maze.graph.outgoing_neighbors(node)
+    let neighbors: HashSet<NodeId> = maze
+        .graph
+        .outgoing_neighbors(node)
         .chain(maze.graph.incoming_neighbors(node))
         .collect();
     neighbors.len() == 1
@@ -74,17 +80,20 @@ pub(crate) fn is_dead_end<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::random::MazeRng;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -97,7 +106,10 @@ mod tests {
         result.sort();
         let mut expected = pool;
         expected.sort();
-        assert_eq!(result, expected, "every candidate must survive, order aside");
+        assert_eq!(
+            result, expected,
+            "every candidate must survive, order aside"
+        );
     }
 
     #[test]
@@ -105,17 +117,35 @@ mod tests {
         // 1x3 line, only the middle node connected both ways: ends (nodes[0]/[1]) are dead ends
         // (degree 1), the isolated node (nodes[2], degree 0) is not.
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
-        maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let nodes: Vec<NodeId> = (0..3)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
+        maze.graph
+            .add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
 
         let pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_src_mode(&maze, pool, SRC_MODE_DEAD_END_PRIORITY, &mut rng);
-        assert_eq!(result.len(), 3, "every candidate must still be present, not dropped");
+        assert_eq!(
+            result.len(),
+            3,
+            "every candidate must still be present, not dropped"
+        );
         // Last two entries (poppable first) must be exactly the two dead ends, in either order.
         let tail: HashSet<NodeId> = result[1..].iter().copied().collect();
-        assert_eq!(tail, HashSet::from([nodes[0], nodes[1]]), "dead ends must occupy the poppable end of the pool");
-        assert_eq!(result[0], nodes[2], "the non-dead-end must sit behind the dead ends, not dropped");
+        assert_eq!(
+            tail,
+            HashSet::from([nodes[0], nodes[1]]),
+            "dead ends must occupy the poppable end of the pool"
+        );
+        assert_eq!(
+            result[0], nodes[2],
+            "the non-dead-end must sit behind the dead ends, not dropped"
+        );
     }
 
     #[test]
@@ -129,7 +159,10 @@ mod tests {
         result.sort();
         let mut expected = pool;
         expected.sort();
-        assert_eq!(result, expected, "every candidate must survive when none are dead ends");
+        assert_eq!(
+            result, expected,
+            "every candidate must survive when none are dead ends"
+        );
     }
 
     #[test]
@@ -138,9 +171,17 @@ mod tests {
         // pool — every original candidate must be visited exactly once, confirming the dead-end
         // exhaustion case (GitHub issue #278) falls through instead of leaving candidates stranded.
         let mut maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
-        maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
-        maze.graph.add_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        let nodes: Vec<NodeId> = (0..5)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
+        maze.graph
+            .add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        maze.graph
+            .add_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
 
         let pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut rng = MazeRng::seed_from_u64(7);
@@ -153,7 +194,10 @@ mod tests {
         visited.sort();
         let mut expected = nodes.clone();
         expected.sort();
-        assert_eq!(visited, expected, "popping the whole pool must visit every original candidate exactly once");
+        assert_eq!(
+            visited, expected,
+            "popping the whole pool must visit every original candidate exactly once"
+        );
     }
 
     #[test]
@@ -161,8 +205,15 @@ mod tests {
         // A node with a single bidirectional passage (two directed edges, one partner) must still
         // count as a dead end — degree is measured by distinct partner count, not edge count.
         let mut maze = maze_line(2);
-        let nodes: Vec<NodeId> = (0..2).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
-        maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let nodes: Vec<NodeId> = (0..2)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
+        maze.graph
+            .add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
 
         assert!(is_dead_end(&maze, nodes[0]));
         assert!(is_dead_end(&maze, nodes[1]));
@@ -171,15 +222,23 @@ mod tests {
     #[test]
     fn two_one_way_edges_to_different_neighbors_is_not_a_dead_end() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<NodeId> = (0..3).map(|x| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<NodeId> = (0..3)
+            .map(|x| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap())
+            .collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        assert!(!is_dead_end(&maze, nodes[1]), "two distinct neighbors via one-way edges is degree 2, not a dead end");
+        assert!(
+            !is_dead_end(&maze, nodes[1]),
+            "two distinct neighbors via one-way edges is degree 2, not a dead end"
+        );
     }
 }

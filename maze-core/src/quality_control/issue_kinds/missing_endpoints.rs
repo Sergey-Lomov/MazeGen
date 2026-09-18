@@ -1,4 +1,6 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS};
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_ENDPOINTS,
+};
 
 /// The maze has no start and/or no finish set — see `MISSING_ENDPOINTS`'s doc comment.
 /// `missing_start`/`missing_finish` record which endpoint(s) are actually absent, so a
@@ -13,7 +15,11 @@ pub struct MissingEndpointsIssue {
 
 impl MissingEndpointsIssue {
     pub fn new_from_check(source_check: &str, missing_start: bool, missing_finish: bool) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), missing_start, missing_finish }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            missing_start,
+            missing_finish,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -49,7 +55,13 @@ mod tests {
         let mut a = MissingEndpointsIssue::new_from_check("missing_endpoints", true, false);
         let b = MissingEndpointsIssue::new_from_check("missing_endpoints_2", true, false);
         a.merge(b);
-        assert_eq!(a.meta.source_checks(), vec!["missing_endpoints".to_string(), "missing_endpoints_2".to_string()]);
+        assert_eq!(
+            a.meta.source_checks(),
+            vec![
+                "missing_endpoints".to_string(),
+                "missing_endpoints_2".to_string()
+            ]
+        );
     }
 
     #[test]

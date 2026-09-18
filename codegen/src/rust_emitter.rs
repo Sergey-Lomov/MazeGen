@@ -37,14 +37,23 @@ fn emit_golden_tests(out: &mut String, source: &EventSource) {
         return;
     }
     out.push_str("\n#[cfg(test)]\nmod golden_tests {\n    use super::*;\n\n");
-    for GoldenEntry { variant_name, rust_construct_expr, expected_bytes, .. } in &entries {
+    for GoldenEntry {
+        variant_name,
+        rust_construct_expr,
+        expected_bytes,
+        ..
+    } in &entries
+    {
         let test_name = format!("golden_round_trip_{}", to_snake_case(variant_name));
         out.push_str(&format!("    #[test]\n    fn {test_name}() {{\n"));
         out.push_str(&format!("        let event = {rust_construct_expr};\n"));
         out.push_str("        let mut bytes = Vec::new();\n");
         out.push_str("        event.encode_payload(&mut bytes);\n");
         let bytes_lit: Vec<String> = expected_bytes.iter().map(|b| b.to_string()).collect();
-        out.push_str(&format!("        assert_eq!(bytes, vec![{}]);\n", bytes_lit.join(", ")));
+        out.push_str(&format!(
+            "        assert_eq!(bytes, vec![{}]);\n",
+            bytes_lit.join(", ")
+        ));
         out.push_str("    }\n\n");
     }
     out.push_str("}\n");
@@ -77,7 +86,11 @@ fn emit_codec_imports(out: &mut String, source: &EventSource) {
 fn emit_wire_tags(out: &mut String, source: &EventSource) {
     out.push_str("mod wire_tags {\n");
     for v in &source.variants {
-        out.push_str(&format!("    pub const {}: u16 = {};\n", to_screaming_snake(&v.name), v.tag));
+        out.push_str(&format!(
+            "    pub const {}: u16 = {};\n",
+            to_screaming_snake(&v.name),
+            v.tag
+        ));
     }
     out.push_str("}\n\n");
 }
@@ -88,7 +101,10 @@ fn emit_encode_impl(out: &mut String, source: &EventSource) {
     out.push_str("    fn type_id(&self) -> u16 {\n        match self {\n");
     for v in &source.variants {
         let pat = variant_pattern(&v.name, &v.shape, false);
-        out.push_str(&format!("            {name}::{pat} => wire_tags::{},\n", to_screaming_snake(&v.name)));
+        out.push_str(&format!(
+            "            {name}::{pat} => wire_tags::{},\n",
+            to_screaming_snake(&v.name)
+        ));
     }
     out.push_str("        }\n    }\n\n");
 
@@ -106,11 +122,19 @@ fn emit_field_writes(out: &mut String, shape: &VariantShape) {
     match shape {
         VariantShape::Unit => {}
         VariantShape::NewtypeTuple(field) => {
-            out.push_str(&format!("                {}(out, {});\n", write_fn_for(&field.ty), field_ref("__field0", &field.ty)));
+            out.push_str(&format!(
+                "                {}(out, {});\n",
+                write_fn_for(&field.ty),
+                field_ref("__field0", &field.ty)
+            ));
         }
         VariantShape::Struct(fields) => {
             for f in fields {
-                out.push_str(&format!("                {}(out, {});\n", write_fn_for(&f.ty), field_ref(&f.name, &f.ty)));
+                out.push_str(&format!(
+                    "                {}(out, {});\n",
+                    write_fn_for(&f.ty),
+                    field_ref(&f.name, &f.ty)
+                ));
             }
         }
     }
@@ -125,33 +149,62 @@ fn emit_field_writes(out: &mut String, shape: &VariantShape) {
 /// each existing hand-written helper's own `&str`/`&[T]`/`&IssuePayload`-shaped signature.
 fn field_ref(name: &str, ty: &FieldType) -> String {
     match ty {
-        FieldType::Standard(t) if matches!(*t, "NodeId" | "u32" | "u64" | "usize" | "f64" | "bool" | "Option<NodeId>" | "Option<usize>" | "&'staticstr") => format!("*{name}"),
+        FieldType::Standard(t)
+            if matches!(
+                *t,
+                "NodeId"
+                    | "u32"
+                    | "u64"
+                    | "usize"
+                    | "f64"
+                    | "bool"
+                    | "Option<NodeId>"
+                    | "Option<usize>"
+                    | "&'staticstr"
+            ) =>
+        {
+            format!("*{name}")
+        }
         _ => name.to_string(),
     }
 }
 
 fn write_fn_for(ty: &FieldType) -> &str {
     match ty {
-        FieldType::Standard(t) => type_map::lookup(t).map(|m| m.rust_write_fn).unwrap_or("write_unknown"),
-        FieldType::Custom(name) => codecs::lookup(name).map(|c| c.rust_write_fn).unwrap_or("write_unknown_custom"),
+        FieldType::Standard(t) => type_map::lookup(t)
+            .map(|m| m.rust_write_fn)
+            .unwrap_or("write_unknown"),
+        FieldType::Custom(name) => codecs::lookup(name)
+            .map(|c| c.rust_write_fn)
+            .unwrap_or("write_unknown_custom"),
     }
 }
 
 fn emit_debug_event_impl(out: &mut String, source: &EventSource) {
     let name = &source.enum_name;
-    out.push_str(&format!("impl DebugEvent for {name} {{\n    fn is_mutating(&self) -> bool {{\n"));
+    out.push_str(&format!(
+        "impl DebugEvent for {name} {{\n    fn is_mutating(&self) -> bool {{\n"
+    ));
     match source.mutating_mode {
         MutatingMode::AlwaysMutating => out.push_str("        true\n"),
         MutatingMode::PerVariant => {
-            let mutating: Vec<&str> = source.variants.iter().filter(|v| v.mutating).map(|v| v.name.as_str()).collect();
+            let mutating: Vec<&str> = source
+                .variants
+                .iter()
+                .filter(|v| v.mutating)
+                .map(|v| v.name.as_str())
+                .collect();
             if mutating.is_empty() {
                 out.push_str("        false\n");
             } else {
                 out.push_str("        matches!(\n            self,\n            ");
-                let arms: Vec<String> = mutating.iter().map(|n| {
-                    let v = source.variants.iter().find(|v| v.name == *n).unwrap();
-                    format!("{name}::{}", variant_pattern(n, &v.shape, false))
-                }).collect();
+                let arms: Vec<String> = mutating
+                    .iter()
+                    .map(|n| {
+                        let v = source.variants.iter().find(|v| v.name == *n).unwrap();
+                        format!("{name}::{}", variant_pattern(n, &v.shape, false))
+                    })
+                    .collect();
                 out.push_str(&arms.join("\n                | "));
                 out.push_str("\n        )\n");
             }
@@ -164,7 +217,11 @@ fn variant_pattern(name: &str, shape: &VariantShape, bind: bool) -> String {
     match shape {
         VariantShape::Unit => name.to_string(),
         VariantShape::NewtypeTuple(_) => {
-            if bind { format!("{name}(__field0)") } else { format!("{name}(..)") }
+            if bind {
+                format!("{name}(__field0)")
+            } else {
+                format!("{name}(..)")
+            }
         }
         VariantShape::Struct(fields) => {
             if bind {
@@ -205,8 +262,12 @@ mod ensure_mod_declared_tests {
     #[test]
     fn inserts_the_path_and_mod_lines_above_existing_content_when_absent() {
         let source = "use crate::ids::NodeId;\n\npub enum Foo {}\n";
-        let updated = ensure_mod_declared(source, "foo").expect("mod line was absent, should insert");
-        assert_eq!(updated, "#[path = \"foo_wire.rs\"]\nmod foo_wire;\n\nuse crate::ids::NodeId;\n\npub enum Foo {}\n");
+        let updated =
+            ensure_mod_declared(source, "foo").expect("mod line was absent, should insert");
+        assert_eq!(
+            updated,
+            "#[path = \"foo_wire.rs\"]\nmod foo_wire;\n\nuse crate::ids::NodeId;\n\npub enum Foo {}\n"
+        );
     }
 
     #[test]
@@ -222,7 +283,10 @@ mod ensure_mod_declared_tests {
     fn a_second_call_on_its_own_output_is_a_no_op() {
         let source = "pub enum Foo {}\n";
         let once = ensure_mod_declared(source, "foo").expect("first call should insert");
-        assert!(ensure_mod_declared(&once, "foo").is_none(), "second call must not insert a duplicate mod line");
+        assert!(
+            ensure_mod_declared(&once, "foo").is_none(),
+            "second call must not insert a duplicate mod line"
+        );
     }
 
     /// `mod {stem}_wire;` is matched as a substring anywhere in the file, not just at the top —

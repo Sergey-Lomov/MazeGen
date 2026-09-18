@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
 use crate::ids::EdgeId;
-use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edge_ids;
-use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
-use crate::quality_control::floor_group::{floors_of_edge, floor_point_count};
+use crate::quality_control::floor_group::{floor_point_count, floors_of_edge};
+use crate::quality_control::{FloorScope, InvalidOneWayGroupIssue};
+use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const MAX_ONE_WAY_RATIO_DEFAULT: f64 = 100.0;
 pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
@@ -37,10 +37,20 @@ pub struct MaxOneWayRatioCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck {
-    fn check_type_id(&self) -> &'static str { "max_one_way_ratio" }
-    fn is_batch_edge_group(&self) -> bool { true }
+    fn check_type_id(&self) -> &'static str {
+        "max_one_way_ratio"
+    }
+    fn is_batch_edge_group(&self) -> bool {
+        true
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidOneWayGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let one_ways: Vec<EdgeId> = one_way_edge_ids(maze);
         let max_ratio = self.max_ratio;
 
@@ -62,7 +72,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
             FloorScope::PerFloor => {
                 let mut per_floor_count: HashMap<LevelId, u64> =
                     maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                let one_way_floors: Vec<_> = one_ways.iter()
+                let one_way_floors: Vec<_> = one_ways
+                    .iter()
                     .map(|&id| floors_of_edge(&maze.field, &maze.graph, id))
                     .collect();
                 for floors in &one_way_floors {
@@ -88,7 +99,9 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
                 // doesn't silently satisfy a different floor's quota (or leave it unresolved).
                 let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
                 for (&level, &to_remove) in &over_budget {
-                    let flagged: Vec<EdgeId> = one_ways.iter().zip(&one_way_floors)
+                    let flagged: Vec<EdgeId> = one_ways
+                        .iter()
+                        .zip(&one_way_floors)
                         .filter(|(_, floors)| floors.contains(&level))
                         .map(|(&id, _)| id)
                         .collect();
@@ -101,8 +114,9 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
             }
         };
 
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
-            .with_detail(&self.instance_id, "max_ratio", self.max_ratio.to_string());
+        let issue =
+            InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
+                .with_detail(&self.instance_id, "max_ratio", self.max_ratio.to_string());
         issues.push(issue);
     }
 }

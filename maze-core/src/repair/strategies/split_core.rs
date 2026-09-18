@@ -1,11 +1,11 @@
+use crate::Maze;
+use crate::generation::{OneWayDirection, SplitFaceRequirement, SplitPattern};
+use crate::graph::EdgeKind;
+use crate::ids::NodeId;
+use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
+use crate::space::Tessellation;
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
-use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::generation::{SplitPattern, SplitFaceRequirement, OneWayDirection};
-use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
-use crate::graph::EdgeKind;
 
 /// Shared split-tile face-planning logic used by `AddSplitStrategy` (GitHub issue #247) and
 /// `MissingLoopsSplitStrategy` (GitHub issue #254) — factored out once the latter needed the same
@@ -46,21 +46,31 @@ pub(crate) fn pick_weighted_pattern(patterns: &[SplitPattern], rng: &mut dyn Rng
 /// `(neighbor, direction-relative-to-at)` — `Passage` when both directions exist between `at` and
 /// the neighbor, `Forward`/`Backward` for a single direction. One entry per distinct neighbor
 /// (never per raw edge — a neighbor connected both ways collapses to one `Passage` entry).
-pub(crate) fn existing_directions<T: Tessellation>(maze: &Maze<T>, at: NodeId) -> Vec<(NodeId, SplitNodeEdgeDirection)> {
-    let neighbors: HashSet<NodeId> = maze.graph.outgoing_neighbors(at)
+pub(crate) fn existing_directions<T: Tessellation>(
+    maze: &Maze<T>,
+    at: NodeId,
+) -> Vec<(NodeId, SplitNodeEdgeDirection)> {
+    let neighbors: HashSet<NodeId> = maze
+        .graph
+        .outgoing_neighbors(at)
         .chain(maze.graph.incoming_neighbors(at))
         .collect();
-    neighbors.into_iter().map(|n| {
-        let fwd = maze.graph.edge_between(at, n).is_some();
-        let bwd = maze.graph.edge_between(n, at).is_some();
-        let direction = match (fwd, bwd) {
-            (true, true) => SplitNodeEdgeDirection::Passage,
-            (true, false) => SplitNodeEdgeDirection::Forward,
-            (false, true) => SplitNodeEdgeDirection::Backward,
-            (false, false) => unreachable!("n came from an outgoing/incoming edge, one direction must exist"),
-        };
-        (n, direction)
-    }).collect()
+    neighbors
+        .into_iter()
+        .map(|n| {
+            let fwd = maze.graph.edge_between(at, n).is_some();
+            let bwd = maze.graph.edge_between(n, at).is_some();
+            let direction = match (fwd, bwd) {
+                (true, true) => SplitNodeEdgeDirection::Passage,
+                (true, false) => SplitNodeEdgeDirection::Forward,
+                (false, true) => SplitNodeEdgeDirection::Backward,
+                (false, false) => {
+                    unreachable!("n came from an outgoing/incoming edge, one direction must exist")
+                }
+            };
+            (n, direction)
+        })
+        .collect()
 }
 
 /// Non-pattern candidate: `node_count` new nodes (index 0 becomes the new slot-0), each of `at`'s
@@ -89,7 +99,11 @@ pub(crate) fn plan_unconstrained_split<T: Tessellation>(
     let Some(required) = required else {
         for (target, direction) in existing {
             let owner = rng.random_range(0..node_count);
-            per_node[owner].push(SplitNodeEdge { target, direction, kind: EdgeKind::Basic });
+            per_node[owner].push(SplitNodeEdge {
+                target,
+                direction,
+                kind: EdgeKind::Basic,
+            });
         }
         return Some(per_node);
     };
@@ -106,14 +120,26 @@ pub(crate) fn plan_unconstrained_split<T: Tessellation>(
     let bridge_owner = rng.random_range(0..node_count);
     let mut bridge_satisfied = false;
     for (target, direction) in &existing {
-        let owner = if *target == required.neighbor { bridge_owner } else { rng.random_range(0..node_count) };
+        let owner = if *target == required.neighbor {
+            bridge_owner
+        } else {
+            rng.random_range(0..node_count)
+        };
         if *target == required.neighbor {
             bridge_satisfied = true;
         }
-        per_node[owner].push(SplitNodeEdge { target: *target, direction: *direction, kind: EdgeKind::Basic });
+        per_node[owner].push(SplitNodeEdge {
+            target: *target,
+            direction: *direction,
+            kind: EdgeKind::Basic,
+        });
     }
     if !bridge_satisfied {
-        per_node[bridge_owner].push(SplitNodeEdge { target: required.neighbor, direction: required.direction, kind: EdgeKind::Basic });
+        per_node[bridge_owner].push(SplitNodeEdge {
+            target: required.neighbor,
+            direction: required.direction,
+            kind: EdgeKind::Basic,
+        });
     }
 
     if per_node[bridge_owner].len() < 2 {
@@ -136,10 +162,19 @@ fn pick_free_neighbor<T: Tessellation>(
     per_node: &[Vec<SplitNodeEdge>],
     excluded: ExcludedTargets,
 ) -> Option<SplitNodeEdge> {
-    let claimed: HashSet<NodeId> = per_node.iter().flat_map(|edges| edges.iter().map(|e| e.target)).collect();
-    maze.field.neighbors(at).into_iter()
+    let claimed: HashSet<NodeId> = per_node
+        .iter()
+        .flat_map(|edges| edges.iter().map(|e| e.target))
+        .collect();
+    maze.field
+        .neighbors(at)
+        .into_iter()
         .find(|&n| n != exclude && n != at && !claimed.contains(&n) && !excluded.contains(&n))
-        .map(|target| SplitNodeEdge { target, direction: SplitNodeEdgeDirection::Passage, kind: EdgeKind::Basic })
+        .map(|target| SplitNodeEdge {
+            target,
+            direction: SplitNodeEdgeDirection::Passage,
+            kind: EdgeKind::Basic,
+        })
 }
 
 /// Pattern-based candidate against `at`, trying every `rotation`/`mirror` combination in random
@@ -154,7 +189,9 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
     allow_lose: bool,
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let Some(point) = maze.field.point_of(at) else { return None; };
+    let Some(point) = maze.field.point_of(at) else {
+        return None;
+    };
     let degree = T::faces().len();
     if degree == 0 || pattern.node_count < 2 {
         return None;
@@ -165,12 +202,17 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
 
     let mut rotations: Vec<usize> = (0..T::rotation_symmetries().len()).collect();
     shuffle(&mut rotations, rng);
-    let mut mirrors: Vec<Option<usize>> = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some)).collect();
+    let mut mirrors: Vec<Option<usize>> = std::iter::once(None)
+        .chain((0..T::mirror_symmetries().len()).map(Some))
+        .collect();
     shuffle(&mut mirrors, rng);
 
     for &rotation in &rotations {
         for &mirror in &mirrors {
-            if let Some(nodes) = try_pattern_adaptation(maze, at, point, pattern, rotation, mirror, allow_lose, allow_add, required, excluded) {
+            if let Some(nodes) = try_pattern_adaptation(
+                maze, at, point, pattern, rotation, mirror, allow_lose, allow_add, required,
+                excluded,
+            ) {
                 return Some(nodes);
             }
         }
@@ -214,22 +256,29 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
     for node_faces in pattern.faces.iter() {
         let mut node_edges: Vec<SplitNodeEdge> = Vec::new();
         for face in node_faces {
-            let resolved_index = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
+            let resolved_index =
+                crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
             if face.sibling_target.is_some() {
                 continue; // inter-split edge, not an outside connection — out of scope here
             }
             match face.requirement {
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let Some(tess_face) = T::face_at(resolved_index) else { return None; };
+                    let Some(tess_face) = T::face_at(resolved_index) else {
+                        return None;
+                    };
                     let neighbor_point = T::step(point, tess_face);
                     let level = maze.field.level_of(at).expect("at must be in field");
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
                         return None;
                     }
-                    let neighbor = *neighbor_candidates.iter()
-                        .find(|&&c| maze.graph.edge_between(at, c).is_some() || maze.graph.edge_between(c, at).is_some())
+                    let neighbor = *neighbor_candidates
+                        .iter()
+                        .find(|&&c| {
+                            maze.graph.edge_between(at, c).is_some()
+                                || maze.graph.edge_between(c, at).is_some()
+                        })
                         .unwrap_or(&neighbor_candidates[0]);
                     // `neighbor` is a `SplitNodeEdge::target`, existing connection or brand-new —
                     // either way this exact `NodeId` must still resolve at apply time. If its
@@ -242,20 +291,35 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
                     }
                     let direction = match face.requirement {
                         SplitFaceRequirement::Passage => SplitNodeEdgeDirection::Passage,
-                        SplitFaceRequirement::OneWay(OneWayDirection::Forward) => SplitNodeEdgeDirection::Forward,
-                        SplitFaceRequirement::OneWay(OneWayDirection::Backward) => SplitNodeEdgeDirection::Backward,
+                        SplitFaceRequirement::OneWay(OneWayDirection::Forward) => {
+                            SplitNodeEdgeDirection::Forward
+                        }
+                        SplitFaceRequirement::OneWay(OneWayDirection::Backward) => {
+                            SplitNodeEdgeDirection::Backward
+                        }
                         _ => unreachable!(),
                     };
                     let already_connected = match direction {
-                        SplitNodeEdgeDirection::Passage => maze.graph.edge_between(at, neighbor).is_some() && maze.graph.edge_between(neighbor, at).is_some(),
-                        SplitNodeEdgeDirection::Forward => maze.graph.edge_between(at, neighbor).is_some(),
-                        SplitNodeEdgeDirection::Backward => maze.graph.edge_between(neighbor, at).is_some(),
+                        SplitNodeEdgeDirection::Passage => {
+                            maze.graph.edge_between(at, neighbor).is_some()
+                                && maze.graph.edge_between(neighbor, at).is_some()
+                        }
+                        SplitNodeEdgeDirection::Forward => {
+                            maze.graph.edge_between(at, neighbor).is_some()
+                        }
+                        SplitNodeEdgeDirection::Backward => {
+                            maze.graph.edge_between(neighbor, at).is_some()
+                        }
                     };
                     if !already_connected && !allow_add {
                         return None;
                     }
                     claimed_directions.insert(neighbor);
-                    node_edges.push(SplitNodeEdge { target: neighbor, direction, kind: EdgeKind::Basic });
+                    node_edges.push(SplitNodeEdge {
+                        target: neighbor,
+                        direction,
+                        kind: EdgeKind::Basic,
+                    });
                 }
             }
         }
@@ -272,7 +336,9 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
 
     if let Some(required) = required {
         let bridge_owner = per_node.iter().position(|edges| {
-            edges.iter().any(|e| e.target == required.neighbor && e.direction == required.direction)
+            edges
+                .iter()
+                .any(|e| e.target == required.neighbor && e.direction == required.direction)
         })?;
         if per_node[bridge_owner].len() < 2 {
             return None;
@@ -285,31 +351,42 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::random::MazeRng;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
     /// SquareFace order [N, S, E, W] — node 1 gets an East face (index 2) and a North face
     /// (index 0), matching `at`'s real East and North neighbors on a 3x3 grid centered at (1,1).
     fn two_face_pattern() -> crate::generation::SplitPattern {
-        use crate::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement};
+        use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         SplitPattern {
             node_count: 2,
             faces: vec![
                 vec![],
                 vec![
-                    SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Passage, sibling_target: None },
-                    SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::Passage, sibling_target: None },
+                    SplitPatternFace {
+                        face_index: 2,
+                        requirement: SplitFaceRequirement::Passage,
+                        sibling_target: None,
+                    },
+                    SplitPatternFace {
+                        face_index: 0,
+                        requirement: SplitFaceRequirement::Passage,
+                        sibling_target: None,
+                    },
                 ],
             ],
             weight: 1.0,
@@ -319,12 +396,16 @@ mod tests {
     /// Same shape as `two_face_pattern` but node 1 has only the single East face — no second edge
     /// available from the pattern itself.
     fn one_face_pattern() -> crate::generation::SplitPattern {
-        use crate::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement};
+        use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         SplitPattern {
             node_count: 2,
             faces: vec![
                 vec![],
-                vec![SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+                vec![SplitPatternFace {
+                    face_index: 2,
+                    requirement: SplitFaceRequirement::Passage,
+                    sibling_target: None,
+                }],
             ],
             weight: 1.0,
         }
@@ -332,9 +413,12 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
@@ -344,15 +428,41 @@ mod tests {
         // bridge target) and a North face (the mandatory second edge) — both resolve to real
         // neighbors on a 3x3 grid, so the candidate must be accepted.
         let maze = maze_grid(3);
-        let at = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 }).unwrap();
+        let at = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
+            .unwrap();
         let point = maze.field.point_of(at).unwrap();
-        let east_neighbor = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 }).unwrap();
-        let required = RequiredConnection { neighbor: east_neighbor, direction: SplitNodeEdgeDirection::Passage };
+        let east_neighbor = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })
+            .unwrap();
+        let required = RequiredConnection {
+            neighbor: east_neighbor,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
 
-        let plan = try_pattern_adaptation(&maze, at, point, &two_face_pattern(), 0, None, true, true, Some(&required), &HashSet::new())
-            .expect("pattern grants the bridge node both required and second edges");
-        let bridge_owner = plan.iter().position(|edges| edges.iter().any(|e| e.target == east_neighbor)).unwrap();
-        assert!(plan[bridge_owner].len() >= 2, "bridge-carrying node must not be left a dead end");
+        let plan = try_pattern_adaptation(
+            &maze,
+            at,
+            point,
+            &two_face_pattern(),
+            0,
+            None,
+            true,
+            true,
+            Some(&required),
+            &HashSet::new(),
+        )
+        .expect("pattern grants the bridge node both required and second edges");
+        let bridge_owner = plan
+            .iter()
+            .position(|edges| edges.iter().any(|e| e.target == east_neighbor))
+            .unwrap();
+        assert!(
+            plan[bridge_owner].len() >= 2,
+            "bridge-carrying node must not be left a dead end"
+        );
     }
 
     #[test]
@@ -360,22 +470,53 @@ mod tests {
         // Same setup, but the pattern's node 1 only has the East (bridge) face — no second edge
         // anywhere in the pattern for that node, so the candidate must be rejected outright.
         let maze = maze_grid(3);
-        let at = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 }).unwrap();
+        let at = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
+            .unwrap();
         let point = maze.field.point_of(at).unwrap();
-        let east_neighbor = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 }).unwrap();
-        let required = RequiredConnection { neighbor: east_neighbor, direction: SplitNodeEdgeDirection::Passage };
+        let east_neighbor = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 })
+            .unwrap();
+        let required = RequiredConnection {
+            neighbor: east_neighbor,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
 
-        let plan = try_pattern_adaptation(&maze, at, point, &one_face_pattern(), 0, None, true, true, Some(&required), &HashSet::new());
-        assert!(plan.is_none(), "bridge node left with only the required edge must be rejected, not silently accepted as a dead end");
+        let plan = try_pattern_adaptation(
+            &maze,
+            at,
+            point,
+            &one_face_pattern(),
+            0,
+            None,
+            true,
+            true,
+            Some(&required),
+            &HashSet::new(),
+        );
+        assert!(
+            plan.is_none(),
+            "bridge node left with only the required edge must be rejected, not silently accepted as a dead end"
+        );
     }
 
     #[test]
     fn plan_unconstrained_split_without_required_matches_original_behavior() {
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
-        maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let nodes: Vec<NodeId> = (0..3)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
+        maze.graph
+            .add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut rng = MazeRng::seed_from_u64(1);
-        let plan = plan_unconstrained_split(&maze, nodes[1], 2, None, &HashSet::new(), &mut rng).unwrap();
+        let plan =
+            plan_unconstrained_split(&maze, nodes[1], 2, None, &HashSet::new(), &mut rng).unwrap();
         let total_edges: usize = plan.iter().map(|n| n.len()).sum();
         assert_eq!(total_edges, 1);
     }
@@ -386,15 +527,35 @@ mod tests {
         // (not a geometric neighbor, but required doesn't need it to be) plus a second edge drawn
         // from a real free neighbor (x=1 or x=3).
         let maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         let at = nodes[2];
         let bridge_target = nodes[0];
-        let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
+        let required = RequiredConnection {
+            neighbor: bridge_target,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
         let mut rng = MazeRng::seed_from_u64(3);
-        let plan = plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng).unwrap();
-        let bridge_owner = plan.iter().position(|edges| edges.iter().any(|e| e.target == bridge_target)).unwrap();
-        assert!(plan[bridge_owner].len() >= 2, "bridge-carrying node must have a second edge");
-        assert!(plan[bridge_owner].iter().any(|e| e.target != bridge_target), "second edge must go elsewhere");
+        let plan =
+            plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng)
+                .unwrap();
+        let bridge_owner = plan
+            .iter()
+            .position(|edges| edges.iter().any(|e| e.target == bridge_target))
+            .unwrap();
+        assert!(
+            plan[bridge_owner].len() >= 2,
+            "bridge-carrying node must have a second edge"
+        );
+        assert!(
+            plan[bridge_owner].iter().any(|e| e.target != bridge_target),
+            "second edge must go elsewhere"
+        );
     }
 
     #[test]
@@ -402,19 +563,45 @@ mod tests {
         // `at` already has a real edge to the required neighbor — the bridge must be satisfied by
         // redistributing that existing connection (not by adding a redundant new one).
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         let at = nodes[1];
         let bridge_target = nodes[0];
-        maze.graph.add_bidirectional_edge(at, bridge_target, EdgeKind::Basic);
-        maze.graph.add_bidirectional_edge(at, nodes[2], EdgeKind::Basic);
-        let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
+        maze.graph
+            .add_bidirectional_edge(at, bridge_target, EdgeKind::Basic);
+        maze.graph
+            .add_bidirectional_edge(at, nodes[2], EdgeKind::Basic);
+        let required = RequiredConnection {
+            neighbor: bridge_target,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
         let mut rng = MazeRng::seed_from_u64(1);
-        let plan = plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng).unwrap();
+        let plan =
+            plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng)
+                .unwrap();
 
         let total_edges: usize = plan.iter().map(|n| n.len()).sum();
-        assert_eq!(total_edges, 2, "both pre-existing edges must be redistributed, none added or dropped");
-        let bridge_owner = plan.iter().position(|edges| edges.iter().any(|e| e.target == bridge_target)).unwrap();
-        assert_eq!(plan[bridge_owner].iter().filter(|e| e.target == bridge_target).count(), 1, "bridge target must appear exactly once, not duplicated");
+        assert_eq!(
+            total_edges, 2,
+            "both pre-existing edges must be redistributed, none added or dropped"
+        );
+        let bridge_owner = plan
+            .iter()
+            .position(|edges| edges.iter().any(|e| e.target == bridge_target))
+            .unwrap();
+        assert_eq!(
+            plan[bridge_owner]
+                .iter()
+                .filter(|e| e.target == bridge_target)
+                .count(),
+            1,
+            "bridge target must appear exactly once, not duplicated"
+        );
     }
 
     #[test]
@@ -422,19 +609,26 @@ mod tests {
         // 1x1 field: the only point has no geometric neighbor at all, so a bridge-only node can
         // never gain a second edge.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let at = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         // A synthetic "elsewhere" neighbor id that isn't geometrically real — required connection
         // itself is always satisfiable (any NodeId), only the *second* edge needs a real neighbor.
         let fake_neighbor = at; // stand-in; the important part is the field has no other neighbor
-        let required = RequiredConnection { neighbor: fake_neighbor, direction: SplitNodeEdgeDirection::Passage };
+        let required = RequiredConnection {
+            neighbor: fake_neighbor,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng);
+        let result =
+            plan_unconstrained_split(&maze, at, 2, Some(&required), &HashSet::new(), &mut rng);
         assert!(result.is_none());
     }
 
@@ -443,10 +637,19 @@ mod tests {
         // A caller must never plan a bridge to a point another command in the same batch already
         // committed to replace — that node's id won't exist by apply time.
         let maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         let at = nodes[1];
         let bridge_target = nodes[0];
-        let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
+        let required = RequiredConnection {
+            neighbor: bridge_target,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
         let mut excluded = HashSet::new();
         excluded.insert(bridge_target);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -460,16 +663,35 @@ mod tests {
         // geometric neighbor that could supply a second edge on one side) is excluded — the only
         // remaining free neighbor is x=3.
         let maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         let at = nodes[2];
         let bridge_target = nodes[0];
-        let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
+        let required = RequiredConnection {
+            neighbor: bridge_target,
+            direction: SplitNodeEdgeDirection::Passage,
+        };
         let mut excluded = HashSet::new();
         excluded.insert(nodes[1]);
         let mut rng = MazeRng::seed_from_u64(3);
-        let plan = plan_unconstrained_split(&maze, at, 2, Some(&required), &excluded, &mut rng).unwrap();
-        let bridge_owner = plan.iter().position(|edges| edges.iter().any(|e| e.target == bridge_target)).unwrap();
-        assert!(plan[bridge_owner].iter().all(|e| e.target != nodes[1]), "excluded node must never be picked as the second edge");
-        assert!(plan[bridge_owner].iter().any(|e| e.target == nodes[3]), "must fall back to the other free neighbor");
+        let plan =
+            plan_unconstrained_split(&maze, at, 2, Some(&required), &excluded, &mut rng).unwrap();
+        let bridge_owner = plan
+            .iter()
+            .position(|edges| edges.iter().any(|e| e.target == bridge_target))
+            .unwrap();
+        assert!(
+            plan[bridge_owner].iter().all(|e| e.target != nodes[1]),
+            "excluded node must never be picked as the second edge"
+        );
+        assert!(
+            plan[bridge_owner].iter().any(|e| e.target == nodes[3]),
+            "must fall back to the other free neighbor"
+        );
     }
 }

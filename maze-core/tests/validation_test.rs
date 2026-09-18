@@ -1,6 +1,6 @@
-use maze_core::{Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
 use maze_core::validation::is_connected;
+use maze_core::{Graph, IdGenerator};
 
 fn make_graph(n: usize) -> (Graph, Vec<u64>) {
     let mut ids = IdGenerator::new();

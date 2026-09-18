@@ -1,37 +1,45 @@
+pub mod analysis;
 pub mod diag;
-pub mod math;
-pub mod random;
 pub mod dsu;
-pub mod ids;
-pub mod graph;
-pub mod space;
+pub mod event_log;
 pub mod generation;
-pub mod validation;
+pub mod graph;
+pub mod ids;
 pub mod io;
+pub mod math;
 pub mod meta;
 pub mod quality_control;
+pub mod random;
 pub mod repair;
-pub mod event_log;
-pub mod analysis;
+pub mod space;
+pub mod validation;
 
-pub use ids::{NodeId, IdGenerator};
+pub use analysis::MazeAnalysis;
+pub use generation::pipeline::{
+    GenerationTiming, MAX_REPAIR_ITERATIONS, RepairLimits, TimingEntry, TimingNode, build_maze,
+};
+pub use generation::{
+    ElementsConfig, GenerationAlgorithm, GenerationConfig, LockedNode, NodeLockKind,
+    PresetConnection, PresetConnectionState, PresetState, TeleportDirection, build_preset_state,
+    generate_maze,
+};
 pub use graph::Graph;
 pub use graph::classify::{GeometricNodeClass, classify_node};
-pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, TeleportEdgeStats, compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats};
-pub use graph::routing::{RouteInfo, compute_route_info};
 pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
-pub use graph::split_topology::{SplitTopology, canonical_split_topology, split_totals};
 pub use graph::region_class::{RegionClass, classify_regions};
-pub use space::{
-    Tessellation, Field, LevelId, MultiLevelField, geometric_distance,
-    HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
-    SquarePoint, SquareTessellation, SquareFace, square_rect,
-    TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,
+pub use graph::routing::{RouteInfo, compute_route_info};
+pub use graph::split_topology::{SplitTopology, canonical_split_topology, split_totals};
+pub use graph::stats::{
+    GeometricNodeStats, SpatialEdgeStats, TeleportEdgeStats, compute_node_stats,
+    compute_spatial_edge_stats, compute_teleport_edge_stats,
 };
+pub use ids::{IdGenerator, NodeId};
 pub use meta::MazeMeta;
-pub use generation::{generate_maze, build_preset_state, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, TeleportDirection, NodeLockKind, LockedNode, PresetState};
-pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS, RepairLimits, GenerationTiming, TimingEntry, TimingNode};
-pub use analysis::MazeAnalysis;
+pub use space::{
+    Field, HexFace, HexPoint, HexTessellation, LevelId, MultiLevelField, SquareFace, SquarePoint,
+    SquareTessellation, Tessellation, TriFace, TriPoint, TriTessellation, geometric_distance,
+    hex_hexagon, hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
+};
 
 pub struct Maze<T: Tessellation> {
     pub field: MultiLevelField<T>,
@@ -64,7 +72,11 @@ impl<T: Tessellation> Maze<T> {
     /// (GitHub issue #219) — the only correct way to add a node to an already-built maze; a raw
     /// `field.add_node_at` without a paired `graph.add_node` would leave `Graph` unaware of the
     /// new node.
-    pub fn add_node_at_on_level(&mut self, level: crate::space::LevelId, point: T::Point) -> NodeId {
+    pub fn add_node_at_on_level(
+        &mut self,
+        level: crate::space::LevelId,
+        point: T::Point,
+    ) -> NodeId {
         let node = self.field.add_node_at(level, point, &mut self.ids);
         self.graph.add_node(node);
         node
@@ -82,7 +94,10 @@ impl<T: Tessellation> Maze<T> {
     /// method (`MutationCommand::RemoveNode` or similar) to decide with a concrete use case in
     /// hand.
     pub fn remove_node_at(&mut self, node: NodeId) {
-        let incident: Vec<ids::EdgeId> = self.graph.outgoing_edges(node).map(|e| e.id)
+        let incident: Vec<ids::EdgeId> = self
+            .graph
+            .outgoing_edges(node)
+            .map(|e| e.id)
             .chain(self.graph.edges().filter(|e| e.to == node).map(|e| e.id))
             .collect();
         for id in incident {

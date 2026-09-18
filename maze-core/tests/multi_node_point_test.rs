@@ -1,9 +1,9 @@
 // GitHub issue #219 — a point can resolve to more than one NodeId via Field::add_node_at.
 
 use maze_core::IdGenerator;
-use maze_core::space::{Field, Tessellation, SquareTessellation, SquarePoint, square_rect};
-use maze_core::space::{HexTessellation, HexPoint, hex_parallelogram};
-use maze_core::space::{TriTessellation, TriPoint, tri_rect};
+use maze_core::space::{Field, SquarePoint, SquareTessellation, Tessellation, square_rect};
+use maze_core::space::{HexPoint, HexTessellation, hex_parallelogram};
+use maze_core::space::{TriPoint, TriTessellation, tri_rect};
 
 fn make_square_field(width: usize, height: usize) -> (Field<SquareTessellation>, IdGenerator) {
     let mut ids = IdGenerator::new();
@@ -93,7 +93,11 @@ fn build_nodes_registers_added_nodes_in_the_graph() {
     assert!(graph.nodes().any(|n| n.id == added));
 }
 
-fn assert_multi_node_behaves_the_same<T: Tessellation>(mut field: Field<T>, mut ids: IdGenerator, point: T::Point) {
+fn assert_multi_node_behaves_the_same<T: Tessellation>(
+    mut field: Field<T>,
+    mut ids: IdGenerator,
+    point: T::Point,
+) {
     let original = field.nodes_at(point)[0];
     let added = field.add_node_at(point, &mut ids);
     assert_ne!(original, added);

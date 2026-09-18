@@ -1,5 +1,5 @@
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKind, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP};
+use crate::quality_control::issue::{INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, IssueKind};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// One split tile's full node list — slot-0 included, see the epic #246 doc comment: slot-0 is
@@ -67,8 +67,12 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidSplitTileGroupIssue::new_from_check("rule_1:a", vec![(vec![tile(vec![0, 1])], 1)]);
-        let b = InvalidSplitTileGroupIssue::new_from_check("rule_1:b", vec![(vec![tile(vec![2])], 1)]);
+        let mut a = InvalidSplitTileGroupIssue::new_from_check(
+            "rule_1:a",
+            vec![(vec![tile(vec![0, 1])], 1)],
+        );
+        let b =
+            InvalidSplitTileGroupIssue::new_from_check("rule_1:b", vec![(vec![tile(vec![2])], 1)]);
         a.merge(b);
 
         assert_eq!(a.groups.len(), 2);
@@ -78,8 +82,14 @@ mod tests {
 
     #[test]
     fn merge_keeps_the_larger_to_remove_for_the_same_group() {
-        let mut a = InvalidSplitTileGroupIssue::new_from_check("rule_1:a", vec![(vec![tile(vec![0, 1])], 1)]);
-        let b = InvalidSplitTileGroupIssue::new_from_check("rule_1:b", vec![(vec![tile(vec![0, 1])], 2)]);
+        let mut a = InvalidSplitTileGroupIssue::new_from_check(
+            "rule_1:a",
+            vec![(vec![tile(vec![0, 1])], 1)],
+        );
+        let b = InvalidSplitTileGroupIssue::new_from_check(
+            "rule_1:b",
+            vec![(vec![tile(vec![0, 1])], 2)],
+        );
         a.merge(b);
 
         assert_eq!(a.groups, vec![(vec![tile(vec![0, 1])], 2)]);
@@ -87,6 +97,9 @@ mod tests {
 
     #[test]
     fn split_tile_nodes_canonicalizes_regardless_of_input_order() {
-        assert_eq!(SplitTileNodes::new(vec![2, 1]), SplitTileNodes::new(vec![1, 2]));
+        assert_eq!(
+            SplitTileNodes::new(vec![2, 1]),
+            SplitTileNodes::new(vec![1, 2])
+        );
     }
 }

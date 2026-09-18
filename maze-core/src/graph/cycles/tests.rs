@@ -1,10 +1,12 @@
 use super::*;
-use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::build_nav_graph;
+use crate::graph::{EdgeKind, Graph};
 
 fn triangle(a: u64, b: u64, c: u64) -> Graph {
     let mut g = Graph::new();
-    for id in [a, b, c] { g.add_node(id); }
+    for id in [a, b, c] {
+        g.add_node(id);
+    }
     g.add_edge(a, b, EdgeKind::Basic);
     g.add_edge(b, c, EdgeKind::Basic);
     g.add_edge(c, a, EdgeKind::Basic);
@@ -49,7 +51,9 @@ fn same_cycle_found_from_different_starting_edges_dedups_to_one() {
     // Square cycle 0->1->2->3->0 — Johnson's naturally finds it once regardless of which
     // node ends up as the SCC's chosen start.
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 3, EdgeKind::Basic);
@@ -63,9 +67,15 @@ fn same_cycle_found_from_different_starting_edges_dedups_to_one() {
 #[test]
 fn two_independent_cycles_both_found_without_duplicates() {
     let mut g = Graph::new();
-    for id in 0..6u64 { g.add_node(id); }
-    for &(a, b) in &[(0,1),(1,2),(2,0)] { g.add_edge(a, b, EdgeKind::Basic); }
-    for &(a, b) in &[(3,4),(4,5),(5,3)] { g.add_edge(a, b, EdgeKind::Basic); }
+    for id in 0..6u64 {
+        g.add_node(id);
+    }
+    for &(a, b) in &[(0, 1), (1, 2), (2, 0)] {
+        g.add_edge(a, b, EdgeKind::Basic);
+    }
+    for &(a, b) in &[(3, 4), (4, 5), (5, 3)] {
+        g.add_edge(a, b, EdgeKind::Basic);
+    }
 
     let cycles = all_cycles(&g);
     assert_eq!(cycles.len(), 2);
@@ -75,7 +85,9 @@ fn two_independent_cycles_both_found_without_duplicates() {
 fn bowtie_graph_finds_all_distinct_simple_cycles() {
     // Bowtie: A->B->C->A and B->D->C->B, sharing the B<->C reverse pair.
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic); // A->B
     g.add_edge(1, 2, EdgeKind::Basic); // B->C
     g.add_edge(2, 0, EdgeKind::Basic); // C->A
@@ -93,7 +105,11 @@ fn bowtie_graph_finds_all_distinct_simple_cycles() {
     let edge_ids = resolve_to_edge_ids(&nav, &cycles, &g);
     for cycle in &edge_ids {
         let unique: HashSet<_> = cycle.iter().collect();
-        assert_eq!(unique.len(), cycle.len(), "no duplicate EdgeId within one cycle");
+        assert_eq!(
+            unique.len(),
+            cycle.len(),
+            "no duplicate EdgeId within one cycle"
+        );
     }
 }
 
@@ -103,7 +119,9 @@ fn bidirectional_cycle_walked_both_ways_collapses_to_one_entry() {
     // to a leaf node). Forward and backward traversal of the loop are the same visual
     // loop and must not be reported as two separate cycles.
     let mut g = Graph::new();
-    for id in 0..8u64 { g.add_node(id); }
+    for id in 0..8u64 {
+        g.add_node(id);
+    }
     g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
     g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
     g.add_bidirectional_edge(2, 3, EdgeKind::Basic);
@@ -114,7 +132,11 @@ fn bidirectional_cycle_walked_both_ways_collapses_to_one_entry() {
     g.add_bidirectional_edge(3, 7, EdgeKind::Basic);
 
     let cycles = all_cycles(&g);
-    assert_eq!(cycles.len(), 1, "forward and backward traversal of an all-bidirectional loop must dedup to one entry");
+    assert_eq!(
+        cycles.len(),
+        1,
+        "forward and backward traversal of an all-bidirectional loop must dedup to one entry"
+    );
 }
 
 #[test]
@@ -122,7 +144,9 @@ fn finds_cycle_of_length_8_with_junction() {
     // Reproduces the original bug report shape: octagon loop with two junctions
     // (spurs at node 0 and node 4) splitting it into two 4-tile corridor segments.
     let mut g = Graph::new();
-    for id in 0..10u64 { g.add_node(id); }
+    for id in 0..10u64 {
+        g.add_node(id);
+    }
     for i in 0..8u64 {
         g.add_bidirectional_edge(i, (i + 1) % 8, EdgeKind::Basic);
     }
@@ -139,14 +163,20 @@ fn finds_cycle_of_length_8_with_single_junction_self_loop_ring() {
     // compresses into a single self-loop NavEdge. This is the original bug: such
     // rings used to be invisible to cycle detection entirely.
     let mut g = Graph::new();
-    for id in 0..9u64 { g.add_node(id); }
+    for id in 0..9u64 {
+        g.add_node(id);
+    }
     for i in 0..8u64 {
         g.add_bidirectional_edge(i, (i + 1) % 8, EdgeKind::Basic);
     }
     g.add_bidirectional_edge(0, 8, EdgeKind::Basic);
 
     let cycles = all_cycles(&g);
-    assert_eq!(cycles.len(), 1, "single-junction ring (self-loop nav-edge) must be found as a cycle");
+    assert_eq!(
+        cycles.len(),
+        1,
+        "single-junction ring (self-loop nav-edge) must be found as a cycle"
+    );
 }
 
 #[test]
@@ -154,22 +184,40 @@ fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
     // Pure ring, no junctions, all edges bidirectional — compresses to a single nav-node
     // with two self-loop nav-edges (CW and CCW), linked via reverse_edge. Must dedup to 1.
     let mut g = Graph::new();
-    for id in 0..3u64 { g.add_node(id); }
+    for id in 0..3u64 {
+        g.add_node(id);
+    }
     g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
     g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
     g.add_bidirectional_edge(2, 0, EdgeKind::Basic);
 
     let nav = build_nav_graph(&g);
-    assert_eq!(nav.nodes.len(), 1, "pure bidirectional ring with no junction compresses to one nav-node");
+    assert_eq!(
+        nav.nodes.len(),
+        1,
+        "pure bidirectional ring with no junction compresses to one nav-node"
+    );
 
     let CycleSearchResult::Cycles { cycles, basis } = find_all_simple_cycles(&nav) else {
         panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
     };
-    assert_eq!(cycles.len(), 2, "Johnson's correctly finds both CW and CCW self-loops as distinct directed cycles");
-    assert_eq!(basis.len(), 1, "CW/CCW self-loop pair is one canonical edge — GF(2) basis must not double-count it");
+    assert_eq!(
+        cycles.len(),
+        2,
+        "Johnson's correctly finds both CW and CCW self-loops as distinct directed cycles"
+    );
+    assert_eq!(
+        basis.len(),
+        1,
+        "CW/CCW self-loop pair is one canonical edge — GF(2) basis must not double-count it"
+    );
 
     let deduped = dedup_bidirectional_pairs(&nav, cycles);
-    assert_eq!(deduped.len(), 1, "CW/CCW self-loop pair on the same ring is one visual loop");
+    assert_eq!(
+        deduped.len(),
+        1,
+        "CW/CCW self-loop pair on the same ring is one visual loop"
+    );
 }
 
 #[test]
@@ -182,7 +230,9 @@ fn empty_graph_yields_no_cycles() {
 #[test]
 fn linear_chain_has_no_cycles() {
     let mut g = Graph::new();
-    for id in 0..3u64 { g.add_node(id); }
+    for id in 0..3u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     let cycles = all_cycles(&g);
@@ -197,7 +247,9 @@ fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
     // surfaces as a surprise on a real dense maze config, not to assert a specific count.
     const SIDE: u64 = 5;
     let mut g = Graph::new();
-    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for id in 0..(SIDE * SIDE) {
+        g.add_node(id);
+    }
     for row in 0..SIDE {
         for col in 0..SIDE {
             let id = row * SIDE + col;
@@ -216,14 +268,19 @@ fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
 
     println!(
         "dense 5x5 grid: {} distinct simple cycles found in {:?}",
-        cycles.len(), elapsed
+        cycles.len(),
+        elapsed
     );
     // Exact count, not a wall-clock budget: a wall-clock assertion is flaky on slow CI and
     // insensitive to a moderate regression (e.g. a 2x slowdown wouldn't trip a 5s timeout on
     // this small a grid). The cycle count is deterministic for this fixed graph — any change
     // signals either a correctness regression or a deliberate algorithm change, either of
     // which should be investigated explicitly rather than silently passing under a timeout.
-    assert_eq!(cycles.len(), 9349, "deterministic count for this fixed 5x5 grid — investigate any change");
+    assert_eq!(
+        cycles.len(),
+        9349,
+        "deterministic count for this fixed 5x5 grid — investigate any change"
+    );
 }
 
 #[test]
@@ -236,12 +293,18 @@ fn dense_grid_exceeding_max_simple_cycles_aborts_instead_of_hanging() {
     // unbounded count would eventually be.
     const SIDE: u64 = 6;
     let mut g = Graph::new();
-    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for id in 0..(SIDE * SIDE) {
+        g.add_node(id);
+    }
     for row in 0..SIDE {
         for col in 0..SIDE {
             let id = row * SIDE + col;
-            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
-            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+            if col + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic);
+            }
+            if row + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic);
+            }
         }
     }
     let nav = build_nav_graph(&g);
@@ -250,8 +313,14 @@ fn dense_grid_exceeding_max_simple_cycles_aborts_instead_of_hanging() {
     let result = find_all_simple_cycles(&nav);
     let elapsed = start.elapsed();
 
-    assert!(matches!(result, CycleSearchResult::TooManyCycles), "must abort, not enumerate all 2.4M cycles");
-    assert!(elapsed.as_secs() < 5, "abort must happen quickly, not after a near-complete enumeration: {elapsed:?}");
+    assert!(
+        matches!(result, CycleSearchResult::TooManyCycles),
+        "must abort, not enumerate all 2.4M cycles"
+    );
+    assert!(
+        elapsed.as_secs() < 5,
+        "abort must happen quickly, not after a near-complete enumeration: {elapsed:?}"
+    );
 }
 
 #[test]
@@ -265,7 +334,9 @@ fn many_independent_small_sccs_all_found() {
     // new incremental-SCC outer loop.
     const TRIANGLES: u64 = 4000;
     let mut g = Graph::new();
-    for id in 0..(TRIANGLES * 3) { g.add_node(id); }
+    for id in 0..(TRIANGLES * 3) {
+        g.add_node(id);
+    }
     for t in 0..TRIANGLES {
         let base = t * 3;
         g.add_edge(base, base + 1, EdgeKind::Basic);
@@ -298,7 +369,11 @@ fn basis_of_triangle_with_dangling_bidirectional_vertical_passage_is_the_one_cyc
     g.add_edge(3, 0, EdgeKind::VerticalPassage);
 
     let basis = basis_cycles(&g);
-    assert_eq!(basis.len(), 1, "dangling bidirectional VerticalPassage must not count as an independent cycle");
+    assert_eq!(
+        basis.len(),
+        1,
+        "dangling bidirectional VerticalPassage must not count as an independent cycle"
+    );
 }
 
 #[test]
@@ -317,18 +392,32 @@ fn basis_of_triangle_plus_vertical_corridor_chain_is_the_one_cycle() {
     g.add_edge(4, 3, EdgeKind::VerticalPassage);
 
     let basis = basis_cycles(&g);
-    assert_eq!(basis.len(), 1, "dangling bidirectional vertical corridor chain must not count as an independent cycle");
+    assert_eq!(
+        basis.len(),
+        1,
+        "dangling bidirectional vertical corridor chain must not count as an independent cycle"
+    );
 }
 
 #[test]
 fn basis_of_two_disjoint_triangles_is_both() {
     let mut g = Graph::new();
-    for id in 0..6u64 { g.add_node(id); }
-    for &(a, b) in &[(0,1),(1,2),(2,0)] { g.add_edge(a, b, EdgeKind::Basic); }
-    for &(a, b) in &[(3,4),(4,5),(5,3)] { g.add_edge(a, b, EdgeKind::Basic); }
+    for id in 0..6u64 {
+        g.add_node(id);
+    }
+    for &(a, b) in &[(0, 1), (1, 2), (2, 0)] {
+        g.add_edge(a, b, EdgeKind::Basic);
+    }
+    for &(a, b) in &[(3, 4), (4, 5), (5, 3)] {
+        g.add_edge(a, b, EdgeKind::Basic);
+    }
 
     let basis = basis_cycles(&g);
-    assert_eq!(basis.len(), 2, "two independent SCCs, each contributing its own 1-cycle basis");
+    assert_eq!(
+        basis.len(),
+        2,
+        "two independent SCCs, each contributing its own 1-cycle basis"
+    );
 }
 
 /// Two triangles sharing one vertex, each walked in a consistent rotational direction through
@@ -341,7 +430,9 @@ fn basis_of_two_disjoint_triangles_is_both() {
 /// longer composite route does exist (via a bidirectional shared edge, not a shared vertex).
 fn shared_vertex_triangles() -> Graph {
     let mut g = Graph::new();
-    for id in 0..5u64 { g.add_node(id); }
+    for id in 0..5u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic);
@@ -355,8 +446,15 @@ fn shared_vertex_triangles() -> Graph {
 fn basis_of_shared_vertex_triangles_is_both_triangles() {
     let g = shared_vertex_triangles();
     let basis = basis_cycles(&g);
-    assert_eq!(basis.len(), 2, "two independent triangles sharing one vertex, no linear dependence between them");
-    assert!(basis.iter().all(|c| c.len() == 3), "each basis member is a 3-edge triangle");
+    assert_eq!(
+        basis.len(),
+        2,
+        "two independent triangles sharing one vertex, no linear dependence between them"
+    );
+    assert!(
+        basis.iter().all(|c| c.len() == 3),
+        "each basis member is a 3-edge triangle"
+    );
 }
 
 /// Bowtie fixture (see `bowtie_graph_finds_all_distinct_simple_cycles`) has 3 simple cycles —
@@ -368,7 +466,9 @@ fn basis_of_shared_vertex_triangles_is_both_triangles() {
 #[test]
 fn basis_of_bowtie_is_exactly_two_of_the_three_cycles() {
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Basic); // A->B
     g.add_edge(1, 2, EdgeKind::Basic); // B->C
     g.add_edge(2, 0, EdgeKind::Basic); // C->A
@@ -377,10 +477,18 @@ fn basis_of_bowtie_is_exactly_two_of_the_three_cycles() {
     g.add_edge(2, 1, EdgeKind::Basic); // C->B
 
     let all = all_cycles(&g);
-    assert_eq!(all.len(), 3, "sanity check: 2 short loops + 1 longer composite route (see bowtie test above)");
+    assert_eq!(
+        all.len(),
+        3,
+        "sanity check: 2 short loops + 1 longer composite route (see bowtie test above)"
+    );
 
     let basis = basis_cycles(&g);
-    assert_eq!(basis.len(), 2, "rank-2 space (Euler: E_canonical=5, V=4, C=1 -> 5-4+1=2) — basis must never contain all 3 linearly-dependent cycles");
+    assert_eq!(
+        basis.len(),
+        2,
+        "rank-2 space (Euler: E_canonical=5, V=4, C=1 -> 5-4+1=2) — basis must never contain all 3 linearly-dependent cycles"
+    );
 }
 
 #[test]
@@ -392,12 +500,18 @@ fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
     // never the search itself (see `find_all_simple_cycles`'s doc comment).
     const SIDE: u64 = 5;
     let mut g = Graph::new();
-    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for id in 0..(SIDE * SIDE) {
+        g.add_node(id);
+    }
     for row in 0..SIDE {
         for col in 0..SIDE {
             let id = row * SIDE + col;
-            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
-            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+            if col + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic);
+            }
+            if row + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic);
+            }
         }
     }
     let nav = build_nav_graph(&g);
@@ -413,12 +527,20 @@ fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
     // same real cycle set, just without ever materializing the trivial ones as a side effect of
     // early-exit no longer being their only reason to survive.
     // Any further change signals either a correctness regression or a deliberate algorithm change.
-    assert_eq!(cycles.len(), 18698, "raw pre-dedup cycle count (minus trivial reverse-pairs, never materialized) must be unaffected by early-exit — investigate any change");
+    assert_eq!(
+        cycles.len(),
+        18698,
+        "raw pre-dedup cycle count (minus trivial reverse-pairs, never materialized) must be unaffected by early-exit — investigate any change"
+    );
     // Euler formula for this single-SCC grid: E - V + 1, E counting each bidirectional
     // corridor once (undirected pairs, matching the basis' own canonical-index bit universe).
     let e_canonical = 2 * SIDE as usize * (SIDE as usize - 1);
     let expected_basis_size = e_canonical + 1 - (SIDE * SIDE) as usize;
-    assert_eq!(basis.len(), expected_basis_size, "basis size must equal the exact Euler-formula independent count");
+    assert_eq!(
+        basis.len(),
+        expected_basis_size,
+        "basis size must equal the exact Euler-formula independent count"
+    );
 }
 
 // GitHub issue #410: elevator fans are wired fully-connected (every stop pair gets a two-way
@@ -432,7 +554,9 @@ fn elevator_fan_alone_contributes_no_simple_cycles() {
     // 4-stop fully-connected elevator fan (K_4, all edges Elevator-kind) and nothing else --
     // every fan-internal cycle must be excluded now, not just filtered post-hoc.
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     for a in 0..4u64 {
         for b in 0..4u64 {
             if a != b {
@@ -441,7 +565,10 @@ fn elevator_fan_alone_contributes_no_simple_cycles() {
         }
     }
     let cycles = all_cycles(&g);
-    assert!(cycles.is_empty(), "a fan on its own must contribute zero simple cycles");
+    assert!(
+        cycles.is_empty(),
+        "a fan on its own must contribute zero simple cycles"
+    );
 }
 
 #[test]
@@ -450,7 +577,9 @@ fn mixed_cycle_using_two_edges_of_the_same_elevator_fan_is_excluded() {
     // (0->1 via elevator, 1->2 via a Basic detour edge, 2->0 via elevator again) -- forbidden:
     // both elevator hops belong to the same fan, so this is not a genuine mixed detour.
     let mut g = Graph::new();
-    for id in 0..3u64 { g.add_node(id); }
+    for id in 0..3u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Elevator);
     g.add_edge(1, 0, EdgeKind::Elevator);
     g.add_edge(1, 2, EdgeKind::Elevator);
@@ -462,8 +591,14 @@ fn mixed_cycle_using_two_edges_of_the_same_elevator_fan_is_excluded() {
     let cycles = all_cycles(&g);
     for cycle in &cycles {
         let nav = build_nav_graph(&g);
-        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
-        assert!(elevator_hops <= 1, "no simple cycle may use more than one edge of the same elevator fan");
+        let elevator_hops = cycle
+            .iter()
+            .filter(|&&idx| nav.edge_by_idx(idx).is_elevator)
+            .count();
+        assert!(
+            elevator_hops <= 1,
+            "no simple cycle may use more than one edge of the same elevator fan"
+        );
     }
 }
 
@@ -473,7 +608,9 @@ fn mixed_detour_through_two_different_stops_of_the_same_elevator_is_still_found(
     // (1->2), and return to 0 via another non-elevator edge (2->0) -- only ONE elevator edge is
     // used, so this must still be found as a real cycle, not swept away by the same-fan filter.
     let mut g = Graph::new();
-    for id in 0..3u64 { g.add_node(id); }
+    for id in 0..3u64 {
+        g.add_node(id);
+    }
     g.add_edge(0, 1, EdgeKind::Elevator);
     g.add_edge(1, 0, EdgeKind::Elevator);
     g.add_edge(1, 2, EdgeKind::Elevator);
@@ -486,11 +623,20 @@ fn mixed_detour_through_two_different_stops_of_the_same_elevator_is_still_found(
     let cycles = all_cycles(&g);
     let nav = build_nav_graph(&g);
     let has_mixed_detour = cycles.iter().any(|cycle| {
-        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
-        let basic_hops = cycle.iter().filter(|&&idx| !nav.edge_by_idx(idx).is_elevator).count();
+        let elevator_hops = cycle
+            .iter()
+            .filter(|&&idx| nav.edge_by_idx(idx).is_elevator)
+            .count();
+        let basic_hops = cycle
+            .iter()
+            .filter(|&&idx| !nav.edge_by_idx(idx).is_elevator)
+            .count();
         elevator_hops == 1 && basic_hops > 0
     });
-    assert!(has_mixed_detour, "a detour using exactly one elevator hop plus other edge kinds must still be found");
+    assert!(
+        has_mixed_detour,
+        "a detour using exactly one elevator hop plus other edge kinds must still be found"
+    );
 }
 
 #[test]
@@ -501,7 +647,9 @@ fn cycle_hopping_through_two_different_elevator_fans_is_found_with_both_hops() {
     // membership PER fan (a set, not a single "any elevator used" flag), so a cycle mixing hops
     // from two distinct fans is not the same-fan-reuse case #410 forbids.
     let mut g = Graph::new();
-    for id in 0..4u64 { g.add_node(id); }
+    for id in 0..4u64 {
+        g.add_node(id);
+    }
     g.add_bidirectional_edge(0, 1, EdgeKind::Elevator); // fan A
     g.add_bidirectional_edge(2, 3, EdgeKind::Elevator); // fan B
     g.add_edge(1, 2, EdgeKind::Basic);
@@ -510,25 +658,43 @@ fn cycle_hopping_through_two_different_elevator_fans_is_found_with_both_hops() {
     let cycles = all_cycles(&g);
     let nav = build_nav_graph(&g);
     let has_two_fan_cycle = cycles.iter().any(|cycle| {
-        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
-        let basic_hops = cycle.iter().filter(|&&idx| !nav.edge_by_idx(idx).is_elevator).count();
+        let elevator_hops = cycle
+            .iter()
+            .filter(|&&idx| nav.edge_by_idx(idx).is_elevator)
+            .count();
+        let basic_hops = cycle
+            .iter()
+            .filter(|&&idx| !nav.edge_by_idx(idx).is_elevator)
+            .count();
         elevator_hops == 2 && basic_hops == 2
     });
-    assert!(has_two_fan_cycle, "a cycle using one hop from each of two distinct elevator fans must be found");
+    assert!(
+        has_two_fan_cycle,
+        "a cycle using one hop from each of two distinct elevator fans must be found"
+    );
 }
 
 #[test]
 fn too_many_cycles_yields_no_partial_basis() {
     const SIDE: u64 = 6;
     let mut g = Graph::new();
-    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for id in 0..(SIDE * SIDE) {
+        g.add_node(id);
+    }
     for row in 0..SIDE {
         for col in 0..SIDE {
             let id = row * SIDE + col;
-            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
-            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+            if col + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic);
+            }
+            if row + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic);
+            }
         }
     }
     let nav = build_nav_graph(&g);
-    assert!(matches!(find_all_simple_cycles(&nav), CycleSearchResult::TooManyCycles));
+    assert!(matches!(
+        find_all_simple_cycles(&nav),
+        CycleSearchResult::TooManyCycles
+    ));
 }

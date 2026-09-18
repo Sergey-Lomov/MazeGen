@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use crate::graph::Graph;
-use crate::space::{MultiLevelField, Tessellation, transform_face_index};
 use crate::generation::SplitFaceRequirement;
+use crate::graph::Graph;
 use crate::quality_control::split_pattern_match::reconstruct_tile_faces;
+use crate::space::{MultiLevelField, Tessellation, transform_face_index};
+use std::collections::HashMap;
 
 /// A split tile's shape, independent of which physical node happens to be listed first
 /// (`nodes_at` order is creation order, not geometry) and independent of the tile's rotation/
@@ -53,7 +53,8 @@ pub fn canonical_split_topology<T: Tessellation>(
             for node_faces in &actual {
                 let mut transformed = vec![SplitFaceRequirement::Wall; degree];
                 for (face_index, &requirement) in node_faces.iter().enumerate() {
-                    let Some(resolved) = transform_face_index::<T>(face_index, rotation, mirror) else {
+                    let Some(resolved) = transform_face_index::<T>(face_index, rotation, mirror)
+                    else {
                         continue;
                     };
                     transformed[resolved] = requirement;
@@ -99,7 +100,8 @@ pub fn split_totals_scoped<T: Tessellation>(
     let mut node_count = 0usize;
     let mut groups: HashMap<SplitTopology, usize> = HashMap::new();
 
-    let mut seen_points: std::collections::HashSet<(crate::space::LevelId, T::Point)> = std::collections::HashSet::new();
+    let mut seen_points: std::collections::HashSet<(crate::space::LevelId, T::Point)> =
+        std::collections::HashSet::new();
     for (point_level, point) in field.all_points_with_level() {
         if level.is_some_and(|l| l != point_level) {
             continue;
@@ -124,18 +126,25 @@ pub fn split_totals_scoped<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     /// 3x1 field, middle point split into 2 nodes, each connected to one horizontal neighbor.
-    fn maze_with_middle_split() -> (Graph, MultiLevelField<SquareTessellation>, Vec<crate::ids::NodeId>) {
+    fn maze_with_middle_split() -> (
+        Graph,
+        MultiLevelField<SquareTessellation>,
+        Vec<crate::ids::NodeId>,
+    ) {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let west = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let east = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         let slot0 = field.nodes_at(level, mid)[0];
@@ -148,10 +157,13 @@ mod tests {
     #[test]
     fn non_split_tile_has_no_canonical_topology() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let node = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         assert!(canonical_split_topology(&g, &field, &[node]).is_none());
     }
@@ -172,12 +184,15 @@ mod tests {
         // Same middle-split shape, but built on the vertical axis instead of horizontal — a 90
         // degree rotation of the first fixture's shape.
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 3), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(1, 3), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 0, y: 1 };
         let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let south = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let north = field.node_at(level, SquarePoint { x: 0, y: 2 }).unwrap();
         let slot0 = field.nodes_at(level, mid)[0];
@@ -188,13 +203,17 @@ mod tests {
         let (g0, field0, nodes0) = maze_with_middle_split();
         let horizontal = canonical_split_topology(&g0, &field0, &nodes0).unwrap();
         let vertical = canonical_split_topology(&g, &field, &nodes).unwrap();
-        assert_eq!(horizontal, vertical, "a 90-degree-rotated equivalent tile must canonicalize identically");
+        assert_eq!(
+            horizontal, vertical,
+            "a 90-degree-rotated equivalent tile must canonicalize identically"
+        );
     }
 
     #[test]
     fn split_totals_counts_tiles_and_nodes_and_groups_by_topology() {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         // Two equivalent 2-node split tiles (same shape, different points) plus one 3-node tile.
         field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
@@ -202,16 +221,27 @@ mod tests {
         field.add_node_at(level, SquarePoint { x: 4, y: 0 }, &mut ids);
         field.add_node_at(level, SquarePoint { x: 4, y: 0 }, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
 
         let (tile_count, node_count, groups) = split_totals(&g, &field);
         assert_eq!(tile_count, 3, "three field points have 2+ nodes");
-        assert_eq!(node_count, 2 + 2 + 3, "sum of full node_count (including original) per split point");
+        assert_eq!(
+            node_count,
+            2 + 2 + 3,
+            "sum of full node_count (including original) per split point"
+        );
         // No edges built at all here — both 2-node tiles are topologically identical (every face
         // Wall), so they must land in the same group; the 3-node tile is a different node_count
         // and lands in a separate group.
-        assert_eq!(groups.len(), 2, "the two all-wall 2-node tiles group together, distinct from the 3-node tile");
-        let two_node_group_count = groups.iter()
+        assert_eq!(
+            groups.len(),
+            2,
+            "the two all-wall 2-node tiles group together, distinct from the 3-node tile"
+        );
+        let two_node_group_count = groups
+            .iter()
             .find(|(topology, _)| topology.len() == 2)
             .map(|(_, count)| *count)
             .unwrap();
@@ -221,14 +251,17 @@ mod tests {
     #[test]
     fn split_totals_scoped_counts_only_the_given_floor() {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level0 = field.single_level_id();
         field.add_node_at(level0, SquarePoint { x: 1, y: 0 }, &mut ids);
         let level1 = field.add_level(Field::new(square_rect(3, 1), &mut ids).unwrap());
         field.add_node_at(level1, SquarePoint { x: 1, y: 0 }, &mut ids);
         field.add_node_at(level1, SquarePoint { x: 2, y: 0 }, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
 
         let (tile_count0, ..) = split_totals_scoped(&g, &field, Some(level0));
         assert_eq!(tile_count0, 1, "level0 has one split point");
@@ -241,9 +274,12 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
 
         let (tile_count, node_count, groups) = split_totals(&g, &field);
         assert_eq!(tile_count, 0);

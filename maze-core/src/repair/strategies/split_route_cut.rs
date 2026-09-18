@@ -1,15 +1,17 @@
-use std::collections::HashSet;
-use rand::{Rng, RngCore};
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::quality_control::{InvalidSplitRouteIssue, SplitRouteEdge};
 use crate::generation::{PresetState, cmd_remove_edge_with_reverse};
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams, StrategyParamValue};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::ids::EdgeId;
+use crate::quality_control::{InvalidSplitRouteIssue, SplitRouteEdge};
 use crate::repair::command::{MutationCommand, removed_edge_ids};
-use crate::repair::strategies::group_select::{PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::result::RepairResult;
+use crate::repair::strategies::group_select::{
+    PARAM_PRIORITY, PRIORITY_OPTIONS, PRIORITY_PROBLEMATIC,
+};
+use crate::repair::strategy::{NestedSlot, NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
 pub const PARAM_EDGE_SCOPE: &str = "edge_scope";
 
@@ -17,18 +19,25 @@ pub const EDGE_SCOPE_SPLIT_ONLY: &str = "split_only";
 pub const EDGE_SCOPE_OTHER_ONLY: &str = "other_only";
 pub const EDGE_SCOPE_ANY: &str = "any";
 
-static EDGE_SCOPE_OPTIONS: &[&str] = &[EDGE_SCOPE_SPLIT_ONLY, EDGE_SCOPE_OTHER_ONLY, EDGE_SCOPE_ANY];
+static EDGE_SCOPE_OPTIONS: &[&str] =
+    &[EDGE_SCOPE_SPLIT_ONLY, EDGE_SCOPE_OTHER_ONLY, EDGE_SCOPE_ANY];
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_EDGE_SCOPE,
         label: "Cuttable edges",
-        kind: StrategyParamKind::Enum { options: EDGE_SCOPE_OPTIONS, default: EDGE_SCOPE_OTHER_ONLY },
+        kind: StrategyParamKind::Enum {
+            options: EDGE_SCOPE_OPTIONS,
+            default: EDGE_SCOPE_OTHER_ONLY,
+        },
     },
     StrategyParam {
         id: PARAM_PRIORITY,
         label: "Edge selection priority",
-        kind: StrategyParamKind::Enum { options: PRIORITY_OPTIONS, default: PRIORITY_PROBLEMATIC },
+        kind: StrategyParamKind::Enum {
+            options: PRIORITY_OPTIONS,
+            default: PRIORITY_PROBLEMATIC,
+        },
     },
 ];
 
@@ -62,7 +71,9 @@ static PARAMS: &[StrategyParam] = &[
 pub struct SplitRouteCutStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidSplitRouteIssue> for SplitRouteCutStrategy {
-    fn strategy_id(&self) -> &'static str { "split_route_cut" }
+    fn strategy_id(&self) -> &'static str {
+        "split_route_cut"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -102,7 +113,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitRouteIssue> for SplitRouteCu
             let route_idx = 0;
             let route = pending.remove(route_idx);
 
-            let candidates: Vec<SplitRouteEdge> = route.iter().copied()
+            let candidates: Vec<SplitRouteEdge> = route
+                .iter()
+                .copied()
                 .filter(|&(_, is_split)| match edge_scope {
                     EDGE_SCOPE_SPLIT_ONLY => is_split,
                     EDGE_SCOPE_ANY => true,
@@ -122,11 +135,15 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitRouteIssue> for SplitRouteCu
             any_succeeded = true;
 
             let removed: HashSet<EdgeId> = removed_edge_ids(&cut_commands).into_iter().collect();
-            let reversed: HashSet<EdgeId> = removed.iter()
+            let reversed: HashSet<EdgeId> = removed
+                .iter()
                 .filter_map(|&id| maze.graph.edge(id))
                 .filter_map(|e| maze.graph.edge_between(e.to, e.from))
                 .collect();
-            pending.retain(|r| !r.iter().any(|&(id, _)| removed.contains(&id) || reversed.contains(&id)));
+            pending.retain(|r| {
+                !r.iter()
+                    .any(|&(id, _)| removed.contains(&id) || reversed.contains(&id))
+            });
 
             commands.extend(cut_commands);
         }
@@ -159,13 +176,13 @@ fn pick_candidate(
         return Some(candidates[idx]);
     }
 
-    candidates.iter().copied()
-        .max_by_key(|&(id, _)| {
-            let overlap = other_pending_routes.iter()
-                .filter(|route| route.iter().any(|&(other_id, _)| other_id == id))
-                .count();
-            (overlap, std::cmp::Reverse(id))
-        })
+    candidates.iter().copied().max_by_key(|&(id, _)| {
+        let overlap = other_pending_routes
+            .iter()
+            .filter(|route| route.iter().any(|&(other_id, _)| other_id == id))
+            .count();
+        (overlap, std::cmp::Reverse(id))
+    })
 }
 
 #[cfg(test)]

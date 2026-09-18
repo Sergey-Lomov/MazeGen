@@ -1,4 +1,4 @@
-﻿mod is_web_decodable_tests {
+mod is_web_decodable_tests {
     use super::super::is_web_decodable;
     use maze_core::event_log::EventedEventKind;
 
@@ -9,7 +9,9 @@
 
     #[test]
     fn recursive_backtracker_is_web_decodable() {
-        assert!(is_web_decodable(Some(EventedEventKind::RecursiveBacktracker)));
+        assert!(is_web_decodable(Some(
+            EventedEventKind::RecursiveBacktracker
+        )));
     }
 
     #[test]
@@ -35,54 +37,135 @@
 
 mod run_initial_generation_tests {
     use super::super::run_initial_generation;
+    use maze_core::generation::{
+        GenerationAlgorithm, GenerationConfig, PresetState, build_preset_state,
+    };
     use maze_core::graph::Graph;
     use maze_core::ids::IdGenerator;
-    use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint};
-    use maze_core::generation::{GenerationAlgorithm, GenerationConfig, PresetState, build_preset_state};
+    use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation};
 
     /// A 3x3 square field with no preset connections/locks — enough for Recursive Backtracker
     /// to actually run and emit events.
-    fn field_and_state() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, IdGenerator) {
-        let points: Vec<SquarePoint> = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y })).collect();
+    fn field_and_state() -> (
+        Graph,
+        MultiLevelField<SquareTessellation>,
+        PresetState,
+        IdGenerator,
+    ) {
+        let points: Vec<SquarePoint> = (0..3)
+            .flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
+            .collect();
         let mut ids = IdGenerator::new();
-        let mut field = MultiLevelField::<SquareTessellation>::single_level(points, &mut ids).unwrap();
+        let mut field =
+            MultiLevelField::<SquareTessellation>::single_level(points, &mut ids).unwrap();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
-        let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        let preset_state = build_preset_state(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            |x, y| SquarePoint { x, y },
+            None,
+            None,
+        )
+        .unwrap();
         (graph, field, preset_state, ids)
     }
 
     fn rb_config() -> GenerationConfig {
-        GenerationConfig { algorithm: GenerationAlgorithm::RecursiveBacktracker, ..GenerationConfig::default() }
+        GenerationConfig {
+            algorithm: GenerationAlgorithm::RecursiveBacktracker,
+            ..GenerationConfig::default()
+        }
     }
 
     #[test]
     fn debug_events_false_yields_no_debug_tape() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 1, start, rb_config(), &preset_state, false, false);
-        assert!(raw_source.is_none(), "debug_events: false must not produce a tape");
-        assert!(event_kind.is_none(), "debug_events: false must not produce an event kind");
-        assert!(debug_value_names.is_empty(), "debug_events: false must not produce debug value names");
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            1,
+            start,
+            rb_config(),
+            &preset_state,
+            false,
+            false,
+        );
+        assert!(
+            raw_source.is_none(),
+            "debug_events: false must not produce a tape"
+        );
+        assert!(
+            event_kind.is_none(),
+            "debug_events: false must not produce an event kind"
+        );
+        assert!(
+            debug_value_names.is_empty(),
+            "debug_events: false must not produce debug value names"
+        );
     }
 
     #[test]
     fn debug_events_true_yields_correctly_strided_debug_tape() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, _, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 2, start, rb_config(), &preset_state, false, true);
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let (raw_source, _, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            2,
+            start,
+            rb_config(),
+            &preset_state,
+            false,
+            true,
+        );
         let source = raw_source.expect("debug_events: true must produce a tape");
 
-        assert!(!source.tape.node_table.is_empty(), "a 3x3 RB run must emit at least one event");
-        assert_eq!(source.tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
-        assert!(!source.tape.payload.is_empty(), "payload arena must hold at least the root scope name");
+        assert!(
+            !source.tape.node_table.is_empty(),
+            "a 3x3 RB run must emit at least one event"
+        );
+        assert_eq!(
+            source.tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE,
+            0,
+            "node table must be a whole number of NodeRecords"
+        );
+        assert!(
+            !source.tape.payload.is_empty(),
+            "payload arena must hold at least the root scope name"
+        );
         assert_eq!(
             debug_value_names,
             vec![
-                ("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence),
-                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
+                (
+                    "recursion_stack".to_string(),
+                    maze_core::event_log::DebugValueKind::Sequence
+                ),
+                (
+                    "visited".to_string(),
+                    maze_core::event_log::DebugValueKind::Region
+                ),
             ],
             "Recursive Backtracker declares the recursion_stack and visited debug values"
         );
@@ -95,21 +178,55 @@ mod run_initial_generation_tests {
         // debug values (all Region-kind).
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 3, start, config, &preset_state, false, true);
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let config = GenerationConfig {
+            algorithm: GenerationAlgorithm::CustomVertexBased(
+                maze_core::generation::GenerationParams::default(),
+            ),
+            ..GenerationConfig::default()
+        };
+        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            3,
+            start,
+            config,
+            &preset_state,
+            false,
+            true,
+        );
         let source = raw_source.expect("CustomVertexBased's event kind is web-decodable");
-        assert!(!source.tape.node_table.is_empty(), "a 3x3 CustomVertexBased run must emit at least one event");
+        assert!(
+            !source.tape.node_table.is_empty(),
+            "a 3x3 CustomVertexBased run must emit at least one event"
+        );
         assert_eq!(
             debug_value_names,
             vec![
-                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
-                ("frontier".to_string(), maze_core::event_log::DebugValueKind::Region),
-                ("reserve".to_string(), maze_core::event_log::DebugValueKind::Region),
+                (
+                    "visited".to_string(),
+                    maze_core::event_log::DebugValueKind::Region
+                ),
+                (
+                    "frontier".to_string(),
+                    maze_core::event_log::DebugValueKind::Region
+                ),
+                (
+                    "reserve".to_string(),
+                    maze_core::event_log::DebugValueKind::Region
+                ),
             ],
             "CustomVertexBased declares the visited, frontier, and reserve debug values"
         );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::VertexBased));
+        assert_eq!(
+            event_kind,
+            Some(maze_core::event_log::EventedEventKind::VertexBased)
+        );
     }
 
     #[test]
@@ -119,13 +236,39 @@ mod run_initial_generation_tests {
         // #146, see Specs/event_log.md's #146/#161 sections).
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let config = GenerationConfig { algorithm: GenerationAlgorithm::KruskalAlgorithm, ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 4, start, config, &preset_state, false, true);
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let config = GenerationConfig {
+            algorithm: GenerationAlgorithm::KruskalAlgorithm,
+            ..GenerationConfig::default()
+        };
+        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            4,
+            start,
+            config,
+            &preset_state,
+            false,
+            true,
+        );
         let source = raw_source.expect("Kruskal's event kind is web-decodable");
-        assert!(!source.tape.node_table.is_empty(), "a 3x3 Kruskal run must emit at least one event");
-        assert!(debug_value_names.is_empty(), "Kruskal does not declare debug values");
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Kruskal));
+        assert!(
+            !source.tape.node_table.is_empty(),
+            "a 3x3 Kruskal run must emit at least one event"
+        );
+        assert!(
+            debug_value_names.is_empty(),
+            "Kruskal does not declare debug values"
+        );
+        assert_eq!(
+            event_kind,
+            Some(maze_core::event_log::EventedEventKind::Kruskal)
+        );
     }
 
     #[test]
@@ -134,42 +277,118 @@ mod run_initial_generation_tests {
         // kind is web-decodable — it declares the "visited" and "current_walk" debug values.
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, config, &preset_state, false, true);
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let config = GenerationConfig {
+            algorithm: GenerationAlgorithm::WilsonAlgorithm,
+            ..GenerationConfig::default()
+        };
+        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            5,
+            start,
+            config,
+            &preset_state,
+            false,
+            true,
+        );
         let source = raw_source.expect("Wilson's event kind is web-decodable");
-        assert!(!source.tape.node_table.is_empty(), "a 3x3 Wilson run must emit at least one event");
+        assert!(
+            !source.tape.node_table.is_empty(),
+            "a 3x3 Wilson run must emit at least one event"
+        );
         assert_eq!(
             debug_value_names,
             vec![
-                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
-                ("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map),
-                ("walk_start".to_string(), maze_core::event_log::DebugValueKind::Vertex),
-                ("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+                (
+                    "visited".to_string(),
+                    maze_core::event_log::DebugValueKind::Region
+                ),
+                (
+                    "current_walk".to_string(),
+                    maze_core::event_log::DebugValueKind::Map
+                ),
+                (
+                    "walk_start".to_string(),
+                    maze_core::event_log::DebugValueKind::Vertex
+                ),
+                (
+                    "walk_head".to_string(),
+                    maze_core::event_log::DebugValueKind::Vertex
+                ),
             ],
             "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
         );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Wilson));
+        assert_eq!(
+            event_kind,
+            Some(maze_core::event_log::EventedEventKind::Wilson)
+        );
     }
 
     #[test]
     fn qc_experiment_ignores_debug_events_and_skips_generation() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, rb_config(), &preset_state, true, true);
-        assert!(raw_source.is_none(), "qc_experiment must skip the event tree entirely");
-        assert!(event_kind.is_none(), "qc_experiment must skip the event kind entirely");
-        assert!(debug_value_names.is_empty(), "qc_experiment must skip debug value names entirely");
-        assert_eq!(graph.edges().count(), 0, "qc_experiment must not run the generation algorithm at all");
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            5,
+            start,
+            rb_config(),
+            &preset_state,
+            true,
+            true,
+        );
+        assert!(
+            raw_source.is_none(),
+            "qc_experiment must skip the event tree entirely"
+        );
+        assert!(
+            event_kind.is_none(),
+            "qc_experiment must skip the event kind entirely"
+        );
+        assert!(
+            debug_value_names.is_empty(),
+            "qc_experiment must skip debug value names entirely"
+        );
+        assert_eq!(
+            graph.edges().count(),
+            0,
+            "qc_experiment must not run the generation algorithm at all"
+        );
     }
 
     #[test]
     fn initial_build_ms_is_a_plausible_finite_duration() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (_, _, _, initial_build_ms, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 6, start, rb_config(), &preset_state, false, true);
+        let start = field
+            .nodes_at(level, SquarePoint { x: 0, y: 0 })
+            .first()
+            .copied()
+            .unwrap();
+        let (_, _, _, initial_build_ms, _, _) = run_initial_generation(
+            &mut graph,
+            &mut field,
+            &mut ids,
+            6,
+            start,
+            rb_config(),
+            &preset_state,
+            false,
+            true,
+        );
         assert!(initial_build_ms.is_finite() && initial_build_ms >= 0.0);
     }
 }
@@ -181,34 +400,64 @@ mod build_generate_result_tests {
 
     #[test]
     fn no_tape_yields_none() {
-        let result = build_generate_result(JsValue::UNDEFINED, None, Vec::new(), Vec::new(), JsValue::UNDEFINED);
+        let result = build_generate_result(
+            JsValue::UNDEFINED,
+            None,
+            Vec::new(),
+            Vec::new(),
+            JsValue::UNDEFINED,
+        );
         assert!(result.debug_tape_bytes().is_none());
     }
 
     #[test]
     fn tape_yields_the_tape() {
-        let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
+        let tape = EncodedTape {
+            node_table: vec![1, 2, 3],
+            payload: vec![4, 5],
+        };
         let result = build_generate_result(
-            JsValue::UNDEFINED, Some(tape),
-            vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
-            vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)],
+            JsValue::UNDEFINED,
+            Some(tape),
+            vec![(
+                "recursion_stack".to_string(),
+                maze_core::event_log::DebugValueKind::Sequence,
+            )],
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+            )],
             JsValue::UNDEFINED,
         );
         assert!(result.debug_tape_bytes().is_some());
-        assert_eq!(result.debug_value_names_bytes(), &["recursion_stack".to_string()]);
+        assert_eq!(
+            result.debug_value_names_bytes(),
+            &["recursion_stack".to_string()]
+        );
         assert_eq!(result.debug_value_kinds_bytes(), &["sequence".to_string()]);
     }
 
     #[test]
     fn kruskal_tape_carries_kruskal_event_kind() {
-        let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
+        let tape = EncodedTape {
+            node_table: vec![1, 2, 3],
+            payload: vec![4, 5],
+        };
         let result = build_generate_result(
-            JsValue::UNDEFINED, Some(tape), Vec::new(),
-            vec![("generation", maze_core::event_log::EventedEventKind::Kruskal)],
+            JsValue::UNDEFINED,
+            Some(tape),
+            Vec::new(),
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::Kruskal,
+            )],
             JsValue::UNDEFINED,
         );
         assert_eq!(result.source_event_kinds_bytes(), &["kruskal".to_string()]);
-        assert_eq!(result.source_scope_names_bytes(), &["generation".to_string()]);
+        assert_eq!(
+            result.source_scope_names_bytes(),
+            &["generation".to_string()]
+        );
     }
 
     #[test]
@@ -216,14 +465,30 @@ mod build_generate_result_tests {
         // Guards build_generate_result's forwarding of Wilson's event kind and Map/Vertex-kind
         // debug values specifically (GitHub issue #145's follow-up) — the other tests in this
         // module only ever exercise RecursiveBacktracker/Kruskal fixtures.
-        let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
+        let tape = EncodedTape {
+            node_table: vec![1, 2, 3],
+            payload: vec![4, 5],
+        };
         let result = build_generate_result(
-            JsValue::UNDEFINED, Some(tape),
+            JsValue::UNDEFINED,
+            Some(tape),
             vec![
-                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
-                ("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map),
-                ("walk_start".to_string(), maze_core::event_log::DebugValueKind::Vertex),
-                ("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+                (
+                    "visited".to_string(),
+                    maze_core::event_log::DebugValueKind::Region,
+                ),
+                (
+                    "current_walk".to_string(),
+                    maze_core::event_log::DebugValueKind::Map,
+                ),
+                (
+                    "walk_start".to_string(),
+                    maze_core::event_log::DebugValueKind::Vertex,
+                ),
+                (
+                    "walk_head".to_string(),
+                    maze_core::event_log::DebugValueKind::Vertex,
+                ),
             ],
             vec![("generation", maze_core::event_log::EventedEventKind::Wilson)],
             JsValue::UNDEFINED,
@@ -231,11 +496,21 @@ mod build_generate_result_tests {
         assert_eq!(result.source_event_kinds_bytes(), &["wilson".to_string()]);
         assert_eq!(
             result.debug_value_names_bytes(),
-            &["visited".to_string(), "current_walk".to_string(), "walk_start".to_string(), "walk_head".to_string()]
+            &[
+                "visited".to_string(),
+                "current_walk".to_string(),
+                "walk_start".to_string(),
+                "walk_head".to_string()
+            ]
         );
         assert_eq!(
             result.debug_value_kinds_bytes(),
-            &["region".to_string(), "map".to_string(), "vertex".to_string(), "vertex".to_string()]
+            &[
+                "region".to_string(),
+                "map".to_string(),
+                "vertex".to_string(),
+                "vertex".to_string()
+            ]
         );
     }
 
@@ -246,8 +521,12 @@ mod build_generate_result_tests {
         // Some(tape)) — but guards the invariant so a future regression fails loudly instead of
         // silently dropping the names.
         build_generate_result(
-            JsValue::UNDEFINED, None,
-            vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
+            JsValue::UNDEFINED,
+            None,
+            vec![(
+                "recursion_stack".to_string(),
+                maze_core::event_log::DebugValueKind::Sequence,
+            )],
             Vec::new(),
             JsValue::UNDEFINED,
         );
@@ -259,26 +538,47 @@ mod build_generate_result_tests {
         // Guards the invariant run_initial_generation always upholds (tape/sources produced
         // together) — a future regression that drops sources while still forwarding a tape must
         // fail loudly rather than silently mislabeling the tape's decoder on the web side.
-        let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
-        build_generate_result(JsValue::UNDEFINED, Some(tape), Vec::new(), Vec::new(), JsValue::UNDEFINED);
+        let tape = EncodedTape {
+            node_table: vec![1, 2, 3],
+            payload: vec![4, 5],
+        };
+        build_generate_result(
+            JsValue::UNDEFINED,
+            Some(tape),
+            Vec::new(),
+            Vec::new(),
+            JsValue::UNDEFINED,
+        );
     }
 }
 
 mod merge_debug_sources_tests {
     use super::super::merge_debug_sources;
-    use maze_core::event_log::{EncodedTape, EventedEventKind, EventLog, TapeSource};
+    use maze_core::event_log::{EncodedTape, EventLog, EventedEventKind, TapeSource};
     use maze_core::quality_control::QcEvent;
 
     fn generation_tape_source() -> TapeSource {
         let mut log = EventLog::new();
-        log.emit(maze_core::generation::RecursiveBacktrackerEvent::EdgeAdded { from: 0, to: 1, bidirectional: true });
-        TapeSource { scope_name: "generation", tape: log.finish().encode() }
+        log.emit(
+            maze_core::generation::RecursiveBacktrackerEvent::EdgeAdded {
+                from: 0,
+                to: 1,
+                bidirectional: true,
+            },
+        );
+        TapeSource {
+            scope_name: "generation",
+            tape: log.finish().encode(),
+        }
     }
 
     fn preset_setup_tape_source() -> TapeSource {
         let mut log = EventLog::new();
         log.emit(maze_core::generation::PresetSetupEvent::PassageEstablished { from: 0, to: 1 });
-        TapeSource { scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME, tape: log.finish().encode() }
+        TapeSource {
+            scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME,
+            tape: log.finish().encode(),
+        }
     }
 
     fn qc_tape_with_one_event() -> EncodedTape {
@@ -303,40 +603,69 @@ mod merge_debug_sources_tests {
     fn qc_only_no_other_source_still_yields_a_tape_with_just_the_quality_control_scope() {
         // GitHub issue #173: qc_experiment mode never has a generation_source, but QC/repair's own
         // tape must still surface, not be dropped.
-        let (tape, names, sources) = merge_debug_sources(None, None, None, Vec::new(), Some(qc_tape_with_one_event()));
-        assert!(tape.is_some(), "a standalone QC tape must still produce a merged tape");
-        assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
+        let (tape, names, sources) =
+            merge_debug_sources(None, None, None, Vec::new(), Some(qc_tape_with_one_event()));
+        assert!(
+            tape.is_some(),
+            "a standalone QC tape must still produce a merged tape"
+        );
+        assert_eq!(
+            sources,
+            vec![("quality_control", EventedEventKind::QualityControl)]
+        );
         assert!(names.is_empty());
     }
 
     #[test]
     fn generation_only_no_qc_tape_yields_just_the_generation_scope() {
         let (tape, _names, sources) = merge_debug_sources(
-            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+            None,
+            Some(generation_tape_source()),
+            Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(),
+            None,
         );
         assert!(tape.is_some());
-        assert_eq!(sources, vec![("generation", EventedEventKind::RecursiveBacktracker)]);
+        assert_eq!(
+            sources,
+            vec![("generation", EventedEventKind::RecursiveBacktracker)]
+        );
     }
 
     #[test]
     fn generation_plus_qc_yields_both_scopes_in_order() {
         let (tape, _names, sources) = merge_debug_sources(
-            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(qc_tape_with_one_event()),
+            None,
+            Some(generation_tape_source()),
+            Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(),
+            Some(qc_tape_with_one_event()),
         );
         assert!(tape.is_some());
-        assert_eq!(sources, vec![
-            ("generation", EventedEventKind::RecursiveBacktracker),
-            ("quality_control", EventedEventKind::QualityControl),
-        ]);
+        assert_eq!(
+            sources,
+            vec![
+                ("generation", EventedEventKind::RecursiveBacktracker),
+                ("quality_control", EventedEventKind::QualityControl),
+            ]
+        );
     }
 
     #[test]
     fn generation_with_a_missing_qc_tape_omits_the_quality_control_scope() {
         let (tape, _names, sources) = merge_debug_sources(
-            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+            None,
+            Some(generation_tape_source()),
+            Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(),
+            None,
         );
         assert!(tape.is_some());
-        assert_eq!(sources.len(), 1, "no quality_control scope when qc_tape is None");
+        assert_eq!(
+            sources.len(),
+            1,
+            "no quality_control scope when qc_tape is None"
+        );
     }
 
     #[test]
@@ -347,13 +676,20 @@ mod merge_debug_sources_tests {
         // steps to totalSteps; the scope itself existing is harmless and lets narration show
         // "quality control did nothing" rather than silently omitting the phase.
         let (tape, _names, sources) = merge_debug_sources(
-            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(empty_qc_tape()),
+            None,
+            Some(generation_tape_source()),
+            Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(),
+            Some(empty_qc_tape()),
         );
         assert!(tape.is_some());
-        assert_eq!(sources, vec![
-            ("generation", EventedEventKind::RecursiveBacktracker),
-            ("quality_control", EventedEventKind::QualityControl),
-        ]);
+        assert_eq!(
+            sources,
+            vec![
+                ("generation", EventedEventKind::RecursiveBacktracker),
+                ("quality_control", EventedEventKind::QualityControl),
+            ]
+        );
     }
 
     #[test]
@@ -362,9 +698,16 @@ mod merge_debug_sources_tests {
         // repair mutations (e.g. an empty field where no strategy can act) — QC's tape is empty,
         // but with no other source it's the only thing there is to show, so it must still surface
         // as a (zero-step) scope rather than yield no debug arena at all.
-        let (tape, names, sources) = merge_debug_sources(None, None, None, Vec::new(), Some(empty_qc_tape()));
-        assert!(tape.is_some(), "an empty QC tape must still produce a merged tape when it's the only source");
-        assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
+        let (tape, names, sources) =
+            merge_debug_sources(None, None, None, Vec::new(), Some(empty_qc_tape()));
+        assert!(
+            tape.is_some(),
+            "an empty QC tape must still produce a merged tape when it's the only source"
+        );
+        assert_eq!(
+            sources,
+            vec![("quality_control", EventedEventKind::QualityControl)]
+        );
         assert!(names.is_empty());
     }
 
@@ -374,45 +717,73 @@ mod merge_debug_sources_tests {
         // when all three are, preset setup must lead.
         let (tape, _names, sources) = merge_debug_sources(
             Some(preset_setup_tape_source()),
-            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker),
-            Vec::new(), Some(qc_tape_with_one_event()),
+            Some(generation_tape_source()),
+            Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(),
+            Some(qc_tape_with_one_event()),
         );
         assert!(tape.is_some());
-        assert_eq!(sources, vec![
-            (maze_core::generation::PRESET_SETUP_SCOPE_NAME, EventedEventKind::PresetSetup),
-            ("generation", EventedEventKind::RecursiveBacktracker),
-            ("quality_control", EventedEventKind::QualityControl),
-        ]);
+        assert_eq!(
+            sources,
+            vec![
+                (
+                    maze_core::generation::PRESET_SETUP_SCOPE_NAME,
+                    EventedEventKind::PresetSetup
+                ),
+                ("generation", EventedEventKind::RecursiveBacktracker),
+                ("quality_control", EventedEventKind::QualityControl),
+            ]
+        );
     }
 
     #[test]
     fn preset_setup_plus_qc_only_qc_experiment_still_leads_with_preset_setup() {
         // qc_experiment mode skips generation but still has preset edges and a QC tape.
         let (tape, _names, sources) = merge_debug_sources(
-            Some(preset_setup_tape_source()), None, None, Vec::new(), Some(qc_tape_with_one_event()),
+            Some(preset_setup_tape_source()),
+            None,
+            None,
+            Vec::new(),
+            Some(qc_tape_with_one_event()),
         );
         assert!(tape.is_some());
-        assert_eq!(sources, vec![
-            (maze_core::generation::PRESET_SETUP_SCOPE_NAME, EventedEventKind::PresetSetup),
-            ("quality_control", EventedEventKind::QualityControl),
-        ]);
+        assert_eq!(
+            sources,
+            vec![
+                (
+                    maze_core::generation::PRESET_SETUP_SCOPE_NAME,
+                    EventedEventKind::PresetSetup
+                ),
+                ("quality_control", EventedEventKind::QualityControl),
+            ]
+        );
     }
 }
 
 mod build_qc_and_repair_tests {
-    use maze_runner::runner::build_qc_and_repair;
-    use crate::generation_config::{GenerateConfig, StageConfig, QcRuleConfig, CheckInstanceConfig};
+    use crate::generation_config::{
+        CheckInstanceConfig, GenerateConfig, QcRuleConfig, StageConfig,
+    };
     use maze_core::space::SquareTessellation;
+    use maze_runner::runner::build_qc_and_repair;
 
     fn check(local_id: &str, type_id: &str) -> CheckInstanceConfig {
-        CheckInstanceConfig { local_id: local_id.to_string(), type_id: type_id.to_string(), params: std::collections::HashMap::new() }
+        CheckInstanceConfig {
+            local_id: local_id.to_string(),
+            type_id: type_id.to_string(),
+            params: std::collections::HashMap::new(),
+        }
     }
 
     /// Wraps `rules` in a single default stage — most tests below don't care about staging
     /// itself, just about `build_qc_and_repair`'s per-rule validation, so they use one stage
     /// containing every rule (mirrors the pre-#65 flat `check_rules` shape).
     fn one_stage(rules: Vec<QcRuleConfig>) -> Vec<StageConfig> {
-        vec![StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules }]
+        vec![StageConfig {
+            id: "stage_1".to_string(),
+            name: "Stage 1".to_string(),
+            rules,
+        }]
     }
 
     fn err_msg(config: &GenerateConfig) -> String {
@@ -441,14 +812,20 @@ mod build_qc_and_repair_tests {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec![check("a", "missing_endpoints"), check("a", "missing_endpoints")],
+                checks: vec![
+                    check("a", "missing_endpoints"),
+                    check("a", "missing_endpoints"),
+                ],
                 strategy: None,
                 params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("duplicate local_id"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("duplicate local_id"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
@@ -456,14 +833,20 @@ mod build_qc_and_repair_tests {
         let config = GenerateConfig {
             stages: one_stage(vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec![check("a", "missing_endpoints"), check("b", "unreachable_finish")],
+                checks: vec![
+                    check("a", "missing_endpoints"),
+                    check("b", "unreachable_finish"),
+                ],
                 strategy: None,
                 params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("different issue kinds"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("different issue kinds"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
@@ -475,13 +858,21 @@ mod build_qc_and_repair_tests {
             stages: one_stage(vec![QcRuleConfig {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
-                strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                strategy: Some(StrategyConfig {
+                    id: "not_a_real_strategy".to_string(),
+                    params: HashMap::new(),
+                    slot_id: None,
+                    nested: vec![],
+                }),
                 params: HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("unknown strategy"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("unknown strategy"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
@@ -508,7 +899,12 @@ mod build_qc_and_repair_tests {
                 QcRuleConfig {
                     id: "r1".to_string(),
                     checks: vec![check("a", "missing_endpoints")],
-                    strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                    strategy: Some(StrategyConfig {
+                        id: "farthest_endpoints".to_string(),
+                        params: HashMap::new(),
+                        slot_id: None,
+                        nested: vec![],
+                    }),
                     params: HashMap::new(),
                 },
                 QcRuleConfig {
@@ -533,7 +929,10 @@ mod build_qc_and_repair_tests {
                     checks: vec![CheckInstanceConfig {
                         local_id: "a".to_string(),
                         type_id: "min_region_count".to_string(),
-                        params: HashMap::from([("region_class".to_string(), "trap".to_string()), ("count".to_string(), "2".to_string())]),
+                        params: HashMap::from([
+                            ("region_class".to_string(), "trap".to_string()),
+                            ("count".to_string(), "2".to_string()),
+                        ]),
                     }],
                     strategy: None,
                     params: HashMap::new(),
@@ -543,7 +942,10 @@ mod build_qc_and_repair_tests {
                     checks: vec![CheckInstanceConfig {
                         local_id: "b".to_string(),
                         type_id: "min_region_count".to_string(),
-                        params: HashMap::from([("region_class".to_string(), "alternative".to_string()), ("count".to_string(), "2".to_string())]),
+                        params: HashMap::from([
+                            ("region_class".to_string(), "alternative".to_string()),
+                            ("count".to_string(), "2".to_string()),
+                        ]),
                     }],
                     strategy: None,
                     params: HashMap::new(),
@@ -569,7 +971,10 @@ mod build_qc_and_repair_tests {
                     CheckInstanceConfig {
                         local_id: "b".to_string(),
                         type_id: "min_region_count".to_string(),
-                        params: HashMap::from([("region_class".to_string(), "alternative".to_string())]),
+                        params: HashMap::from([(
+                            "region_class".to_string(),
+                            "alternative".to_string(),
+                        )]),
                     },
                 ],
                 strategy: None,
@@ -592,26 +997,68 @@ mod build_qc_and_repair_tests {
     fn duplicate_stage_id_is_rejected() {
         let config = GenerateConfig {
             stages: vec![
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None, params: std::collections::HashMap::new() }] },
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1 (dup)".to_string(), rules: vec![QcRuleConfig { id: "r2".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None, params: std::collections::HashMap::new() }] },
+                StageConfig {
+                    id: "stage_1".to_string(),
+                    name: "Stage 1".to_string(),
+                    rules: vec![QcRuleConfig {
+                        id: "r1".to_string(),
+                        checks: vec![check("a", "missing_endpoints")],
+                        strategy: None,
+                        params: std::collections::HashMap::new(),
+                    }],
+                },
+                StageConfig {
+                    id: "stage_1".to_string(),
+                    name: "Stage 1 (dup)".to_string(),
+                    rules: vec![QcRuleConfig {
+                        id: "r2".to_string(),
+                        checks: vec![check("b", "unreachable_finish")],
+                        strategy: None,
+                        params: std::collections::HashMap::new(),
+                    }],
+                },
             ],
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("duplicate stage id"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("duplicate stage id"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
     fn duplicate_rule_id_across_stages_is_rejected() {
         let config = GenerateConfig {
             stages: vec![
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None, params: std::collections::HashMap::new() }] },
-                StageConfig { id: "stage_2".to_string(), name: "Stage 2".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None, params: std::collections::HashMap::new() }] },
+                StageConfig {
+                    id: "stage_1".to_string(),
+                    name: "Stage 1".to_string(),
+                    rules: vec![QcRuleConfig {
+                        id: "r1".to_string(),
+                        checks: vec![check("a", "missing_endpoints")],
+                        strategy: None,
+                        params: std::collections::HashMap::new(),
+                    }],
+                },
+                StageConfig {
+                    id: "stage_2".to_string(),
+                    name: "Stage 2".to_string(),
+                    rules: vec![QcRuleConfig {
+                        id: "r1".to_string(),
+                        checks: vec![check("b", "unreachable_finish")],
+                        strategy: None,
+                        params: std::collections::HashMap::new(),
+                    }],
+                },
             ],
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("duplicate rule id"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("duplicate rule id"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
@@ -622,16 +1069,23 @@ mod build_qc_and_repair_tests {
         let config = GenerateConfig {
             stages: vec![
                 StageConfig {
-                    id: "stage_1".to_string(), name: "Stage 1".to_string(),
+                    id: "stage_1".to_string(),
+                    name: "Stage 1".to_string(),
                     rules: vec![QcRuleConfig {
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
-                        strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                        strategy: Some(StrategyConfig {
+                            id: "farthest_endpoints".to_string(),
+                            params: HashMap::new(),
+                            slot_id: None,
+                            nested: vec![],
+                        }),
                         params: HashMap::new(),
                     }],
                 },
                 StageConfig {
-                    id: "stage_2".to_string(), name: "Stage 2".to_string(),
+                    id: "stage_2".to_string(),
+                    name: "Stage 2".to_string(),
                     rules: vec![QcRuleConfig {
                         id: "r2".to_string(),
                         checks: vec![check("b", "unreachable_finish")],
@@ -658,7 +1112,14 @@ mod timing_dto_tests {
 
     #[test]
     fn leaf_node_converts_with_empty_children() {
-        let node = TimingNode::new("min_loop_length", TimingEntry { total_ms: 12.5, calls: 3 }, vec![]);
+        let node = TimingNode::new(
+            "min_loop_length",
+            TimingEntry {
+                total_ms: 12.5,
+                calls: 3,
+            },
+            vec![],
+        );
         let dto = timing_node_to_dto(node);
         assert_eq!(dto.id, "min_loop_length");
         assert_eq!(dto.total_ms, 12.5);
@@ -668,10 +1129,38 @@ mod timing_dto_tests {
 
     #[test]
     fn nested_children_convert_recursively_preserving_order() {
-        let check = TimingNode::new("check_a", TimingEntry { total_ms: 1.0, calls: 1 }, vec![]);
-        let strategy = TimingNode::new("strategy_a", TimingEntry { total_ms: 2.0, calls: 1 }, vec![]);
-        let rule = TimingNode::new("rule_1", TimingEntry { total_ms: 3.0, calls: 0 }, vec![check, strategy]);
-        let stage = TimingNode::new("stage_1", TimingEntry { total_ms: 3.0, calls: 5 }, vec![rule]);
+        let check = TimingNode::new(
+            "check_a",
+            TimingEntry {
+                total_ms: 1.0,
+                calls: 1,
+            },
+            vec![],
+        );
+        let strategy = TimingNode::new(
+            "strategy_a",
+            TimingEntry {
+                total_ms: 2.0,
+                calls: 1,
+            },
+            vec![],
+        );
+        let rule = TimingNode::new(
+            "rule_1",
+            TimingEntry {
+                total_ms: 3.0,
+                calls: 0,
+            },
+            vec![check, strategy],
+        );
+        let stage = TimingNode::new(
+            "stage_1",
+            TimingEntry {
+                total_ms: 3.0,
+                calls: 5,
+            },
+            vec![rule],
+        );
 
         let dto = timing_node_to_dto(stage);
         assert_eq!(dto.id, "stage_1");
@@ -686,8 +1175,19 @@ mod timing_dto_tests {
 
     #[test]
     fn generation_timing_converts_initial_build_ms_and_qc_tree() {
-        let stage = TimingNode::new("stage_1", TimingEntry { total_ms: 5.0, calls: 2 }, vec![]);
-        let timing = GenerationTiming { initial_build_ms: 42.0, qc: vec![stage], snapshot_ms: 7.0 };
+        let stage = TimingNode::new(
+            "stage_1",
+            TimingEntry {
+                total_ms: 5.0,
+                calls: 2,
+            },
+            vec![],
+        );
+        let timing = GenerationTiming {
+            initial_build_ms: 42.0,
+            qc: vec![stage],
+            snapshot_ms: 7.0,
+        };
         let dto = timing_to_dto(timing);
         assert_eq!(dto.initial_build_ms, 42.0);
         assert_eq!(dto.qc.len(), 1);
@@ -697,7 +1197,11 @@ mod timing_dto_tests {
 
     #[test]
     fn generation_timing_with_no_stages_converts_to_empty_qc() {
-        let timing = GenerationTiming { initial_build_ms: 0.0, qc: vec![], snapshot_ms: 0.0 };
+        let timing = GenerationTiming {
+            initial_build_ms: 0.0,
+            qc: vec![],
+            snapshot_ms: 0.0,
+        };
         let dto = timing_to_dto(timing);
         assert!(dto.qc.is_empty());
     }
@@ -710,17 +1214,20 @@ mod timing_dto_tests {
 /// invalid_loop_random.rs`'s `apply_reports_failed_when_the_whole_cycle_is_preset_protected`): a
 /// 3-node triangle whose every edge is a preset connection — genuinely unfixable by repair.
 mod preset_locked_end_to_end_tests {
-    use std::collections::HashMap;
-    use maze_core::{Graph, IdGenerator, Maze};
-    use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::analytics::build_analytics_snapshot;
+    use maze_core::generation::{
+        PresetState,
+        pipeline::{RepairLimits, build_maze},
+    };
     use maze_core::graph::EdgeKind;
-    use maze_core::generation::{PresetState, pipeline::{build_maze, RepairLimits}};
     use maze_core::quality_control::{
-        QualityControlEngine, Rule, RuleTrait, Stage,
-        LoopLengthCheck, Comparison, CycleKind, InvalidLoopIssue,
+        Comparison, CycleKind, InvalidLoopIssue, LoopLengthCheck, QualityControlEngine, Rule,
+        RuleTrait, Stage,
     };
     use maze_core::repair::InvalidLoopRandomStrategy;
-    use crate::analytics::build_analytics_snapshot;
+    use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
+    use maze_core::{Graph, IdGenerator, Maze};
+    use std::collections::HashMap;
 
     /// Same 3-node triangle as `invalid_loop_random.rs`'s `maze_with_triangle` — every edge below
     /// the check's `length: 10` threshold, so `LoopLengthCheck` always flags it.
@@ -729,8 +1236,15 @@ mod preset_locked_end_to_end_tests {
         let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(level).unwrap().all_points().map(|p| field.nodes_at(level, p)[0]).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.nodes_at(level, p)[0])
+            .collect();
         let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -738,15 +1252,30 @@ mod preset_locked_end_to_end_tests {
     }
 
     fn engine_with_loop_length_rule() -> QualityControlEngine<SquareTessellation> {
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: "min_loop_length".to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::Any,
+        };
         let rule: Rule<SquareTessellation, InvalidLoopIssue> = Rule::new(
             "r".to_string(),
-            vec![("min_loop_length".to_string(), Box::new(check) as Box<dyn maze_core::quality_control::Check<SquareTessellation, InvalidLoopIssue>>)],
+            vec![(
+                "min_loop_length".to_string(),
+                Box::new(check)
+                    as Box<
+                        dyn maze_core::quality_control::Check<SquareTessellation, InvalidLoopIssue>,
+                    >,
+            )],
             Some(Box::new(InvalidLoopRandomStrategy)),
             HashMap::new(),
             vec![],
         );
-        QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])])
+        QualityControlEngine::new(vec![Stage::new(
+            "stage_1".to_string(),
+            "Stage 1".to_string(),
+            vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>],
+        )])
     }
 
     #[test]
@@ -761,21 +1290,60 @@ mod preset_locked_end_to_end_tests {
         }
 
         let qc = engine_with_loop_length_rule();
-        let (mut maze, issues, _timing) = build_maze(field, graph, 7, qc, &preset_state, RepairLimits::default(), None, None, None, None);
+        let (mut maze, issues, _timing) = build_maze(
+            field,
+            graph,
+            7,
+            qc,
+            &preset_state,
+            RepairLimits::default(),
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Sanity: the issue really did survive repair unresolved (same conclusion #230's own test
         // draws) -- otherwise this test would trivially pass with no InvalidLoop issue at all.
-        assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_LOOP), "the fully preset-protected cycle must remain in remaining_issues -- repair can't fix it");
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.kind() == maze_core::quality_control::INVALID_LOOP),
+            "the fully preset-protected cycle must remain in remaining_issues -- repair can't fix it"
+        );
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
+        let snapshot = build_analytics_snapshot(
+            &mut maze,
+            None,
+            Some(issues),
+            &HashMap::new(),
+            &preset_state,
+            |p| (p.x, p.y),
+            |_, _, pos| pos as u32,
+            None,
+        )
+        .unwrap();
 
-        let invalid_loop_issue = snapshot.issues.iter().find(|i| i.kind == "invalid_loop").expect("snapshot must carry the invalid_loop issue");
+        let invalid_loop_issue = snapshot
+            .issues
+            .iter()
+            .find(|i| i.kind == "invalid_loop")
+            .expect("snapshot must carry the invalid_loop issue");
         let crate::dto::IssuePayloadDto::InvalidLoop { edges } = &invalid_loop_issue.payload else {
-            panic!("expected InvalidLoop payload, got {:?}", invalid_loop_issue.payload)
+            panic!(
+                "expected InvalidLoop payload, got {:?}",
+                invalid_loop_issue.payload
+            )
         };
         let all_elements: Vec<_> = edges.values().flatten().collect();
-        assert!(!all_elements.is_empty(), "payload must carry at least one flagged cycle element");
-        assert!(all_elements.iter().all(|e| e.preset_locked), "every edge of the flagged cycle is preset-protected -- the resolved element must be preset_locked");
+        assert!(
+            !all_elements.is_empty(),
+            "payload must carry at least one flagged cycle element"
+        );
+        assert!(
+            all_elements.iter().all(|e| e.preset_locked),
+            "every edge of the flagged cycle is preset-protected -- the resolved element must be preset_locked"
+        );
     }
 
     // GitHub issue #245 follow-up: user report that preset_locked "doesn't work for splits" --
@@ -788,19 +1356,28 @@ mod preset_locked_end_to_end_tests {
     // endpoint resolution).
     #[test]
     fn split_node_connection_preset_locked_via_real_preset_connection_reaches_the_snapshot() {
-        use maze_core::generation::{build_preset_state, PresetConnection, PresetConnectionState, PresetEndpoint};
-        use maze_core::quality_control::{SplitNodeConnectionPerNeighborCheck, InvalidSplitNodeConnectionGroupIssue};
-        use maze_core::repair::{SplitNodeConnectionGroupSelectStrategy, RemoveSplitNodeConnectionStrategy};
+        use maze_core::generation::{
+            PresetConnection, PresetConnectionState, PresetEndpoint, build_preset_state,
+        };
+        use maze_core::quality_control::{
+            InvalidSplitNodeConnectionGroupIssue, SplitNodeConnectionPerNeighborCheck,
+        };
         use maze_core::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+        use maze_core::repair::{
+            RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy,
+        };
         use maze_core::space::SquarePoint;
 
         // 3x1 field: split point at (1,0) (slot0 + one extra slot), both wired to the neighbor at
         // (0,0) -- same converging-on-one-neighbor shape as maze_with_triangle's sibling fixture
         // in split_node_connection_group_select_tests.rs, but built via the real config path.
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
 
         let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
         let split_points = vec![((1, 0), 0u32, 0u32)];
@@ -814,47 +1391,118 @@ mod preset_locked_end_to_end_tests {
                 state: PresetConnectionState::Passage,
             },
             PresetConnection {
-                from: PresetEndpoint { point: (1, 0), slot: Some(0), level: None },
+                from: PresetEndpoint {
+                    point: (1, 0),
+                    slot: Some(0),
+                    level: None,
+                },
                 to: PresetEndpoint::original((0, 0)),
                 state: PresetConnectionState::Passage,
             },
         ];
         let preset_state = build_preset_state(
-            &mut graph, &mut field, &mut ids, &preset_connections, &[], &[], &[], &split_points, xy_to_point, None, None,
-        ).unwrap();
+            &mut graph,
+            &mut field,
+            &mut ids,
+            &preset_connections,
+            &[],
+            &[],
+            &[],
+            &split_points,
+            xy_to_point,
+            None,
+            None,
+        )
+        .unwrap();
 
-        let check = SplitNodeConnectionPerNeighborCheck { instance_id: "split_node_connection_per_neighbor".to_string(), max: 1 };
+        let check = SplitNodeConnectionPerNeighborCheck {
+            instance_id: "split_node_connection_per_neighbor".to_string(),
+            max: 1,
+        };
         let nested: Vec<NestedStrategyConfig<SquareTessellation>> = vec![NestedStrategyConfig {
-            slot: &<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidSplitNodeConnectionGroupIssue>>::expected_nested(&SplitNodeConnectionGroupSelectStrategy)[0],
+            slot: &<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidSplitNodeConnectionGroupIssue,
+            >>::expected_nested(&SplitNodeConnectionGroupSelectStrategy)[0],
             strategy: Box::new(RemoveSplitNodeConnectionStrategy),
             param_overrides: HashMap::new(),
             nested: vec![],
         }];
         let rule: Rule<SquareTessellation, InvalidSplitNodeConnectionGroupIssue> = Rule::new(
             "r".to_string(),
-            vec![("split_node_connection_per_neighbor".to_string(), Box::new(check) as Box<dyn maze_core::quality_control::Check<SquareTessellation, InvalidSplitNodeConnectionGroupIssue>>)],
+            vec![(
+                "split_node_connection_per_neighbor".to_string(),
+                Box::new(check)
+                    as Box<
+                        dyn maze_core::quality_control::Check<
+                                SquareTessellation,
+                                InvalidSplitNodeConnectionGroupIssue,
+                            >,
+                    >,
+            )],
             Some(Box::new(SplitNodeConnectionGroupSelectStrategy)),
             HashMap::new(),
             nested,
         );
-        let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
+        let qc = QualityControlEngine::new(vec![Stage::new(
+            "stage_1".to_string(),
+            "Stage 1".to_string(),
+            vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>],
+        )]);
 
-        let (mut maze, issues, _timing) = build_maze(field, graph, 7, qc, &preset_state, RepairLimits::default(), None, None, None, None);
+        let (mut maze, issues, _timing) = build_maze(
+            field,
+            graph,
+            7,
+            qc,
+            &preset_state,
+            RepairLimits::default(),
+            None,
+            None,
+            None,
+            None,
+        );
 
-        assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_SPLIT_NODE_CONNECTION_GROUP),
-            "the fully preset-protected group must remain in remaining_issues -- repair can't fix it");
+        assert!(
+            issues.iter().any(
+                |i| i.kind() == maze_core::quality_control::INVALID_SPLIT_NODE_CONNECTION_GROUP
+            ),
+            "the fully preset-protected group must remain in remaining_issues -- repair can't fix it"
+        );
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
+        let snapshot = build_analytics_snapshot(
+            &mut maze,
+            None,
+            Some(issues),
+            &HashMap::new(),
+            &preset_state,
+            |p| (p.x, p.y),
+            |_, _, pos| pos as u32,
+            None,
+        )
+        .unwrap();
 
-        let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node_connection_group")
+        let issue_dto = snapshot
+            .issues
+            .iter()
+            .find(|i| i.kind == "invalid_split_node_connection_group")
             .expect("snapshot must carry the invalid_split_node_connection_group issue");
         // Reused wire shape (GitHub issue #245's doc comment on resolve_issue_payload) -- payload.kind
         // stays "invalid_one_way", not "invalid_split_node_connection_group".
         let crate::dto::IssuePayloadDto::InvalidOneWay { groups } = &issue_dto.payload else {
-            panic!("expected InvalidOneWay (reused wire shape), got {:?}", issue_dto.payload)
+            panic!(
+                "expected InvalidOneWay (reused wire shape), got {:?}",
+                issue_dto.payload
+            )
         };
         let all_elements: Vec<_> = groups.values().flatten().collect();
-        assert!(!all_elements.is_empty(), "payload must carry at least one flagged group element");
-        assert!(all_elements.iter().all(|e| e.preset_locked), "every edge of the flagged group is preset-protected -- the resolved element must be preset_locked");
+        assert!(
+            !all_elements.is_empty(),
+            "payload must carry at least one flagged group element"
+        );
+        assert!(
+            all_elements.iter().all(|e| e.preset_locked),
+            "every edge of the flagged group is preset-protected -- the resolved element must be preset_locked"
+        );
     }
 }

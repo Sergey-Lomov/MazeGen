@@ -1,31 +1,30 @@
-use std::collections::HashMap;
+use crate::config::{StrategyConfig, parse_add_split_config_param, parse_split_config_param};
 use maze_core::{
-    space::Tessellation,
     quality_control::IssueKindConst,
-    repair::{
-        RepairStrategy, ErasedRepairStrategy,
-        NestedSlot, NestedStrategyConfig,
-        RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
-        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
-        ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, ElevatorRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
-        RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy,
-        PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy,
-        OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy,
-        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy,
-        RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy,
-        RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy,
-        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy,
-        AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy,
-        MissingLoopsVerticalStrategy,
-        RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy,
-        RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy,
-        AddElevatorStopStrategy,
-        AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy,
-        CrossElementGroupSelectStrategy,
-    },
     quality_control::{IssueRequirement, RuleParams, rule_param_applies_to},
+    repair::{
+        AddElevatorHeightStopStrategy, AddElevatorStopCountStrategy, AddElevatorStopForGapStrategy,
+        AddElevatorStopStrategy, AddElevatorStrategy, AddSplitStrategy, AddVerticalPassageStrategy,
+        CrossElementGroupSelectStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
+        ElevatorStopGroupSelectStrategy, ErasedRepairStrategy, ExpandRegionPassageStrategy,
+        FarthestEndpointsStrategy, InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy,
+        InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
+        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
+        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
+        NestedSlot, NestedStrategyConfig, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
+        OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
+        RandomEndpointsStrategy, ReduceSccCountStrategy, RegionShrinkSplitStrategy,
+        RemoveElevatorStopStrategy, RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy,
+        RemoveSplitNodeStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
+        RemoveVerticalPassageStrategy, RepairStrategy, ReplaceElevatorWithPassagesStrategy,
+        ScoredEndpointsStrategy, SplitGroupSelectStrategy, SplitNodeConnectionGroupSelectStrategy,
+        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, TeleportGroupSelectStrategy,
+        TeleportRegionMergeStrategy, VerticalPassageGroupSelectStrategy,
+        VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
+    },
+    space::Tessellation,
 };
-use crate::config::{StrategyConfig, parse_split_config_param, parse_add_split_config_param};
+use std::collections::HashMap;
 
 /// Erased-boundary strategy factory — returns `Box<dyn ErasedRepairStrategy<T>>` (not a concrete
 /// `RepairStrategy<T, I>`) since a strategy id is resolved from a runtime string with no
@@ -41,62 +40,76 @@ use crate::config::{StrategyConfig, parse_split_config_param, parse_add_split_co
 /// top-level caller (`build_rule_for!`); `build_nested`'s own recursive call passes its parent
 /// rule's same `rule_params` through unchanged, since a nested strategy still logically belongs to
 /// the rule that owns the whole strategy tree.
-pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<String, String>, rule_params: &RuleParams) -> Result<Box<dyn ErasedRepairStrategy<T>>, String> {
+pub(crate) fn build_strategy_erased<T: Tessellation>(
+    id: &str,
+    params: &HashMap<String, String>,
+    rule_params: &RuleParams,
+) -> Result<Box<dyn ErasedRepairStrategy<T>>, String> {
     if let Some(param_id) = params.keys().find(|k| rule_param_applies_to(k, id)) {
         return Err(format!(
             "strategy {id} has a local \"{param_id}\" param — {param_id} is a rule-level parameter (GitHub issue #253), configure it on the rule instead",
         ));
     }
     Ok(match id {
-        "random_endpoints"     => Box::new(RandomEndpointsStrategy),
-        "farthest_endpoints"   => Box::new(FarthestEndpointsStrategy),
-        "scored_endpoints"     => Box::new(ScoredEndpointsStrategy),
-        "invalid_loop_random"  => Box::new(InvalidLoopRandomStrategy),
-        "invalid_loop_scored"  => Box::new(InvalidLoopScoredStrategy),
+        "random_endpoints" => Box::new(RandomEndpointsStrategy),
+        "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
+        "scored_endpoints" => Box::new(ScoredEndpointsStrategy),
+        "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
+        "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
         "invalid_loop_group_select" => Box::new(InvalidLoopGroupSelectStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
         "missing_loops_vertical" => Box::new(MissingLoopsVerticalStrategy),
-        "missing_loops_split"  => Box::new(build_missing_loops_split_strategy(params)),
+        "missing_loops_split" => Box::new(build_missing_loops_split_strategy(params)),
         "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
         "vertical_passage_region_merge" => Box::new(VerticalPassageRegionMergeStrategy),
         "elevator_region_merge" => Box::new(ElevatorRegionMergeStrategy),
         "teleport_region_merge" => Box::new(TeleportRegionMergeStrategy),
-        "region_shrink_split"  => Box::new(RegionShrinkSplitStrategy { protect_route: rule_params.protect_route }),
-        "missing_regions"      => Box::new(MissingRegionsStrategy),
-        "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
+        "region_shrink_split" => Box::new(RegionShrinkSplitStrategy {
+            protect_route: rule_params.protect_route,
+        }),
+        "missing_regions" => Box::new(MissingRegionsStrategy),
+        "reduce_scc_count" => Box::new(ReduceSccCountStrategy),
         "weighted_region_merge" => Box::new(WeightedRegionMergeStrategy),
         "priority_region_merge" => Box::new(PriorityRegionMergeStrategy),
         "priority_missing_loops" => Box::new(PriorityMissingLoopsStrategy),
-        "remove_teleport"      => Box::new(RemoveTeleportStrategy),
-        "teleport_group_select" => Box::new(TeleportGroupSelectStrategy { protect_route: rule_params.protect_route }),
-        "one_way_to_passage"   => Box::new(OneWayToPassageStrategy),
-        "one_way_to_wall"      => Box::new(OneWayToWallStrategy),
-        "one_way_group_select" => Box::new(OneWayGroupSelectStrategy { protect_route: rule_params.protect_route }),
+        "remove_teleport" => Box::new(RemoveTeleportStrategy),
+        "teleport_group_select" => Box::new(TeleportGroupSelectStrategy {
+            protect_route: rule_params.protect_route,
+        }),
+        "one_way_to_passage" => Box::new(OneWayToPassageStrategy),
+        "one_way_to_wall" => Box::new(OneWayToWallStrategy),
+        "one_way_group_select" => Box::new(OneWayGroupSelectStrategy {
+            protect_route: rule_params.protect_route,
+        }),
         "missing_one_ways_from_passage" => Box::new(MissingOneWaysFromPassageStrategy),
         "missing_one_ways_from_wall" => Box::new(MissingOneWaysFromWallStrategy),
-        "missing_teleports"    => Box::new(MissingTeleportsStrategy),
-        "remove_split"         => Box::new(RemoveSplitStrategy),
-        "split_group_select"   => Box::new(SplitGroupSelectStrategy),
-        "add_split"            => Box::new(build_add_split_strategy(params, rule_params)),
-        "remove_split_node"    => Box::new(RemoveSplitNodeStrategy),
+        "missing_teleports" => Box::new(MissingTeleportsStrategy),
+        "remove_split" => Box::new(RemoveSplitStrategy),
+        "split_group_select" => Box::new(SplitGroupSelectStrategy),
+        "add_split" => Box::new(build_add_split_strategy(params, rule_params)),
+        "remove_split_node" => Box::new(RemoveSplitNodeStrategy),
         "remove_split_node_connection" => Box::new(RemoveSplitNodeConnectionStrategy),
         "split_node_connection_group_select" => Box::new(SplitNodeConnectionGroupSelectStrategy),
         "split_node_group_select" => Box::new(SplitNodeGroupSelectStrategy),
-        "split_route_cut"      => Box::new(SplitRouteCutStrategy),
-        "add_vertical_passage" => Box::new(AddVerticalPassageStrategy { passage_type: rule_params.vertical_passage_type }),
+        "split_route_cut" => Box::new(SplitRouteCutStrategy),
+        "add_vertical_passage" => Box::new(AddVerticalPassageStrategy {
+            passage_type: rule_params.vertical_passage_type,
+        }),
         "remove_vertical_passage" => Box::new(RemoveVerticalPassageStrategy),
         "vertical_passage_group_select" => Box::new(VerticalPassageGroupSelectStrategy),
-        "remove_elevator"      => Box::new(RemoveElevatorStrategy),
+        "remove_elevator" => Box::new(RemoveElevatorStrategy),
         "replace_elevator_with_passages" => Box::new(ReplaceElevatorWithPassagesStrategy),
         "elevator_group_select" => Box::new(ElevatorGroupSelectStrategy),
         "remove_elevator_stop" => Box::new(RemoveElevatorStopStrategy),
         "elevator_stop_group_select" => Box::new(ElevatorStopGroupSelectStrategy),
-        "add_elevator"         => Box::new(AddElevatorStrategy),
-        "add_elevator_stop"    => Box::new(AddElevatorStopStrategy),
+        "add_elevator" => Box::new(AddElevatorStrategy),
+        "add_elevator_stop" => Box::new(AddElevatorStopStrategy),
         "add_elevator_stop_count" => Box::new(AddElevatorStopCountStrategy),
         "add_elevator_height_stop" => Box::new(AddElevatorHeightStopStrategy),
         "add_elevator_stop_for_gap" => Box::new(AddElevatorStopForGapStrategy),
-        "cross_element_group_select" => Box::new(CrossElementGroupSelectStrategy { protect_route: rule_params.protect_route }),
+        "cross_element_group_select" => Box::new(CrossElementGroupSelectStrategy {
+            protect_route: rule_params.protect_route,
+        }),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }
@@ -110,8 +123,12 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
 /// non-pattern mode, or a JSON `Vec<f64>` in pattern mode, see `parse_add_split_config_param`.
 /// `split_patterns`/`protect_route` (GitHub issues #389/#253) are rule-level, not read from
 /// `params` at all.
-fn build_add_split_strategy(params: &HashMap<String, String>, rule_params: &RuleParams) -> AddSplitStrategy {
-    let (max_split_nodes, pattern_weights) = parse_add_split_config_param(params.get("split_config"));
+fn build_add_split_strategy(
+    params: &HashMap<String, String>,
+    rule_params: &RuleParams,
+) -> AddSplitStrategy {
+    let (max_split_nodes, pattern_weights) =
+        parse_add_split_config_param(params.get("split_config"));
     AddSplitStrategy {
         split_patterns: rule_params.split_patterns.clone(),
         max_split_nodes,
@@ -122,8 +139,12 @@ fn build_add_split_strategy(params: &HashMap<String, String>, rule_params: &Rule
 
 /// Builds `MissingLoopsSplitStrategy` (GitHub issue #254) — same construction-time `split_config`
 /// convention as `build_add_split_strategy` above.
-fn build_missing_loops_split_strategy(params: &HashMap<String, String>) -> MissingLoopsSplitStrategy {
-    MissingLoopsSplitStrategy { config: parse_split_config_param(params.get("split_config")) }
+fn build_missing_loops_split_strategy(
+    params: &HashMap<String, String>,
+) -> MissingLoopsSplitStrategy {
+    MissingLoopsSplitStrategy {
+        config: parse_split_config_param(params.get("split_config")),
+    }
 }
 
 /// Downcasts an erased `Box<dyn ErasedRepairStrategy<T>>` (from `build_strategy_erased`) to a
@@ -137,16 +158,26 @@ fn build_missing_loops_split_strategy(params: &HashMap<String, String>) -> Missi
 /// the strategy's true `I`). So this checks `erased.handles() == I::KIND` explicitly and returns
 /// `Err` on mismatch, the same way `build_nested`'s own kind check works — a wiring bug becomes a
 /// loud config-build error instead of a silent wrong-behavior risk.
-pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + IssueRequirement>(strategy: Box<dyn ErasedRepairStrategy<T>>) -> Result<Box<dyn RepairStrategy<T, I>>, String> {
+pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + IssueRequirement>(
+    strategy: Box<dyn ErasedRepairStrategy<T>>,
+) -> Result<Box<dyn RepairStrategy<T, I>>, String> {
     struct ErasedAsTyped<T: Tessellation, I: IssueRequirement> {
         inner: Box<dyn ErasedRepairStrategy<T>>,
         _marker: std::marker::PhantomData<I>,
     }
     impl<T: Tessellation + 'static, I: IssueRequirement> RepairStrategy<T, I> for ErasedAsTyped<T, I> {
-        fn strategy_id(&self) -> &'static str { self.inner.strategy_id() }
-        fn params(&self) -> &'static [maze_core::repair::StrategyParam] { self.inner.params() }
-        fn is_experimental(&self) -> bool { self.inner.is_experimental() }
-        fn expected_nested(&self) -> &'static [NestedSlot] { self.inner.expected_nested() }
+        fn strategy_id(&self) -> &'static str {
+            self.inner.strategy_id()
+        }
+        fn params(&self) -> &'static [maze_core::repair::StrategyParam] {
+            self.inner.params()
+        }
+        fn is_experimental(&self) -> bool {
+            self.inner.is_experimental()
+        }
+        fn expected_nested(&self) -> &'static [NestedSlot] {
+            self.inner.expected_nested()
+        }
         // See GitHub issue #105 — forwards through the erased boundary via requirement_erased,
         // downcasting back to this rule's concrete I::Requirement. Without this override the
         // default (Full) would silently win here regardless of what the real strategy declares,
@@ -157,20 +188,33 @@ pub(crate) fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + I
                 .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
         }
         fn apply(
-            &self, issue: &I, maze: &maze_core::Maze<T>,
-            rng: &mut dyn rand::RngCore, params: &maze_core::repair::StrategyParams,
-            preset_state: &maze_core::generation::PresetState, nested: &[NestedStrategyConfig<T>],
-        ) -> (maze_core::repair::RepairResult, Vec<maze_core::repair::MutationCommand>) {
-            self.inner.apply(issue, maze, rng, params, preset_state, nested)
+            &self,
+            issue: &I,
+            maze: &maze_core::Maze<T>,
+            rng: &mut dyn rand::RngCore,
+            params: &maze_core::repair::StrategyParams,
+            preset_state: &maze_core::generation::PresetState,
+            nested: &[NestedStrategyConfig<T>],
+        ) -> (
+            maze_core::repair::RepairResult,
+            Vec<maze_core::repair::MutationCommand>,
+        ) {
+            self.inner
+                .apply(issue, maze, rng, params, preset_state, nested)
         }
     }
     if strategy.handles() != I::KIND {
         return Err(format!(
             "internal error: strategy \"{}\" handles {:?}, but was resolved against a rule expecting {:?}",
-            strategy.strategy_id(), strategy.handles(), I::KIND,
+            strategy.strategy_id(),
+            strategy.handles(),
+            I::KIND,
         ));
     }
-    Ok(Box::new(ErasedAsTyped::<T, I> { inner: strategy, _marker: std::marker::PhantomData }))
+    Ok(Box::new(ErasedAsTyped::<T, I> {
+        inner: strategy,
+        _marker: std::marker::PhantomData,
+    }))
 }
 
 /// Resolves `configs` (a `StrategyConfig`'s `nested` list) into `NestedStrategyConfig`s against
@@ -189,22 +233,37 @@ pub(crate) fn build_nested<T: Tessellation>(
     // O(1) slot lookup instead of a linear scan per config — built once per call. No separate
     // "slots.is_empty()" fast path: an empty `slots_by_id` already makes the loop below reject
     // every `cfg` via the "no such slot" branch, with a message naming the actual missing slot.
-    let slots_by_id: HashMap<&'static str, &'static NestedSlot> = slots.iter().map(|s| (s.slot_id, s)).collect();
+    let slots_by_id: HashMap<&'static str, &'static NestedSlot> =
+        slots.iter().map(|s| (s.slot_id, s)).collect();
 
     let mut counts: HashMap<&str, usize> = HashMap::new();
-    let mut resolved: Vec<(&'static NestedSlot, &StrategyConfig, Box<dyn ErasedRepairStrategy<T>>)> = Vec::new();
+    let mut resolved: Vec<(
+        &'static NestedSlot,
+        &StrategyConfig,
+        Box<dyn ErasedRepairStrategy<T>>,
+    )> = Vec::new();
     for cfg in configs {
         let Some(slot_id) = cfg.slot_id.as_deref() else {
-            return Err(format!("nested strategy {} under {} is missing slot_id", cfg.id, parent.strategy_id()));
+            return Err(format!(
+                "nested strategy {} under {} is missing slot_id",
+                cfg.id,
+                parent.strategy_id()
+            ));
         };
         let Some(&slot) = slots_by_id.get(slot_id) else {
-            return Err(format!("strategy {} has no nested slot \"{slot_id}\"", parent.strategy_id()));
+            return Err(format!(
+                "strategy {} has no nested slot \"{slot_id}\"",
+                parent.strategy_id()
+            ));
         };
         let nested_strategy = build_strategy_erased::<T>(&cfg.id, &cfg.params, rule_params)?;
         if nested_strategy.handles() != slot.kind {
             return Err(format!(
                 "strategy {} cannot fill slot \"{slot_id}\" of {}: handles {:?}, slot expects {:?}",
-                cfg.id, parent.strategy_id(), nested_strategy.handles(), slot.kind
+                cfg.id,
+                parent.strategy_id(),
+                nested_strategy.handles(),
+                slot.kind
             ));
         }
         *counts.entry(slot_id).or_insert(0) += 1;
@@ -215,13 +274,25 @@ pub(crate) fn build_nested<T: Tessellation>(
         if count < slot.min || count > slot.max.unwrap_or(usize::MAX) {
             return Err(format!(
                 "strategy {} slot \"{}\" needs {}..{} nested strategies, got {count}",
-                parent.strategy_id(), slot.slot_id, slot.min,
-                slot.max.map(|m| m.to_string()).unwrap_or_else(|| "∞".to_string()),
+                parent.strategy_id(),
+                slot.slot_id,
+                slot.min,
+                slot.max
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "∞".to_string()),
             ));
         }
     }
-    resolved.into_iter().map(|(slot, cfg, strategy)| {
-        let nested = build_nested::<T>(strategy.as_ref(), &cfg.nested, rule_params)?;
-        Ok(NestedStrategyConfig { slot, strategy, param_overrides: cfg.params.clone(), nested })
-    }).collect()
+    resolved
+        .into_iter()
+        .map(|(slot, cfg, strategy)| {
+            let nested = build_nested::<T>(strategy.as_ref(), &cfg.nested, rule_params)?;
+            Ok(NestedStrategyConfig {
+                slot,
+                strategy,
+                param_overrides: cfg.params.clone(),
+                nested,
+            })
+        })
+        .collect()
 }

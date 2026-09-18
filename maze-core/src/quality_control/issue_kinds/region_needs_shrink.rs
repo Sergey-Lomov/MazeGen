@@ -1,5 +1,7 @@
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, REGION_NEEDS_SHRINK,
+};
 use std::collections::HashMap;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REGION_NEEDS_SHRINK};
 
 /// Produced by any check that flags an SCC region as needing to be shrunk for a check-specific
 /// reason (currently `MaxRegionSizeCheck`/`MaxRegionRatioCheck`) — see GitHub issue #177. Mirrors
@@ -18,8 +20,16 @@ pub struct RegionNeedsShrinkIssue {
 }
 
 impl RegionNeedsShrinkIssue {
-    pub fn new_from_check(source_check: &str, invalid: Vec<usize>, invalid_sources: HashMap<usize, Vec<String>>) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+    pub fn new_from_check(
+        source_check: &str,
+        invalid: Vec<usize>,
+        invalid_sources: HashMap<usize, Vec<String>>,
+    ) -> Self {
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -44,7 +54,12 @@ impl IssueMerge for RegionNeedsShrinkIssue {
     /// `RegionNeedsExpansionIssue::merge`.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+        super::merge_id_sets(
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.invalid,
+            other.invalid_sources,
+        );
     }
 }
 
@@ -55,7 +70,10 @@ mod tests {
     fn issue(source_check: &str, invalid: Vec<usize>) -> RegionNeedsShrinkIssue {
         let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(source_check.to_string());
+            invalid_sources
+                .entry(idx)
+                .or_default()
+                .push(source_check.to_string());
         }
         RegionNeedsShrinkIssue::new_from_check(source_check, invalid, invalid_sources)
     }
@@ -77,8 +95,15 @@ mod tests {
         let b = issue("max_region_ratio", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same region index found by both checks must not be duplicated");
-        let sources = a.invalid_sources.get(&0).expect("region 0 must have recorded sources");
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "the same region index found by both checks must not be duplicated"
+        );
+        let sources = a
+            .invalid_sources
+            .get(&0)
+            .expect("region 0 must have recorded sources");
         assert!(sources.contains(&"max_region_size".to_string()));
         assert!(sources.contains(&"max_region_ratio".to_string()));
     }

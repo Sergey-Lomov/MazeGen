@@ -1,14 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use rand::{Rng, RngCore};
-use crate::ids::NodeId;
-use crate::graph::scc::{ComponentId, ConnectedComponents};
-use crate::graph::region_class::RegionClass;
-use crate::space::Tessellation;
 use crate::generation::PresetState;
+use crate::graph::region_class::RegionClass;
+use crate::graph::scc::{ComponentId, ConnectedComponents};
+use crate::ids::NodeId;
 use crate::repair::draft::DraftMaze;
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet};
 
-use super::{MAX_GROW_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
+use super::{GrowContext, MAX_GROW_ATTEMPTS};
 
 pub(super) fn try_grow<T: Tessellation>(
     outer: &mut DraftMaze<T>,
@@ -22,9 +22,20 @@ pub(super) fn try_grow<T: Tessellation>(
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
     let scc = outer.maze.analysis.scc(&outer.maze.graph);
-    let region_classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
-    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
-    let critical: HashSet<NodeId> = route.as_ref().map(|r| r.path.iter().copied().collect()).unwrap_or_default();
+    let region_classes =
+        outer
+            .maze
+            .analysis
+            .region_classes(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
+    let route =
+        outer
+            .maze
+            .analysis
+            .route_info(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
+    let critical: HashSet<NodeId> = route
+        .as_ref()
+        .map(|r| r.path.iter().copied().collect())
+        .unwrap_or_default();
 
     // Seed candidates: any node not on the critical path and not already committed this
     // `apply()` call — including nodes whose current region is `Path`, per Specs/repair.md's
@@ -37,7 +48,9 @@ pub(super) fn try_grow<T: Tessellation>(
     // `one_way_chance`) has no cycles at all, so its single SCC covers every node and is
     // classified entirely as `Path` — without this, `try_grow` would have zero seed
     // candidates and could never create a Trap/Alternative/Unreachable region from scratch.
-    let mut seed_candidates: Vec<NodeId> = scc.components.iter()
+    let mut seed_candidates: Vec<NodeId> = scc
+        .components
+        .iter()
         .flat_map(|members| members.iter().copied())
         .filter(|n| !critical.contains(n) && !committed_nodes.contains(n))
         .collect();
@@ -63,15 +76,29 @@ pub(super) fn try_grow<T: Tessellation>(
     // pass the corresponding flag(s) as `false`, disabling that side's contribution to the
     // border score entirely — every seed then ties at score 0 and the shuffle alone decides
     // order, same as `filter_by_border`'s `false` case in `try_reuse`).
-    let reachable_from_start = outer.maze.analysis.reachable_from_start(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
-    let reachable_to_finish = outer.maze.analysis.reachable_to_finish(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
-    let needs_inbound = ctx.inbound_requires_geometry && matches!(target, RegionClass::Trap | RegionClass::Alternative);
-    let needs_outbound = ctx.outbound_requires_geometry && matches!(target, RegionClass::Alternative);
+    let reachable_from_start = outer
+        .maze
+        .analysis
+        .reachable_from_start(&outer.maze.graph, &outer.maze.meta)
+        .unwrap_or_default();
+    let reachable_to_finish = outer
+        .maze
+        .analysis
+        .reachable_to_finish(&outer.maze.graph, &outer.maze.meta)
+        .unwrap_or_default();
+    let needs_inbound = ctx.inbound_requires_geometry
+        && matches!(target, RegionClass::Trap | RegionClass::Alternative);
+    let needs_outbound =
+        ctx.outbound_requires_geometry && matches!(target, RegionClass::Alternative);
     let border_score = |n: NodeId| -> usize {
         if !needs_inbound && !needs_outbound {
             return 0;
         }
-        outer.maze.field.neighbors(n).into_iter()
+        outer
+            .maze
+            .field
+            .neighbors(n)
+            .into_iter()
             .filter(|nb| {
                 (needs_inbound && reachable_from_start.contains(nb))
                     || (needs_outbound && reachable_to_finish.contains(nb))
@@ -86,7 +113,9 @@ pub(super) fn try_grow<T: Tessellation>(
 
     let take = (MAX_GROW_ATTEMPTS as usize).min(seed_candidates.len());
     for &seed in seed_candidates.iter().take(take) {
-        let Some(seed_component) = scc.component_of(seed) else { continue };
+        let Some(seed_component) = scc.component_of(seed) else {
+            continue;
+        };
 
         // Each seed gets its own nested draft (DraftMaze wraps DraftMaze, Specs/repair.md) —
         // cross-region crossing (via `try_open_excess_neighbor`) adds bridging edges before
@@ -100,14 +129,28 @@ pub(super) fn try_grow<T: Tessellation>(
         let mut inner = DraftMaze::new(outer.maze.draft());
         let budget_before = excess_budget.clone();
 
-        if let Some(members) = grow_front(&mut inner, seed, seed_component, &scc, &region_classes, excess_budget, locality, min_region_size, &critical, ctx, rng) {
+        if let Some(members) = grow_front(
+            &mut inner,
+            seed,
+            seed_component,
+            &scc,
+            &region_classes,
+            excess_budget,
+            locality,
+            min_region_size,
+            &critical,
+            ctx,
+            rng,
+        ) {
             // Sever members from the rest of their parent region(s) before conversion — part of
             // this growth attempt's budget, not a separate connect step. Internal connectivity
             // of `members` is guaranteed by construction (every node was added via a real
             // bidirectional graph edge to an already-included node), so no post-hoc bridging is
             // needed here — only the boundary to the outside world needs cutting.
             if sever_from_parent(&mut inner, &members, preset_state)
-                && let Some(result) = convert_region(&mut inner, &members, target, preset_state, rng) {
+                && let Some(result) =
+                    convert_region(&mut inner, &members, target, preset_state, rng)
+            {
                 outer.absorb(inner);
                 return Some(result);
             }
@@ -166,7 +209,17 @@ pub(super) fn grow_front<T: Tessellation>(
         if frontier.is_empty() {
             // Same-component front-expansion has nowhere left to go -- try crossing into a
             // bordering component with spare excess budget before giving up entirely.
-            let Some(opened) = try_open_excess_neighbor(draft, &in_region, scc, region_classes, excess_budget, critical, &allowed_components, ctx, rng) else {
+            let Some(opened) = try_open_excess_neighbor(
+                draft,
+                &in_region,
+                scc,
+                region_classes,
+                excess_budget,
+                critical,
+                &allowed_components,
+                ctx,
+                rng,
+            ) else {
                 return None;
             };
             allowed_components.insert(opened.component);
@@ -182,10 +235,18 @@ pub(super) fn grow_front<T: Tessellation>(
         };
         let src = frontier[fi];
 
-        let mut candidates: Vec<NodeId> = draft.maze.graph.outgoing_neighbors(src)
+        let mut candidates: Vec<NodeId> = draft
+            .maze
+            .graph
+            .outgoing_neighbors(src)
             .filter(|n| draft.maze.graph.edge_between(*n, src).is_some())
-            .filter(|n| !in_region.contains(n) && !critical.contains(n) && !committed_nodes.contains(n))
-            .filter(|n| scc.component_of(*n).is_some_and(|c| allowed_components.contains(&c)))
+            .filter(|n| {
+                !in_region.contains(n) && !critical.contains(n) && !committed_nodes.contains(n)
+            })
+            .filter(|n| {
+                scc.component_of(*n)
+                    .is_some_and(|c| allowed_components.contains(&c))
+            })
             .collect();
         candidates.sort_unstable();
 
@@ -234,8 +295,16 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
 ) -> Option<OpenedNeighbor> {
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
-    let mut bordering: Vec<(NodeId, NodeId, ComponentId)> = in_region.iter()
-        .flat_map(|&m| draft.maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
+    let mut bordering: Vec<(NodeId, NodeId, ComponentId)> = in_region
+        .iter()
+        .flat_map(|&m| {
+            draft
+                .maze
+                .field
+                .neighbors(m)
+                .into_iter()
+                .map(move |nb| (m, nb))
+        })
         .filter(|(_, nb)| !critical.contains(nb) && !committed_nodes.contains(nb))
         .filter_map(|(m, nb)| scc.component_of(nb).map(|c| (m, nb, c)))
         .filter(|(_, _, c)| !allowed_components.contains(c))
@@ -249,8 +318,12 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
     }
 
     for (member, neighbor, component) in bordering {
-        let Some(&class) = region_classes.get(&component) else { continue };
-        let Some(&budget) = excess_budget.get(&class) else { continue };
+        let Some(&class) = region_classes.get(&component) else {
+            continue;
+        };
+        let Some(&budget) = excess_budget.get(&class) else {
+            continue;
+        };
         if budget <= 0 {
             continue;
         }
@@ -273,7 +346,10 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
         } else {
             excess_budget.remove(&class);
         }
-        return Some(OpenedNeighbor { node: neighbor, component });
+        return Some(OpenedNeighbor {
+            node: neighbor,
+            component,
+        });
     }
     None
 }
@@ -282,7 +358,11 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
 /// component, so `members` becomes its own isolated (`Unreachable`) component before entering
 /// `convert_region`. Returns false if any required cut is blocked by `preset_state` — caller
 /// treats that as a failed growth attempt for this seed.
-pub(super) fn sever_from_parent<T: Tessellation>(draft: &mut DraftMaze<T>, members: &HashSet<NodeId>, preset_state: &PresetState) -> bool {
+pub(super) fn sever_from_parent<T: Tessellation>(
+    draft: &mut DraftMaze<T>,
+    members: &HashSet<NodeId>,
+    preset_state: &PresetState,
+) -> bool {
     let mut to_cut: Vec<(NodeId, NodeId)> = Vec::new();
     for &n in members {
         for neighbor in draft.maze.field.neighbors(n) {
@@ -300,7 +380,9 @@ pub(super) fn sever_from_parent<T: Tessellation>(draft: &mut DraftMaze<T>, membe
     to_cut.sort_unstable();
     to_cut.dedup();
     for (from, to) in to_cut {
-        if draft.maze.graph.edge_between(from, to).is_some() && !draft.try_remove_edge(from, to, preset_state) {
+        if draft.maze.graph.edge_between(from, to).is_some()
+            && !draft.try_remove_edge(from, to, preset_state)
+        {
             return false;
         }
     }

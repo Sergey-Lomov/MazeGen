@@ -1,10 +1,10 @@
-use rand::SeedableRng;
-use crate::random::MazeRng;
-use crate::{Graph, Maze};
-use crate::space::{MultiLevelField, Tessellation};
-use crate::event_log::EventLog;
-use crate::quality_control::{Issue, QualityControlEngine, QcEvent};
 use super::PresetState;
+use crate::event_log::EventLog;
+use crate::quality_control::{Issue, QcEvent, QualityControlEngine};
+use crate::random::MazeRng;
+use crate::space::{MultiLevelField, Tessellation};
+use crate::{Graph, Maze};
+use rand::SeedableRng;
 
 pub const MAX_REPAIR_ITERATIONS: usize = 100;
 pub const DEFAULT_REPAIR_TIME_BUDGET_SECS: f64 = 10.0;
@@ -24,11 +24,20 @@ pub struct RepairLimits {
 impl RepairLimits {
     /// `Err` if both bounds are `None` — a `RepairLimits` value always guarantees the repair
     /// fixpoint loop terminates.
-    pub fn new(max_iterations: Option<usize>, time_budget_secs: Option<f64>) -> Result<Self, String> {
+    pub fn new(
+        max_iterations: Option<usize>,
+        time_budget_secs: Option<f64>,
+    ) -> Result<Self, String> {
         if max_iterations.is_none() && time_budget_secs.is_none() {
-            return Err("RepairLimits requires at least one of max_iterations/time_budget_secs to be set".to_string());
+            return Err(
+                "RepairLimits requires at least one of max_iterations/time_budget_secs to be set"
+                    .to_string(),
+            );
         }
-        Ok(RepairLimits { max_iterations, time_budget_secs })
+        Ok(RepairLimits {
+            max_iterations,
+            time_budget_secs,
+        })
     }
 
     pub fn max_iterations(&self) -> Option<usize> {
@@ -89,7 +98,11 @@ pub struct TimingNode {
 
 impl TimingNode {
     pub fn new(id: impl Into<String>, entry: TimingEntry, children: Vec<TimingNode>) -> Self {
-        Self { id: id.into(), entry, children }
+        Self {
+            id: id.into(),
+            entry,
+            children,
+        }
     }
 }
 
@@ -130,7 +143,15 @@ pub fn build_maze<T: Tessellation>(
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
-    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log, debug_state);
+    let (issues, timing) = qc_engine.run_full(
+        &mut maze,
+        &mut rng,
+        preset_state,
+        limits,
+        now_ms,
+        event_log,
+        debug_state,
+    );
 
     (maze, issues, timing)
 }

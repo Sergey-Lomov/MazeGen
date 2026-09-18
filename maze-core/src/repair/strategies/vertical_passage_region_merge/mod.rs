@@ -1,19 +1,19 @@
-use rand::{Rng, RngCore};
-use std::collections::{HashMap, HashSet};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::scc::ComponentId;
-use crate::space::Tessellation;
-use crate::quality_control::RegionNeedsExpansionIssue;
 use crate::generation::PresetState;
+use crate::graph::scc::ComponentId;
+use crate::graph::scc::ConnectedComponents;
+use crate::ids::NodeId;
+use crate::quality_control::RegionNeedsExpansionIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
 use crate::repair::strategies::region_merge_core::{
-    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM,
+    self, MODE_OPTIONS, MODE_RANDOM, PARAM_PREFER_PARTIALLY_CONNECTED, PARAM_TARGET_MODE,
 };
-use crate::graph::scc::ConnectedComponents;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 mod tests;
@@ -36,13 +36,15 @@ impl PendingEdges {
 
     fn add_directed(&mut self, from: NodeId, to: NodeId) {
         self.added.insert((from, to));
-        self.commands.push(MutationCommand::AddDirectedVerticalPassage { from, to });
+        self.commands
+            .push(MutationCommand::AddDirectedVerticalPassage { from, to });
     }
 
     fn add_bidirectional(&mut self, a: NodeId, b: NodeId) {
         self.added.insert((a, b));
         self.added.insert((b, a));
-        self.commands.push(MutationCommand::AddBidirectionalVerticalPassage { a, b });
+        self.commands
+            .push(MutationCommand::AddBidirectionalVerticalPassage { a, b });
     }
 }
 
@@ -58,12 +60,18 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_TARGET_MODE,
         label: "Target selection mode",
-        kind: StrategyParamKind::Enum { options: MODE_OPTIONS, default: MODE_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: MODE_OPTIONS,
+            default: MODE_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_CONNECTION_MODE,
         label: "Connection mode",
-        kind: StrategyParamKind::Enum { options: CONNECTION_OPTIONS, default: CONNECTION_PASSAGE },
+        kind: StrategyParamKind::Enum {
+            options: CONNECTION_OPTIONS,
+            default: CONNECTION_PASSAGE,
+        },
     },
     StrategyParam {
         id: PARAM_PREFER_PARTIALLY_CONNECTED,
@@ -73,7 +81,11 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_DIRECTION_BALANCE,
         label: "Direction balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+        kind: StrategyParamKind::Float {
+            default: 0.5,
+            min: 0.0,
+            max: 1.0,
+        },
     },
 ];
 
@@ -96,8 +108,12 @@ static PARAMS: &[StrategyParam] = &[
 /// undersized) is the producing check's result — there's no other channel to learn it.
 pub struct VerticalPassageRegionMergeStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for VerticalPassageRegionMergeStrategy {
-    fn strategy_id(&self) -> &'static str { "vertical_passage_region_merge" }
+impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue>
+    for VerticalPassageRegionMergeStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "vertical_passage_region_merge"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -129,7 +145,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for VerticalP
             Some(StrategyParamValue::Bool(b)) => *b,
             _ => false,
         };
-        let direction_balance = params.get(PARAM_DIRECTION_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
+        let direction_balance = params
+            .get(PARAM_DIRECTION_BALANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5);
 
         // One fixed snapshot for the whole apply() call — see Specs/repair.md's decision for
         // this strategy (same rationale as ExpandRegionPassageStrategy): `scc` read once, not
@@ -140,8 +159,18 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for VerticalP
         let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
-                region, region_idx, &scc, maze, preset_state, mode, connection_mode, prefer_partial,
-                direction_balance, needy, rng, &mut pending,
+                region,
+                region_idx,
+                &scc,
+                maze,
+                preset_state,
+                mode,
+                connection_mode,
+                prefer_partial,
+                direction_balance,
+                needy,
+                rng,
+                &mut pending,
             )
         });
 
@@ -153,7 +182,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for VerticalP
     }
 }
 
-crate::impl_erased_repair_strategy!(VerticalPassageRegionMergeStrategy, RegionNeedsExpansionIssue);
+crate::impl_erased_repair_strategy!(
+    VerticalPassageRegionMergeStrategy,
+    RegionNeedsExpansionIssue
+);
 
 /// Existing directed-edge state between `region` and one neighboring component (reachable via a
 /// `VerticalPassage`), plus every vertical bridging cell pair found between them (needed for
@@ -161,20 +193,27 @@ crate::impl_erased_repair_strategy!(VerticalPassageRegionMergeStrategy, RegionNe
 /// exactly, just for vertical pairs instead of geometric ones.
 struct NeighborInfo {
     pairs: Vec<(NodeId, NodeId)>,
-    has_outbound: bool, // region -> neighbor edge already exists (via some pair)
-    has_inbound: bool,  // neighbor -> region edge already exists (via some pair)
+    has_outbound: bool,   // region -> neighbor edge already exists (via some pair)
+    has_inbound: bool,    // neighbor -> region edge already exists (via some pair)
     direction: Direction, // which floor this neighbor component is on, relative to region
 }
 
 /// Which floor direction a discovered bridging pair goes, relative to the region's node.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Direction { Up, Down }
+enum Direction {
+    Up,
+    Down,
+}
 
 /// Resolves the node at `src`'s own point one floor `direction`-ward, if that floor exists and
 /// has a node at the same point. Unlike `vertical_target::resolve_vertical_target`, this never
 /// rolls `rng` — it's a direct, deterministic lookup of one specific direction, used so both
 /// directions can be checked independently during discovery.
-fn adjacent_floor_node<T: Tessellation>(maze: &Maze<T>, src: NodeId, direction: Direction) -> Option<NodeId> {
+fn adjacent_floor_node<T: Tessellation>(
+    maze: &Maze<T>,
+    src: NodeId,
+    direction: Direction,
+) -> Option<NodeId> {
     let point = maze.field.point_of(src)?;
     let src_level = maze.field.level_of(src)?;
     let levels: Vec<_> = maze.field.levels_ordered().collect();
@@ -201,8 +240,12 @@ fn scan_neighbor_pairs<T: Tessellation>(
     let mut found = Vec::new();
     for &node in region {
         for direction in [Direction::Up, Direction::Down] {
-            let Some(to) = adjacent_floor_node(maze, node, direction) else { continue };
-            let Some(neighbor_idx) = scc.component_of(to) else { continue };
+            let Some(to) = adjacent_floor_node(maze, node, direction) else {
+                continue;
+            };
+            let Some(neighbor_idx) = scc.component_of(to) else {
+                continue;
+            };
             if neighbor_idx == region_idx {
                 continue;
             }
@@ -232,12 +275,14 @@ fn collect_neighbors<T: Tessellation>(
 
     let found = scan_neighbor_pairs(region, region_idx, scc, maze, preset_state);
     for (node, neighbor_node, neighbor_idx, direction) in found {
-        let entry = by_neighbor.entry(neighbor_idx).or_insert_with(|| NeighborInfo {
-            pairs: Vec::new(),
-            has_outbound: false,
-            has_inbound: false,
-            direction,
-        });
+        let entry = by_neighbor
+            .entry(neighbor_idx)
+            .or_insert_with(|| NeighborInfo {
+                pairs: Vec::new(),
+                has_outbound: false,
+                has_inbound: false,
+                direction,
+            });
         entry.pairs.push((node, neighbor_node));
         if pending.has_edge(maze, node, neighbor_node) {
             entry.has_outbound = true;
@@ -287,7 +332,9 @@ fn find_merge_candidate<T: Tessellation>(
 
     // First priority level (only relevant to `one_way`, where a partial connection is
     // meaningful): partially-connected neighbors, if any and requested.
-    let partial: Vec<ComponentId> = keys.iter().copied()
+    let partial: Vec<ComponentId> = keys
+        .iter()
+        .copied()
         .filter(|i| {
             let info = &by_neighbor[i];
             info.has_outbound != info.has_inbound // exactly one direction present
@@ -297,10 +344,24 @@ fn find_merge_candidate<T: Tessellation>(
 
     // Second priority level: if the pool has candidates from both up and down, roll once via
     // direction_balance to settle on a single direction before target_mode picks among it.
-    let up: Vec<ComponentId> = pool.iter().copied().filter(|i| by_neighbor[i].direction == Direction::Up).collect();
-    let down: Vec<ComponentId> = pool.iter().copied().filter(|i| by_neighbor[i].direction == Direction::Down).collect();
+    let up: Vec<ComponentId> = pool
+        .iter()
+        .copied()
+        .filter(|i| by_neighbor[i].direction == Direction::Up)
+        .collect();
+    let down: Vec<ComponentId> = pool
+        .iter()
+        .copied()
+        .filter(|i| by_neighbor[i].direction == Direction::Down)
+        .collect();
     let direction_pool: &[ComponentId] = match (up.is_empty(), down.is_empty()) {
-        (false, false) => if rng.random_bool(direction_balance.clamp(0.0, 1.0)) { &up } else { &down },
+        (false, false) => {
+            if rng.random_bool(direction_balance.clamp(0.0, 1.0)) {
+                &up
+            } else {
+                &down
+            }
+        }
         (false, true) => &up,
         (true, false) => &down,
         (true, true) => pool, // unreachable: pool is non-empty and every entry is Up or Down
@@ -354,17 +415,26 @@ fn apply_one_way<T: Tessellation>(
     if info.has_outbound || info.has_inbound {
         // Partial: only need the missing direction, via a pair distinct from every pair
         // already carrying the existing edge.
-        let existing_pairs: Vec<(NodeId, NodeId)> = info.pairs.iter().copied()
+        let existing_pairs: Vec<(NodeId, NodeId)> = info
+            .pairs
+            .iter()
+            .copied()
             .filter(|&(a, b)| {
-                if info.has_outbound { pending.has_edge(maze, a, b) }
-                else { pending.has_edge(maze, b, a) }
+                if info.has_outbound {
+                    pending.has_edge(maze, a, b)
+                } else {
+                    pending.has_edge(maze, b, a)
+                }
             })
             .collect();
         if existing_pairs.is_empty() {
             return false;
         }
 
-        let remaining: Vec<(NodeId, NodeId)> = info.pairs.iter().copied()
+        let remaining: Vec<(NodeId, NodeId)> = info
+            .pairs
+            .iter()
+            .copied()
             .filter(|p| !existing_pairs.contains(p))
             .collect();
         if remaining.is_empty() {

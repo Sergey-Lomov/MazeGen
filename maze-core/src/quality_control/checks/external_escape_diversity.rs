@@ -1,11 +1,11 @@
-use std::collections::HashSet;
-use rand::RngCore;
+use super::cycle_check_core::{build_issue, find_invalid_cycles};
 use crate::Maze;
 use crate::graph::nav::NavNodeId;
-use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
-use super::cycle_check_core::{find_invalid_cycles, build_issue};
+use crate::quality_control::{CycleKind, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashSet;
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
 
@@ -21,17 +21,38 @@ pub struct ExternalEscapeDiversityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityCheck {
-    fn check_type_id(&self) -> &'static str { "external_escape_diversity" }
+    fn check_type_id(&self) -> &'static str {
+        "external_escape_diversity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopRequirement) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidLoopIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: InvalidLoopRequirement,
+    ) {
         // Not yet migrated to honor `_requirement` — always computes all() (see GitHub issue
         // #105's "what does NOT change" section: only min/max_loop_length branch on it so far).
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
-            distinct_exit_count(nav, cycle) < self.min_distinct_exits
-        }) else { return };
+        let Some((nav, cycles, low_diversity)) =
+            find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
+                distinct_exit_count(nav, cycle) < self.min_distinct_exits
+            })
+        else {
+            return;
+        };
 
-        issues.push(build_issue(&nav, &cycles, low_diversity, &maze.graph, &self.instance_id, "min_distinct_exits", self.min_distinct_exits, InvalidLoopRequirement::all()));
+        issues.push(build_issue(
+            &nav,
+            &cycles,
+            low_diversity,
+            &maze.graph,
+            &self.instance_id,
+            "min_distinct_exits",
+            self.min_distinct_exits,
+            InvalidLoopRequirement::all(),
+        ));
     }
 }
 
@@ -39,7 +60,8 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityChec
 /// any cycle vertex. Self-loop edges (`from == to`) never count as exits — both ends are the
 /// same cycle vertex.
 fn distinct_exit_count(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u32 {
-    let cycle_nodes: HashSet<NavNodeId> = cycle.iter()
+    let cycle_nodes: HashSet<NavNodeId> = cycle
+        .iter()
         .flat_map(|&idx| {
             let edge = nav.edge_by_idx(idx);
             [edge.from, edge.to]
@@ -59,12 +81,12 @@ fn distinct_exit_count(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u3
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
     use crate::graph::EdgeKind;
+    use crate::quality_control::Issue;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "external_escape_diversity";
 
@@ -76,9 +98,20 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
-        let ring = [(0,0),(1,0),(2,0),(2,1),(2,2),(1,2),(0,2),(0,1)];
+        let ring = [
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (2, 1),
+            (2, 2),
+            (1, 2),
+            (0, 2),
+            (0, 1),
+        ];
         for i in 0..ring.len() {
             let (x1, y1) = ring[i];
             let (x2, y2) = ring[(i + 1) % ring.len()];
@@ -98,15 +131,35 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(5, 5), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
-        let ring = [(1,1),(2,1),(3,1),(3,2),(3,3),(2,3),(1,3),(1,2)];
+        let ring = [
+            (1, 1),
+            (2, 1),
+            (3, 1),
+            (3, 2),
+            (3, 3),
+            (2, 3),
+            (1, 3),
+            (1, 2),
+        ];
         for i in 0..ring.len() {
             let (x1, y1) = ring[i];
             let (x2, y2) = ring[(i + 1) % ring.len()];
             g.add_edge(p(x1, y1), p(x2, y2), EdgeKind::Basic);
         }
-        let spokes = [(0,0),(2,0),(4,0),(4,2),(4,4),(2,4),(0,4),(0,2)];
+        let spokes = [
+            (0, 0),
+            (2, 0),
+            (4, 0),
+            (4, 2),
+            (4, 4),
+            (2, 4),
+            (0, 4),
+            (0, 2),
+        ];
         for (&(rx, ry), &(sx, sy)) in ring.iter().zip(spokes.iter()) {
             g.add_edge(p(rx, ry), p(sx, sy), EdgeKind::Basic);
         }
@@ -116,7 +169,11 @@ mod tests {
     #[test]
     fn fires_when_exits_converge_on_same_node() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
+        let check = ExternalEscapeDiversityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_distinct_exits: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -124,7 +181,10 @@ mod tests {
         assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_distinct_exits")),
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("min_distinct_exits")),
             Some(&"3".to_string()),
         );
     }
@@ -132,50 +192,79 @@ mod tests {
     #[test]
     fn silent_when_exits_are_diverse() {
         let maze = maze_with_diverse_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
+        let check = ExternalEscapeDiversityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_distinct_exits: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "8 distinct exit destinations should clear a threshold of 3");
+        assert!(
+            issues.is_empty(),
+            "8 distinct exit destinations should clear a threshold of 3"
+        );
     }
 
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0, cycle_kind: CycleKind::Any };
+        let check = ExternalEscapeDiversityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_distinct_exits: 0,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
+        assert!(
+            issues.is_empty(),
+            "a threshold of 0 should never flag any cycle"
+        );
     }
 
     #[test]
     fn silent_when_cycle_enumeration_overflows() {
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
+                .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         for y in 0..SIDE {
             for x in 0..SIDE {
                 let here = field.node_at(field_level, SquarePoint { x, y }).unwrap();
                 if x + 1 < SIDE {
-                    let right = field.node_at(field_level, SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field
+                        .node_at(field_level, SquarePoint { x: x + 1, y })
+                        .unwrap();
                     g.add_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.node_at(field_level, SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field
+                        .node_at(field_level, SquarePoint { x, y: y + 1 })
+                        .unwrap();
                     g.add_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
+        let check = ExternalEscapeDiversityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_distinct_exits: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
+        assert!(
+            issues.is_empty(),
+            "overflow must skip silently, not surface a partial/incorrect issue"
+        );
     }
 
     #[test]
@@ -184,12 +273,23 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
+        let check = ExternalEscapeDiversityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_distinct_exits: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());

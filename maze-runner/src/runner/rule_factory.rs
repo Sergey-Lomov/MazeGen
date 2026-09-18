@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use maze_core::{
-    space::Tessellation,
-    quality_control::{QualityControlEngine, RuleTrait, Stage},
-};
-use crate::config::GenerateConfig;
 use super::qc_kind_registry::build_rule;
+use crate::config::GenerateConfig;
+use maze_core::{
+    quality_control::{QualityControlEngine, RuleTrait, Stage},
+    space::Tessellation,
+};
+use std::collections::HashSet;
 
 pub fn build_qc_and_repair<T: Tessellation + 'static>(
     config: &GenerateConfig,
@@ -29,7 +29,11 @@ pub fn build_qc_and_repair<T: Tessellation + 'static>(
             rules.push(build_rule::<T>(rule_cfg)?);
         }
 
-        stages.push(Stage::new(stage_cfg.id.clone(), stage_cfg.name.clone(), rules));
+        stages.push(Stage::new(
+            stage_cfg.id.clone(),
+            stage_cfg.name.clone(),
+            rules,
+        ));
     }
 
     // Note: "rule with a strategy not assigned to any stage" can no longer happen structurally —

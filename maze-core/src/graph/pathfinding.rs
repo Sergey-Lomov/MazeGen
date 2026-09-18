@@ -1,6 +1,6 @@
-use std::collections::BinaryHeap;
-use std::cmp::Reverse;
 use super::nav::{NavEdge, NavGraph};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 pub(crate) type NavNodeId = super::nav::NavNodeId;
 
@@ -41,9 +41,13 @@ where
     heap.push(Reverse((0, source)));
 
     while let Some(Reverse((cost, u))) = heap.pop() {
-        if dist[u] < cost { continue; }
+        if dist[u] < cost {
+            continue;
+        }
         if let Some(max) = max_dist {
-            if cost > max { break; }
+            if cost > max {
+                break;
+            }
         }
         for (v, weight) in neighbors(nav, u) {
             let next_cost = cost + weight;
@@ -60,14 +64,16 @@ where
 /// Forward Dijkstra: distances from `source` following outgoing edges.
 pub(crate) fn dijkstra_forward(nav: &NavGraph, source: NavNodeId) -> Vec<usize> {
     dijkstra_generic(nav, source, |nav, u| {
-        nav.outgoing_edges(u).map(|e| (e.to, e.path.len().saturating_sub(1)))
+        nav.outgoing_edges(u)
+            .map(|e| (e.to, e.path.len().saturating_sub(1)))
     })
 }
 
 /// Reverse Dijkstra: distances from nodes that can reach `target` (follows incoming edges).
 pub(crate) fn dijkstra_reverse(nav: &NavGraph, target: NavNodeId) -> Vec<usize> {
     dijkstra_generic(nav, target, |nav, u| {
-        nav.incoming_edges(u).map(|e| (e.from, e.path.len().saturating_sub(1)))
+        nav.incoming_edges(u)
+            .map(|e| (e.from, e.path.len().saturating_sub(1)))
     })
 }
 
@@ -82,9 +88,16 @@ pub(crate) fn dijkstra_forward_filtered_bounded(
     edge_filter: impl Fn(&NavEdge) -> bool,
     max_dist: Option<usize>,
 ) -> Vec<usize> {
-    dijkstra_generic_bounded(nav, source, |nav, u| {
-        nav.outgoing_edges(u).filter(|e| edge_filter(e)).map(|e| (e.to, e.path.len().saturating_sub(1)))
-    }, max_dist)
+    dijkstra_generic_bounded(
+        nav,
+        source,
+        |nav, u| {
+            nav.outgoing_edges(u)
+                .filter(|e| edge_filter(e))
+                .map(|e| (e.to, e.path.len().saturating_sub(1)))
+        },
+        max_dist,
+    )
 }
 
 /// Like `dijkstra_reverse`, but a nav-edge is only traversable if `edge_filter` accepts it, and
@@ -96,9 +109,16 @@ pub(crate) fn dijkstra_reverse_filtered_bounded(
     edge_filter: impl Fn(&NavEdge) -> bool,
     max_dist: Option<usize>,
 ) -> Vec<usize> {
-    dijkstra_generic_bounded(nav, target, |nav, u| {
-        nav.incoming_edges(u).filter(|e| edge_filter(e)).map(|e| (e.from, e.path.len().saturating_sub(1)))
-    }, max_dist)
+    dijkstra_generic_bounded(
+        nav,
+        target,
+        |nav, u| {
+            nav.incoming_edges(u)
+                .filter(|e| edge_filter(e))
+                .map(|e| (e.from, e.path.len().saturating_sub(1)))
+        },
+        max_dist,
+    )
 }
 
 /// Dijkstra with prev_edge tracking for path reconstruction.
@@ -118,7 +138,9 @@ pub(crate) fn dijkstra_with_prev<'a>(
     heap.push(Reverse((0, source)));
 
     while let Some(Reverse((cost, u))) = heap.pop() {
-        if dist[u] < cost { continue; }
+        if dist[u] < cost {
+            continue;
+        }
         for &ei in &outgoing_by_node[u] {
             let e = edges[ei];
             let weight = e.path.len().saturating_sub(1);
@@ -215,55 +237,71 @@ pub(crate) fn route_aware_junction_flags(
     nav_nodes_on_path: &[NavNodeId],
     path_edge_indices: &[usize],
     edges: &[&super::nav::NavEdge],
-    elevator_group_cache: &mut std::collections::HashMap<NavNodeId, std::rc::Rc<std::collections::HashSet<NavNodeId>>>,
+    elevator_group_cache: &mut std::collections::HashMap<
+        NavNodeId,
+        std::rc::Rc<std::collections::HashSet<NavNodeId>>,
+    >,
 ) -> Vec<bool> {
     let last = nav_nodes_on_path.len().saturating_sub(1);
-    nav_nodes_on_path.iter().enumerate().map(|(i, &nid)| {
-        if i == last {
-            return false;
-        }
-        let arrival_edge = if i == 0 { None } else { Some(edges[path_edge_indices[i - 1]]) };
-        let arrived_via_elevator = arrival_edge.is_some_and(|e| e.is_elevator);
-        let excluded_reverse = arrival_edge.and_then(|e| e.reverse_edge);
-
-        let elevator_group = if arrived_via_elevator {
-            Some(elevator_group_cache.entry(nid).or_insert_with(|| std::rc::Rc::new(elevator_group(nav, nid))).clone())
-        } else {
-            None
-        };
-
-        let mut choices = 0usize;
-        let mut elevator_choice_taken = false;
-        for ei in nav.outgoing_edge_indices(nid) {
-            if Some(ei) == excluded_reverse {
-                continue;
+    nav_nodes_on_path
+        .iter()
+        .enumerate()
+        .map(|(i, &nid)| {
+            if i == last {
+                return false;
             }
-            let e = &edges[ei];
-            if e.is_elevator {
-                if let Some(group) = &elevator_group {
-                    if group.contains(&e.to) {
-                        continue;
+            let arrival_edge = if i == 0 {
+                None
+            } else {
+                Some(edges[path_edge_indices[i - 1]])
+            };
+            let arrived_via_elevator = arrival_edge.is_some_and(|e| e.is_elevator);
+            let excluded_reverse = arrival_edge.and_then(|e| e.reverse_edge);
+
+            let elevator_group = if arrived_via_elevator {
+                Some(
+                    elevator_group_cache
+                        .entry(nid)
+                        .or_insert_with(|| std::rc::Rc::new(elevator_group(nav, nid)))
+                        .clone(),
+                )
+            } else {
+                None
+            };
+
+            let mut choices = 0usize;
+            let mut elevator_choice_taken = false;
+            for ei in nav.outgoing_edge_indices(nid) {
+                if Some(ei) == excluded_reverse {
+                    continue;
+                }
+                let e = &edges[ei];
+                if e.is_elevator {
+                    if let Some(group) = &elevator_group {
+                        if group.contains(&e.to) {
+                            continue;
+                        }
                     }
+                    if !elevator_choice_taken {
+                        elevator_choice_taken = true;
+                        choices += 1;
+                    }
+                    continue;
                 }
-                if !elevator_choice_taken {
-                    elevator_choice_taken = true;
-                    choices += 1;
-                }
-                continue;
+                choices += 1;
             }
-            choices += 1;
-        }
-        choices > 1
-    }).collect()
+            choices > 1
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Graph, EdgeKind};
     use crate::graph::nav::build_nav_graph_pinned;
-    use std::collections::HashSet;
+    use crate::graph::{EdgeKind, Graph};
     use crate::ids::NodeId;
+    use std::collections::HashSet;
 
     fn bidir(g: &mut Graph, a: NodeId, b: NodeId) {
         g.add_edge(a, b, EdgeKind::Basic);
@@ -277,7 +315,9 @@ mod tests {
     #[test]
     fn dijkstra_forward_finds_shortest_distance() {
         let mut g = Graph::new();
-        for id in [1u64, 2, 3, 4] { g.add_node(id); }
+        for id in [1u64, 2, 3, 4] {
+            g.add_node(id);
+        }
         bidir(&mut g, 1, 2);
         bidir(&mut g, 2, 3);
         bidir(&mut g, 1, 4);
@@ -292,7 +332,9 @@ mod tests {
     #[test]
     fn dijkstra_forward_unreachable_node_is_max() {
         let mut g = Graph::new();
-        for id in [1u64, 2] { g.add_node(id); }
+        for id in [1u64, 2] {
+            g.add_node(id);
+        }
         // no edges -- disconnected.
         let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
         let source = nav.nav_node_for(1).unwrap();
@@ -304,32 +346,45 @@ mod tests {
     #[test]
     fn dijkstra_forward_respects_edge_direction() {
         let mut g = Graph::new();
-        for id in [1u64, 2] { g.add_node(id); }
+        for id in [1u64, 2] {
+            g.add_node(id);
+        }
         g.add_edge(1, 2, EdgeKind::Basic); // one-way only
         let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
         let source = nav.nav_node_for(2).unwrap();
         let dist = dijkstra_forward(&nav, source);
         let target = nav.nav_node_for(1).unwrap();
-        assert_eq!(dist[target], usize::MAX, "forward Dijkstra from 2 must not reach 1 via a 1->2-only edge");
+        assert_eq!(
+            dist[target],
+            usize::MAX,
+            "forward Dijkstra from 2 must not reach 1 via a 1->2-only edge"
+        );
     }
 
     #[test]
     fn dijkstra_reverse_finds_nodes_that_can_reach_target() {
         let mut g = Graph::new();
-        for id in [1u64, 2, 3] { g.add_node(id); }
+        for id in [1u64, 2, 3] {
+            g.add_node(id);
+        }
         g.add_edge(1, 2, EdgeKind::Basic);
         g.add_edge(2, 3, EdgeKind::Basic);
         let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));
         let target = nav.nav_node_for(3).unwrap();
         let dist = dijkstra_reverse(&nav, target);
         let source = nav.nav_node_for(1).unwrap();
-        assert_eq!(dist[source], 2, "1 can reach 3 in 2 hops via incoming-edge traversal");
+        assert_eq!(
+            dist[source], 2,
+            "1 can reach 3 in 2 hops via incoming-edge traversal"
+        );
     }
 
     #[test]
     fn dijkstra_with_prev_reconstructs_correct_predecessor_chain() {
         let mut g = Graph::new();
-        for id in [1u64, 2, 3] { g.add_node(id); }
+        for id in [1u64, 2, 3] {
+            g.add_node(id);
+        }
         bidir(&mut g, 1, 2);
         bidir(&mut g, 2, 3);
         let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));
@@ -359,7 +414,9 @@ mod tests {
         // (GitHub issue #196), as opposed to just computing the full map and discarding results.
         let mut g = Graph::new();
         let ids: Vec<u64> = (0..=10).collect();
-        for &id in &ids { g.add_node(id); }
+        for &id in &ids {
+            g.add_node(id);
+        }
         for w in ids.windows(2) {
             g.add_edge(w[0], w[1], EdgeKind::Basic);
         }
@@ -369,17 +426,29 @@ mod tests {
         let near = nav.nav_node_for(2).unwrap();
 
         let bounded = dijkstra_forward_filtered_bounded(&nav, source, |_| true, Some(2));
-        assert_eq!(bounded[near], 2, "node within max_dist must still get its correct distance");
-        assert_eq!(bounded[far], usize::MAX, "node past max_dist must be left unreached, not merely filtered");
+        assert_eq!(
+            bounded[near], 2,
+            "node within max_dist must still get its correct distance"
+        );
+        assert_eq!(
+            bounded[far],
+            usize::MAX,
+            "node past max_dist must be left unreached, not merely filtered"
+        );
 
         let unbounded = dijkstra_forward_filtered_bounded(&nav, source, |_| true, None);
-        assert_eq!(unbounded[far], 10, "sanity check: without a bound the same traversal does reach node 10");
+        assert_eq!(
+            unbounded[far], 10,
+            "sanity check: without a bound the same traversal does reach node 10"
+        );
     }
 
     #[test]
     fn build_outgoing_index_groups_edges_by_source() {
         let mut g = Graph::new();
-        for id in [1u64, 2, 3] { g.add_node(id); }
+        for id in [1u64, 2, 3] {
+            g.add_node(id);
+        }
         g.add_edge(1, 2, EdgeKind::Basic);
         g.add_edge(1, 3, EdgeKind::Basic);
         let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));

@@ -1,27 +1,48 @@
 use super::super::*;
-use rand::SeedableRng;
-use crate::{Graph, IdGenerator};
 use crate::ids::NodeId;
-use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use crate::{Graph, IdGenerator};
+use rand::SeedableRng;
 
 const TEST_ID: &str = "teleport_group_proximity";
 
-fn check(distance: f64, own_edge: TeleportProximityEdge, other_edge: TeleportProximityEdge) -> TeleportGroupProximityCheck {
-    TeleportGroupProximityCheck { instance_id: TEST_ID.to_string(), distance, own_edge, other_edge, protect_route: true }
+fn check(
+    distance: f64,
+    own_edge: TeleportProximityEdge,
+    other_edge: TeleportProximityEdge,
+) -> TeleportGroupProximityCheck {
+    TeleportGroupProximityCheck {
+        instance_id: TEST_ID.to_string(),
+        distance,
+        own_edge,
+        other_edge,
+        protect_route: true,
+    }
 }
 
 fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
-    issue.groups.iter().map(|(g, _)| {
-        assert_eq!(g.len(), 2, "every teleport proximity group must have exactly two elements");
-        (g[0], g[1])
-    }).collect()
+    issue
+        .groups
+        .iter()
+        .map(|(g, _)| {
+            assert_eq!(
+                g.len(),
+                2,
+                "every teleport proximity group must have exactly two elements"
+            );
+            (g[0], g[1])
+        })
+        .collect()
 }
 
 fn bootstrap_row(width: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
     (field, g)
 }
 
@@ -37,8 +58,16 @@ fn unreachable_pair_in_both_directions_is_never_flagged() {
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "unreachable in both directions must not be treated as distance 0");
+    check(
+        1000.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "unreachable in both directions must not be treated as distance 0"
+    );
 }
 
 /// entry_a(0) and entry_b(2) are 1 hop apart via a one-way Basic edge entry_b->entry_a --
@@ -50,7 +79,8 @@ fn unreachable_pair_in_both_directions_is_never_flagged() {
 /// chain (start=entry_a -> exit_a via teleport a -> bridge -> entry_b -> exit_b via teleport b
 /// -> finish) makes both teleports route-critical without that chain being the reason
 /// entry_a/entry_b look close to each other.
-fn maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
+fn maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries()
+-> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
     let (field, mut g) = bootstrap_row(6);
     let field_level = field.single_level_id();
     let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
@@ -76,14 +106,23 @@ fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
     // bridge -> entry_b (basic) -> exit_b (teleport b) -- both teleports are route-critical.
     // entry_a and entry_b are still only 1 hop apart via their own direct corridor (well
     // within the check's threshold), so without protect_route this pair would fire.
-    let (mut maze, entry_a, _exit_a, _entry_b, exit_b) = maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
+    let (mut maze, entry_a, _exit_a, _entry_b, exit_b) =
+        maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
     maze.meta.start = Some(entry_a);
     maze.meta.finish = Some(exit_b);
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "a pair where both teleports are route-critical must not be recorded");
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "a pair where both teleports are route-critical must not be recorded"
+    );
 }
 
 #[test]
@@ -91,14 +130,24 @@ fn protect_route_still_records_a_pair_where_only_one_side_is_route_critical() {
     // start=entry_a, finish=exit_a: only teleport a is route-critical; teleport b is unrelated
     // and still a legitimate removal candidate, so the pair must still be recorded. entry_a and
     // entry_b are connected by a direct Basic corridor, independent of either teleport.
-    let (mut maze, entry_a, exit_a, _entry_b, _exit_b) = maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
+    let (mut maze, entry_a, exit_a, _entry_b, _exit_b) =
+        maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
     maze.meta.start = Some(entry_a);
     maze.meta.finish = Some(exit_a);
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert_eq!(issues.len(), 1, "a pair with only one route-critical side must still be recorded");
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(
+        issues.len(),
+        1,
+        "a pair with only one route-critical side must still be recorded"
+    );
 }
 
 #[test]
@@ -141,7 +190,12 @@ fn protect_route_skips_a_fully_protected_pair_and_still_finds_a_farther_unprotec
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
 
     assert_eq!(issues.len(), 1);
     let pairs = pairs_of(&issues[0]);
@@ -182,8 +236,16 @@ fn a_teleport_hop_is_never_used_as_a_shortcut_when_measuring_proximity() {
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "riding through a's own teleport hop must not count as pedestrian proximity to b");
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "riding through a's own teleport hop must not count as pedestrian proximity to b"
+    );
 }
 
 #[test]
@@ -206,8 +268,17 @@ fn a_basic_edge_running_parallel_to_a_teleport_still_counts_as_pedestrian_proxim
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert_eq!(issues.len(), 1, "the parallel Basic edge must still make entry_a and exit_a_entry_b look close, despite the Teleport edge sharing the same pair");
+    check(
+        3.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(
+        issues.len(),
+        1,
+        "the parallel Basic edge must still make entry_a and exit_a_entry_b look close, despite the Teleport edge sharing the same pair"
+    );
 }
 
 #[test]
@@ -234,6 +305,14 @@ fn a_third_unrelated_teleport_is_never_used_as_a_shortcut_when_measuring_proximi
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(10.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "riding through an unrelated third teleport must not count as pedestrian proximity to b either");
+    check(
+        10.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "riding through an unrelated third teleport must not count as pedestrian proximity to b either"
+    );
 }

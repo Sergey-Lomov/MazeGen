@@ -1,27 +1,27 @@
+mod analytics;
+pub mod check_descriptor;
+pub mod checks_catalog;
 mod dto;
+mod dto_analytics_config;
 mod dto_issues;
 mod dto_statistics;
-mod dto_analytics_config;
 mod generation_config;
+mod geometry;
 mod result;
 mod runner;
-mod tessellation_dispatch;
-mod analytics;
-pub mod checks_catalog;
-pub mod check_descriptor;
 pub mod strategies_catalog;
-mod geometry;
+mod tessellation_dispatch;
 
-use wasm_bindgen::prelude::*;
 use generation_config::GenerateConfig;
 use result::GenerateResult;
 use tessellation_dispatch::dispatch_generate;
+use wasm_bindgen::prelude::*;
 
-pub use checks_catalog::available_checks;
-pub use strategies_catalog::available_strategies;
-pub use check_descriptor::available_rule_params;
-pub use geometry::cartesian_coords;
 pub use analytics::compute_analytics;
+pub use check_descriptor::available_rule_params;
+pub use checks_catalog::available_checks;
+pub use geometry::cartesian_coords;
+pub use strategies_catalog::available_strategies;
 
 #[wasm_bindgen]
 pub fn generate(seed: u64, config: JsValue) -> Result<GenerateResult, JsValue> {

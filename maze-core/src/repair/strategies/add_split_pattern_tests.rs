@@ -1,14 +1,14 @@
 use super::super::*;
-use rand::SeedableRng;
-use crate::random::MazeRng;
-use crate::graph::{Graph, EdgeKind};
+use super::{maze_grid, maze_line, missing_issue, no_params};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
-use crate::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement};
+use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
+use crate::graph::{EdgeKind, Graph};
+use crate::random::MazeRng;
 use crate::repair::params::build_params;
-use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::repair::strategies::split_core;
-use super::{no_params, maze_line, maze_grid, missing_issue};
+use crate::repair::strategies::test_utils::apply_and_commit;
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use rand::SeedableRng;
 
 fn two_node_passage_pattern() -> SplitPattern {
     // SquareFace order [N, S, E, W] — node 1 gets an East face (index 2), matching node 0's
@@ -17,7 +17,11 @@ fn two_node_passage_pattern() -> SplitPattern {
         node_count: 2,
         faces: vec![
             vec![],
-            vec![SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+            vec![SplitPatternFace {
+                face_index: 2,
+                requirement: SplitFaceRequirement::Passage,
+                sibling_target: None,
+            }],
         ],
         weight: 1.0,
     }
@@ -35,20 +39,42 @@ fn pattern_mode_adds_a_split_tile_matching_the_configured_pattern() {
     // the claiming node's own face adds the new connection.
     let mut maze = maze_grid(3, 3);
 
-    let strategy = AddSplitStrategy { split_patterns: vec![two_node_passage_pattern()], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
+    let strategy = AddSplitStrategy {
+        split_patterns: vec![two_node_passage_pattern()],
+        max_split_nodes: 2,
+        pattern_weights: vec![],
+        protect_route: true,
+    };
     let issue = missing_issue(1);
     let mut rng = MazeRng::seed_from_u64(5);
     let nodes_before = maze.field.node_count();
-    let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &strategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert_eq!(maze.field.node_count(), nodes_before + 1);
-    let split_point = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
+    let split_point = (0..3)
+        .flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
         .find(|&p| maze.field.nodes_at(maze.field.single_level_id(), p).len() > 1)
         .expect("exactly one point must have been split");
-    let tile_nodes = maze.field.nodes_at(maze.field.single_level_id(), split_point);
-    assert!(crate::quality_control::split_pattern_match::split_tile_matches_any(
-        &maze.graph, &maze.field, tile_nodes, std::slice::from_ref(&two_node_passage_pattern()),
-    ), "the resulting tile must structurally match the single configured pattern");
+    let tile_nodes = maze
+        .field
+        .nodes_at(maze.field.single_level_id(), split_point);
+    assert!(
+        crate::quality_control::split_pattern_match::split_tile_matches_any(
+            &maze.graph,
+            &maze.field,
+            tile_nodes,
+            std::slice::from_ref(&two_node_passage_pattern()),
+        ),
+        "the resulting tile must structurally match the single configured pattern"
+    );
 }
 
 #[test]
@@ -56,8 +82,16 @@ fn pick_weighted_pattern_respects_configured_weight_not_uniform() {
     // GitHub issue #275: `AddSplitStrategy` used to pick a pattern index uniformly, ignoring
     // `SplitPattern::weight` entirely. A near-zero-weight pattern must almost never be picked
     // against a heavily-weighted sibling.
-    let low = SplitPattern { node_count: 2, faces: vec![vec![], vec![]], weight: 0.001 };
-    let high = SplitPattern { node_count: 2, faces: vec![vec![], vec![]], weight: 999.0 };
+    let low = SplitPattern {
+        node_count: 2,
+        faces: vec![vec![], vec![]],
+        weight: 0.001,
+    };
+    let high = SplitPattern {
+        node_count: 2,
+        faces: vec![vec![], vec![]],
+        weight: 999.0,
+    };
     let patterns = vec![low, high];
 
     let mut low_picks = 0;
@@ -67,7 +101,10 @@ fn pick_weighted_pattern_respects_configured_weight_not_uniform() {
             low_picks += 1;
         }
     }
-    assert!(low_picks < 10, "low-weight pattern picked {low_picks}/500 times, expected near-zero under weighting");
+    assert!(
+        low_picks < 10,
+        "low-weight pattern picked {low_picks}/500 times, expected near-zero under weighting"
+    );
 }
 
 #[test]
@@ -76,15 +113,36 @@ fn pattern_mode_fails_when_no_pattern_can_ever_match_and_lose_is_forbidden() {
     // East passage without adding a new connection — with allow_add forbidden, every rotation
     // fails.
     let mut maze = maze_line(3);
-    let strategy = AddSplitStrategy { split_patterns: vec![two_node_passage_pattern()], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
+    let strategy = AddSplitStrategy {
+        split_patterns: vec![two_node_passage_pattern()],
+        max_split_nodes: 2,
+        pattern_weights: vec![],
+        protect_route: true,
+    };
     let mut overrides = std::collections::HashMap::new();
     overrides.insert(PARAM_ALLOW_ADD_CONNECTIONS.to_string(), "false".to_string());
-    let params = build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy), Some(&overrides));
+    let params = build_params(
+        <AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(
+            &strategy,
+        ),
+        Some(&overrides),
+    );
 
     let issue = missing_issue(1);
     let mut rng = MazeRng::seed_from_u64(9);
-    let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Failed), "no rotation of this pattern can match without adding a connection, which is forbidden here");
+    let result = apply_and_commit(
+        &strategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "no rotation of this pattern can match without adding a connection, which is forbidden here"
+    );
 }
 
 #[test]
@@ -96,13 +154,32 @@ fn pattern_mode_never_produces_a_truncated_tile_when_a_required_face_points_off_
     // required connection (the original bug: a pattern applied where it can't fit, producing
     // a truncated tile that doesn't match the pattern at all).
     let mut maze = maze_line(1);
-    let strategy = AddSplitStrategy { split_patterns: vec![two_node_passage_pattern()], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
+    let strategy = AddSplitStrategy {
+        split_patterns: vec![two_node_passage_pattern()],
+        max_split_nodes: 2,
+        pattern_weights: vec![],
+        protect_route: true,
+    };
     let issue = missing_issue(1);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Failed),
-        "no rotation/mirror can satisfy an East-passage requirement on a field with no neighbors at all");
-    assert_eq!(maze.field.node_count(), 1, "no split tile must be minted when the pattern can't structurally fit anywhere");
+    let result = apply_and_commit(
+        &strategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "no rotation/mirror can satisfy an East-passage requirement on a field with no neighbors at all"
+    );
+    assert_eq!(
+        maze.field.node_count(),
+        1,
+        "no split tile must be minted when the pattern can't structurally fit anywhere"
+    );
 }
 
 #[test]
@@ -116,23 +193,53 @@ fn pattern_mode_rewires_slot0_itself_to_match_the_pattern_instead_of_leaving_it_
     // original bug: a resulting tile whose real slot-0 connections didn't match the pattern
     // at all).
     let mut maze = maze_grid(3, 3);
-    let row: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 1 }).unwrap()).collect();
-    maze.graph.add_bidirectional_edge(row[0], row[1], EdgeKind::Basic);
-    maze.graph.add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
+    let row: Vec<NodeId> = (0..3)
+        .map(|x| {
+            maze.field
+                .node_at(maze.field.single_level_id(), SquarePoint { x, y: 1 })
+                .unwrap()
+        })
+        .collect();
+    maze.graph
+        .add_bidirectional_edge(row[0], row[1], EdgeKind::Basic);
+    maze.graph
+        .add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
 
-    let strategy = AddSplitStrategy { split_patterns: vec![two_node_passage_pattern()], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
+    let strategy = AddSplitStrategy {
+        split_patterns: vec![two_node_passage_pattern()],
+        max_split_nodes: 2,
+        pattern_weights: vec![],
+        protect_route: true,
+    };
     let issue = missing_issue(1);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &strategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    let split_point = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
+    let split_point = (0..3)
+        .flat_map(|x| (0..3).map(move |y| SquarePoint { x, y }))
         .find(|&p| maze.field.nodes_at(maze.field.single_level_id(), p).len() > 1)
         .expect("exactly one point must have been split");
-    let tile_nodes = maze.field.nodes_at(maze.field.single_level_id(), split_point);
-    assert!(crate::quality_control::split_pattern_match::split_tile_matches_any(
-        &maze.graph, &maze.field, tile_nodes, std::slice::from_ref(&two_node_passage_pattern()),
-    ), "the resulting tile must structurally match the pattern, including its node-0/slot-0 requirements");
+    let tile_nodes = maze
+        .field
+        .nodes_at(maze.field.single_level_id(), split_point);
+    assert!(
+        crate::quality_control::split_pattern_match::split_tile_matches_any(
+            &maze.graph,
+            &maze.field,
+            tile_nodes,
+            std::slice::from_ref(&two_node_passage_pattern()),
+        ),
+        "the resulting tile must structurally match the pattern, including its node-0/slot-0 requirements"
+    );
 }
 
 #[test]
@@ -140,20 +247,46 @@ fn pattern_mode_never_leaves_a_stale_edge_referencing_the_old_slot0_id() {
     // Guards the neighbor-side edge cleanup specifically: after replacement, no edge anywhere
     // in the graph may still reference the old slot0 NodeId, in either direction.
     let mut maze = maze_grid(3, 3);
-    let row: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 1 }).unwrap()).collect();
-    maze.graph.add_bidirectional_edge(row[0], row[1], EdgeKind::Basic);
-    maze.graph.add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
+    let row: Vec<NodeId> = (0..3)
+        .map(|x| {
+            maze.field
+                .node_at(maze.field.single_level_id(), SquarePoint { x, y: 1 })
+                .unwrap()
+        })
+        .collect();
+    maze.graph
+        .add_bidirectional_edge(row[0], row[1], EdgeKind::Basic);
+    maze.graph
+        .add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
     let all_nodes_before: Vec<NodeId> = maze.field.all_node_ids().collect();
 
-    let strategy = AddSplitStrategy { split_patterns: vec![two_node_passage_pattern()], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
+    let strategy = AddSplitStrategy {
+        split_patterns: vec![two_node_passage_pattern()],
+        max_split_nodes: 2,
+        pattern_weights: vec![],
+        protect_route: true,
+    };
     let issue = missing_issue(1);
     let mut rng = MazeRng::seed_from_u64(5);
-    apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    apply_and_commit(
+        &strategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
 
-    let old_slot0 = *all_nodes_before.iter().find(|&&n| maze.field.point_of(n).is_none())
+    let old_slot0 = *all_nodes_before
+        .iter()
+        .find(|&&n| maze.field.point_of(n).is_none())
         .expect("exactly one pre-existing node must have been replaced");
 
-    assert!(maze.field.point_of(old_slot0).is_none(), "old slot0 id must no longer resolve to a point");
+    assert!(
+        maze.field.point_of(old_slot0).is_none(),
+        "old slot0 id must no longer resolve to a point"
+    );
     for other in maze.field.all_node_ids() {
         assert!(maze.graph.edge_between(old_slot0, other).is_none());
         assert!(maze.graph.edge_between(other, old_slot0).is_none());
@@ -168,13 +301,18 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
     // neighbor must land on (0,1)'s slot-1 — the node that actually owns the connection in
     // that direction — not silently onto (0,1)'s unconnected slot-0.
     let mut ids = IdGenerator::new();
-    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let west_point = SquarePoint { x: 0, y: 1 };
     let west_slot1 = field.add_node_at(field_level, west_point, &mut ids);
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let at = field.node_at(field_level, SquarePoint { x: 1, y: 1 }).unwrap();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let at = field
+        .node_at(field_level, SquarePoint { x: 1, y: 1 })
+        .unwrap();
     g.add_bidirectional_edge(west_slot1, at, EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -183,16 +321,37 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
         node_count: 2,
         faces: vec![
             vec![],
-            vec![SplitPatternFace { face_index: 3, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+            vec![SplitPatternFace {
+                face_index: 3,
+                requirement: SplitFaceRequirement::Passage,
+                sibling_target: None,
+            }],
         ],
         weight: 1.0,
     };
-    let per_node = split_core::try_pattern_adaptation(&maze, at, point, &pattern, 0, None, true, true, None, &std::collections::HashSet::new())
-        .expect("West face has a real neighbor, must resolve");
+    let per_node = split_core::try_pattern_adaptation(
+        &maze,
+        at,
+        point,
+        &pattern,
+        0,
+        None,
+        true,
+        true,
+        None,
+        &std::collections::HashSet::new(),
+    )
+    .expect("West face has a real neighbor, must resolve");
 
-    let west_slot0 = maze.field.nodes_at(maze.field.single_level_id(), west_point)[0];
-    assert!(!per_node[1].iter().any(|e| e.target == west_slot0),
-        "must not wire the new node to the neighbor's unconnected slot-0");
-    assert!(per_node[1].iter().any(|e| e.target == west_slot1),
-        "must wire the new node to the neighbor's actual owning node (slot-1)");
+    let west_slot0 = maze
+        .field
+        .nodes_at(maze.field.single_level_id(), west_point)[0];
+    assert!(
+        !per_node[1].iter().any(|e| e.target == west_slot0),
+        "must not wire the new node to the neighbor's unconnected slot-0"
+    );
+    assert!(
+        per_node[1].iter().any(|e| e.target == west_slot1),
+        "must wire the new node to the neighbor's actual owning node (slot-1)"
+    );
 }

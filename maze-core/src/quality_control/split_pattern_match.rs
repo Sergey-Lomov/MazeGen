@@ -1,7 +1,7 @@
-use crate::ids::NodeId;
+use crate::generation::{OneWayDirection, SplitFaceRequirement, SplitPattern};
 use crate::graph::Graph;
+use crate::ids::NodeId;
 use crate::space::{MultiLevelField, Tessellation};
-use crate::generation::{SplitPattern, SplitFaceRequirement, OneWayDirection};
 
 /// Reconstructs the topology (per-node, per-face requirement) an already-built split tile actually
 /// has in `graph` — the inverse of applying a `SplitPattern`. `nodes` must be a point's full
@@ -19,31 +19,47 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
     field: &MultiLevelField<T>,
     nodes: &[NodeId],
 ) -> Vec<Vec<SplitFaceRequirement>> {
-    let Some((level, point)) = nodes.first().and_then(|&n| field.level_of(n).zip(field.point_of(n))) else { return Vec::new(); };
+    let Some((level, point)) = nodes
+        .first()
+        .and_then(|&n| field.level_of(n).zip(field.point_of(n)))
+    else {
+        return Vec::new();
+    };
     let degree = T::faces().len();
 
-    nodes.iter().map(|&node| {
-        (0..degree).map(|face_index| {
-            let Some(face) = T::face_at(face_index) else { return SplitFaceRequirement::Wall; };
-            let neighbor_point = T::step(point, face);
-            let candidates = field.nodes_at(level, neighbor_point);
-            if candidates.is_empty() {
-                return SplitFaceRequirement::Wall;
-            }
-            // Any candidate node of the neighboring point connected to `node` resolves this face
-            // — mirrors `enumerate_adaptations`' own "first node at the point" convention, but
-            // checked against every candidate since a repair-built tile may have redistributed an
-            // original edge onto a sibling rather than always the neighbor's own slot-0.
-            let fwd = candidates.iter().any(|&c| graph.edge_between(node, c).is_some());
-            let bwd = candidates.iter().any(|&c| graph.edge_between(c, node).is_some());
-            match (fwd, bwd) {
-                (true, true) => SplitFaceRequirement::Passage,
-                (true, false) => SplitFaceRequirement::OneWay(OneWayDirection::Forward),
-                (false, true) => SplitFaceRequirement::OneWay(OneWayDirection::Backward),
-                (false, false) => SplitFaceRequirement::Wall,
-            }
-        }).collect()
-    }).collect()
+    nodes
+        .iter()
+        .map(|&node| {
+            (0..degree)
+                .map(|face_index| {
+                    let Some(face) = T::face_at(face_index) else {
+                        return SplitFaceRequirement::Wall;
+                    };
+                    let neighbor_point = T::step(point, face);
+                    let candidates = field.nodes_at(level, neighbor_point);
+                    if candidates.is_empty() {
+                        return SplitFaceRequirement::Wall;
+                    }
+                    // Any candidate node of the neighboring point connected to `node` resolves this face
+                    // — mirrors `enumerate_adaptations`' own "first node at the point" convention, but
+                    // checked against every candidate since a repair-built tile may have redistributed an
+                    // original edge onto a sibling rather than always the neighbor's own slot-0.
+                    let fwd = candidates
+                        .iter()
+                        .any(|&c| graph.edge_between(node, c).is_some());
+                    let bwd = candidates
+                        .iter()
+                        .any(|&c| graph.edge_between(c, node).is_some());
+                    match (fwd, bwd) {
+                        (true, true) => SplitFaceRequirement::Passage,
+                        (true, false) => SplitFaceRequirement::OneWay(OneWayDirection::Forward),
+                        (false, true) => SplitFaceRequirement::OneWay(OneWayDirection::Backward),
+                        (false, false) => SplitFaceRequirement::Wall,
+                    }
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// A pattern's own per-node, per-face-position requirement — `Wall` filled in for a face position
@@ -54,11 +70,18 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
 /// `rotation`/`mirror` index into `T::rotation_symmetries()`/`T::mirror_symmetries()` (via
 /// `space::transform_face_index`, GitHub issue #275) — never raw arithmetic on the face index,
 /// since `Self::faces()` order isn't angular for every tessellation.
-fn pattern_faces_at<T: Tessellation>(pattern: &SplitPattern, degree: usize, rotation: usize, mirror: Option<usize>) -> Option<Vec<Vec<SplitFaceRequirement>>> {
-    let mut out: Vec<Vec<SplitFaceRequirement>> = vec![vec![SplitFaceRequirement::Wall; degree]; pattern.node_count];
+fn pattern_faces_at<T: Tessellation>(
+    pattern: &SplitPattern,
+    degree: usize,
+    rotation: usize,
+    mirror: Option<usize>,
+) -> Option<Vec<Vec<SplitFaceRequirement>>> {
+    let mut out: Vec<Vec<SplitFaceRequirement>> =
+        vec![vec![SplitFaceRequirement::Wall; degree]; pattern.node_count];
     for (node_index, node_faces) in pattern.faces.iter().enumerate() {
         for face in node_faces {
-            let resolved = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
+            let resolved =
+                crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
             if resolved >= degree {
                 return None;
             }
@@ -101,7 +124,10 @@ pub fn split_tile_matches_any<T: Tessellation>(
         }
         (0..T::rotation_symmetries().len()).any(|rotation| {
             mirror_choices.clone().any(|mirror| {
-                let Some(expected) = pattern_faces_at::<T>(pattern, degree, rotation, mirror) else { return false; };
+                let Some(expected) = pattern_faces_at::<T>(pattern, degree, rotation, mirror)
+                else {
+                    return false;
+                };
                 expected == actual
             })
         })
@@ -111,9 +137,9 @@ pub fn split_tile_matches_any<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
     use crate::generation::SplitPatternFace;
+    use crate::space::{SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
 
     fn two_node_pattern(east_req: SplitFaceRequirement) -> SplitPattern {
         // SquareFace order: [N, S, E, W] (see square.rs) — node 0 gets an East face (index 2),
@@ -122,8 +148,16 @@ mod tests {
         SplitPattern {
             node_count: 2,
             faces: vec![
-                vec![SplitPatternFace { face_index: 2, requirement: east_req, sibling_target: None }],
-                vec![SplitPatternFace { face_index: 3, requirement: east_req, sibling_target: None }],
+                vec![SplitPatternFace {
+                    face_index: 2,
+                    requirement: east_req,
+                    sibling_target: None,
+                }],
+                vec![SplitPatternFace {
+                    face_index: 3,
+                    requirement: east_req,
+                    sibling_target: None,
+                }],
             ],
             weight: 1.0,
         }
@@ -133,12 +167,15 @@ mod tests {
     /// mirrors a `Passage`-only two-node pattern applied at the middle point.
     fn maze_with_middle_split() -> (Graph, MultiLevelField<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let west = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let east = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         let slot0 = field.nodes_at(level, mid)[0];
@@ -158,7 +195,9 @@ mod tests {
     #[test]
     fn does_not_match_pattern_with_different_requirement() {
         let (g, field, nodes) = maze_with_middle_split();
-        let patterns = vec![two_node_pattern(SplitFaceRequirement::OneWay(OneWayDirection::Forward))];
+        let patterns = vec![two_node_pattern(SplitFaceRequirement::OneWay(
+            OneWayDirection::Forward,
+        ))];
         assert!(!split_tile_matches_any(&g, &field, &nodes, &patterns));
     }
 
@@ -174,9 +213,12 @@ mod tests {
     #[test]
     fn single_node_point_never_matches() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let level = field.single_level_id();
         let node = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let patterns = vec![two_node_pattern(SplitFaceRequirement::Passage)];
@@ -190,15 +232,18 @@ mod tests {
     /// candidate.
     #[test]
     fn tri_tessellation_matches_via_rotation_alone_with_no_mirror_symmetries() {
-        use crate::space::{TriTessellation, TriPoint, tri_rect};
+        use crate::space::{TriPoint, TriTessellation, tri_rect};
 
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<TriTessellation> = MultiLevelField::single_level(tri_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<TriTessellation> =
+            MultiLevelField::single_level(tri_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = TriPoint { col: 1, row: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let left_neighbor = field.node_at(level, TriPoint { col: 0, row: 0 }).unwrap();
         let right_neighbor = field.node_at(level, TriPoint { col: 2, row: 0 }).unwrap();
         let slot0 = field.nodes_at(level, mid)[0];
@@ -210,8 +255,16 @@ mod tests {
         let pattern = SplitPattern {
             node_count: 2,
             faces: vec![
-                vec![SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
-                vec![SplitPatternFace { face_index: 1, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+                vec![SplitPatternFace {
+                    face_index: 0,
+                    requirement: SplitFaceRequirement::Passage,
+                    sibling_target: None,
+                }],
+                vec![SplitPatternFace {
+                    face_index: 1,
+                    requirement: SplitFaceRequirement::Passage,
+                    sibling_target: None,
+                }],
             ],
             weight: 1.0,
         };

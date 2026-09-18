@@ -1,10 +1,10 @@
-use crate::random::MazeRng;
-use rand::Rng;
-use crate::ids::NodeId;
-use crate::graph::{Graph, EdgeKind};
-use crate::space::{MultiLevelField, Tessellation};
-use super::types::ElementsConfig;
 use super::preset_state::PresetState;
+use super::types::ElementsConfig;
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::NodeId;
+use crate::random::MazeRng;
+use crate::space::{MultiLevelField, Tessellation};
+use rand::Rng;
 
 // One-way edges consume two RNG samples (one for the chance check, one for direction),
 // while bidirectional edges consume only one. This means maze topology differs between
@@ -12,7 +12,14 @@ use super::preset_state::PresetState;
 // `kind`/`one_way_chance` are caller-supplied so this same sample-consumption contract applies
 // identically whether `kind` is `Basic` (driven by `elements.one_way_chance`) or `Teleport`
 // (driven by `elements.teleport_one_way_chance`) — there is no kind-specific special-casing here.
-pub(crate) fn add_edge_kind(graph: &mut Graph, src: NodeId, dst: NodeId, kind: EdgeKind, one_way_chance: f64, rng: &mut MazeRng) {
+pub(crate) fn add_edge_kind(
+    graph: &mut Graph,
+    src: NodeId,
+    dst: NodeId,
+    kind: EdgeKind,
+    one_way_chance: f64,
+    rng: &mut MazeRng,
+) {
     if rng.random::<f64>() < one_way_chance {
         if rng.random::<bool>() {
             graph.add_edge(src, dst, kind);
@@ -25,8 +32,21 @@ pub(crate) fn add_edge_kind(graph: &mut Graph, src: NodeId, dst: NodeId, kind: E
 }
 
 #[cfg(test)]
-pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
-    add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, rng);
+pub(crate) fn add_edge(
+    graph: &mut Graph,
+    src: NodeId,
+    dst: NodeId,
+    elements: &ElementsConfig,
+    rng: &mut MazeRng,
+) {
+    add_edge_kind(
+        graph,
+        src,
+        dst,
+        EdgeKind::Basic,
+        elements.one_way_chance,
+        rng,
+    );
 }
 
 /// Runs `add_fn` (a `try_add_edge`/`try_add_edge_kind` call), then detects what actually happened
@@ -48,7 +68,9 @@ pub(crate) fn add_edge_and_detect_direction(
     add_fn(graph);
     let fwd_added = !fwd_existed_before && graph.edge_between(src, dst).is_some();
     let bwd_added = !bwd_existed_before && graph.edge_between(dst, src).is_some();
-    if !fwd_added && !bwd_added { return None; }
+    if !fwd_added && !bwd_added {
+        return None;
+    }
     let (from, to) = if fwd_added { (src, dst) } else { (dst, src) };
     Some((from, to, fwd_added && bwd_added))
 }
@@ -67,15 +89,24 @@ pub(crate) fn add_edge_and_detect_direction(
 /// so it can no longer be `node`'s neighbor too. An unsplit point (the common case, `nodes_at`
 /// returns a single-element slice) never has a "different sibling" to check against, so this is a
 /// no-op there — identical to calling `field.neighbors` directly.
-pub(crate) fn split_aware_neighbors<T: Tessellation>(field: &MultiLevelField<T>, graph: &Graph, node: NodeId) -> Vec<NodeId> {
-    let siblings: &[NodeId] = field.level_of(node).zip(field.point_of(node))
+pub(crate) fn split_aware_neighbors<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    graph: &Graph,
+    node: NodeId,
+) -> Vec<NodeId> {
+    let siblings: &[NodeId] = field
+        .level_of(node)
+        .zip(field.point_of(node))
         .map(|(level, point)| field.nodes_at(level, point))
         .unwrap_or(&[]);
-    field.neighbors(node)
+    field
+        .neighbors(node)
         .into_iter()
         .filter(|&n| {
             siblings.iter().all(|&sib| {
-                sib == node || (graph.edge_between(sib, n).is_none() && graph.edge_between(n, sib).is_none())
+                sib == node
+                    || (graph.edge_between(sib, n).is_none()
+                        && graph.edge_between(n, sib).is_none())
             })
         })
         .collect()
@@ -83,8 +114,12 @@ pub(crate) fn split_aware_neighbors<T: Tessellation>(field: &MultiLevelField<T>,
 
 /// Returns true if the algorithm is allowed to add an edge src→dst (at least one direction).
 pub(crate) fn can_connect(src: NodeId, dst: NodeId, preset_state: &PresetState) -> bool {
-    if preset_state.locked_out.contains(&src) && preset_state.locked_out.contains(&dst) { return false; }
-    if preset_state.locked_in.contains(&src)  && preset_state.locked_in.contains(&dst)  { return false; }
+    if preset_state.locked_out.contains(&src) && preset_state.locked_out.contains(&dst) {
+        return false;
+    }
+    if preset_state.locked_in.contains(&src) && preset_state.locked_in.contains(&dst) {
+        return false;
+    }
     let fwd_blocked = preset_state.blocked.contains(&(src, dst))
         || preset_state.locked_out.contains(&src)
         || preset_state.locked_in.contains(&dst);
@@ -107,9 +142,15 @@ pub(crate) fn try_add_edge_kind(
     preset_state: &PresetState,
     rng: &mut MazeRng,
 ) {
-    if preset_state.locked_out.contains(&src) { return; }
-    if preset_state.locked_in.contains(&dst)  { return; }
-    if preset_state.blocked.contains(&(src, dst)) { return; }
+    if preset_state.locked_out.contains(&src) {
+        return;
+    }
+    if preset_state.locked_in.contains(&dst) {
+        return;
+    }
+    if preset_state.blocked.contains(&(src, dst)) {
+        return;
+    }
 
     // For one_way_chance: if reverse direction is also blocked, force forward only.
     let reverse_blocked = preset_state.blocked.contains(&(dst, src))
@@ -137,7 +178,15 @@ pub(crate) fn try_add_edge(
     preset_state: &PresetState,
     rng: &mut MazeRng,
 ) {
-    try_add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, preset_state, rng);
+    try_add_edge_kind(
+        graph,
+        src,
+        dst,
+        EdgeKind::Basic,
+        elements.one_way_chance,
+        preset_state,
+        rng,
+    );
 }
 
 /// Shared feasibility predicate for `try_add_bidirectional_edge`/`cmd_add_bidirectional_edge`
@@ -149,7 +198,11 @@ pub(crate) fn try_add_edge(
 /// `TeleportRegionMergeStrategy::teleport_bidirectional_blocked`,
 /// `MissingLoopsRandomStrategy::apply`'s own inline check) call this directly instead of
 /// re-deriving the same preset-lock formula — one definition, used by every side that needs it.
-pub(crate) fn bidirectional_edge_feasible(preset_state: &PresetState, a: NodeId, b: NodeId) -> bool {
+pub(crate) fn bidirectional_edge_feasible(
+    preset_state: &PresetState,
+    a: NodeId,
+    b: NodeId,
+) -> bool {
     let fwd_blocked = preset_state.blocked.contains(&(a, b))
         || preset_state.locked_out.contains(&a)
         || preset_state.locked_in.contains(&b);
@@ -297,7 +350,11 @@ pub(crate) fn try_add_bidirectional_elevator(
 /// Shared feasibility predicate for `try_remove_edge`/`cmd_remove_edge` (GitHub issue #118): the
 /// node pair must not be a preset (Basic) connection. See `bidirectional_edge_feasible`'s own
 /// doc comment for why this is factored out (and `pub(crate)`) rather than re-derived on each side.
-pub(crate) fn remove_edge_between_feasible(preset_state: &PresetState, from: NodeId, to: NodeId) -> bool {
+pub(crate) fn remove_edge_between_feasible(
+    preset_state: &PresetState,
+    from: NodeId,
+    to: NodeId,
+) -> bool {
     !preset_state.is_preset_edge(from, to)
 }
 
@@ -312,7 +369,9 @@ pub(crate) fn try_remove_edge(
     if !remove_edge_between_feasible(preset_state, from, to) {
         return false;
     }
-    let Some(id) = graph.edge_between(from, to) else { return false; };
+    let Some(id) = graph.edge_between(from, to) else {
+        return false;
+    };
     if preset_state.is_preset_edge_id(id) {
         return false;
     }
@@ -345,11 +404,15 @@ pub(crate) fn try_remove_edge_by_id(
     id: crate::ids::EdgeId,
     preset_state: &PresetState,
 ) -> bool {
-    let Some(edge) = graph.edge(id) else { return false; };
+    let Some(edge) = graph.edge(id) else {
+        return false;
+    };
     if preset_state.is_preset_edge_id(id) {
         return false;
     }
-    if edge.kind == EdgeKind::Basic && !remove_edge_between_feasible(preset_state, edge.from, edge.to) {
+    if edge.kind == EdgeKind::Basic
+        && !remove_edge_between_feasible(preset_state, edge.from, edge.to)
+    {
         return false;
     }
     graph.remove_edge(id);
@@ -429,7 +492,9 @@ pub(crate) fn try_remove_edge_with_reverse(
     id: crate::ids::EdgeId,
     preset_state: &PresetState,
 ) -> Vec<crate::ids::EdgeId> {
-    let reverse_id = graph.edge(id).and_then(|edge| graph.edge_between(edge.to, edge.from));
+    let reverse_id = graph
+        .edge(id)
+        .and_then(|edge| graph.edge_between(edge.to, edge.from));
     let mut removed = Vec::with_capacity(2);
     if try_remove_edge_by_id(graph, id, preset_state) {
         removed.push(id);

@@ -208,7 +208,8 @@ pub const INVALID_SPLIT_NODE_CONNECTION: IssueKind = IssueKind::InvalidSplitNode
 /// that type's doc comment. Repaired by `SplitNodeConnectionGroupSelectStrategy`, which delegates
 /// each candidate connection's removal to a nested `INVALID_SPLIT_NODE_CONNECTION` strategy
 /// (`RemoveSplitNodeConnectionStrategy`).
-pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind = IssueKind::InvalidSplitNodeConnectionGroup;
+pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind =
+    IssueKind::InvalidSplitNodeConnectionGroup;
 
 /// A split tile has more nodes than a check's configured limit allows (currently
 /// `SplitTileNodeCountCheck`, compared via the shared `Comparison` operator) — see GitHub issue
@@ -384,7 +385,10 @@ impl IssueMeta {
 
     /// Zeroes `source_checks` to `vec![source_check]` — mirrors the pre-#113 `Issue::new_from_check`.
     pub fn new_from_check(source_check: &str) -> Self {
-        Self { source_checks: vec![source_check.to_string()], details: HashMap::new() }
+        Self {
+            source_checks: vec![source_check.to_string()],
+            details: HashMap::new(),
+        }
     }
 
     /// Attaches a display detail under `source_check` (raw value only, e.g. a threshold — never
@@ -392,7 +396,10 @@ impl IssueMeta {
     /// right after constructing its issue's `IssueMeta` via `new_from_check`. `source_check`
     /// should be the same id the issue was constructed with.
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
-        self.details.entry(source_check.to_string()).or_default().insert(key, value);
+        self.details
+            .entry(source_check.to_string())
+            .or_default()
+            .insert(key, value);
         self
     }
 
@@ -420,7 +427,10 @@ impl IssueMeta {
     /// only ever appears as a raw (pre-merge) issue's sole source, `incoming`'s entries simply
     /// overwrite any existing entry for the same check id — there is no same-check-id conflict
     /// to reconcile. Used exclusively by `IssueMerge::merge` implementations.
-    pub(crate) fn merge_details(&mut self, incoming: HashMap<String, HashMap<&'static str, String>>) {
+    pub(crate) fn merge_details(
+        &mut self,
+        incoming: HashMap<String, HashMap<&'static str, String>>,
+    ) {
         self.details.extend(incoming);
     }
 
@@ -474,10 +484,18 @@ pub trait Issue: std::any::Any {
 macro_rules! impl_issue {
     ($ty:ty) => {
         impl $crate::quality_control::issue::Issue for $ty {
-            fn kind(&self) -> $crate::quality_control::issue::IssueKind { Self::KIND }
-            fn meta(&self) -> &$crate::quality_control::issue::IssueMeta { &self.meta }
-            fn meta_mut(&mut self) -> &mut $crate::quality_control::issue::IssueMeta { &mut self.meta }
-            fn as_any(&self) -> &dyn std::any::Any { self }
+            fn kind(&self) -> $crate::quality_control::issue::IssueKind {
+                Self::KIND
+            }
+            fn meta(&self) -> &$crate::quality_control::issue::IssueMeta {
+                &self.meta
+            }
+            fn meta_mut(&mut self) -> &mut $crate::quality_control::issue::IssueMeta {
+                &mut self.meta
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
         }
     };
 }

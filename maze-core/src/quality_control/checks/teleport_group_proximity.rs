@@ -1,14 +1,16 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, min_optional_distance, DistanceDirection};
+use crate::graph::distance_map::{
+    DistanceDirection, compute_distance_map_filtered_bounded, min_optional_distance,
+};
 use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
-use crate::space::Tessellation;
+use crate::quality_control::InvalidTeleportGroupIssue;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidTeleportGroupIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -68,7 +70,11 @@ pub struct TeleportGroupProximityCheck {
 
 /// Returns the endpoint(s) `edge` selects — one for `Entry`/`Exit`, both for `EntryOrExit`
 /// (a smallvec-style inline array avoids allocating a `Vec` per lookup).
-fn endpoints_of(edge: TeleportProximityEdge, from: crate::ids::NodeId, to: crate::ids::NodeId) -> [Option<crate::ids::NodeId>; 2] {
+fn endpoints_of(
+    edge: TeleportProximityEdge,
+    from: crate::ids::NodeId,
+    to: crate::ids::NodeId,
+) -> [Option<crate::ids::NodeId>; 2] {
     match edge {
         TeleportProximityEdge::Entry => [Some(from), None],
         TeleportProximityEdge::Exit => [Some(to), None],
@@ -108,7 +114,12 @@ struct DirectedDistanceCache<'a> {
 
 impl<'a> DirectedDistanceCache<'a> {
     fn new(nav: &'a crate::graph::nav::NavGraph, max_dist: usize) -> Self {
-        Self { nav, max_dist, forward: HashMap::new(), reverse: HashMap::new() }
+        Self {
+            nav,
+            max_dist,
+            forward: HashMap::new(),
+            reverse: HashMap::new(),
+        }
     }
 
     /// A nav-edge is traversable unless it's teleport-backed (`NavEdge::is_teleport`) — see that
@@ -126,21 +137,53 @@ impl<'a> DirectedDistanceCache<'a> {
             return Some(0);
         }
         let max_dist = self.max_dist;
-        let fwd = self.forward.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(e), max_dist))
-            .get(&b).copied();
-        let rev = self.reverse.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(e), max_dist))
-            .get(&b).copied();
+        let fwd = self
+            .forward
+            .entry(a)
+            .or_insert_with(|| {
+                compute_distance_map_filtered_bounded(
+                    self.nav,
+                    a,
+                    DistanceDirection::Forward,
+                    |e| Self::is_not_teleport_hop(e),
+                    max_dist,
+                )
+            })
+            .get(&b)
+            .copied();
+        let rev = self
+            .reverse
+            .entry(a)
+            .or_insert_with(|| {
+                compute_distance_map_filtered_bounded(
+                    self.nav,
+                    a,
+                    DistanceDirection::Reverse,
+                    |e| Self::is_not_teleport_hop(e),
+                    max_dist,
+                )
+            })
+            .get(&b)
+            .copied();
         min_optional_distance(fwd, rev)
     }
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProximityCheck {
-    fn check_type_id(&self) -> &'static str { "teleport_group_proximity" }
+    fn check_type_id(&self) -> &'static str {
+        "teleport_group_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let teleports: Vec<_> = maze.graph.edges()
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidTeleportGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
+        let teleports: Vec<_> = maze
+            .graph
+            .edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .map(|e| (e.id, e.from, e.to))
             .collect();
@@ -161,7 +204,8 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &teleports {
-            let own_navs: Vec<NavNodeId> = endpoints_of(self.own_edge, own_from, own_to).into_iter()
+            let own_navs: Vec<NavNodeId> = endpoints_of(self.own_edge, own_from, own_to)
+                .into_iter()
                 .flatten()
                 .filter_map(|n| nav.nav_node_for(n))
                 .collect();
@@ -178,10 +222,12 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
                 if other_id == own_id || Some(other_id) == own_reverse {
                     continue;
                 }
-                let other_navs: Vec<NavNodeId> = endpoints_of(self.other_edge, other_from, other_to).into_iter()
-                    .flatten()
-                    .filter_map(|n| nav.nav_node_for(n))
-                    .collect();
+                let other_navs: Vec<NavNodeId> =
+                    endpoints_of(self.other_edge, other_from, other_to)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|n| nav.nav_node_for(n))
+                        .collect();
                 if other_navs.is_empty() {
                     continue;
                 }
@@ -189,7 +235,8 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
                 // Closest combination across every (own endpoint, other endpoint) pair this
                 // instance's selectors expand to — same "min across every relevant combination"
                 // reduction TeleportWaypointDistanceCheck's own EntryOrExit uses.
-                let closest = own_navs.iter()
+                let closest = own_navs
+                    .iter()
                     .flat_map(|&a| other_navs.iter().map(move |&b| (a, b)))
                     .filter_map(|(a, b)| dist_cache.distance(a, b))
                     .min();

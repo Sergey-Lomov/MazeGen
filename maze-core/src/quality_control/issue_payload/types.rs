@@ -73,10 +73,17 @@ pub struct IssueRegionPayload {
 /// Whether every edge in `edges` is preset-protected (`PresetState::is_preset_edge`) — an empty
 /// list resolves `false`, not vacuously `true` via `Iterator::all`, since an element with no
 /// edges can't meaningfully be "locked" by anything.
-pub(super) fn all_preset_locked(edges: &[crate::ids::EdgeId], graph: &crate::graph::Graph, preset_state: &crate::generation::PresetState) -> bool {
-    !edges.is_empty() && edges.iter().all(|&eid| {
-        graph.edge(eid).is_some_and(|e| preset_state.is_preset_edge(e.from, e.to))
-    })
+pub(super) fn all_preset_locked(
+    edges: &[crate::ids::EdgeId],
+    graph: &crate::graph::Graph,
+    preset_state: &crate::generation::PresetState,
+) -> bool {
+    !edges.is_empty()
+        && edges.iter().all(|&eid| {
+            graph
+                .edge(eid)
+                .is_some_and(|e| preset_state.is_preset_edge(e.from, e.to))
+        })
 }
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
@@ -100,15 +107,21 @@ pub enum IssuePayload {
     /// Keyed by source check id — each inner `Vec` is one invalid cycle flagged by that check,
     /// paired with whether every edge in it is preset-protected (GitHub issue #245). Mirrors
     /// `IssuePayloadDto::InvalidLoop`.
-    InvalidLoop { edges: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    InvalidLoop {
+        edges: HashMap<String, Vec<IssueEdgeGroupPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged SCC region, paired with its own
     /// `preset_locked` status (GitHub issue #245's region extension). Mirrors
     /// `IssuePayloadDto::RegionNeedsExpansion`.
-    RegionNeedsExpansion { nodes: HashMap<String, Vec<IssueRegionPayload>> },
+    RegionNeedsExpansion {
+        nodes: HashMap<String, Vec<IssueRegionPayload>>,
+    },
     /// Keyed by source check id — same shape as `RegionNeedsExpansion`, but for an oversized
     /// region flagged for shrinking (see GitHub issue #177). Mirrors
     /// `IssuePayloadDto::RegionNeedsShrink`.
-    RegionNeedsShrink { nodes: HashMap<String, Vec<IssueRegionPayload>> },
+    RegionNeedsShrink {
+        nodes: HashMap<String, Vec<IssueRegionPayload>>,
+    },
     /// Keyed by source check id — each inner `Vec` is one flagged teleport "group", expressed as
     /// base-graph `[from, to]` maze node-id pairs, one pair per teleport edge in the group.
     /// `InvalidTeleportIssue` (a single flagged teleport is really a group of size one) and
@@ -116,7 +129,9 @@ pub enum IssuePayload {
     /// than getting their own payload variant each — see GitHub issue #195, mirrors
     /// `InvalidLoop`'s reuse across `InvalidLoopIssue`/`InvalidLoopGroupIssue`. Mirrors
     /// `IssuePayloadDto::InvalidTeleport`.
-    InvalidTeleport { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    InvalidTeleport {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayload>>,
+    },
     /// Keyed by source check id — each inner `Vec` is one flagged one-way "group", expressed as
     /// base-graph `[from, to]` maze node-id pairs, one pair per one-way edge in the group.
     /// `InvalidOneWayIssue` (a single flagged one-way is a group of size one) and
@@ -126,7 +141,9 @@ pub enum IssuePayload {
     /// `IssuePayloadDto::InvalidOneWay`. Kept a distinct variant from `InvalidTeleport` (not
     /// reused) so `payload.kind` still mirrors `IssueKind::as_str()` (`invalid_one_way` vs.
     /// `invalid_teleport`), same rationale as every other variant here.
-    InvalidOneWay { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    InvalidOneWay {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayload>>,
+    },
     /// Keyed by source check id — each inner `Vec` is one flagged vertical-passage "group",
     /// expressed as base-graph `[from, to]` maze node-id pairs, one pair per `VerticalPassage`
     /// edge in the group. `InvalidVerticalPassageIssue` (a single flagged edge is a group of size
@@ -135,7 +152,9 @@ pub enum IssuePayload {
     /// `InvalidTeleportGroupIssue` — see GitHub issue #395. Mirrors
     /// `IssuePayloadDto::InvalidVerticalPassage`. Kept a distinct variant from `InvalidTeleport`
     /// (not reused) so `payload.kind` still mirrors `IssueKind::as_str()`.
-    InvalidVerticalPassage { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    InvalidVerticalPassage {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
     /// genuine multi-tile group for proximity/count/density checks — see `IssueSplitGroupPayload`'s
     /// doc comment), each paired with its own `preset_locked` flag (GitHub issue #245's split-node
@@ -144,23 +163,31 @@ pub enum IssuePayload {
     /// check's own `type_id` is the only way to tell which check produced a given element, same
     /// contract as `InvalidSplitNodeConnectionGroupIssue`'s reuse of `InvalidOneWay` below. Mirrors
     /// `IssuePayloadDto::InvalidSplitTile`.
-    InvalidSplitTile { groups: HashMap<String, Vec<IssueSplitGroupPayload>> },
+    InvalidSplitTile {
+        groups: HashMap<String, Vec<IssueSplitGroupPayload>>,
+    },
     /// Keyed by source check id — each inner `Vec` is one flagged route, paired with its own
     /// `preset_locked` flag. Mirrors `IssuePayloadDto::InvalidSplitRoute`.
-    InvalidSplitRoute { routes: HashMap<String, Vec<IssueRoutePayload>> },
+    InvalidSplitRoute {
+        routes: HashMap<String, Vec<IssueRoutePayload>>,
+    },
     /// Keyed by source check id — whether repair can never reduce the SCC count at all because
     /// every single region on the field is preset-locked against expansion (GitHub issue #245's
     /// extension to `ExcessiveSccCountIssue`, which carries no specific region list of its own —
     /// `ReduceSccCountStrategy` picks its merge targets fresh from live component sizes, not from
     /// data on the issue). No per-element highlight data, unlike every variant above — this issue
     /// never highlights specific regions on the canvas. Mirrors `IssuePayloadDto::ExcessiveSccCount`.
-    ExcessiveSccCount { preset_locked: HashMap<String, bool> },
+    ExcessiveSccCount {
+        preset_locked: HashMap<String, bool>,
+    },
     /// Keyed by source check id — each inner `Vec` is one flagged elevator, expressed as base-graph
     /// `[from, to]` pairs, one pair per `EdgeKind::Elevator` edge currently connecting its stops
     /// (re-resolved against `graph` at payload time, since `ElevatorNodes` names the elevator by its
     /// stop-node set, not by saved edge ids — see GitHub issue #397, mirrors `RemoveElevatorStrategy`'s
     /// own re-resolution). Mirrors `IssuePayloadDto::InvalidElevator`.
-    InvalidElevator { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    InvalidElevator {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged elevator stop, wrapped as a
     /// single-node "region" (reuses `IssueRegionPayload`'s shape — see GitHub issue #399). A single
     /// flagged stop (`INVALID_ELEVATOR_STOP`) and a jointly-flagged stop group
@@ -168,7 +195,9 @@ pub enum IssuePayload {
     /// a group's stops are emitted as separate single-node entries rather than one multi-node
     /// region, since each stop highlights independently (unlike a region's contiguous cell set).
     /// Mirrors `IssuePayloadDto::InvalidElevatorStop`.
-    InvalidElevatorStop { nodes: HashMap<String, Vec<IssueRegionPayload>> },
+    InvalidElevatorStop {
+        nodes: HashMap<String, Vec<IssueRegionPayload>>,
+    },
     /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` if
     /// the deficit is scoped to a specific floor (`RepairArea::Level`, the index being the floor's
     /// `levels_ordered()` position, same convention `NodeDto.level`/`level_index_of` already use
@@ -180,7 +209,9 @@ pub enum IssuePayload {
     /// identical shape, and none of them track which specific check flagged which entry (unlike
     /// e.g. `InvalidLoopIssue`'s `invalid_sources`), so every entry is attributed uniformly to
     /// every one of the issue's `source_checks()`. Mirrors `IssuePayloadDto::AreaDeficit`.
-    AreaDeficit { areas: HashMap<String, Vec<Option<u32>>> },
+    AreaDeficit {
+        areas: HashMap<String, Vec<Option<u32>>>,
+    },
     /// Keyed by source check id — each entry is one flagged elevator's stop-count deficit: the
     /// elevator's currently-live fan of `EdgeKind::Elevator` edges (same shape as
     /// `InvalidElevator`'s `edges`, re-resolved against `graph` the same way), how many stops are
@@ -190,14 +221,18 @@ pub enum IssuePayload {
     /// `ExcessiveElevatorStopGap` reuse `InvalidElevator`'s plain edge-group shape instead — both
     /// leave candidate-floor selection to their own repair strategy, so neither has anything to
     /// offer here. Mirrors `IssuePayloadDto::MissingElevatorStopCount`.
-    MissingElevatorStopCount { groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> },
+    MissingElevatorStopCount {
+        groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>>,
+    },
     /// Keyed by source check id — each inner `Vec<CrossElementPayloadEntry>` is one flagged
     /// too-close pair (always two entries), one entry per logical element of the pair. Produced by
     /// `CrossElementGeometricProximityCheck` / `CrossElementGraphProximityCheck` (GitHub issue
     /// #376); the two checks share this one wire variant, told apart by `payload.kind` /
     /// `source_checks` like every other reused variant here. `to_remove` (always 1) carries no
     /// highlight meaning and is dropped. Mirrors `IssuePayloadDto::InvalidCrossElementGroup`.
-    InvalidCrossElementGroup { groups: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>> },
+    InvalidCrossElementGroup {
+        groups: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>,
+    },
 }
 
 /// One element of a flagged cross-element proximity group resolved for the wire boundary (GitHub
