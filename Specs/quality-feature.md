@@ -518,7 +518,9 @@ type EntityVisibility = { type: "multi_floor_only" };
     stamped once inside each shared constructor rather than at every one of their ~27 call sites.
   - Whole checks/strategies that only make sense with vertical passages/elevators — entity types
     that don't exist on a single-floor maze — covering every check/strategy operating on
-    `VerticalPassage`/elevator/elevator-stop entities.
+    `VerticalPassage`/elevator/elevator-stop entities. This also includes the explicitly vertical
+    `missing_loops_vertical` strategy and the `vertical_passage_priority` /
+    `vertical_loop_one_way_chance` parameters of loop repair strategies (GitHub issue #560).
   - `TeleportDirectionFilter` (`teleport_direction_param`) was evaluated and deliberately excluded:
     it concerns one-way vs two-way portals, not floor topology, and applies equally on a single
     floor.
