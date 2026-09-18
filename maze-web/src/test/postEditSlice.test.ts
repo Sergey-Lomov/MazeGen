@@ -125,12 +125,51 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
   });
 
-  it("applyPostEditTool records wall/passage/one_way edge-tool clicks as a single setEdgePair command, not two setEdge commands (GitHub issue #545)", () => {
-    seedPostEdit({ edges: [] }, { postEditTool: "wall" });
+  it("applyPostEditTool('reset') removes the command(s) that touched this edge instead of appending a restoring command, and repeat clicks stay a no-op (GitHub issue #545)", () => {
+    // A wall set via `setEdge` (single-direction command, the shape the delete/legacy paths can
+    // still produce) must be REMOVED by reset, not countered with a new `setEdgePair`.
+    seedPostEdit(
+      { commands: [{ kind: "setEdge", from: n(0), to: n(1), edgeKind: "wall" }] },
+      { postEditTool: "reset" },
+    );
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
-    expect(useMazeStore.getState().postEditCommands).toEqual([
+    expect(useMazeStore.getState().postEditCommands).toEqual([]);
+    expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
+
+    // Clicking reset again on the now-already-generation-state edge must not append anything either
+    // - repeated resets used to keep piling up duplicate "restore" commands.
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([]);
+  });
+
+  it("applyPostEditTool('reset') removes a setEdgePair (wall/passage/one_way tool click) that touched this edge (GitHub issue #545)", () => {
+    seedPostEdit(
+      { commands: [{ kind: "setEdgePair", a: n(0), b: n(1), aToB: "basic", bToA: "basic" }] },
+      { postEditTool: "reset" },
+    );
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([]);
+    expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
+  });
+
+  it("applyPostEditTool('reset') is a genuine no-op (no command touched, log unchanged by reference) on an edge that was never edited", () => {
+    seedPostEdit({ commands: [] }, { postEditTool: "reset" });
+    const before = useMazeStore.getState().postEditCommands;
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toBe(before);
+  });
+
+  it("applyPostEditTool records wall/passage/one_way edge-tool clicks as a single setEdgePair command, not two setEdge commands (GitHub issue #545)", () => {
+    // Untouched face already reads as wall - seed it as a passage first so the wall click below is
+    // an actual change, not the no-op GitHub issue #545 now blocks.
+    seedPostEdit(
+      { edges: [], commands: [{ kind: "setEdgePair", a: n(0), b: n(1), aToB: "basic", bToA: "basic" }] },
+      { postEditTool: "wall" },
+    );
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands[1]).toEqual(
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: "wall", bToA: "wall" },
-    ]);
+    );
 
     seedPostEdit({ edges: [] }, { postEditTool: "passage" });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
@@ -143,6 +182,57 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditCommands).toEqual([
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: "one_way_forward", bToA: "wall" },
     ]);
+  });
+
+  it("applyPostEditTool is a no-op when the face is already (effectively) wall/passage (GitHub issue #545)", () => {
+    // An untouched face has no draft record at all, but reads as wall (a generation-time wall) -
+    // clicking wall on it changes nothing and must not log anything either.
+    seedPostEdit({ edges: [] }, { postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(0);
+
+    // Passage click changes it, then a second passage click on the now-passage face is a no-op too.
+    useMazeStore.getState().setPostEditTool("passage");
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(1);
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(1);
+
+    // Wall click now changes it back (from passage to wall) - not a no-op.
+    useMazeStore.getState().setPostEditTool("wall");
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(2);
+  });
+
+  it("applyPostEditTool marks a one_way click as directionFlip only when the face was already one-way (GitHub issue #545)", () => {
+    seedPostEdit({ edges: [] }, { postEditTool: "one_way" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: "one_way_forward", bToA: "wall" },
+    ]);
+
+    // Second one_way click on the now-one-way face flips its direction - same tool, but now it must
+    // be tagged `directionFlip: true` so the "Changes" panel labels it as a direction change, not a
+    // fresh one-way passage.
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands[1]).toEqual({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: "wall", bToA: "one_way_forward", directionFlip: true,
+    });
+  });
+
+  it("applyPostEditTool('one_way') on an already-two-way passage creates a fresh forward one-way instead of flipping (GitHub issue #545)", () => {
+    // A `basic` face has a record on BOTH sides, same as a one-way face does on one side - the
+    // branch must key off which side is actually one-way, not just "does a record exist here",
+    // or a one_way click on a plain passage silently demotes it to backward-only without
+    // `directionFlip` ever making sense of it.
+    seedPostEdit(
+      { edges: [], commands: [{ kind: "setEdgePair", a: n(0), b: n(1), aToB: "basic", bToA: "basic" }] },
+      { postEditTool: "one_way" },
+    );
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands[1]).toEqual({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: "one_way_forward", bToA: "wall",
+    });
   });
 
   it("applyPostEditTool is no-op when there is no draft yet", () => {
@@ -1022,6 +1112,10 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("backward");
     expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(true);
+    // One click = one log entry (GitHub issue #545) - the suppression is folded into
+    // `setVerticalPassageDirection`'s own `suppressPair`, not a trailing separate command.
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(2);
+    expect(useMazeStore.getState().postEditCommands[1]).toMatchObject({ kind: "setVerticalPassageDirection", id: 1 });
 
     // Second cycle on the same (now already-"confirmed" by convention) entry - suppression must
     // still hold afterwards, not be skipped/lost as "already done once" (GitHub issue #341
@@ -1030,6 +1124,21 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("forward");
     expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(true);
+  });
+
+  it("cyclePostEditVerticalPassageDirection is a total no-op on a two-way passage — nothing appended to the log (GitHub issue #545)", () => {
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "two_way" }],
+    }, { _nextPostEditVerticalPassageId: 2 });
+    const before = useMazeStore.getState().postEditCommands;
+    useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toBe(before);
+    expect(s.postEditDraftVerticalPassages[0].direction).toBe("two_way");
+    expect(s.postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(false);
   });
 
   it("removePostEditVerticalPassage removes the draft entry and marks dirty", () => {
@@ -1409,11 +1518,89 @@ describe("mazeStore applySplitBlueprint", () => {
     });
   });
 
-  it("replaces an existing split point entirely, dropping stale slots/edges", () => {
+  it("activates the blueprint's first minted slot, so a later face-tool click on it routes through updateSplitNodeFaces instead of a bare setEdgePair (GitHub issue #545)", () => {
+    // Reproduces the reported bug: after applying a blueprint, `PostEditController`'s
+    // `resolveActiveEndpointAt` had no active split entry for this point (`applySplitBlueprint`
+    // used to unconditionally clear it) and fell back to the plain original-node endpoint for every
+    // click — so editing a face logged "Set wall"/"Set passage" (setEdgePair) instead of one
+    // "Reconfigure split node faces" (updateSplitNodeFaces) entry, exactly like a manually-created
+    // split node (`addSplitNode`) already does correctly.
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField, postEditTool: "wall" });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const slot0 = splitEndpoint([0, 0], 0);
+    expect(useMazeStore.getState().postEditActiveSplitNode["0,0"]).toEqual(slot0);
+
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(3)), slot0, n(3));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(2);
+    expect(s.postEditCommands[1]).toMatchObject({ kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0 });
+  });
+
+  it("applyPostEditTool('reset') on a split node's own face is a no-op (GitHub issue #545)", () => {
+    // `updateSplitNodeFaces`'s lifeline covers the WHOLE slot, not one face - if reset fell through
+    // to the ordinary split-face branch it would append a fresh "restore" command whose later
+    // removal (point-reset) would wipe every other face of the slot too, not just this one. No
+    // caller reaches this combination today; this guards against a future one hitting it silently.
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const slot0 = splitEndpoint([0, 0], 0);
+    const before = useMazeStore.getState().postEditCommands;
+
+    useMazeStore.getState().setPostEditTool("reset");
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(3)), slot0, n(3));
+    expect(useMazeStore.getState().postEditCommands).toBe(before);
+  });
+
+  it("re-applying a bridge blueprint on top of itself reuses the same slot id for both nodes, leaving no orphaned node behind (GitHub issue #545)", () => {
+    // Exact reported scenario: apply a bridge (top-bottom / left-right), then apply another
+    // blueprint needing the same node count on top. Before the fix, slot 0's faces got correctly
+    // rewired but a brand-new slot 1 was minted for the second node's faces, leaving slot 0's
+    // ORIGINAL neighbor wiring (from the first apply) as a separate orphaned all-wall node — the
+    // point rendered as a plain passage off Node 0 alone, every other node's connection ignored.
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0]);
+
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    // Still exactly one slot, same id - reapplying never mints a second one for the same node count.
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    expect(s._nextSplitSlotId["0,0"]).toBe(1);
+    const slot0 = splitEndpoint([0, 0], 0);
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(3))]?.kind).toBe("basic");
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(4))]?.kind).toBe("basic");
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(1))]?.kind).toBe("basic");
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(2))]?.kind).toBe("basic");
+  });
+
+  it("reuses a pre-existing slot's id for the new blueprint's own slot instead of minting a fresh one (GitHub issue #545)", () => {
+    // A blueprint applied to an already-split point must reuse the point's existing slot ids for
+    // as many of its own nodes as it needs, not mint fresh ones on top - minting fresh ones left
+    // the reused-looking survivor as an orphaned, all-wall node while the blueprint's face list
+    // landed on a brand-new id, so the maze visibly kept "one connected node plus a floating empty
+    // one" instead of properly rewiring both existing nodes.
     const staleTarget = splitEndpoint([0, 0], 5);
-    // The point has already issued slot ids up to 5; the blueprint's own slot is minted from the
-    // high-water mark (6), never by reusing the stale id it is replacing (GitHub issue #543 plan
-    // section 7) — what matters here is that slot 5 and its edge are gone afterwards.
     seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
       edges: [],
@@ -1426,8 +1613,34 @@ describe("mazeStore applySplitBlueprint", () => {
     }, { activeTessellationConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
-    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([6]);
+    // `square` needs exactly one slot (2 nodes total: original + 1) - the existing slot 5 is reused
+    // verbatim, nothing new is minted, and the high-water mark stays put.
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([5]);
+    expect(s._nextSplitSlotId["0,0"]).toBe(6);
     expect(s.postEditDraftEdges?.[edgeKey(n(0), staleTarget)]).toBeUndefined();
+  });
+
+  it("drops an existing slot the new blueprint no longer needs, instead of leaving it orphaned (GitHub issue #545)", () => {
+    // The point has two existing slots (5 and 6); a blueprint needing only one slot must drop the
+    // second one entirely (removed from the slot list, its edges already stripped as stale) rather
+    // than leave it dangling as an all-wall node nobody references.
+    const target5 = splitEndpoint([0, 0], 5);
+    const target6 = splitEndpoint([0, 0], 6);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 5 },
+        { kind: "addSplitNode", point: [0, 0], slotId: 6 },
+        { kind: "setEdge", from: n(0), to: target5, edgeKind: "basic" },
+        { kind: "setEdge", from: n(0), to: target6, edgeKind: "basic" },
+      ],
+      nextSplitSlotId: { "0,0": 7 },
+    }, { activeTessellationConfig: wideField });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([5]);
   });
 
   it("rejects applying a blueprint while an existing slot is assigned as start/finish", () => {
@@ -1439,6 +1652,23 @@ describe("mazeStore applySplitBlueprint", () => {
       commands: [
         { kind: "addSplitNode", point: [0, 0], slotId: 0 },
         { kind: "setMeta", slot: "start", endpoint: target },
+      ],
+    }, { activeTessellationConfig: wideField });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    expect(s.error).toContain("start/finish");
+  });
+
+  it("rejects applying a blueprint while an existing slot is assigned as finish", () => {
+    const target = splitEndpoint([0, 0], 0);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0 },
+        { kind: "setMeta", slot: "finish", endpoint: target },
       ],
     }, { activeTessellationConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);

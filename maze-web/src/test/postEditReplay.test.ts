@@ -331,6 +331,40 @@ describe("filterCommandsForPoint — vertical passage / elevator lifelines", () 
     const filtered = filterCommandsForPoint(baseline, commands, [0, 0], 2);
     expect(filtered).toEqual([]);
   });
+
+  it("removes a vertical passage lifeline touching the reset point through setVerticalPassageDirection's own suppressPair (GitHub issue #545)", () => {
+    // A direction cycle folds its own generation-time suppression into `suppressPair` on the SAME
+    // `setVerticalPassageDirection` command instead of a trailing separate `suppressGenerationPair`
+    // — the lifeline check must still see that pair through the command's own payload.
+    const context = baseContext([
+      { id: 0, x: 0, y: 0, i: 0, level: 0 },
+      { id: 1, x: 0, y: 0, i: 0, level: 1 },
+    ]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", suppressPair: [n(0), n(1)] },
+    ];
+    const filtered = filterCommandsForPoint(baseline, commands, [0, 0], 1);
+    expect(filtered).toEqual([]);
+  });
+});
+
+describe("setVerticalPassageDirection suppressPair (GitHub issue #545)", () => {
+  it("folds its own suppression into the suppressed-pairs set in the same replay step as the direction flip", () => {
+    const context = baseContext([
+      { id: 0, x: 0, y: 0, i: 0, level: 0 },
+      { id: 1, x: 0, y: 0, i: 0, level: 1 },
+    ]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", suppressPair: [n(0), n(1)] },
+    ];
+    const result = replayPostEditCommandsFailClosed(baseline, commands);
+    expect(result?.verticalPassages[0].direction).toBe("backward");
+    expect(result?.suppressedVerticalPassagePairs.has(suppressionPairKey(n(0), n(1)))).toBe(true);
+  });
 });
 
 describe("delete -> point reset restores", () => {

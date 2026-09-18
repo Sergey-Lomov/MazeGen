@@ -51,7 +51,12 @@ export type PostEditCommand =
   // stays for the rare single-direction case (`applySplitBlueprint`'s per-face wiring, GitHub issue
   // #235, which sets one direction from a freshly-minted slot and its own reverse as two
   // independently-timed commands against different lifelines).
-  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind }
+  // `directionFlip` (GitHub issue #545): true when the `one_way` tool clicked a face that was
+  // ALREADY one-way, flipping its direction rather than creating a fresh one-way passage from a
+  // wall/passage — the "Changes" panel must label these differently ("changed direction" vs. "set
+  // one-way passage"), mirroring `setVerticalPassageDirection` vs. `addVerticalPassage`. `false`/
+  // `undefined` for every other pair outcome (wall/passage/new-one-way).
+  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind; directionFlip?: boolean }
   | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
   | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
@@ -86,7 +91,11 @@ export type PostEditCommand =
       resolvedSlots: ResolvedSplitSlot[]; originalFaces?: ResolvedSplitFace[]; blueprintTitleKey?: string;
     }
   | { kind: "addVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
-  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection }
+  // `suppressPair` (GitHub issue #545) folds this direction-cycle's own generation-time (or
+  // previously-confirmed draft) mesh edge into the SAME command, rather than a trailing separate
+  // `suppressGenerationPair` command — one click is one logical edit, mirrors `addElevator`'s
+  // `suppressPairs`. `undefined` when nothing needs suppressing.
+  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
   | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
   | { kind: "removeVerticalPassage"; id: number }
   // `suppressPairs` (GitHub issue #545) folds the generation-time mesh pairs this elevator edit

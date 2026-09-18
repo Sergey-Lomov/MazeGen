@@ -61,6 +61,15 @@ function formatElevatorFloors(floors: readonly PostEditEndpoint[], nodeById: Rea
   return [...new Set(levels)].sort((a, b) => a - b).map((level) => `L${level + 1}`).join(", ");
 }
 
+/** A vertical passage's entity label, marked "(one-way)" whenever `direction` isn't `two_way` —
+ *  a forward/backward passage is always one-way by construction, so every log entry mentioning it
+ *  (both `addVerticalPassage` and `setVerticalPassageDirection`) must say so, not just imply it
+ *  through the action text (GitHub issue #545). */
+function formatVerticalPassageEntity(id: number, direction: "forward" | "backward" | "two_way"): string {
+  const base = m["post_edit.changes_entity_vertical_passage"]({ id });
+  return direction === "two_way" ? base : m["post_edit.changes_entity_vertical_passage_one_way"]({ id });
+}
+
 /** Builds the `nodeById` map `postEditCommandLabel` needs, from the confirmed node snapshot
  *  (`state.nodes`) — the same lookup basis `ManageSplitNodesDialog`/`PostEditController` use for
  *  resolving a `node` endpoint back to its point. */
@@ -91,7 +100,13 @@ export function postEditCommandLabel(command: PostEditCommand, nodeById: Readonl
       }
       // One-way: whichever side is `one_way_forward` is the direction traffic actually flows.
       const [from, to] = command.aToB === "one_way_forward" ? [command.a, command.b] : [command.b, command.a];
-      return { action: m["post_edit.changes_action_set_edge_one_way"](), entity: formatEdge(from, to, nodeById) };
+      // `directionFlip` (GitHub issue #545): this click changed an already-one-way face's
+      // direction rather than creating a fresh one-way passage — labeled distinctly, mirrors
+      // `setVerticalPassageDirection` vs. `addVerticalPassage`.
+      const action = command.directionFlip
+        ? m["post_edit.changes_action_flip_edge_one_way"]()
+        : m["post_edit.changes_action_set_edge_one_way"]();
+      return { action, entity: formatEdge(from, to, nodeById) };
     }
     case "addTeleport":
       return { action: m["post_edit.changes_action_add_teleport"](), entity: m["post_edit.changes_entity_teleport"]({ id: command.id }) };
@@ -123,9 +138,12 @@ export function postEditCommandLabel(command: PostEditCommand, nodeById: Readonl
     case "updateSplitNodeFaces":
       return { action: m["post_edit.changes_action_update_split_node_faces"](), entity: formatSplitNode(command.point, command.level) };
     case "addVerticalPassage":
-      return { action: m["post_edit.changes_action_add_vertical_passage"](), entity: m["post_edit.changes_entity_vertical_passage"]({ id: command.id }) };
+      return { action: m["post_edit.changes_action_add_vertical_passage"](), entity: formatVerticalPassageEntity(command.id, command.direction) };
     case "setVerticalPassageDirection":
-      return { action: m["post_edit.changes_action_set_vertical_passage_direction"](), entity: m["post_edit.changes_entity_vertical_passage"]({ id: command.id }) };
+      // This command only ever exists when leaving `two_way` (the store action guards that case,
+      // GitHub issue #545) — `command.direction` here is always "forward"/"backward", so the
+      // resulting passage is always one-way.
+      return { action: m["post_edit.changes_action_set_vertical_passage_direction"](), entity: formatVerticalPassageEntity(command.id, command.direction) };
     case "moveVerticalPassageEndpoint":
       return { action: m["post_edit.changes_action_move_vertical_passage_endpoint"](), entity: m["post_edit.changes_entity_vertical_passage"]({ id: command.id }) };
     case "removeVerticalPassage":

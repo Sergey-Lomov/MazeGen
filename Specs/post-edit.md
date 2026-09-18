@@ -36,6 +36,15 @@ semantics for free.
 ```typescript
 type PostEditCommand =
   | { kind: "setEdge"; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdgeKind }
+  // wall/passage/one_way/reset edge tools always set both directed edges of a face pair at once -
+  // one click on a face is one logical action, not two. `aToB`/`bToA` carry both outcomes
+  // atomically instead of two separate `setEdge` commands. `directionFlip` is true when the
+  // `one_way` tool clicked a face that was ALREADY one-way (in either direction), flipping it
+  // rather than creating a fresh one-way passage - the Changes panel labels these differently
+  // ("changed direction" vs "set one-way passage"), mirroring `setVerticalPassageDirection` vs
+  // `addVerticalPassage`. `undefined` for every other pair outcome. `setEdge` (above) stays for the
+  // rare single-direction case (`applySplitBlueprint`'s per-face wiring).
+  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind; directionFlip?: boolean }
   | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
   | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
@@ -43,18 +52,47 @@ type PostEditCommand =
   | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null }
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
+  // A split slot's face wiring, resolved atomically - every edge-tool click on one of a split
+  // node's faces appends one of these carrying the FULL current face list for that slot (like
+  // `updateElevatorFloors` carries the full floor list), never a `setEdgePair`/`setEdge` for that
+  // face alone. Shares its lifeline with the slot's own `addSplitNode`/`removeSplitNode`.
+  | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId: number; faces: ResolvedSplitEdgeFace[] }
   | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
-  | { kind: "applySplitBlueprint"; point: [number, number]; level?: number; resolvedSlots: ResolvedSplitSlot[] }
+  // `originalFaces` carries the pre-existing node's own faces in the SAME command as the blueprint
+  // application, instead of a trailing `setEdge`/`updateSplitNodeFaces` per face - applying a
+  // blueprint is one logical action. `blueprintTitleKey` carries the blueprint's own `titleKey`
+  // straight onto the command for the Changes panel label; `undefined` for an unnamed blueprint.
+  | {
+      kind: "applySplitBlueprint"; point: [number, number]; level?: number;
+      resolvedSlots: ResolvedSplitSlot[]; originalFaces?: ResolvedSplitFace[]; blueprintTitleKey?: string;
+    }
   | { kind: "addVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
-  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection }
+  // `suppressPair` folds this direction-cycle's own generation-time (or previously-confirmed
+  // draft) mesh edge into the SAME command rather than a trailing separate
+  // `suppressGenerationPair` command - one click is one logical edit, mirrors `addElevator`'s
+  // `suppressPairs`. Always the passage's own `[from, to]` when present; `undefined` when nothing
+  // needs suppressing. `direction` here is always `"forward"`/`"backward"` - this command only
+  // exists when leaving `two_way` (the store action no-ops on an already-`two_way` passage), so the
+  // resulting passage is always one-way.
+  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
   | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
   | { kind: "removeVerticalPassage"; id: number }
-  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[] }
-  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[] }
+  // `suppressPairs` folds the generation-time mesh pairs this elevator edit replaces into the SAME
+  // command, rather than one separate `suppressGenerationPair` command per pair - a lift's floor
+  // edit is one logical action. `undefined`/`[]` when nothing needs suppressing.
+  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
   | { kind: "removeElevator"; id: number }
-  | { kind: "deletePoint"; point: [number, number]; level?: number }
+  // A generation-time vertical-passage/elevator mesh edge has been edited via a *seed* draft entry
+  // derived from it - `confirmPostEdit` must stop re-emitting the original generation pair once a
+  // draft entry exists for it. The pair (`a`/`b`, node endpoints, order-independent) is recorded on
+  // the baseline's derived state, so it survives point-reset/replay like any other log fact.
   | { kind: "suppressGenerationPair"; entity: "verticalPassage" | "elevator"; a: PostEditEndpoint; b: PostEditEndpoint };
 ```
+
+There is no `deletePoint` command kind - the Delete tool appends ordinary per-entity commands
+(`setMeta`/`removeTeleport`/etc.), each with its own lifeline, so a point-reset undoes them through
+the same per-lifeline cascade as any other edit, with no dedicated delete lifeline involved.
 
 Every command addresses entities exclusively through the three stable identity kinds already used
 elsewhere in post-edit — `PostEditEndpoint` (node/split), and the monotonic
@@ -121,8 +159,7 @@ equivalent to but cheaper than a full replay (covered by a parity test).
 tool and `deletePostEditPoint`'s undo path. A **lifeline** is the logical entity a command belongs
 to (`lifelineKeyOf`) — `` `${kind}:${id}` `` for teleport/vertical-passage/elevator,
 `` `slot:${point}:${level}:${slotId}` `` for a split slot, `` `edge:${edgeKey(from,to)}` `` for an
-edge, `` `meta:${slot}` `` for start/finish, and its own `` `deletePoint:${point}:${level}` `` key
-for a `deletePoint` command (so a delete is itself something a point-reset undoes).
+edge, and `` `meta:${slot}` `` for start/finish.
 `collectAffectedLifelines` walks the command list once, computing (against the state *before* each
 command in sequence) whether that command's entity currently touches `point`/`level` — including
 split-structure commands addressing that point directly, move-commands whose old *or* new endpoint
@@ -183,8 +220,30 @@ directly.
 | `postEditTool` | `PostEditTool` | Active tool. Reset to `"wall"` on generate and `resetPostEdit`. |
 | `postEditAutoConfirm` | `boolean` | Default `true`. When true, `confirmPostEdit` fires 300ms after each edge edit. |
 | `postEditOpen` | `boolean` | Drives canvas layer visibility. |
+| `postEditChangesOpen` | `boolean` | Whether the "Changes" panel (GitHub issue #545) is expanded. Default `true` — open by default so the log is visible without an extra click. |
 | `_postEditRequestId` | `number` | Versioning for stale async `confirmPostEdit` results; bumped by both `appendPostEditCommand`/`replacePostEditCommands` themselves, not only by an explicit `confirmPostEdit` call. |
 | `postEditDirty` | `boolean` | True after any manual post-edit change since the last generate/reset. |
+
+### Changes Panel (GitHub issue #545, `pixi/postEditCommandLabels.ts`)
+
+Renders `postEditCommands` as a human-readable list — one row per command, each formatted by
+`postEditCommandLabel(command, nodeById)` into `{ action, entity }` strings. `nodeById` is built
+from the confirmed node snapshot (`buildNodeByIdMap`); an endpoint that doesn't resolve yet (an
+unconfirmed split node) falls back to `"?"` rather than throwing. Entities are always shown as point
+coordinates (`"x:3, y:5"`-style, matching the cell-inspector convention), never a raw `NodeId`.
+
+A few label choices worth calling out because they read as "why isn't this generic":
+
+- A vertical passage is always one-way once it leaves `two_way` — a passage is never labeled as
+  merely "becoming" one-way, since a forward/backward passage is one-way by construction. Every
+  label mentioning one (`addVerticalPassage` and `setVerticalPassageDirection`) appends
+  "(one-way)" to the entity whenever `direction !== "two_way"`.
+- `setEdgePair`'s one-way branch distinguishes "set one-way passage" from "changed one-way passage
+  direction" via the command's own `directionFlip` field (see `PostEditCommand` above) — never
+  re-derived by comparing against a previous command, since a command must format purely from its
+  own fields.
+- `setVerticalPassageDirection` only ever exists when leaving `two_way` (the store action no-ops
+  otherwise), so its label is unconditionally "changed vertical passage direction", never "set".
 
 ### Dirty semantics
 
@@ -249,7 +308,7 @@ interface PostEditEdge {
 }
 ```
 
-`wall` is an explicit record (absence of record ≠ wall — wall is a deliberate user choice). `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above). Keyed in its `Record` by `edgeKey(from, to)`, not a hand-built `${from}-${to}` template literal.
+`wall` is never stored as an explicit record — `applyPostEditCommand`'s `setEdge`/`setEdgePair` cases always `delete` the record when the resulting kind is `"wall"`, so "no record for this directed edge" and "explicit wall" are the same state on the wire; any reader comparing a face's current kind must fall back to `"wall"` when the lookup misses (`currentEdges[key]?.kind ?? "wall"`), not treat a miss as "unknown"/"unedited". `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above). Keyed in its `Record` by `edgeKey(from, to)`, not a hand-built `${from}-${to}` template literal.
 
 ### PostEditTeleportEntry
 
@@ -288,6 +347,8 @@ The slot-list bookkeeping below (minting/removing/cycling/setting the active slo
 - **Deleting a split node** (`removeSplitNode(point, slotId)`) first checks (via `endpointsEqual`, not a resolved id — works the same whether or not the node has been confirmed yet) whether `postEditDraftMeta.start`/`.finish` structurally equals the target; if so the removal is rejected outright with an error, no silent reassignment. Otherwise it removes every `postEditDraftEdges`/`postEditDraftTeleports` entry referencing that endpoint (`endpointsEqual`, a plain filter — no reindexing of any sibling slot), removes the slotId from the list, and resets `postEditActiveSplitNode` for that point if the removed slot was the active one.
 - **`cycleActiveSplitNode(point)`** cycles `postEditActiveSplitNode[key]` through original → slot 0 → slot 1 → … → back to original (no entry). No-op for a point with no split nodes.
 - **`setActiveSplitNode(point, endpoint)`** sets it directly (used by the dialog's per-row "Set active" button); a `node`-kind endpoint clears the entry (meaning the original node).
+- **A just-created slot becomes the active one.** `addSplitNode` activates the slot it just minted, and `applySplitBlueprint` activates its first slot (reused or freshly minted) — both so an edge-tool click immediately following node creation targets the new slot rather than falling back to the original node (GitHub issue #545). Without this, a face click right after applying a blueprint would resolve through `PostEditController`'s `resolveActiveEndpointAt` fallback to the plain original-node endpoint (no active entry to prefer), missing `applyPostEditToolAt`'s split-face branch entirely and logging a bare `setEdgePair` ("Set wall"/"Set passage") instead of one `updateSplitNodeFaces` entry for the slot. If the blueprint needs no slots at all, the point's stale active-slot entry (if any) is cleared instead of left pointing at a slot id this same apply may have just dropped.
+- **Applying a blueprint on top of an already-split point reuses the point's existing slot ids** for as many of the new blueprint's own nodes as it needs (`existingSlots.slice(0, slotsNeeded)`), only minting fresh ones (from the high-water mark) for any excess the new blueprint requires beyond what already exists (GitHub issue #545). Any existing slot beyond what the new blueprint needs is dropped from the point entirely (not left behind as an empty, all-wall node) — guarded by the same start/finish check as a fresh apply. Minting a brand-new id for every blueprint node regardless of what already existed left a reused-looking node's OLD wiring stranded on an orphaned slot while the blueprint's own face list landed on a separate fresh id — the point then rendered as a plain passage off the original node alone, silently discarding every other node's connections. The high-water mark (`_nextSplitSlotId`) only advances by the count of genuinely fresh ids minted, never by the reused ones.
 
 ### WASM boundary
 
@@ -397,9 +458,9 @@ The **Management** section below the tool row keeps only the whole-graph actions
 
 | Tool | Action |
 |---|---|
-| `wall` | Removes both directions of edge pair from `postEditDraftEdges`. |
-| `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
-| `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
+| `wall` | Sets both directions of the face pair to `"wall"` — no-op (nothing appended) if the face already reads as wall in both directions. |
+| `passage` | Sets both directions to `"basic"` — no-op if the face already reads as a two-way passage. |
+| `one_way` | See "`one_way` Tool Detail" below. |
 | `reset` | Hover-sensitive to both edges and cells (GitHub issue #327) — see "Reset Tool Detail" below. |
 | `delete` | Cell-only (GitHub issue #386) — see "Delete Tool Detail" below. |
 | `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
@@ -423,14 +484,22 @@ The **Management** section below the tool row keeps only the whole-graph actions
 
 Endpoint hit-testing is done by `pickPostEditTeleportEndpointAt` (in `postEditUtils.ts`), which resolves node id → screen position via `nodeById` before comparing to the cursor — unlike `PresetConnectionsController`'s `pickTeleportEndpointAt`, which works directly in cell coordinates since preset connections predate node ids.
 
-### `one_way` Tool Detail
+### `one_way` Tool Detail (GitHub issue #545)
 
-Operates on an edge pair `(from_, to_)`:
+Operates on an edge pair `(from_, to_)`, reading each direction's *effective* current kind
+(`?? "wall"`, since wall is never an explicit record):
 
-- `fwd` record exists (`from_→to_`) → delete fwd, create `bwd` (`to_→from_`, kind `one_way_backward`)
-- `fwd` does not exist → delete `bwd` (if any), create `fwd` (`from_→to_`, kind `one_way_forward`)
+- Either direction currently reads as one-way (`from_→to_` is `one_way_forward`, or `to_→from_` is
+  `one_way_backward`) → this click **flips** the existing one-way passage's direction: swap which
+  side is `one_way_forward`/`wall`, and mark the emitted `setEdgePair.directionFlip = true` so the
+  Changes panel labels it as a direction change, not a fresh passage.
+- Otherwise (wall or a two-way `basic` passage) → creates a **fresh** forward one-way passage
+  (`from_→to_` = `one_way_forward`, `to_→from_` = `wall`), `directionFlip` omitted. This is the
+  branch a `basic` two-way passage takes — the tool never silently drops the reverse direction of an
+  existing passage without going through this fresh-creation path first.
 
-Result: pure direction toggle. Conversion to/from wall and passage requires `wall` and `passage` tools.
+A single click always emits exactly one `setEdgePair` (never two `setEdge` commands). Conversion
+to/from plain wall and two-way passage requires the `wall`/`passage` tools.
 
 ### `reset` Tool Detail (GitHub issue #327)
 
@@ -438,15 +507,23 @@ The unified Reset tool is hover-sensitive to both edges and cells, dispatched in
 `pickEdgeAtPosition(..., true)` (the same near-edge dead-zone threshold `wall`/`passage`/`one_way`
 hover uses):
 
-- **Near-edge zone, and neither endpoint's point is currently split** — edge branch: appends a
-  `setEdge` command restoring `(from_, to_)`'s generation-time kind, computed by reading
-  `postEditBaseline.derived`'s edges (the pristine, empty-log state — equivalent to "what
-  generation produced", never `state.edges`):
-  - Both directions existed at generation → restores both as `"basic"`.
-  - Only `from_→to_` existed → restores as `"one_way_forward"`, removes `bwd`.
-  - Only `to_→from_` existed → restores as `"one_way_forward"` (on the `to_→from_` record), removes `fwd`.
-  - Neither existed → removes both (`"wall"`).
+- **Near-edge zone, and neither endpoint's point is currently split** — edge branch: unlike
+  `wall`/`passage`/`one_way`, doesn't append a new "restore to generation state" command at all — it
+  **removes** whatever earlier `setEdge`/`setEdgePair` command(s) touched this exact edge pair from
+  the log (matched by `lifelineKeyOf`, which keys a `setEdge`/`setEdgePair` purely off its
+  endpoints, ignoring `edgeKind`/`aToB`/`bToA`), then replaces the whole command log
+  (`replacePostEditCommands`) with the filtered list. With nothing left in the log for this edge, the
+  derived state naturally falls back to `postEditBaseline.derived` (generation-time state) for it —
+  the same "undo via lifeline removal, not counter-command" approach the cell branch below already
+  used. No-op (nothing changes, log kept by reference) if no command in the log touched this edge —
+  repeated reset clicks on an already-reset or never-touched edge never pile up duplicate entries.
   Drag-capable, same as `wall`/`passage`.
+  A `reset` click that lands on a split node's own face (either endpoint is a `split` kind) is a
+  guarded no-op instead — `updateSplitNodeFaces`'s lifeline covers the whole slot, not one face, so
+  restoring a single face this way would make a later point-reset wipe every other face of that
+  slot too. No caller reaches this combination currently (this dispatch itself only fires for a
+  non-split endpoint pair — see the cell branch below for how a split point's faces actually get
+  reset), the guard exists purely so a future caller can't silently hit the mismatched semantics.
 - **Outside the near-edge zone, or the near-edge hit touches a split point (either endpoint's
   point currently has more than one node)** — cell branch: `resetPostEditPoint(point)` prunes every
   command in the log whose lifeline ever touched `point` (fixed-point cascade, see "Point-reset" in
@@ -485,8 +562,11 @@ near-edge/edge-branch distinction — clicking anywhere near a cell targets the 
 the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset`'s dual-mode
 dispatch).
 
-A left click on any in-field cell calls `deletePostEditPoint(point)`, which appends a `deletePoint`
-command — its `applyPostEditCommand` case removes, for **every** node currently at that point
+A left click on any in-field cell calls `deletePostEditPoint(point)`, which appends one ordinary
+per-entity command for each piece of content it removes (`setMeta`/`removeTeleport`/
+`removeVerticalPassage`/`removeElevator`/`suppressGenerationPair`) — not a single bundled command.
+Each of these has its own lifeline (same as if the user had removed that entity directly), so
+there's no dedicated "delete" lifeline to track. Covers **every** node currently at the point
 (original plus every declared split slot — not just the active one). Drag-capable (GitHub issue
 #489): a press-drag paints a delete stroke across every in-field cell the cursor enters, deduped
 per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed per point:
@@ -504,15 +584,16 @@ per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed p
   (BFS over the baseline's own `elevator` edges) — a multi-floor elevator's mesh can include pairs
   that never name this point's own node directly.
 
-Basic edges and split-node structure (`setEdge`/`addSplitNode`/etc.) are never touched by
-`deletePoint` — a point's walls/passages/one-ways and its split-node structure survive a delete
-untouched; only `wall`/`reset`/"Manage split nodes" edit those. Unlike `reset`, delete never
-restores anything by itself — it's a pure removal, so a piece of content created entirely in
-post-edit (no generation-time counterpart) is simply gone, same as one that did have one. But
-because `deletePoint` is itself a command with its own lifeline (`` `deletePoint:${point}:${level}` ``,
-see "Point-reset" above), a later `resetPostEditPoint`/`resetPostEdit` **does** undo it, restoring
-whatever it removed — "reset undoes delete" is a direct consequence of the fixed-point lifeline
-cascade, not a special case bolted onto delete.
+Basic edges and split-node structure (`setEdge`/`addSplitNode`/etc.) are never touched by delete —
+a point's walls/passages/one-ways and its split-node structure survive a delete untouched; only
+`wall`/`reset`/"Manage split nodes" edit those. Unlike `reset`, delete never restores anything by
+itself — it's a pure removal, so a piece of content created entirely in post-edit (no
+generation-time counterpart) is simply gone, same as one that did have one. But because every
+command delete appends is an ordinary command with its own ordinary lifeline (`teleport:${id}`,
+`vertical_passage:${id}`, `meta:${slot}`, etc. — see "Point-reset" above), a later
+`resetPostEditPoint`/`resetPostEdit` **does** undo delete, restoring whatever it removed —
+"reset undoes delete" is a direct consequence of the fixed-point lifeline cascade over those
+ordinary per-entity commands, not a special case bolted onto delete.
 
 Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`, red cell hover via
 `updateCellHover`'s `danger` flag).

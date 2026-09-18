@@ -141,6 +141,19 @@ function validateOptionalSuppressPairs(v: unknown, path: string): [PostEditEndpo
   });
 }
 
+/** `setVerticalPassageDirection`'s optional `suppressPair` (GitHub issue #545) — a single
+ * `[PostEditEndpoint, PostEditEndpoint]` pair, same element validation as `validateOptionalSuppressPairs`.
+ * `undefined` passes through (no generation-time mesh to suppress). */
+function validateOptionalSuppressPair(v: unknown, path: string): [PostEditEndpoint, PostEditEndpoint] | undefined {
+  if (v === undefined) return undefined;
+  const pairArr = assertArray(v, path);
+  if (pairArr.length !== 2) throw new Error(`Expected a 2-element pair at ${path}`);
+  return [
+    validatePostEditEndpoint(pairArr[0], `${path}[0]`),
+    validatePostEditEndpoint(pairArr[1], `${path}[1]`),
+  ];
+}
+
 function validatePostEditEdgeKind(v: unknown, path: string): "wall" | "basic" | "one_way_forward" | "one_way_backward" {
   const kind = assertString(v, path);
   if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
@@ -219,6 +232,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
         aToB: validatePostEditEdgeKind(obj.aToB, `${path}.aToB`), bToA: validatePostEditEdgeKind(obj.bToA, `${path}.bToA`),
+        directionFlip: typeof obj.directionFlip === "boolean" ? obj.directionFlip : undefined,
       };
     case "addTeleport":
       return {
@@ -270,7 +284,10 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
       };
     case "setVerticalPassageDirection":
-      return { kind, id: assertNumber(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`) };
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+        suppressPair: validateOptionalSuppressPair(obj.suppressPair, `${path}.suppressPair`),
+      };
     case "moveVerticalPassageEndpoint":
       return {
         kind, id: assertNumber(obj.id, `${path}.id`),

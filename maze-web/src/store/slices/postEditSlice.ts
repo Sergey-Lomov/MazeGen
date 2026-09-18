@@ -23,7 +23,7 @@ import type {
 } from "../storeTypes";
 import type { PostEditCommand, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdge } from "../postEditTypes";
-import { filterCommandsForPoint, suppressionPairKey } from "../../pixi/postEditReplay";
+import { filterCommandsForPoint, lifelineKeyOf, suppressionPairKey } from "../../pixi/postEditReplay";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
@@ -90,7 +90,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditSuppressedElevatorPairs: new Set<string>(),
   postEditSuppressedVerticalPassagePairs: new Set<string>(),
   postEditSplitTargetPrompt: null,
-  postEditChangesOpen: false,
+  postEditChangesOpen: true,
   postEditDragOverride: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
@@ -109,8 +109,20 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // nothing conditionally (GitHub issue #543 plan section 2).
     const currentEdges = state.postEditDraftEdges ?? {};
     const fwdKey = edgeKey(from_, to_);
+    const bwdKey = edgeKey(to_, from_);
     const fromId = from_.kind === "node" ? from_.id : undefined;
     const toId = to_.kind === "node" ? to_.id : undefined;
+    // Effective current kind of each direction — a face's reducer (`setEdgePair`'s own `applyPostEditCommand`
+    // case) deletes the record entirely for `wall`, so "no record" and "explicit wall" are the same
+    // state on the wire; `?? "wall"` collapses them back for comparison, matching what's actually
+    // rendered. Used both to detect a true no-op click (GitHub issue #545: clicking wall on an
+    // already-wall face, or passage on an already-passage face, must do nothing) and, for
+    // `one_way`, whether this click flips an already-one-way face's direction rather than creating a
+    // fresh one-way passage.
+    const curAToB = currentEdges[fwdKey]?.kind ?? "wall";
+    const curBToA = currentEdges[bwdKey]?.kind ?? "wall";
+    const wasOneWay = curAToB === "one_way_forward" || curAToB === "one_way_backward"
+      || curBToA === "one_way_forward" || curBToA === "one_way_backward";
     let aToB: "wall" | "basic" | "one_way_forward";
     let bToA: "wall" | "basic" | "one_way_forward";
     if (tool === "reset") {
@@ -121,11 +133,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       else if (origBA) { aToB = "wall"; bToA = "one_way_forward"; }
       else { aToB = "wall"; bToA = "wall"; }
     } else if (tool === "wall") {
+      if (curAToB === "wall" && curBToA === "wall") return;
       aToB = "wall"; bToA = "wall";
     } else if (tool === "passage") {
+      if (curAToB === "basic" && curBToA === "basic") return;
       aToB = "basic"; bToA = "basic";
     } else if (tool === "one_way") {
-      if (currentEdges[fwdKey] !== undefined) { aToB = "wall"; bToA = "one_way_forward"; }
+      // Flip only when THIS face is already the one-way side - not just "some record exists" (a
+      // `basic` two-way passage also has a record on both sides, and clicking `one_way` on it must
+      // create a fresh forward one-way, not silently flip to backward-only and drop the passage).
+      if (curAToB === "one_way_forward" || curBToA === "one_way_backward") { aToB = "wall"; bToA = "one_way_forward"; }
       else { aToB = "one_way_forward"; bToA = "wall"; }
     } else {
       return;
@@ -138,6 +155,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // `updateElevatorFloors` gives a lift's floor edit. Neither side being a split endpoint falls
     // through to the plain `setEdgePair` two-node case below.
     const splitSide = from_.kind === "split" ? from_ : to_.kind === "split" ? to_ : null;
+    // `reset` on a split face is a no-op, not routed into the `splitSide` branch below — that
+    // branch would append a fresh `updateSplitNodeFaces` "restoring" this one face, but the
+    // command's lifeline covers the WHOLE slot (`slot:point:slotId`, `lifelineKeyOf`), so removing
+    // it later (point-reset) would wipe every other face of the slot too, not just this one. No
+    // caller currently reaches this combination (edge-branch reset routes split points to
+    // `resetPostEditPoint` instead, and `ManageSplitNodesDialog` never passes `reset`) — this guard
+    // is purely defensive, so a future caller can't silently hit the mismatched semantics.
+    if (splitSide && tool === "reset") return;
     if (splitSide) {
       const neighbor = from_.kind === "split" ? to_ : from_;
       const toNeighbor = from_.kind === "split" ? aToB : bToA;
@@ -150,8 +175,28 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       appendPostEditCommand(get, set, {
         kind: "updateSplitNodeFaces", point: splitSide.point, level: splitSide.level, slotId: splitSide.slotId, faces,
       });
+    } else if (tool === "reset") {
+      // Unlike wall/passage/one_way, "reset" doesn't record a new "restored to generation state"
+      // command — it REMOVES whatever earlier command(s) touched this exact edge, mirroring
+      // `resetPostEditPoint`'s own "undo via lifeline removal, not counter-command" approach
+      // (GitHub issue #545). Without this, every reset click appended a fresh `setEdgePair`
+      // restoring the generation kind, which could pile up duplicate entries in the log and never
+      // actually cleared the original edit.
+      // `aToB`/`bToA`/`edgeKind` below are irrelevant to `lifelineKeyOf`'s own key computation for
+      // these two command kinds (it only reads the endpoints) — any valid placeholder value works.
+      const pairKey = lifelineKeyOf({ kind: "setEdgePair", a: from_, b: to_, aToB: "wall", bToA: "wall" });
+      const singleKeys = new Set([lifelineKeyOf({ kind: "setEdge", from: from_, to: to_, edgeKind: "wall" }),
+        lifelineKeyOf({ kind: "setEdge", from: to_, to: from_, edgeKind: "wall" })]);
+      const filtered = state.postEditCommands.filter((cmd) => {
+        if (cmd.kind === "setEdgePair") return lifelineKeyOf(cmd) !== pairKey;
+        if (cmd.kind === "setEdge") return !singleKeys.has(lifelineKeyOf(cmd));
+        return true;
+      });
+      if (filtered.length === state.postEditCommands.length) return;
+      replacePostEditCommands(get, set, filtered, true);
     } else {
-      appendPostEditCommand(get, set, { kind: "setEdgePair", a: from_, b: to_, aToB, bToA });
+      const directionFlip = tool === "one_way" && wasOneWay ? true : undefined;
+      appendPostEditCommand(get, set, { kind: "setEdgePair", a: from_, b: to_, aToB, bToA, directionFlip });
     }
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
@@ -672,17 +717,27 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...(originalEndpoint ? [originalEndpoint] : []),
       ...existingSlots.map((slotId) => splitEndpoint(point, slotId, level)),
     ];
+    // A blueprint applied on top of an already-split point must reuse the point's existing slots
+    // for as many of its own nodes as it needs (GitHub issue #545) — minting fresh ones instead
+    // left the reused-looking survivor as an orphaned, all-wall node while the blueprint's face
+    // list landed on a brand-new id, so the maze visibly kept "one connected node plus a floating
+    // empty one" instead of properly rewiring both. Any existing slot beyond what the new blueprint
+    // needs is dropped entirely (not left empty) — guarded by the same start/finish check below.
+    const slotsNeeded = Math.max(blueprint.nodeFaces.length - 1, 0);
+    const reusedSlotIds = existingSlots.slice(0, slotsNeeded);
     if (meta && existingNodeEndpoints.some((t) =>
       (meta.start && endpointsEqual(meta.start, t)) || (meta.finish && endpointsEqual(meta.finish, t)))) {
       set({ error: "Cannot apply a blueprint while an existing split node is assigned as start/finish — reassign it first." });
       return;
     }
 
-    // Slot ids are minted from the point's high-water mark (GitHub issue #543 plan section 7), not
-    // reused positional indices — a point-reset can prune a previously-issued high slotId out of
-    // the log while the mark stays put, so a fresh blueprint apply must not reissue it.
+    // Slot ids beyond the reused ones are minted from the point's high-water mark (GitHub issue
+    // #543 plan section 7), not reused positional indices — a point-reset can prune a
+    // previously-issued high slotId out of the log while the mark stays put, so a fresh mint must
+    // not reissue it.
     const nextMark = state._nextSplitSlotId[key] ?? 0;
-    const mintedSlotIds = blueprint.nodeFaces.slice(1).map((_, i) => nextMark + i);
+    const freshSlotIds = Array.from({ length: Math.max(slotsNeeded - reusedSlotIds.length, 0) }, (_, i) => nextMark + i);
+    const mintedSlotIds = [...reusedSlotIds, ...freshSlotIds];
     const slotEndpoints: PostEditEndpoint[] = mintedSlotIds.map((slotId) => splitEndpoint(point, slotId, level));
     const nodeEndpoints: PostEditEndpoint[] = [originalEndpoint, ...slotEndpoints].filter((e): e is PostEditEndpoint => e !== null);
     const nextActiveSplitNode = { ...state.postEditActiveSplitNode };
@@ -745,12 +800,23 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     });
     if (applied) {
       set((state) => ({
-        _nextSplitSlotId: { ...state._nextSplitSlotId, [key]: nextMark + mintedSlotIds.length },
-        postEditActiveSplitNode: (() => {
-          const next = { ...state.postEditActiveSplitNode };
-          delete next[key];
-          return next;
-        })(),
+        // Only the freshly-minted ids actually advance the high-water mark - reused ids were
+        // already accounted for by whatever `addSplitNode`/earlier `applySplitBlueprint` call
+        // originally minted them.
+        _nextSplitSlotId: { ...state._nextSplitSlotId, [key]: nextMark + freshSlotIds.length },
+        // Activate the blueprint's first slot (reused or freshly minted), mirroring `addSplitNode`'s
+        // own "just-created slot becomes active" behavior — without this, a face click right after
+        // applying a blueprint resolves through `PostEditController`'s `resolveActiveEndpointAt`
+        // fallback to the plain original-node endpoint (no active split entry to prefer), missing
+        // the `splitSide` branch in `applyPostEditToolAt` entirely and logging a bare `setEdgePair`
+        // ("Set wall"/"Set passage") instead of one `updateSplitNodeFaces` entry (GitHub issue #545).
+        // `nextActiveSplitNode` already dropped this point's stale entry (line 744, above) for the
+        // neighbor-resolution pass — a blueprint needing zero slots must commit that drop too,
+        // rather than leave a pre-existing active-slot entry pointing at a slot id this apply may
+        // have just dropped from the point entirely.
+        postEditActiveSplitNode: mintedSlotIds.length > 0
+          ? { ...nextActiveSplitNode, [key]: splitEndpoint(point, mintedSlotIds[0], level) }
+          : nextActiveSplitNode,
       }));
     }
     if (get().postEditAutoConfirm) {
@@ -859,18 +925,27 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   cyclePostEditVerticalPassageDirection: (id) => {
     const target = get().postEditDraftVerticalPassages.find((p) => p.id === id);
     if (!target) return;
+    // A two-way passage has no direction to flip (`cyclePostEditVerticalPassageDirection` in
+    // `postEditVerticalUtils.ts` is a documented no-op for it) — bail out before logging anything,
+    // rather than appending a `setVerticalPassageDirection`/`suppressGenerationPair` pair for a
+    // click that changes nothing (GitHub issue #545: a no-op click must not touch the log at all).
+    if (target.direction === "two_way") return;
     // `direction` here is informational only — the reducer's `setVerticalPassageDirection` case
     // always cycles from whatever direction the log has produced up to that point (replay
     // determinism), it never reads this field. Pass the entry's own current direction as the most
     // meaningful placeholder value.
-    appendPostEditCommand(get, set, { kind: "setVerticalPassageDirection", id, direction: target.direction });
-    // Suppress this pair's own generation-time edge unconditionally, not just on first edit — a
-    // draft entry already confirmed once has its own edges resting in `state.edges` by now too
-    // (every confirm folds the WASM snapshot's edges back), so a *second* direction cycle on an
-    // already-confirmed draft entry needs the same suppression the first one already added,
-    // mirrors `startPostEditElevatorPlacement`'s own re-edit doc comment for why this can't be
-    // "only on first edit".
-    appendPostEditCommand(get, set, { kind: "suppressGenerationPair", entity: "verticalPassage", a: target.from, b: target.to });
+    // Fold the pair's own generation-time edge suppression into the SAME command (`suppressPair`)
+    // instead of a trailing separate `suppressGenerationPair` — one click is one log entry, mirrors
+    // `addElevator`/`updateElevatorFloors`'s `suppressPairs` (GitHub issue #545). Suppressed
+    // unconditionally, not just on first edit — a draft entry already confirmed once has its own
+    // edges resting in `state.edges` by now too (every confirm folds the WASM snapshot's edges
+    // back), so a *second* direction cycle on an already-confirmed draft entry needs the same
+    // suppression the first one already added, mirrors `startPostEditElevatorPlacement`'s own
+    // re-edit doc comment for why this can't be "only on first edit".
+    appendPostEditCommand(get, set, {
+      kind: "setVerticalPassageDirection", id, direction: target.direction,
+      suppressPair: [target.from, target.to],
+    });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }

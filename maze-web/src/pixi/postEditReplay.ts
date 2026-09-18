@@ -232,8 +232,14 @@ export function applyPostEditCommand(
         }
       }
 
+      // `command.resolvedSlots` is the point's COMPLETE post-blueprint slot list (construction time
+      // reuses existing slot ids where possible, only minting fresh ones past that — see
+      // `applySplitBlueprint`'s own doc comment in `postEditSlice.ts`), so it's used verbatim here,
+      // not merged with `existingSlots`. A survivor slot id reused this way just gets its faces
+      // overwritten above like any other; a slot id NOT present in `resolvedSlots` is dropped from
+      // the point (its edges/teleports were already stripped by `refsExisting` above).
       const nextSplitPoints = { ...state.splitPoints };
-      if (slotEndpoints.length === 0) delete nextSplitPoints[key];
+      if (command.resolvedSlots.length === 0) delete nextSplitPoints[key];
       else nextSplitPoints[key] = command.resolvedSlots.map((s) => s.slotId);
 
       return ok({ ...state, edges, teleports, splitPoints: nextSplitPoints });
@@ -245,7 +251,12 @@ export function applyPostEditCommand(
     }
     case "setVerticalPassageDirection": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
-      return ok({ ...state, verticalPassages: cyclePostEditVerticalPassageDirection(state.verticalPassages, command.id) });
+      const verticalPassages = cyclePostEditVerticalPassageDirection(state.verticalPassages, command.id);
+      const suppressedVerticalPassagePairs = addSuppressPairs(
+        state.suppressedVerticalPassagePairs,
+        command.suppressPair ? [command.suppressPair] : undefined,
+      );
+      return ok({ ...state, verticalPassages, suppressedVerticalPassagePairs });
     }
     case "moveVerticalPassageEndpoint": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
@@ -389,9 +400,15 @@ function commandTouchesPoint(
       return command.point[0] === point[0] && command.point[1] === point[1] && (command.level ?? 0) === (level ?? 0);
     case "addVerticalPassage":
       return epTouches(command.from) || epTouches(command.to);
-    case "setVerticalPassageDirection": case "removeVerticalPassage": {
+    case "removeVerticalPassage": {
       const p = before.verticalPassages.find((x) => x.id === command.id);
       return p !== undefined && (epTouches(p.from) || epTouches(p.to));
+    }
+    case "setVerticalPassageDirection": {
+      const p = before.verticalPassages.find((x) => x.id === command.id);
+      const suppressPair = command.suppressPair;
+      return (p !== undefined && (epTouches(p.from) || epTouches(p.to)))
+        || (suppressPair !== undefined && (epTouches(suppressPair[0]) || epTouches(suppressPair[1])));
     }
     case "moveVerticalPassageEndpoint": {
       const p = before.verticalPassages.find((x) => x.id === command.id);
@@ -443,6 +460,7 @@ function endpointsReferencedBy(command: PostEditCommand): PostEditEndpoint[] {
     case "moveTeleportEndpoint": return [command.endpoint];
     case "setMeta": return command.endpoint !== null ? [command.endpoint] : [];
     case "addVerticalPassage": return [command.from, command.to];
+    case "setVerticalPassageDirection": return command.suppressPair ? [...command.suppressPair] : [];
     case "moveVerticalPassageEndpoint": return [command.endpoint];
     case "addElevator": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
     case "updateElevatorFloors": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
