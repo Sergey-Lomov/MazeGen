@@ -78,17 +78,19 @@ export function buildDefaultNestedStrategies(strategyId: string, availableStrate
     .filter((n): n is NestedStrategyState => n !== undefined);
 }
 
-// Default rule name = the issue kind's own label (the same text shown in IssueSelectDialog's
-// picker), mirroring `qualityI18n.resolveIssueLabel`'s fallback to the raw kind — duplicated
-// here rather than imported to keep the store layer free of component-layer imports.
-function defaultRuleName(kind: string): string {
+// Current-locale default label for `kind` (the same text shown in IssueSelectDialog's picker),
+// mirroring `qualityI18n.resolveIssueLabel`'s fallback to the raw kind — duplicated here rather
+// than imported to keep the store layer free of component-layer imports. Exported so `renameRule`
+// can detect "the user typed back the default text" and collapse to `null` instead of freezing
+// that locale's text as a permanent custom name (GitHub issue #556).
+export function defaultRuleName(kind: string): string {
   const fn = (m as unknown as Record<string, (() => string) | undefined>)[`issue.${kind}.label`];
   return fn?.() ?? kind;
 }
 
-// `name` is plain user-editable text seeded from the current locale at creation time (renaming
-// UI not implemented yet) — it does not re-translate later, same as any other user-entered
-// string would not. `id` is a UUID, not a counter-derived string — a module-level counter resets
+// `name: null` means no custom name; the view model resolves the issue kind's current-locale
+// label. `renameRule` stores a string only when the user enters a custom name. `id` is a UUID,
+// not a counter-derived string — a module-level counter resets
 // on store re-initialization (HMR, project load, undo/redo replay) while previously-created rules
 // (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
 // collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
@@ -96,7 +98,7 @@ function defaultRuleName(kind: string): string {
 export function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
   return {
     id: `rule_${crypto.randomUUID()}`,
-    name: defaultRuleName(kind),
+    name: null,
     kind,
     checks,
     nextLocalCheckId: checks.length,
@@ -112,8 +114,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
 // Default stage name — the very first stage (index 0) is seeded as "Путевые точки" ("Waypoints"),
 // since it's the one every fresh project starts with and typically holds the endpoint-placement
 // rules; later stages fall back to "Stage N" by creation-order position, not renumbered on
-// rename/reorder (same pattern as `defaultRuleName`'s "Rule N" fallback in `validateQcRule`, see
-// projectExport). `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
+// rename/reorder. `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
 // doc comment.
 export function newStage(index: number, ruleIds: string[] = []): RepairStageState {
   return {

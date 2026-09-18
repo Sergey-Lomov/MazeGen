@@ -11,7 +11,6 @@ import type {
   ProjectFileNestedStrategy,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import * as m from "~/paraglide/messages";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray, assertHexOrientation, assertTriOrientation,
   assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
@@ -427,17 +426,19 @@ export function validateNestedStrategy(v: unknown, path: string, depth = 0): Pro
   return { slotId, strategyId, params, nested };
 }
 
-// `name` defaults by array position for project files saved before rule naming existed —
-// keeps old files loadable without a migration entry for what is a purely cosmetic field.
-// `ruleDisabled` defaults to false for the same reason (files saved before the whole-rule
-// toggle existed never had any of their checks excluded). `kind` defaults to "" for files saved
-// before rules carried their own kind (it used to be derived from the first member check at
-// runtime) — an empty-string kind only affects the "add check to rule" candidate match, not
-// loading itself, and gets corrected as soon as the user adds or removes a member check.
-export function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcRule {
+// `name` is `null` (no custom name — VM resolves it to the issue kind's live-locale label, see
+// GitHub issue #556) both for files that explicitly saved `null` and for project files saved
+// before rule naming existed at all — the old "Rule N" positional-default text would otherwise
+// get frozen in as a permanent custom name on load, the exact staleness bug #556 fixes for
+// never-renamed rules. `ruleDisabled` defaults to false for a similar reason (files saved before
+// the whole-rule toggle existed never had any of their checks excluded). `kind` defaults to ""
+// for files saved before rules carried their own kind (it used to be derived from the first
+// member check at runtime) — an empty-string kind only affects the "add check to rule" candidate
+// match, not loading itself, and gets corrected as soon as the user adds or removes a member check.
+export function validateQcRule(v: unknown, path: string): ProjectFileQcRule {
   const obj = assertObject(v, path);
   const id = assertString(obj.id, `${path}.id`);
-  const name = typeof obj.name === "string" ? obj.name : m["quality.default_rule_name"]({ n: index + 1 });
+  const name = typeof obj.name === "string" ? obj.name : null;
   const kind = typeof obj.kind === "string" ? obj.kind : "";
   const checks = assertArray(obj.checks, `${path}.checks`).map((c, i) => validateCheckInstance(c, `${path}.checks[${i}]`));
   assertUniqueIds(checks, (c) => c.localId, "localId", `${path}.checks`);

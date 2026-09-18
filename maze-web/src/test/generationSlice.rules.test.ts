@@ -419,6 +419,17 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.name).toBe("My custom rule");
   });
 
+  // GitHub issue #556: a name matching the current-locale default text collapses back to `null`,
+  // so it still tracks locale changes like a never-renamed rule instead of freezing that locale's
+  // text as a permanent custom name.
+  it("renameRule collapses to null when the input matches the current default label", () => {
+    useMazeStore.setState({
+      rules: [makeRule({ id: "g1", name: "My custom rule", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
+    });
+    useMazeStore.getState().renameRule("g1", "k1");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.name).toBeNull();
+  });
+
   it("removeRule removes the rule and its checks", () => {
     useMazeStore.setState({
       rules: [

@@ -33,7 +33,7 @@ interface CheckInstance {
 
 interface QcRuleState {
   id: string;            // opaque, client-generated (rule_${counter}); not derived from `checks`
-  name: string;          // user-facing, defaults to the issue kind's own label (resolveIssueLabel), editable
+  name: string | null;   // user-facing custom name; null means resolve the issue kind's current-locale label
   kind: string;          // IssueKind shared by all member checks, captured at creation time
   checks: CheckInstance[]; // member check instances — can be empty (see below)
   nextLocalCheckId: number; // monotonic per-rule counter minting new CheckInstance.localId — never reused
@@ -63,7 +63,7 @@ single-instance type as addable.
 
 - `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
 - A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`.
-- The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, defaulting to `kind label` itself at creation (`defaultRuleName`, `generationSliceHelpers.ts`). Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
+- The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, and is `null` for an un-renamed rule, in which case the view model resolves it to the current-locale `kind label`. Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
 - `CheckInstance.disabled` — a per-check toggle, independent of `disabled`/`ruleDisabled` above. A disabled check is excluded entirely from the next `generate()` call (dropped from its rule's `checks` before crossing the wasm boundary — see "Generate pipeline" below), as if it were never added to the rule, mirroring `ruleDisabled`'s effect at check granularity. Unlike `ruleDisabled`, it still counts as "active" for `isTypeAlreadyActive`'s single-instance-per-type gating (`addCheck`/`createRule` above) — re-enabling the existing disabled instance is the way back to using that type again, not adding a second one. If disabling a check leaves its rule with zero *effective* (non-disabled) checks, that rule itself is omitted from `GenerateConfig` the same way a `ruleDisabled` rule is — core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright.
 - `nextLocalCheckId` starts at the rule's initial check count, increments on every check added to this rule, and never resets or reuses a previously-issued `localId` even after that check is removed — addressing a check is always the pair `(ruleId, localId)`, never a bare `localId` searched across all rules. Not serialized to project files (see "Project file persistence" below) — recomputed on load as `max(checks.map(c => c.localId)) + 1` (or `0` if `checks` is empty).
@@ -679,7 +679,7 @@ Both default to `false` (expanded) for a freshly created rule/stage (`newRule`/`
 
 ### renameRule(ruleId, name) / removeRule(ruleId)
 
-- `renameRule`: sets the rule's `name`.
+- `renameRule`: stores the entered text as a custom `name`; when it exactly matches the current-locale default label for the rule's `kind`, stores `null` instead so an un-renamed rule continues to follow locale changes.
 - `removeRule`: deletes the rule and all its member check instances — there is no separate flat "active checks" list for them to also be removed from (see "What a rule is" above). Also scrubs `ruleId` from whichever stage's `ruleIds` currently holds it (see "What a stage is" above) — a stage never keeps a stale reference to a deleted rule. Triggered via a `ConfirmModal` in `RulesColumn`, since it's destructive to more than just the rule card.
 
 ### moveRule(ruleId, direction)
@@ -748,6 +748,9 @@ flat sibling of `quality.rules` — plain structure, nothing computed on load. T
 
 `QcRuleState.collapsed` (GitHub issue #320) is serialized as `quality.rules[].collapsed`, same
 default-`false`-if-absent recovery as the fields above (`validateQcRule`).
+
+`QcRuleState.name` is serialized as `quality.rules[].name`. A missing or explicit `null` name is
+loaded as `null`; the UI resolves the fallback label from the rule's current issue kind and locale.
 
 ## Generate pipeline
 

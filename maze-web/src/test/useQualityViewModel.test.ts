@@ -85,4 +85,23 @@ describe("useQualityViewModel", () => {
     expect(nested.params.map((p) => p.id)).toEqual(["src_mode"]);
     expect(nested.strategy.params.map((p) => p.id)).toEqual(["reserve_percent", "src_mode", "attempts_limit"]);
   });
+
+  // GitHub issue #556: `name: null` (no custom name) resolves to the issue kind's own live-locale
+  // label, not a frozen creation-time string — so a locale switch re-translates it instead of
+  // leaving stale-language text (or a concatenated "old (new)" mix once `label` re-translates but
+  // `name` doesn't).
+  it("resolves a null rule name to the issue kind's current label", () => {
+    useMazeStore.setState({
+      rules: [{
+        id: "g1", name: null, kind: "missing_loops",
+        checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }],
+        nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
+        collapsed: false,
+      }],
+      availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
+    });
+    const { result } = renderHook(() => useQualityViewModel());
+    expect(result.current.strategySlots[0].name).toBe("Add loops");
+  });
 });

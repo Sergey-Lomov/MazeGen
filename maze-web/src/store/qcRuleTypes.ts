@@ -78,9 +78,13 @@ export function entriesForSlot<T extends { slotId: string }>(list: T[], slotId: 
  * last member via the card's own X) without the rule being dropped, so the user can repopulate it. */
 export interface QcRuleState {
   id: string;
-  /** User-facing name, shown as the card header. Defaults to "Rule N" at creation time (see
-   * `newRule` in generationSlice.ts). Editable via the card header's edit button. */
-  name: string;
+  /** User-facing name, shown as the card header. `null` means "no custom name" — the VM resolves
+   * it to the issue kind's own live-locale label (`resolveIssueLabel`), the same way a fresh rule
+   * with no name would render, so switching languages re-translates it instead of freezing
+   * whatever text was current at creation/rename time. Set to a non-null string only by
+   * `renameRule` when the user's input differs from the current default label — see its doc
+   * comment (GitHub issue #556). */
+  name: string | null;
   /** Issue kind shared by all member checks, captured at rule-creation time. Kept on the rule
    * itself (not derived from `checks[0]`) so it survives `checks` becoming empty. */
   kind: string;

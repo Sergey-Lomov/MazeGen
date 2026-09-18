@@ -50,6 +50,14 @@ describe("TimingDetailedReportModal", () => {
     expect(screen.getByText(/Fix endpoints/)).toBeInTheDocument();
   });
 
+  it("resolves a rule with no custom name from its issue kind", () => {
+    useMazeStore.setState({
+      rules: [{ id: "rule_1", name: null, kind: "missing_loops", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+    });
+    render(<TimingDetailedReportModal timing={timing} onClose={() => {}} />);
+    expect(screen.getByText(/Add loops/)).toBeInTheDocument();
+  });
+
   it("labels a known check id as a check, not a strategy", () => {
     render(<TimingDetailedReportModal timing={timing} onClose={() => {}} />);
     expect(screen.getByText(/Loop length/)).toBeInTheDocument();

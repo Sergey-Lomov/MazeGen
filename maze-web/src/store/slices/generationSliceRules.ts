@@ -4,7 +4,7 @@ import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } f
 import { debugStaleOf } from "../storeHelpers";
 import {
   resolveCheckKind, isTypeAlreadyActive, defaultParamsFor, buildDefaultNestedStrategies,
-  newRule, appendRuleToStage, updateNestedAt, moveNestedAt,
+  newRule, appendRuleToStage, updateNestedAt, moveNestedAt, defaultRuleName,
 } from "./generationSliceHelpers";
 
 type RulesSliceKeys =
@@ -220,8 +220,11 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
     rules: state.rules.map((g) => g.id === ruleId ? { ...g, collapsed: !g.collapsed } : g),
   })),
 
+  // `name` matching the current-locale default collapses back to `null` (GitHub issue #556) — so
+  // a user typing/retyping the default text still tracks locale changes like a never-renamed
+  // rule, instead of freezing that locale's text as a permanent custom name.
   renameRule: (ruleId, name) => set((state) => ({
-    rules: state.rules.map((g) => g.id === ruleId ? { ...g, name } : g),
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, name: name === defaultRuleName(g.kind) ? null : name } : g),
   })),
 
   removeRule: (ruleId) => set((state) => ({

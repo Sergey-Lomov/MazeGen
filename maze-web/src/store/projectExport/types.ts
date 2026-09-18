@@ -111,7 +111,8 @@ export interface ProjectFileNestedStrategy {
 
 export interface ProjectFileQcRule {
   id: string;
-  name: string;
+  /** Mirrors `QcRuleState.name` — `null` means "no custom name" (GitHub issue #556). */
+  name: string | null;
   kind: string;
   checks: ProjectFileCheckInstance[];
   strategyId: string | null;

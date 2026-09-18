@@ -15,6 +15,8 @@ import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+import { resolveIssueLabel } from "./features/qualityI18n";
+import { useLocale } from "../i18n/useLocale";
 
 export { bubbleLabel } from "../debug/debugRowText";
 
@@ -115,11 +117,14 @@ export function DebugEventTree() {
   const stages = useMazeStore((s) => s.stages);
   const rules = useMazeStore((s) => s.rules);
   const multiFloor = useMazeStore((s) => s.floors.length > 1);
+  const { locale } = useLocale();
   // Resolved live from the current store config, not from the tape (core has no concept of a
   // rule/stage's display title, only its opaque `id` — see `ScopeTitleLookup`'s doc comment).
+  // `r.name` is `null` for a rule with no custom name — falls back to the issue kind's own
+  // live-locale label, same as `useQualityViewModel`'s VM resolves it (GitHub issue #556).
   const titleLookup: ScopeTitleLookup = useMemo(() => {
     const stageTitles = new Map(stages.map((s) => [s.id, s.name]));
-    const ruleTitles = new Map(rules.map((r) => [r.id, r.name]));
+    const ruleTitles = new Map(rules.map((r) => [r.id, r.name ?? resolveIssueLabel(r.kind)]));
     // Composite `"{ruleId}:{localId}"` -> typeId (GitHub issue #171) — matches the wire's own
     // check-instance routing key (`maze-wasm/src/runner.rs`'s `build_qc_and_repair_with_types`),
     // same as `IssueDto.source_check_types` resolves for the analytics panel.
@@ -131,7 +136,9 @@ export function DebugEventTree() {
       ruleTitle: (id) => ruleTitles.get(id),
       checkTypeId: (instanceId) => checkTypeIds.get(instanceId),
     };
-  }, [stages, rules]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale` isn't read directly, but
+    // `resolveIssueLabel` reads the current paraglide locale internally.
+  }, [stages, rules, locale]);
 
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);

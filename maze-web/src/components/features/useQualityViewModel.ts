@@ -3,6 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, type NestedStrategyState } from "../../store/storeTypes";
 import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
+import { useLocale } from "../../i18n/useLocale";
 
 /** Mirrors `NestedSlotDescriptor` with a camelCase field, consistent with every other VM type
  * in this module (the raw wasm DTO shape is snake_case; VM types are not). */
@@ -126,6 +127,7 @@ export function useQualityViewModel(): QualityViewModel {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
   const storeStages = useMazeStore((s) => s.stages);
+  const { locale } = useLocale();
 
   return useMemo(() => {
     const descriptorById = new Map(availableChecks.map((c) => [c.id, c]));
@@ -191,7 +193,9 @@ export function useQualityViewModel(): QualityViewModel {
         .filter((c): c is CheckVM => c !== undefined);
       return {
         ruleId: r.id,
-        name: r.name,
+        // `null` = no custom name — resolve live so a locale switch re-translates it, same as
+        // `label` below (GitHub issue #556).
+        name: r.name ?? resolveIssueLabel(r.kind),
         kind: r.kind,
         label: resolveIssueLabel(r.kind),
         strategy: s ? buildStrategyVM(s) : null,
@@ -225,5 +229,8 @@ export function useQualityViewModel(): QualityViewModel {
     const checks = strategySlots.flatMap((slot) => slot.producedBy);
 
     return { checks, stages, strategySlots };
-  }, [availableChecks, availableStrategies, rules, storeStages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `locale` isn't read directly, but
+    // every `resolve*` call above reads the current paraglide locale internally; including it
+    // here forces recompute on language switch (see GitHub issue #556).
+  }, [availableChecks, availableStrategies, rules, storeStages, locale]);
 }

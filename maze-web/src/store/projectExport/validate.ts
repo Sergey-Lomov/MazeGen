@@ -89,7 +89,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // check via "add check to rule" again (the candidate filter matches by kind) — drop them on load
   // rather than keep them around as permanently inert cards.
   const rules = assertArray(qualObj.rules, "quality.rules")
-    .map((v, i) => validateQcRule(v, `quality.rules[${i}]`, i))
+    .map((v, i) => validateQcRule(v, `quality.rules[${i}]`))
     .filter((r) => r.kind !== "");
   // See GitHub issue #65 and Specs/quality-feature.md's "Project file persistence" section.
   // Two cases: the key is absent entirely (file saved before this feature — recovery synthesizes

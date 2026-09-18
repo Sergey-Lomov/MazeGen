@@ -262,12 +262,15 @@ describe("mazeStore.loadRegistry", () => {
     expect(rules[0].strategyId).toBe("strategy_first");
   });
 
-  it("names the default rule after its issue kind's label, not a counter", async () => {
+  // A fresh rule's `name` is `null` (no custom name) — the VM resolves it to the issue kind's
+  // own live-locale label, not a counter, so it re-translates on a locale switch instead of
+  // freezing whatever text was current at creation time (GitHub issue #556).
+  it("leaves the default rule's name null so the VM resolves it to the issue kind's label, not a counter", async () => {
     const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [], allow_multiple_instances: false }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue([]);
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().rules[0].name).toBe("Add waypoints");
+    expect(useMazeStore.getState().rules[0].name).toBeNull();
   });
 
   it("prefers scored_endpoints over earlier-listed strategies for the missing_endpoints kind", async () => {

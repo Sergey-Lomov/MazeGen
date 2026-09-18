@@ -6,11 +6,12 @@ import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
 import { tileNodesForTopology } from "../../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
-import { resolveCheckLabel, resolveParamLabel, resolveStrategyLabel } from "./qualityI18n";
+import { resolveCheckLabel, resolveParamLabel, resolveStrategyLabel, resolveIssueLabel } from "./qualityI18n";
 import { buildValues } from "./useParamEditor";
 import { StatRow, SubsectionTitle, formatMs } from "./AnalyticsSections";
 import { styles, messageFor } from "./analyticsStyles";
 import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
+import { useLocale } from "../../i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
 const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
@@ -196,8 +197,11 @@ export function TimingDetailedReportModal({ timing, onClose }: { timing: Generat
   const stages = useMazeStore((s) => s.stages);
   const rules = useMazeStore((s) => s.rules);
   const availableChecks = useMazeStore((s) => s.availableChecks);
+  const { locale } = useLocale();
   const stageNames = React.useMemo(() => new Map(stages.map((s) => [s.id, s.name])), [stages]);
-  const ruleNames = React.useMemo(() => new Map(rules.map((r) => [r.id, r.name])), [rules]);
+  // `r.name` is `null` for a rule with no custom name — falls back to the issue kind's own
+  // live-locale label, same as `useQualityViewModel`'s VM resolves it (GitHub issue #556).
+  const ruleNames = React.useMemo(() => new Map(rules.map((r) => [r.id, r.name ?? resolveIssueLabel(r.kind)])), [rules, locale]);
   const checkIds = React.useMemo(() => new Set(availableChecks.map((c) => c.id)), [availableChecks]);
   const qcTotalMs = timing.qc.reduce((s, n) => s + n.total_ms, 0);
   const totalMs = timing.initial_build_ms + qcTotalMs + timing.snapshot_ms;

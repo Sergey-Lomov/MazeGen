@@ -470,11 +470,11 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.quality.rules[0].checks[0].disabled).toBe(false);
   });
 
-  it("defaults rule name by array position when absent (pre-naming project files)", () => {
+  it("defaults rule name to null when absent (pre-naming project files) — VM resolves it to the issue kind's live-locale label", () => {
     const data = valid_without_optional_sections();
     delete (data.quality as { rules: Record<string, unknown>[] }).rules[0].name;
     const result = parseAndValidate(data);
-    expect(result.quality.rules[0].name).toBe("Rule 1");
+    expect(result.quality.rules[0].name).toBeNull();
   });
 
   it("drops rules with no kind (pre-kind project files — can never accept a check again)", () => {
