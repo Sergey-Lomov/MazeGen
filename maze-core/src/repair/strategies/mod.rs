@@ -21,6 +21,7 @@ pub mod invalid_loop_random;
 pub mod invalid_loop_scored;
 pub mod missing_loops_random;
 pub mod missing_loops_split;
+pub mod missing_loops_teleport;
 pub mod missing_loops_vertical;
 pub mod missing_one_ways_from_passage;
 pub mod missing_one_ways_from_wall;
@@ -124,6 +125,10 @@ pub use invalid_loop_scored::InvalidLoopScoredStrategy;
 pub use missing_loops_random::MissingLoopsRandomStrategy;
 pub use missing_loops_split::{
     MissingLoopsSplitStrategy, PARAM_PROTECT_ROUTE as MISSING_LOOPS_SPLIT_PARAM_PROTECT_ROUTE,
+};
+pub use missing_loops_teleport::{
+    MissingLoopsTeleportStrategy,
+    PARAM_ONE_WAY_CHANCE as MISSING_LOOPS_TELEPORT_PARAM_ONE_WAY_CHANCE,
 };
 pub use missing_loops_vertical::{
     MissingLoopsVerticalStrategy,

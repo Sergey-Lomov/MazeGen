@@ -18,18 +18,19 @@ use maze_core::{
         CrossElementGroupSelectStrategy, ElevatorGroupSelectStrategy, ElevatorRegionMergeStrategy,
         ElevatorStopGroupSelectStrategy, ExpandRegionPassageStrategy, FarthestEndpointsStrategy,
         InvalidLoopGroupSelectStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy,
-        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsVerticalStrategy,
-        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingRegionsStrategy,
-        MissingTeleportsStrategy, OneWayGroupSelectStrategy, OneWayToPassageStrategy,
-        OneWayToWallStrategy, PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy,
-        RandomEndpointsStrategy, ReduceSccCountStrategy, RegionShrinkSplitStrategy,
-        RemoveElevatorStopStrategy, RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy,
-        RemoveSplitNodeStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
-        RemoveVerticalPassageStrategy, RepairStrategy, ReplaceElevatorWithPassagesStrategy,
-        ScoredEndpointsStrategy, SplitGroupSelectStrategy, SplitNodeConnectionGroupSelectStrategy,
-        SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, TeleportGroupSelectStrategy,
-        TeleportRegionMergeStrategy, VerticalPassageGroupSelectStrategy,
-        VerticalPassageRegionMergeStrategy, WeightedRegionMergeStrategy,
+        MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, MissingLoopsTeleportStrategy,
+        MissingLoopsVerticalStrategy, MissingOneWaysFromPassageStrategy,
+        MissingOneWaysFromWallStrategy, MissingRegionsStrategy, MissingTeleportsStrategy,
+        OneWayGroupSelectStrategy, OneWayToPassageStrategy, OneWayToWallStrategy,
+        PriorityMissingLoopsStrategy, PriorityRegionMergeStrategy, RandomEndpointsStrategy,
+        ReduceSccCountStrategy, RegionShrinkSplitStrategy, RemoveElevatorStopStrategy,
+        RemoveElevatorStrategy, RemoveSplitNodeConnectionStrategy, RemoveSplitNodeStrategy,
+        RemoveSplitStrategy, RemoveTeleportStrategy, RemoveVerticalPassageStrategy, RepairStrategy,
+        ReplaceElevatorWithPassagesStrategy, ScoredEndpointsStrategy, SplitGroupSelectStrategy,
+        SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy,
+        SplitRouteCutStrategy, TeleportGroupSelectStrategy, TeleportRegionMergeStrategy,
+        VerticalPassageGroupSelectStrategy, VerticalPassageRegionMergeStrategy,
+        WeightedRegionMergeStrategy,
     },
     space::SquareTessellation,
 };
@@ -407,6 +408,29 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
                 &MissingLoopsSplitStrategy {
                     config: Default::default(),
                 },
+            ),
+            nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "missing_loops_teleport",
+            handles: MISSING_LOOPS.as_str(),
+            params: strategy_params_dto(
+                <MissingLoopsTeleportStrategy as RepairStrategy<
+                    SquareTessellation,
+                    maze_core::quality_control::MissingLoopsIssue,
+                >>::params(&MissingLoopsTeleportStrategy),
+                &[],
+            ),
+            experimental: <MissingLoopsTeleportStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::MissingLoopsIssue,
+            >>::is_experimental(&MissingLoopsTeleportStrategy),
+            nested_suppressed_params: <MissingLoopsTeleportStrategy as RepairStrategy<
+                SquareTessellation,
+                maze_core::quality_control::MissingLoopsIssue,
+            >>::nested_suppressed_params(
+                &MissingLoopsTeleportStrategy
             ),
             nested_slots: vec![],
             visibility: None,
@@ -1510,6 +1534,56 @@ mod tests {
             let param = strategy.params.iter().find(|p| p.id == id).unwrap();
             assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
         }
+    }
+
+    #[test]
+    fn missing_loops_teleport_exposes_ordered_loop_params() {
+        let strategy = available_strategies_list()
+            .into_iter()
+            .find(|s| s.id == "missing_loops_teleport")
+            .expect("missing_loops_teleport must be registered");
+        let ids: Vec<&str> = strategy.params.iter().map(|p| p.id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "entry_pick",
+                "exit_pick",
+                "desired_length",
+                "allow_out_of_interval",
+                "teleport_loop_one_way_chance",
+                "reserve_percent",
+                "attempts_limit",
+            ]
+        );
+
+        let entry = strategy
+            .params
+            .iter()
+            .find(|p| p.id == "entry_pick")
+            .unwrap();
+        assert!(matches!(
+            entry.kind,
+            ParamKindDto::Enum { ref default, .. } if *default == "dead_end_priority"
+        ));
+        let exit = strategy
+            .params
+            .iter()
+            .find(|p| p.id == "exit_pick")
+            .unwrap();
+        assert!(matches!(
+            exit.kind,
+            ParamKindDto::Enum { ref default, .. } if *default == "dead_end_priority"
+        ));
+        let one_way = strategy
+            .params
+            .iter()
+            .find(|p| p.id == "teleport_loop_one_way_chance")
+            .unwrap();
+        assert!(matches!(
+            one_way.kind,
+            ParamKindDto::Float { default, min, max }
+                if default == 50.0 && min == 0.0 && max == 100.0
+        ));
     }
 
     #[test]

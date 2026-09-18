@@ -287,6 +287,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.vertical_loop_one_way_chance.label"] as MessageFn,
     description: m["param.vertical_loop_one_way_chance.description"] as MessageFn,
   },
+  teleport_loop_one_way_chance: {
+    label: m["param.teleport_loop_one_way_chance.label"] as MessageFn,
+    description: m["param.teleport_loop_one_way_chance.description"] as MessageFn,
+  },
   attempts_limit: {
     label: m["param.attempts_limit.label"] as MessageFn,
     description: m["param.attempts_limit.description"] as MessageFn,
