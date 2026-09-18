@@ -137,7 +137,7 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
         StrategyDescriptor {
             id: "invalid_loop_random",
             handles: INVALID_LOOP.as_str(),
-            params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy), &[]),
+            params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy), &[("vertical_passage_priority", EntityVisibility::MultiFloorOnly)]),
             experimental: <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::is_experimental(&InvalidLoopRandomStrategy),
             nested_suppressed_params: <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::nested_suppressed_params(&InvalidLoopRandomStrategy),
             nested_slots: vec![],
@@ -146,7 +146,7 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
         StrategyDescriptor {
             id: "invalid_loop_scored",
             handles: INVALID_LOOP.as_str(),
-            params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), &[]),
+            params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), &[("vertical_passage_priority", EntityVisibility::MultiFloorOnly)]),
             experimental: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::is_experimental(&InvalidLoopScoredStrategy),
             nested_suppressed_params: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::nested_suppressed_params(&InvalidLoopScoredStrategy),
             nested_slots: vec![],
@@ -173,11 +173,11 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
         StrategyDescriptor {
             id: "missing_loops_vertical",
             handles: MISSING_LOOPS.as_str(),
-            params: strategy_params_dto(<MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsVerticalStrategy), &[]),
+            params: strategy_params_dto(<MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsVerticalStrategy), &[("vertical_loop_one_way_chance", EntityVisibility::MultiFloorOnly)]),
             experimental: <MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&MissingLoopsVerticalStrategy),
             nested_suppressed_params: <MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::nested_suppressed_params(&MissingLoopsVerticalStrategy),
             nested_slots: vec![],
-            visibility: None,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "missing_loops_split",
@@ -627,12 +627,33 @@ mod tests {
                 if strategy.id == "missing_teleports" && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance") {
                     continue;
                 }
+                if (strategy.id == "invalid_loop_random" || strategy.id == "invalid_loop_scored") && param.id == "vertical_passage_priority" {
+                    continue;
+                }
+                if strategy.id == "missing_loops_vertical" && param.id == "vertical_loop_one_way_chance" {
+                    continue;
+                }
                 assert_eq!(param.visibility, None, "strategy {} param {} should be always-visible", strategy.id, param.id);
             }
         }
     }
 
-    // GitHub issue #349 follow-up: every strategy that only makes sense with vertical passages/
+    #[test]
+    fn loop_strategies_mark_vertical_entities_multi_floor_only() {
+        let strategies = available_strategies_list();
+
+        for strategy_id in ["invalid_loop_random", "invalid_loop_scored"] {
+            let strategy = strategies.iter().find(|s| s.id == strategy_id).unwrap();
+            let param = strategy.params.iter().find(|p| p.id == "vertical_passage_priority").unwrap();
+            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
+        }
+
+        let vertical = strategies.iter().find(|s| s.id == "missing_loops_vertical").unwrap();
+        let param = vertical.params.iter().find(|p| p.id == "vertical_loop_one_way_chance").unwrap();
+        assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
+    }
+
+    // GitHub issue #349/#560 follow-up: every strategy that only makes sense with vertical passages/
     // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs
     // there — mirrors `only_vertical_passage_and_elevator_checks_are_multi_floor_only` in
     // `checks_catalog.rs`.
@@ -650,7 +671,7 @@ mod tests {
             vec![
                 "add_elevator", "add_elevator_height_stop", "add_elevator_stop",
                 "add_elevator_stop_count", "add_elevator_stop_for_gap", "add_vertical_passage",
-                "elevator_group_select", "elevator_region_merge", "elevator_stop_group_select", "remove_elevator",
+                "elevator_group_select", "elevator_region_merge", "elevator_stop_group_select", "missing_loops_vertical", "remove_elevator",
                 "remove_elevator_stop", "remove_vertical_passage", "replace_elevator_with_passages",
                 "vertical_passage_group_select", "vertical_passage_region_merge",
             ],
