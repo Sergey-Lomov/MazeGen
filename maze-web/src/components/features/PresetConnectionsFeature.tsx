@@ -225,17 +225,24 @@ export function PresetConnectionsFeature() {
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
   const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + invalidSplitKeys.size + invalidLockedKeys.size;
   const hasInvalid = invalidCount > 0;
+  const problemCount = isolatedNodes.length + orphanSplitCount;
+  const problemsExpanded = presetSectionsExpanded["problems"] ?? false;
 
   return (
     <Stack gap="groupGap">
-      {(isolatedNodes.length > 0 || orphanSplitCount > 0) && (
         <>
           <SectionHeader
-            label={m["preset.problems"]()}
-            expanded={presetSectionsExpanded["problems"] ?? true}
-            onToggle={() => setPresetSectionExpanded("problems", !(presetSectionsExpanded["problems"] ?? true))}
+            label={
+              <span
+                className={problemCount > 0 ? "problem-section-attention" : undefined}
+              >
+                {m["common.problems"]()} ({problemCount})
+              </span>
+            }
+            expanded={problemsExpanded}
+            onToggle={() => setPresetSectionExpanded("problems", !problemsExpanded)}
           />
-          {(presetSectionsExpanded["problems"] ?? true) && (
+          {problemsExpanded && (
             <div style={styles.nestedContent}>
               <Stack gap="itemGap">
                 {isolatedNodes.length > 0 && (
@@ -263,7 +270,6 @@ export function PresetConnectionsFeature() {
           )}
           <div style={styles.divider} />
         </>
-      )}
 
       <span style={styles.sectionLabel}>{m["preset.tools"]()}</span>
       <div style={styles.nestedContent}>

@@ -76,12 +76,14 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
  *  same way it already does for start/finish/teleport markers — without this, a marker with no
  *  border/gap of its own leaves the plain corridor line running unbroken straight through it.
  *  "Vector by corridors" has no decorative pictogram treatment (GitHub issue #348 — unlike "Vector
- *  by walls"), so shape/radius and the visible border/gap footprint always mirror
+ *  by walls"), so shape/radius/corner style mirror
  *  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`, using the same resolution
- *  `VerticalConnectionRenderer` itself uses for its abstract-marker draw path. The border/gap
- *  fields are important even though the patch is drawn in the corridor's color: without them,
- *  split-gap background can remain visible between the patch and the marker's true outer edge
- *  (GitHub issue #561). `color: 0` is an unused placeholder, same convention as
+ *  `VerticalConnectionRenderer` itself uses for its abstract-marker draw path. The
+ *  `borderWidth`/`gapWidth` fields are also preserved because the visible marker footprint extends
+ *  to `radius + borderWidth + gapWidth`; omitting them makes the widen patch too small and can
+ *  leave the split-gap background visible around the marker (GitHub issues #551, #561).
+ *  Only `shape`/`cornerStyle`/`radius`/`borderWidth`/`gapWidth` matter here because the patch is
+ *  drawn in the corridor's own color. `color: 0` is an unused placeholder, same convention as
  *  `buildTeleportWidenMarkers`. */
 export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], settings: VectorByCorridorsSettings): MarkerData[] {
   return markers.map((marker) => {

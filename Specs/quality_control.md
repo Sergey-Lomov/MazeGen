@@ -1,4 +1,4 @@
-﻿# Quality Control
+# Quality Control
 
 A read-only analysis pass that detects problems in a `Maze` and produces a list of `Issue` values. Runs before and after each repair iteration in the pipeline.
 
@@ -814,7 +814,7 @@ pub struct TeleportWaypointDistanceCheck {
 }
 ```
 
-Flags a teleport edge whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #74/#177. Multiple instances may be active at once (different `waypoint`/`edge`/`distance`/`comparison` combinations are all legitimate simultaneously, e.g. "entry must be far from start" AND separately "exit must be far from finish") — `allow_multiple_instances: true` (see "Available checks" below), same rationale as `MinRegionCountCheck`.
+Flags a teleport edge whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #74/#177. Multiple instances may be active at once (different `waypoint`/`edge`/`distance`/`comparison` combinations are all legitimate simultaneously, e.g. "entry must be far from start" AND separately "exit must be far from finish") — multiple instances (see "Available checks" below), same rationale as `MinRegionCountCheck`.
 
 `comparison` (GitHub issue #177, default `Lt`) — see the "Comparison operator" section above. `Lt` reproduces the pre-#177 "too close" behavior (flag if closer than `distance`); other operators (e.g. `Gt`, "too far") are new, added for taxonomy completeness even though the issue that introduced `Comparison` didn't name this check explicitly.
 
@@ -997,7 +997,7 @@ For each teleport edge, scans every other teleport edge for the first one whose 
 
 Default `distance` of `0` never fires on its own, same as every other teleport distance check. If no pair is found, the check is silent. Otherwise fires `InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", groups)` (each pair expressed as a two-element `groups` entry, `to_remove: 1` — see the `InvalidGroupIssue<K>` writeup above) with `.with_detail("teleport_group_proximity", "distance", self.distance.to_string())` chained on.
 
-Multiple instances may be active at once (`allow_multiple_instances: true`) — distinct `own_edge`/`other_edge`/`distance` combinations are a legitimate simultaneous configuration, same rationale as `TeleportWaypointDistanceCheck`.
+Multiple instances may be active at once (multiple instances) — distinct `own_edge`/`other_edge`/`distance` combinations are a legitimate simultaneous configuration, same rationale as `TeleportWaypointDistanceCheck`.
 
 **`protect_route` (GitHub issue #78, default `true`) — different rule than the per-edge checks below.** A close pair is only excluded when *both* teleports are route-critical (`graph::route_protection::is_teleport_route_protected`, checked on `own_id`/`other_id` right when a hit is found): if only one side of the pair sits on the maze's start→finish route, the pair is still recorded, since the non-route side remains a legitimate removal candidate — `TeleportGroupSelectStrategy`'s own `protect_route` (see `repair.md`) is what actually decides *which* side to spare in that mixed case. Excluding a pair for being fully route-protected does **not** end the scan for the teleport being scanned (`own_id`) — a farther, non-protected candidate is still searched for and recorded if found, so a route-critical teleport doesn't silently "use up" its one scan slot on a pair that turns out to be unresolvable.
 
@@ -1074,7 +1074,7 @@ pub struct OneWayWaypointDistanceCheck {
 }
 ```
 
-Flags a one-way passage edge (`EdgeKind::Basic`, single direction — the reverse direction between the same node pair does not exist) whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #198. Multiple instances may be active at once (`allow_multiple_instances: true`), same rationale as `TeleportWaypointDistanceCheck`.
+Flags a one-way passage edge (`EdgeKind::Basic`, single direction — the reverse direction between the same node pair does not exist) whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #198. Multiple instances may be active at once (multiple instances), same rationale as `TeleportWaypointDistanceCheck`.
 
 Distance is logical (tile count via `maze.analysis.distance_from_start`/`distance_from_finish`, same shared distance maps `TeleportWaypointDistanceCheck` uses). Unlike `TeleportWaypointDistanceCheck`, there is no edge-role selector (`entry`/`exit`): a one-way edge is flagged if *either* of its two endpoints (`from` or `to`) compares against the threshold, taking the closer of the two (`min`) — there is no "entry"/"exit" distinction meaningful for a plain directed passage the way there is for a teleport jump. `waypoint` selects which waypoint(s) to measure against (`Start`/`Finish`/`Any`, `Any` taking the closer of the two waypoints), same shape as `TeleportWaypoint`. An endpoint unreachable from the relevant waypoint (absent from the distance map) is treated as having no defined distance and is never flagged for that waypoint, symmetric with `TeleportWaypointDistanceCheck`'s same rule. Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set — covered by `MissingEndpointsCheck`.
 
@@ -1122,7 +1122,7 @@ For each one-way edge, scans every other one-way edge for the first one closer t
 
 `protect_route` (GitHub issue #199, default `true`) — mirrors `TeleportGroupProximityCheck`'s own rule (issue #78): a pair is only excluded from being recorded when *both* one-way edges lie on the maze's current start→finish route (`graph::route_protection::is_edge_on_route`); if only one side sits on the route, the pair is still recorded, since the non-route side remains a legitimate repair candidate. Excluding a pair for being fully route-protected does not end the scan for the edge being scanned — a farther, non-protected candidate is still searched for.
 
-If any pairs are found, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, groups)` (each group paired with `to_remove: 1`, see `OneWayGroup` below) with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Multiple instances of either check may be active at once (`allow_multiple_instances: true`) — distinct `distance` thresholds are a legitimate simultaneous configuration, same rationale as `teleport_group_proximity`'s own multi-instance allowance.
+If any pairs are found, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, groups)` (each group paired with `to_remove: 1`, see `OneWayGroup` below) with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Multiple instances of either check may be active at once (multiple instances) — distinct `distance` thresholds are a legitimate simultaneous configuration, same rationale as `teleport_group_proximity`'s own multi-instance allowance.
 
 `OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
 
@@ -1331,7 +1331,7 @@ See GitHub issue #249, part of epic #246. Flag a pair of split tiles placed too 
 
 `SplitGroupGeometricProximityCheck` measures Euclidean distance (`space::floor_aware_distance`) between the two tiles' points directly (unlike an edge-position check, a split tile is a whole point, not a border-crossing edge). `SplitGroupGraphProximityCheck` measures the minimum **exact** directed tile-hop distance (`min(forward, reverse)`, same "worst-case/either-direction" reduction `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck` use) over every combination of the two tiles' own nodes, via `graph::distance_map::exact_tile_distance` (see `graph-analytics.md`) — **not** the coarser `corridor_index`-based nav-node snapping `SplitDistanceFromWaypointCheck` accepts, since this check compares the distance value itself against a threshold (GitHub issue #249's original bug report: the coarse approximation could report two split nodes on the same long corridor as distance ≈0 regardless of their true tile-hop separation).
 
-For each tile, scans every other tile for the first one closer than `distance` — as soon as one problematic pair is found, it's recorded and the scan moves to the next tile. A symmetric pair is typically recorded twice (once per scan direction), each as its own 2-element group with `to_remove: 1` — same shape `OneWayGroupGeometricProximityCheck` produces. If any pairs are found, fires `InvalidSplitTileGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", ...)` chained on. Both allow multiple simultaneous instances (`allow_multiple_instances: true`) — distinct thresholds are a legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
+For each tile, scans every other tile for the first one closer than `distance` — as soon as one problematic pair is found, it's recorded and the scan moves to the next tile. A symmetric pair is typically recorded twice (once per scan direction), each as its own 2-element group with `to_remove: 1` — same shape `OneWayGroupGeometricProximityCheck` produces. If any pairs are found, fires `InvalidSplitTileGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", ...)` chained on. Both allow multiple simultaneous instances (multiple instances) — distinct thresholds are a legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
 
 `SplitGroupGeometricProximityCheck.floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a pair of split tiles on different floors is treated — see `GeometricFloorMode` above; `SplitGroupGraphProximityCheck` has no equivalent parameter, since tile-hop distance is already floor-agnostic by construction (a hop count only exists along real graph edges, which never silently cross floors outside dedicated `VerticalPassage`/`Elevator` edge kinds). Level indices for all of a maze's tiles are precomputed once per `repair_check` call (`levels_ordered().enumerate()` into a `HashMap<LevelId, usize>`) rather than looked up per pair, avoiding an O(L) linear scan per point.
 
@@ -1461,7 +1461,7 @@ Vec<(Vec<EdgeId>, u32)>` (the generic `InvalidGroupIssue<SplitNodeConnectionGrou
 `Element = EdgeId`, mirroring `OneWayGroupKind`/`TeleportGroupKind`'s flat-`EdgeId` shape). Fires
 `InvalidSplitNodeConnectionGroupIssue::new_from_check(instance_id, groups)` with
 `.with_detail(instance_id, "max", self.max.to_string())` chained on. Both allow multiple
-simultaneous instances (`allow_multiple_instances: true`) — distinct `max` thresholds are a
+simultaneous instances (multiple instances) — distinct `max` thresholds are a
 legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
 
 `SplitNodeConnectionGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for
@@ -1643,7 +1643,7 @@ See GitHub issue #397, part of epic #344. Both checks flag a whole elevator (`El
 
 **`ElevatorSpanCheck`** (`check_type_id() == "elevator_span"`) compares an elevator's inter-stop vertical distance — `stop_floors(elevator, maze)`'s last floor index minus its first — against `span` via `comparison`. `Lt` (default, threshold `10`) flags a too-tightly-clustered elevator (e.g. one spanning only adjacent floors, which a plain `VerticalPassage` could serve just as well); `Gt` flags one spanning an implausibly tall stretch of the maze. Span is the topmost-minus-bottommost floor gap, not stop count minus one — an elevator can skip floors between its outermost stops.
 
-Both checks scan every `elevator_groups(maze)` entry independently, collect the flagged ones into `Vec<ElevatorNodes>` (sorted for determinism), and — if non-empty — fire `InvalidElevatorIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "count"/"span", ...)` chained on. Both allow multiple simultaneous instances (`allow_multiple_instances: true`) — each instance independently flags whichever elevators cross its own threshold, no shared mutable state to double-count (mirrors `teleport_waypoint_distance`/`teleport_group_proximity`'s own multi-instance rationale).
+Both checks scan every `elevator_groups(maze)` entry independently, collect the flagged ones into `Vec<ElevatorNodes>` (sorted for determinism), and — if non-empty — fire `InvalidElevatorIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "count"/"span", ...)` chained on. Both allow multiple simultaneous instances (multiple instances) — each instance independently flags whichever elevators cross its own threshold, no shared mutable state to double-count (mirrors `teleport_waypoint_distance`/`teleport_group_proximity`'s own multi-instance rationale).
 
 `RemoveElevatorStrategy` / `ReplaceElevatorWithPassagesStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `INVALID_ELEVATOR` — a rule picks one.
 
@@ -2042,50 +2042,17 @@ Serialized to JSON by `available_checks()`:
 
 ```rust
 struct CheckDescriptor {
-    id: &'static str,           // check type id — used as CheckInstanceConfig.type_id
-    label: &'static str,        // human-readable name
-    description: &'static str,  // human-readable description
-    issue_kinds: Vec<&'static str>, // IssueKind::as_str() values this check may produce
+    id: &'static str,
+    label: &'static str,
+    description: &'static str,
+    issue_kinds: Vec<&'static str>,
     params: Vec<ParamDescriptor>,
-    allow_multiple_instances: bool, // see below
-    // `None` = always offered. Same `EntityVisibility` tag as `ParamDescriptor.visibility`, but
-    // gates the whole check's presence in the *selection* dialogs only (`IssueSelectDialog`,
-    // `CheckSelectDialog`, `AddCheckToRuleDialog` via `RulesColumn.candidatesFor`) — a rule already
-    // built on a now-hidden check stays exactly as configured, visible on its own card, and still
-    // runs at generation time. See `quality-feature.md`'s "Conditional entity visibility" section.
     visibility: Option<EntityVisibility>,
 }
 ```
 
-**`allow_multiple_instances`** gates whether the web store/UI permit more than one independent
-active configuration of this check type at once (across rules, or within the same rule) — see
-GitHub issue #60. `true` for checks where a second instance with different params is a legitimate,
-common configuration:
-- Proximity/distance/waypoint checks (`teleport_waypoint_distance`, `teleport_group_proximity`,
-  `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`,
-  `split_distance_from_waypoint`, `split_group_geometric_proximity`, `split_group_graph_proximity`,
-  `split_node_connection_count`, `split_node_connection_per_face`, `split_node_connection_per_neighbor`,
-  `split_node_connection_traversal_distance`) — distinct threshold/edge/distance combinations are
-  independent configurations (e.g. "entry must be far from start" AND separately "exit must be far
-  from finish").
-- The 8 `min_*`/`split_count`/`split_density` deficit checks (`min_loops_count`, `min_loop_density`,
-  `min_one_way_count`, `min_one_way_ratio`, `min_teleport_count`, `min_teleport_ratio`,
-  `split_count`, `split_density`) — GitHub issue #369 follow-up: once their repair strategies
-  started sharing live deficit counts via `RemainingDeficits` (see below), stacking several
-  instances (e.g. one `WholeMaze` and one `PerFloor` instance of the same check) no longer
-  over-delivers, so multiple simultaneous instances became a safe, legitimate configuration.
-
-Every other check stays `false` — single active instance at a time, same restriction that existed
-before #60's refactor. This includes the 4 `max_*` surplus/group checks with `floor_scope`
-(`max_split_count`, `max_split_density`, `max_one_way_count`, `max_one_way_ratio`): their
-`InvalidGroupIssue<K>`-based issues have no analogous cross-*instance* merge — `IssueMerge::merge`
-only takes the larger `to_remove` for the *same* canonical group key, which is not a safe substitute
-for `RemainingDeficits`'s live-consumption tracking across independently-configured instances. This
-is enforced store-side (`addCheck`/`createRule` in `generationSlice.ts`) and mirrored in the UI's
-candidate filtering (`RulesColumn.candidatesFor`, `CheckSelectDialog`) — wasm/core themselves don't
-reject a duplicate `type_id` across instances; `QualityControlEngine` runs every configured instance
-unconditionally regardless of this flag, since nothing in the QC/repair pipeline depends on it
-being correct.
+Every configured check descriptor may be instantiated multiple times. The store, UI, WASM and
+core do not impose a per-type instance limit; each instance keeps its own parameters and local id.
 
 ### ParamDescriptor
 
@@ -2292,7 +2259,7 @@ is still built (so the UI shows it as a valid instance), it just produces no iss
 deliberate: returning `None` from the factory would raise a "different issue kinds" error and
 break generation.
 
-`allow_multiple_instances: true` — distinct type-set / threshold combinations are a legitimate
+multiple instances — distinct type-set / threshold combinations are a legitimate
 simultaneous configuration, same rationale as the other `*_proximity` checks.
 
 **Identity vs occurrence model.** A multi-location element (a teleport has two portal ends, a
@@ -2356,7 +2323,7 @@ one-way / split / elevator-stop per-type proximity checks, but **not** of the ve
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration. `min_vertical_passage_count`/`min_vertical_passage_ratio`/`vertical_passage_group_geometric_proximity`/`vertical_passage_group_graph_proximity` (GitHub issue #343) likewise allow multiple instances — same rationale as their teleport/one-way counterparts (distinct `floor_scope`/`direction`/`distance` combinations are legitimate simultaneous configurations); `max_vertical_passage_count`/`max_vertical_passage_ratio` do not, mirroring `max_one_way_count`/`max_one_way_ratio`'s own single-instance restriction.
+`teleport_waypoint_distance` has multiple instances (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration. `min_vertical_passage_count`/`min_vertical_passage_ratio`/`vertical_passage_group_geometric_proximity`/`vertical_passage_group_graph_proximity` (GitHub issue #343) likewise allow multiple instances — same rationale as their teleport/one-way counterparts (distinct `floor_scope`/`direction`/`distance` combinations are legitimate simultaneous configurations); `max_vertical_passage_count`/`max_vertical_passage_ratio` also permit multiple instances.
 
 ## Architectural Contract
 

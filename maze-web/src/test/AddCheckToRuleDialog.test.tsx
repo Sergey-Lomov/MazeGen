@@ -41,8 +41,8 @@ describe("AddCheckToRuleDialog", () => {
     useMazeStore.setState({
       rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
       availableChecks: [
-        { id: "existing", label: "Existing", description: "", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
-        { id: "c2", label: "Check Two", description: "Second check.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
+        { id: "existing", label: "Existing", description: "", issue_kinds: ["invalid_loop"], params: [] },
+        { id: "c2", label: "Check Two", description: "Second check.", issue_kinds: ["invalid_loop"], params: [] },
       ],
     });
     const onClose = vi.fn();

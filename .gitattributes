@@ -1,0 +1,27 @@
+# Normalize all text files to LF in the repo, checked out as LF too,
+# so Git never treats line-ending normalization as a working-tree diff.
+* text=auto eol=lf
+
+*.rs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.txt text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+*.nvmrc text eol=lf
+*.npmrc text eol=lf
+*.ps1 text eol=lf
+
+*.fnt text eol=lf
+*.lock text eol=lf
+
+*.png binary
+*.ttf binary
+*.wasm binary

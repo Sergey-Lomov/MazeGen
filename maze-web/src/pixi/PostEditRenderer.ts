@@ -459,13 +459,17 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const stateEdgesUnsuppressed = state.edges.filter((e) => !isSuppressedEdge(e));
     const edgesUnsuppressed = edges.filter((e) => !isSuppressedEdge(e));
     const allVerticalEdges = [...stateEdgesUnsuppressed, ...draftVerticalEdges];
+    // Positioning split-node vertical markers also needs the ordinary directed graph edges so
+    // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate
+    // for pair/arrival semantics, while feeding the full confirmed + draft graph to the selector.
+    const allMarkerEdges = [...allVerticalEdges, ...unscopedActiveEdges];
     const floorScopedVerticalEdges = [...edgesUnsuppressed, ...draftVerticalEdges.filter((e) => {
       const fromNode = nodeById.get(e.from);
       return fromNode !== undefined;
     })];
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
       nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
-      selectVerticalPassagePairSet(allVerticalEdges), allVerticalEdges,
+      selectVerticalPassagePairSet(allVerticalEdges), allMarkerEdges,
     );
 
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue

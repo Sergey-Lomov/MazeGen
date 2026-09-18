@@ -17,7 +17,6 @@ const checkDescriptor: CheckDescriptor = {
   description: "Check One description",
   issue_kinds: ["i1"],
   params: [],
-  allow_multiple_instances: false,
 };
 
 beforeEach(() => {
@@ -43,7 +42,7 @@ describe("QualityCanvas", () => {
   });
 
   it("renders one strategy slot, not duplicated, when two active checks are merged into one rule", () => {
-    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [], allow_multiple_instances: false };
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false }],
@@ -54,7 +53,7 @@ describe("QualityCanvas", () => {
   });
 
   it("renders two strategy slots when two active checks of the same kind are in separate rules", () => {
-    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [], allow_multiple_instances: false };
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
       rules: [

@@ -126,6 +126,47 @@ export function drawMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy:
   g.poly(points);
 }
 
+/** Draws an underlay (gap ring / widen patch / floor-badge ring) that reads as the marker's own
+ *  silhouette pushed outward by `outset` pixels — a true outward offset, not a uniform rescale
+ *  (GitHub issue #552 second follow-up). Recomputing the polygon at `baseRadius + outset` and
+ *  scaling the corner-rounding radius by the same additive amount (tried first, reverted) still
+ *  drew the rounded corners as arcs of a *bigger circumradius* centered on the enlarged polygon's
+ *  own vertices — on straight edges the outset reads correctly, but at each corner the arc bulges
+ *  out further than a true offset would, letting the underlay visibly poke out past the marker
+ *  even where the corner itself is rounded away. A true outward offset instead needs the *same*
+ *  path as the marker (at its own `baseRadius`), stroked outward: `fill()` covers the polygon
+ *  itself, then `stroke({ width: outset, alignment: 0, join: "round" })` grows every edge and
+ *  corner uniformly by exactly `outset`, arcs included — pixi's own outer-aligned round join is
+ *  the offset operation, not a second hand-rolled rounded-polygon draw. `alignment: 0` is pixi's
+ *  *outer* alignment (pixi's own scale: `1` = inner, `0.5` = centered, `0` = outer — the same
+ *  convention every other border/gap stroke in this codebase already uses) — the first version of
+ *  this function passed `1` by mistake, which strokes entirely *inward* from `baseRadius` instead
+ *  of outward, drawing the whole "ring" on top of the already-filled disc with no visible growth at
+ *  any `outset` (GitHub issue #552 third follow-up). `width` at `alignment: 0` is the *full* visible
+ *  ring thickness, not a diameter split across both sides of the path (confirmed empirically: a
+ *  radius-10 circle stroked with `{width: 4, alignment: 0}` bounds out to radius 14, not 12) — every
+ *  other `alignment: 0` stroke in this codebase already passes its border/gap width unscaled (see
+ *  `WaypointsRenderer`'s own border stroke), so passing `outset * 2` here doubled the *visible*
+ *  growth versus every sibling border/gap in the codebase, and versus what callers computing
+ *  `outset` as "how far to push the silhouette out" expect (GitHub issue #552 eighth follow-up).
+ *  `outset <= 0` draws a plain fill with no stroke (no ring to grow). `join: "round"` regardless of
+ *  `rounded` — a sharp underlay's own corners still need a rounded *offset* arc to stay a true
+ *  outward offset; the marker's own sharp corners are unaffected since this only affects the
+ *  underlay path. */
+export function drawMarkerUnderlay(g: Graphics, shape: MarkerShape, cx: number, cy: number, baseRadius: number, rounded: boolean, outset: number, color: number | { color: number; alpha?: number }): void {
+  // `{ color, alpha: undefined }` is NOT the same as omitting `alpha` — pixi's `fill`/`stroke`
+  // resolve it to `NaN`, not their own `1` default, silently making the whole draw invisible
+  // (GitHub issue #552 fourth follow-up). Only include `alpha` in the style object when the caller
+  // actually passed one.
+  const fillStyle = typeof color === "number" ? { color } : color.alpha === undefined ? { color: color.color } : { color: color.color, alpha: color.alpha };
+  drawMarkerShape(g, shape, cx, cy, baseRadius, rounded);
+  g.fill(fillStyle);
+  if (outset > 0) {
+    drawMarkerShape(g, shape, cx, cy, baseRadius, rounded);
+    g.stroke({ ...fillStyle, width: outset, alignment: 0, join: "round" });
+  }
+}
+
 /** Rounds every corner of a closed polygon (flat `[x0, y0, x1, y1, ...]` vertex list) via
  *  `Graphics.arcTo`'s canvas-style per-corner rounding — unlike `roundPoly`, this works for any
  *  polygon (not just regular ones), so it's the one rounding path shared by every `MarkerShape`

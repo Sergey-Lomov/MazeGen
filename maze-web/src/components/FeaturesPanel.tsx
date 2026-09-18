@@ -63,7 +63,6 @@ export function computeFloorsCard(floors: FloorState[]): FloorsCardData {
 
 export function presetConnectionsSubtitle(
   presetConnections: Map<string, unknown>,
-  invalidCount: number,
   markerCount: number,
   teleportCount: number = 0,
   verticalPassageCount: number = 0,
@@ -74,7 +73,6 @@ export function presetConnectionsSubtitle(
   const base = n === 1
     ? m["preset.subtitle_count"]({ count: n })
     : m["preset.subtitle_count_plural"]({ count: n });
-  if (invalidCount > 0) return `${base} · ${m["preset.subtitle_invalid"]({ count: invalidCount })}`;
   return base;
 }
 
@@ -375,7 +373,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         status={presetStatus}
         comment={presetComment}
         subtitle={tessellationConfirmed
-          ? presetConnectionsSubtitle(presetConnections, presetInvalidCount, markerCount, presetTeleports.length, presetVerticalPassages.length, presetElevators.length)
+          ? presetConnectionsSubtitle(presetConnections, markerCount, presetTeleports.length, presetVerticalPassages.length, presetElevators.length)
           : undefined}
         expanded={openCard === "preset_connections"}
         onOpen={() => handleToggle("preset_connections")}

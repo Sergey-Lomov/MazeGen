@@ -47,7 +47,7 @@ describe("WaypointsRenderer.render", () => {
     expect(strokeCall.args[0]).toMatchObject({ color: 0x222, width: 4, alignment: 0 });
   });
 
-  it("gapWidth > 0 draws a floor-colored gap ring first, wider than radius + borderWidth (GitHub issue #302)", () => {
+  it("gapWidth > 0 draws a floor-colored gap ring first, as the marker's own outline pushed outward by borderWidth + gapWidth (GitHub issue #302, geometry corrected by #552 second and ninth follow-up)", () => {
     const renderer = new WaypointsRenderer(new Container());
     const marker: MarkerData = {
       pos: [5, 5], color: 0x111, radius: 10, borderColor: 0x222, borderWidth: 4, gapWidth: 3, gapColor: 0x333,
@@ -55,14 +55,22 @@ describe("WaypointsRenderer.render", () => {
     renderer.render({ markers: [marker] });
     const calls = g(renderer).calls;
     const polyCalls = calls.filter((c) => c.fn === "poly");
-    // Gap polygon, then the marker's own polygon — 2 total.
-    expect(polyCalls).toHaveLength(2);
+    // The gap underlay draws the shared polygon twice (fill + outward stroke), then the marker
+    // draws its own polygon once and reuses that path for fill/border — 3 total.
+    expect(polyCalls).toHaveLength(3);
     const [gapPoints] = polyCalls[0].args as [number[]];
-    const gapRadius = Math.hypot(gapPoints[0] - 5, gapPoints[1] - 5);
-    // radius (10) + borderWidth (4) + gapWidth (3) — matches the outer-alignment border's true edge.
-    expect(gapRadius).toBe(17);
+    const gapBaseRadius = Math.max(...Array.from({ length: gapPoints.length / 2 }, (_, i) =>
+      Math.hypot(gapPoints[i * 2] - 5, gapPoints[i * 2 + 1] - 5)));
+    // The gap is an outward stroke from the marker's fill path, not a polygon redrawn at a larger
+    // radius; its visible extra width is checked through the stroke call below.
+    expect(gapBaseRadius).toBeCloseTo(10);
+    const strokeCalls = calls.filter((c) => c.fn === "stroke");
+    // Gap ring's outward-offset stroke (width = borderWidth + gapWidth = 7) drawn before the
+    // marker's own border stroke — the marker's own border (width 4) then covers the ring's inner
+    // 4px band, leaving only the outer 3px (gapWidth) band visible.
+    expect(strokeCalls[0].args[0]).toMatchObject({ width: 7, alignment: 0 });
     const fillCalls = calls.filter((c) => c.fn === "fill");
-    expect(fillCalls[0].args[0]).toBe(0x333);
+    expect((fillCalls[0].args[0] as { color: number }).color).toBe(0x333);
   });
 
   it("gapWidth 0 (or unset) skips the gap ring entirely — not a zero-radius circle", () => {

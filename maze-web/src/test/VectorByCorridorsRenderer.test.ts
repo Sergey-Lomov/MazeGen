@@ -356,6 +356,12 @@ describe("buildVerticalWidenMarkers", () => {
     expect(marker.gapWidth).toBe(settingsA.oneWayPassageMarker.gapWidth);
   });
 
+  it("carries the resolved marker's own borderWidth/gapWidth through (GitHub issue #551)", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator" })], settingsA);
+    expect(marker.borderWidth).toBe(settingsA.elevatorMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.elevatorMarker.gapWidth);
+  });
+
   it("carries each marker's own pos through unchanged", () => {
     const markers = [makeMarker({ pos: [3, 4] }), makeMarker({ pos: [5, 6], kind: "elevator" })];
     expect(buildVerticalWidenMarkers(markers, settingsA).map((m) => m.pos)).toEqual([[3, 4], [5, 6]]);
@@ -1124,7 +1130,7 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(buildMazeMarkers).mockReturnValueOnce([{ pos: [5, 5], color: 0x999, radius: 4 }]);
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const markerWidenGraphics = (renderer as unknown as { markerWiden: { fill: ReturnType<typeof vi.fn> } }).markerWiden;
-    expect(markerWidenGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    expect(markerWidenGraphics.fill).toHaveBeenCalledWith({ color: settingsA.color });
   });
 
   it("also widens the corridor under teleport markers, reusing the same markerWidenPadding setting (no separate teleport padding)", () => {
@@ -1132,7 +1138,7 @@ describe("VectorByCorridorsRenderer", () => {
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const markerWidenGraphics = (renderer as unknown as { markerWiden: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).markerWiden;
     // settingsA.teleportLineShape is "diamond" — drawn via `poly`, not `circle` (see drawMarkerShape).
-    expect(markerWidenGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    expect(markerWidenGraphics.fill).toHaveBeenCalledWith({ color: settingsA.color });
     expect(markerWidenGraphics.poly).toHaveBeenCalled();
   });
 

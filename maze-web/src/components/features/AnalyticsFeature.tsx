@@ -216,7 +216,7 @@ export function AnalyticsFeature() {
           <div style={styles.divider} />
           <SectionHeader label={m["analytics.path"]()} expanded={isExpanded("path")} onToggle={() => toggleSection("path")} />
           {isExpanded("path") && (
-            <div style={styles.statBlock}>
+            <div style={styles.topLevelStatBlock}>
               {routeInfo == null ? (
                 <div style={styles.noRouteText}>{m["analytics.no_route"]()}</div>
               ) : (
@@ -263,7 +263,7 @@ export function AnalyticsFeature() {
           <div style={styles.divider} />
           <SectionHeader label={m["analytics.stats_summary"]()} expanded={isExpanded("stats_summary")} onToggle={() => toggleSection("stats_summary")} />
           {isExpanded("stats_summary") && (
-            <div style={styles.statBlock}>
+            <div style={styles.topLevelStatBlock}>
               <StatRow label={m["analytics.floor_count"]()} count={statistics.graph_stats.floor_count} />
               <StatRow label={m["analytics.cell_count"]()} count={statistics.cell_count.total} />
               <StatRow label={m["analytics.graph_components"]()} count={statistics.graph_stats.component_count} />
@@ -296,7 +296,7 @@ export function AnalyticsFeature() {
             <div style={styles.divider} />
             <SectionHeader label={m["analytics.timing"]()} expanded={isExpanded("timing")} onToggle={() => toggleSection("timing")} />
             {isExpanded("timing") && (
-              <div style={styles.statBlock}>
+              <div style={styles.topLevelStatBlock}>
                 <StatRow label={m["analytics.timing_total"]()} valueText={formatMs(totalMs)} />
                 <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
                 <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(qcTotalMs)} />

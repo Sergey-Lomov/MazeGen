@@ -3,7 +3,7 @@ import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./t
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerShape, markerBoundingHalfExtent } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
@@ -281,12 +281,12 @@ export class TeleportRenderer {
     group: TeleportGroup,
     style: TeleportLineStyle,
   ): void {
-    // This marker's own border is drawn `alignment: 0` (pixi's outer alignment — grows entirely
-    // outward from `r`, see `drawMarker`), so the marker's true outer edge is `r + borderWidth`, not
-    // `r` itself — the gap ring must start there, not at `r` (which would let a large enough
-    // `borderWidth` visually swallow the gap) or at `r + borderWidth/2` (the waypoint marker's own
-    // centered-border formula, wrong here since this border isn't centered).
-    const r = style.size * TILE_SIZE + style.borderWidth + style.edgeGapWidth;
+    // Single true outward offset of the fill path (`r`) by `borderWidth + edgeGapWidth` — see
+    // `drawMarkerUnderlay`'s own doc comment (GitHub issue #552 ninth follow-up) for the full
+    // rationale; the marker's own border (drawn on top, also `alignment: 0` from the same `r`, see
+    // `drawMarker`) covers the ring's inner `borderWidth`-wide band, leaving only the outer
+    // `edgeGapWidth`-wide band visible.
+    const markerR = style.size * TILE_SIZE;
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
@@ -297,14 +297,12 @@ export class TeleportRenderer {
         // marker's `style.size`, and its border follows `style.borderWidth`. The gap ring matches
         // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
         // `drawGroupPoints` below), not a forced circle.
-        const badgeR = style.floorBadge.size * TILE_SIZE + style.borderWidth + Math.max(style.edgeGapWidth, 1);
-        drawMarkerShape(g, style.floorBadge.shape, px, py, badgeR, true);
-        g.fill(style.floorColor);
+        const badgeR = style.floorBadge.size * TILE_SIZE;
+        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, style.borderWidth + Math.max(style.edgeGapWidth, 1), style.floorColor);
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
-      drawMarkerShape(g, style.shape, px, py, r, rounded);
-      g.fill(style.floorColor);
+      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, style.borderWidth + style.edgeGapWidth, style.floorColor);
     }
   }
 

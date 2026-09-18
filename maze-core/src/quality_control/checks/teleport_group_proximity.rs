@@ -48,7 +48,7 @@ pub enum TeleportProximityEdge {
 /// they are never a legitimate "two teleports too close to each other" pair, however close the
 /// teleport's own entry/exit happen to sit.
 ///
-/// Multiple instances may be active at once (`allow_multiple_instances: true`, see the WASM
+/// Multiple instances may be active at once (multiple instances, see the WASM
 /// Interface section in `Specs/quality_control.md`) — distinct `own_edge`/`other_edge`/`distance`
 /// combinations are a legitimate simultaneous configuration, same rationale as
 /// `TeleportWaypointDistanceCheck`.

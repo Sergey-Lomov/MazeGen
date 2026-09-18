@@ -140,11 +140,11 @@ describe("mazeStore.setGenerationMethod", () => {
 
 describe("mazeStore.addCheck", () => {
   const paramKind = { type: "integer" as const, default: 3, min: 1, max: 100 };
-  const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }], allow_multiple_instances: false };
+  const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
   // No real check type sets `allow_multiple_instances: true` any more (GitHub issue #60's
   // multi-instance design was retired) — this synthetic descriptor exercises the store's
   // multi-instance-allowed branch in isolation, independent of which (if any) real check uses it.
-  const multiInstanceDescriptor = { id: "multi_instance_test_check", label: "Multi-instance test check", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }], allow_multiple_instances: true };
+  const multiInstanceDescriptor = { id: "multi_instance_test_check", label: "Multi-instance test check", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
 
   it("adds the check as a new rule's instance", () => {
     useMazeStore.setState({ availableChecks: [descriptor], rules: [] });
@@ -174,15 +174,15 @@ describe("mazeStore.addCheck", () => {
     expect(typeIds).toEqual(["multi_instance_test_check", "multi_instance_test_check"]);
   });
 
-  it("is a no-op when the type is already active and allow_multiple_instances is false", () => {
+  it("allows the same type to be added to another rule", () => {
     useMazeStore.setState({
       availableChecks: [descriptor],
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "min_loops", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
     });
     useMazeStore.getState().addCheck("min_loops");
     const rules = useMazeStore.getState().rules;
-    expect(rules).toHaveLength(1);
-    expect(rules[0].checks).toHaveLength(1);
+    expect(rules).toHaveLength(2);
+    expect(rules[1].checks).toHaveLength(1);
   });
 
   it("initializes the new instance's params from descriptor defaults when not given", () => {
@@ -320,7 +320,7 @@ describe("mazeStore.setElementsParam", () => {
 describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
   it("addCheck with a ruleId activates the check directly into that rule, not a new one", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
     });
     useMazeStore.getState().addCheck("check_a", "g1");
@@ -331,7 +331,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
 
   it("addCheck with a ruleId whose kind differs from the check's kind falls back to a new singleton rule", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k2"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k2"], params: [] }],
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
     });
     useMazeStore.getState().addCheck("check_a", "g1");
@@ -345,7 +345,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
 
   it("addCheck with a stale/unknown ruleId falls back to creating a new singleton rule", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
     });
     useMazeStore.getState().addCheck("check_a", "does_not_exist");
@@ -359,7 +359,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
   it("addCheck warns and uses the first kind for a check producing multiple issue kinds", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     useMazeStore.setState({
-      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1", "k2"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1", "k2"], params: [] }],
       rules: [],
     });
     useMazeStore.getState().addCheck("check_a");
@@ -372,7 +372,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
 
   it("addCheck creates a new singleton rule when ruleId is omitted", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
       rules: [],
     });
     useMazeStore.getState().addCheck("check_a");
@@ -381,11 +381,11 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
     expect(rules[0].checks.map((c) => c.typeId)).toEqual(["check_a"]);
   });
 
-  it("createRule drops a typeId whose allow_multiple_instances is false and is already active elsewhere", () => {
+  it("keeps every known typeId even when it is already active elsewhere", () => {
     useMazeStore.setState({
       availableChecks: [
-        { id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
-        { id: "check_b", label: "B", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
+        { id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] },
+        { id: "check_b", label: "B", description: "", issue_kinds: ["k1"], params: [] },
       ],
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
     });
@@ -393,7 +393,7 @@ describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
     const rules = useMazeStore.getState().rules;
     expect(rules).toHaveLength(2);
     const newRule = rules.find((g) => g.id !== "g1")!;
-    expect(newRule.checks.map((c) => c.typeId)).toEqual(["check_b"]);
+    expect(newRule.checks.map((c) => c.typeId)).toEqual(["check_a", "check_b"]);
   });
 
   it("removeCheckFromRule moves the check into a fresh singleton rule", () => {

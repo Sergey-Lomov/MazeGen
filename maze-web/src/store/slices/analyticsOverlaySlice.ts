@@ -12,7 +12,7 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   regionClassLegendOpen: false,
   hoveredIssueLoopEdges: null,
   hoveredIssueRegionGroups: null,
-  analyticsSectionsExpanded: { layers: true, issues: true },
+  analyticsSectionsExpanded: { layers: true, issues: false },
   showFullyPresetLockedIssues: true,
 
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),

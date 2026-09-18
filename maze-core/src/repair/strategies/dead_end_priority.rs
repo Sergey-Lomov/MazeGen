@@ -61,7 +61,10 @@ pub fn apply_src_mode<T: Tessellation>(
     rest
 }
 
-fn is_dead_end<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool {
+/// A node with exactly one distinct graph neighbor (incoming and outgoing edges combined,
+/// deduplicated by partner `NodeId`) — shared with `missing_teleports.rs`'s own `entry_pick`/
+/// `exit_pick` dead-end bias (GitHub issue #537).
+pub(crate) fn is_dead_end<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool {
     let neighbors: HashSet<NodeId> = maze.graph.outgoing_neighbors(node)
         .chain(maze.graph.incoming_neighbors(node))
         .collect();

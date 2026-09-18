@@ -157,6 +157,20 @@ function render(renderer: InstanceType<typeof VerticalConnectionRenderer>, data:
   renderer.render(data);
 }
 
+function polygonCenter(points: number[]): [number, number] {
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < points.length; i += 2) {
+    x += points[i];
+    y += points[i + 1];
+  }
+  return [x / (points.length / 2), y / (points.length / 2)];
+}
+
+function polygonRadius(points: number[], cx: number, cy: number): number {
+  return Math.max(...Array.from({ length: points.length / 2 }, (_, i) => Math.hypot(points[i * 2] - cx, points[i * 2 + 1] - cy)));
+}
+
 describe("VerticalConnectionRenderer", () => {
   it("draws a lone marker centered at its own position, unshifted", () => {
     const container = new Container();
@@ -165,10 +179,49 @@ describe("VerticalConnectionRenderer", () => {
 
     render(renderer, { markers: [marker({ pos: [50, 60] })], style: baseStyle() });
 
-    const circleCalls = g.calls.filter((c) => c.method === "circle");
-    expect(circleCalls).toHaveLength(1);
-    expect(circleCalls[0].args[0]).toBeCloseTo(50);
-    expect(circleCalls[0].args[1]).toBeCloseTo(60);
+    const polyCalls = g.calls.filter((c) => c.method === "poly");
+    expect(polyCalls).toHaveLength(1);
+    const [x, y] = polygonCenter(polyCalls[0].args);
+    expect(x).toBeCloseTo(50);
+    expect(y).toBeCloseTo(60);
+  });
+
+  it("gapWidth > 0 draws a floor-colored gap ring as a single true outward offset of the marker's own fill radius by borderWidth + gapWidth (GitHub issue #552 ninth follow-up)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+      style: baseStyle({
+        twoWayPassageMarker: circleMarkerStyle({ borderWidth: 4, gapWidth: 3, gapColor: 0x999999 }),
+      }),
+    });
+
+    const polyCalls = g.calls.filter((c) => c.method === "poly");
+    // Gap ring draws its own path twice (`drawMarkerUnderlay`'s fill + outward stroke), then the
+    // marker's own shape is drawn again separately for its fill and its border stroke — 4 total.
+    expect(polyCalls).toHaveLength(4);
+    const gapBaseRadius = polygonRadius(polyCalls[0].args, 0, 0);
+    const markerRadius = polygonRadius(polyCalls[2].args, 0, 0);
+    // The marker's own fill radius, not `radius + borderWidth` — a single true outward offset from
+    // here, not a shape redrawn at a bigger radius first.
+    expect(gapBaseRadius).toBe(markerRadius);
+    expect(g.strokeCalls[0]).toMatchObject({ width: 4 + 3, alignment: 0 });
+    expect(g.fillCalls[0]).toMatchObject({ color: 0x999999 });
+  });
+
+  it("gapWidth 0 (or unset) skips the gap ring entirely — not a zero-radius circle", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+      style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ borderWidth: 4, gapWidth: 0 }) }),
+    });
+
+    expect(g.calls.filter((c) => c.method === "poly")).toHaveLength(2);
   });
 
   it("spreads two markers sharing the same cell left/right, symmetric around the shared position", () => {
@@ -180,10 +233,10 @@ describe("VerticalConnectionRenderer", () => {
     const b = marker({ pos: [50, 60], kind: "elevator" });
     render(renderer, { markers: [a, b], style: baseStyle() });
 
-    const circleCalls = g.calls.filter((c) => c.method === "circle");
-    expect(circleCalls).toHaveLength(2);
-    const [xA, yA] = circleCalls[0].args;
-    const [xB, yB] = circleCalls[1].args;
+    const polyCalls = g.calls.filter((c) => c.method === "poly");
+    expect(polyCalls).toHaveLength(2);
+    const [xA, yA] = polygonCenter(polyCalls[0].args);
+    const [xB, yB] = polygonCenter(polyCalls[1].args);
     // Symmetric around the shared position, on opposite sides, same Y (no vertical drift).
     expect(xA + xB).toBeCloseTo(100); // 2 * 50
     expect(xA).not.toBeCloseTo(xB);
@@ -201,11 +254,11 @@ describe("VerticalConnectionRenderer", () => {
     const lone = marker({ pos: [200, 200], kind: "vertical_passage" });
     render(renderer, { markers: [grouped1, grouped2, lone], style: baseStyle() });
 
-    const circleCalls = g.calls.filter((c) => c.method === "circle");
-    expect(circleCalls).toHaveLength(3);
-    const loneCall = circleCalls[2];
-    expect(loneCall.args[0]).toBeCloseTo(200);
-    expect(loneCall.args[1]).toBeCloseTo(200);
+    const polyCalls = g.calls.filter((c) => c.method === "poly");
+    expect(polyCalls).toHaveLength(3);
+    const [loneX, loneY] = polygonCenter(polyCalls[2].args);
+    expect(loneX).toBeCloseTo(200);
+    expect(loneY).toBeCloseTo(200);
   });
 
   it("a 'both' direction elevator's two triangle arrows spread vertically (same X, different Y, symmetric around center)", () => {
@@ -482,8 +535,8 @@ describe("VerticalConnectionRenderer", () => {
       style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ size: 0.3, borderWidth: 0, gapWidth: 0 }) }),
     });
 
-    const circleCalls = g.calls.filter((c) => c.method === "circle");
-    expect(circleCalls[0].args[2]).toBeCloseTo(0.3 * TILE_SIZE);
+    const polyCalls = g.calls.filter((c) => c.method === "poly");
+    expect(polygonRadius(polyCalls[0].args, 0, 0)).toBeCloseTo(0.3 * TILE_SIZE);
   });
 
   it.each(["triangle", "chevron", "arrow"] as const)(

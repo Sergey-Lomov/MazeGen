@@ -159,9 +159,9 @@ fn apply_prefers_junction_path_when_junction_weight_dominates() {
 
 #[test]
 fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
-    // Two disjoint straight corridors, 0-1-2 and 3-4-5, linked only by a one-way
-    // teleport edge 1 -> 4. With teleport_weight dominating and path/junction/one-way
-    // zeroed, the best-scoring pair must be the one whose route crosses the teleport.
+    // Two disjoint straight corridors, 0-1-2 and 3-4-5, linked only by a teleport edge
+    // 1 -> 4. With teleport_weight dominating and path/junction/one-way zeroed, the
+    // best-scoring pair must be the one whose route crosses the teleport.
     let mut ids = IdGenerator::new();
     let field = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
     let level = field.single_level_id();
@@ -205,13 +205,12 @@ fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
 }
 
 #[test]
-fn apply_prefers_vertical_passage_path_when_vertical_passage_weight_dominates() {
+fn apply_prefers_cross_floor_path_when_cross_floor_weight_dominates() {
     // Two disjoint straight corridors, 0-1-2 and 3-4-5, linked only by a two-way
-    // VerticalPassage edge 1 <-> 4. With vertical_passage_weight dominating and
+    // VerticalPassage edge 1 <-> 4. With cross_floor_weight dominating and
     // path/junction/one-way zeroed, the best-scoring pair must be the one whose route
     // crosses the vertical passage. Exercises the full `apply` pipeline (not just
-    // `score_path`/`edge_kind_counts` in isolation), so it would catch e.g. `graph` not
-    // actually being threaded into `ScoredPathContext::build`.
+    // `score_path`/`cross_floor_flags` in isolation).
     let mut ids = IdGenerator::new();
     let field = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
     let level = field.single_level_id();
@@ -229,7 +228,7 @@ fn apply_prefers_vertical_passage_path_when_vertical_passage_weight_dominates() 
     let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
 
     let mut overrides = StdHashMap::new();
-    overrides.insert(PARAM_VERTICAL_PASSAGE_WEIGHT.to_string(), "1000".to_string());
+    overrides.insert(PARAM_CROSS_FLOOR_WEIGHT.to_string(), "1000".to_string());
     overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
     overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
     overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
@@ -298,90 +297,172 @@ fn apply_prefers_pair_whose_own_endpoint_sits_on_a_split_tile() {
 }
 
 #[test]
+fn apply_prefers_elevator_path_with_more_stops_when_elevator_stop_weight_dominates() {
+    // Two disjoint straight corridors, 0-1-2 and 3-4-5, linked by two independent
+    // elevators: a plain 2-stop elevator (1 <-> 4) and a 4-stop elevator whose other two
+    // stops (on unreachable floors) don't touch either corridor, only one of whose fan
+    // edges (2 <-> 5) is reachable from the corridors. With elevator_stop_weight
+    // dominating and path/junction/one-way/cross_floor zeroed, the winning pair must cross
+    // the 4-stop elevator (bonus 2), not the 2-stop one (bonus 0).
+    let mut ids = IdGenerator::new();
+    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let floors: Vec<_> = (0..4)
+        .map(|_| mf.add_level(crate::space::Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap()))
+        .collect();
+    let mut graph = Graph::new();
+    for node in mf.all_node_ids() { graph.add_node(node); }
+
+    let at = |floor: usize, x: i32| mf.node_at(floors[floor], SquarePoint { x, y: 0 }).unwrap();
+
+    // Floor 0 corridor: 0-1-2. Floor 1 corridor: 0-1-2 (independent nodes, same shape).
+    for x in 0..2 {
+        graph.build_initial_bidirectional_edge(at(0, x), at(0, x + 1), EdgeKind::Basic);
+        graph.build_initial_bidirectional_edge(at(1, x), at(1, x + 1), EdgeKind::Basic);
+    }
+
+    // Plain 2-stop elevator linking (0,1) <-> (1,1).
+    graph.build_initial_bidirectional_edge(at(0, 1), at(1, 1), EdgeKind::Elevator);
+
+    // 4-stop elevator: stops on floor 0 x=2, floor 1 x=2, floor 2 x=0, floor 3 x=0 -- fully
+    // connected fan, but only the (0,2) <-> (1,2) leg is reachable from the two corridors.
+    let big_stops = [at(0, 2), at(1, 2), mf.node_at(floors[2], SquarePoint { x: 0, y: 0 }).unwrap(), mf.node_at(floors[3], SquarePoint { x: 0, y: 0 }).unwrap()];
+    for id in &big_stops { graph.add_node(*id); }
+    for i in 0..big_stops.len() {
+        for j in (i + 1)..big_stops.len() {
+            graph.build_initial_bidirectional_edge(big_stops[i], big_stops[j], EdgeKind::Elevator);
+        }
+    }
+
+    let mut maze: Maze<SquareTessellation> = Maze::new(mf, graph);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_ELEVATOR_STOP_WEIGHT.to_string(), "1000".to_string());
+    overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_CROSS_FLOOR_WEIGHT.to_string(), "0".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let start = maze.meta.start.unwrap();
+    let finish = maze.meta.finish.unwrap();
+    let nav = crate::graph::nav::build_nav_graph_pinned(&maze.graph, &[start, finish].into_iter().collect());
+    let route = crate::graph::routing::compute_route_info(&nav, &maze.field, start, finish)
+        .expect("route must exist between the chosen pair");
+    let (big_a, big_b) = (big_stops[0], big_stops[1]);
+    let crosses_big_elevator = route.path.windows(2)
+        .any(|w| (w[0] == big_a && w[1] == big_b) || (w[0] == big_b && w[1] == big_a));
+    assert!(crosses_big_elevator, "winning route must cross the 4-stop elevator, not the 2-stop one");
+}
+
+#[test]
 fn score_path_adds_teleport_count_times_weight() {
     // Two edges: edge 0 crosses a teleport, edge 1 doesn't. Both non-junction, non-oneway,
     // so with path/junction/oneway weights zeroed the only contribution is teleport_weight
-    // times how many of the two path edges are flagged as teleport.
-    let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: true, is_elevator: false, is_vertical: false },
-        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-    ];
-    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
-    let junction_flags = vec![false, false, false];
+    // times how many of the two path edges are flagged as teleport. Uses a real NavGraph (via
+    // `build_nav_graph_pinned`, so `reverse_edge` linking runs) because `score_path` now
+    // computes junction_count from `nav` directly (GitHub issue #535 follow-up: route-aware
+    // junctions), even though junction_weight is zeroed here.
+    let mut ids = IdGenerator::new();
+    let mut graph = Graph::new();
+    let nodes: Vec<_> = (0..3).map(|_| { let id = ids.next_id(); graph.add_node(id); id }).collect();
+    graph.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+    graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let nav = crate::graph::nav::build_nav_graph_pinned(&graph, &nodes.iter().copied().collect());
+
+    let edges: Vec<&NavEdge> = nav.edges().collect();
     let oneway_flags = vec![false, false];
-    let teleport_flags = vec![true, false];
+    let cross_floor_flags = vec![false, false];
+    let teleport_flags = teleport_flags(&edges);
     let split_counts = vec![0, 0];
     let split_flags = vec![false, false, false];
-    let vertical_passage_counts = vec![0, 0];
-    let elevator_counts = vec![0, 0];
-    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 7.0, split_weight: 0.0, vertical_passage_weight: 0.0, elevator_weight: 0.0 };
+    let elevator_stop_counts = vec![0, 0];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, cross_floor_weight: 0.0, split_weight: 0.0, teleport_weight: 7.0, elevator_stop_weight: 0.0 };
 
-    let score_one_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0], &edges, 1, &weights);
+    let score_one_teleport = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0], &edges, 1, &weights, &mut HashMap::new());
     assert_eq!(score_one_teleport, 7.0);
 
-    let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0, 1], &edges, 2, &weights);
+    let score_both_edges = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0, 1], &edges, 2, &weights, &mut HashMap::new());
     assert_eq!(score_both_edges, 7.0, "second edge isn't a teleport crossing, so it must not add to the score");
 
-    let score_no_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[1], &edges, 1, &weights);
+    let score_no_teleport = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[1], &edges, 1, &weights, &mut HashMap::new());
     assert_eq!(score_no_teleport, 0.0);
 }
 
 #[test]
-fn score_path_adds_vertical_passage_and_elevator_count_times_weight() {
-    // Edge 0's single hop (10 -> 20) is a VerticalPassage; edge 1's single hop (20 -> 30) is
-    // an Elevator. With every other weight zeroed, each edge contributes its own weight once.
-    let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-    ];
-    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
-    let junction_flags = vec![false, false, false];
-    let oneway_flags = vec![false, false];
-    let teleport_flags = vec![false, false];
-    let split_counts = vec![0, 0];
-    let split_flags = vec![false, false, false];
-
+fn score_path_adds_cross_floor_count_times_weight_for_vertical_and_elevator_hops() {
+    // Edge 0 is a VerticalPassage hop, edge 1 is an Elevator hop, edge 2 is a plain Basic
+    // hop. With every other weight zeroed, cross_floor_weight applies once per
+    // vertical/elevator edge and not at all for the basic one -- oneway_weight/directionality
+    // is independent and doesn't affect this count (GitHub issue #535 follow-up).
+    let mut ids = IdGenerator::new();
     let mut graph = Graph::new();
-    for id in [10, 20, 30] { graph.add_node(id); }
-    graph.build_initial_edge(10, 20, EdgeKind::VerticalPassage);
-    graph.build_initial_edge(20, 30, EdgeKind::Elevator);
+    let nodes: Vec<_> = (0..4).map(|_| { let id = ids.next_id(); graph.add_node(id); id }).collect();
+    graph.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
+    graph.add_edge(nodes[1], nodes[2], EdgeKind::Elevator);
+    graph.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
+    let nav = crate::graph::nav::build_nav_graph_pinned(&graph, &nodes.iter().copied().collect());
 
-    let vertical_passage_counts = edge_kind_counts(&edges, &graph, EdgeKind::VerticalPassage);
-    let elevator_counts = edge_kind_counts(&edges, &graph, EdgeKind::Elevator);
-    assert_eq!(vertical_passage_counts, vec![1, 0]);
-    assert_eq!(elevator_counts, vec![0, 1]);
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    let oneway_flags = vec![false, false, false];
+    let cross_floor_flags = cross_floor_flags(&edges);
+    assert_eq!(cross_floor_flags, vec![true, true, false]);
+    let teleport_flags = vec![false, false, false];
+    let split_counts = vec![0, 0, 0];
+    let split_flags = vec![false, false, false, false];
+    let elevator_stop_counts = vec![0, 0, 0];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, cross_floor_weight: 6.0, split_weight: 0.0, teleport_weight: 0.0, elevator_stop_weight: 0.0 };
 
-    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 0.0, split_weight: 0.0, vertical_passage_weight: 6.0, elevator_weight: 9.0 };
-
-    let score_vertical = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0], &edges, 1, &weights);
+    let score_vertical = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0], &edges, 1, &weights, &mut HashMap::new());
     assert_eq!(score_vertical, 6.0);
 
-    let score_elevator = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[1], &edges, 1, &weights);
-    assert_eq!(score_elevator, 9.0);
+    let score_elevator = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[1], &edges, 1, &weights, &mut HashMap::new());
+    assert_eq!(score_elevator, 6.0);
 
-    let score_both = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0, 1], &edges, 2, &weights);
-    assert_eq!(score_both, 15.0);
+    let score_basic = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[2], &edges, 1, &weights, &mut HashMap::new());
+    assert_eq!(score_basic, 0.0);
+
+    let score_all = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0, 1, 2], &edges, 3, &weights, &mut HashMap::new());
+    assert_eq!(score_all, 12.0);
 }
 
 #[test]
-fn edge_kind_counts_finds_vertical_passage_even_with_a_parallel_basic_edge() {
-    // Regression: `Graph::add_edge`'s kind-aware dedup lets a `Basic` edge coexist with a
-    // `VerticalPassage` edge in the same direction between the same pair (GitHub issue #197).
-    // `edge_kind_counts` must use the kind-specific lookup (`edge_between_kind`), not the
-    // arbitrary-kind `edge_between` -- otherwise it could resolve to the `Basic` edge and miss
-    // the floor-crossing hop entirely.
+fn elevator_stop_counts_applies_max_0_stops_minus_2_per_elevator_hop() {
+    // Two independent elevators, each stop on its own floor: a 2-stop one (floors 0-1) and
+    // a 4-stop one (floors 2-5, fully connected fan). Edge 0 crosses the 2-stop elevator
+    // (bonus max(0, 2-2) = 0), edge 1 crosses one leg of the 4-stop elevator
+    // (bonus max(0, 4-2) = 2), edge 2 is a non-elevator hop (bonus 0).
+    let mut ids = IdGenerator::new();
+    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let floors: Vec<_> = (0..6)
+        .map(|_| mf.add_level(crate::space::Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap()))
+        .collect();
+    let at = |floor: usize| mf.node_at(floors[floor], SquarePoint { x: 0, y: 0 }).unwrap();
+    let (small_a, small_b) = (at(0), at(1));
+    let big_stops = [at(2), at(3), at(4), at(5)];
+
+    let mut graph = Graph::new();
+    for node in mf.all_node_ids() { graph.add_node(node); }
+    graph.build_initial_bidirectional_edge(small_a, small_b, EdgeKind::Elevator);
+    for i in 0..big_stops.len() {
+        for j in (i + 1)..big_stops.len() {
+            graph.build_initial_bidirectional_edge(big_stops[i], big_stops[j], EdgeKind::Elevator);
+        }
+    }
+
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
+        NavEdge { from: 0, to: 1, path: vec![small_a, small_b], reverse_edge: None, is_teleport: false, is_elevator: true, is_vertical: false },
+        NavEdge { from: 1, to: 2, path: vec![big_stops[0], big_stops[1]], reverse_edge: None, is_teleport: false, is_elevator: true, is_vertical: false },
+        NavEdge { from: 2, to: 3, path: vec![big_stops[1], big_stops[2]], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
 
-    let mut graph = Graph::new();
-    for id in [10, 20] { graph.add_node(id); }
-    graph.build_initial_edge(10, 20, EdgeKind::Basic);
-    graph.build_initial_edge(10, 20, EdgeKind::VerticalPassage);
-
-    let vertical_passage_counts = edge_kind_counts(&edges, &graph, EdgeKind::VerticalPassage);
-    assert_eq!(vertical_passage_counts, vec![1], "must find the VerticalPassage hop despite the parallel Basic edge");
+    let counts = elevator_stop_counts(&edges, &graph, &mf);
+    assert_eq!(counts, vec![0, 2, 0]);
 }
 
 #[test]
@@ -389,24 +470,26 @@ fn score_path_adds_split_count_times_weight() {
     // Edge 0 crosses one split-tile occurrence, edge 1 crosses two. Both non-junction,
     // non-oneway, non-teleport, so with every other weight zeroed the only contribution is
     // split_weight times the summed per-edge split_counts of the path's edges.
-    let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-        NavEdge { from: 1, to: 2, path: vec![20, 30, 40], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-    ];
-    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
-    let junction_flags = vec![false, false, false];
+    let mut ids = IdGenerator::new();
+    let mut graph = Graph::new();
+    let nodes: Vec<_> = (0..3).map(|_| { let id = ids.next_id(); graph.add_node(id); id }).collect();
+    graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let nav = crate::graph::nav::build_nav_graph_pinned(&graph, &nodes.iter().copied().collect());
+
+    let edges: Vec<&NavEdge> = nav.edges().collect();
     let oneway_flags = vec![false, false];
+    let cross_floor_flags = vec![false, false];
     let teleport_flags = vec![false, false];
     let split_counts = vec![1, 2];
     let split_flags = vec![false, false, false];
-    let vertical_passage_counts = vec![0, 0];
-    let elevator_counts = vec![0, 0];
-    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 0.0, split_weight: 4.0, vertical_passage_weight: 0.0, elevator_weight: 0.0 };
+    let elevator_stop_counts = vec![0, 0];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, cross_floor_weight: 0.0, split_weight: 4.0, teleport_weight: 0.0, elevator_stop_weight: 0.0 };
 
-    let score_one_edge = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0], &edges, 1, &weights);
+    let score_one_edge = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0], &edges, 1, &weights, &mut HashMap::new());
     assert_eq!(score_one_edge, 4.0);
 
-    let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0, 1], &edges, 3, &weights);
+    let score_both_edges = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0, 1], &edges, 3, &weights, &mut HashMap::new());
     assert_eq!(score_both_edges, 12.0, "split_counts of both path edges must sum before multiplying by the weight");
 }
 
@@ -416,21 +499,57 @@ fn score_path_counts_the_routes_own_start_node_as_a_split_too() {
     // the route's very first node (edge 0's `from`, nav node 0) would never be checked for
     // being a split tile unless score_path adds it separately via split_flags -- exactly like
     // it already does for junction_count via nav_nodes_on_path's i==0 push.
-    let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false, is_vertical: false },
-    ];
-    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
-    let junction_flags = vec![false, false];
-    let oneway_flags = vec![false];
-    let teleport_flags = vec![false];
-    let split_counts = vec![0]; // edge 0's own tiles (path[1..] = [20]) has no split
-    let split_flags = vec![true, false]; // nav node 0 (the route's start) IS a split tile
-    let vertical_passage_counts = vec![0];
-    let elevator_counts = vec![0];
-    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 0.0, split_weight: 10.0, vertical_passage_weight: 0.0, elevator_weight: 0.0 };
+    let mut ids = IdGenerator::new();
+    let mut graph = Graph::new();
+    let nodes: Vec<_> = (0..2).map(|_| { let id = ids.next_id(); graph.add_node(id); id }).collect();
+    graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let nav = crate::graph::nav::build_nav_graph_pinned(&graph, &nodes.iter().copied().collect());
 
-    let score = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &vertical_passage_counts, &elevator_counts, &[0], &edges, 1, &weights);
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    let oneway_flags = vec![false];
+    let cross_floor_flags = vec![false];
+    let teleport_flags = vec![false];
+    let split_counts = vec![0]; // edge 0's own tiles (path[1..]) has no split
+    let split_flags = vec![true, false]; // nav node 0 (the route's start) IS a split tile
+    let elevator_stop_counts = vec![0];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, cross_floor_weight: 0.0, split_weight: 10.0, teleport_weight: 0.0, elevator_stop_weight: 0.0 };
+
+    let score = score_path(&nav, &oneway_flags, &cross_floor_flags, &teleport_flags, &split_counts, &split_flags, &elevator_stop_counts, &[0], &edges, 1, &weights, &mut HashMap::new());
     assert_eq!(score, 10.0, "the route's start node sitting on a split tile must still contribute to split_count");
+}
+
+#[test]
+fn apply_fails_when_best_score_below_min_score() {
+    let (mut maze, _) = make_connected_maze(5);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_MIN_SCORE.to_string(), "1000000".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(maze.meta.start.is_none());
+    assert!(maze.meta.finish.is_none());
+}
+
+#[test]
+fn apply_succeeds_when_best_score_meets_min_score() {
+    let (mut maze, nodes) = make_connected_maze(5);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_MIN_SCORE.to_string(), "1".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let (a, b) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
+    assert!((a == nodes[0] && b == nodes[4]) || (a == nodes[4] && b == nodes[0]));
 }
 
 #[test]

@@ -106,7 +106,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("advances to the strategy dialog after picking checks, when a strategy handles the kind", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
@@ -119,7 +119,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("Back from the strategy dialog returns to the check dialog", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
     });
     render(<RulesColumn stages={wrapStage([])} selection={null} onSelect={vi.fn()} />);
@@ -133,7 +133,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("creates the rule with the picked checks and strategy on strategy-dialog confirm", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
       availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] }],
       rules: [],
     });
@@ -150,7 +150,7 @@ describe("RulesColumn dialogs and rule management", () => {
 
   it("skips the strategy step and creates the rule directly when no strategy handles the kind", () => {
     useMazeStore.setState({
-      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
       availableStrategies: [],
       rules: [],
     });
@@ -168,8 +168,8 @@ describe("RulesColumn dialogs and rule management", () => {
   it("opens the add-to-rule dialog with not-yet-active checks of the same kind as candidates", () => {
     useMazeStore.setState({
       availableChecks: [
-        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
-        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
+        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
+        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [] },
       ],
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
@@ -184,8 +184,8 @@ describe("RulesColumn dialogs and rule management", () => {
   it("activates the chosen candidate directly into the target rule, not a new one", () => {
     useMazeStore.setState({
       availableChecks: [
-        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
-        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
+        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
+        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [] },
       ],
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
@@ -201,11 +201,11 @@ describe("RulesColumn dialogs and rule management", () => {
     ]);
   });
 
-  it("excludes multi-floor-only checks from the add-to-rule candidates on a single floor", () => {
+  it("keeps the same check type available while excluding multi-floor-only checks on a single floor", () => {
     useMazeStore.setState({
       availableChecks: [
-        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
-        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false, visibility: { type: "multi_floor_only" } },
+        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
+        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], visibility: { type: "multi_floor_only" } },
       ],
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
       floors: [{ id: "f1", title: "Floor 1" }],
@@ -215,7 +215,7 @@ describe("RulesColumn dialogs and rule management", () => {
     ];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Add check"));
-    expect(screen.getByText("All checks compatible with this rule are already added.")).toBeInTheDocument();
+    expect(screen.getAllByText("Check One").length).toBeGreaterThan(1);
   });
 
   it("shows an alert instead of an empty picker when no candidate checks are available", () => {

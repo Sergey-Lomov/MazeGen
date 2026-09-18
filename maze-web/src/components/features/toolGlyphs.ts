@@ -2,7 +2,7 @@ import { Application, Graphics } from "pixi.js";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import type { PostEditTool } from "../../store/postEditTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
-import { drawMarkerShape } from "../../pixi/renderers/markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/markerShapes";
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "../../pixi/renderers/wallUtils";
@@ -124,9 +124,10 @@ function drawMarker(g: Graphics, m: MarkerLike, opts?: { fillOverride?: number; 
   const r = m.size * TILE_SIZE;
   const fill = opts?.fillOverride ?? m.fillColor;
   const border = opts?.borderOverride ?? m.borderColor ?? m.fillColor;
+  // Single true outward offset of the fill path (`r`) by `borderWidth + gapWidth` (GitHub issue
+  // #552 ninth follow-up) — see `WaypointsRenderer`'s own gap ring for the full rationale.
   if (m.gapWidth > 0) {
-    drawMarkerShape(g, m.shape, C, C, r + m.borderWidth + m.gapWidth, rounded);
-    g.fill(GAP);
+    drawMarkerUnderlay(g, m.shape, C, C, r, rounded, m.borderWidth + m.gapWidth, GAP);
   }
   drawMarkerShape(g, m.shape, C, C, r, rounded);
   g.fill(fill);

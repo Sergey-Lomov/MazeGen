@@ -71,8 +71,8 @@ const addSplitConfigParam: ParamDescriptor = {
 };
 
 const multiFloorOnlyParam: ParamDescriptor = {
-  id: "vertical_passage_weight",
-  label: "Vertical passage weight",
+  id: "cross_floor_weight",
+  label: "Cross-floor weight",
   kind: { type: "float", default: 1, min: 0, max: 100 },
   visibility: { type: "multi_floor_only" },
 };
@@ -100,21 +100,21 @@ describe("ParamFields", () => {
 
   describe("conditional visibility (floor count)", () => {
     it("hides a multi_floor_only param's whole row on a single-floor maze", () => {
-      render(<ParamFields params={[multiFloorOnlyParam]} values={{ vertical_passage_weight: "37" }} onChange={vi.fn()} />);
+      render(<ParamFields params={[multiFloorOnlyParam]} values={{ cross_floor_weight: "37" }} onChange={vi.fn()} />);
       expect(screen.queryByRole("slider")).not.toBeInTheDocument();
-      expect(screen.queryByText("Vertical passage weight")).not.toBeInTheDocument();
+      expect(screen.queryByText("Cross-floor weight")).not.toBeInTheDocument();
     });
 
     it("renders nothing when every param is hidden by visibility", () => {
-      const { container } = render(<ParamFields params={[multiFloorOnlyParam]} values={{ vertical_passage_weight: "37" }} onChange={vi.fn()} />);
+      const { container } = render(<ParamFields params={[multiFloorOnlyParam]} values={{ cross_floor_weight: "37" }} onChange={vi.fn()} />);
       expect(container.firstChild).toBeNull();
     });
 
     it("shows the param once the maze has 2 or more floors, without altering its stored value", () => {
       useMazeStore.setState({ floors: [{ id: "a", title: "Floor 1" }, { id: "b", title: "Floor 2" }] });
       const onChange = vi.fn();
-      render(<ParamFields params={[multiFloorOnlyParam]} values={{ vertical_passage_weight: "37" }} onChange={onChange} />);
-      expect(screen.getByText("Vertical passage weight")).toBeInTheDocument();
+      render(<ParamFields params={[multiFloorOnlyParam]} values={{ cross_floor_weight: "37" }} onChange={onChange} />);
+      expect(screen.getByText("Cross-floor weight")).toBeInTheDocument();
       expect(onChange).not.toHaveBeenCalled();
     });
   });

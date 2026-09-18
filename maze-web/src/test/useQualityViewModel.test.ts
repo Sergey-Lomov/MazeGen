@@ -11,8 +11,8 @@ afterEach(() => {
 beforeEach(() => {
   useMazeStore.setState({
     availableChecks: [
-      { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
-      { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
+      { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] },
+      { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [] },
     ],
     availableStrategies: [],
     rules: [
@@ -77,7 +77,7 @@ describe("useQualityViewModel", () => {
         nestedStrategies: [{ slotId: "seed", strategyId: "missing_one_ways_from_wall", params: {}, nested: [] }],
         collapsed: false,
       }],
-      availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false }],
+      availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [] }],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });
     const { result } = renderHook(() => useQualityViewModel());
@@ -98,7 +98,7 @@ describe("useQualityViewModel", () => {
         nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
         collapsed: false,
       }],
-      availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false }],
+        availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [] }],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });
     const { result } = renderHook(() => useQualityViewModel());

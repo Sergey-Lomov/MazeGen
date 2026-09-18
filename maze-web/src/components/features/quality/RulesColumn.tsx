@@ -21,7 +21,6 @@ import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
 import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
-import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
 import { isEntityVisible } from "../ParamFields";
 
 // Three-step "Add new rule" flow: pick an issue kind, then a check of that kind,
@@ -68,7 +67,6 @@ interface Props {
 export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const rules = useMazeStore((s) => s.rules);
   const floorCount = useMazeStore((s) => s.floors.length);
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
@@ -98,7 +96,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const slots = stages.flatMap((s) => s.slots);
 
   // Candidates to add into an existing rule: check types of the same issue kind. A type with
-  // `allow_multiple_instances` (none currently — see GitHub issue #60, retired) would always be
+  // `multiple instances` (none currently — see GitHub issue #60, retired) would always be
   // offered, including one already active elsewhere or in this same rule. Every other type is
   // filtered out once it's already active anywhere — adding a second instance of it would be
   // silently rejected by the store anyway (see `addCheck`), so it's not offered here.
@@ -106,7 +104,6 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
     return availableChecks
       .filter((c) => c.issue_kinds[0] === slot.kind)
       .filter((c) => isEntityVisible(c.visibility, floorCount))
-      .filter((c) => c.allow_multiple_instances || !isTypeAlreadyActive(rules, c.id))
       .map((c) => ({
         typeId: c.id,
         label: resolveCheckLabel(c.id, c.label),

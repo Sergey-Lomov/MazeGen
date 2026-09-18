@@ -179,7 +179,7 @@ export interface GenerationActions {
    * target rule's `nextLocalCheckId`. If `ruleId` is omitted, creates a fresh singleton rule for
    * it (the top-level "+ Add check" path). If given, activates the check directly into that
    * existing rule instead of creating a new one (the per-rule "+ Add check to rule" path).
-   * No-op if `typeId`'s descriptor has `allow_multiple_instances: false` (every type, currently
+   * No-op if `typeId`'s descriptor has `` (every type, currently
    * — see GitHub issue #60, retired) and it's already active in some rule.
    * `initialParams` overrides the descriptor defaults (e.g. values edited in the select dialog
    * before confirming). */
@@ -189,7 +189,7 @@ export interface GenerationActions {
    * CheckSelectDialog + StrategySelectDialog chain). Unlike calling `addCheck` once per id,
    * this never creates intermediate singleton rules for ids after the first. All ids must share
    * one issue kind (validated by the caller's candidate filtering, same as `addCheck`). Drops
-   * any `typeId` whose descriptor has `allow_multiple_instances: false` and is already active
+   * any `typeId` whose descriptor has `` and is already active
    * in some existing rule — same restriction as `addCheck`, see GitHub issue #60. `targetStageId`,
    * when given and resolving to a known stage, places the new rule there (the per-stage toolbar's
    * "+ Add rule" button — see RulesColumn); otherwise falls back to the last stage. */
@@ -203,7 +203,7 @@ export interface GenerationActions {
   removeCheck: (ruleId: string, localId: number) => void;
   setCheckParam: (ruleId: string, localId: number, paramId: string, value: string) => void;
   /** Flips the check's `disabled` (see `CheckInstance`'s doc comment) — the check is excluded
-   * entirely from generation while disabled, still counts toward single-instance-type gating. */
+   * entirely from generation while disabled, does not affect whether another instance can be added. */
   toggleCheckDisabled: (ruleId: string, localId: number) => void;
   /** Moves the check at `(ruleId, localId)` out of its current rule, into a fresh singleton rule
    * of its own — its params move with it (no separate lookup, they're already part of the

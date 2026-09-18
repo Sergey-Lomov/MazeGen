@@ -118,6 +118,14 @@ impl NavGraph {
         self.outgoing[node].iter().map(|&i| &self.edges[i])
     }
 
+    /// Indices (into `edges()`/`edge_by_idx`) of every edge outgoing from `node` — same edges as
+    /// `outgoing_edges`, but callers that need to compare against a `NavEdge::reverse_edge` index
+    /// (route-aware junction detection, GitHub issue #535 follow-up) need the index itself, not
+    /// just the edge. Panics if `node` is not a valid NavNodeId for this graph.
+    pub fn outgoing_edge_indices(&self, node: NavNodeId) -> impl Iterator<Item = usize> + '_ {
+        self.outgoing[node].iter().copied()
+    }
+
     /// Panics if `node` is not a valid NavNodeId for this graph.
     pub fn incoming_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge> {
         self.incoming[node].iter().map(|&i| &self.edges[i])

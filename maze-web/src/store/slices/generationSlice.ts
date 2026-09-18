@@ -1,4 +1,4 @@
-﻿import type { StateCreator } from "zustand";
+import type { StateCreator } from "zustand";
 import { getAvailableChecks, getAvailableStrategies, getAvailableRuleParams } from "../../wasm/mazeService";
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig } from "../../wasm/types";
@@ -10,7 +10,6 @@ import { createGenerationRulesSlice } from "./generationSliceRules";
 import { createGenerationStagesSlice } from "./generationSliceStages";
 import { createGenerationDebugSlice } from "./generationSliceDebug";
 
-export { isTypeAlreadyActive } from "./generationSliceHelpers";
 export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 

@@ -44,11 +44,6 @@ export interface CheckDescriptor {
   description: string;
   issue_kinds: string[];
   params: ParamDescriptor[];
-  /** Whether more than one independent instance of this check type may be active at once
-   * (across rules, or within the same rule) — see GitHub issue #60, retired: no check currently
-   * sets this `true` (`min_region_count` now evaluates all four region classes in one instance
-   * instead of needing one instance per class). */
-  allow_multiple_instances: boolean;
   /** `undefined` means always offered — see `EntityVisibility`. */
   visibility?: EntityVisibility;
 }
@@ -93,9 +88,9 @@ export type ParamKind =
  *  generation time; only the ability to newly pick it is gated. See `isEntityVisible`. */
 export type EntityVisibility =
   /** Hidden whenever the maze has fewer than 2 floors. First consumers: `scored_endpoints`'s
-   *  `vertical_passage_weight`/`elevator_weight` params (GitHub issue #390), and every check/
-   *  strategy that only makes sense with vertical passages/elevators, which don't exist on a
-   *  single-floor maze (GitHub issue #349 follow-up). */
+   *  `cross_floor_weight`/`elevator_stop_weight` params (GitHub issue #390), and every
+   *  check/strategy that only makes sense with vertical passages/elevators, which don't exist on
+   *  a single-floor maze (GitHub issue #349 follow-up). */
   { type: "multi_floor_only" };
 
 export interface ParamDescriptor {

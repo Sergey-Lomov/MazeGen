@@ -403,6 +403,30 @@
     }
 
     #[test]
+    fn farthest_from_via_nav_exhaustive_mode_finds_a_mid_corridor_node_nav_graph_mode_cannot() {
+        // Same loop layout as `farthest_reachable`'s own mid-corridor test (GitHub issue #515):
+        // a 3-way junction at nodes[0] branching into a short dead end (nodes[1]) and a loop back
+        // into the junction via nodes[2..6], with the loop's midpoint (nodes[3]) farther in
+        // tile-hops than the dead end but invisible to the nav-graph search.
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[2], nodes[3], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[4], nodes[5], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[5], nodes[0], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        assert_eq!(farthest_from_via_nav(&maze, nodes[0], "nav_graph"), nodes[1], "nav-graph mode can only ever land on a junction/dead-end node");
+        assert_eq!(farthest_from_via_nav(&maze, nodes[0], "exhaustive"), nodes[3], "exhaustive mode finds the true tile-hop-farthest mid-corridor node on the loop");
+    }
+
+    #[test]
     fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qualifies() {
         // 1x5 corridor, desired_length pinned to an interval no node can ever satisfy (min=max=99
         // on a graph whose farthest possible tile-hop distance is 4) and unreachable_priority=forbidden
@@ -612,6 +636,139 @@
         for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
             assert_ne!(maze.field.level_of(edge.from), maze.field.level_of(edge.to), "balance=1 must behave as a hard other-floor-only preference, never falling back same-floor");
         }
+    }
+
+    #[test]
+    fn entry_pick_dead_end_priority_always_resolves_entry_to_a_dead_end() {
+        // 1x5 bidirectional corridor: nodes 1..=3 are degree-2 interior nodes, only nodes 0 and 4
+        // (the ends) are dead ends. entry_pick=dead_end_priority must always resolve entry to one
+        // of the two dead ends, never an interior node -- across multiple seeds, to rule out a
+        // single lucky draw.
+        let mut overrides = HashMap::new();
+        overrides.insert("entry_pick".to_string(), "dead_end_priority".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+
+        for seed in 0..10u64 {
+            let mut ids = IdGenerator::new();
+            let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            let field_level = field.single_level_id();
+            let mut g = Graph::new();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+            for i in 0..4 {
+                g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+            }
+            let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+            let issue = missing_issue(1);
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).expect("one teleport must have been added");
+            assert!(
+                teleport.from == nodes[0] || teleport.from == nodes[4],
+                "seed {seed}: dead_end_priority must resolve entry to a dead end (node 0 or 4), got {:?}",
+                teleport.from,
+            );
+        }
+    }
+
+    #[test]
+    fn exit_pick_dead_end_priority_prefers_a_dead_end_exit_within_the_resolved_zone() {
+        // 3-way junction at nodes[0] with two short one-node dead-end arms (nodes[1], nodes[2]) and
+        // one longer arm (nodes[3]-nodes[4]-nodes[5], nodes[4] degree 2, nodes[5] a dead end).
+        // entry_pick stays at its default (random) -- whichever node the pool draws as entry, the
+        // exit is asserted to always be a dead end (nodes[1], nodes[2], or nodes[5]), never the
+        // degree-2 interior node[4].
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        // Rewire into a star-ish shape: nodes[0] hub connects to nodes[1] (dead end) and nodes[3];
+        // nodes[3]-nodes[4]-nodes[5] is a tail ending in a dead end. nodes[2] connects only to
+        // nodes[0] as a second dead-end arm.
+        g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[0], nodes[3], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[4], nodes[5], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let mut overrides = HashMap::new();
+        overrides.insert("exit_pick".to_string(), "dead_end_priority".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        // one_way_chance=100 -- no reverse edge is added, so every Teleport edge's `to` really is
+        // the resolved exit; a bidirectional teleport would also mint an exit -> entry edge whose
+        // own `to` is entry (not required to be a dead end), which would wrongly fail this check.
+        overrides.insert("one_way_chance".to_string(), "100".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+
+        let issue = missing_issue(1);
+        let mut rng = MazeRng::seed_from_u64(4);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        let dead_ends: HashSet<NodeId> = [nodes[1], nodes[2], nodes[5]].into_iter().collect();
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            assert!(
+                dead_ends.contains(&edge.to),
+                "exit_pick=dead_end_priority must prefer a dead-end exit within the resolved zone, got {:?}",
+                edge.to,
+            );
+        }
+    }
+
+    #[test]
+    fn exit_pick_dead_end_priority_falls_back_to_uniform_pick_when_the_zone_has_no_dead_end() {
+        // 1x4 corridor (nodes[0]-nodes[1]-nodes[2]-nodes[3]): nodes[0] and nodes[3] are the two
+        // (symmetric) dead ends, nodes[1] and nodes[2] are degree-2 interior. entry_pick pins
+        // entry to a dead end; desired_length=2,2 resolves the zone to tile-hop distance 2 from
+        // whichever dead end got picked -- nodes[2] from nodes[0], or nodes[1] from nodes[3] --
+        // either way a degree-2 interior node with no direct edge back to entry (so `feasible`
+        // doesn't exclude it) and no dead end anywhere in the resolved zone. `pick_biased`'s
+        // dead-end filter must fall through to its plain-uniform fallback here instead of
+        // panicking on an empty dead-end slice.
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[2], nodes[3], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let mut overrides = HashMap::new();
+        overrides.insert("exit_pick".to_string(), "dead_end_priority".to_string());
+        overrides.insert("entry_pick".to_string(), "dead_end_priority".to_string());
+        overrides.insert("desired_length".to_string(), "2,2".to_string());
+        overrides.insert("allow_out_of_interval".to_string(), "false".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+
+        let issue = missing_issue(1);
+        let mut rng = MazeRng::seed_from_u64(2);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }), "must still succeed via the uniform fallback even though the resolved zone (tile-hop distance 2 from either dead-end entry) has no dead end");
+
+        let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).expect("one teleport must have been added");
+        let exit = teleport.to;
+        assert!(
+            exit == nodes[1] || exit == nodes[2],
+            "the only node at tile-hop distance 2 from either dead-end entry is a degree-2 interior node, got {exit:?}"
+        );
     }
 
     #[test]

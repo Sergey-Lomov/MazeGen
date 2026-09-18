@@ -10,7 +10,6 @@ export interface CheckInstance {
   params: Record<string, string>;
   /** Per-check toggle — when true, this check is excluded entirely from the next `generate()`
    * call (not sent to core at all), as if it were never selected, mirroring `QcRuleState.ruleDisabled`
-   * at check granularity. A disabled check still counts toward `isTypeAlreadyActive`'s single-instance
    * gating, so a user can't stack duplicate instances of a type limited to one active instance by
    * disabling the existing one first — re-enabling it is a toggle away instead of an add. */
   disabled: boolean;

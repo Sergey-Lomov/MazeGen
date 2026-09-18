@@ -17,7 +17,7 @@ use maze_core::RegionClass;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntityVisibility {
     /// Hidden whenever the maze has fewer than 2 floors. First consumers: `ScoredEndpointsStrategy`'s
-    /// `vertical_passage_weight`/`elevator_weight` params (GitHub issue #390), and every check/
+    /// `cross_floor_weight`/`elevator_stop_weight` params (GitHub issue #390), and every check/
     /// strategy that only makes sense with vertical passages/elevators, which don't exist on a
     /// single-floor maze (GitHub issue #349 follow-up).
     MultiFloorOnly,
@@ -92,7 +92,6 @@ pub struct CheckDescriptor {
     /// blanket allowance. The web store/UI enforce this (see `addCheck`/`createRule` in
     /// `generationSlice.ts`) — wasm/core themselves don't reject a duplicate, since nothing
     /// downstream of this flag depends on it being correct for repair/QC to function.
-    pub allow_multiple_instances: bool,
     /// `None` means always offered — see `EntityVisibility`'s own doc comment.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<EntityVisibility>,

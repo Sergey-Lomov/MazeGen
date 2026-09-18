@@ -9,11 +9,14 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
-use super::farthest_reachable::farthest_from;
+use crate::generation::{cmd_add_directed_teleport, cmd_add_bidirectional_teleport};
+use super::farthest_reachable::{farthest_from, farthest_from_exhaustive, search_mode, SEARCH_MODE_PARAM, SEARCH_MODE_EXHAUSTIVE};
 use super::standard_add_params::{self, reserve_target, attempts_limit};
 use super::remaining_deficits::RemainingDeficits;
+use super::dead_end_priority::is_dead_end;
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
+pub const PARAM_EXIT_PICK: &str = "exit_pick";
 pub const PARAM_UNREACHABLE_PRIORITY: &str = "unreachable_priority";
 pub const PARAM_DESIRED_LENGTH: &str = "desired_length";
 pub const PARAM_ALLOW_OUT_OF_INTERVAL: &str = "allow_out_of_interval";
@@ -23,8 +26,14 @@ pub const PARAM_CROSS_FLOOR_BALANCE: &str = "cross_floor_balance";
 
 pub const ENTRY_RANDOM: &str = "random";
 pub const ENTRY_FARTHEST_FROM_RANDOM: &str = "farthest_from_random";
+pub const ENTRY_DEAD_END_PRIORITY: &str = "dead_end_priority";
 
-static ENTRY_OPTIONS: &[&str] = &[ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM];
+static ENTRY_OPTIONS: &[&str] = &[ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM, ENTRY_DEAD_END_PRIORITY];
+
+pub const EXIT_RANDOM: &str = "random";
+pub const EXIT_DEAD_END_PRIORITY: &str = "dead_end_priority";
+
+static EXIT_OPTIONS: &[&str] = &[EXIT_RANDOM, EXIT_DEAD_END_PRIORITY];
 
 /// Cross-floor policy for the exit pick — see GitHub issue #381.
 pub const CROSS_FLOOR_FORBIDDEN: &str = "forbidden";
@@ -37,6 +46,11 @@ const ENTRY_PICK_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ENTRY_PICK,
     label: "Entry pick",
     kind: StrategyParamKind::Enum { options: ENTRY_OPTIONS, default: ENTRY_RANDOM },
+};
+const EXIT_PICK_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_EXIT_PICK,
+    label: "Exit pick",
+    kind: StrategyParamKind::Enum { options: EXIT_OPTIONS, default: EXIT_RANDOM },
 };
 const UNREACHABLE_PRIORITY_PARAM: StrategyParam = StrategyParam {
     id: PARAM_UNREACHABLE_PRIORITY,
@@ -73,8 +87,10 @@ const CROSS_FLOOR_BALANCE_PARAM: StrategyParam = StrategyParam {
 // source-ordering knob — a second `src_mode` on top would be redundant. `reserve_percent` and
 // `attempts_limit` are the shared standard block (GitHub issue #486); `attempts_limit`'s default
 // unified from the old `3` to `25`.
-static PARAMS: [StrategyParam; 9] = crate::add_strategy_params!(no_src_mode:
+static PARAMS: [StrategyParam; 11] = crate::add_strategy_params!(no_src_mode:
     ENTRY_PICK_PARAM,
+    EXIT_PICK_PARAM,
+    SEARCH_MODE_PARAM,
     UNREACHABLE_PRIORITY_PARAM,
     DESIRED_LENGTH_PARAM,
     ALLOW_OUT_OF_INTERVAL_PARAM,
@@ -147,6 +163,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => ENTRY_RANDOM,
         };
+        let exit_pick = match params.get(PARAM_EXIT_PICK) {
+            Some(StrategyParamValue::Enum(s)) => s.as_str(),
+            _ => EXIT_RANDOM,
+        };
+        let search_mode = search_mode(params);
         let unreachable_priority = params.get(PARAM_UNREACHABLE_PRIORITY).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
         let (desired_min, desired_max) = params.get(PARAM_DESIRED_LENGTH).and_then(|v| v.as_interval()).unwrap_or((0.0, 1000.0));
         let desired_min = desired_min.max(0.0) as usize;
@@ -159,6 +180,16 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             _ => CROSS_FLOOR_NATURAL,
         };
         let cross_floor_balance = params.get(PARAM_CROSS_FLOOR_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5).clamp(0.0, 1.0);
+
+        // Computed once per `apply()` call rather than per attempt: `is_dead_end` only depends on
+        // `maze.graph`, which this call never mutates (mutations flow out as `MutationCommand`s,
+        // committed by the caller after `apply()` returns) — so every attempt's dead-end filtering
+        // can look this up instead of rescanning the current pool/set's neighbors from scratch.
+        let dead_ends: HashSet<NodeId> = if entry_pick == ENTRY_DEAD_END_PRIORITY || exit_pick == EXIT_DEAD_END_PRIORITY {
+            maze.field.all_node_ids().filter(|&n| is_dead_end(maze, n)).collect()
+        } else {
+            HashSet::new()
+        };
 
         let mut proposed: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
@@ -193,31 +224,31 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
                     if pool.is_empty() {
                         break;
                     }
-                    let pick = rng.random_range(0..pool.len());
+                    let pick = pick_pool_index(&pool, entry_pick, &dead_ends, rng);
                     let candidate = pool[pick];
 
                     let entry = match entry_pick {
-                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate),
+                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate, search_mode),
                         _ => candidate,
                     };
 
                     let Some(exit) = pick_exit(
                         maze, entry, desired_min, desired_max, allow_out_of_interval,
                         unreachable_priority, preset_state, &proposed, rng,
-                        cross_floor_mode, cross_floor_balance,
+                        cross_floor_mode, cross_floor_balance, exit_pick, &dead_ends,
                     ) else {
                         pool.swap_remove(pick);
                         continue;
                     };
 
-                    let add_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0))
-                        && crate::generation::directed_edge_feasible(preset_state, exit, entry);
-                    if add_reverse {
-                        commands.push(MutationCommand::AddBidirectionalTeleport { a: entry, b: exit });
+                    let want_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0));
+                    let bidi_cmds = if want_reverse { cmd_add_bidirectional_teleport(entry, exit, preset_state) } else { vec![] };
+                    if !bidi_cmds.is_empty() {
+                        commands.extend(bidi_cmds);
                         proposed.insert((entry, exit));
                         proposed.insert((exit, entry));
                     } else {
-                        commands.push(MutationCommand::AddDirectedTeleport { from: entry, to: exit });
+                        commands.extend(cmd_add_directed_teleport(entry, exit, preset_state));
                         proposed.insert((entry, exit));
                     }
                     added += 1;
@@ -261,23 +292,51 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
 crate::impl_erased_repair_strategy!(MissingTeleportsStrategy, MissingTeleportsIssue);
 
 /// `entry_pick: farthest_from_random`'s own step: hop from a uniformly-picked node to the
-/// farthest node forward-reachable from it, via the corridor-compressed `NavGraph` — same
-/// helper `FarthestEndpointsStrategy` uses (GitHub issue #212's shared-helper request).
+/// farthest node forward-reachable from it — helper shared with `FarthestEndpointsStrategy`
+/// (GitHub issue #212's shared-helper request). `PARAM_SEARCH_MODE` (GitHub issue #515) picks
+/// between the two search modes; see `farthest_reachable` module doc.
 ///
-/// `from` is usually a corridor-interior node (the candidate pool is every maze node, and those
-/// vastly outnumber junction/dead-end nodes), which `NavGraph::nav_node_for` cannot resolve —
-/// falling back to `from` itself there would silently skip the farthest-search for the common
-/// case. Instead, resolve via `corridor_index` to the nav node the corridor leads into. This is
-/// coarse (it's the corridor's destination nav node, not `from`'s own position), but it keeps the
-/// search on the nav graph instead of degenerating into a no-op. Note: a true farthest point can
-/// still land mid-corridor when loops are present — `farthest_from` only ever considers nav
-/// nodes, so that deeper limitation remains unaddressed here.
-fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId) -> NodeId {
+/// `SEARCH_MODE_EXHAUSTIVE` runs a plain BFS from `from` itself over the raw graph — every tile is
+/// a candidate, so no resolution step is needed.
+///
+/// `SEARCH_MODE_NAV_GRAPH` (default) searches the corridor-compressed `NavGraph`, which only knows
+/// junction/dead-end nodes. `from` is usually a corridor-interior node (the candidate pool is
+/// every maze node, and those vastly outnumber junction/dead-end nodes), which
+/// `NavGraph::nav_node_for` cannot resolve — falling back to `from` itself there would silently
+/// skip the farthest-search for the common case. Instead, resolve via `corridor_index` to the nav
+/// node the corridor leads into. This is coarse (it's the corridor's destination nav node, not
+/// `from`'s own position), but it keeps the search on the nav graph instead of degenerating into a
+/// no-op. Note: a true farthest point can still land mid-corridor when loops are present —
+/// `farthest_from` only ever considers nav nodes, so that deeper limitation is exactly what
+/// `SEARCH_MODE_EXHAUSTIVE` exists to address.
+fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId, search_mode: &str) -> NodeId {
+    if search_mode == SEARCH_MODE_EXHAUSTIVE {
+        return farthest_from_exhaustive(&maze.graph, from);
+    }
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let Some(nav_id) = nav.nav_node_for(from).or_else(|| nav.corridor_index.get(&from).copied()) else {
         return from;
     };
     farthest_from(&nav, nav_id)
+}
+
+/// `entry_pick: dead_end_priority`'s own step: picks an index into `pool` biased toward dead ends
+/// — a random dead-end index if any exist in `pool`, otherwise falls back to a plain uniform pick
+/// over the whole pool (GitHub issue #537). Every other `entry_pick` mode also goes through here
+/// as a plain uniform pick, so callers never branch on `entry_pick` themselves for the pool-index
+/// step. `dead_ends` is precomputed once per `apply()` call (`dead_end_priority::is_dead_end`
+/// only depends on the graph, which `apply()` never mutates), not rescanned per attempt.
+fn pick_pool_index(pool: &[NodeId], entry_pick: &str, dead_ends: &HashSet<NodeId>, rng: &mut dyn RngCore) -> usize {
+    if entry_pick == ENTRY_DEAD_END_PRIORITY {
+        let dead_end_indices: Vec<usize> = pool.iter().enumerate()
+            .filter(|&(_, &n)| dead_ends.contains(&n))
+            .map(|(i, _)| i)
+            .collect();
+        if !dead_end_indices.is_empty() {
+            return dead_end_indices[rng.random_range(0..dead_end_indices.len())];
+        }
+    }
+    rng.random_range(0..pool.len())
 }
 
 /// Tile-hop BFS distances from `source` over the raw graph (outgoing edges only) — deliberately
@@ -312,6 +371,8 @@ fn pick_exit<T: Tessellation>(
     rng: &mut dyn RngCore,
     cross_floor_mode: &str,
     cross_floor_balance: f64,
+    exit_pick: &str,
+    dead_ends: &HashSet<NodeId>,
 ) -> Option<NodeId> {
     let dist = bfs_distances(maze, entry);
     let all_nodes: Vec<NodeId> = maze.field.all_node_ids().collect();
@@ -344,13 +405,13 @@ fn pick_exit<T: Tessellation>(
     let zones = unreachable_priority.order_zones(unreachable, in_interval, rng);
 
     for zone in &zones {
-        if let Some(exit) = pick_from_set(maze, zone, entry_level, cross_floor_mode, cross_floor_balance, rng) {
+        if let Some(exit) = pick_from_set(zone, entry_level, cross_floor_mode, cross_floor_balance, exit_pick, dead_ends, maze, rng) {
             return Some(exit);
         }
     }
 
     if allow_out_of_interval {
-        if let Some(exit) = pick_from_set(maze, &out_of_interval, entry_level, cross_floor_mode, cross_floor_balance, rng) {
+        if let Some(exit) = pick_from_set(&out_of_interval, entry_level, cross_floor_mode, cross_floor_balance, exit_pick, dead_ends, maze, rng) {
             return Some(exit);
         }
     }
@@ -362,19 +423,27 @@ fn pick_exit<T: Tessellation>(
 /// roll — see GitHub issue #381. `Forbidden` already filtered `set` down to same-floor-only
 /// candidates in `pick_exit`'s own `feasible` closure, and `Natural` ignores floor entirely, so
 /// both reduce to a plain uniform pick here. `set` empty returns `None` without rolling.
+///
+/// `exit_pick: dead_end_priority` (GitHub issue #537) is applied last, inside whichever candidate
+/// slice (`chosen`, after zone selection and the cross-floor balance roll above) ends up feeding
+/// the final pick — the lowest-priority criterion, a tie-break within an already-resolved set
+/// rather than a competing zone of its own.
+#[allow(clippy::too_many_arguments)]
 fn pick_from_set<T: Tessellation>(
-    maze: &Maze<T>,
     set: &[NodeId],
     entry_level: Option<crate::space::LevelId>,
     cross_floor_mode: &str,
     cross_floor_balance: f64,
+    exit_pick: &str,
+    dead_ends: &HashSet<NodeId>,
+    maze: &Maze<T>,
     rng: &mut dyn RngCore,
 ) -> Option<NodeId> {
     if set.is_empty() {
         return None;
     }
     if cross_floor_mode != CROSS_FLOOR_MANUAL {
-        return Some(set[rng.random_range(0..set.len())]);
+        return Some(pick_biased(set, exit_pick, dead_ends, rng));
     }
 
     let (same_floor, other_floor): (Vec<NodeId>, Vec<NodeId>) =
@@ -396,7 +465,21 @@ fn pick_from_set<T: Tessellation>(
     } else {
         fallback.filter(|s| !s.is_empty())?
     };
-    Some(chosen[rng.random_range(0..chosen.len())])
+    Some(pick_biased(chosen, exit_pick, dead_ends, rng))
+}
+
+/// `exit_pick: dead_end_priority`'s tie-break pick within `set` — a random dead-end element if any
+/// exist, otherwise a plain uniform pick over the whole set. Mirrors `pick_pool_index`'s own
+/// fallback shape on the entry side. `dead_ends` is precomputed once per `apply()` call, not
+/// rescanned per pick — see its own doc comment.
+fn pick_biased(set: &[NodeId], exit_pick: &str, dead_ends: &HashSet<NodeId>, rng: &mut dyn RngCore) -> NodeId {
+    if exit_pick == EXIT_DEAD_END_PRIORITY {
+        let in_set: Vec<NodeId> = set.iter().copied().filter(|n| dead_ends.contains(n)).collect();
+        if !in_set.is_empty() {
+            return in_set[rng.random_range(0..in_set.len())];
+        }
+    }
+    set[rng.random_range(0..set.len())]
 }
 
 

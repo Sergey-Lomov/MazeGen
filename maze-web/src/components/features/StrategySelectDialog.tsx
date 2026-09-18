@@ -128,7 +128,7 @@ function StrategyParamPanel({ strategyId, params, addSplitPatternsOverride }: { 
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
 
-  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
+  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, strategyId) }));
   const storeValues = strategyParams[strategyId] ?? {};
   const { values, onChange } = useParamEditor({
     entityId: strategyId,
@@ -142,7 +142,7 @@ function StrategyParamPanel({ strategyId, params, addSplitPatternsOverride }: { 
       params={localizedParams}
       values={values}
       onChange={onChange}
-      getDescription={(p) => resolveParamDescription(p.id)}
+      getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       addSplitPatternsOverride={addSplitPatternsOverride}
     />
   );
@@ -152,6 +152,7 @@ const styles: Record<string, React.CSSProperties> = {
   description: {
     ...typography.body,
     lineHeight: 1.6,
+    whiteSpace: "pre-line",
   },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {

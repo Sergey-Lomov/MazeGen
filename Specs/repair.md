@@ -730,21 +730,29 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
 
 ### FarthestEndpointsStrategy
 
-Handles `MISSING_ENDPOINTS`. No configurable parameters. Places start and finish at nav-graph nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra sweep — **not** an exhaustive search over all pairs.
+Handles `MISSING_ENDPOINTS`. Places start and finish at nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra/two-BFS sweep — **not** an exhaustive search over all pairs (that's `ScoredEndpointsStrategy`'s job).
 
-**Known limitation (heuristic, not a guaranteed diameter)**: the two-Dijkstra sweep (pick a node, find the farthest node from it, then the farthest node from *that*) is the standard approach for finding a graph's diameter, but it is only exact on trees. On a general graph with cycles — which any maze with loops is — the sweep can converge on a pair that is close to the maximum but not actually it. Confirmed on a real repro (GitHub issue #95, 5x5 QC-only preset graph): the sweep picked a pair at tile-distance 12 while the true maximum over all pairs, found by brute force, was 14. `ScoredEndpointsStrategy` does an exhaustive search instead and is not affected by this; use it when an exact result matters more than speed.
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `search_mode` | Enum (`nav_graph`, `exhaustive`) | `nav_graph` | `nav_graph` sweeps the corridor-compressed `NavGraph` (fast, but every candidate is a junction/dead-end node — never mid-corridor). `exhaustive` sweeps every raw-graph tile node via plain BFS — correct even when the true tile-hop-farthest node sits mid-corridor on a loop bridge, at the cost of visiting every tile (GitHub issue #515). Shared with `MissingTeleportsStrategy`'s `entry_pick: farthest_from_random`, see `farthest_reachable::PARAM_SEARCH_MODE`. |
+
+**Known limitation (heuristic, not a guaranteed diameter)**: the two-Dijkstra/two-BFS sweep (pick a node, find the farthest node from it, then the farthest node from *that*) is the standard approach for finding a graph's diameter, but it is only exact on trees. On a general graph with cycles — which any maze with loops is — the sweep can converge on a pair that is close to the maximum but not actually it. Confirmed on a real repro (GitHub issue #95, 5x5 QC-only preset graph): the sweep picked a pair at tile-distance 12 while the true maximum over all pairs, found by brute force, was 14. `ScoredEndpointsStrategy` does an exhaustive search instead and is not affected by this; use it when an exact result matters more than speed. `search_mode: exhaustive` widens the sweep's own candidate pool to every tile (fixing the *nav-graph-only-candidates* limitation from GitHub issue #515) but does not turn the sweep itself into a true all-pairs search — the tree-only-exactness limitation described here still applies under both modes.
 
 - If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately.
-- Empty nav graph: returns `Failed`.
-- **Neither set**: picks a random nav node via `rng`. Runs reverse Dijkstra (incoming edges) from that node to find the node farthest *upstream* — candidate `start` (landing in a source SCC). Then runs forward Dijkstra from that candidate to find the farthest reachable node — candidate `finish`. Since the graph is directed, `dist(candidate_start -> candidate_finish)` can differ from `dist(candidate_finish -> candidate_start)` (see GitHub issue #95: the two-Dijkstra sweep only measures the forward direction, and on a directed graph that isn't guaranteed to be the longer one even though it identifies the correct pair of nodes). `orient_farthest_pair` runs a forward Dijkstra in both directions between the candidate pair and swaps `start`/`finish` if the reverse direction turns out longer; falls back to the original orientation if the reverse direction is unreachable. This orientation fix is independent of, and does not solve, the sweep's tree-only-exactness limitation described above.
-- **Only start set**: runs Dijkstra from `start`'s nav node, takes the farthest node as `finish`.
-- **Only finish set**: runs reverse Dijkstra (traversing incoming edges) from `finish`'s nav node, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
-- If farthest node equals the source (isolated nav node or no reachable peers in the same component): returns `Failed`.
-- Disconnected nav-graph: Dijkstra only reaches nodes in the same connected component as the source. Unreachable nodes (distance `usize::MAX`) are excluded from selection, so start and finish always end up in the same component.
+- Empty nav graph (`nav_graph` mode) / empty field (`exhaustive` mode): returns `Failed`.
+- **Neither set**: picks a random node via `rng`. Runs a reverse sweep (incoming edges) from that node to find the node farthest *upstream* — candidate `start` (landing in a source SCC). Then runs a forward sweep from that candidate to find the farthest reachable node — candidate `finish`. Since the graph is directed, `dist(candidate_start -> candidate_finish)` can differ from `dist(candidate_finish -> candidate_start)` (see GitHub issue #95: the sweep only measures the forward direction, and on a directed graph that isn't guaranteed to be the longer one even though it identifies the correct pair of nodes). `orient_farthest_pair`/`orient_farthest_pair_exhaustive` measures both directions between the candidate pair and swaps `start`/`finish` if the reverse direction turns out longer; falls back to the original orientation if the reverse direction is unreachable. This orientation fix is independent of, and does not solve, the sweep's tree-only-exactness limitation described above.
+- **Only start set**: sweeps forward from `start`, takes the farthest node as `finish`.
+- **Only finish set**: sweeps in reverse (incoming edges) from `finish`, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
+- If farthest node equals the source (isolated node or no reachable peers in the same component): returns `Failed`.
+- Disconnected graph: the sweep only reaches nodes in the same connected component as the source. Unreachable nodes are excluded from selection, so start and finish always end up in the same component.
 
 ### ScoredEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted score over all reachable (start → finish) paths in the nav graph.
+
+**No `search_mode` param** (unlike `FarthestEndpointsStrategy`/`MissingTeleportsStrategy`, GitHub issue #515): `best_pair` already searches exhaustively, but over nav-node pairs — `O(nav_nodes^2)`. Widening it to every raw-graph tile pair would be `O(tiles^2)`, and tiles typically outnumber nav nodes by 5-20x, making an exhaustive raw-graph mode extremely expensive on any non-trivial maze. Deliberately not offered.
 
 **Parameters:**
 
@@ -753,20 +761,22 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 | `path_weight` | Float | 1.0 | [0, 100] | Weight applied to path tile count |
 | `junction_weight` | Float | 3.0 | [0, 100] | Weight applied to number of junction nav nodes on path |
 | `oneway_weight` | Float | 5.0 | [0, 100] | Weight applied to number of one-way nav edges on path |
-| `teleport_weight` | Float | 5.0 | [0, 100] | Weight applied to number of teleport nav edges crossed on path |
+| `cross_floor_weight` | Float | 5.0 | [0, 100] | Weight applied to number of floor-crossing (`VerticalPassage`/`Elevator`-kind) hops crossed on path |
 | `split_weight` | Float | 5.0 | [0, 100] | Weight applied to number of split-tile occurrences on path |
-| `vertical_passage_weight` | Float | 5.0 | [0, 100] | Weight applied to number of `VerticalPassage`-kind hops crossed on path |
-| `elevator_weight` | Float | 5.0 | [0, 100] | Weight applied to number of `Elevator`-kind hops crossed on path |
+| `teleport_weight` | Float | 5.0 | [0, 100] | Weight applied to number of teleport nav edges crossed on path |
+| `elevator_stop_weight` | Float | 5.0 | [0, 100] | Weight applied to summed elevator-stop bonus (see below) of `Elevator`-kind hops crossed on path |
+| `min_score` | Float | 0.0 | [0, 100000] | Minimum score the best-scoring pair must reach; below it the strategy fails instead of committing that pair (GitHub issue #538) |
 
-Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + teleport_count * teleport_weight + split_count * split_weight + vertical_passage_count * vertical_passage_weight + elevator_count * elevator_weight`
+Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + cross_floor_count * cross_floor_weight + split_count * split_weight + teleport_count * teleport_weight + elevator_stop_count * elevator_stop_weight`
 
 The formula itself lives in a standalone `score_for_route` function, independent of repair dispatch — also called directly by `MazeAnalysis::route_score` (`analysis.md`) to compute a route's score outside the repair pipeline entirely, e.g. after a post-edit where `MissingEndpointsIssue` never fires because both endpoints are already set (GitHub issue #532).
 
-- Junction: nav node with ≥ 3 distinct neighbors (union of incoming and outgoing).
+- Junction (GitHub issue #535 follow-up, route-aware, not a whole-graph degree check): for each nav node visited on the path, take its outgoing nav edges, exclude the reverse of the edge the route just arrived on (if any), and count the node as a junction if more than one outgoing edge remains. The start node has no "arrived via" edge, so its full outgoing set is used directly (a start with exactly 2 outgoing edges already counts as a junction). Any other node needs 2 or more outgoing edges besides the way back. The finish node never counts as a junction regardless of its own outgoing edges, since the player has already arrived and is presented no further choice there. All `is_elevator` outgoing edges from a node collapse into at most one logical choice before this threshold applies (GitHub issue #535 follow-up part 2) — a player picks a destination floor directly rather than treating each elevator stop as its own branch, so a dead-end elevator with 3+ stops is not a junction on its own; if the arrival edge was itself an `is_elevator` edge, the whole elevator group is excluded instead of folded (the elevator was already used to get here, so riding it again is not a fresh choice). Computed by the shared `route_aware_junction_flags` (`maze_core::graph::pathfinding`), also used by `RouteInfo::junction_count` (`Specs/routing.md`) so the two stay synchronized; intentionally distinct from the Analytics Statistics panel's own, whole-graph junction count, which is unaffected by this.
 - One-way edge: nav edge `(u → v)` where no reverse edge `(v → u)` exists.
 - Teleport edge: nav edge whose corridor `path` crosses a `Teleport`-kind edge in the underlying maze graph.
 - Split: a field point with ≥ 2 nodes (GitHub issue #261). `split_count` sums, per path edge, the number of the edge's own tile nodes (excluding its `from` node, already counted by the previous edge) that sit on a split tile, plus 1 if the route's own start nav node is itself a split tile (mirroring how `junction_count` covers the start node too) — so a route crossing the same split point via two distinct nodes counts both, and a route starting on a split tile is not silently undercounted.
-- Vertical passage / elevator (GitHub issue #390): `vertical_passage_count`/`elevator_count` sum, per path edge, the number of hops in the edge's own corridor `path` backed by a `VerticalPassage`/`Elevator`-kind graph edge respectively — looked up per-hop via `Graph::edge_between_kind` (not `edge_between`), since a `Basic` edge may coexist with a `VerticalPassage`/`Elevator` edge in the same direction between the same pair (GitHub issue #197's kind-aware dedup), and the arbitrary-kind lookup could resolve to the wrong one.
+- Cross-floor hop (GitHub issue #390): `cross_floor_count` counts every single-hop nav edge backed by a `VerticalPassage`- or `Elevator`-kind graph edge (`NavEdge::is_vertical`/`is_elevator`), independent of directionality — one-way/bidirectional is covered separately by `oneway_count`/`oneway_weight`, since one-wayness and floor-crossing are orthogonal, additive properties of a hop rather than separate flat weights per combination (GitHub issue #535 follow-up).
+- Elevator stop bonus (GitHub issue #535 follow-up): `elevator_stop_count` sums, per `Elevator`-kind hop on the path, `max(0, stops - 2)` where `stops` is that elevator's total distinct-floor stop count (every stop the elevator has, not just the two endpoints of this particular hop) — a 2-stop elevator is no richer a choice than a plain vertical passage and contributes 0; each stop beyond 2 adds one more unit. Elevator components and their stop counts are found the same way as `quality_control::checks::elevator_core::elevator_groups`/`stop_floors` (a maximal connected component of `Elevator`-kind edges, stop count = number of distinct floors among its stop nodes), computed directly from `graph`/`field` rather than a full `Maze`.
 - Path cost (for Dijkstra): edge weight = `path.len() - 1` (tile count).
 
 Behavior per case:
@@ -776,6 +786,7 @@ Behavior per case:
 - **Only start set**: fixes start, searches for best finish.
 - **Only finish set**: fixes finish, searches for best start.
 - No reachable path found: returns `Failed`.
+- Best-scoring pair's score is below `min_score`: returns `Failed` instead of committing that pair — no waypoints are added, even when a reachable candidate pair exists (GitHub issue #538).
 
 ### InvalidLoopRandomStrategy
 
@@ -1346,7 +1357,9 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 
 | id | type | default | description |
 |----|------|---------|-------------|
-| `entry_pick` | Enum (`random`, `farthest_from_random`) | `random` | How a teleport's entry node is chosen — `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`, over the corridor-compressed `NavGraph`), same helper `FarthestEndpointsStrategy` uses. |
+| `entry_pick` | Enum (`random`, `farthest_from_random`, `dead_end_priority`) | `random` | How a teleport's entry node is chosen. `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`/`farthest_from_exhaustive`, per `search_mode`), same helper `FarthestEndpointsStrategy` uses. `dead_end_priority` (GitHub issue #537) picks a random entry biased toward dead-end nodes (`dead_end_priority::is_dead_end`): a random index among the pool's current dead ends if any exist, otherwise a plain uniform pick over the whole pool. Mutually exclusive with `farthest_from_random` — a single pick mode, not stackable with it. |
+| `search_mode` | Enum (`nav_graph`, `exhaustive`) | `nav_graph` | Only affects `entry_pick: farthest_from_random`. `nav_graph` searches the corridor-compressed `NavGraph` (fast, but the farthest point can only ever be a junction/dead-end node). `exhaustive` runs a plain BFS over every raw-graph tile node — correct even when the true tile-hop-farthest node sits mid-corridor on a loop bridge, at higher cost (GitHub issue #515). Shared param, see `farthest_reachable::PARAM_SEARCH_MODE`. |
+| `exit_pick` | Enum (`random`, `dead_end_priority`) | `random` | How a teleport's exit node is chosen, after `unreachable_priority`'s zone ordering and `desired_length`'s interval matching already narrowed the candidate set (GitHub issue #537). `dead_end_priority` prefers a dead-end node within whatever zone/set `pick_from_set` ends up drawing from, falling back to a uniform pick over that same set when it holds no dead ends — the lowest-priority criterion, a tie-break within an already-resolved set, not a competing zone of its own. Applied after `cross_floor_mode: manual`'s own same-/other-floor balance roll, inside whichever of the two floor groups that roll settled on. |
 | `unreachable_priority` | Priority (`PriorityLevel`) | `indifferent` | How strongly to prefer an exit currently unreachable from entry over one in the desired interval — see the zone fallback below and `PriorityLevel` above (GitHub issue #381 follow-up; the "unreachable" set is the "preferred" group, "in_interval" is "other"). |
 | `desired_length` | Interval | `0..1000` | Tile-hop distance band (plain BFS over the raw `Graph`, **not** the `NavGraph`) an exit should fall within, measured from entry. |
 | `allow_out_of_interval` | Bool | `true` | If neither the desired-interval set nor the unreachable set yields a candidate, allow falling back to a reachable exit outside the interval instead of failing this entry. |
@@ -1355,7 +1368,7 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 | `cross_floor_mode` | Enum (`forbidden`, `natural`, `manual`) | `natural` | Cross-floor policy for the exit pick (GitHub issue #381) — `forbidden` restricts every candidate set to entry's own floor; `natural` ignores floor entirely; `manual` applies `cross_floor_balance`'s own-floor/other-floor roll within whichever zone is picked. |
 | `cross_floor_balance` | Float (0.0–1.0) | `0.5` | Under `cross_floor_mode: manual` only — chance of preferring an other-floor exit over a same-floor one; `0.0`/`1.0` are hard preferences (same-floor-only / other-floor-only), no fallback to the opposite group even if it's the only one populated. |
 
-**Entry/exit selection.** For each teleport slot, an entry node is picked per `entry_pick`, then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
+**Entry/exit selection.** For each teleport slot, a pool index is picked per `entry_pick` (`pick_pool_index` — plain uniform under `random`/`farthest_from_random`, dead-end-biased under `dead_end_priority`), then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
 1. reachable, outside `[desired_min, desired_max]`
 2. reachable, inside `[desired_min, desired_max]`
 3. unreachable from entry entirely (e.g. a separate strongly-connected component upstream of entry)

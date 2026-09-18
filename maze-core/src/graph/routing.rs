@@ -2,12 +2,12 @@ use std::collections::HashSet;
 use crate::ids::NodeId;
 use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::nav::{NavGraph, NavNodeId};
-use super::pathfinding::{dijkstra_with_prev, build_outgoing_index};
+use super::pathfinding::{dijkstra_with_prev, build_outgoing_index, route_aware_junction_flags};
 
 #[derive(Clone)]
 pub struct RouteInfo {
-    pub path_length: usize,    // node count including start and finish
-    pub junction_count: usize, // nav-nodes with degree >= 3 on the path
+    pub path_length: usize,    // number of tile-to-tile transitions (node count - 1), matching the unit every other score component is counted in (GitHub issue #535 follow-up)
+    pub junction_count: usize, // nav-nodes on the path with >1 outgoing edge besides the way back (GitHub issue #535 follow-up: route-aware, not a whole-graph degree check)
     pub one_way_count: usize,  // nav-edges without reverse on the path
     pub split_count: usize,    // occurrences of a split tile's node among path nodes (each hop counted, not deduped by tile)
     pub teleport_count: usize, // Teleport-kind nav-edges on the path
@@ -76,13 +76,6 @@ fn count_one_way(
     }).count()
 }
 
-fn count_junctions(nav: &NavGraph, nav_nodes_on_path: &[NavNodeId]) -> usize {
-    nav_nodes_on_path.iter().filter(|&&nid| {
-        let out: HashSet<NavNodeId> = nav.outgoing_edges(nid).map(|e| e.to).collect();
-        out.len() >= 3
-    }).count()
-}
-
 fn count_by_kind(
     path_edge_indices: &[usize],
     all_edges: &[&crate::graph::nav::NavEdge],
@@ -117,7 +110,7 @@ pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &MultiLevelFie
 
     if start_nav == finish_nav {
         let path = if start == finish { vec![start] } else { vec![start, finish] };
-        let path_length = path.len();
+        let path_length = path.len().saturating_sub(1);
         let split_count = count_splits(field, &path);
         return Some(RouteInfo {
             path_length,
@@ -147,9 +140,10 @@ pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &MultiLevelFie
     }
 
     let maze_path     = build_maze_path(&path_edge_indices, &all_edges, start);
-    let path_length   = maze_path.len();
+    let path_length   = maze_path.len().saturating_sub(1);
     let one_way_count = count_one_way(&path_edge_indices, &all_edges, &edge_pairs);
-    let junction_count = count_junctions(nav, &nav_nodes_on_path);
+    let junction_count = route_aware_junction_flags(nav, &nav_nodes_on_path, &path_edge_indices, &all_edges, &mut std::collections::HashMap::new())
+        .into_iter().filter(|&j| j).count();
     let split_count   = count_splits(field, &maze_path);
     let teleport_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_teleport);
     let vertical_bidirectional_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_vertical && e.reverse_edge.is_some());
@@ -205,7 +199,7 @@ mod tests {
         let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0]]));
         let route = compute_route_info(&nav, &field, nodes[0], nodes[0]).unwrap();
         assert_eq!(route.path, vec![nodes[0]]);
-        assert_eq!(route.path_length, 1);
+        assert_eq!(route.path_length, 0, "start == finish -> zero transitions");
         assert_eq!(route.junction_count, 0);
         assert_eq!(route.one_way_count, 0);
         assert_eq!(route.split_count, 0);
@@ -223,7 +217,7 @@ mod tests {
         let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
         let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
         assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
-        assert_eq!(route.path_length, 3);
+        assert_eq!(route.path_length, 2, "3 nodes -> 2 transitions");
         assert_eq!(route.one_way_count, 0, "bidirectional corridor must not count as one-way");
     }
 
@@ -241,8 +235,9 @@ mod tests {
 
     #[test]
     fn junction_on_path_is_counted() {
-        // 1 -> 2 -> 3, plus 2 -> 4 (extra branch) makes node 2 a junction (3 distinct
-        // outgoing/incoming neighbors: 1,3,4).
+        // 1 -> 2 -> 3, plus 2 -> 4 (extra branch). Route 1->2->3 arrives at node 2 via the
+        // 1->2 edge; excluding that edge's reverse (2->1) still leaves 2 outgoing choices
+        // (2->3, 2->4), so node 2 is a junction under the route-aware definition too.
         let (field, nodes) = field_with_nodes(4);
         let mut g = Graph::new();
         for &id in &nodes { g.add_node(id); }
@@ -252,7 +247,74 @@ mod tests {
         let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
         let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
         assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
-        assert_eq!(route.junction_count, 1, "node 2 has 3 distinct neighbors -> junction");
+        assert_eq!(route.junction_count, 1, "node 2 keeps 2 outgoing choices besides the way back -> junction");
+    }
+
+    #[test]
+    fn start_node_with_two_outgoing_edges_is_a_junction() {
+        // Start node has no "arrived via" edge to exclude, so its full outgoing set is used
+        // directly: 2 outgoing edges (0->1, 0->2) already makes it a junction, unlike a
+        // mid-route node which would need a 3rd edge besides the way back.
+        let (field, nodes) = field_with_nodes(3);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[0], nodes[2]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.junction_count, 1, "start with 2 outgoing edges -> junction");
+    }
+
+    #[test]
+    fn mid_route_node_with_only_the_reverse_edge_besides_forward_is_not_a_junction() {
+        // 0 -> 1 -> 2, node 1 has exactly 2 outgoing edges (1->0, 1->2). 1->0 is the reverse
+        // of the arrival edge 0->1, so excluding it leaves only 1 genuine forward choice ->
+        // not a junction, even though node 1 has 2 outgoing edges in total.
+        let (field, nodes) = field_with_nodes(3);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
+        assert_eq!(route.junction_count, 0, "only the way back remains besides forward -> not a junction");
+    }
+
+    #[test]
+    fn finish_node_is_never_counted_as_a_junction() {
+        // 1 -> 2 -> 3, plus 2 -> 4 (extra branch), route 1->2->4: the route ends at node 4,
+        // but node 2 -- despite having 2 outgoing choices besides the way back (2->3, 2->4) --
+        // is a genuine junction along the way. Node 4 itself is the finish and must never
+        // count, regardless of its own outgoing edges (it has none here, but the rule holds
+        // unconditionally, not just when the finish happens to be a dead end).
+        let (field, nodes) = field_with_nodes(4);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        bidir(&mut g, nodes[1], nodes[3]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[3]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[3]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[3]]);
+        assert_eq!(route.junction_count, 1, "node 1 (mid-route) is the only junction, finish node 3 never counts");
+    }
+
+    #[test]
+    fn finish_node_with_multiple_outgoing_edges_is_not_a_junction() {
+        // 0 -> 1 -> 2, plus 1 -> 3 (extra branch off the finish itself): finish=1. Node 1 has
+        // 2 outgoing edges besides the way back (1->2, 1->3) -- under the plain route-aware
+        // rule it would be a junction, but as the finish node it must not count, since the
+        // player has already arrived and no further choice is presented to them.
+        let (field, nodes) = field_with_nodes(4);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        bidir(&mut g, nodes[1], nodes[3]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1]]);
+        assert_eq!(route.junction_count, 0, "finish node never counts as a junction");
     }
 
     #[test]
@@ -292,7 +354,7 @@ mod tests {
         let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[4]]));
         let route = compute_route_info(&nav, &field, nodes[0], nodes[4]).unwrap();
         assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[4]], "must pick the 2-hop route over the 3-hop one");
-        assert_eq!(route.path_length, 3);
+        assert_eq!(route.path_length, 2, "3 nodes -> 2 transitions");
     }
 
     #[test]
@@ -308,7 +370,7 @@ mod tests {
         let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[3]]));
         let route = compute_route_info(&nav, &field, nodes[0], nodes[3]).unwrap();
         assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2], nodes[3]]);
-        assert_eq!(route.path_length, 4);
+        assert_eq!(route.path_length, 3, "4 nodes -> 3 transitions");
     }
 
     #[test]
@@ -413,5 +475,83 @@ mod tests {
         assert_eq!(route.teleport_count, 0);
         assert_eq!(route.vertical_bidirectional_count, 0);
         assert_eq!(route.vertical_one_way_count, 0);
+    }
+
+    fn elevator_fan(g: &mut Graph, stops: &[NodeId]) {
+        for &a in stops {
+            for &b in stops {
+                if a != b {
+                    g.add_edge(a, b, EdgeKind::Elevator);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn elevator_group_arrived_via_corridor_is_a_single_choice_not_a_junction() {
+        // 0 --corridor--> 1, elevator fan {1,2,3,4} (3 stops besides node 1). Route 0->1->2.
+        // Arriving at node 1 via the corridor, all 3 outgoing elevator edges (1->2, 1->3, 1->4)
+        // collapse into exactly 1 logical choice ("take the elevator"), not 3 -- so node 1 is
+        // NOT a junction, even though a dead-end elevator with 3+ stops would look like one
+        // under a naive per-edge count.
+        let (field, nodes) = field_with_nodes(5);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        elevator_fan(&mut g, &[nodes[1], nodes[2], nodes[3], nodes[4]]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
+        assert_eq!(route.junction_count, 0, "whole elevator group is 1 choice, not a junction");
+    }
+
+    #[test]
+    fn elevator_group_arrived_via_corridor_plus_another_corridor_is_a_junction() {
+        // Like above, but node 1 also has a second corridor exit (1 -> 5). Now node 1 has 2
+        // genuine choices: the elevator (as one option) and the other corridor -- a junction.
+        let (field, nodes) = field_with_nodes(6);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[5]);
+        elevator_fan(&mut g, &[nodes[1], nodes[2], nodes[3], nodes[4]]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
+        assert_eq!(route.junction_count, 1, "elevator (1 choice) + other corridor (1 choice) -> junction");
+    }
+
+    #[test]
+    fn elevator_group_arrived_via_elevator_grants_no_further_elevator_choice() {
+        // Elevator fan {0,1,2,3}, route starts by riding the elevator 0->1, then continues via
+        // a corridor 1->4. Arriving at node 1 via the elevator, the elevator has already been
+        // used to get here -- its remaining stops (1->2, 1->3) grant no further choice, so node
+        // 1 has exactly 1 genuine way forward (the corridor) and is not a junction, even though
+        // node 1 still has 2 outgoing elevator edges plus the corridor in the raw graph.
+        let (field, nodes) = field_with_nodes(5);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        elevator_fan(&mut g, &[nodes[0], nodes[1], nodes[2], nodes[3]]);
+        bidir(&mut g, nodes[1], nodes[4]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[4]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[4]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[4]]);
+        assert_eq!(route.junction_count, 0, "elevator already used to arrive -> no further elevator choice");
+    }
+
+    #[test]
+    fn start_node_elevator_group_is_a_single_choice() {
+        // Start node has no arrival edge to exclude, but the elevator-group folding still
+        // applies: elevator fan {0,1,2,3} plus a corridor 0->4. The elevator (3 outgoing edges)
+        // collapses into 1 choice, so the start has exactly 2 genuine choices (elevator,
+        // corridor) -- a junction, not 4.
+        let (field, nodes) = field_with_nodes(5);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        elevator_fan(&mut g, &[nodes[0], nodes[1], nodes[2], nodes[3]]);
+        bidir(&mut g, nodes[0], nodes[4]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1], nodes[4]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.junction_count, 1, "elevator (1 choice) + corridor (1 choice) at start -> junction");
     }
 }

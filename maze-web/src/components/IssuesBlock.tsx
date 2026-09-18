@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ui, typography, muted, spacing } from "../styles/theme";
+import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
@@ -406,7 +406,6 @@ export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
   const setShowFullyPresetLockedIssues = useMazeStore((s) => s.setShowFullyPresetLockedIssues);
   const sectionsExpanded = useMazeStore((s) => s.analyticsSectionsExpanded);
   const setAnalyticsSectionExpanded = useMazeStore((s) => s.setAnalyticsSectionExpanded);
-  if (issues.length === 0) return null;
   const expanded = sectionsExpanded["issues"] ?? false;
   // One bubble per contributing check, not per issue -- a merged `invalid_loop` issue can carry
   // both `min_loop_length` and `max_loop_length` at once, and each reads as a distinct, specific
@@ -427,7 +426,13 @@ export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
         * issue #245's follow-up: it used to be a bespoke header, out of step with the rest of the
         * feature card). */}
       <SectionHeader
-        label={m["analytics.issues"]()}
+        label={
+          <span
+            className={issues.length > 0 ? "problem-section-attention" : undefined}
+          >
+            {m["common.problems"]()} ({issues.length})
+          </span>
+        }
         expanded={expanded}
         onToggle={() => setAnalyticsSectionExpanded("issues", !expanded)}
       />
@@ -451,6 +456,10 @@ const issueStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.itemGap,
+    // One indent level for the section's own content, relative to its `SectionHeader` label —
+    // same shared `indent.tree` token every other feature-card section nests its body under
+    // (GitHub issue #511), not a bespoke padding just for this block.
+    paddingLeft: indent.tree,
   },
   bubble: {
     ...embeddedNotificationStyle,

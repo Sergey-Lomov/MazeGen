@@ -35,7 +35,7 @@ beforeEach(() => {
   useMazeStore.setState({
     stages: [{ id: "stage_1", name: "Waypoints", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
     rules: [{ id: "rule_1", name: "Fix endpoints", kind: "missing_endpoints", checks: [], nextLocalCheckId: 0, strategyId: "farthest_endpoints", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
-    availableChecks: [{ id: "loop_length", label: "Loop length", description: "", issue_kinds: [], params: [], allow_multiple_instances: false }],
+    availableChecks: [{ id: "loop_length", label: "Loop length", description: "", issue_kinds: [], params: [] }],
   });
 });
 

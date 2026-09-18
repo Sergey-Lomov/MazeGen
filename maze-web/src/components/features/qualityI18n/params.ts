@@ -67,21 +67,29 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.oneway_weight.label"] as MessageFn,
     description: m["param.oneway_weight.description"] as MessageFn,
   },
-  teleport_weight: {
-    label: m["param.teleport_weight.label"] as MessageFn,
-    description: m["param.teleport_weight.description"] as MessageFn,
-  },
-  split_weight: {
-    label: m["param.split_weight.label"] as MessageFn,
-    description: m["param.split_weight.description"] as MessageFn,
+  cross_floor_weight: {
+    label: m["param.cross_floor_weight.label"] as MessageFn,
+    description: m["param.cross_floor_weight.description"] as MessageFn,
   },
   vertical_passage_weight: {
     label: m["param.vertical_passage_weight.label"] as MessageFn,
     description: m["param.vertical_passage_weight.description"] as MessageFn,
   },
-  elevator_weight: {
-    label: m["param.elevator_weight.label"] as MessageFn,
-    description: m["param.elevator_weight.description"] as MessageFn,
+  split_weight: {
+    label: m["param.split_weight.label"] as MessageFn,
+    description: m["param.split_weight.description"] as MessageFn,
+  },
+  teleport_weight: {
+    label: m["param.teleport_weight.label"] as MessageFn,
+    description: m["param.teleport_weight.description"] as MessageFn,
+  },
+  elevator_stop_weight: {
+    label: m["param.elevator_stop_weight.label"] as MessageFn,
+    description: m["param.elevator_stop_weight.description"] as MessageFn,
+  },
+  min_score: {
+    label: m["param.min_score.label"] as MessageFn,
+    description: m["param.min_score.description"] as MessageFn,
   },
   invalid_overlap_weight: {
     label: m["param.invalid_overlap_weight.label"] as MessageFn,
@@ -555,6 +563,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.include_finish.label"] as MessageFn,
     description: m["param.include_finish.description"] as MessageFn,
   },
+  search_mode: {
+    label: m["param.search_mode.label"] as MessageFn,
+    description: m["param.search_mode.description"] as MessageFn,
+  },
+  exit_pick: {
+    label: m["param.exit_pick.label"] as MessageFn,
+    description: m["param.exit_pick.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -638,6 +654,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
+  "entry_pick.dead_end_priority": m["param.entry_pick.option.dead_end_priority"] as MessageFn,
+  "exit_pick.random": m["param.exit_pick.option.random"] as MessageFn,
+  "exit_pick.dead_end_priority": m["param.exit_pick.option.dead_end_priority"] as MessageFn,
   "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden"] as MessageFn,
   "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural"] as MessageFn,
   "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual"] as MessageFn,
@@ -664,6 +683,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "selection.most_connected": m["param.selection.option.most_connected"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected"] as MessageFn,
   "selection.merge": m["param.selection.option.merge"] as MessageFn,
+  "search_mode.nav_graph": m["param.search_mode.option.nav_graph"] as MessageFn,
+  "search_mode.exhaustive": m["param.search_mode.option.exhaustive"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -757,6 +778,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
+  "entry_pick.dead_end_priority": m["param.entry_pick.option.dead_end_priority.explanation"] as MessageFn,
+  "exit_pick.random": m["param.exit_pick.option.random.explanation"] as MessageFn,
+  "exit_pick.dead_end_priority": m["param.exit_pick.option.dead_end_priority.explanation"] as MessageFn,
   "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden.explanation"] as MessageFn,
   "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural.explanation"] as MessageFn,
   "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual.explanation"] as MessageFn,
@@ -772,6 +796,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "selection.most_connected": m["param.selection.option.most_connected.explanation"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected.explanation"] as MessageFn,
   "selection.merge": m["param.selection.option.merge.explanation"] as MessageFn,
+  "search_mode.nav_graph": m["param.search_mode.option.nav_graph.explanation"] as MessageFn,
+  "search_mode.exhaustive": m["param.search_mode.option.exhaustive.explanation"] as MessageFn,
 };
 
 // Per-strategy override for a shared param's label (e.g. `selection`, reused by strategies that
@@ -779,6 +805,7 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 // owning strategy's id.
 const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
+  "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
@@ -798,6 +825,7 @@ const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   // that do (`teleport_graph_distance` etc.), so the generic description can't be rewritten.
   "distance.cross_element_geometric_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
   "distance.cross_element_graph_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
+  "search_mode.missing_teleports": m["param.search_mode.missing_teleports.description"] as MessageFn,
 };
 
 export function resolveParamDescription(id: string, contextId?: string): string | undefined {
@@ -843,4 +871,3 @@ export function resolveParamOptionExplanation(paramId: string, value: string, co
 export function resolveNestedSlotDescription(slotId: string): string | undefined {
   return nestedSlotI18n[slotId]?.description();
 }
-

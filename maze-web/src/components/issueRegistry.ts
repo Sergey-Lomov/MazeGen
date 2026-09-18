@@ -72,7 +72,11 @@ export function isIssueEntirelyHidden(issue: IssueDto, showFullyPresetLockedIssu
 /// comment from the same severities) -- any new issue kind only needs an entry here to show
 /// up correctly in both places.
 const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
-  missing_endpoints: () => ({ label: m["issue.missing_endpoints.label"](), description: m["issue.missing_endpoints.description"](), severity: "warning" }),
+  // Warning label/description text is deliberately distinct from `issue.missing_endpoints.label`/
+  // `.description` -- the latter is also used as the default rule name and in check/issue picker
+  // dialogs, where "Add waypoints" reads correctly as an action; the bubble here reports a problem,
+  // not an action, so it needs its own wording (GitHub issue #538 follow-up).
+  missing_endpoints: () => ({ label: m["issue.missing_endpoints.warning_label"](), description: m["issue.missing_endpoints.warning_description"](), severity: "warning" }),
   unreachable_finish: () => ({ label: m["issue.unreachable_finish.label"](), description: m["issue.unreachable_finish.description"](), severity: "warning" }),
   missing_loops: () => ({ label: m["issue.missing_loops.label"](), description: m["issue.missing_loops.description"](), severity: "warning" }),
   invalid_loop: () => ({ label: m["issue.invalid_loop.label"](), description: m["issue.invalid_loop.description"](), severity: "warning" }),
@@ -124,6 +128,11 @@ export function resolveIssue(kind: string): IssueInfo {
 /// tell a check with nothing to render apart from one whose entry was simply forgotten, since that
 /// requires tracing `.with_detail` calls through shared check-core helpers, not a plain text scan
 /// -- is satisfied by a single explicit list rather than scattered no-op closures.
+/// `missing_endpoints` is the one exception: its `DETAIL_DESCRIPTIONS` entry below overrides the
+/// generic `resolveCheckDescription` mapped in via this list (GitHub issue #538 follow-up: the
+/// bubble's problem-report wording diverges from the check picker's action wording) -- it still
+/// belongs in this list for `DETAIL_LABELS`' sake (label has no override, `codegen --check` still
+/// needs it listed as "intentionally has nothing to render" for the check-id completeness diff).
 const NO_DETAIL_CHECKS = ["missing_endpoints", "unreachable_finish", "teleport_duplicates_connection", "split_pattern_shape"] as const;
 
 /// `max_teleport_count`/`max_teleport_density` allow multiple simultaneous instances with
@@ -308,6 +317,12 @@ export function resolveIssueSourceLabel(kind: string, typeId: string, details: R
 /// `issue.*` text instead, worded for the issue-modal context specifically.
 const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => string> = {
   ...Object.fromEntries(NO_DETAIL_CHECKS.map((id) => [id, () => resolveCheckDescription(id, "")])),
+  // Overrides the `NO_DETAIL_CHECKS` entry above: `missing_endpoints`'s check description ("Fires
+  // if...") is worded for the check picker, not the issue bubble's modal -- the bubble needs its
+  // own problem-report wording (GitHub issue #538 follow-up), same split as `KNOWN_ISSUES`'
+  // `missing_endpoints` entry uses `warning_label`/`warning_description` instead of `label`/
+  // `description`.
+  missing_endpoints: () => resolveIssue("missing_endpoints").description,
   teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
   teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
   teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),

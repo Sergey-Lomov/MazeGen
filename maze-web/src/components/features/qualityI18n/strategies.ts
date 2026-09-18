@@ -73,6 +73,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.remove_teleport.label"] as MessageFn,
     description: m["strategy.remove_teleport.description"] as MessageFn,
   },
+  add_teleport: {
+    label: m["strategy.add_teleport.label"] as MessageFn,
+    description: m["strategy.add_teleport.description"] as MessageFn,
+  },
   teleport_group_select: {
     label: m["strategy.teleport_group_select.label"] as MessageFn,
     description: m["strategy.teleport_group_select.description"] as MessageFn,

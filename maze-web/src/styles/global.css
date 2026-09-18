@@ -206,6 +206,12 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #ff3535;
 }
 
+/* Problem headers stay in the layout even while their content is collapsed. Amber text makes a
+   newly reported problem visible without relying on the counter alone. */
+.problem-section-attention {
+  color: #ffaa44;
+}
+
 /* Rectangular text-label button variants (`buttonStyle()`/`shared.ts`, GitHub issue #329).
    Colors live entirely here, not as an inline `style.background`/`border`/`color` from
    `buttonStyle()` — an inline value always outranks a CSS class regardless of selector

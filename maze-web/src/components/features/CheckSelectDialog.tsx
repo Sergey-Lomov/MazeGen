@@ -7,7 +7,6 @@ import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveP
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
-import { isTypeAlreadyActive } from "../../store/slices/generationSlice";
 
 interface Props {
   /** Issue kind chosen in step 1 (IssueSelectDialog) — only checks of this kind are listed. */
@@ -35,16 +34,14 @@ function defaultValue(p: ParamDescriptor): string {
 
 export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const allChecks = useMazeStore((s) => s.availableChecks);
-  const rules = useMazeStore((s) => s.rules);
   const floorCount = useMazeStore((s) => s.floors.length);
 
   const availableChecks = allChecks
     .filter((c) => c.issue_kinds[0] === kind)
     .filter((c) => isEntityVisible(c.visibility, floorCount));
-  // A type without `allow_multiple_instances` (every check, currently — see GitHub issue #60,
+  // A type without `multiple instances` (every check, currently — see GitHub issue #60,
   // retired) can't be picked here if it's already active in some existing rule — adding it
   // anyway would be silently rejected by `createRule`.
-  const isAlreadyActive = (id: string) => isTypeAlreadyActive(rules, id);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
   // Param edits made in this dialog before the check is actually added — keyed by check id so
@@ -70,7 +67,6 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const items = availableChecks.map((c) => ({
     id: c.id,
     label: resolveCheckLabel(c.id, c.label),
-    disabled: !c.allow_multiple_instances && isAlreadyActive(c.id),
   }));
 
   const rightPanel = selectedCheck ? (
@@ -78,9 +74,6 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
       <div style={styles.description}>
         {resolveCheckDescription(selectedCheck.id, selectedCheck.description)}
       </div>
-      {!selectedCheck.allow_multiple_instances && isAlreadyActive(selectedCheck.id) && (
-        <div style={styles.alreadyActive}>{m["check.already_active"]()}</div>
-      )}
       {selectedCheck.params.length > 0 && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
@@ -97,7 +90,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
     <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
 
-  const canProceed = !!selectedId && !(selectedCheck && !selectedCheck.allow_multiple_instances && isAlreadyActive(selectedCheck.id));
+  const canProceed = !!selectedId;
 
   const footer = (
     <>

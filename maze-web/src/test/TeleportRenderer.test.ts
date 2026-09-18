@@ -20,8 +20,8 @@ vi.mock("../wasm/wasmLoader", () => ({
 
 // Fake `Graphics`/`Container` (same minimal pattern as `WallRenderer.test.ts`) recording every draw
 // call in order, so the gaps-then-connectors-then-points draw order (GitHub issue #302) is
-// verifiable without a real pixi renderer. `circle` is needed since `drawMarkerShape`'s default
-// `"circle"` shape (this test's own style) calls `g.circle(...)` directly, not `g.poly(...)`.
+// verifiable without a real pixi renderer. `poly` is needed because `drawMarkerShape` represents
+// even its `"circle"` shape as an adaptive polygon to avoid raster seams.
 vi.mock("pixi.js", () => {
   class FakeGraphics {
     calls: { fn: string; args: unknown[] }[] = [];
@@ -316,20 +316,21 @@ describe("TeleportRenderer.render draw order", () => {
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
     // `drawGroupGaps` draws both points' gap rings first, then `drawGroupPoints` draws both points'
-    // fill pass and border pass: polygon(gapA), polygon(gapB), polygon(fillA), polygon(fillB),
-    // polygon(borderA), polygon(borderB).
-    const circleCalls = g.calls.filter((c) => c.fn === "poly");
+    // fill pass and border pass. `drawMarkerUnderlay` and `drawMarker` each draw their shape twice
+    // (once for fill, once for the outward stroke): 2 gap points x 2 + 2 marker points x 2 = 8.
+    const polyCalls = g.calls.filter((c) => c.fn === "poly");
     const fillCalls = g.calls.filter((c) => c.fn === "fill");
-    // 2 gap rings + 2 markers (fill pass) + 2 markers (border pass) = 6 polygon calls total.
-    expect(circleCalls).toHaveLength(6);
-    // The gap ring's own radius (size*TILE_SIZE + borderWidth + edgeGapWidth) must exceed the plain
-    // marker radius (size*TILE_SIZE) — the first two circle calls (the gap rings) must be larger
-    // than the next two (the markers' own fill-pass radius).
-    const gapRadius = Math.hypot(...(circleCalls[0].args[0] as number[]).slice(0, 2));
-    const markerRadius = Math.hypot(...(circleCalls[2].args[0] as number[]).slice(0, 2));
-    expect(gapRadius).toBeGreaterThan(markerRadius);
+    expect(polyCalls).toHaveLength(8);
+    // The gap underlay and marker use the same base path; the gap's extra size is in its outward
+    // stroke, not in a second polygon drawn at a larger radius.
+    const polygonRadius = (call: { args: unknown[] }, cx: number, cy: number): number => {
+      const points = call.args[0] as number[];
+      return Math.max(...Array.from({ length: points.length / 2 }, (_, i) =>
+        Math.hypot(points[i * 2] - cx, points[i * 2 + 1] - cy)));
+    };
+    expect(polygonRadius(polyCalls[0], 0, 0)).toBeCloseTo(polygonRadius(polyCalls[4], 0, 0));
     // First fill call is the gap ring's own floor-colored fill, before any marker fill.
-    expect(fillCalls[0].args[0]).toBe(0x444);
+    expect((fillCalls[0].args[0] as { color: number }).color).toBe(0x444);
   });
 
   it("skips the gap ring entirely when edgeGapWidth is 0 (no-op, not a zero-radius circle)", () => {
@@ -351,18 +352,19 @@ describe("TeleportRenderer.render draw order", () => {
     renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
-    // Each group draws gap(x2) + marker(x2 circle calls x2 points) = 6 circle calls; two independent
-    // groups (no shared points) = 12 total, in two contiguous group-sized blocks.
-    const circleCalls = g.calls.filter((c) => c.fn === "poly");
-    expect(circleCalls).toHaveLength(12);
+    // Each group draws gap(x2 points x2 poly calls each) + marker(x2 poly calls x2 points) = 8
+    // polygon calls; two independent groups (no shared points) = 16 total, in two contiguous
+    // group-sized blocks.
+    const polyCalls = g.calls.filter((c) => c.fn === "poly");
+    expect(polyCalls).toHaveLength(16);
     const centerX = (call: { args: unknown[] }): number => {
       const points = call.args[0] as number[];
       let sum = 0;
       for (let i = 0; i < points.length; i += 2) sum += points[i];
       return sum / (points.length / 2);
     };
-    const firstGroupXs = circleCalls.slice(0, 6).map(centerX);
-    const secondGroupXs = circleCalls.slice(6, 12).map(centerX);
+    const firstGroupXs = polyCalls.slice(0, 8).map(centerX);
+    const secondGroupXs = polyCalls.slice(8, 16).map(centerX);
     expect(firstGroupXs).toEqual(expect.arrayContaining([expect.closeTo(0, 8), expect.closeTo(10, 8)]));
     expect(secondGroupXs).toEqual(expect.arrayContaining([expect.closeTo(50, 8), expect.closeTo(60, 8)]));
   });
@@ -586,16 +588,19 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const thick = new TeleportRenderer(new Container());
     thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 8 }) });
     // `connectorStyle: "straight"` (needed so the cross-floor badge draws at all, GitHub issue
-    // #519) also strokes the connector line itself at `connectorWidth` (3) — excluded here since
-    // this test only cares about the marker/badge border strokes.
-    const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>) => {
+    // #519) also strokes the connector line itself at `connectorWidth` (3), and the badge's own gap
+    // ring always draws an outward-offset stroke of width `borderWidth + max(edgeGapWidth, 1)`
+    // (`drawMarkerUnderlay`, GitHub issue #552 second, eighth and ninth follow-up) — both excluded
+    // here (by their own known widths, `borderWidth + 1`) since this test only cares about the
+    // marker/badge border strokes, which are the only strokes left at exactly `borderWidth`.
+    const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>, borderWidth: number) => {
       const g = (r as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
-      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3);
+      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3 && w !== borderWidth + 1);
     };
     // Both the origin marker and the badge stroke at the edge marker's own borderWidth.
-    expect(strokeWidthsOf(thin).every((w) => w === 1)).toBe(true);
-    expect(strokeWidthsOf(thick).every((w) => w === 8)).toBe(true);
-    expect(strokeWidthsOf(thick).length).toBeGreaterThanOrEqual(1);
+    expect(strokeWidthsOf(thin, 1).every((w) => w === 1)).toBe(true);
+    expect(strokeWidthsOf(thick, 8).every((w) => w === 8)).toBe(true);
+    expect(strokeWidthsOf(thick, 8).length).toBeGreaterThanOrEqual(1);
   });
 
   // GitHub issue #485 follow-up item 3: textPadding 0 fits the label to the whole badge including

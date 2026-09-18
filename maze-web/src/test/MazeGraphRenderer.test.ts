@@ -126,8 +126,10 @@ describe("MazeGraphRenderer — cross-floor badges for vertical edges (GitHub is
     const graphics = allDescendants(container as never).filter(
       (c): c is { calls: { fn: string }[] } => c instanceof FakeGraphics,
     );
-    const hasStubLine = graphics.some((g) => g.calls.some((k) => k.fn === "lineTo"));
-    const hasArrow = graphics.some((g) => g.calls.some((k) => k.fn === "poly"));
+    const stubGraphics = graphics.find((g) => g.calls.some((k) => k.fn === "lineTo"));
+    expect(stubGraphics).toBeDefined();
+    const hasStubLine = stubGraphics!.calls.some((k) => k.fn === "lineTo");
+    const hasArrow = stubGraphics!.calls.some((k) => k.fn === "poly");
     expect(hasStubLine).toBe(true);
     expect(hasArrow).toBe(false);
   });

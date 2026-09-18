@@ -128,7 +128,7 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
         StrategyDescriptor {
             id: "scored_endpoints",
             handles: MISSING_ENDPOINTS.as_str(),
-            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy), &[("vertical_passage_weight", EntityVisibility::MultiFloorOnly), ("elevator_weight", EntityVisibility::MultiFloorOnly)]),
+            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy), &[("cross_floor_weight", EntityVisibility::MultiFloorOnly), ("elevator_stop_weight", EntityVisibility::MultiFloorOnly)]),
             experimental: <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::is_experimental(&ScoredEndpointsStrategy),
             nested_suppressed_params: <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::nested_suppressed_params(&ScoredEndpointsStrategy),
             nested_slots: vec![],
@@ -591,15 +591,15 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
 mod tests {
     use super::*;
 
-    // GitHub issue #349: `scored_endpoints`'s vertical_passage_weight/elevator_weight are
-    // meaningless on a single-floor maze, so the web UI hides them via this tag — pins the
-    // wiring between the strategy's own param ids and the visibility override list, since a
-    // typo in either id would silently leave the param always-visible with no compiler signal.
+    // GitHub issue #349: `scored_endpoints`'s cross_floor_weight/elevator_stop_weight are
+    // meaningless on a single-floor maze, so the web UI hides them via this tag — pins the wiring
+    // between the strategy's own param ids and the visibility override list, since a typo in
+    // either id would silently leave the param always-visible with no compiler signal.
     #[test]
     fn scored_endpoints_marks_floor_weights_multi_floor_only() {
         let strategies = available_strategies_list();
         let scored = strategies.iter().find(|s| s.id == "scored_endpoints").unwrap();
-        for id in ["vertical_passage_weight", "elevator_weight"] {
+        for id in ["cross_floor_weight", "elevator_stop_weight"] {
             let param = scored.params.iter().find(|p| p.id == id).unwrap();
             assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
         }
@@ -621,7 +621,7 @@ mod tests {
     fn every_other_param_is_always_visible() {
         for strategy in available_strategies_list() {
             for param in strategy.params {
-                if strategy.id == "scored_endpoints" && (param.id == "vertical_passage_weight" || param.id == "elevator_weight") {
+                if strategy.id == "scored_endpoints" && (param.id == "cross_floor_weight" || param.id == "elevator_stop_weight") {
                     continue;
                 }
                 if strategy.id == "missing_teleports" && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance") {
