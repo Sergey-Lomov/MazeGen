@@ -387,7 +387,7 @@ Both sets are merged when rendering (`buildLocks`) and when checking for isolate
 
 `markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0)`. `presetGenSource` is not counted here.
 
-Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where `N = presetConnections.size + markerCount + presetTeleports.length + presetVerticalPassages.length + presetElevators.length`. The invalid count `M` combines invalid edge presets, invalid teleports, invalid vertical passages/elevators, and invalid start/finish markers (`computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + computeInvalidVerticalPassageIds(...).size + computeInvalidElevatorIds(...).size + invalidMarkerCount`); "Clear invalid" removes all these kinds together.
+Subtitle: `"N preset(s)"` where `N = presetConnections.size + markerCount + presetTeleports.length + presetVerticalPassages.length + presetElevators.length`. Invalid presets are reported in the Problems subsection and remain reflected in the feature-card warning status; they are not repeated in the subtitle. "Clear invalid" removes all invalid edge presets, teleports, vertical passages/elevators, markers, locks, and split points together.
 
 ## Rendering (`PresetConnectionsRenderer`)
 
@@ -502,6 +502,8 @@ The wire payload already carries the slot: `buildGenerateConfig` sends `preset_g
 The status-bar cell inspector already reports a `Gen source` line per node (`buildPresetNodeMarkerLines`, matched by exact `PresetEndpoint` equality), so a split point whose slot 1 carries the source shows `[Node 2: Gen source]` and its other nodes stay unmarked.
 
 **Orphan slots are not auto-removed.** A declared slot with nothing referencing it is created anyway at generation time (see "Applying split points" below) and surfaces as a dedicated warning in the Preset Connections panel (`orphanSplitCount`, same `warningBubble` style as the isolated-nodes warning) — informational only, does not block generation.
+
+The Preset Connections panel always renders its Problems subsection header, even when there are no isolated nodes or orphan split points. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump.
 
 ### Rendering
 

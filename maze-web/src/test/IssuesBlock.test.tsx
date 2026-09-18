@@ -6,9 +6,10 @@ import type { IssueDto } from "../wasm/types";
 import { invalidLoopIssue, regionNeedsExpansionIssue, excessiveSccCountIssue, missingEndpointsIssue } from "./issuesBlockFixtures";
 
 describe("IssuesBlock", () => {
-  it("renders nothing for an empty issues list", () => {
+  it("keeps the problems section visible for an empty issues list", () => {
     const { container } = render(<IssuesBlock issues={[]} />);
-    expect(container).toBeEmptyDOMElement();
+    expect(container).toHaveTextContent("Problems (0)");
+    expect(container.querySelector(".problem-section-attention")).not.toBeInTheDocument();
   });
 
   it("renders one bubble per contributing check for a merged issue, not one per issue", () => {
@@ -19,7 +20,9 @@ describe("IssuesBlock", () => {
       source_check_types: { min_loop_length: "min_loop_length", max_loop_length: "max_loop_length" },
       details: {},
     };
-    render(<IssuesBlock issues={[issue]} />);
+    const { container } = render(<IssuesBlock issues={[issue]} />);
+    fireEvent.click(screen.getByText("Problems (1)"));
+    expect(container.querySelector(".problem-section-attention")).toBeInTheDocument();
 
     // Two distinct source checks on one issue -> two independently-hoverable bubbles, each
     // isolated to its own check's edges (not both checks' edges combined into one bubble).
@@ -166,22 +169,27 @@ describe("IssuesBlock", () => {
 
   it("collapsing the Issues section hides its bubbles; the section header itself stays visible", () => {
     const issue = invalidLoopIssue("loop_length");
+    useMazeStore.getState().setAnalyticsSectionExpanded("issues", false);
     render(<IssuesBlock issues={[issue]} />);
+    expect(screen.getByText("Problems (1)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Problems (1)"));
     expect(screen.getByText("Loop validation")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText("Issues"));
+    fireEvent.click(screen.getByText("Problems (1)"));
     expect(screen.queryByText("Loop validation")).not.toBeInTheDocument();
-    expect(screen.getByText("Issues")).toBeInTheDocument();
+    expect(screen.getByText("Problems (1)")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Issues"));
+    fireEvent.click(screen.getByText("Problems (1)"));
     expect(screen.getByText("Loop validation")).toBeInTheDocument();
   });
 
   it("the preset-caused toggle switch flips showFullyPresetLockedIssues", () => {
     const issue = invalidLoopIssue("loop_length");
+    useMazeStore.getState().setAnalyticsSectionExpanded("issues", false);
     render(<IssuesBlock issues={[issue]} />);
     expect(useMazeStore.getState().showFullyPresetLockedIssues).toBe(true);
 
+    fireEvent.click(screen.getByText("Problems (1)"));
     fireEvent.click(screen.getByRole("checkbox"));
     expect(useMazeStore.getState().showFullyPresetLockedIssues).toBe(false);
 

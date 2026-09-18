@@ -38,7 +38,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetActiveSplitNode: {},
   presetFocusedPoint: null,
   presetHoveredLink: null,
-  presetSectionsExpanded: { problems: true },
+  presetSectionsExpanded: { problems: false },
   presetSplitTargetPrompt: null,
 
   setPresetConnectionsTool: (tool) => set({

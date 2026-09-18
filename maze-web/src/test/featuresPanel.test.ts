@@ -137,9 +137,9 @@ describe("presetConnectionsSubtitle", () => {
     expect(presetConnectionsSubtitle(new Map(), 0, 0)).toBeTruthy();
   });
 
-  it("includes invalid count marker when invalidCount > 0", () => {
-    const subtitle = presetConnectionsSubtitle(new Map([["a", 1]]), 1, 0);
-    expect(subtitle).toContain("·");
+  it("does not append invalid count to the subtitle", () => {
+    const subtitle = presetConnectionsSubtitle(new Map([["a", 1]]), 0);
+    expect(subtitle).toBe(m["preset.subtitle_count"]({ count: 1 }));
   });
 
   it("counts presets plus markers", () => {
@@ -148,8 +148,8 @@ describe("presetConnectionsSubtitle", () => {
   });
 
   it("counts teleports toward the total when provided", () => {
-    const withTeleports = presetConnectionsSubtitle(new Map(), 0, 0, 2);
-    const without = presetConnectionsSubtitle(new Map(), 0, 0, 0);
+    const withTeleports = presetConnectionsSubtitle(new Map(), 0, 2);
+    const without = presetConnectionsSubtitle(new Map(), 0, 0);
     expect(withTeleports).not.toBe(without);
   });
 });
