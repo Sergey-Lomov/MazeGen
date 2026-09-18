@@ -10,7 +10,7 @@ import {
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpointToDto } from "../../pixi/presetEndpoint";
 import {
-  type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
+  type PostEditEndpoint, type PostEditHoveredEntity, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
   edgeKey, resolvePostEditPartnerAt,
 } from "../../pixi/postEditEndpoint";
 import { cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -70,7 +70,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _nextSplitSlotId: {},
   postEditActiveSplitNode: {},
   postEditFocusedPoint: null,
-  postEditHoveredLink: null,
+  postEditHoveredEntity: null,
   postEditEdges: null,
   postEditTeleportEdges: [],
   postEditMeta: null,
@@ -678,7 +678,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point, postEditChangesOpen: point !== null ? false : get().postEditChangesOpen }),
-  setPostEditHoveredLink: (link) => set({ postEditHoveredLink: link }),
+  setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => set({ postEditHoveredEntity: entity }),
 
   rotateSplitPoint: (point, direction) => {
     const state = get();

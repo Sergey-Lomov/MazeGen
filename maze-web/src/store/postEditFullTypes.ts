@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import type { PostEditEndpoint, PostEditHoveredEntity } from "../pixi/postEditEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditCommand } from "./postEditCommandTypes";
 import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
@@ -157,11 +157,13 @@ export interface PostEditState {
   _generatedEdges: EdgeDto[];
   /** True after any manual post-edit change since the last generate/reset. */
   postEditDirty: boolean;
-  /** The link (edge/teleport) currently hovered in the "Manage split nodes" panel's link bubbles
-   *  (GitHub issue #237) — `null` when nothing is hovered. Drives a canvas highlight the same way
-   *  `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel instead of
-   *  the cursor. */
-  postEditHoveredLink: { from: PostEditEndpoint; to: PostEditEndpoint } | null;
+  /** The entity currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue
+   *  #237) or the "Changes" panel's entity bubbles (GitHub issue #546) — `null` when nothing is
+   *  hovered. Drives a canvas highlight the same way `EdgeHighlightRenderer`'s pointermove-driven
+   *  hover does, but sourced from a panel instead of the cursor. Supersedes the old
+   *  `postEditHoveredLink` (a `from`/`to` pair only) — see `PostEditHoveredEntity`'s doc comment
+   *  for why a "Changes" row needs the wider point/link/points union. */
+  postEditHoveredEntity: PostEditHoveredEntity | null;
   /** User-editable vertical passages (GitHub issue #341) — mirrors `presetVerticalPassages`, own
    * flat collection since `PostEditVerticalPassageEntry`'s endpoints live on different floors, not
    * folded into `postEditDraftEdges`. */
@@ -271,7 +273,7 @@ export interface PostEditActions {
   cycleActiveSplitNode: (point: [number, number]) => void;
   setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
-  setPostEditHoveredLink: (link: { from: PostEditEndpoint; to: PostEditEndpoint } | null) => void;
+  setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotateSplitPointMoves` (postEditUtils.ts). No-op if it would
    * push any connection outside the field. */

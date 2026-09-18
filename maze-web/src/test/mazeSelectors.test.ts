@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
-import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
+import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
 import { getCellCenter, getCellVertices, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
@@ -1377,52 +1377,81 @@ describe("buildMazeMarkers", () => {
   });
 });
 
-// --- buildLinkHoverHighlight ---
+// --- buildHoveredEntityHighlight ---
 
-describe("buildLinkHoverHighlight", () => {
-  const noSplitsResolver = () => undefined;
-
-  it("null link produces no highlight", () => {
+describe("buildHoveredEntityHighlight", () => {
+  it("null entity produces no highlight", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
-    expect(buildLinkHoverHighlight(null, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+    expect(buildHoveredEntityHighlight(null, nodes, 0, squareCfg)).toEqual({ link: [], regionGroups: [] });
   });
 
-  it("resolves both plain-node endpoints to their cell centers", () => {
-    const nodes = [n(0, 0, 0), n(1, 2, 0)];
-    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) };
-    const result = buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg);
-    expect(result).toHaveLength(1);
-    expect(result[0].from).not.toEqual(result[0].to);
+  it("resolves a link entity's two points to their cell centers", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 2)];
+    const entity: PostEditHoveredEntity = { kind: "link", from: { point: [0, 0] }, to: { point: [1, 2] } };
+    const result = buildHoveredEntityHighlight(entity, nodes, 0, squareCfg);
+    expect(result.link).toHaveLength(1);
+    expect(result.link[0].from).not.toEqual(result.link[0].to);
+    expect(result.regionGroups).toEqual([]);
   });
 
-  it("returns no highlight when the from endpoint doesn't resolve to a node id", () => {
-    const nodes = [n(1, 1, 0)];
-    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) }; // node 0 missing from resolver output too
-    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+  it("returns no highlight when neither link point resolves on this floor", () => {
+    const nodes = [n(1, 9, 9)]; // neither (0,0) nor (1,1) present at any coordinate
+    const entity: PostEditHoveredEntity = { kind: "link", from: { point: [0, 0] }, to: { point: [1, 1] } };
+    expect(buildHoveredEntityHighlight(entity, nodes, 0, squareCfg)).toEqual({ link: [], regionGroups: [] });
   });
 
-  it("returns no highlight for an unresolved split endpoint (not yet confirmed)", () => {
+  it("cross-floor link solo-highlights only the endpoint on the active floor, not the other floor's", () => {
+    // (3,2) on floor 0 is the `from` endpoint, (3,2) on floor 1 is the `to` endpoint — a vertical
+    // passage/elevator-style shared coordinate, differing only in level.
+    const nodes = [
+      { id: 0, x: 3, y: 2, i: 0 } as NodeDto,
+      { id: 1, x: 3, y: 2, i: 0, level: 1 } as NodeDto,
+    ];
+    const entity: PostEditHoveredEntity = { kind: "link", from: { point: [3, 2] }, to: { point: [3, 2], level: 1 } };
+
+    const onFloor0 = buildHoveredEntityHighlight(entity, nodes, 0, squareCfg);
+    expect(onFloor0.link).toEqual([]);
+    expect(onFloor0.regionGroups).toEqual([[nodes[0].id]]);
+
+    const onFloor1 = buildHoveredEntityHighlight(entity, nodes, 1, squareCfg);
+    expect(onFloor1.link).toEqual([]);
+    expect(onFloor1.regionGroups).toEqual([[nodes[1].id]]);
+  });
+
+  it("resolves a point entity to a one-element region group", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 1)];
+    const entity: PostEditHoveredEntity = { kind: "point", point: [1, 1] };
+    const result = buildHoveredEntityHighlight(entity, nodes, 0, squareCfg);
+    expect(result.link).toEqual([]);
+    expect(result.regionGroups).toEqual([[nodes[1].id]]);
+  });
+
+  it("resolves a points entity to a single multi-node region group", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 1), n(2, 0, 0)];
+    const entity: PostEditHoveredEntity = { kind: "points", points: [{ point: [0, 0] }, { point: [1, 1] }] };
+    const result = buildHoveredEntityHighlight(entity, nodes, 0, squareCfg);
+    expect(result.link).toEqual([]);
+    expect(result.regionGroups).toEqual([[nodes[0].id, nodes[1].id]]);
+  });
+
+  it("returns no region group when no point in a points entity is on this floor", () => {
     const nodes = [n(0, 0, 0)];
-    const link = { from: nodeEndpoint(0), to: splitEndpoint([1, 0], 0) };
-    // noSplitsResolver always returns undefined -> the split endpoint never resolves.
-    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+    const entity: PostEditHoveredEntity = { kind: "points", points: [{ point: [5, 5] }] };
+    expect(buildHoveredEntityHighlight(entity, nodes, 0, squareCfg)).toEqual({ link: [], regionGroups: [] });
   });
 
-  it("returns no highlight when a resolved id isn't present in the nodes snapshot", () => {
-    const nodes = [n(0, 0, 0)]; // node 1 missing
-    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) };
-    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
-  });
-
-  it("resolves a split endpoint via the resolver to its own hub point", () => {
-    // Point (0,0) split into node 0 (original) and node 2 (slot 0).
-    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
-    const resolveSplit = (point: [number, number], slotId: number) =>
-      point[0] === 0 && point[1] === 0 && slotId === 0 ? 2 : undefined;
-    const link = { from: nodeEndpoint(1), to: splitEndpoint([0, 0], 0) };
-    const result = buildLinkHoverHighlight(link, nodes, resolveSplit, squareCfg);
-    expect(result).toHaveLength(1);
-    expect(result[0].from).not.toEqual(result[0].to);
+  it("elevator-style points entity (all floors share one x,y) only highlights the active floor's own node", () => {
+    const nodes = [
+      { id: 0, x: 2, y: 2, i: 0 } as NodeDto,
+      { id: 1, x: 2, y: 2, i: 0, level: 1 } as NodeDto,
+      { id: 2, x: 2, y: 2, i: 0, level: 2 } as NodeDto,
+    ];
+    const entity: PostEditHoveredEntity = {
+      kind: "points",
+      points: [{ point: [2, 2] }, { point: [2, 2], level: 1 }, { point: [2, 2], level: 2 }],
+    };
+    const onFloor1 = buildHoveredEntityHighlight(entity, nodes, 1, squareCfg);
+    expect(onFloor1.regionGroups).toEqual([[nodes[1].id]]);
   });
 });
 

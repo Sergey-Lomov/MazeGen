@@ -10,13 +10,15 @@ import { drawTeleportPreview } from "./renderers/teleportPreviewGlyph";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
+import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildHoveredEntityHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
+import { WALL_THICKNESS } from "./renderConstants";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
@@ -42,6 +44,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly teleportPreviewContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly linkHoverContainer: Container;
+  private readonly entityHighlightContainer: Container;
   private readonly issueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
@@ -55,14 +58,18 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
   private readonly splitJunctions: SplitJunctionRenderer;
-  /** Highlights the link a "Manage split nodes" panel bubble is currently hovered (GitHub issue
-   *  #237) — driven by `postEditHoveredLink`, a separate layer/container from `hover` (that one
-   *  is driven by canvas pointermove instead, via `updateHover`) so the two never fight over the
-   *  same `Graphics` object. Same `NodeEdgeHighlightRenderer` primitive `DebugRefHighlightOverlay`
-   *  uses for its edge-ref highlight — a straight line + circle markers on each end, node center
-   *  to node center, not the shared geometric wall segment (a link bubble names a specific pair of
-   *  *nodes*, and a teleport link has no shared face at all to draw on). */
+  /** Highlights the entity a "Manage split nodes" or "Changes" panel bubble is currently hovered
+   *  (GitHub issues #237/#546) — driven by `postEditHoveredEntity`, a separate layer/container
+   *  from `hover` (that one is driven by canvas pointermove instead, via `updateHover`) so the two
+   *  never fight over the same `Graphics` object. `linkHover` draws a `link`-kind entity (straight
+   *  line + circle markers on each end, node center to node center — same `NodeEdgeHighlightRenderer`
+   *  primitive `DebugRefHighlightOverlay` uses for its edge-ref highlight, since a teleport link has
+   *  no shared face at all to draw on); `entityHighlight` draws a `point`/`points`-kind entity as a
+   *  cell fill (`RegionHighlightRenderer`, same primitive `DebugRefHighlightOverlay` uses for a
+   *  `node` ref, treating a single point as a one-element region). Exactly one of the two ever has
+   *  content at a time. */
   private readonly linkHover: NodeEdgeHighlightRenderer;
+  private readonly entityHighlight: RegionHighlightRenderer;
   /** Highlights a hovered `IssueBubble`'s flagged cells/edges/regions in the post-edit canvas —
    *  own instance, not shared with `AnalyticsRenderer`'s (feature-renderer ownership rule,
    *  `maze-web/CLAUDE.md`). `IssuesBlock`/`IssueBubble` drive both from the same store fields
@@ -99,6 +106,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.teleportPreviewContainer);
     this.linkHoverContainer = new Container();
     this.root.addChild(this.linkHoverContainer);
+    this.entityHighlightContainer = new Container();
+    this.root.addChild(this.entityHighlightContainer);
     this.issueHighlightContainer = new Container();
     this.root.addChild(this.issueHighlightContainer);
 
@@ -115,6 +124,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover   = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
+    this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
     this.issueHighlight = new IssueHighlightOverlay(this.issueHighlightContainer);
 
     this.root.visible = false;
@@ -185,8 +195,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditTool !== prev.postEditTool
     ) {
       this.redrawAll(state);
-    } else if (state.postEditHoveredLink !== prev.postEditHoveredLink) {
-      this.redrawLinkHover(state);
+    } else if (state.postEditHoveredEntity !== prev.postEditHoveredEntity) {
+      this.redrawHoveredEntity(state);
     }
 
     if (
@@ -327,18 +337,26 @@ export class PostEditRenderer extends BaseFieldRenderer {
     });
   }
 
-  private redrawLinkHover(state: MazeState): void {
+  /** Matches against the *unscoped* `state.nodes`, not `floorScoped(state).nodes` — a cross-floor
+   *  link/points entity (a vertical passage/elevator/teleport, GitHub issue #546 follow-up) has
+   *  endpoints on different floors, and a floor-scoped list only ever contains the active floor's
+   *  own nodes, so the other endpoint could never be found there regardless of the fallback
+   *  `buildLinkHoverHighlight`/`resolvePointGroup` provide for "this endpoint isn't on this floor".
+   *  Safe to match unscoped: `pointMatchesNode` already checks each point's own `level` against the
+   *  candidate node's `level` explicitly, so a match is never on the wrong floor even though the
+   *  candidate list itself now spans every floor. `activeFloorLevel(state) ?? 0` (0-based, matching
+   *  `NodeDto.level`'s own "undefined = floor 0" convention) then gates what actually draws: without
+   *  it, a vertical passage/elevator (whose endpoints share one `(x, y)`, differing only in level)
+   *  would resolve on every one of its floors at once and draw on top of each other regardless of
+   *  which floor is active (GitHub issue #546 follow-up: "не подсвечиваем пустое место"). */
+  private redrawHoveredEntity(state: MazeState): void {
     if (!this.cfg) return;
-    const { nodes, postEditDraftSplitPoints } = this.floorScoped(state);
-    const pointNodeMap = new Map<string, number[]>();
-    for (const nd of nodes) {
-      const k = `${nd.x},${nd.y}`;
-      const list = pointNodeMap.get(k);
-      if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
-    }
-    const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
-    const highlights = buildLinkHoverHighlight(state.postEditHoveredLink, nodes, resolveSplit, this.cfg);
-    this.linkHover.render(highlights);
+    const activeLevel = activeFloorLevel(state) ?? 0;
+    const { link, regionGroups } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg);
+    this.linkHover.render(link);
+    this.entityHighlight.render({
+      nodes: state.nodes, regionGroups, color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
+    });
   }
 
   protected redrawAll(state: MazeState): void {
@@ -500,7 +518,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
-    this.redrawLinkHover(state);
+    this.redrawHoveredEntity(state);
     this.redrawIssueHighlight(state);
   }
 
@@ -518,6 +536,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.linkHover.clear();
+    this.entityHighlight.clear();
     this.issueHighlight.clear();
     this.teleportPreview.clear();
   }
@@ -534,6 +553,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.destroy();
     this.cellHover.destroy();
     this.linkHover.destroy();
+    this.entityHighlight.destroy();
     this.issueHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
@@ -548,6 +568,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
+    this.entityHighlightContainer.destroy();
     this.issueHighlightContainer.destroy();
   }
 }

@@ -211,7 +211,7 @@ directly.
 | `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. Ephemeral UI state, not in the log. |
 | `postEditFocusedPoint` | `[number, number] \| null` | The point currently selected for the "Manage split nodes" panel. |
 | `postEditSplitTargetPrompt` | `{ point; level?; nodeIds: number[]; action } \| null` | In-progress "which split node?" prompt (GitHub issue #474) — see "Split-target prompt" below. `null` when no prompt is open. Not persisted. |
-| `postEditHoveredLink` | `{ from: PostEditEndpoint; to: PostEditEndpoint } \| null` | The link currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue #237) — drives a canvas highlight, `null` when nothing is hovered. Ephemeral UI state, not persisted; cleared on panel close. |
+| `postEditHoveredEntity` | `PostEditHoveredEntity \| null` | The entity currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue #237) or the "Changes" panel's entity bubbles (GitHub issue #546) — drives a canvas highlight via `PostEditRenderer`'s `linkHover`/`entityHighlight`, `null` when nothing is hovered. A `point`/`points`/`link` union addressed by raw `[x,y]`+`level` (`PostEditHoverPoint`), not `PostEditEndpoint` — see `pixi/postEditEndpoint.ts`'s doc comment for why. Ephemeral UI state, not persisted; cleared on panel close. Supersedes the old `postEditHoveredLink` (a bare `from`/`to` `PostEditEndpoint` pair). |
 | `postEditVerticalPassagePending` / `postEditElevatorPending` | ... | In-progress vertical-passage/elevator placement state — ephemeral, not in the log. |
 | `postEditEdges` | `Record<string, PostEditEdge> \| null` | Snapshot of `postEditDraftEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
@@ -224,26 +224,87 @@ directly.
 | `_postEditRequestId` | `number` | Versioning for stale async `confirmPostEdit` results; bumped by both `appendPostEditCommand`/`replacePostEditCommands` themselves, not only by an explicit `confirmPostEdit` call. |
 | `postEditDirty` | `boolean` | True after any manual post-edit change since the last generate/reset. |
 
-### Changes Panel (GitHub issue #545, `pixi/postEditCommandLabels.ts`)
+### Changes Panel (GitHub issue #545, bubbles + hover highlight added by #546, `pixi/postEditCommandLabels.ts`)
 
 Renders `postEditCommands` as a human-readable list — one row per command, each formatted by
-`postEditCommandLabel(command, nodeById)` into `{ action, entity }` strings. `nodeById` is built
-from the confirmed node snapshot (`buildNodeByIdMap`); an endpoint that doesn't resolve yet (an
-unconfirmed split node) falls back to `"?"` rather than throwing. Entities are always shown as point
-coordinates (`"x:3, y:5"`-style, matching the cell-inspector convention), never a raw `NodeId`.
+`postEditCommandLabel(command, nodeById, live, multiFloor)` into a `PostEditCommandLabel`
+(`{ action, bubbles, isLink }`). `nodeById` is built from the confirmed node snapshot
+(`buildNodeByIdMap`); `live` (`PostEditLiveEntries`, `buildLiveEntries`) resolves an id-only command
+(`setTeleportDirection`, `removeVerticalPassage`, ...) back to its current draft entry's from/to —
+these commands carry no coordinates of their own, only the entity's stable id. `multiFloor` is
+`floors.length > 1`, selecting the coordinate format below. An endpoint/entry that doesn't resolve
+(an unconfirmed split node, or an id whose entry was itself removed by a later command) falls back
+to a `"?"` bubble with no highlight, rather than throwing.
 
-A few label choices worth calling out because they read as "why isn't this generic":
+Each `PostEditEntityBubble` (`{ text, highlight }`) renders as a hoverable chip — same monospace
+bubble style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles use — instead of a plain text
+string. `text` matches the debug event tree's own bubble convention exactly (`bubbleLabel`,
+`debugRowText.ts`): `x:y` on a single-floor maze, `Lf:x:y` (1-based floor) on a multi-floor one — no
+words, no parens; never a raw `NodeId`/entity id. `highlight` is a `PostEditHoveredEntity` (`point`
+for a plain point/node endpoint, `points` for the combined elevator/vertical-passage bubbles below;
+`null` for a bubble naming an entity nothing's left in the log to resolve a point from); hovering a
+bubble passes its `highlight` straight through to `postEditHoveredEntity`.
 
-- A vertical passage is always one-way once it leaves `two_way` — a passage is never labeled as
-  merely "becoming" one-way, since a forward/backward passage is one-way by construction. Every
-  label mentioning one (`addVerticalPassage` and `setVerticalPassageDirection`) appends
-  "(one-way)" to the entity whenever `direction !== "two_way"`.
-- `setEdgePair`'s one-way branch distinguishes "set one-way passage" from "changed one-way passage
-  direction" via the command's own `directionFlip` field (see `PostEditCommand` above) — never
-  re-derived by comparing against a previous command, since a command must format purely from its
-  own fields.
-- `setVerticalPassageDirection` only ever exists when leaving `two_way` (the store action no-ops
-  otherwise), so its label is unconditionally "changed vertical passage direction", never "set".
+A two-bubble `isLink` row (an edge/teleport command; a vertical passage/elevator instead renders as
+a *single* combined bubble — see below) additionally renders its own "bubble `<arrow>` bubble" pair
+(`postEditRowHighlight` for the hover target, `label.arrow` for the glyph) — hovering the row (not
+one specific bubble) sets `postEditHoveredEntity` to the `link`-kind entity connecting both bubbles'
+points; `null` if either bubble's own `highlight` isn't `point`-kind and resolved.
+`arrow` is `"<->"` for a wall/passage face (undirected — the same kind applies in both directions)
+or a two-way teleport, `"->"`/`"<-"` for a one-way one (telling which of the two FIXED bubble
+positions traffic flows FROM and TO) — same convention `SplitNodesDialogView`'s own link arrows use.
+`bubbles`' own order never changes with direction (GitHub issue #546 follow-up: flipping a one-way
+face's/passage's direction used to swap which bubble showed first, reading as "the points swapped
+places" instead of "the arrow flipped" — `setEdgePair`'s bubble pair is always `a, b`, never
+reordered by `aToB`) — only the glyph does. An id-only command (`removeTeleport`, ...) reads its
+entity's current `direction` from `live` for this, since the command itself carries no direction.
+`postEditCommandFloors(label)`
+collects every bubble's own resolved floor(s) — a `point` bubble's `level`, or a `points` bubble's
+every point's `level` — into the distinct, ascending 0-based floor list a `FloorBadgeRow` below the
+row needs (same "which floor(s)" convention `IssueBubble`/`DebugRefBubble`/export warnings already
+use) — hidden on a single-floor maze.
+
+**Elevator/vertical-passage bubbles** (GitHub issue #546 follow-up) are a single combined bubble,
+not an edge-style pair — both entities connect several floors at the *same* `(x, y)` (an elevator's
+`floors`, a vertical passage's `from`/`to`; see `PostEditVerticalPassageEntry`'s/
+`startPostEditElevatorPlacement`'s doc comments), so a from/to or one-bubble-per-floor pairing would
+either repeat that shared coordinate for no reason or lose it. `elevatorBubble` renders
+`x:y [L1,L2,L3]` (every floor it spans); `verticalPassageBubble` renders `x:y [L1->L2]` for
+`direction: "forward"` (traffic flows FROM's floor to TO's floor), `x:y [L1<-L2]` for `"backward"`
+(traffic flows TO's floor to FROM's), or `x:y [L1<->L2]` two-way — `from`/`to`'s own display order
+is always fixed regardless of `direction`, same fixed-order rule the `arrow` glyph above follows.
+Both are `isLink: false` (a single bubble, no row-level arrow) with a `points`-kind `highlight`
+covering every floor involved, so hovering the one bubble still highlights the entity on every floor
+it touches — gated to the active floor only, see below.
+
+`PostEditRenderer.redrawHoveredEntity` matches `state.postEditHoveredEntity` against the *unscoped*
+`state.nodes`, not `floorScoped(state).nodes` — a cross-floor entity (a vertical passage/elevator/
+teleport whose points sit on different floors) needs every floor's nodes as match candidates, or its
+off-floor endpoint could never resolve at all. This is safe against the floor-collision bug it
+replaced (GitHub issue #546 follow-up: a floor-1 point/link kept drawing on floor 0 whenever the
+coordinates happened to coincide) because `buildHoveredEntityHighlight`'s point-matching
+(`pixi/selectors/mazeSelectors/postEdit.ts`, `pointMatchesNode`) checks each `PostEditHoverPoint`'s
+own `level` against the candidate node's `level` explicitly — widening the candidate list to every
+floor never lets a point match a same-`(x, y)` node on the wrong floor.
+
+`buildHoveredEntityHighlight`/`buildLinkHoverHighlight`/`resolvePointGroup` take an explicit
+`activeLevel` (the active floor's own 0-based index, `activeFloorLevel(state) ?? 0`) and gate every
+match against it — matching against the unscoped node list finds a candidate on EVERY floor an
+entity touches (a vertical passage's/elevator's `from`/`to`/`floors` all share one `(x, y)`,
+differing only in level, so `nodes.find` succeeds regardless of which floor is active), and without
+this gate every one of those floors' matched nodes would render its highlight at once, on top of
+each other, no matter which floor is actually being viewed. With the gate, only the match(es) whose
+own `level` equals `activeLevel` are ever fed to `RegionHighlightRenderer`/`NodeEdgeHighlightRenderer`
+— an entity never highlights a floor it doesn't actually have a marker on ("не подсвечиваем пустое
+место"). For a cross-floor `link` specifically, a straight line needs both ends on the same active
+floor to draw at all — `buildLinkHoverHighlight` instead falls back to a single-cell region highlight
+(`soloPoints`) for whichever ONE endpoint's own `level` equals `activeLevel`, so switching floors
+shows a different single-cell highlight on each of the entity's own floors, never both/neither.
+
+A label choice worth calling out because it reads as "why isn't this generic": `setEdgePair`'s
+one-way branch distinguishes "set one-way passage" from "changed one-way passage direction" via the
+command's own `directionFlip` field (see `PostEditCommand` above) — never re-derived by comparing
+against a previous command, since a command must format purely from its own fields.
 
 ### Dirty semantics
 
