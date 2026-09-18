@@ -2,7 +2,7 @@ import { generateMaze } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
-import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
+import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
 import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor } from "./postEditSliceHelpers";
@@ -197,11 +197,9 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   }
   // Key is "x,y" (floor 0) or "x,y@level" (GitHub issue #340) — parsed back into (point, level)
   // for the wire DTO, same convention `presetEndpointKey`/`splitPointsCore.ts`'s `pointKey` use.
-  const locked_nodes = Array.from(lockedEntries.entries()).map(([key, kind]) => {
-    const [pointPart, levelPart] = key.split("@");
-    const [x, y] = pointPart.split(",").map(Number) as [number, number];
-    const level = levelPart === undefined ? undefined : Number(levelPart);
-    return { point: presetEndpointToDto(presetEndpoint([x, y], undefined, level)), kind };
+  const locked_nodes = Array.from(lockedEntries.entries()).flatMap(([key, kind]) => {
+    const endpoint = presetEndpointFromKey(key);
+    return endpoint === null ? [] : [{ point: presetEndpointToDto(endpoint), kind }];
   });
   const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
   const invalidGenSource = computeInvalidEndpoint(state.presetGenSource, resolveFieldAt);

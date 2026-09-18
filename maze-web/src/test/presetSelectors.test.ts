@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { presetEdgeKey } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -13,7 +14,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");
 const { getCellCenter } = await import("../pixi/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
@@ -64,6 +65,31 @@ describe("buildPresetMarkers", () => {
     const center = getCellCenter(0, 0, splitCfg);
     expect(marker.pos[0]).toBeCloseTo(center.x + TILE_SIZE * 0.25);
     expect(marker.pos[1]).toBeCloseTo(center.y);
+  });
+});
+
+describe("buildLocks", () => {
+  it("uses a split node's anchor, scale, and node color", () => {
+    const locks = buildLocks(
+      new Map([["0,0:4", "both"]]), new Set(),
+      new Map([["0,0:4", { x: 123, y: 456 }]]), { "0,0": [4] },
+    );
+    expect(locks).toEqual([expect.objectContaining({
+      x: 0, y: 0, type: "both", position: { x: 123, y: 456 }, scale: 0.75,
+      color: canvas.node.splitSlots[1],
+    })]);
+    expect(Number.isNaN(locks[0].x)).toBe(false);
+    expect(Number.isNaN(locks[0].y)).toBe(false);
+  });
+
+  it("checks isolation against the exact split node, not only the point", () => {
+    const original = presetEndpoint([0, 0]);
+    const connections = new Map<string, PresetConnectionEntry>([
+      [presetEdgeKey(original, presetEndpoint([1, 0])), {
+        from: original, to: presetEndpoint([1, 0]), state: "passage", source: "user",
+      }],
+    ]);
+    expect(buildIsolatedCellHighlights(new Map([["0,0:1", "both"]]), new Set(), connections)).toEqual([[0, 0]]);
   });
 });
 

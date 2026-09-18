@@ -446,6 +446,19 @@ describe("mazeStore preset connections", () => {
       expect(s.lockedNodes.get("1,1")).toBe("in");
     });
 
+    it("removes locks from every node when resetting a split point", () => {
+      useMazeStore.setState({
+        presetSplitPoints: { "0,0": [0, 1] },
+        lockedNodes: new Map([["0,0", "both"], ["0,0:0", "in"], ["0,0:1", "out"], ["1,1", "both"]]),
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const locks = useMazeStore.getState().lockedNodes;
+      expect(locks.has("0,0")).toBe(false);
+      expect(locks.has("0,0:0")).toBe(false);
+      expect(locks.has("0,0:1")).toBe(false);
+      expect(locks.get("1,1")).toBe("both");
+    });
+
     it("also removes a slot's endpoints — a connection addressing a declared slot at the point is cleared too", () => {
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
@@ -806,6 +819,20 @@ describe("mazeStore preset connections", () => {
       openPrompt({ tool: "set_finish" });
       useMazeStore.getState().applyPresetSplitTargetPick(undefined);
       expect(presetEndpointsEqual(useMazeStore.getState().presetFinish!, presetEndpoint([0, 0]))).toBe(true);
+    });
+
+    it("lock pick toggles the exact split node and replaces a different lock kind", () => {
+      openPrompt({ tool: "lock_in" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      expect(useMazeStore.getState().lockedNodes.get("0,0:0")).toBe("in");
+
+      openPrompt({ tool: "lock_out" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      expect(useMazeStore.getState().lockedNodes.get("0,0:0")).toBe("out");
+
+      openPrompt({ tool: "lock_out" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      expect(useMazeStore.getState().lockedNodes.has("0,0:0")).toBe(false);
     });
 
     it("gen_source dispatches setPresetGenSourceEndpoint to the picked slot and clears the prompt (GitHub issue #494)", () => {

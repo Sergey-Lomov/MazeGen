@@ -1,4 +1,4 @@
-import { type PresetEndpoint } from "../presetEndpoint";
+import { presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
 import {
   allNodesAt, presetSplitNodeFaceKinds,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
@@ -44,10 +44,6 @@ function buildPresetNodeMarkerLines(
   return lines;
 }
 
-function pointKey(point: [number, number], level: number | undefined): string {
-  return level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
-}
-
 /** Builds the cell-inspector status-bar line for the Preset Connections card (GitHub issue #353) —
  *  the pre-generation counterpart of `buildCellInspection`. Presets have no `NodeDto`/`EdgeDto`
  *  graph yet, so every input here is preset-stage state instead: `presetSplitPoints` (to enumerate
@@ -84,17 +80,13 @@ export function buildPresetCellInspection(
   const nodesHere = allNodesAt(point, presetSplitPoints, level);
 
   if (nodesHere.length === 1) {
-    const lockKey = pointKey(point, level);
-    const lockKind = lockedNodes.get(lockKey) ?? (autoLockedNodes.has(lockKey) ? "both" : undefined);
+    const lockKind = lockedNodes.get(presetEndpointKey(nodesHere[0])) ?? (autoLockedNodes.has(presetEndpointKey(nodesHere[0])) ? "both" : undefined);
     const lines = buildPresetNodeMarkerLines(
       nodesHere[0], floorLevel, presetStart, presetFinish, presetGenSource,
       presetTeleports, presetVerticalPassages, presetElevators, lockKind,
     );
     return lines.length === 0 ? coordLabel : [coordLabel, ...lines].join(" | ");
   }
-
-  const lockKey = pointKey(point, level);
-  const lockKind = lockedNodes.get(lockKey) ?? (autoLockedNodes.has(lockKey) ? "both" : undefined);
 
   // Semantic per-node names when this split point's face configuration matches a recognized
   // special-split topology (bridge, GitHub issue #487) — `null` otherwise, "Node N" for every node.
@@ -107,12 +99,10 @@ export function buildPresetCellInspection(
   }
 
   const blocks = nodesHere.map((endpoint, i) => {
-    // Lock addresses only the point's original node (Specs/preset-connections.md's "Split nodes"
-    // section: "locks always address the original node only") — reported solely on that node's
-    // own block so a locked split point doesn't misleadingly show the same lock on every slot.
     const lines = buildPresetNodeMarkerLines(
       endpoint, floorLevel, presetStart, presetFinish, presetGenSource,
-      presetTeleports, presetVerticalPassages, presetElevators, endpoint.slotId === undefined ? lockKind : undefined,
+      presetTeleports, presetVerticalPassages, presetElevators,
+      lockedNodes.get(presetEndpointKey(endpoint)) ?? (autoLockedNodes.has(presetEndpointKey(endpoint)) ? "both" : undefined),
     );
     const body = lines.length === 0 ? m["status.cell_empty"]() : lines.join("; ");
     return `[${semanticNames?.[i]?.full ?? m["status.cell_node"]({ number: i + 1 })}: ${body}]`;

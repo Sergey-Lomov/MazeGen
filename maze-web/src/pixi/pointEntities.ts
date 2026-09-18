@@ -1,4 +1,4 @@
-import { presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpointKey, presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
 import {
   allNodesAt, canonicalizePresetPair, presetEdgeKey,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
@@ -252,13 +252,13 @@ export function buildPresetPointEntities(
   // manually-set lock (`lockedNodes`): an auto-computed lock (`autoLockedNodes`, derived from
   // graph shape — see `recomputeAutoLock`) isn't user-removable, so it gets no row here (GitHub
   // issue #540 follow-up bug report).
-  const lockKind = lockedNodes.get(key);
-  if (lockKind) {
-    out.push({
-      kind: "lock", id: "lock", endpoint: nodesHere[0], nodeIndex: 0,
+  nodesHere.forEach((endpoint, nodeIndex) => {
+    const lockKind = lockedNodes.get(presetEndpointKey(endpoint));
+    if (lockKind) out.push({
+      kind: "lock", id: `lock:${presetEndpointKey(endpoint)}`, endpoint, nodeIndex,
       title: m["status.cell_lock"]({ kind: formatLockKind(lockKind) }),
     });
-  }
+  });
 
   // Split nodes — one row per declared slot (GitHub issue #540's revised design): each row names
   // one segment of the split ("Bridge", "Corridor 1", ... when the topology is a recognized

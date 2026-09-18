@@ -8,7 +8,8 @@ import { buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegmen
 import { buildCellSet } from "./sharedSelectors";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, type PresetEndpoint } from "../presetEndpoint";
+import { presetEndpoint, presetEndpointFromKey, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
+import { splitSlotColor } from "../colorUtils";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
 
@@ -280,14 +281,26 @@ export function buildPresetMarkers(
 export function buildLocks(
   lockedNodes: Map<string, NodeLockKind>,
   autoLockedNodes: Set<string>,
+  nodePositions: Map<string, { x: number; y: number }> = new Map(),
+  splitPoints: Record<string, number[]> = {},
 ): LockEntry[] {
   const merged = new Map<string, NodeLockKind>(lockedNodes);
   for (const key of autoLockedNodes) {
     if (!merged.has(key)) merged.set(key, "both");
   }
-  return Array.from(merged.entries()).map(([key, type]) => {
-    const [x, y] = key.split(",").map(Number);
-    return { x, y, type };
+  return Array.from(merged.entries()).flatMap(([key, type]): LockEntry[] => {
+    const endpoint = presetEndpointFromKey(key);
+    if (!endpoint) return [];
+    const pointKey = `${endpoint.point[0]},${endpoint.point[1]}`;
+    const slots = splitPoints[pointKey];
+    const nodeIndex = slots && endpoint.slotId !== undefined ? [...slots].sort((a, b) => a - b).indexOf(endpoint.slotId) + 1 : 0;
+    const isSplitNode = endpoint.slotId !== undefined || slots !== undefined;
+    return [{
+      x: endpoint.point[0], y: endpoint.point[1], type,
+      position: nodePositions.get(presetEndpointKey(endpoint)),
+      scale: isSplitNode ? 0.75 : 1,
+      color: isSplitNode ? splitSlotColor(nodeIndex, canvas.node.splitSlots) : undefined,
+    }];
   });
 }
 
@@ -306,13 +319,14 @@ export function buildIsolatedCellHighlights(
 
   const result: [number, number][] = [];
   for (const key of allBothLocked) {
-    const [x, y] = key.split(",").map(Number);
+    const endpoint = presetEndpointFromKey(key);
+    if (!endpoint) continue;
     const hasPassage = Array.from(connections.values()).some(e => {
       if (e.state === "wall" || e.state === "undefined") return false;
-      return (e.from.point[0] === x && e.from.point[1] === y) || (e.to.point[0] === x && e.to.point[1] === y);
+      return presetEndpointsEqual(e.from, endpoint) || presetEndpointsEqual(e.to, endpoint);
     });
     if (hasPassage) continue;
-    result.push([x, y]);
+    result.push(endpoint.point);
   }
   return result;
 }

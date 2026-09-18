@@ -406,4 +406,11 @@ export type TeleportLineStyle = {
  *  choice. */
 export type TeleportGroupOverride = { fillColor?: number; borderColor?: number; shape?: MarkerShape };
 
-export type LockEntry = { x: number; y: number; type: "in" | "out" | "both" };
+export type LockEntry = {
+  x: number;
+  y: number;
+  type: "in" | "out" | "both";
+  position?: { x: number; y: number };
+  scale?: number;
+  color?: number;
+};

@@ -353,21 +353,35 @@ export function computeAutoLockedNodes(
       const slots = presetSplitPoints[pointKey] ?? [];
       const endpoints = [presetEndpoint([x, y], undefined, level), ...slots.map((slotId) => presetEndpoint([x, y], slotId, level))];
 
-      let allDefined = true;
       let hasInteriorEdge = false;
       for (const [dx, dy] of offsets) {
         const nx = x + dx, ny = y + dy;
-        if (!cellSet.has(encodePoint(nx, ny))) continue;
-        hasInteriorEdge = true;
-        const neighbor = presetEndpoint([nx, ny], undefined, level);
-        for (const ep of endpoints) {
+        if (cellSet.has(encodePoint(nx, ny))) hasInteriorEdge = true;
+      }
+      if (!hasInteriorEdge) continue;
+      let allNodesDefined = true;
+      const nodeResults: { key: string; defined: boolean }[] = [];
+      for (const ep of endpoints) {
+        let allDefined = true;
+        for (const [dx, dy] of offsets) {
+          const nx = x + dx, ny = y + dy;
+          if (!cellSet.has(encodePoint(nx, ny))) continue;
+          // A geometric neighbor can itself be a split point. Resolve the actual node
+          // recorded on this face instead of assuming that the original node is used;
+          // otherwise autoblock misses decided split-to-split connections.
+          const neighbor = resolvePresetPartnerAt(
+            [ep], [nx, ny], presetConnections, presetSplitPoints, {}, level,
+          );
           const key = presetEdgeKey(ep, neighbor);
           const entry = presetConnections.get(key);
           if (!entry || entry.state === "undefined") { allDefined = false; break; }
         }
-        if (!allDefined) break;
+        nodeResults.push({ key: presetEndpointKey(ep), defined: allDefined });
+        if (!allDefined) allNodesDefined = false;
       }
-      if (hasInteriorEdge && allDefined) result.add(pointKey);
+      if (allNodesDefined) {
+        for (const node of nodeResults) result.add(node.key);
+      }
     }
   }
   return result;

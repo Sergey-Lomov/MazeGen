@@ -43,6 +43,8 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
+  const lockedNodes = useMazeStore((s) => s.lockedNodes);
+  const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
@@ -189,14 +191,14 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     {
       key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
-      isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
+      isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint), lockKind: lockedNodes.get(presetEndpointKey(originalEndpoint)) ?? (autoLockedNodes.has(presetEndpointKey(originalEndpoint)) ? "both" : undefined),
     },
     ...slots.map((slotId, i) => {
       const ep = presetEndpoint(point, slotId, level);
       return {
         key: presetEndpointKey(ep), endpoint: ep, title: semanticNames?.[1 + i]?.full ?? splitNodeLabel(slotId),
         color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
-        isStart: isStart(ep), isFinish: isFinish(ep),
+        isStart: isStart(ep), isFinish: isFinish(ep), lockKind: lockedNodes.get(presetEndpointKey(ep)) ?? (autoLockedNodes.has(presetEndpointKey(ep)) ? "both" : undefined),
       };
     }),
   ];

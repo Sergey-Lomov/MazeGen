@@ -52,6 +52,18 @@ export function presetEndpointKey(ep: PresetEndpoint): string {
   return ep.level === undefined ? base : `${base}@${ep.level}`;
 }
 
+/** Parses a `presetEndpointKey` back to an endpoint. Used by render/validation paths that receive
+ * the flat lock/auto-lock maps rather than endpoint objects. */
+export function presetEndpointFromKey(key: string): PresetEndpoint | null {
+  const [pointSlot, levelPart] = key.split("@");
+  const [pointPart, slotPart] = pointSlot.split(":");
+  const [x, y] = pointPart.split(",").map(Number);
+  const slotId = slotPart === undefined ? undefined : Number(slotPart);
+  const level = levelPart === undefined ? undefined : Number(levelPart);
+  if (![x, y, slotId, level].every((value) => value === undefined || Number.isInteger(value))) return null;
+  return presetEndpoint([x, y], slotId, level);
+}
+
 /** `PresetEndpoint` → the WASM/`GenerateConfig` wire DTO's endpoint shape. Not a passthrough: the
  * TS-side field is `slotId`, the wire field is `slot` (matches Rust's `PresetEndpointDto`, which
  * derives `Deserialize` with no per-field rename); `level` passes through unchanged (same field
