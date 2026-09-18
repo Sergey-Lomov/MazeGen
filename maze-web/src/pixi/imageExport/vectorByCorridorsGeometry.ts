@@ -76,15 +76,25 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
  *  same way it already does for start/finish/teleport markers — without this, a marker with no
  *  border/gap of its own leaves the plain corridor line running unbroken straight through it.
  *  "Vector by corridors" has no decorative pictogram treatment (GitHub issue #348 — unlike "Vector
- *  by walls"), so radius/shape always mirror `twoWayPassageMarker`/`oneWayPassageMarker`/
- *  `elevatorMarker`'s own `size`/`shape`/`cornerStyle`, same resolution `VerticalConnectionRenderer`
- *  itself uses for its abstract-marker draw path. Only `shape`/`cornerStyle`/`radius` matter here
- *  (widen patches draw in the corridor's own color, not the marker's), so `color: 0` is an unused
- *  placeholder, same convention `buildTeleportWidenMarkers` uses. */
+ *  by walls"), so shape/radius and the visible border/gap footprint always mirror
+ *  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`, using the same resolution
+ *  `VerticalConnectionRenderer` itself uses for its abstract-marker draw path. The border/gap
+ *  fields are important even though the patch is drawn in the corridor's color: without them,
+ *  split-gap background can remain visible between the patch and the marker's true outer edge
+ *  (GitHub issue #561). `color: 0` is an unused placeholder, same convention as
+ *  `buildTeleportWidenMarkers`. */
 export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], settings: VectorByCorridorsSettings): MarkerData[] {
   return markers.map((marker) => {
     const markerSettings = marker.kind === "elevator" ? settings.elevatorMarker : marker.filled ? settings.twoWayPassageMarker : settings.oneWayPassageMarker;
-    return { pos: marker.pos, color: 0, radius: markerSettings.size * TILE_SIZE, shape: markerSettings.shape, cornerStyle: markerSettings.cornerStyle };
+    return {
+      pos: marker.pos,
+      color: 0,
+      radius: markerSettings.size * TILE_SIZE,
+      shape: markerSettings.shape,
+      cornerStyle: markerSettings.cornerStyle,
+      borderWidth: markerSettings.borderWidth,
+      gapWidth: markerSettings.gapWidth,
+    };
   });
 }
 

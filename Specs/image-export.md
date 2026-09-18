@@ -533,8 +533,11 @@ disc — `drawMarkerShape` with the marker's own `shape`/`cornerStyle`) at a rad
 marker will draw on top of it; the `lineWidth / 2` floor means a marker smaller than the stroke
 never narrows the line under it. Deliberately generic (`MarkerData[]`, not a waypoint-specific
 type) and not tied to any one renderer — `VectorByCorridorsRenderer` calls it once per `renderAll`,
-drawing the patches into its own `corridors` `Graphics` after the stroke and before
-`WaypointsRenderer.render` draws the markers themselves, but any future marker type sharing this
+drawing the patches in a dedicated layer above split corridor geometry and its background-colored
+gap patches, but below the waypoint/teleport/vertical marker bodies (GitHub issue #561). Keeping
+the marker expansion above the split-gap layer prevents a non-zero corridor gap from leaving an
+antialiased hairline of background visible along a marker edge. The `padding` is the user-facing
+marker-widen expansion and is included in this layer ordering. Any future marker type sharing this
 canvas (or a different renderer altogether) can call it the same way.
 
 ### Corridors-specific export warnings (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
@@ -575,6 +578,11 @@ instance (`VectorByCorridorsRenderer`'s own, per the feature-renderer ownership 
 `VectorByWallsRenderer`'s own highlight overlay described below).
 
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
+
+Circle markers use the shared `circlePolygonPoints` adaptive closed polygon instead of PixiJS
+`Graphics.circle()`'s centre-fan triangulation. The latter could expose a zoom-dependent radial
+seam over corridor geometry (GitHub issue #561); polygon and circle markers otherwise use the same
+`drawMarkerShape` API.
 
 GitHub issue #293 follow-up unified what used to be two separate shape enums/draw functions — a 5-value `MarkerShape` for start/finish waypoints and a 9-value `TeleportShape` for teleports (including `crescent`, a moon shape that read poorly at marker scale and had a geometry defect — see below) — into one 8-value `MarkerShape`: `circle`/`triangle`/`square`/`diamond`/`pentagon`/`star`/`hexagon`/`cross`. Both `WaypointsRenderer` and `TeleportRenderer` draw through the same `drawMarkerShape(g, shape, cx, cy, r, rounded?)`, so waypoints and teleports never diverge in how a given shape looks; `markerPolygonPoints` (regular-polygon corner points, `star` alternating outer/inner radius, `cross` its own fixed 12-vertex layout) backs both the sharp path (`g.poly`) and the rounded path, via `markerShapes.ts`'s own `drawRoundedPolygon` (a general canvas-style per-corner `arcTo` rounder, not `Graphics.roundPoly` — needed since `star`/`cross` have no regular-polygon equivalent `roundPoly` could round). Each corner's radius is capped to half its shorter adjacent edge, and `star`'s reflex (inward-pointing) corners are gated out of rounding entirely (a rounded arc there reads as a spike at typical marker sizes, no radius clamp fixes it). The closed path's `moveTo` start is placed at corner 0's own tangent-out point (`cornerTangentPoint`, `radius / tan(halfAngle)` from the vertex along the edge — not a naive edge-midpoint, which only happens to be correct when both corners sharing that edge round equally) so the path's start exactly matches where the loop's final `arcTo` call closes back to — a mismatch there left a stray straight overshoot at the seam, visible on `star` specifically since its corners alternate rounded/sharp. `polygonCornerRadius`/`cornerTangentPoint` are exported pure functions, unit-tested independently of `Graphics`. `WaypointsRenderer` always draws sharp (`rounded` defaults to `false`, and nothing ever passes it `true`) — corner-style is a teleport-only setting (`teleportCornerStyle`, see above).
 

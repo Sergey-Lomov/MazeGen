@@ -34,7 +34,7 @@ describe("WaypointsRenderer.render", () => {
     const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10 };
     renderer.render({ markers: [marker] });
     const calls = g(renderer).calls;
-    expect(calls.filter((c) => c.fn === "circle")).toHaveLength(1);
+    expect(calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(calls.filter((c) => c.fn === "fill")).toHaveLength(1);
     expect(calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
   });
@@ -54,10 +54,11 @@ describe("WaypointsRenderer.render", () => {
     };
     renderer.render({ markers: [marker] });
     const calls = g(renderer).calls;
-    const circleCalls = calls.filter((c) => c.fn === "circle");
-    // Gap ring circle, then the marker's own circle (fill + border stroke share this one path) — 2 total.
-    expect(circleCalls).toHaveLength(2);
-    const [, , gapRadius] = circleCalls[0].args as [number, number, number];
+    const polyCalls = calls.filter((c) => c.fn === "poly");
+    // Gap polygon, then the marker's own polygon — 2 total.
+    expect(polyCalls).toHaveLength(2);
+    const [gapPoints] = polyCalls[0].args as [number[]];
+    const gapRadius = Math.hypot(gapPoints[0] - 5, gapPoints[1] - 5);
     // radius (10) + borderWidth (4) + gapWidth (3) — matches the outer-alignment border's true edge.
     expect(gapRadius).toBe(17);
     const fillCalls = calls.filter((c) => c.fn === "fill");
@@ -68,7 +69,7 @@ describe("WaypointsRenderer.render", () => {
     const renderer = new WaypointsRenderer(new Container());
     const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, gapWidth: 0 };
     renderer.render({ markers: [marker] });
-    expect(g(renderer).calls.filter((c) => c.fn === "circle")).toHaveLength(1);
+    expect(g(renderer).calls.filter((c) => c.fn === "poly")).toHaveLength(1);
   });
 
   it("cornerStyle: 'round' rounds a non-circle shape via the shared arcTo-based path, not a plain poly", () => {
@@ -84,6 +85,6 @@ describe("WaypointsRenderer.render", () => {
     const renderer = new WaypointsRenderer(new Container());
     renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10 }] });
     renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10 }] });
-    expect(g(renderer).calls.filter((c) => c.fn === "circle")).toHaveLength(1);
+    expect(g(renderer).calls.filter((c) => c.fn === "poly")).toHaveLength(1);
   });
 });

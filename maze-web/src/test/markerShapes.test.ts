@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { markerPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
+import { circlePolygonPoints, markerPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
 
 /** Shoelace formula for a closed polygon's area from its flat point list. */
 function polygonArea(points: number[]): number {
@@ -72,6 +72,26 @@ describe("markerPolygonPoints", () => {
     const tri = markerPolygonPoints("triangle", 0, 0, 10);
     expect(tri[0]).toBeCloseTo(0);
     expect(tri[1]).toBeLessThan(0);
+  });
+});
+
+describe("circlePolygonPoints", () => {
+  it("returns a closed, center-free outline with every vertex on the requested radius", () => {
+    const cx = 12.5;
+    const cy = -3.25;
+    const radius = 20;
+    const points = circlePolygonPoints(cx, cy, radius);
+
+    expect(points.length / 2).toBeGreaterThanOrEqual(16);
+    for (let i = 0; i < points.length; i += 2) {
+      expect(Math.hypot(points[i] - cx, points[i + 1] - cy)).toBeCloseTo(radius, 10);
+    }
+    expect(points[0]).toBeCloseTo(cx + radius, 10);
+    expect(points[1]).toBeCloseTo(cy, 10);
+  });
+
+  it("keeps a minimum tessellation for zero-radius markers", () => {
+    expect(circlePolygonPoints(0, 0, 0)).toHaveLength(32);
   });
 });
 

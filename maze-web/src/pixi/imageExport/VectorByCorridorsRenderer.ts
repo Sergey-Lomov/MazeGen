@@ -60,6 +60,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  extra layer's children, so it needs its own lifecycle. */
   private readonly splitShapesLayer: Container;
   private splitClipScratch: Container[] = [];
+  /** Marker widen patches must sit above split-gap geometry and below the marker containers. */
+  private readonly markerWidenContainer: Container;
+  private readonly markerWiden: Graphics;
   private readonly teleportContainer: Container;
   private readonly teleports: TeleportRenderer;
   private readonly markersContainer: Container;
@@ -114,6 +117,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     this.splitShapesLayer = new Container();
     container.addChild(this.splitShapesLayer);
+
+    this.markerWidenContainer = new Container();
+    container.addChild(this.markerWidenContainer);
+    this.markerWiden = new Graphics();
+    this.markerWidenContainer.addChild(this.markerWiden);
 
     this.markerIndexGapContainer = new Container();
     container.addChild(this.markerIndexGapContainer);
@@ -180,6 +188,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.backgroundGrid.setVisible(visible);
     this.corridorsContainer.visible = visible;
     this.splitShapesLayer.visible = visible;
+    this.markerWidenContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.verticalContainer.visible = visible;
@@ -224,7 +233,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
     const cellBounds = cellCenterBounds(floorNodes, state.activeTessellationConfig);
     return measureContentMargin(
-      [this.corridorsContainer, this.splitShapesLayer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
+      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
       cellBounds,
     );
   }
@@ -440,15 +449,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       edges,
     );
 
+    this.markerWiden.clear();
     // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide
-    // with the passage line (GitHub issue #311) — a filled patch matching the marker's own shape
-    // (or a fixed circle/square, `markerWidenShape`, GitHub issue #313 follow-up), drawn in the
-    // corridor's own color, into the same `Graphics` as the stroke and before the markers
-    // themselves. Reusable groundwork (`drawMarkerWidenPatches`, not waypoint-specific) so a future
-    // marker type on this canvas can call it the same way. A fixed square's own corners follow
-    // `join`, same corner convention the corridor stroke's own join/cap already uses.
+    // with the passage line (GitHub issue #311). This has its own layer, above split-gap geometry:
+    // a split gap is background-colored and must not be able to cut a hairline through the marker's
+    // corridor-colored expansion (GitHub issue #561). The layer remains below the marker containers.
     const squareCornerStyle = settings.join === "round" ? "round" : "sharp";
-    drawMarkerWidenPatches(this.corridors, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
+    drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
 
     // Teleport markers get the same widen patch, reusing the one `markerWidenPadding`/
     // `markerWidenShape` settings (GitHub issue #313 follow-up) — no separate teleport-only setting.
@@ -457,7 +464,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // same grouping internally for the same `teleportEdges`, so this avoids a third redundant pass.
     const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(this.geometryCache.teleportEdges) : [];
     drawMarkerWidenPatches(
-      this.corridors,
+      this.markerWiden,
       buildTeleportWidenMarkers(this.geometryCache.teleportEdges, settings, teleportGroups),
       settings.color,
       settings.thickness,
@@ -470,7 +477,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // #313's teleport widen patch) — one shared `markerWidenPadding`/`markerWidenShape`, no
     // separate vertical-only setting.
     drawMarkerWidenPatches(
-      this.corridors,
+      this.markerWiden,
       buildVerticalWidenMarkers(this.geometryCache.verticalConnectionMarkers, settings),
       settings.color,
       settings.thickness,
@@ -1223,6 +1230,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.teleportContainer.destroy();
     this.markers.destroy();
     this.markersContainer.destroy();
+    this.markerWiden.destroy();
+    this.markerWidenContainer.destroy();
     this.verticalConnections.destroy();
     this.verticalContainer.destroy();
     this.markerIndex.destroy();

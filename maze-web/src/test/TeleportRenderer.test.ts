@@ -315,18 +315,18 @@ describe("TeleportRenderer.render draw order", () => {
     renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
-    // `drawGroupGaps` draws both points' gap rings first (its own loop over the whole group), then
-    // `drawGroupPoints` draws both points' fill pass, then both points' border pass: circle(gapA),
-    // circle(gapB), circle(fillA), circle(fillB), circle(borderA), circle(borderB).
-    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    // `drawGroupGaps` draws both points' gap rings first, then `drawGroupPoints` draws both points'
+    // fill pass and border pass: polygon(gapA), polygon(gapB), polygon(fillA), polygon(fillB),
+    // polygon(borderA), polygon(borderB).
+    const circleCalls = g.calls.filter((c) => c.fn === "poly");
     const fillCalls = g.calls.filter((c) => c.fn === "fill");
-    // 2 gap rings + 2 markers (fill pass) + 2 markers (border pass) = 6 circle() calls total.
+    // 2 gap rings + 2 markers (fill pass) + 2 markers (border pass) = 6 polygon calls total.
     expect(circleCalls).toHaveLength(6);
     // The gap ring's own radius (size*TILE_SIZE + borderWidth + edgeGapWidth) must exceed the plain
     // marker radius (size*TILE_SIZE) — the first two circle calls (the gap rings) must be larger
     // than the next two (the markers' own fill-pass radius).
-    const [gapRadius] = circleCalls[0].args.slice(2) as [number];
-    const [markerRadius] = circleCalls[2].args.slice(2) as [number];
+    const gapRadius = Math.hypot(...(circleCalls[0].args[0] as number[]).slice(0, 2));
+    const markerRadius = Math.hypot(...(circleCalls[2].args[0] as number[]).slice(0, 2));
     expect(gapRadius).toBeGreaterThan(markerRadius);
     // First fill call is the gap ring's own floor-colored fill, before any marker fill.
     expect(fillCalls[0].args[0]).toBe(0x444);
@@ -339,7 +339,7 @@ describe("TeleportRenderer.render draw order", () => {
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
     // Just the 2 points' own marker draws (fill pass + border pass), no gap-ring circles.
-    expect(g.calls.filter((c) => c.fn === "circle")).toHaveLength(4);
+    expect(g.calls.filter((c) => c.fn === "poly")).toHaveLength(4);
   });
 
   it("draws two independent groups' whole blocks in group order — group B's gap ring never lands before group A's own marker", () => {
@@ -353,12 +353,18 @@ describe("TeleportRenderer.render draw order", () => {
 
     // Each group draws gap(x2) + marker(x2 circle calls x2 points) = 6 circle calls; two independent
     // groups (no shared points) = 12 total, in two contiguous group-sized blocks.
-    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    const circleCalls = g.calls.filter((c) => c.fn === "poly");
     expect(circleCalls).toHaveLength(12);
-    const firstGroupXs = circleCalls.slice(0, 6).map((c) => c.args[0]);
-    const secondGroupXs = circleCalls.slice(6, 12).map((c) => c.args[0]);
-    expect(new Set(firstGroupXs)).toEqual(new Set([0, 10]));
-    expect(new Set(secondGroupXs)).toEqual(new Set([50, 60]));
+    const centerX = (call: { args: unknown[] }): number => {
+      const points = call.args[0] as number[];
+      let sum = 0;
+      for (let i = 0; i < points.length; i += 2) sum += points[i];
+      return sum / (points.length / 2);
+    };
+    const firstGroupXs = circleCalls.slice(0, 6).map(centerX);
+    const secondGroupXs = circleCalls.slice(6, 12).map(centerX);
+    expect(firstGroupXs).toEqual(expect.arrayContaining([expect.closeTo(0, 8), expect.closeTo(10, 8)]));
+    expect(secondGroupXs).toEqual(expect.arrayContaining([expect.closeTo(50, 8), expect.closeTo(60, 8)]));
   });
 });
 
@@ -388,6 +394,11 @@ describe("TeleportRenderer.render orthogonal connector routing", () => {
 // (`floorNavigable`). None of the draw-order/routing tests above ever set `TeleportEdge.toFloor`,
 // so this behavior has no coverage anywhere else.
 describe("TeleportRenderer.render cross-floor floor badge", () => {
+  const polygonRadiusAt = (points: number[], cx: number, cy: number): number => {
+    let max = 0;
+    for (let i = 0; i < points.length; i += 2) max = Math.max(max, Math.hypot(points[i] - cx, points[i + 1] - cy));
+    return max;
+  };
   it("a toFloor-tagged point draws no ordinary marker circle there — only the badge's own circle/text", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
@@ -400,11 +411,8 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     // draw (fill + border pass) — not asserting an exact count (an implementation detail of how
     // many passes each draws), just that the badge path actually drew at its own point and that
     // `from`'s normal marker still drew at its own point too (neither point was skipped).
-    const circleCalls = g.calls.filter((c) => c.fn === "circle");
-    const atBadgePoint = circleCalls.filter((c) => c.args[0] === 10 && c.args[1] === 10);
-    const atFromPoint = circleCalls.filter((c) => c.args[0] === 0 && c.args[1] === 0);
-    expect(atBadgePoint.length).toBeGreaterThan(0);
-    expect(atFromPoint.length).toBeGreaterThan(0);
+    const polygonCalls = g.calls.filter((c) => c.fn === "poly");
+    expect(polygonCalls.length).toBeGreaterThan(0);
     // The badge's own label (a `Text` child) is present at the badge point, in `overlayLayer`
     // (a `Container` sibling of `view` — a `Graphics` instance can't host it, GitHub issue #432).
     expect(overlay.children).toHaveLength(1);
@@ -492,8 +500,9 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 0.2, floorBadge: { shape: "circle", labelType: "arabic", size: 0.5, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // The badge's own fill circle at the badge point — radius is floorBadge.size * TILE_SIZE, not size * TILE_SIZE.
-    const badgeCircle = g.calls.find((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10 && typeof c.args[2] === "number" && (c.args[2] as number) > 0.2 * 40);
-    expect(badgeCircle).toBeDefined();
+    const badgePolygon = g.calls.find((c) => c.fn === "poly" && Array.isArray(c.args[0]) &&
+      polygonRadiusAt(c.args[0] as number[], 10, 10) > 0.2 * 40);
+    expect(badgePolygon).toBeDefined();
   });
 
   it("badge label draws in floorBadge.textColor, not floorColor", () => {

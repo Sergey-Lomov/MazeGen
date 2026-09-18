@@ -74,6 +74,21 @@ export function markerPolygonPoints(shape: Exclude<MarkerShape, "circle">, cx: n
   return points;
 }
 
+/** Circle outline used for filled markers. PixiJS `Graphics.circle()` triangulates a circle as a
+ *  centre fan; with antialiasing, a fan edge can become a zoom-dependent radial seam when another
+ *  Graphics is visible underneath it. A closed polygon avoids that centre-to-edge seam while
+ *  remaining visually circular. The segment count follows Pixi's adaptive tessellation closely
+ *  and scales with marker size (GitHub issue #561). */
+export function circlePolygonPoints(cx: number, cy: number, r: number): number[] {
+  const segments = Math.max(16, Math.ceil(2.3 * Math.sqrt(Math.max(0, 2 * r))) * 8);
+  const points: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    points.push(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+  }
+  return points;
+}
+
 /** Half the axis-aligned bounding-box side of `shape` drawn at area-matched "radius" `r` (see
  *  `areaMatchedCircumradius`) — used by `TeleportRenderer`'s mixed-cell (two disagreeing links on
  *  the same point) diagonal-split marker, which always draws a plain square clip (not `shape`
@@ -100,7 +115,7 @@ export function markerBoundingHalfExtent(shape: MarkerShape, r: number): number 
  *  other rounded shape at the same `r` — rounding what can be rounded closes most of that gap. */
 export function drawMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy: number, r: number, rounded = false): void {
   if (shape === "circle") {
-    g.circle(cx, cy, r);
+    g.poly(circlePolygonPoints(cx, cy, r), true);
     return;
   }
   const points = markerPolygonPoints(shape, cx, cy, r);

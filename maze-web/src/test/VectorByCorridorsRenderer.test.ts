@@ -334,6 +334,8 @@ describe("buildVerticalWidenMarkers", () => {
     expect(marker.radius).toBe(settingsA.elevatorMarker.size * TILE_SIZE);
     expect(marker.shape).toBe(settingsA.elevatorMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.elevatorMarker.cornerStyle);
+    expect(marker.borderWidth).toBe(settingsA.elevatorMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.elevatorMarker.gapWidth);
   });
 
   it("uses twoWayPassageMarker's size/shape/cornerStyle for a filled vertical_passage marker", () => {
@@ -341,6 +343,8 @@ describe("buildVerticalWidenMarkers", () => {
     expect(marker.radius).toBe(settingsA.twoWayPassageMarker.size * TILE_SIZE);
     expect(marker.shape).toBe(settingsA.twoWayPassageMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.twoWayPassageMarker.cornerStyle);
+    expect(marker.borderWidth).toBe(settingsA.twoWayPassageMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.twoWayPassageMarker.gapWidth);
   });
 
   it("uses oneWayPassageMarker's size/shape/cornerStyle for an unfilled vertical_passage marker", () => {
@@ -348,6 +352,8 @@ describe("buildVerticalWidenMarkers", () => {
     expect(marker.radius).toBe(settingsA.oneWayPassageMarker.size * TILE_SIZE);
     expect(marker.shape).toBe(settingsA.oneWayPassageMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.oneWayPassageMarker.cornerStyle);
+    expect(marker.borderWidth).toBe(settingsA.oneWayPassageMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.oneWayPassageMarker.gapWidth);
   });
 
   it("carries each marker's own pos through unchanged", () => {
@@ -1117,17 +1123,17 @@ describe("VectorByCorridorsRenderer", () => {
   it("draws a widen patch (fill in the corridor's own color) under each marker before drawing the markers", () => {
     vi.mocked(buildMazeMarkers).mockReturnValueOnce([{ pos: [5, 5], color: 0x999, radius: 4 }]);
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
-    expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    const markerWidenGraphics = (renderer as unknown as { markerWiden: { fill: ReturnType<typeof vi.fn> } }).markerWiden;
+    expect(markerWidenGraphics.fill).toHaveBeenCalledWith(settingsA.color);
   });
 
   it("also widens the corridor under teleport markers, reusing the same markerWidenPadding setting (no separate teleport padding)", () => {
     vi.mocked(buildTeleportEdges).mockReturnValueOnce([{ from: [7, 7], to: [9, 9], oneWay: false }]);
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const corridorsGraphics = (renderer as unknown as { corridors: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+    const markerWidenGraphics = (renderer as unknown as { markerWiden: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).markerWiden;
     // settingsA.teleportLineShape is "diamond" — drawn via `poly`, not `circle` (see drawMarkerShape).
-    expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
-    expect(corridorsGraphics.poly).toHaveBeenCalled();
+    expect(markerWidenGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    expect(markerWidenGraphics.poly).toHaveBeenCalled();
   });
 
   it("draws every widen patch (waypoint and teleport alike) in a fixed square when markerWidenShape isn't 'match_marker', regardless of each marker's own shape", () => {
@@ -1139,9 +1145,9 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(buildTeleportEdges).mockReturnValueOnce([{ from: [7, 7], to: [9, 9], oneWay: false }]);
     currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, markerWidenShape: "square" } });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const corridorsGraphics = (renderer as unknown as { corridors: { arcTo: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn> } }).corridors;
-    expect(corridorsGraphics.circle).not.toHaveBeenCalled();
-    expect(corridorsGraphics.arcTo).toHaveBeenCalled();
+    const markerWidenGraphics = (renderer as unknown as { markerWiden: { arcTo: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn> } }).markerWiden;
+    expect(markerWidenGraphics.circle).not.toHaveBeenCalled();
+    expect(markerWidenGraphics.arcTo).toHaveBeenCalled();
   });
 
   it("renders teleports via its own TeleportRenderer, styled from vectorByCorridorsSettings with the corridor's own color as floorColor", () => {
