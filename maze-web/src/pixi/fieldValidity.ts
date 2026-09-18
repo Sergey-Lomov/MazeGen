@@ -1,5 +1,5 @@
 import { encodePoint } from "./tessellationProjection";
-import type { PresetEndpoint } from "./presetEndpoint";
+import { presetEndpointFromKey, type PresetEndpoint } from "./presetEndpoint";
 import {
   resolveCells, type ResolveFieldAt,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
@@ -110,10 +110,8 @@ export function computeInvalidLockedNodeKeys(
   const getFieldSet = fieldSetCache(resolveFieldAt);
   const invalid = new Set<string>();
   for (const key of lockedNodes.keys()) {
-    const [pointPart, levelPart] = key.split("@");
-    const [x, y] = pointPart.split(",").map(Number);
-    const level = levelPart === undefined ? undefined : Number(levelPart);
-    if (!pointInField(getFieldSet, [x, y], level)) invalid.add(key);
+    const endpoint = presetEndpointFromKey(key);
+    if (!endpoint || !pointInField(getFieldSet, endpoint.point, endpoint.level)) invalid.add(key);
   }
   return invalid;
 }

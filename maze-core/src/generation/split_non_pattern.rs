@@ -1,16 +1,21 @@
-use std::collections::HashSet;
-use rand::seq::SliceRandom;
-use crate::ids::{IdGenerator, NodeId};
-use crate::graph::Graph;
-use crate::space::{MultiLevelField, Tessellation};
-use crate::event_log::ScopeGuard;
-use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
-use super::split_pattern::SplitGenerationConfig;
 use super::edge_ops::try_add_edge;
-use super::vertex_based::{VertexBasedEvent, GenState, run_ordinary_step_body_for_node, add_edge_and_detect_direction};
 use super::split_logic::StartReassignment;
-use super::split_shared::{mint_split_nodes, sync_all_nodes, maybe_reassign_start, apply_split_teleport, ensure_min_connectivity};
+use super::split_pattern::SplitGenerationConfig;
+use super::split_shared::{
+    apply_split_teleport, ensure_min_connectivity, maybe_reassign_start, mint_split_nodes,
+    sync_all_nodes,
+};
+use super::vertex_based::{
+    GenState, VertexBasedEvent, add_edge_and_detect_direction, run_ordinary_step_body_for_node,
+};
+use super::{ElementsConfig, GenerationParams, PresetState};
+use crate::event_log::ScopeGuard;
+use crate::graph::Graph;
+use crate::ids::{IdGenerator, NodeId};
+use crate::space::{MultiLevelField, Tessellation};
+use rand::seq::SliceRandom;
+use std::collections::HashSet;
 
 /// Non-pattern split path: mints `max_split_nodes - 1` new nodes (total node count on the tile,
 /// including `src`, is `max_split_nodes` — an exact count, `1` is a valid no-op), then processes
@@ -44,9 +49,20 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     let nodes = mint_split_nodes(graph, field, ids, src, count, debug_state);
     sync_all_nodes(state, &nodes[1..]);
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitNodesCreated { src, nodes: nodes.clone(), pattern: None });
+        log.emit(VertexBasedEvent::SplitNodesCreated {
+            src,
+            nodes: nodes.clone(),
+            pattern: None,
+        });
     }
-    maybe_reassign_start(src, &nodes, start, start_reassignment, state, scope.as_deref_mut());
+    maybe_reassign_start(
+        src,
+        &nodes,
+        start,
+        start_reassignment,
+        state,
+        scope.as_deref_mut(),
+    );
 
     if let Some(bridge) = bridge {
         let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
@@ -54,7 +70,11 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         });
         if let Some((from, to, bidirectional)) = added {
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded { src: from, dst: to, bidirectional });
+                log.emit(VertexBasedEvent::EdgeAdded {
+                    src: from,
+                    dst: to,
+                    bidirectional,
+                });
             }
         }
         // `src` is processed synchronously by this same event's per-node loop below, not via a
@@ -64,7 +84,10 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         // `split_chance` and re-running corridor/junction logic on an already-connected node).
         state.visited.insert(src);
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::NodeVisited { node: src, parent: bridge });
+            log.emit(VertexBasedEvent::NodeVisited {
+                node: src,
+                parent: bridge,
+            });
         }
     }
 
@@ -74,7 +97,8 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     // nodes with nothing left and no guaranteed connection at all (see GitHub issue #222's
     // non-pattern split, "isolated new node" follow-up). Instead, the pool is split up front,
     // round-robin by position, so each node only ever competes for its own share.
-    let free_neighbors: Vec<NodeId> = field.neighbors(src)
+    let free_neighbors: Vec<NodeId> = field
+        .neighbors(src)
         .into_iter()
         .filter(|n| !state.visited.contains(n) && !state.in_frontier.contains(n))
         .collect();
@@ -85,7 +109,19 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
 
     for (i, &node) in nodes.iter().enumerate() {
         state.visited.insert(node);
-        run_ordinary_step_body_for_node(graph, field, params, elements, preset_state, state, node, None, false, Some(&allowed_per_node[i]), scope.as_deref_mut());
+        run_ordinary_step_body_for_node(
+            graph,
+            field,
+            params,
+            elements,
+            preset_state,
+            state,
+            node,
+            None,
+            false,
+            Some(&allowed_per_node[i]),
+            scope.as_deref_mut(),
+        );
     }
 
     // A node can still end up with zero free neighbors at all (the point simply didn't have
@@ -95,20 +131,38 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     // so the pick among several candidates is still random) — preferring a neighbor no sibling of
     // this same split event is already connected to, so distinct split nodes don't all pile onto
     // the same ordinary node unless there's no other choice.
-    let sibling_targets: HashSet<NodeId> = nodes.iter()
-        .flat_map(|&s| graph.outgoing_neighbors(s).chain(graph.incoming_neighbors(s)))
+    let sibling_targets: HashSet<NodeId> = nodes
+        .iter()
+        .flat_map(|&s| {
+            graph
+                .outgoing_neighbors(s)
+                .chain(graph.incoming_neighbors(s))
+        })
         .collect();
     let assignments = ensure_min_connectivity(
         nodes.len(),
-        |i| { let node = nodes[i]; graph.outgoing_neighbors(node).next().is_some() || graph.incoming_neighbors(node).next().is_some() },
         |i| {
-            let mut visited_neighbors: Vec<NodeId> = field.neighbors(nodes[i])
+            let node = nodes[i];
+            graph.outgoing_neighbors(node).next().is_some()
+                || graph.incoming_neighbors(node).next().is_some()
+        },
+        |i| {
+            let mut visited_neighbors: Vec<NodeId> = field
+                .neighbors(nodes[i])
                 .into_iter()
                 .filter(|n| state.visited.contains(n))
                 .collect();
             visited_neighbors.shuffle(&mut state.rng);
-            let preferred: Vec<NodeId> = visited_neighbors.iter().copied().filter(|n| !sibling_targets.contains(n)).collect();
-            if preferred.is_empty() { visited_neighbors } else { preferred }
+            let preferred: Vec<NodeId> = visited_neighbors
+                .iter()
+                .copied()
+                .filter(|n| !sibling_targets.contains(n))
+                .collect();
+            if preferred.is_empty() {
+                visited_neighbors
+            } else {
+                preferred
+            }
         },
     );
     for (i, dst) in assignments {
@@ -118,7 +172,11 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         });
         if let Some((from, to, bidirectional)) = added {
             if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded { src: from, dst: to, bidirectional });
+                log.emit(VertexBasedEvent::EdgeAdded {
+                    src: from,
+                    dst: to,
+                    bidirectional,
+                });
             }
         }
     }
@@ -129,10 +187,10 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generation::GenerationParams;
+    use crate::generation::split_pattern::SplitGenerationConfig;
     use crate::generation::test_utils::{default_elements, make_field_graph_ids};
     use crate::generation::vertex_based::GenState;
-    use crate::generation::split_pattern::SplitGenerationConfig;
-    use crate::generation::GenerationParams;
     use crate::space::SquarePoint;
 
     /// GitHub issue #222's "isolated new node" follow-up: even after `handle_non_pattern_split`'s
@@ -160,25 +218,54 @@ mod tests {
         state.visited.insert(down);
         state.visited.insert(left);
 
-        let params = GenerationParams { corridor_chance: 1.0, ..GenerationParams::default() };
+        let params = GenerationParams {
+            corridor_chance: 1.0,
+            ..GenerationParams::default()
+        };
         let elements = default_elements();
         let preset_state = PresetState::empty();
-        let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 3, patterns: vec![] };
+        let split_config = SplitGenerationConfig {
+            pattern_mode: false,
+            max_split_nodes: 3,
+            patterns: vec![],
+        };
         let mut start_reassignment = None;
 
         handle_non_pattern_split(
-            &mut graph, &mut field, &mut ids, &params, &elements, &split_config, &preset_state,
-            &mut state, src, None, src, &mut start_reassignment, None, None,
+            &mut graph,
+            &mut field,
+            &mut ids,
+            &params,
+            &elements,
+            &split_config,
+            &preset_state,
+            &mut state,
+            src,
+            None,
+            src,
+            &mut start_reassignment,
+            None,
+            None,
         );
 
         let src_point = field.point_of(src);
-        let split_nodes: Vec<NodeId> = field.all_node_ids().into_iter()
+        let split_nodes: Vec<NodeId> = field
+            .all_node_ids()
+            .into_iter()
             .filter(|n| field.point_of(*n) == src_point)
             .collect();
-        assert_eq!(split_nodes.len(), 3, "expected exactly 3 nodes minted at src's point");
+        assert_eq!(
+            split_nodes.len(),
+            3,
+            "expected exactly 3 nodes minted at src's point"
+        );
         for node in split_nodes {
-            let has_edge = graph.outgoing_neighbors(node).next().is_some() || graph.incoming_neighbors(node).next().is_some();
-            assert!(has_edge, "node {node:?} ended up with zero connections — fallback did not fire");
+            let has_edge = graph.outgoing_neighbors(node).next().is_some()
+                || graph.incoming_neighbors(node).next().is_some();
+            assert!(
+                has_edge,
+                "node {node:?} ended up with zero connections — fallback did not fire"
+            );
         }
     }
 }

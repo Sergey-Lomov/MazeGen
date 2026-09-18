@@ -72,7 +72,10 @@ fn emit_wire_imports(out: &mut String, source: &EventSource) {
     if needs_expect_len {
         names.insert(0, "expectLen");
     }
-    out.push_str(&format!("import {{ {} }} from \"../wire\";\n", names.join(", ")));
+    out.push_str(&format!(
+        "import {{ {} }} from \"../wire\";\n",
+        names.join(", ")
+    ));
 }
 
 /// Every distinct custom codec this source's variants reference gets one import from
@@ -103,10 +106,16 @@ fn emit_codec_imports(out: &mut String, source: &EventSource) {
     }
     let stem_camel = to_camel_case(&source.location.stem);
     let names: Vec<&str> = seen.into_iter().collect();
-    out.push_str(&format!("import {{ {} }} from \"../{stem_camel}Custom\";\n", names.join(", ")));
+    out.push_str(&format!(
+        "import {{ {} }} from \"../{stem_camel}Custom\";\n",
+        names.join(", ")
+    ));
     if !seen_types.is_empty() {
         let type_names: Vec<&str> = seen_types.into_iter().collect();
-        out.push_str(&format!("import type {{ {} }} from \"../{stem_camel}Custom\";\n", type_names.join(", ")));
+        out.push_str(&format!(
+            "import type {{ {} }} from \"../{stem_camel}Custom\";\n",
+            type_names.join(", ")
+        ));
     }
 }
 
@@ -124,9 +133,17 @@ fn emit_type(out: &mut String, source: &EventSource) {
     for v in &source.variants {
         arms.push(match &v.shape {
             VariantShape::Unit => format!("  | {{ kind: \"{}\" }}", v.name),
-            VariantShape::NewtypeTuple(field) => format!("  | {{ kind: \"{}\"; {}: {} }}", v.name, to_camel_case(&field.name), ts_type_for(&field.ty)),
+            VariantShape::NewtypeTuple(field) => format!(
+                "  | {{ kind: \"{}\"; {}: {} }}",
+                v.name,
+                to_camel_case(&field.name),
+                ts_type_for(&field.ty)
+            ),
             VariantShape::Struct(fields) => {
-                let field_strs: Vec<String> = fields.iter().map(|f| format!("{}: {}", to_camel_case(&f.name), ts_type_for(&f.ty))).collect();
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|f| format!("{}: {}", to_camel_case(&f.name), ts_type_for(&f.ty)))
+                    .collect();
                 format!("  | {{ kind: \"{}\"; {} }}", v.name, field_strs.join("; "))
             }
         });
@@ -146,11 +163,16 @@ fn emit_decode(out: &mut String, source: &EventSource, tag_const: &str) {
     let name = &source.enum_name;
     out.push_str(&format!("export function decode{name}(tag: number, bytes: Uint8Array): {name} {{\n  switch (tag) {{\n"));
     for v in &source.variants {
-        out.push_str(&format!("    case {tag_const}.{}: {{\n", to_screaming_snake(&v.name)));
+        out.push_str(&format!(
+            "    case {tag_const}.{}: {{\n",
+            to_screaming_snake(&v.name)
+        ));
         emit_decode_variant(out, v);
         out.push_str("    }\n");
     }
-    out.push_str(&format!("    default:\n      throw new Error(`{name}: unknown wire tag ${{tag}}`);\n  }}\n}}\n\n"));
+    out.push_str(&format!(
+        "    default:\n      throw new Error(`{name}: unknown wire tag ${{tag}}`);\n  }}\n}}\n\n"
+    ));
 }
 
 /// One field's decode: the statement(s) to emit, the expression referencing the decoded value,
@@ -177,17 +199,27 @@ fn field_read(ty: &FieldType, offset_expr: &str, index: usize) -> FieldRead {
             });
             let read_stmt = match m.map(|m| &m.ts_read_shape) {
                 Some(TsReadShape::Object(field)) => {
-                    format!("const {bind_name}Res = {value_expr}; const {bind_name} = {bind_name}Res.{field};")
+                    format!(
+                        "const {bind_name}Res = {value_expr}; const {bind_name} = {bind_name}Res.{field};"
+                    )
                 }
                 _ => format!("const {bind_name} = {value_expr};"),
             };
-            FieldRead { bind_name, read_stmt, fixed_width }
+            FieldRead {
+                bind_name,
+                read_stmt,
+                fixed_width,
+            }
         }
         FieldType::Custom(name) => {
-            let read_fn = codecs::lookup(name).map(|c| c.ts_read_fn).unwrap_or("readUnknownCustom");
+            let read_fn = codecs::lookup(name)
+                .map(|c| c.ts_read_fn)
+                .unwrap_or("readUnknownCustom");
             FieldRead {
                 bind_name: bind_name.clone(),
-                read_stmt: format!("const {bind_name}Res = {read_fn}(bytes, {offset_expr}); const {bind_name} = {bind_name}Res.value;"),
+                read_stmt: format!(
+                    "const {bind_name}Res = {read_fn}(bytes, {offset_expr}); const {bind_name} = {bind_name}Res.value;"
+                ),
                 fixed_width: None,
             }
         }
@@ -206,7 +238,12 @@ fn emit_decode_variant(out: &mut String, v: &crate::schema::Variant) {
                 out.push_str(&format!("      expectLen(tag, bytes, {w});\n"));
             }
             out.push_str(&format!("      {}\n", read.read_stmt));
-            out.push_str(&format!("      return {{ kind: \"{}\", {}: {} }};\n", v.name, to_camel_case(&field.name), read.bind_name));
+            out.push_str(&format!(
+                "      return {{ kind: \"{}\", {}: {} }};\n",
+                v.name,
+                to_camel_case(&field.name),
+                read.bind_name
+            ));
         }
         VariantShape::Struct(fields) => {
             let mut offset_expr = "0".to_string();
@@ -234,32 +271,52 @@ fn emit_decode_variant(out: &mut String, v: &crate::schema::Variant) {
             // check against (the individual `readNodeIdList`/`readStr` calls already validate
             // their own internal length prefix against the buffer).
             if all_fixed {
-                out.push_str(&format!("      expectLen(tag, bytes, {total_fixed_width});\n"));
+                out.push_str(&format!(
+                    "      expectLen(tag, bytes, {total_fixed_width});\n"
+                ));
             }
             out.push_str(&body);
-            out.push_str(&format!("      return {{ kind: \"{}\", {} }};\n", v.name, binds.join(", ")));
+            out.push_str(&format!(
+                "      return {{ kind: \"{}\", {} }};\n",
+                v.name,
+                binds.join(", ")
+            ));
         }
     }
 }
 
 fn emit_is_mutating(out: &mut String, source: &EventSource) {
     let name = &source.enum_name;
-    let mutating: Vec<&str> = source.variants.iter().filter(|v| v.mutating).map(|v| v.name.as_str()).collect();
+    let mutating: Vec<&str> = source
+        .variants
+        .iter()
+        .filter(|v| v.mutating)
+        .map(|v| v.name.as_str())
+        .collect();
     // `tsconfig.json` has `noUnusedParameters: true` — a body that never references `event`
     // (either mode's degenerate case: always-mutating always returns `true`, per-variant with no
     // mutating variant always returns `false`) must name the parameter `_event`, or `tsc --noEmit`
     // fails on this generated file the same way it would on hand-written code.
-    let references_event = !matches!(source.mutating_mode, MutatingMode::AlwaysMutating) && !mutating.is_empty();
+    let references_event =
+        !matches!(source.mutating_mode, MutatingMode::AlwaysMutating) && !mutating.is_empty();
     let param_name = if references_event { "event" } else { "_event" };
-    out.push_str(&format!("export function isMutating{name}({param_name}: {name}): boolean {{\n"));
+    out.push_str(&format!(
+        "export function isMutating{name}({param_name}: {name}): boolean {{\n"
+    ));
     match source.mutating_mode {
         MutatingMode::AlwaysMutating => out.push_str("  return true;\n"),
         MutatingMode::PerVariant => {
             if mutating.is_empty() {
                 out.push_str("  return false;\n");
             } else {
-                let checks: Vec<String> = mutating.iter().map(|n| format!("event.kind === \"{n}\"")).collect();
-                out.push_str(&format!("  return (\n    {}\n  );\n", checks.join(" ||\n    ")));
+                let checks: Vec<String> = mutating
+                    .iter()
+                    .map(|n| format!("event.kind === \"{n}\""))
+                    .collect();
+                out.push_str(&format!(
+                    "  return (\n    {}\n  );\n",
+                    checks.join(" ||\n    ")
+                ));
             }
         }
     }
@@ -280,20 +337,36 @@ pub fn generate_golden_test_file(source: &EventSource, import_path: &str) -> Opt
     let name = &source.enum_name;
     let tag_const = format!("{}_TAG", to_screaming_snake(name));
     let mut out = String::new();
-    out.push_str(&format!("// @generated by codegen/ — DO NOT EDIT. Source: {}\n\n", source.location.rust_file));
+    out.push_str(&format!(
+        "// @generated by codegen/ — DO NOT EDIT. Source: {}\n\n",
+        source.location.rust_file
+    ));
     out.push_str(&format!(
         "import {{ describe, it, expect }} from \"vitest\";\nimport {{ decode{name}, {tag_const} }} from \"{import_path}\";\n\n"
     ));
-    out.push_str(&format!("describe(\"{name} golden round trip\", () => {{\n"));
-    for GoldenEntry { variant_name, example_value_ts, expected_bytes, .. } in &entries {
+    out.push_str(&format!(
+        "describe(\"{name} golden round trip\", () => {{\n"
+    ));
+    for GoldenEntry {
+        variant_name,
+        example_value_ts,
+        expected_bytes,
+        ..
+    } in &entries
+    {
         let bytes_lit: Vec<String> = expected_bytes.iter().map(|b| b.to_string()).collect();
         out.push_str(&format!("  it(\"{variant_name}\", () => {{\n"));
-        out.push_str(&format!("    const bytes = new Uint8Array([{}]);\n", bytes_lit.join(", ")));
+        out.push_str(&format!(
+            "    const bytes = new Uint8Array([{}]);\n",
+            bytes_lit.join(", ")
+        ));
         out.push_str(&format!(
             "    const decoded = decode{name}({tag_const}.{}, bytes);\n",
             to_screaming_snake(variant_name)
         ));
-        out.push_str(&format!("    expect(decoded).toEqual({example_value_ts});\n"));
+        out.push_str(&format!(
+            "    expect(decoded).toEqual({example_value_ts});\n"
+        ));
         out.push_str("  });\n");
     }
     out.push_str("});\n");
@@ -308,7 +381,10 @@ mod tests {
     fn source(mutating_mode: MutatingMode, variants: Vec<Variant>) -> EventSource {
         EventSource {
             enum_name: "FooEvent".to_string(),
-            location: SourceLocation { rust_file: "foo.rs".to_string(), stem: "foo".to_string() },
+            location: SourceLocation {
+                rust_file: "foo.rs".to_string(),
+                stem: "foo".to_string(),
+            },
             mutating_mode,
             variants,
         }
@@ -316,7 +392,15 @@ mod tests {
 
     #[test]
     fn wire_imports_include_expect_len_for_a_unit_variant_but_no_type_read_fns() {
-        let src = source(MutatingMode::PerVariant, vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::Unit }]);
+        let src = source(
+            MutatingMode::PerVariant,
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::Unit,
+            }],
+        );
         let mut out = String::new();
         emit_wire_imports(&mut out, &src);
         assert_eq!(out, "import { expectLen } from \"../wire\";\n");
@@ -326,7 +410,15 @@ mod tests {
     fn wire_imports_include_the_readfn_for_a_newtype_tuple_standard_field() {
         let src = source(
             MutatingMode::PerVariant,
-            vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "id".to_string(), ty: FieldType::Standard("NodeId") }) }],
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::NewtypeTuple(Field {
+                    name: "id".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                }),
+            }],
         );
         let mut out = String::new();
         emit_wire_imports(&mut out, &src);
@@ -339,7 +431,15 @@ mod tests {
     fn wire_imports_omit_expect_len_for_a_length_prefixed_only_field() {
         let src = source(
             MutatingMode::PerVariant,
-            vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "ids".to_string(), ty: FieldType::Standard("Vec<NodeId>") }) }],
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::NewtypeTuple(Field {
+                    name: "ids".to_string(),
+                    ty: FieldType::Standard("Vec<NodeId>"),
+                }),
+            }],
         );
         let mut out = String::new();
         emit_wire_imports(&mut out, &src);
@@ -348,7 +448,15 @@ mod tests {
 
     #[test]
     fn codec_imports_are_empty_when_no_variant_uses_a_custom_field() {
-        let src = source(MutatingMode::PerVariant, vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::Unit }]);
+        let src = source(
+            MutatingMode::PerVariant,
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::Unit,
+            }],
+        );
         let mut out = String::new();
         emit_codec_imports(&mut out, &src);
         assert_eq!(out, "");
@@ -358,11 +466,22 @@ mod tests {
     fn codec_imports_include_the_readfn_and_named_type_for_a_custom_field() {
         let src = source(
             MutatingMode::PerVariant,
-            vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "payload".to_string(), ty: FieldType::Custom("IssuePayloadCodec".to_string()) }) }],
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::NewtypeTuple(Field {
+                    name: "payload".to_string(),
+                    ty: FieldType::Custom("IssuePayloadCodec".to_string()),
+                }),
+            }],
         );
         let mut out = String::new();
         emit_codec_imports(&mut out, &src);
-        assert_eq!(out, "import { readIssuePayload } from \"../fooCustom\";\nimport type { IssuePayload } from \"../fooCustom\";\n");
+        assert_eq!(
+            out,
+            "import { readIssuePayload } from \"../fooCustom\";\nimport type { IssuePayload } from \"../fooCustom\";\n"
+        );
     }
 
     #[test]
@@ -370,9 +489,30 @@ mod tests {
         let src = source(
             MutatingMode::PerVariant,
             vec![
-                Variant { name: "Unit".to_string(), tag: 1, mutating: false, shape: VariantShape::Unit },
-                Variant { name: "Tuple".to_string(), tag: 2, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "id".to_string(), ty: FieldType::Standard("NodeId") }) },
-                Variant { name: "Struct".to_string(), tag: 3, mutating: false, shape: VariantShape::Struct(vec![Field { name: "from".to_string(), ty: FieldType::Standard("NodeId") }]) },
+                Variant {
+                    name: "Unit".to_string(),
+                    tag: 1,
+                    mutating: false,
+                    shape: VariantShape::Unit,
+                },
+                Variant {
+                    name: "Tuple".to_string(),
+                    tag: 2,
+                    mutating: false,
+                    shape: VariantShape::NewtypeTuple(Field {
+                        name: "id".to_string(),
+                        ty: FieldType::Standard("NodeId"),
+                    }),
+                },
+                Variant {
+                    name: "Struct".to_string(),
+                    tag: 3,
+                    mutating: false,
+                    shape: VariantShape::Struct(vec![Field {
+                        name: "from".to_string(),
+                        ty: FieldType::Standard("NodeId"),
+                    }]),
+                },
             ],
         );
         let mut out = String::new();
@@ -394,24 +534,51 @@ mod tests {
     fn emit_type_does_not_rename_a_field_literally_called_kind() {
         let src = source(
             MutatingMode::PerVariant,
-            vec![Variant { name: "Merged".to_string(), tag: 1, mutating: false, shape: VariantShape::Struct(vec![Field { name: "kind".to_string(), ty: FieldType::Standard("NodeId") }]) }],
+            vec![Variant {
+                name: "Merged".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::Struct(vec![Field {
+                    name: "kind".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                }]),
+            }],
         );
         let mut out = String::new();
         emit_type(&mut out, &src);
-        assert!(out.contains("{ kind: \"Merged\"; kind: bigint }"), "emitter renders the collision verbatim: {out}");
+        assert!(
+            out.contains("{ kind: \"Merged\"; kind: bigint }"),
+            "emitter renders the collision verbatim: {out}"
+        );
     }
 
     #[test]
     fn emit_decode_variant_for_unit_checks_zero_length_before_returning() {
-        let v = Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::Unit };
+        let v = Variant {
+            name: "Bar".to_string(),
+            tag: 1,
+            mutating: false,
+            shape: VariantShape::Unit,
+        };
         let mut out = String::new();
         emit_decode_variant(&mut out, &v);
-        assert_eq!(out, "      expectLen(tag, bytes, 0);\n      return { kind: \"Bar\" };\n");
+        assert_eq!(
+            out,
+            "      expectLen(tag, bytes, 0);\n      return { kind: \"Bar\" };\n"
+        );
     }
 
     #[test]
     fn emit_decode_variant_for_newtype_tuple_checks_length_before_reading() {
-        let v = Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: "id".to_string(), ty: FieldType::Standard("NodeId") }) };
+        let v = Variant {
+            name: "Bar".to_string(),
+            tag: 1,
+            mutating: false,
+            shape: VariantShape::NewtypeTuple(Field {
+                name: "id".to_string(),
+                ty: FieldType::Standard("NodeId"),
+            }),
+        };
         let mut out = String::new();
         emit_decode_variant(&mut out, &v);
         // `expectLen` must appear before the read statement — a too-short buffer must fail with
@@ -419,7 +586,10 @@ mod tests {
         // session fixed: the field used to be read before the length check).
         let expect_pos = out.find("expectLen").expect("must call expectLen");
         let read_pos = out.find("readNodeId").expect("must call readNodeId");
-        assert!(expect_pos < read_pos, "expectLen must run before the field read: {out}");
+        assert!(
+            expect_pos < read_pos,
+            "expectLen must run before the field read: {out}"
+        );
     }
 
     /// A struct variant with a mix of fixed-width and length-prefixed fields has no single
@@ -432,13 +602,22 @@ mod tests {
             tag: 1,
             mutating: false,
             shape: VariantShape::Struct(vec![
-                Field { name: "id".to_string(), ty: FieldType::Standard("NodeId") },
-                Field { name: "label".to_string(), ty: FieldType::Standard("String") },
+                Field {
+                    name: "id".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "label".to_string(),
+                    ty: FieldType::Standard("String"),
+                },
             ]),
         };
         let mut out = String::new();
         emit_decode_variant(&mut out, &v);
-        assert!(!out.contains("expectLen"), "variable-length struct must not emit expectLen: {out}");
+        assert!(
+            !out.contains("expectLen"),
+            "variable-length struct must not emit expectLen: {out}"
+        );
         assert!(out.contains("readNodeId(bytes, 0)"));
         assert!(out.contains("readStr(bytes, 0 + 8)"));
     }
@@ -450,37 +629,79 @@ mod tests {
             tag: 1,
             mutating: false,
             shape: VariantShape::Struct(vec![
-                Field { name: "from".to_string(), ty: FieldType::Standard("NodeId") },
-                Field { name: "to".to_string(), ty: FieldType::Standard("NodeId") },
-                Field { name: "ok".to_string(), ty: FieldType::Standard("bool") },
+                Field {
+                    name: "from".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "to".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "ok".to_string(),
+                    ty: FieldType::Standard("bool"),
+                },
             ]),
         };
         let mut out = String::new();
         emit_decode_variant(&mut out, &v);
-        assert!(out.contains("expectLen(tag, bytes, 17);"), "8 + 8 + 1 = 17: {out}");
+        assert!(
+            out.contains("expectLen(tag, bytes, 17);"),
+            "8 + 8 + 1 = 17: {out}"
+        );
     }
 
     #[test]
     fn is_mutating_always_mutating_mode_ignores_the_event_parameter() {
-        let src = source(MutatingMode::AlwaysMutating, vec![Variant { name: "Bar".to_string(), tag: 1, mutating: true, shape: VariantShape::Unit }]);
+        let src = source(
+            MutatingMode::AlwaysMutating,
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: true,
+                shape: VariantShape::Unit,
+            }],
+        );
         let mut out = String::new();
         emit_is_mutating(&mut out, &src);
-        assert!(out.contains("isMutatingFooEvent(_event: FooEvent)"), "unused param must be named _event: {out}");
+        assert!(
+            out.contains("isMutatingFooEvent(_event: FooEvent)"),
+            "unused param must be named _event: {out}"
+        );
         assert!(out.contains("return true;"));
     }
 
     #[test]
     fn is_mutating_per_variant_with_no_mutating_variant_ignores_the_event_parameter() {
-        let src = source(MutatingMode::PerVariant, vec![Variant { name: "Bar".to_string(), tag: 1, mutating: false, shape: VariantShape::Unit }]);
+        let src = source(
+            MutatingMode::PerVariant,
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: false,
+                shape: VariantShape::Unit,
+            }],
+        );
         let mut out = String::new();
         emit_is_mutating(&mut out, &src);
-        assert!(out.contains("isMutatingFooEvent(_event: FooEvent)"), "unused param must be named _event: {out}");
+        assert!(
+            out.contains("isMutatingFooEvent(_event: FooEvent)"),
+            "unused param must be named _event: {out}"
+        );
         assert!(out.contains("return false;"));
     }
 
     #[test]
     fn is_mutating_per_variant_with_a_mutating_variant_names_the_event_parameter() {
-        let src = source(MutatingMode::PerVariant, vec![Variant { name: "Bar".to_string(), tag: 1, mutating: true, shape: VariantShape::Unit }]);
+        let src = source(
+            MutatingMode::PerVariant,
+            vec![Variant {
+                name: "Bar".to_string(),
+                tag: 1,
+                mutating: true,
+                shape: VariantShape::Unit,
+            }],
+        );
         let mut out = String::new();
         emit_is_mutating(&mut out, &src);
         assert!(out.contains("isMutatingFooEvent(event: FooEvent)"));

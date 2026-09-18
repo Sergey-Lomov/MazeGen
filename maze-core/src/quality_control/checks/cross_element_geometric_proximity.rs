@@ -1,17 +1,20 @@
-use std::collections::{HashMap, HashSet};
-use rand::RngCore;
+use super::elevator_core::elevator_groups;
+use super::proximity_scan_core::pairwise_geometric_scan;
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::space::{Tessellation, floor_aware_xy_distance};
 use crate::quality_control::check::Check;
-use crate::quality_control::cross_element::{CrossElement, CrossElementSet, cross_element_occurrences, cross_element_route_protected};
-use super::elevator_core::elevator_groups;
+use crate::quality_control::cross_element::{
+    CrossElement, CrossElementSet, cross_element_occurrences, cross_element_route_protected,
+};
 use crate::quality_control::issue_kinds::CrossElementCloseNodes;
 use crate::quality_control::{GeometricFloorMode, InvalidCrossElementGroupIssue};
-use super::proximity_scan_core::pairwise_geometric_scan;
+use crate::space::{Tessellation, floor_aware_xy_distance};
+use rand::RngCore;
+use std::collections::{HashMap, HashSet};
 
 pub const CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 1.0;
-pub const CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
+pub const CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode =
+    GeometricFloorMode::SameFloorOnly;
 
 // Defaults: every relocatable element type on, start and finish off (see GitHub issue #376's D7)
 // -- repair can never remove start/finish, so a pair drawn from them is dead weight by default.
@@ -28,7 +31,11 @@ pub const CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH: bool = false;
 /// `(a, b)` and `(b, a)` from opposite scan directions collapse to a single group. Mirrors
 /// `InvalidGroupIssue`'s own `canonical_group_key`.
 pub(super) fn pair_key(a: &CrossElement, b: &CrossElement) -> (CrossElement, CrossElement) {
-    if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) }
+    if a <= b {
+        (a.clone(), b.clone())
+    } else {
+        (b.clone(), a.clone())
+    }
 }
 
 /// The distinct elements among `occurrences` that are protected by the current start->finish
@@ -65,7 +72,10 @@ pub(super) fn elevator_of_stop<T: Tessellation>(
     maze: &Maze<T>,
     occurrences: &[crate::quality_control::cross_element::CrossElementOccurrence<T>],
 ) -> HashMap<NodeId, usize> {
-    if !occurrences.iter().any(|o| matches!(o.element, CrossElement::ElevatorStop(_))) {
+    if !occurrences
+        .iter()
+        .any(|o| matches!(o.element, CrossElement::ElevatorStop(_)))
+    {
         return HashMap::new();
     }
     let mut map = HashMap::new();
@@ -177,10 +187,20 @@ pub struct CrossElementGeometricProximityCheck {
     pub protect_route: bool,
 }
 
-impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGeometricProximityCheck {
-    fn check_type_id(&self) -> &'static str { "cross_element_geometric_proximity" }
+impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue>
+    for CrossElementGeometricProximityCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "cross_element_geometric_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidCrossElementGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidCrossElementGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         if self.set.enabled_count() < 1 {
             return;
         }
@@ -230,8 +250,9 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGe
         if groups.is_empty() {
             return;
         }
-        let issue = InvalidCrossElementGroupIssue::new_from_check(&self.instance_id, groups, close_nodes)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue =
+            InvalidCrossElementGroupIssue::new_from_check(&self.instance_id, groups, close_nodes)
+                .with_detail(&self.instance_id, "distance", self.distance.to_string());
         issues.push(issue);
     }
 }
@@ -239,10 +260,10 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "cross_element_geometric_proximity";
 
@@ -250,7 +271,13 @@ mod tests {
         crate::random::MazeRng::seed_from_u64(0)
     }
 
-    fn set_of(teleport: bool, one_way: bool, split: bool, start: bool, finish: bool) -> CrossElementSet {
+    fn set_of(
+        teleport: bool,
+        one_way: bool,
+        split: bool,
+        start: bool,
+        finish: bool,
+    ) -> CrossElementSet {
         CrossElementSet {
             teleport,
             one_way,
@@ -279,13 +306,20 @@ mod tests {
 
     /// Single floor, width `w`. Teleport portal between x=0 and x=`tp_far`, a split tile at
     /// `split_x` (a second node added at that point).
-    fn maze_with_teleport_and_split(w: usize, tp_far: i32, split_x: i32) -> Maze<SquareTessellation> {
+    fn maze_with_teleport_and_split(
+        w: usize,
+        tp_far: i32,
+        split_x: i32,
+    ) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(tp_far), EdgeKind::Teleport);
         g.add_edge(p(tp_far), p(0), EdgeKind::Teleport);
@@ -297,9 +331,18 @@ mod tests {
         // teleport ends at x=0 and x=8; split at x=1 -> one end is 1 tile from the split.
         let maze = maze_with_teleport_and_split(9, 8, 1);
         let mut issues = Vec::new();
-        check(3.0, set_of(true, false, true, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(3.0, set_of(true, false, true, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].groups().len(), 1, "one logical pair despite the teleport having two ends");
+        assert_eq!(
+            issues[0].groups().len(),
+            1,
+            "one logical pair despite the teleport having two ends"
+        );
         assert_eq!(issues[0].groups()[0].1, 1);
     }
 
@@ -307,7 +350,12 @@ mod tests {
     fn silent_when_farther_than_threshold() {
         let maze = maze_with_teleport_and_split(20, 8, 15);
         let mut issues = Vec::new();
-        check(3.0, set_of(true, false, true, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(3.0, set_of(true, false, true, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert!(issues.is_empty());
     }
 
@@ -315,7 +363,12 @@ mod tests {
     fn silent_when_no_type_is_enabled() {
         let maze = maze_with_teleport_and_split(9, 8, 1);
         let mut issues = Vec::new();
-        check(1000.0, set_of(false, false, false, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(1000.0, set_of(false, false, false, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert!(issues.is_empty());
     }
 
@@ -324,10 +377,13 @@ mod tests {
         // Two separate teleport portals with near ends; only `teleport` enabled. A single type is
         // a valid same-type scan (this subsumes the old per-type `*_group_geometric_proximity`).
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         // Portal A: x=0 <-> x=6. Portal B: x=1 <-> x=7. Near ends x=0 and x=1 are 1.0 apart.
         g.add_edge(p(0), p(6), EdgeKind::Teleport);
@@ -337,8 +393,17 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let mut issues = Vec::new();
-        check(1.5, set_of(true, false, false, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "two distinct teleports with near ends -> one same-type pair");
+        check(1.5, set_of(true, false, false, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
+        assert_eq!(
+            issues.len(),
+            1,
+            "two distinct teleports with near ends -> one same-type pair"
+        );
         assert_eq!(issues[0].groups().len(), 1);
     }
 
@@ -348,8 +413,16 @@ mod tests {
         // two ends are excluded as same-element -> nothing.
         let maze = maze_with_teleport_and_split(9, 8, 1);
         let mut issues = Vec::new();
-        check(1000.0, set_of(true, true, false, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "no one-ways, split disabled, teleport self-pair excluded");
+        check(1000.0, set_of(true, true, false, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            issues.is_empty(),
+            "no one-ways, split disabled, teleport self-pair excluded"
+        );
     }
 
     #[test]
@@ -357,11 +430,22 @@ mod tests {
         // teleport ends at x=0 and x=8; split at x=1 -> only the x=0 end is within 3 tiles.
         let maze = maze_with_teleport_and_split(9, 8, 1);
         let level = maze.field.single_level_id();
-        let near_end = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let far_end = maze.field.node_at(level, SquarePoint { x: 8, y: 0 }).unwrap();
+        let near_end = maze
+            .field
+            .node_at(level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let far_end = maze
+            .field
+            .node_at(level, SquarePoint { x: 8, y: 0 })
+            .unwrap();
 
         let mut issues = Vec::new();
-        check(3.0, set_of(true, false, true, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(3.0, set_of(true, false, true, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert_eq!(issues.len(), 1);
 
         let key = &issues[0].groups()[0].0;
@@ -369,10 +453,16 @@ mod tests {
         canonical.sort_unstable();
         canonical.dedup();
         let per_element = &issues[0].close_nodes[&canonical];
-        let teleport_el = key.iter().find(|e| matches!(e, CrossElement::Teleport(_))).unwrap();
+        let teleport_el = key
+            .iter()
+            .find(|e| matches!(e, CrossElement::Teleport(_)))
+            .unwrap();
         let close = &per_element[teleport_el];
         assert!(close.contains(&near_end), "the near end must be recorded");
-        assert!(!close.contains(&far_end), "the far end must NOT be recorded");
+        assert!(
+            !close.contains(&far_end),
+            "the far end must NOT be recorded"
+        );
     }
 
     #[test]
@@ -380,17 +470,28 @@ mod tests {
         // teleport end at x=0, split at x=3, threshold exactly 3.0 -> strict `<`, no fire.
         let maze = maze_with_teleport_and_split(9, 8, 3);
         let mut issues = Vec::new();
-        check(3.0, set_of(true, false, true, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "distance == threshold must not fire (strict <)");
+        check(3.0, set_of(true, false, true, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            issues.is_empty(),
+            "distance == threshold must not fire (strict <)"
+        );
     }
 
     #[test]
     fn start_and_finish_pair_is_flagged() {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let s = mf.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let f = mf.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let mut maze = Maze::new(mf, g);
@@ -398,7 +499,12 @@ mod tests {
         maze.meta.finish = Some(f);
 
         let mut issues = Vec::new();
-        check(3.0, set_of(false, false, false, true, true)).repair_check(&maze, &mut issues, &mut rng(), ());
+        check(3.0, set_of(false, false, false, true, true)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
         assert_eq!(issues.len(), 1);
         let group = &issues[0].groups()[0].0;
         assert!(group.iter().any(|e| matches!(e, CrossElement::Start(_))));
@@ -412,18 +518,29 @@ mod tests {
         // Threshold 2.2 sits strictly between: endpoint-based measurement would wrongly fire,
         // edge-position measurement must not.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 3, y: 0 }, &mut ids); // split tile
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         let maze = Maze::new(mf, g);
 
         let mut issues = Vec::new();
-        check(2.2, set_of(false, true, true, false, false)).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "must measure from the edge's own edge_position, not the nearer endpoint node");
+        check(2.2, set_of(false, true, true, false, false)).repair_check(
+            &maze,
+            &mut issues,
+            &mut rng(),
+            (),
+        );
+        assert!(
+            issues.is_empty(),
+            "must measure from the edge's own edge_position, not the nearer endpoint node"
+        );
     }
 
     /// Width-6 corridor. start=x=0, finish=x=5. The only route is x=0 ->(one-way) x=1 -> x=2
@@ -431,10 +548,13 @@ mod tests {
     /// on it. x=3, x=4 hang off with plain two-way passages (not on the route).
     fn route_with_one_way_then_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic); // one-way, forward only
         g.add_edge(p(1), p(2), EdgeKind::Basic);
@@ -463,7 +583,10 @@ mod tests {
         c.protect_route = true;
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "both elements sit on the protected route -> pair excluded");
+        assert!(
+            issues.is_empty(),
+            "both elements sit on the protected route -> pair excluded"
+        );
 
         let mut c = check(5.0, set);
         c.protect_route = false;
@@ -477,11 +600,14 @@ mod tests {
         // One-way x=1->x=2 on the route, plus a split tile at x=2 (never route-protected — owns no
         // edge). protect_route must NOT exclude this pair.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // split
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..4 {
             g.add_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -497,7 +623,11 @@ mod tests {
         c.protect_route = true;
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "split is not route-protected -> pair still flagged");
+        assert_eq!(
+            issues.len(),
+            1,
+            "split is not route-protected -> pair still flagged"
+        );
     }
 
     /// `n_elevators` 3-floor elevators spaced 1 tile apart along x (x=0, x=1, ...), all spanning
@@ -506,10 +636,17 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(n_elevators.max(1), 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(
+                    Field::<SquareTessellation>::new(square_rect(n_elevators.max(1), 1), &mut ids)
+                        .unwrap(),
+                )
+            })
             .collect();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let mut fan = |x: i32| {
             let stops: Vec<crate::ids::NodeId> = floors
                 .iter()
@@ -549,7 +686,10 @@ mod tests {
         let mut c = check(1000.0, elevator_stop_set());
         c.floor_mode = GeometricFloorMode::AsCoordinate;
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "stops of one elevator are connected by design, never flagged");
+        assert!(
+            issues.is_empty(),
+            "stops of one elevator are connected by design, never flagged"
+        );
     }
 
     #[test]
@@ -559,19 +699,31 @@ mod tests {
         let mut c = check(1.5, elevator_stop_set());
         c.floor_mode = GeometricFloorMode::SameFloorOnly;
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(!issues.is_empty(), "a stop of one elevator 1 tile from a stop of another must fire");
-        assert!(issues[0].groups().iter().all(|(g, _)| g.iter().all(|e| matches!(e, CrossElement::ElevatorStop(_)))));
+        assert!(
+            !issues.is_empty(),
+            "a stop of one elevator 1 tile from a stop of another must fire"
+        );
+        assert!(
+            issues[0]
+                .groups()
+                .iter()
+                .all(|(g, _)| g.iter().all(|e| matches!(e, CrossElement::ElevatorStop(_))))
+        );
     }
 
     #[test]
     fn same_floor_only_ignores_a_cross_floor_pair() {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
         mf.add_node_at(top, SquarePoint { x: 0, y: 0 }, &mut ids); // split tile on top floor
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let b = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
         // Teleport on the bottom floor, split on the top floor, same x.
         g.add_edge(b(0), b(2), EdgeKind::Teleport);
@@ -582,6 +734,9 @@ mod tests {
         let mut c = check(5.0, set_of(true, false, true, false, false));
         c.floor_mode = GeometricFloorMode::SameFloorOnly;
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "SameFloorOnly must never pair occurrences on different floors");
+        assert!(
+            issues.is_empty(),
+            "SameFloorOnly must never pair occurrences on different floors"
+        );
     }
 }

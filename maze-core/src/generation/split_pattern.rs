@@ -71,7 +71,11 @@ pub struct SplitGenerationConfig {
 
 impl Default for SplitGenerationConfig {
     fn default() -> Self {
-        SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] }
+        SplitGenerationConfig {
+            pattern_mode: false,
+            max_split_nodes: 2,
+            patterns: vec![],
+        }
     }
 }
 
@@ -98,7 +102,8 @@ pub fn validate_split_patterns(patterns: &[SplitPattern], degree: usize) -> Resu
         if pattern.faces.len() != pattern.node_count {
             return Err(format!(
                 "split pattern node_count {} does not match faces.len() {}",
-                pattern.node_count, pattern.faces.len()
+                pattern.node_count,
+                pattern.faces.len()
             ));
         }
         for node_faces in pattern.faces.iter() {
@@ -120,7 +125,11 @@ mod validate_split_patterns_tests {
     use super::*;
 
     fn passage_face(face_index: usize) -> SplitPatternFace {
-        SplitPatternFace { face_index, requirement: SplitFaceRequirement::Passage, sibling_target: None }
+        SplitPatternFace {
+            face_index,
+            requirement: SplitFaceRequirement::Passage,
+            sibling_target: None,
+        }
     }
 
     #[test]
@@ -148,8 +157,16 @@ mod validate_split_patterns_tests {
             faces: vec![
                 vec![passage_face(0)],
                 vec![
-                    SplitPatternFace { face_index: 1, requirement: SplitFaceRequirement::Wall, sibling_target: None },
-                    SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Unspecified, sibling_target: None },
+                    SplitPatternFace {
+                        face_index: 1,
+                        requirement: SplitFaceRequirement::Wall,
+                        sibling_target: None,
+                    },
+                    SplitPatternFace {
+                        face_index: 2,
+                        requirement: SplitFaceRequirement::Unspecified,
+                        sibling_target: None,
+                    },
                 ],
             ],
             weight: 1.0,
@@ -159,7 +176,11 @@ mod validate_split_patterns_tests {
 
     #[test]
     fn a_node_with_no_faces_declared_at_all_is_accepted() {
-        let pattern = SplitPattern { node_count: 2, faces: vec![vec![passage_face(0)], vec![]], weight: 1.0 };
+        let pattern = SplitPattern {
+            node_count: 2,
+            faces: vec![vec![passage_face(0)], vec![]],
+            weight: 1.0,
+        };
         assert!(validate_split_patterns(&[pattern], 4).is_ok());
     }
 
@@ -167,7 +188,11 @@ mod validate_split_patterns_tests {
     fn a_one_way_face_is_accepted() {
         let pattern = SplitPattern {
             node_count: 1,
-            faces: vec![vec![SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::OneWay(OneWayDirection::Forward), sibling_target: None }]],
+            faces: vec![vec![SplitPatternFace {
+                face_index: 0,
+                requirement: SplitFaceRequirement::OneWay(OneWayDirection::Forward),
+                sibling_target: None,
+            }]],
             weight: 1.0,
         };
         assert!(validate_split_patterns(&[pattern], 4).is_ok());
@@ -175,9 +200,16 @@ mod validate_split_patterns_tests {
 
     #[test]
     fn out_of_range_face_index_is_rejected() {
-        let pattern = SplitPattern { node_count: 1, faces: vec![vec![passage_face(4)]], weight: 1.0 };
+        let pattern = SplitPattern {
+            node_count: 1,
+            faces: vec![vec![passage_face(4)]],
+            weight: 1.0,
+        };
         let err = validate_split_patterns(&[pattern], 4).unwrap_err();
-        assert!(err.contains("out of range"), "error should mention the range violation: {err}");
+        assert!(
+            err.contains("out of range"),
+            "error should mention the range violation: {err}"
+        );
     }
 
     #[test]
@@ -186,15 +218,29 @@ mod validate_split_patterns_tests {
         // of faces.len() — a node index past faces.len() would get no face applied at all,
         // permanently disconnected, with no validation error to catch it (the UI always keeps
         // node_count and faces.len() in sync, but a hand-edited project file might not).
-        let pattern = SplitPattern { node_count: 3, faces: vec![vec![passage_face(0)], vec![passage_face(2)]], weight: 1.0 };
+        let pattern = SplitPattern {
+            node_count: 3,
+            faces: vec![vec![passage_face(0)], vec![passage_face(2)]],
+            weight: 1.0,
+        };
         let err = validate_split_patterns(&[pattern], 4).unwrap_err();
-        assert!(err.contains("node_count"), "error should mention the node_count/faces.len() mismatch: {err}");
+        assert!(
+            err.contains("node_count"),
+            "error should mention the node_count/faces.len() mismatch: {err}"
+        );
     }
 
     #[test]
     fn node_count_smaller_than_faces_len_is_rejected() {
-        let pattern = SplitPattern { node_count: 1, faces: vec![vec![passage_face(0)], vec![passage_face(2)]], weight: 1.0 };
+        let pattern = SplitPattern {
+            node_count: 1,
+            faces: vec![vec![passage_face(0)], vec![passage_face(2)]],
+            weight: 1.0,
+        };
         let err = validate_split_patterns(&[pattern], 4).unwrap_err();
-        assert!(err.contains("node_count"), "error should mention the node_count/faces.len() mismatch: {err}");
+        assert!(
+            err.contains("node_count"),
+            "error should mention the node_count/faces.len() mismatch: {err}"
+        );
     }
 }

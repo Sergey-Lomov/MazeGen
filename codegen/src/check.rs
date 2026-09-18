@@ -18,10 +18,16 @@ pub fn check_source(source: &EventSource) -> Vec<CheckError> {
 
     for v in &source.variants {
         if v.tag == 0 {
-            errors.push(CheckError(format!("{}::{}: tag 0 is reserved for TAG_SCOPE and must never be assigned", source.enum_name, v.name)));
+            errors.push(CheckError(format!(
+                "{}::{}: tag 0 is reserved for TAG_SCOPE and must never be assigned",
+                source.enum_name, v.name
+            )));
         }
         if !seen_tags.insert(v.tag) {
-            errors.push(CheckError(format!("{}::{}: duplicate wire tag {}", source.enum_name, v.name, v.tag)));
+            errors.push(CheckError(format!(
+                "{}::{}: duplicate wire tag {}",
+                source.enum_name, v.name, v.tag
+            )));
         }
         check_shape_field_types(source, v, &mut errors);
     }
@@ -29,7 +35,11 @@ pub fn check_source(source: &EventSource) -> Vec<CheckError> {
     errors
 }
 
-fn check_shape_field_types(source: &EventSource, v: &crate::schema::Variant, errors: &mut Vec<CheckError>) {
+fn check_shape_field_types(
+    source: &EventSource,
+    v: &crate::schema::Variant,
+    errors: &mut Vec<CheckError>,
+) {
     let fields: Vec<&FieldType> = match &v.shape {
         VariantShape::Unit => vec![],
         VariantShape::NewtypeTuple(f) => vec![&f.ty],
@@ -38,7 +48,10 @@ fn check_shape_field_types(source: &EventSource, v: &crate::schema::Variant, err
     for ty in fields {
         if let FieldType::Custom(name) = ty {
             if crate::codecs::lookup(name).is_none() {
-                errors.push(CheckError(format!("{}::{}: unknown codec '{}'", source.enum_name, v.name, name)));
+                errors.push(CheckError(format!(
+                    "{}::{}: unknown codec '{}'",
+                    source.enum_name, v.name, name
+                )));
             }
         }
     }
@@ -60,7 +73,9 @@ pub fn detect_breaking_changes(old_text: &str, new_source: &EventSource) -> Vec<
                 ));
             }
         }
-        if let Some(old_call_seq) = old_write_call_sequence(old_text, &new_source.enum_name, &v.name) {
+        if let Some(old_call_seq) =
+            old_write_call_sequence(old_text, &new_source.enum_name, &v.name)
+        {
             let new_call_seq = write_call_sequence(&v.shape);
             if old_call_seq != new_call_seq {
                 warnings.push(format!(
@@ -88,8 +103,12 @@ fn old_tag_for(old_text: &str, variant_name: &str) -> Option<u16> {
 fn write_call_sequence(shape: &VariantShape) -> Vec<String> {
     let field_ty = |ty: &FieldType| -> String {
         match ty {
-            FieldType::Standard(t) => crate::type_map::lookup(t).map(|m| m.rust_write_fn.to_string()).unwrap_or_default(),
-            FieldType::Custom(name) => crate::codecs::lookup(name).map(|c| c.rust_write_fn.to_string()).unwrap_or_default(),
+            FieldType::Standard(t) => crate::type_map::lookup(t)
+                .map(|m| m.rust_write_fn.to_string())
+                .unwrap_or_default(),
+            FieldType::Custom(name) => crate::codecs::lookup(name)
+                .map(|c| c.rust_write_fn.to_string())
+                .unwrap_or_default(),
         }
     };
     match shape {
@@ -115,7 +134,10 @@ fn find_whole_marker(text: &str, marker: &str, from: usize) -> Option<usize> {
         let rel = text[start..].find(marker)?;
         let pos = start + rel;
         let after = pos + marker.len();
-        let boundary_ok = text.as_bytes().get(after).is_none_or(|&b| !(b.is_ascii_alphanumeric() || b == b'_'));
+        let boundary_ok = text
+            .as_bytes()
+            .get(after)
+            .is_none_or(|&b| !(b.is_ascii_alphanumeric() || b == b'_'));
         if boundary_ok {
             return Some(pos);
         }
@@ -123,7 +145,11 @@ fn find_whole_marker(text: &str, marker: &str, from: usize) -> Option<usize> {
     }
 }
 
-fn old_write_call_sequence(old_text: &str, enum_name: &str, variant_name: &str) -> Option<Vec<String>> {
+fn old_write_call_sequence(
+    old_text: &str,
+    enum_name: &str,
+    variant_name: &str,
+) -> Option<Vec<String>> {
     let arm_marker = format!("{enum_name}::{variant_name}");
     // `encode_payload`'s match starts after `type_id`'s match — search from the *second*
     // occurrence of the arm marker (the first is `type_id`'s non-binding arm) to land inside
@@ -145,7 +171,11 @@ fn old_write_call_sequence(old_text: &str, enum_name: &str, variant_name: &str) 
         let line = line.trim();
         if let Some(paren) = line.find('(') {
             let fn_name = &line[..paren];
-            if fn_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !fn_name.is_empty() {
+            if fn_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !fn_name.is_empty()
+            {
                 calls.push(fn_name.to_string());
             }
         }
@@ -161,14 +191,22 @@ mod tests {
     fn source(variants: Vec<Variant>) -> EventSource {
         EventSource {
             enum_name: "TestEvent".to_string(),
-            location: SourceLocation { rust_file: "test.rs".to_string(), stem: "test".to_string() },
+            location: SourceLocation {
+                rust_file: "test.rs".to_string(),
+                stem: "test".to_string(),
+            },
             mutating_mode: MutatingMode::PerVariant,
             variants,
         }
     }
 
     fn unit_variant(name: &str, tag: u16) -> Variant {
-        Variant { name: name.to_string(), tag, mutating: false, shape: VariantShape::Unit }
+        Variant {
+            name: name.to_string(),
+            tag,
+            mutating: false,
+            shape: VariantShape::Unit,
+        }
     }
 
     #[test]
@@ -197,7 +235,10 @@ mod tests {
             name: "A".to_string(),
             tag: 1,
             mutating: false,
-            shape: VariantShape::NewtypeTuple(crate::schema::Field { name: "value".to_string(), ty: FieldType::Custom("NotRegistered".to_string()) }),
+            shape: VariantShape::NewtypeTuple(crate::schema::Field {
+                name: "value".to_string(),
+                ty: FieldType::Custom("NotRegistered".to_string()),
+            }),
         }]);
         let errors = check_source(&src);
         assert!(errors.iter().any(|e| e.0.contains("unknown codec")));
@@ -208,7 +249,11 @@ mod tests {
         let old_text = "pub const A: u16 = 1;\n";
         let src = source(vec![unit_variant("A", 2)]);
         let warnings = detect_breaking_changes(old_text, &src);
-        assert!(warnings.iter().any(|w| w.contains("tag changed") && w.contains("1 -> 2")));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("tag changed") && w.contains("1 -> 2"))
+        );
     }
 
     #[test]
@@ -219,48 +264,116 @@ mod tests {
     }
 
     fn newtype_variant(name: &str, tag: u16, field_name: &str, ty: FieldType) -> Variant {
-        Variant { name: name.to_string(), tag, mutating: false, shape: VariantShape::NewtypeTuple(Field { name: field_name.to_string(), ty }) }
+        Variant {
+            name: name.to_string(),
+            tag,
+            mutating: false,
+            shape: VariantShape::NewtypeTuple(Field {
+                name: field_name.to_string(),
+                ty,
+            }),
+        }
     }
 
     fn struct_variant(name: &str, tag: u16, fields: Vec<Field>) -> Variant {
-        Variant { name: name.to_string(), tag, mutating: false, shape: VariantShape::Struct(fields) }
+        Variant {
+            name: name.to_string(),
+            tag,
+            mutating: false,
+            shape: VariantShape::Struct(fields),
+        }
     }
 
     #[test]
     fn detect_breaking_changes_flags_a_field_added_to_a_struct_variant() {
-        let old_src = source(vec![struct_variant("Moved", 1, vec![Field { name: "from".to_string(), ty: FieldType::Standard("NodeId") }])]);
+        let old_src = source(vec![struct_variant(
+            "Moved",
+            1,
+            vec![Field {
+                name: "from".to_string(),
+                ty: FieldType::Standard("NodeId"),
+            }],
+        )]);
         let old_text = crate::rust_emitter::generate_rust_wire_file(&old_src);
-        let new_src = source(vec![struct_variant("Moved", 1, vec![
-            Field { name: "from".to_string(), ty: FieldType::Standard("NodeId") },
-            Field { name: "to".to_string(), ty: FieldType::Standard("NodeId") },
-        ])]);
+        let new_src = source(vec![struct_variant(
+            "Moved",
+            1,
+            vec![
+                Field {
+                    name: "from".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "to".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+            ],
+        )]);
         let warnings = detect_breaking_changes(&old_text, &new_src);
-        assert!(warnings.iter().any(|w| w.contains("field layout changed") && w.contains("Moved")));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("field layout changed") && w.contains("Moved"))
+        );
     }
 
     #[test]
     fn detect_breaking_changes_flags_reordered_struct_fields() {
-        let old_src = source(vec![struct_variant("Pair", 1, vec![
-            Field { name: "a".to_string(), ty: FieldType::Standard("NodeId") },
-            Field { name: "b".to_string(), ty: FieldType::Standard("bool") },
-        ])]);
+        let old_src = source(vec![struct_variant(
+            "Pair",
+            1,
+            vec![
+                Field {
+                    name: "a".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "b".to_string(),
+                    ty: FieldType::Standard("bool"),
+                },
+            ],
+        )]);
         let old_text = crate::rust_emitter::generate_rust_wire_file(&old_src);
         // Same field set, swapped order — same field count, still a wire-breaking change since
         // byte offsets shift; a naive "field count only" check would miss this.
-        let new_src = source(vec![struct_variant("Pair", 1, vec![
-            Field { name: "b".to_string(), ty: FieldType::Standard("bool") },
-            Field { name: "a".to_string(), ty: FieldType::Standard("NodeId") },
-        ])]);
+        let new_src = source(vec![struct_variant(
+            "Pair",
+            1,
+            vec![
+                Field {
+                    name: "b".to_string(),
+                    ty: FieldType::Standard("bool"),
+                },
+                Field {
+                    name: "a".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+            ],
+        )]);
         let warnings = detect_breaking_changes(&old_text, &new_src);
-        assert!(warnings.iter().any(|w| w.contains("field layout changed") && w.contains("Pair")));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("field layout changed") && w.contains("Pair"))
+        );
     }
 
     #[test]
     fn detect_breaking_changes_is_silent_when_struct_fields_are_unchanged() {
-        let src = source(vec![struct_variant("Pair", 1, vec![
-            Field { name: "a".to_string(), ty: FieldType::Standard("NodeId") },
-            Field { name: "b".to_string(), ty: FieldType::Standard("bool") },
-        ])]);
+        let src = source(vec![struct_variant(
+            "Pair",
+            1,
+            vec![
+                Field {
+                    name: "a".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                },
+                Field {
+                    name: "b".to_string(),
+                    ty: FieldType::Standard("bool"),
+                },
+            ],
+        )]);
         let old_text = crate::rust_emitter::generate_rust_wire_file(&src);
         assert!(detect_breaking_changes(&old_text, &src).is_empty());
     }
@@ -272,8 +385,22 @@ mod tests {
     #[test]
     fn detect_breaking_changes_is_silent_for_a_variant_name_that_prefixes_another() {
         let src = source(vec![
-            struct_variant("SrcExhaustedEmptyPool", 1, vec![Field { name: "src".to_string(), ty: FieldType::Standard("NodeId") }]),
-            struct_variant("SrcExhausted", 2, vec![Field { name: "src".to_string(), ty: FieldType::Standard("NodeId") }]),
+            struct_variant(
+                "SrcExhaustedEmptyPool",
+                1,
+                vec![Field {
+                    name: "src".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                }],
+            ),
+            struct_variant(
+                "SrcExhausted",
+                2,
+                vec![Field {
+                    name: "src".to_string(),
+                    ty: FieldType::Standard("NodeId"),
+                }],
+            ),
         ]);
         let old_text = crate::rust_emitter::generate_rust_wire_file(&src);
         assert!(detect_breaking_changes(&old_text, &src).is_empty());
@@ -281,10 +408,24 @@ mod tests {
 
     #[test]
     fn detect_breaking_changes_flags_a_newtype_field_type_swap() {
-        let old_src = source(vec![newtype_variant("Selected", 1, "id", FieldType::Standard("NodeId"))]);
+        let old_src = source(vec![newtype_variant(
+            "Selected",
+            1,
+            "id",
+            FieldType::Standard("NodeId"),
+        )]);
         let old_text = crate::rust_emitter::generate_rust_wire_file(&old_src);
-        let new_src = source(vec![newtype_variant("Selected", 1, "id", FieldType::Standard("u32"))]);
+        let new_src = source(vec![newtype_variant(
+            "Selected",
+            1,
+            "id",
+            FieldType::Standard("u32"),
+        )]);
         let warnings = detect_breaking_changes(&old_text, &new_src);
-        assert!(warnings.iter().any(|w| w.contains("field layout changed") && w.contains("Selected")));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("field layout changed") && w.contains("Selected"))
+        );
     }
 }

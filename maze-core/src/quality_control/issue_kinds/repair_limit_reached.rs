@@ -1,4 +1,6 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REPAIR_LIMIT_REACHED};
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, REPAIR_LIMIT_REACHED,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepairLimitKind {
@@ -26,7 +28,10 @@ pub struct RepairLimitReachedIssue {
 
 impl RepairLimitReachedIssue {
     pub fn new(limit: RepairLimitKind) -> Self {
-        Self { meta: IssueMeta::new(), limit }
+        Self {
+            meta: IssueMeta::new(),
+            limit,
+        }
     }
 }
 

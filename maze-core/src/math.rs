@@ -1,5 +1,5 @@
-use rand::{Rng, RngCore};
 use crate::random::MazeRng;
+use rand::{Rng, RngCore};
 
 /// Sample a weighted index from a collection of `len` elements using a
 /// gaussian distribution centred at `target` ∈ [0,1] (mapped to index space).
@@ -16,7 +16,9 @@ const SIGMA_MIN: f64 = 1e-3; // avoid division by zero at extremes
 
 pub fn sample_by_position(len: usize, target: f64, rng: &mut MazeRng) -> usize {
     debug_assert!(len > 0);
-    if len == 1 { return 0; }
+    if len == 1 {
+        return 0;
+    }
 
     let sigma = (SIGMA_MAX * (target.min(1.0 - target) * 2.0)).max(SIGMA_MIN);
 
@@ -26,17 +28,21 @@ pub fn sample_by_position(len: usize, target: f64, rng: &mut MazeRng) -> usize {
     }
 
     let sigma_sq = sigma * sigma;
-    let weights: Vec<f64> = (0..len).map(|i| {
-        let x = i as f64 / (len - 1) as f64;
-        let d = x - target;
-        (-(d * d) / sigma_sq).exp()
-    }).collect();
+    let weights: Vec<f64> = (0..len)
+        .map(|i| {
+            let x = i as f64 / (len - 1) as f64;
+            let d = x - target;
+            (-(d * d) / sigma_sq).exp()
+        })
+        .collect();
 
     let total: f64 = weights.iter().sum();
     let mut r = rng.random::<f64>() * total;
     for (i, &w) in weights.iter().enumerate() {
         r -= w;
-        if r <= 0.0 { return i; }
+        if r <= 0.0 {
+            return i;
+        }
     }
     len - 1
 }
@@ -70,7 +76,9 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
 
-    fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
+    fn rng(seed: u64) -> MazeRng {
+        MazeRng::seed_from_u64(seed)
+    }
 
     #[test]
     fn target_zero_always_returns_first() {
@@ -95,9 +103,14 @@ mod tests {
             counts[i] += 1;
         }
         // All quartiles should be visited at least a few times.
-        let q: Vec<usize> = (0..4).map(|q| counts[q*5..(q+1)*5].iter().sum()).collect();
+        let q: Vec<usize> = (0..4)
+            .map(|q| counts[q * 5..(q + 1) * 5].iter().sum())
+            .collect();
         for (i, &c) in q.iter().enumerate() {
-            assert!(c > 10, "quartile {i} only got {c}/500 samples at target=0.5");
+            assert!(
+                c > 10,
+                "quartile {i} only got {c}/500 samples at target=0.5"
+            );
         }
     }
 
@@ -111,7 +124,10 @@ mod tests {
         }
         let lower: usize = counts[..10].iter().sum();
         let upper: usize = counts[10..].iter().sum();
-        assert!(lower > upper * 2, "target=0.25: lower half {lower} should dominate upper {upper}");
+        assert!(
+            lower > upper * 2,
+            "target=0.25: lower half {lower} should dominate upper {upper}"
+        );
     }
 
     #[test]
@@ -131,7 +147,10 @@ mod tests {
             let mut r = rng(seed);
             counts[weighted_index(&weights, &mut r)] += 1;
         }
-        assert!(counts.iter().all(|&c| c > 0), "every index should get picked at least once: {counts:?}");
+        assert!(
+            counts.iter().all(|&c| c > 0),
+            "every index should get picked at least once: {counts:?}"
+        );
     }
 
     #[test]
@@ -142,6 +161,9 @@ mod tests {
             let mut r = rng(seed);
             counts[weighted_index(&weights, &mut r)] += 1;
         }
-        assert!(counts[1] > counts[0] * 3, "weight 9 should dominate weight 1: {counts:?}");
+        assert!(
+            counts[1] > counts[0] * 3,
+            "weight 9 should dominate weight 1: {counts:?}"
+        );
     }
 }

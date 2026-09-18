@@ -40,7 +40,10 @@ impl RemainingDeficits {
 
     /// Live remaining count for `area` — reflects every `consume` call made so far this call.
     pub(super) fn live(&self, area: RepairArea) -> u32 {
-        self.entries.iter().find(|&&(a, _)| a == area).map_or(0, |&(_, m)| m)
+        self.entries
+            .iter()
+            .find(|&&(a, _)| a == area)
+            .map_or(0, |&(_, m)| m)
     }
 
     /// One new entity was just added, covering `covered` (its own area plus `RepairArea::WholeMaze`
@@ -69,8 +72,8 @@ impl RemainingDeficits {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use crate::IdGenerator;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     /// Three real, distinctly-ordered `LevelId`s to build test fixtures from.
     fn three_levels() -> (RepairArea, RepairArea, RepairArea) {
@@ -79,7 +82,11 @@ mod tests {
         let a = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
         let b = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
         let c = mf.add_level(crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap());
-        (RepairArea::Level(a), RepairArea::Level(b), RepairArea::Level(c))
+        (
+            RepairArea::Level(a),
+            RepairArea::Level(b),
+            RepairArea::Level(c),
+        )
     }
 
     #[test]

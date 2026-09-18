@@ -1,7 +1,9 @@
 //! Merges several already-encoded, independently-produced tapes into one combined arena — see
 //! [`merge_tapes`].
 
-use super::wire::{EncodedTape, NodeRecord, ScopeNameInterner, NODE_RECORD_SIZE, NO_NODE, TAG_SCOPE};
+use super::wire::{
+    EncodedTape, NO_NODE, NODE_RECORD_SIZE, NodeRecord, ScopeNameInterner, TAG_SCOPE,
+};
 
 /// Number of bits [`merge_tapes`] shifts a source's positional index into an already-encoded
 /// [`NodeRecord`]'s `tag` — see the module-level "multi-source merge" docs above [`merge_tapes`].
@@ -47,7 +49,10 @@ pub struct TapeSource {
 /// caller must simply skip calling this function when there is nothing to merge (a `debug_assert!`
 /// documents this rather than returning some placeholder empty tape).
 pub fn merge_tapes(sources: Vec<TapeSource>) -> EncodedTape {
-    debug_assert!(!sources.is_empty(), "merge_tapes called with no sources — caller should skip merging entirely instead");
+    debug_assert!(
+        !sources.is_empty(),
+        "merge_tapes called with no sources — caller should skip merging entirely instead"
+    );
 
     // Pass 1: figure out, for each source, the node-index / payload-byte offset its records will
     // land at in the combined arena (root + one top-level scope per source come first).
@@ -93,11 +98,19 @@ pub fn merge_tapes(sources: Vec<TapeSource>) -> EncodedTape {
     // pointing at its source's (relinked) former root as its own first_child.
     for (i, source) in sources.iter().enumerate() {
         let (offset, len) = interner.intern(source.scope_name, &mut payload);
-        let former_root_relinked = if source.tape.node_table.is_empty() { None } else { Some(node_offsets[i]) };
+        let former_root_relinked = if source.tape.node_table.is_empty() {
+            None
+        } else {
+            Some(node_offsets[i])
+        };
         NodeRecord {
             parent: 0,
             first_child: former_root_relinked.unwrap_or(NO_NODE),
-            next_sibling: if i + 1 < sources.len() { (i + 2) as u32 } else { NO_NODE },
+            next_sibling: if i + 1 < sources.len() {
+                (i + 2) as u32
+            } else {
+                NO_NODE
+            },
             tag: TAG_SCOPE,
             payload_offset: offset,
             payload_len: len,
@@ -118,14 +131,22 @@ pub fn merge_tapes(sources: Vec<TapeSource>) -> EncodedTape {
         let source_tag_prefix = (source_index as u16) << SOURCE_SHIFT;
 
         let shift_link = |link: u32| -> u32 {
-            if link == NO_NODE { NO_NODE } else { link + node_offset }
+            if link == NO_NODE {
+                NO_NODE
+            } else {
+                link + node_offset
+            }
         };
 
         for local_index in 0..record_count {
             let mut record = NodeRecord::read(&source.tape.node_table, local_index);
             // The former root's parent (NO_NODE) must instead point at this source's new
             // top-level scope node (index 1 + source_index) rather than staying rootless.
-            record.parent = if local_index == 0 { (1 + source_index) as u32 } else { shift_link(record.parent) };
+            record.parent = if local_index == 0 {
+                (1 + source_index) as u32
+            } else {
+                shift_link(record.parent)
+            };
             record.first_child = shift_link(record.first_child);
             record.next_sibling = shift_link(record.next_sibling);
             record.payload_offset += payload_offset;
@@ -136,7 +157,10 @@ pub fn merge_tapes(sources: Vec<TapeSource>) -> EncodedTape {
         }
     }
 
-    EncodedTape { node_table, payload }
+    EncodedTape {
+        node_table,
+        payload,
+    }
 }
 
 #[cfg(test)]
@@ -176,7 +200,14 @@ mod tests {
 
     fn read_node_record(node_table: &[u8], index: usize) -> (u32, u32, u32, u16, u32, u32) {
         let record = NodeRecord::read(node_table, index);
-        (record.parent, record.first_child, record.next_sibling, record.tag, record.payload_offset, record.payload_len)
+        (
+            record.parent,
+            record.first_child,
+            record.next_sibling,
+            record.tag,
+            record.payload_offset,
+            record.payload_len,
+        )
     }
 
     /// A one-scope-one-event tape: root -> "step" scope -> Mutating(value). Mirrors the shape
@@ -201,24 +232,35 @@ mod tests {
         // No special-casing for exactly one source — merge always adds root + one top-level
         // scope, even when there's only one source to wrap (per explicit product decision).
         let (tape, node_count) = fixture_tape(10);
-        assert_eq!(node_count, 4, "root(step-tape) + step scope + Mutating + Trace = 4 nodes in the unmerged tape");
+        assert_eq!(
+            node_count, 4,
+            "root(step-tape) + step scope + Mutating + Trace = 4 nodes in the unmerged tape"
+        );
 
-        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape }]);
+        let merged = merge_tapes(vec![TapeSource {
+            scope_name: "generation",
+            tape,
+        }]);
 
         // Node 0: new merged root, first_child = 1 (the "generation" top-level scope).
-        let (parent, first_child, next_sibling, tag, _, _) = read_node_record(&merged.node_table, 0);
+        let (parent, first_child, next_sibling, tag, _, _) =
+            read_node_record(&merged.node_table, 0);
         assert_eq!((parent, next_sibling), (NO_NODE, NO_NODE));
         assert_eq!(first_child, 1);
         assert_eq!(tag, TAG_SCOPE);
 
         // Node 1: "generation" top-level scope, parent = 0 (new root), first_child = 2 (former
         // root of the source tape, relinked), no next_sibling (only one source).
-        let (parent, first_child, next_sibling, tag, offset, len) = read_node_record(&merged.node_table, 1);
+        let (parent, first_child, next_sibling, tag, offset, len) =
+            read_node_record(&merged.node_table, 1);
         assert_eq!(parent, 0);
         assert_eq!(first_child, 2);
         assert_eq!(next_sibling, NO_NODE);
         assert_eq!(tag, TAG_SCOPE);
-        assert_eq!(&merged.payload[offset as usize..(offset + len) as usize], b"generation");
+        assert_eq!(
+            &merged.payload[offset as usize..(offset + len) as usize],
+            b"generation"
+        );
 
         // Node 2: the former root ("root" scope of the source tape), now parented under node 1
         // instead of being rootless.
@@ -234,14 +276,28 @@ mod tests {
         // skipped. A decoder must always apply the mask/shift, never assume "first source needs
         // no unpacking".
         let (tape, _) = fixture_tape(10);
-        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape }]);
+        let merged = merge_tapes(vec![TapeSource {
+            scope_name: "generation",
+            tape,
+        }]);
 
         // Layout: 0=merged root, 1="generation" scope, 2=former root("root"), 3=former "step"
         // scope, 4=Mutating(10), 5=Trace(11).
         let (_, _, _, tag, ..) = read_node_record(&merged.node_table, 4);
-        assert_eq!(tag & SOURCE_MASK, 0, "source_index 0 must produce a zero source-mask nibble");
-        assert_eq!(tag & LOCAL_TAG_MASK, FIXTURE_TAG_MUTATING, "local tag must survive unchanged under the mask");
-        assert_eq!(tag, FIXTURE_TAG_MUTATING, "numerically the merged tag equals the local tag for source 0, per SOURCE_SHIFT math");
+        assert_eq!(
+            tag & SOURCE_MASK,
+            0,
+            "source_index 0 must produce a zero source-mask nibble"
+        );
+        assert_eq!(
+            tag & LOCAL_TAG_MASK,
+            FIXTURE_TAG_MUTATING,
+            "local tag must survive unchanged under the mask"
+        );
+        assert_eq!(
+            tag, FIXTURE_TAG_MUTATING,
+            "numerically the merged tag equals the local tag for source 0, per SOURCE_SHIFT math"
+        );
     }
 
     #[test]
@@ -249,8 +305,14 @@ mod tests {
         let (tape_a, _) = fixture_tape(10);
         let (tape_b, _) = fixture_tape(20);
         let merged = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a },
-            TapeSource { scope_name: "quality_control", tape: tape_b },
+            TapeSource {
+                scope_name: "generation",
+                tape: tape_a,
+            },
+            TapeSource {
+                scope_name: "quality_control",
+                tape: tape_b,
+            },
         ]);
 
         // Layout: 0=root, 1="generation" scope, 2="quality_control" scope,
@@ -261,9 +323,20 @@ mod tests {
         assert_eq!(tag_a & LOCAL_TAG_MASK, FIXTURE_TAG_MUTATING);
 
         let (_, _, _, tag_b, ..) = read_node_record(&merged.node_table, 9);
-        assert_eq!((tag_b & SOURCE_MASK) >> SOURCE_SHIFT, 1, "second source must carry source_index 1 in its tag prefix");
-        assert_eq!(tag_b & LOCAL_TAG_MASK, FIXTURE_TAG_MUTATING, "local tag itself must be unchanged");
-        assert_ne!(tag_a, tag_b, "same local tag from two different sources must decode to different raw tags");
+        assert_eq!(
+            (tag_b & SOURCE_MASK) >> SOURCE_SHIFT,
+            1,
+            "second source must carry source_index 1 in its tag prefix"
+        );
+        assert_eq!(
+            tag_b & LOCAL_TAG_MASK,
+            FIXTURE_TAG_MUTATING,
+            "local tag itself must be unchanged"
+        );
+        assert_ne!(
+            tag_a, tag_b,
+            "same local tag from two different sources must decode to different raw tags"
+        );
     }
 
     #[test]
@@ -271,15 +344,24 @@ mod tests {
         let (tape_a, _) = fixture_tape(10);
         let (tape_b, _) = fixture_tape(20);
         let merged = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a },
-            TapeSource { scope_name: "quality_control", tape: tape_b },
+            TapeSource {
+                scope_name: "generation",
+                tape: tape_a,
+            },
+            TapeSource {
+                scope_name: "quality_control",
+                tape: tape_b,
+            },
         ]);
 
         // Every scope node (root, both top-level scopes, both former roots, both "step" scopes)
         // must keep tag == TAG_SCOPE (0) regardless of which source it belongs to.
         for index in [0usize, 1, 2, 3, 4, 7, 8] {
             let (_, _, _, tag, ..) = read_node_record(&merged.node_table, index);
-            assert_eq!(tag, TAG_SCOPE, "node {index} is a scope and must never be namespaced");
+            assert_eq!(
+                tag, TAG_SCOPE,
+                "node {index} is a scope and must never be namespaced"
+            );
         }
     }
 
@@ -291,15 +373,28 @@ mod tests {
         let original_b_payload = tape_b.payload.clone();
 
         let merged = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a },
-            TapeSource { scope_name: "quality_control", tape: tape_b },
+            TapeSource {
+                scope_name: "generation",
+                tape: tape_a,
+            },
+            TapeSource {
+                scope_name: "quality_control",
+                tape: tape_b,
+            },
         ]);
 
         // The merged payload arena holds each source's payload bytes concatenated verbatim first
         // (source a, then source b, untouched), followed by the merge's own new top-level scope
         // names ("root", "generation", "quality_control" — interned after the sources' bytes).
-        assert_eq!(&merged.payload[0..original_a_payload.len()], &original_a_payload[..]);
-        assert_eq!(&merged.payload[original_a_payload.len()..original_a_payload.len() + original_b_payload.len()], &original_b_payload[..]);
+        assert_eq!(
+            &merged.payload[0..original_a_payload.len()],
+            &original_a_payload[..]
+        );
+        assert_eq!(
+            &merged.payload
+                [original_a_payload.len()..original_a_payload.len() + original_b_payload.len()],
+            &original_b_payload[..]
+        );
     }
 
     #[test]
@@ -319,8 +414,14 @@ mod tests {
         // caller handed merge_tapes something other than a real DebugTape::encode() output,
         // which always emits at least the root scope) — the top-level source scope must not
         // point at a nonexistent former-root node, and the relink pass over 0 records is a no-op.
-        let empty_tape = EncodedTape { node_table: Vec::new(), payload: Vec::new() };
-        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape: empty_tape }]);
+        let empty_tape = EncodedTape {
+            node_table: Vec::new(),
+            payload: Vec::new(),
+        };
+        let merged = merge_tapes(vec![TapeSource {
+            scope_name: "generation",
+            tape: empty_tape,
+        }]);
 
         // Node 0: merged root, first_child = 1 ("generation" scope) as usual.
         let (_, first_child, _, _, _, _) = read_node_record(&merged.node_table, 0);
@@ -328,9 +429,16 @@ mod tests {
 
         // Node 1: "generation" scope has no first_child (NO_NODE) — nothing to relink to.
         let (_, first_child, next_sibling, tag, ..) = read_node_record(&merged.node_table, 1);
-        assert_eq!(first_child, NO_NODE, "an empty source's top-level scope must not point at a nonexistent former root");
+        assert_eq!(
+            first_child, NO_NODE,
+            "an empty source's top-level scope must not point at a nonexistent former root"
+        );
         assert_eq!(next_sibling, NO_NODE);
         assert_eq!(tag, TAG_SCOPE);
-        assert_eq!(merged.node_table.len() / REC_SIZE, 2, "only the merged root and the top-level scope exist — no former root, no content");
+        assert_eq!(
+            merged.node_table.len() / REC_SIZE,
+            2,
+            "only the merged root and the top-level scope exist — no former root, no content"
+        );
     }
 }

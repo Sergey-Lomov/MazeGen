@@ -1,31 +1,34 @@
-﻿use std::collections::HashSet;
-use rand::{Rng, RngCore};
+use super::cycle_cut_set::{
+    PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_NEUTRAL, VERTICAL_PASSAGE_PRIORITY_OPTIONS,
+    apply_vertical_passage_priority, candidate_edges, discard_cycles_with_edge, edge_to_cycles_map,
+};
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::PresetState;
+use crate::ids::EdgeId;
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::cycle_cut_set::{
-    edge_to_cycles_map, discard_cycles_with_edge, candidate_edges, apply_vertical_passage_priority,
-    PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_PRIORITY_OPTIONS, VERTICAL_PASSAGE_NEUTRAL,
-};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_VERTICAL_PASSAGE_PRIORITY,
-        label: "Vertical passage priority",
-        kind: StrategyParamKind::Enum { options: VERTICAL_PASSAGE_PRIORITY_OPTIONS, default: VERTICAL_PASSAGE_NEUTRAL },
+static PARAMS: &[StrategyParam] = &[StrategyParam {
+    id: PARAM_VERTICAL_PASSAGE_PRIORITY,
+    label: "Vertical passage priority",
+    kind: StrategyParamKind::Enum {
+        options: VERTICAL_PASSAGE_PRIORITY_OPTIONS,
+        default: VERTICAL_PASSAGE_NEUTRAL,
     },
-];
+}];
 
 pub struct InvalidLoopRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomStrategy {
-    fn strategy_id(&self) -> &'static str { "invalid_loop_random" }
+    fn strategy_id(&self) -> &'static str {
+        "invalid_loop_random"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -55,7 +58,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => VERTICAL_PASSAGE_NEUTRAL,
         };
-        let commands = apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state, vertical_priority);
+        let commands = apply_cuts(
+            &issue.all,
+            &issue.invalid,
+            maze,
+            rng,
+            preset_state,
+            vertical_priority,
+        );
         let result = if issue.invalid.is_empty() || !commands.is_empty() {
             RepairResult::Fixed { score: None }
         } else {

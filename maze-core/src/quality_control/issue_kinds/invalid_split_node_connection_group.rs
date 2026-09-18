@@ -1,5 +1,7 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKind, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP};
+use crate::quality_control::issue::{
+    INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, IssueKind,
+};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`group_select_apply` instantiation for
@@ -36,8 +38,10 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
-        let b = InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
+        let mut a =
+            InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b =
+            InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
         assert_eq!(a.groups.len(), 2);
@@ -47,8 +51,10 @@ mod tests {
 
     #[test]
     fn merge_keeps_the_larger_to_remove_for_the_same_group() {
-        let mut a = InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
-        let b = InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
+        let mut a =
+            InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b =
+            InvalidSplitNodeConnectionGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
         a.merge(b);
 
         assert_eq!(a.groups, vec![(vec![0, 1], 3)]);

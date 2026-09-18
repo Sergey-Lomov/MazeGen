@@ -1,7 +1,7 @@
-use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
+use rand::{Rng, RngCore};
 
 /// Which direction(s) `resolve_vertical_target` is allowed to pick, derived from the rule-level
 /// `passage_type` — `RequireUp`/`RequireDown` are used when `passage_type` is `OneWayUp`/
@@ -44,13 +44,25 @@ pub fn resolve_vertical_target<T: Tessellation>(
 
     let direction_balance = direction_balance.clamp(0.0, 1.0);
     let upward = match constraint {
-        DirectionConstraint::RequireUp => { up?; true }
-        DirectionConstraint::RequireDown => { down?; false }
+        DirectionConstraint::RequireUp => {
+            up?;
+            true
+        }
+        DirectionConstraint::RequireDown => {
+            down?;
+            false
+        }
         // A balance pinned to exactly 0 or 1 is a hard direction choice, not a coin flip -- it must
         // not fall back to the other direction just because the chosen one is unavailable (that
         // fallback only makes sense for a genuine 0..1 probability, where "always" isn't promised).
-        DirectionConstraint::Either if direction_balance <= 0.0 => { down?; false }
-        DirectionConstraint::Either if direction_balance >= 1.0 => { up?; true }
+        DirectionConstraint::Either if direction_balance <= 0.0 => {
+            down?;
+            false
+        }
+        DirectionConstraint::Either if direction_balance >= 1.0 => {
+            up?;
+            true
+        }
         DirectionConstraint::Either => match (up, down) {
             (Some(_), Some(_)) => rng.random_bool(direction_balance),
             (Some(_), None) => true,
@@ -66,18 +78,19 @@ pub fn resolve_vertical_target<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField, SquarePoint};
+    use crate::graph::Graph;
+    use crate::random::MazeRng;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn three_level_maze(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field_a = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
         let field_b = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
         let field_c = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a, field_b, field_c]);
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new([field_a, field_b, field_c]);
         let g = Graph::new();
         Maze::new(mf, g)
     }
@@ -96,9 +109,14 @@ mod tests {
         let maze = three_level_maze(3);
         let bottom = maze.field.levels_ordered().next().unwrap();
         let middle = maze.field.levels_ordered().nth(1).unwrap();
-        let src = maze.field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(bottom, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        let (from, to) = resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireUp, 0.5).unwrap();
+        let (from, to) =
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireUp, 0.5)
+                .unwrap();
         assert_eq!(from, src);
         assert_eq!(maze.field.level_of(to), Some(middle));
     }
@@ -109,7 +127,10 @@ mod tests {
         let top = maze.field.levels_ordered().last().unwrap();
         let src = maze.field.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        assert!(resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireUp, 0.5).is_none());
+        assert!(
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireUp, 0.5)
+                .is_none()
+        );
     }
 
     #[test]
@@ -117,9 +138,14 @@ mod tests {
         let maze = three_level_maze(3);
         let middle = maze.field.levels_ordered().nth(1).unwrap();
         let bottom = maze.field.levels_ordered().next().unwrap();
-        let src = maze.field.node_at(middle, SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(middle, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        let (from, to) = resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireDown, 0.5).unwrap();
+        let (from, to) =
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireDown, 0.5)
+                .unwrap();
         assert_eq!(from, src);
         assert_eq!(maze.field.level_of(to), Some(bottom));
     }
@@ -128,9 +154,15 @@ mod tests {
     fn require_down_returns_none_on_the_bottom_floor() {
         let maze = three_level_maze(3);
         let bottom = maze.field.levels_ordered().next().unwrap();
-        let src = maze.field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(bottom, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        assert!(resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireDown, 0.5).is_none());
+        assert!(
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::RequireDown, 0.5)
+                .is_none()
+        );
     }
 
     #[test]
@@ -139,9 +171,15 @@ mod tests {
         // neighbor is up, which a hard-pinned-to-down balance must not fall back to.
         let maze = two_level_maze(3);
         let bottom = maze.field.levels_ordered().next().unwrap();
-        let src = maze.field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(bottom, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        assert!(resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.0).is_none());
+        assert!(
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.0)
+                .is_none()
+        );
     }
 
     #[test]
@@ -150,7 +188,10 @@ mod tests {
         let top = maze.field.levels_ordered().last().unwrap();
         let src = maze.field.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        assert!(resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 1.0).is_none());
+        assert!(
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 1.0)
+                .is_none()
+        );
     }
 
     #[test]
@@ -158,22 +199,35 @@ mod tests {
         let maze = three_level_maze(3);
         let bottom = maze.field.levels_ordered().next().unwrap();
         let middle = maze.field.levels_ordered().nth(1).unwrap();
-        let src = maze.field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(bottom, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
         // direction_balance=0.0 is a hard pin (tested above); a genuine mid-range probability
         // must still fall back to the only available direction on a boundary floor.
-        let (_, to) = resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.3).unwrap();
+        let (_, to) =
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.3)
+                .unwrap();
         assert_eq!(maze.field.level_of(to), Some(middle));
     }
 
     #[test]
     fn resolve_vertical_target_returns_none_on_a_single_level_field() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::<SquareTessellation>::single_level(square_rect(3, 3), &mut ids).unwrap();
+        let field =
+            MultiLevelField::<SquareTessellation>::single_level(square_rect(3, 3), &mut ids)
+                .unwrap();
         let g = Graph::new();
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let src = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut rng = MazeRng::seed_from_u64(1);
-        assert!(resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.5).is_none());
+        assert!(
+            resolve_vertical_target(&maze, src, &mut rng, &DirectionConstraint::Either, 0.5)
+                .is_none()
+        );
     }
 }

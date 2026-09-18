@@ -16,8 +16,8 @@ export class LockRenderer {
   render(data: { locks: LockEntry[] }, cfg: TessellationConfig): void {
     this.g.clear();
     for (const lock of data.locks) {
-      const c = getCellCenter(lock.x, lock.y, cfg);
-      drawLockIcon(this.g, c.x, c.y, lock.type);
+      const c = lock.position ?? getCellCenter(lock.x, lock.y, cfg);
+      drawLockIcon(this.g, c.x, c.y, lock.type, lock.scale ?? 1, lock.color ?? canvas.lock.default);
     }
   }
 
@@ -26,17 +26,17 @@ export class LockRenderer {
   }
 }
 
-function drawLockIcon(g: Graphics, cx: number, cy: number, type: "in" | "out" | "both"): void {
-  const bw = TILE_SIZE * 0.46;
-  const bh = TILE_SIZE * 0.36;
+function drawLockIcon(g: Graphics, cx: number, cy: number, type: "in" | "out" | "both", scale: number, color: number): void {
+  const bw = TILE_SIZE * 0.46 * scale;
+  const bh = TILE_SIZE * 0.36 * scale;
   const arcR = bw * 0.30;
   const totalH = arcR + bh;
   const bodyTop = cy - totalH / 2 + arcR;
   const bodyCy = bodyTop + bh / 2;
 
-  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(canvas.lock.default);
+  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(color);
 
-  g.setStrokeStyle({ width: bw * 0.14, color: canvas.lock.default, cap: "round" as const });
+  g.setStrokeStyle({ width: bw * 0.14, color, cap: "round" as const });
   g.moveTo(cx - arcR, bodyTop);
   g.arc(cx, bodyTop, arcR, Math.PI, 0);
   g.stroke();

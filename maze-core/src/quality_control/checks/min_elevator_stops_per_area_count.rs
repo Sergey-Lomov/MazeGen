@@ -1,9 +1,9 @@
-use rand::RngCore;
+use super::elevator_core::elevator_stops_per_floor;
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::{AreaMissingElevatorStopsIssue, FloorScope, RepairArea};
-use super::elevator_core::elevator_stops_per_floor;
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT: u32 = 1;
 pub const MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
@@ -23,20 +23,37 @@ pub struct MinElevatorStopsPerAreaCountCheck {
     pub floor_scope: FloorScope,
 }
 
-impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue> for MinElevatorStopsPerAreaCountCheck {
-    fn check_type_id(&self) -> &'static str { "min_elevator_stops_per_area_count" }
+impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue>
+    for MinElevatorStopsPerAreaCountCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "min_elevator_stops_per_area_count"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<AreaMissingElevatorStopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<AreaMissingElevatorStopsIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let per_floor = elevator_stops_per_floor(maze);
 
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
                 let total: u32 = per_floor.values().map(|stops| stops.len() as u32).sum();
                 let missing = self.min_stops.saturating_sub(total);
-                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+                if missing == 0 {
+                    vec![]
+                } else {
+                    vec![(RepairArea::WholeMaze, missing)]
+                }
             }
             FloorScope::PerFloor => {
-                let mut missing: Vec<(RepairArea, u32)> = maze.field.levels_ordered().into_iter()
+                let mut missing: Vec<(RepairArea, u32)> = maze
+                    .field
+                    .levels_ordered()
+                    .into_iter()
                     .filter_map(|level| {
                         let count = per_floor.get(&level).map_or(0, |stops| stops.len() as u32);
                         let missing = self.min_stops.saturating_sub(count);
@@ -59,12 +76,12 @@ impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue> for MinElevatorSto
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::Issue;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "min_elevator_stops_per_area_count";
 
@@ -72,13 +89,21 @@ mod tests {
         crate::random::MazeRng::seed_from_u64(0)
     }
 
-    fn two_floor_maze() -> (Maze<SquareTessellation>, crate::ids::NodeId, crate::ids::NodeId) {
+    fn two_floor_maze() -> (
+        Maze<SquareTessellation>,
+        crate::ids::NodeId,
+        crate::ids::NodeId,
+    ) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let b0 = mf.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
         let t0 = mf.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         (Maze::new(mf, g), b0, t0)
@@ -89,7 +114,11 @@ mod tests {
         let (mut maze, b0, t0) = two_floor_maze();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaCountCheck { instance_id: TEST_ID.to_string(), min_stops: 2, floor_scope: FloorScope::WholeMaze };
+        let check = MinElevatorStopsPerAreaCountCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops: 2,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -98,7 +127,11 @@ mod tests {
     #[test]
     fn fires_with_missing_count_when_whole_maze_below_minimum() {
         let (maze, _b0, _t0) = two_floor_maze();
-        let check = MinElevatorStopsPerAreaCountCheck { instance_id: TEST_ID.to_string(), min_stops: 2, floor_scope: FloorScope::WholeMaze };
+        let check = MinElevatorStopsPerAreaCountCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops: 2,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -111,13 +144,21 @@ mod tests {
         let (mut maze, b0, t0) = two_floor_maze();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaCountCheck { instance_id: TEST_ID.to_string(), min_stops: 2, floor_scope: FloorScope::PerFloor };
+        let check = MinElevatorStopsPerAreaCountCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops: 2,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         let mut missing = issues[0].missing.clone();
         missing.sort_by_key(|&(_, amount)| amount);
-        assert_eq!(missing.len(), 2, "both floors have exactly 1 stop, deficient against a minimum of 2");
+        assert_eq!(
+            missing.len(),
+            2,
+            "both floors have exactly 1 stop, deficient against a minimum of 2"
+        );
         for (_, amount) in &missing {
             assert_eq!(*amount, 1);
         }
@@ -128,7 +169,11 @@ mod tests {
         let (mut maze, b0, t0) = two_floor_maze();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaCountCheck { instance_id: TEST_ID.to_string(), min_stops: 1, floor_scope: FloorScope::PerFloor };
+        let check = MinElevatorStopsPerAreaCountCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops: 1,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());

@@ -28,7 +28,9 @@ pub struct DebugGenerationState<T: crate::space::Tessellation> {
 
 impl<T: crate::space::Tessellation> DebugGenerationState<T> {
     pub fn new() -> Self {
-        Self { all_node_points: std::collections::HashMap::new() }
+        Self {
+            all_node_points: std::collections::HashMap::new(),
+        }
     }
 
     pub fn note(&mut self, id: crate::ids::NodeId, point: T::Point) {
@@ -49,7 +51,7 @@ impl<T: crate::space::Tessellation> Default for DebugGenerationState<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{SquareTessellation, SquarePoint};
+    use crate::space::{SquarePoint, SquareTessellation};
 
     #[test]
     fn note_then_all_node_points_returns_it() {

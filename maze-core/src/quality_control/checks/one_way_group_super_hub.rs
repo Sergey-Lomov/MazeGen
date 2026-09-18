@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
-use crate::space::Tessellation;
+use crate::quality_control::InvalidOneWayGroupIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
-use crate::quality_control::InvalidOneWayGroupIssue;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT: u32 = 3;
 
@@ -34,16 +34,25 @@ pub struct OneWayGroupSuperHubCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupSuperHubCheck {
-    fn check_type_id(&self) -> &'static str { "one_way_group_super_hub" }
+    fn check_type_id(&self) -> &'static str {
+        "one_way_group_super_hub"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidOneWayGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut by_vertex: HashMap<NodeId, Vec<EdgeId>> = HashMap::new();
         for (id, from, to) in one_way_edges_with_endpoints(maze) {
             by_vertex.entry(from).or_default().push(id);
             by_vertex.entry(to).or_default().push(id);
         }
 
-        let groups: Vec<(Vec<EdgeId>, u32)> = by_vertex.into_values()
+        let groups: Vec<(Vec<EdgeId>, u32)> = by_vertex
+            .into_values()
             .filter(|edges| edges.len() as u32 > self.max_connections)
             .map(|edges| {
                 let to_remove = edges.len() as u32 - self.max_connections;
@@ -54,8 +63,11 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupSuperHubC
         if groups.is_empty() {
             return;
         }
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
-            .with_detail(&self.instance_id, "max_connections", self.max_connections.to_string());
+        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups).with_detail(
+            &self.instance_id,
+            "max_connections",
+            self.max_connections.to_string(),
+        );
         issues.push(issue);
     }
 }

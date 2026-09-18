@@ -1,4 +1,4 @@
-﻿use wasm_bindgen::prelude::*;
+use wasm_bindgen::prelude::*;
 
 /// Wire representation of `maze_core::event_log::DebugValueKind` for `GenerateResult`'s
 /// `debugValueKinds()` getter — plain strings, not a numeric enum, since this rides across the
@@ -82,9 +82,13 @@ pub struct GenerateResult {
 impl GenerateResult {
     pub fn without_debug_tape(snapshot: JsValue) -> Self {
         Self {
-            snapshot, node_table: None, payload: None,
-            debug_value_names: Vec::new(), debug_value_kinds: Vec::new(),
-            source_scope_names: Vec::new(), source_event_kinds: Vec::new(),
+            snapshot,
+            node_table: None,
+            payload: None,
+            debug_value_names: Vec::new(),
+            debug_value_kinds: Vec::new(),
+            source_scope_names: Vec::new(),
+            source_event_kinds: Vec::new(),
             debug_all_nodes: JsValue::UNDEFINED,
         }
     }
@@ -97,14 +101,27 @@ impl GenerateResult {
         sources: Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
         debug_all_nodes: JsValue,
     ) -> Self {
-        let (names, kinds) = debug_value_names.into_iter().map(|(name, kind)| (name, kind_wire_str(kind).to_string())).unzip();
+        let (names, kinds) = debug_value_names
+            .into_iter()
+            .map(|(name, kind)| (name, kind_wire_str(kind).to_string()))
+            .unzip();
         let (source_scope_names, source_event_kinds) = sources
             .into_iter()
-            .map(|(scope_name, kind)| (scope_name.to_string(), event_kind_wire_str(kind).to_string()))
+            .map(|(scope_name, kind)| {
+                (
+                    scope_name.to_string(),
+                    event_kind_wire_str(kind).to_string(),
+                )
+            })
             .unzip();
         Self {
-            snapshot, node_table: Some(node_table), payload: Some(payload),
-            debug_value_names: names, debug_value_kinds: kinds, source_scope_names, source_event_kinds,
+            snapshot,
+            node_table: Some(node_table),
+            payload: Some(payload),
+            debug_value_names: names,
+            debug_value_kinds: kinds,
+            source_scope_names,
+            source_event_kinds,
             debug_all_nodes,
         }
     }
@@ -120,7 +137,9 @@ impl GenerateResult {
         match (&self.node_table, &self.payload) {
             (Some(nodes), Some(payload)) => Some((nodes, payload)),
             (None, None) => None,
-            _ => panic!("GenerateResult: node_table/payload must always be Some/None together (see without_debug_tape/with_debug_tape)"),
+            _ => panic!(
+                "GenerateResult: node_table/payload must always be Some/None together (see without_debug_tape/with_debug_tape)"
+            ),
         }
     }
 
@@ -146,7 +165,6 @@ impl GenerateResult {
     pub(crate) fn source_event_kinds_bytes(&self) -> &[String] {
         &self.source_event_kinds
     }
-
 }
 
 #[wasm_bindgen]
@@ -173,7 +191,9 @@ impl GenerateResult {
         // linear memory. It stays valid as long as `self` (and thus the `Vec<u8>`) is alive and
         // the memory isn't grown/reallocated in between — see the doc comment above for the
         // caller-side contract this depends on.
-        self.node_table.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
+        self.node_table
+            .as_deref()
+            .map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
     }
 
     /// Zero-copy view of the debug event tree's payload byte arena — same lifetime/detachment
@@ -181,7 +201,9 @@ impl GenerateResult {
     #[wasm_bindgen(js_name = debugTapePayload)]
     pub fn debug_tape_payload(&self) -> Option<js_sys::Uint8Array> {
         // SAFETY: see `debug_tape_node_table`.
-        self.payload.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
+        self.payload
+            .as_deref()
+            .map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
     }
 
     /// Debug-value names (GitHub issue #131) declared by the instrumented algorithm — empty when
@@ -244,8 +266,20 @@ mod tests {
 
     #[test]
     fn with_debug_tape_carries_both_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)], JsValue::UNDEFINED);
-        let (node_table, payload) = result.debug_tape_bytes().expect("both buffers must be present");
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            Vec::new(),
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+            )],
+            JsValue::UNDEFINED,
+        );
+        let (node_table, payload) = result
+            .debug_tape_bytes()
+            .expect("both buffers must be present");
         assert_eq!(node_table, &[1, 2, 3]);
         assert_eq!(payload, &[4, 5]);
     }
@@ -259,12 +293,23 @@ mod tests {
     #[test]
     fn with_debug_tape_carries_debug_value_names() {
         let result = GenerateResult::with_debug_tape(
-            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
-            vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
-            vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)],
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            vec![(
+                "recursion_stack".to_string(),
+                maze_core::event_log::DebugValueKind::Sequence,
+            )],
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+            )],
             JsValue::UNDEFINED,
         );
-        assert_eq!(result.debug_value_names_bytes(), &["recursion_stack".to_string()]);
+        assert_eq!(
+            result.debug_value_names_bytes(),
+            &["recursion_stack".to_string()]
+        );
         assert_eq!(result.debug_value_kinds_bytes(), &["sequence".to_string()]);
     }
 
@@ -274,9 +319,17 @@ mod tests {
         // above only ever exercises Sequence, so a typo'd/swapped wire string for Region would
         // otherwise ship undetected.
         let result = GenerateResult::with_debug_tape(
-            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
-            vec![("visited".to_string(), maze_core::event_log::DebugValueKind::Region)],
-            vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)],
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            vec![(
+                "visited".to_string(),
+                maze_core::event_log::DebugValueKind::Region,
+            )],
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+            )],
             JsValue::UNDEFINED,
         );
         assert_eq!(result.debug_value_names_bytes(), &["visited".to_string()]);
@@ -288,12 +341,20 @@ mod tests {
         // Guards kind_wire_str's Map arm specifically (GitHub issue #145's follow-up) — mirrors
         // with_debug_tape_carries_a_region_kind_debug_value's rationale for Region.
         let result = GenerateResult::with_debug_tape(
-            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
-            vec![("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map)],
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            vec![(
+                "current_walk".to_string(),
+                maze_core::event_log::DebugValueKind::Map,
+            )],
             vec![("generation", maze_core::event_log::EventedEventKind::Wilson)],
             JsValue::UNDEFINED,
         );
-        assert_eq!(result.debug_value_names_bytes(), &["current_walk".to_string()]);
+        assert_eq!(
+            result.debug_value_names_bytes(),
+            &["current_walk".to_string()]
+        );
         assert_eq!(result.debug_value_kinds_bytes(), &["map".to_string()]);
     }
 
@@ -302,8 +363,13 @@ mod tests {
         // Guards kind_wire_str's Vertex arm specifically (GitHub issue #145's follow-up) — mirrors
         // with_debug_tape_carries_a_map_kind_debug_value's rationale for Map.
         let result = GenerateResult::with_debug_tape(
-            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
-            vec![("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex)],
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            vec![(
+                "walk_head".to_string(),
+                maze_core::event_log::DebugValueKind::Vertex,
+            )],
             vec![("generation", maze_core::event_log::EventedEventKind::Wilson)],
             JsValue::UNDEFINED,
         );
@@ -320,20 +386,53 @@ mod tests {
 
     #[test]
     fn with_debug_tape_carries_recursive_backtracker_event_kind() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)], JsValue::UNDEFINED);
-        assert_eq!(result.source_scope_names_bytes(), &["generation".to_string()]);
-        assert_eq!(result.source_event_kinds_bytes(), &["recursive_backtracker".to_string()]);
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            Vec::new(),
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+            )],
+            JsValue::UNDEFINED,
+        );
+        assert_eq!(
+            result.source_scope_names_bytes(),
+            &["generation".to_string()]
+        );
+        assert_eq!(
+            result.source_event_kinds_bytes(),
+            &["recursive_backtracker".to_string()]
+        );
     }
 
     #[test]
     fn with_debug_tape_carries_kruskal_event_kind() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::Kruskal)], JsValue::UNDEFINED);
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            Vec::new(),
+            vec![(
+                "generation",
+                maze_core::event_log::EventedEventKind::Kruskal,
+            )],
+            JsValue::UNDEFINED,
+        );
         assert_eq!(result.source_event_kinds_bytes(), &["kruskal".to_string()]);
     }
 
     #[test]
     fn with_debug_tape_carries_wilson_event_kind() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::Wilson)], JsValue::UNDEFINED);
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            Vec::new(),
+            vec![("generation", maze_core::event_log::EventedEventKind::Wilson)],
+            JsValue::UNDEFINED,
+        );
         assert_eq!(result.source_event_kinds_bytes(), &["wilson".to_string()]);
     }
 
@@ -342,15 +441,30 @@ mod tests {
         // Guards the parallel-array pairing itself when more than one source is present —
         // every other test in this module only ever exercises exactly one.
         let result = GenerateResult::with_debug_tape(
-            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(),
+            JsValue::UNDEFINED,
+            vec![1, 2, 3],
+            vec![4, 5],
+            Vec::new(),
             vec![
-                ("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker),
-                ("quality_control", maze_core::event_log::EventedEventKind::Kruskal),
+                (
+                    "generation",
+                    maze_core::event_log::EventedEventKind::RecursiveBacktracker,
+                ),
+                (
+                    "quality_control",
+                    maze_core::event_log::EventedEventKind::Kruskal,
+                ),
             ],
             JsValue::UNDEFINED,
         );
-        assert_eq!(result.source_scope_names_bytes(), &["generation".to_string(), "quality_control".to_string()]);
-        assert_eq!(result.source_event_kinds_bytes(), &["recursive_backtracker".to_string(), "kruskal".to_string()]);
+        assert_eq!(
+            result.source_scope_names_bytes(),
+            &["generation".to_string(), "quality_control".to_string()]
+        );
+        assert_eq!(
+            result.source_event_kinds_bytes(),
+            &["recursive_backtracker".to_string(), "kruskal".to_string()]
+        );
     }
 
     // `debug_all_nodes` itself (GitHub issue #271) has no native test here: it's a `JsValue`

@@ -20,9 +20,13 @@ pub struct IssuePayloadTagError(pub String);
 /// as `check.rs::old_write_call_sequence` (this file's only read of hand-written source, mirrors
 /// that one's own justification for scanning instead of using `syn`).
 pub fn rust_tags(source: &str) -> BTreeSet<u16> {
-    let Some(fn_start) = source.find("fn write_issue_payload(") else { return BTreeSet::new() };
+    let Some(fn_start) = source.find("fn write_issue_payload(") else {
+        return BTreeSet::new();
+    };
     let body = &source[fn_start..];
-    let Some(body_end) = body.find("\npub(crate) fn write_str(") else { return BTreeSet::new() };
+    let Some(body_end) = body.find("\npub(crate) fn write_str(") else {
+        return BTreeSet::new();
+    };
     let body = &body[..body_end];
 
     let mut tags = BTreeSet::new();
@@ -44,9 +48,13 @@ pub fn rust_tags(source: &str) -> BTreeSet<u16> {
 /// Extracts every `tag === N` literal from `qcCustom.ts`'s `readIssuePayload` function body —
 /// mirrors `rust_tags`'s scan on the TS side.
 pub fn ts_tags(source: &str) -> BTreeSet<u16> {
-    let Some(fn_start) = source.find("export function readIssuePayload(") else { return BTreeSet::new() };
+    let Some(fn_start) = source.find("export function readIssuePayload(") else {
+        return BTreeSet::new();
+    };
     let body = &source[fn_start..];
-    let Some(body_end) = body.find("\n/** Reads an `IssueKind`") else { return BTreeSet::new() };
+    let Some(body_end) = body.find("\n/** Reads an `IssueKind`") else {
+        return BTreeSet::new();
+    };
     let body = &body[..body_end];
 
     let mut tags = BTreeSet::new();
@@ -104,13 +112,17 @@ mod tests {
 
     #[test]
     fn extracts_rust_tags_in_order() {
-        let src = rust_src("        IssuePayload::None => out.push(0),\n        IssuePayload::InvalidLoop { .. } => { out.push(1); }\n");
+        let src = rust_src(
+            "        IssuePayload::None => out.push(0),\n        IssuePayload::InvalidLoop { .. } => { out.push(1); }\n",
+        );
         assert_eq!(rust_tags(&src), BTreeSet::from([0, 1]));
     }
 
     #[test]
     fn extracts_ts_tags() {
-        let src = ts_src("  if (tag === 0) return { value: { kind: \"None\" }, next: offset + 1 };\n  if (tag === 1) { return x; }\n");
+        let src = ts_src(
+            "  if (tag === 0) return { value: { kind: \"None\" }, next: offset + 1 };\n  if (tag === 1) { return x; }\n",
+        );
         assert_eq!(ts_tags(&src), BTreeSet::from([0, 1]));
     }
 
@@ -123,7 +135,9 @@ mod tests {
 
     #[test]
     fn rust_only_tag_is_reported() {
-        let rust = rust_src("        IssuePayload::None => out.push(0),\n        IssuePayload::InvalidElevatorStop { .. } => { out.push(11); }\n");
+        let rust = rust_src(
+            "        IssuePayload::None => out.push(0),\n        IssuePayload::InvalidElevatorStop { .. } => { out.push(11); }\n",
+        );
         let ts = ts_src("  if (tag === 0) { }\n");
         let errors = check_tags(&rust, &ts);
         assert_eq!(errors.len(), 1);

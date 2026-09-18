@@ -1,7 +1,7 @@
-use rand::RngCore;
+use super::issue::IssueRequirement;
 use crate::Maze;
 use crate::space::Tessellation;
-use super::issue::IssueRequirement;
+use rand::RngCore;
 
 pub trait Check<T: Tessellation, I: IssueRequirement> {
     /// Check **type** id — matches `maze-wasm`'s `CheckInstanceConfig.type_id` / `available_checks()`'s
@@ -21,7 +21,9 @@ pub trait Check<T: Tessellation, I: IssueRequirement> {
     /// that function so the two can't silently drift. A new check using the aggregate-excess
     /// `repair_check` shape must override this to `true` *and* add itself to
     /// `is_batch_edge_group_type`, or the completeness test will fail.
-    fn is_batch_edge_group(&self) -> bool { false }
+    fn is_batch_edge_group(&self) -> bool {
+        false
+    }
 
     /// Detection for the repair fixpoint loop — may bundle every flagged problem instance into
     /// one merged issue per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one
@@ -29,7 +31,13 @@ pub trait Check<T: Tessellation, I: IssueRequirement> {
     /// the batch. `requirement` is the bound rule's strategy's `RepairStrategy::requirement()`,
     /// resolved once by `Rule::new` — see GitHub issue #105. A check is free to ignore it and
     /// always compute the maximal `I` (the correct default for an unmigrated check).
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<I>, rng: &mut dyn RngCore, requirement: I::Requirement);
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<I>,
+        rng: &mut dyn RngCore,
+        requirement: I::Requirement,
+    );
 
     /// Detection for the final QC report (`remaining_issues`, analytics, UI) — one issue per
     /// flagged problem instance instead of one merged issue per call. Default implementation

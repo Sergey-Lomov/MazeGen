@@ -1,18 +1,21 @@
-use rand::RngCore;
+use super::pool::Pool;
+use super::remaining_deficits::RemainingDeficits;
+use super::split_core::{
+    pick_weighted_pattern, plan_pattern_split as core_plan_pattern_split,
+    plan_unconstrained_split as core_plan_unconstrained_split,
+};
+use super::standard_add_params::{self, attempts_limit, reserve_target, src_mode};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
 use crate::generation::{PresetState, SplitPattern};
 use crate::graph::route_protection::is_node_on_route;
+use crate::ids::NodeId;
 use crate::quality_control::{MissingSplitTilesIssue, RepairArea};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
-use super::pool::Pool;
-use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
-use super::remaining_deficits::RemainingDeficits;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";
 pub const PARAM_ALLOW_ADD_CONNECTIONS: &str = "allow_add_connections";
@@ -28,7 +31,8 @@ const ALLOW_ADD_CONNECTIONS_PARAM: StrategyParam = StrategyParam {
     kind: StrategyParamKind::Bool { default: true },
 };
 
-static PARAMS: [StrategyParam; 5] = crate::add_strategy_params!(ALLOW_LOSE_CONNECTIONS_PARAM, ALLOW_ADD_CONNECTIONS_PARAM);
+static PARAMS: [StrategyParam; 5] =
+    crate::add_strategy_params!(ALLOW_LOSE_CONNECTIONS_PARAM, ALLOW_ADD_CONNECTIONS_PARAM);
 
 /// Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, epic #246. Mints new split tiles at
 /// randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not
@@ -100,15 +104,24 @@ impl AddSplitStrategy {
     /// pattern's `weight` overridden by `pattern_weights[i]` when present (falls back to the
     /// pattern's own weight otherwise).
     fn resolved_patterns(&self) -> Vec<SplitPattern> {
-        self.split_patterns.iter().enumerate().map(|(i, p)| {
-            let weight = self.pattern_weights.get(i).copied().unwrap_or(p.weight);
-            SplitPattern { weight, ..p.clone() }
-        }).collect()
+        self.split_patterns
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let weight = self.pattern_weights.get(i).copied().unwrap_or(p.weight);
+                SplitPattern {
+                    weight,
+                    ..p.clone()
+                }
+            })
+            .collect()
     }
 }
 
 impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStrategy {
-    fn strategy_id(&self) -> &'static str { "add_split" }
+    fn strategy_id(&self) -> &'static str {
+        "add_split"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &PARAMS
@@ -158,8 +171,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
             // A split tile belongs to exactly one floor (GitHub issue #369's floor-scope
             // follow-up), so restricting by area is a plain point-set filter — no cross-floor
             // double-counting concern like a teleport's exit side.
-            let eligible: Vec<NodeId> = maze.field.all_node_ids()
-                .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
+            let eligible: Vec<NodeId> = maze
+                .field
+                .all_node_ids()
+                .filter(|&node| {
+                    crate::generation::split_is_eligible(&maze.field, preset_state, node)
+                })
                 .filter(|&node| !protect_route || !is_node_on_route(maze, node))
                 .filter(|&node| match area {
                     RepairArea::WholeMaze => true,
@@ -181,7 +198,16 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                     core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
                 } else {
                     let pattern_idx = pick_weighted_pattern(&resolved_patterns, rng);
-                    core_plan_pattern_split(maze, at, &resolved_patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
+                    core_plan_pattern_split(
+                        maze,
+                        at,
+                        &resolved_patterns[pattern_idx],
+                        None,
+                        &committed,
+                        rng,
+                        allow_lose,
+                        allow_add,
+                    )
                 };
 
                 match outcome {
@@ -211,13 +237,13 @@ crate::impl_erased_repair_strategy!(AddSplitStrategy, MissingSplitTilesIssue);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn no_params() -> StrategyParams {
         build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy_unconstrained()), None)
@@ -225,27 +251,42 @@ mod tests {
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
     fn maze_grid(width: usize, height: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
     fn missing_issue(missing: u32) -> MissingSplitTilesIssue {
-        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        let entries = if missing == 0 {
+            vec![]
+        } else {
+            vec![(RepairArea::WholeMaze, missing)]
+        };
         MissingSplitTilesIssue::new_from_check("split_count", entries)
     }
 
     fn strategy_unconstrained() -> AddSplitStrategy {
-        AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true }
+        AddSplitStrategy {
+            split_patterns: vec![],
+            max_split_nodes: 2,
+            pattern_weights: vec![],
+            protect_route: true,
+        }
     }
 
     #[test]
@@ -254,7 +295,15 @@ mod tests {
         let issue = missing_issue(0);
         let mut rng = MazeRng::seed_from_u64(1);
         let nodes_before = maze.field.node_count();
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before);
     }
@@ -265,9 +314,21 @@ mod tests {
         let issue = missing_issue(2);
         let mut rng = MazeRng::seed_from_u64(7);
         let nodes_before = maze.field.node_count();
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.field.node_count(), nodes_before + 2, "2 split tiles must each mint exactly one new node (max_split_nodes=2)");
+        assert_eq!(
+            maze.field.node_count(),
+            nodes_before + 2,
+            "2 split tiles must each mint exactly one new node (max_split_nodes=2)"
+        );
     }
 
     #[test]
@@ -275,11 +336,28 @@ mod tests {
         let mut maze = maze_line(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(3);
-        let strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 4, pattern_weights: vec![], protect_route: true };
+        let strategy = AddSplitStrategy {
+            split_patterns: vec![],
+            max_split_nodes: 4,
+            pattern_weights: vec![],
+            protect_route: true,
+        };
         let nodes_before = maze.field.node_count();
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.field.node_count(), nodes_before + 3, "max_split_nodes=4 must mint 3 new siblings for the one tile");
+        assert_eq!(
+            maze.field.node_count(),
+            nodes_before + 3,
+            "max_split_nodes=4 must mint 3 new siblings for the one tile"
+        );
     }
 
     /// Total real edges touching any node currently at `point` — used to check that
@@ -288,8 +366,14 @@ mod tests {
     /// other new node, so nothing about it is specifically preserved anymore — only the point's
     /// total edge count is invariant).
     fn edges_touching_point(maze: &Maze<SquareTessellation>, point: SquarePoint) -> usize {
-        maze.field.nodes_at(maze.field.single_level_id(), point).iter()
-            .flat_map(|&n| maze.graph.outgoing_neighbors(n).chain(maze.graph.incoming_neighbors(n)))
+        maze.field
+            .nodes_at(maze.field.single_level_id(), point)
+            .iter()
+            .flat_map(|&n| {
+                maze.graph
+                    .outgoing_neighbors(n)
+                    .chain(maze.graph.incoming_neighbors(n))
+            })
             .count()
     }
 
@@ -299,20 +383,41 @@ mod tests {
         // number of real connections must come out exactly the same as it went in — each one
         // lands on exactly one of the new nodes.
         let mut maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         for w in nodes.windows(2) {
-            maze.graph.add_bidirectional_edge(w[0], w[1], EdgeKind::Basic);
+            maze.graph
+                .add_bidirectional_edge(w[0], w[1], EdgeKind::Basic);
         }
         let points: Vec<SquarePoint> = (0..5).map(|x| SquarePoint { x, y: 0 }).collect();
-        let edges_before: Vec<usize> = points.iter().map(|&p| edges_touching_point(&maze, p)).collect();
+        let edges_before: Vec<usize> = points
+            .iter()
+            .map(|&p| edges_touching_point(&maze, p))
+            .collect();
 
         let issue = missing_issue(3);
         let mut rng = MazeRng::seed_from_u64(42);
-        apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         for (i, &point) in points.iter().enumerate() {
-            assert_eq!(edges_touching_point(&maze, point), edges_before[i],
-                "point at x={i} must keep the same total edge count after redistribution, split or not");
+            assert_eq!(
+                edges_touching_point(&maze, point),
+                edges_before[i],
+                "point at x={i} must keep the same total edge count after redistribution, split or not"
+            );
         }
     }
 
@@ -320,11 +425,21 @@ mod tests {
     /// `route_protection::tests::maze_with_corridor_route`), needed for `protect_route` tests.
     fn maze_line_with_route(len: usize) -> Maze<SquareTessellation> {
         let mut maze = maze_line(len);
-        let nodes: Vec<NodeId> = (0..len as i32).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..len as i32)
+            .map(|x| {
+                maze.field
+                    .node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
+                    .unwrap()
+            })
+            .collect();
         for w in nodes.windows(2) {
-            maze.graph.add_bidirectional_edge(w[0], w[1], EdgeKind::Basic);
+            maze.graph
+                .add_bidirectional_edge(w[0], w[1], EdgeKind::Basic);
         }
-        maze.meta = crate::meta::MazeMeta { start: Some(nodes[0]), finish: Some(*nodes.last().unwrap()) };
+        maze.meta = crate::meta::MazeMeta {
+            start: Some(nodes[0]),
+            finish: Some(*nodes.last().unwrap()),
+        };
         maze
     }
 
@@ -335,8 +450,19 @@ mod tests {
         let mut maze = maze_line_with_route(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed), "every candidate point sits on the route, protect_route defaults to true");
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "every candidate point sits on the route, protect_route defaults to true"
+        );
     }
 
     #[test]
@@ -344,9 +470,22 @@ mod tests {
         let mut maze = maze_line_with_route(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: false };
+        let strategy = AddSplitStrategy {
+            split_patterns: vec![],
+            max_split_nodes: 2,
+            pattern_weights: vec![],
+            protect_route: false,
+        };
         let nodes_before = maze.field.node_count();
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 1);
     }
@@ -355,14 +494,25 @@ mod tests {
     fn apply_reports_failed_when_no_eligible_point_exists() {
         // A single-node field where the only point is locked — no eligible candidate at all.
         let mut maze = maze_line(1);
-        let node = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+        let node = maze
+            .field
+            .node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(node);
         preset_state.locked_in.insert(node);
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -374,21 +524,39 @@ mod tests {
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
         let level_b = mf.add_level(field_b);
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
         let nodes_before = maze.field.node_count();
 
-        let issue = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::Level(level_b), 2)]);
+        let issue = MissingSplitTilesIssue::new_from_check(
+            "split_count",
+            vec![(RepairArea::Level(level_b), 2)],
+        );
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 2);
-        let split_points: std::collections::HashSet<_> = maze.field.all_points_with_level()
+        let split_points: std::collections::HashSet<_> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| maze.field.nodes_at(level, point).len() > 1)
             .collect();
         assert_eq!(split_points.len(), 2);
         for (level, _) in split_points {
-            assert_eq!(level, level_b, "every new split tile must be on the reported level");
+            assert_eq!(
+                level, level_b,
+                "every new split tile must be on the reported level"
+            );
         }
     }
 
@@ -408,20 +576,37 @@ mod tests {
         let level_c = mf.add_level(field_c);
         let level_a = mf.levels_ordered().next().unwrap();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
         let nodes_before = maze.field.node_count();
 
-        let issue = MissingSplitTilesIssue::new_from_check("split_count", vec![
-            (RepairArea::Level(level_a), 3),
-            (RepairArea::Level(level_b), 3),
-            (RepairArea::Level(level_c), 3),
-            (RepairArea::WholeMaze, 12),
-        ]);
+        let issue = MissingSplitTilesIssue::new_from_check(
+            "split_count",
+            vec![
+                (RepairArea::Level(level_a), 3),
+                (RepairArea::Level(level_b), 3),
+                (RepairArea::Level(level_c), 3),
+                (RepairArea::WholeMaze, 12),
+            ],
+        );
         let mut rng = MazeRng::seed_from_u64(11);
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.field.node_count(), nodes_before + 12, "12 split tiles total, not 21");
+        assert_eq!(
+            maze.field.node_count(),
+            nodes_before + 12,
+            "12 split tiles total, not 21"
+        );
     }
 
     #[test]
@@ -430,11 +615,27 @@ mod tests {
 
         let mut maze_a = maze_line(5);
         let mut rng_a = MazeRng::seed_from_u64(123);
-        apply_and_commit(&strategy_unconstrained(), &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze_a,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         let mut maze_b = maze_line(5);
         let mut rng_b = MazeRng::seed_from_u64(123);
-        apply_and_commit(&strategy_unconstrained(), &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &strategy_unconstrained(),
+            &issue,
+            &mut maze_b,
+            &mut rng_b,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         assert_eq!(maze_a.field.node_count(), maze_b.field.node_count());
     }

@@ -101,6 +101,7 @@ export interface PresetConnectionsState {
         slotIds: number[];
         action:
           | { tool: "set_start" | "set_finish" }
+          | { tool: "lock_in" | "lock_out" | "full_lock" }
           | { tool: "gen_source" }
           | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
           | { tool: "elevator" }
@@ -154,8 +155,8 @@ export interface PresetConnectionsActions {
   setHighlightIsolatedNodes: (highlight: boolean) => void;
   setHighlightOrphanSplitNodes: (highlight: boolean) => void;
   setShowPresetOrigin: (show: boolean) => void;
-  setLockedNode: (x: number, y: number, kind: NodeLockKind) => void;
-  removeLockedNode: (x: number, y: number) => void;
+  setLockedNode: (x: number, y: number, kind: NodeLockKind, slotId?: number) => void;
+  removeLockedNode: (x: number, y: number, slotId?: number) => void;
   clearLockedNodes: () => void;
   setAutoLock: (v: boolean) => void;
   setPresetTeleportPendingFrom: (endpoint: PresetEndpoint | null) => void;

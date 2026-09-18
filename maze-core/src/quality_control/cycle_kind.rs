@@ -40,8 +40,12 @@ impl CycleKind {
     pub fn matches(self, nav: &NavGraph, cycle: &[usize]) -> bool {
         match self {
             CycleKind::Any => true,
-            CycleKind::TwoWay => cycle.iter().all(|&idx| nav.edge_by_idx(idx).reverse_edge.is_some()),
-            CycleKind::OneWay => cycle.iter().any(|&idx| nav.edge_by_idx(idx).reverse_edge.is_none()),
+            CycleKind::TwoWay => cycle
+                .iter()
+                .all(|&idx| nav.edge_by_idx(idx).reverse_edge.is_some()),
+            CycleKind::OneWay => cycle
+                .iter()
+                .any(|&idx| nav.edge_by_idx(idx).reverse_edge.is_none()),
         }
     }
 }

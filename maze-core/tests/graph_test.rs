@@ -1,5 +1,5 @@
-use maze_core::{Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
+use maze_core::{Graph, IdGenerator};
 
 fn setup() -> (Graph, u64, u64, u64) {
     let mut ids = IdGenerator::new();

@@ -1,6 +1,9 @@
-use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_SPLIT_NODE_CONNECTION};
+use crate::quality_control::issue::{
+    INVALID_SPLIT_NODE_CONNECTION, IssueKind, IssueKindConst, IssueMerge, IssueMeta,
+    IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced (synthetically, by `SplitNodeConnectionGroupSelectStrategy` for its own nested calls
 /// — no check ever constructs this directly, see `INVALID_SPLIT_NODE_CONNECTION`'s doc comment)
@@ -18,8 +21,15 @@ pub struct InvalidSplitNodeConnectionIssue {
 
 impl InvalidSplitNodeConnectionIssue {
     pub fn new_from_check(source_check: &str, invalid: Vec<EdgeId>) -> Self {
-        let invalid_sources = invalid.iter().map(|&id| (id, vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+        let invalid_sources = invalid
+            .iter()
+            .map(|&id| (id, vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 }
 
@@ -38,7 +48,12 @@ impl IssueMerge for InvalidSplitNodeConnectionIssue {
     /// `InvalidOneWayIssue`.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+        super::merge_id_sets(
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.invalid,
+            other.invalid_sources,
+        );
     }
 }
 
@@ -63,6 +78,10 @@ mod tests {
         let b = InvalidSplitNodeConnectionIssue::new_from_check("group_select", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same edge id flagged twice must not be duplicated");
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "the same edge id flagged twice must not be duplicated"
+        );
     }
 }

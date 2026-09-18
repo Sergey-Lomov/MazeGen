@@ -11,6 +11,7 @@ import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type React from "react";
+import type { NodeLockKind } from "../../wasm/types";
 
 /** 1-based node number for a split point's node, in row order (GitHub issue #468). Slot 0 is not a
  *  special node any more — every node of a split point, the point's original node included, gets the
@@ -96,6 +97,7 @@ export interface SplitNodesRow<E> {
   links: LinkInfo<E>[];
   isStart: boolean;
   isFinish: boolean;
+  lockKind?: NodeLockKind;
 }
 
 interface Props<E> {
@@ -285,6 +287,7 @@ export function SplitNodesDialogView<E>({
                   <span style={typography.body}>{row.title}</span>
                   {row.isStart && <span style={{ ...styles.badge, ...styles.startBadge }}>{m["post_edit.split_start_badge"]()}</span>}
                   {row.isFinish && <span style={{ ...styles.badge, ...styles.finishBadge }}>{m["post_edit.split_finish_badge"]()}</span>}
+                  {row.lockKind && <span style={{ ...styles.badge, ...styles.lockBadge }}>{row.lockKind === "both" ? m["post_edit.split_lock_badge"]() : row.lockKind === "in" ? m["post_edit.split_lock_in_badge"]() : m["post_edit.split_lock_out_badge"]()}</span>}
                 </div>
                 <div>
                   {(["required", "undefined", "forbidden"] as const).map((category) => {
@@ -538,5 +541,9 @@ const styles: Record<string, React.CSSProperties> = {
   finishBadge: {
     background: ui.text.error,
     color: ui.text.inverse,
+  },
+  lockBadge: {
+    background: ui.text.secondary,
+    color: ui.bg.app,
   },
 };

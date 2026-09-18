@@ -118,6 +118,21 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({ lockedNodes: new Map() });
   });
 
+  it("sends a split-node lock with its slot in the PresetEndpointDto", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      seed: 7,
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+      rules: [],
+      lockedNodes: new Map([["1,2:3", "out"]]),
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
+      locked_nodes: [{ point: { point: [1, 2], slot: 3 }, kind: "out" }],
+    }));
+    useMazeStore.setState({ lockedNodes: new Map() });
+  });
+
   it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({

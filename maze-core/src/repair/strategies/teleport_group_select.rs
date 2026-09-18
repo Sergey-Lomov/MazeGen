@@ -1,32 +1,43 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::quality_control::{TeleportGroupKind, InvalidTeleportGroupIssue, InvalidTeleportIssue, INVALID_TELEPORT};
 use crate::generation::PresetState;
+use crate::graph::route_protection::is_teleport_route_protected;
+use crate::ids::EdgeId;
+use crate::quality_control::{
+    INVALID_TELEPORT, InvalidTeleportGroupIssue, InvalidTeleportIssue, TeleportGroupKind,
+};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
-use crate::repair::command::MutationCommand;
-use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
-use crate::graph::route_protection::is_teleport_route_protected;
+use crate::repair::strategies::group_select::{
+    PARAM_PRIORITY, PRIORITY_OPTIONS, PRIORITY_PROBLEMATIC, group_select_apply,
+};
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::Tessellation;
+use rand::RngCore;
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_PRIORITY,
-        label: "Removal priority",
-        kind: StrategyParamKind::Enum { options: PRIORITY_OPTIONS, default: PRIORITY_PROBLEMATIC },
+static PARAMS: &[StrategyParam] = &[StrategyParam {
+    id: PARAM_PRIORITY,
+    label: "Removal priority",
+    kind: StrategyParamKind::Enum {
+        options: PRIORITY_OPTIONS,
+        default: PRIORITY_PROBLEMATIC,
     },
-];
+}];
 
 /// Slot id for the nested strategy this strategy delegates the actual per-teleport removal to —
 /// `RemoveTeleportStrategy`, the sole `INVALID_TELEPORT`-handling strategy. Mirrors
 /// `OneWayGroupSelectStrategy::SLOT_FIX_TARGET`.
 pub const SLOT_FIX_TARGET: &str = "fix_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_TELEPORT, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_FIX_TARGET,
+    kind: INVALID_TELEPORT,
+    min: 1,
+    max: Some(1),
+    dispatch_kind: NestedDispatchKind::Unordered,
+}];
 
 /// Handles `INVALID_TELEPORT_GROUP` — see GitHub issue #75, migrated onto the generic group-issue
 /// abstraction in GitHub issue #209. Renamed from `TeleportGroupProximityStrategy` in that same
@@ -77,7 +88,9 @@ pub struct TeleportGroupSelectStrategy {
 }
 
 impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportGroupSelectStrategy {
-    fn strategy_id(&self) -> &'static str { "teleport_group_select" }
+    fn strategy_id(&self) -> &'static str {
+        "teleport_group_select"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -96,10 +109,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let matching: Vec<&NestedStrategyConfig<T>> =
-            nested.iter().filter(|n| n.slot.slot_id == SLOT_FIX_TARGET).collect();
-        debug_assert!(matching.len() <= 1,
-            "TeleportGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it");
+        let matching: Vec<&NestedStrategyConfig<T>> = nested
+            .iter()
+            .filter(|n| n.slot.slot_id == SLOT_FIX_TARGET)
+            .collect();
+        debug_assert!(
+            matching.len() <= 1,
+            "TeleportGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it"
+        );
         let Some(&fix_target) = matching.first() else {
             if issue.groups.is_empty() {
                 return (RepairResult::Fixed { score: None }, vec![]);
@@ -108,21 +125,42 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
         };
 
         let protect_route = self.protect_route;
-        let element_allowed = |edge: &EdgeId| !protect_route || !is_teleport_route_protected(maze, *edge);
-        let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
-            Box::new(InvalidTeleportIssue::new_from_check(source_check, vec![*target]))
+        let element_allowed =
+            |edge: &EdgeId| !protect_route || !is_teleport_route_protected(maze, *edge);
+        let build_nested_issue = |source_check: &str,
+                                  target: &EdgeId,
+                                  _others: &[EdgeId]|
+         -> Box<dyn crate::quality_control::Issue> {
+            Box::new(InvalidTeleportIssue::new_from_check(
+                source_check,
+                vec![*target],
+            ))
         };
         // Mirrors `TeleportGroupKind`'s old `resolved_elements`: an edge counts as invalidated if
         // the nested call actually removed it, or if it's the opposite-direction `Teleport`
         // counterpart (read from `maze`, the pre-mutation snapshot) of any edge the call removed
         // -- `removed_edge_ids` alone never recognizes a `RemoveTeleportWithReverse` command's
         // reverse id (GitHub issue #171's known gap).
-        let element_invalidated = |edge: &EdgeId, nested_commands: &[MutationCommand], maze: &Maze<T>| {
-            let removed = crate::repair::removed_edge_ids(nested_commands);
-            removed.contains(edge) || removed.iter().any(|&id| maze.graph.teleport_reverse(id) == Some(*edge))
-        };
+        let element_invalidated =
+            |edge: &EdgeId, nested_commands: &[MutationCommand], maze: &Maze<T>| {
+                let removed = crate::repair::removed_edge_ids(nested_commands);
+                removed.contains(edge)
+                    || removed
+                        .iter()
+                        .any(|&id| maze.graph.teleport_reverse(id) == Some(*edge))
+            };
 
-        group_select_apply::<T, TeleportGroupKind>(issue, maze, rng, preset_state, fix_target, element_allowed, build_nested_issue, element_invalidated, crate::repair::strategies::group_select::order_by_priority(params))
+        group_select_apply::<T, TeleportGroupKind>(
+            issue,
+            maze,
+            rng,
+            preset_state,
+            fix_target,
+            element_allowed,
+            build_nested_issue,
+            element_invalidated,
+            crate::repair::strategies::group_select::order_by_priority(params),
+        )
     }
 }
 

@@ -1,17 +1,17 @@
-use rand::{Rng, RngCore};
+use super::pool::Pool;
+use super::remaining_deficits::RemainingDeficits;
+use super::standard_add_params::{self, attempts_limit, reserve_target, src_mode};
+use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::{MissingVerticalPassagesIssue, RepairArea, VerticalPassageType};
 use crate::generation::PresetState;
+use crate::ids::NodeId;
+use crate::quality_control::{MissingVerticalPassagesIssue, RepairArea, VerticalPassageType};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::remaining_deficits::RemainingDeficits;
-use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
-use super::pool::Pool;
-use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
 
 pub const PARAM_ONE_WAY_BALANCE: &str = "one_way_balance";
 pub const PARAM_DIRECTION_BALANCE: &str = "direction_balance";
@@ -19,17 +19,26 @@ pub const PARAM_DIRECTION_BALANCE: &str = "direction_balance";
 const ONE_WAY_BALANCE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ONE_WAY_BALANCE,
     label: "One-way passage balance",
-    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+    kind: StrategyParamKind::Float {
+        default: 0.5,
+        min: 0.0,
+        max: 1.0,
+    },
 };
 
 const DIRECTION_BALANCE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_DIRECTION_BALANCE,
     label: "Direction balance",
-    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+    kind: StrategyParamKind::Float {
+        default: 0.5,
+        min: 0.0,
+        max: 1.0,
+    },
 };
 
 // Node-based source pool (a random field node whose adjacent floor resolves a target) -> gets src_mode.
-static PARAMS: [StrategyParam; 5] = crate::add_strategy_params!(ONE_WAY_BALANCE_PARAM, DIRECTION_BALANCE_PARAM);
+static PARAMS: [StrategyParam; 5] =
+    crate::add_strategy_params!(ONE_WAY_BALANCE_PARAM, DIRECTION_BALANCE_PARAM);
 
 /// Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343 and its follow-up. For each missing
 /// slot, picks a random node whose adjacent floor (up or down, whichever exists — chosen per
@@ -49,8 +58,12 @@ pub struct AddVerticalPassageStrategy {
     pub passage_type: VerticalPassageType,
 }
 
-impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVerticalPassageStrategy {
-    fn strategy_id(&self) -> &'static str { "add_vertical_passage" }
+impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue>
+    for AddVerticalPassageStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "add_vertical_passage"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &PARAMS
@@ -73,8 +86,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let one_way_balance = params.get(PARAM_ONE_WAY_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
-        let direction_balance = params.get(PARAM_DIRECTION_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
+        let one_way_balance = params
+            .get(PARAM_ONE_WAY_BALANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5);
+        let direction_balance = params
+            .get(PARAM_DIRECTION_BALANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5);
         let src_mode = src_mode(params);
         let max_failed_attempts = attempts_limit(params);
 
@@ -98,7 +117,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
             }
             let target = reserve_target(params, missing);
 
-            let eligible: Vec<NodeId> = maze.field.all_node_ids()
+            let eligible: Vec<NodeId> = maze
+                .field
+                .all_node_ids()
                 .filter(|&n| match area {
                     RepairArea::WholeMaze => true,
                     RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
@@ -112,16 +133,21 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
             while added < target && failed_attempts < max_failed_attempts {
                 let Some(src) = pool.take() else { break };
 
-                let Some((from, to)) = resolve_vertical_target(maze, src, rng, &constraint, direction_balance) else {
+                let Some((from, to)) =
+                    resolve_vertical_target(maze, src, rng, &constraint, direction_balance)
+                else {
                     failed_attempts += 1;
                     continue;
                 };
-                if maze.graph.edge_between(from, to).is_some() || maze.graph.edge_between(to, from).is_some() {
+                if maze.graph.edge_between(from, to).is_some()
+                    || maze.graph.edge_between(to, from).is_some()
+                {
                     failed_attempts += 1;
                     continue;
                 }
 
-                let one_way = forced_one_way.unwrap_or_else(|| rng.random_bool(one_way_balance.clamp(0.0, 1.0)));
+                let one_way = forced_one_way
+                    .unwrap_or_else(|| rng.random_bool(one_way_balance.clamp(0.0, 1.0)));
                 if one_way {
                     if !crate::generation::directed_edge_feasible(preset_state, from, to) {
                         failed_attempts += 1;
@@ -129,7 +155,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
                     }
                     commands.push(MutationCommand::AddDirectedVerticalPassage { from, to });
                 } else {
-                    commands.push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
+                    commands
+                        .push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
                 }
                 added += 1;
 
@@ -154,21 +181,29 @@ crate::impl_erased_repair_strategy!(AddVerticalPassageStrategy, MissingVerticalP
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
+    use std::collections::HashMap;
 
     fn any_strategy() -> AddVerticalPassageStrategy {
-        AddVerticalPassageStrategy { passage_type: VerticalPassageType::Any }
+        AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::Any,
+        }
     }
 
     fn no_params() -> StrategyParams {
-        build_params(<AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, MissingVerticalPassagesIssue>>::params(&any_strategy()), None)
+        build_params(
+            <AddVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingVerticalPassagesIssue,
+            >>::params(&any_strategy()),
+            None,
+        )
     }
 
     fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -176,7 +211,13 @@ mod tests {
         for &(k, v) in overrides {
             map.insert(k.to_string(), v.to_string());
         }
-        build_params(<AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, MissingVerticalPassagesIssue>>::params(&any_strategy()), Some(&map))
+        build_params(
+            <AddVerticalPassageStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingVerticalPassagesIssue,
+            >>::params(&any_strategy()),
+            Some(&map),
+        )
     }
 
     fn two_level_maze(side: usize) -> Maze<SquareTessellation> {
@@ -185,12 +226,18 @@ mod tests {
         let field_b = crate::space::Field::new(square_rect(side, side), &mut ids).unwrap();
         let mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a, field_b]);
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(mf, g)
     }
 
     fn missing_issue(missing: u32) -> MissingVerticalPassagesIssue {
-        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        let entries = if missing == 0 {
+            vec![]
+        } else {
+            vec![(RepairArea::WholeMaze, missing)]
+        };
         MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", entries)
     }
 
@@ -199,7 +246,15 @@ mod tests {
         let mut maze = two_level_maze(3);
         let issue = missing_issue(0);
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -209,15 +264,34 @@ mod tests {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(2);
         let mut rng = MazeRng::seed_from_u64(42);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert!(maze.graph.edges().all(|e| e.kind == EdgeKind::VerticalPassage));
+        assert!(
+            maze.graph
+                .edges()
+                .all(|e| e.kind == EdgeKind::VerticalPassage)
+        );
         assert!(maze.graph.edges().count() > 0);
         for edge in maze.graph.edges() {
             let from_level = maze.field.level_of(edge.from);
             let to_level = maze.field.level_of(edge.to);
-            assert_ne!(from_level, to_level, "a vertical passage must connect two different floors");
-            assert_eq!(maze.field.point_of(edge.from), maze.field.point_of(edge.to), "a vertical passage must connect the same x-y point across floors");
+            assert_ne!(
+                from_level, to_level,
+                "a vertical passage must connect two different floors"
+            );
+            assert_eq!(
+                maze.field.point_of(edge.from),
+                maze.field.point_of(edge.to),
+                "a vertical passage must connect the same x-y point across floors"
+            );
         }
     }
 
@@ -226,12 +300,22 @@ mod tests {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -242,11 +326,26 @@ mod tests {
         let issue = missing_issue(1);
         let params = params_with(&[(PARAM_ONE_WAY_BALANCE, "0")]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), 2, "one_way_balance=0 must add both directions of the single passage");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "one_way_balance=0 must add both directions of the single passage"
+        );
         for edge in maze.graph.edges() {
-            assert!(maze.graph.edge_between(edge.to, edge.from).is_some(), "every added edge must have its reverse");
+            assert!(
+                maze.graph.edge_between(edge.to, edge.from).is_some(),
+                "every added edge must have its reverse"
+            );
         }
     }
 
@@ -256,9 +355,21 @@ mod tests {
         let issue = missing_issue(1);
         let params = params_with(&[(PARAM_ONE_WAY_BALANCE, "1")]);
         let mut rng = MazeRng::seed_from_u64(2);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), 1, "one_way_balance=1 must add only one direction");
+        assert_eq!(
+            maze.graph.edges().count(),
+            1,
+            "one_way_balance=1 must add only one direction"
+        );
     }
 
     #[test]
@@ -267,7 +378,15 @@ mod tests {
         let issue = missing_issue(2);
         let params = params_with(&[("reserve_percent", "100"), ("one_way_balance", "0")]);
         let mut rng = MazeRng::seed_from_u64(42);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // 2 * (1 + 100%) = 4 bidirectional passages => 8 directed edges, vs 4 with the 0 default.
         assert_eq!(maze.graph.edges().count(), 8);
@@ -283,7 +402,15 @@ mod tests {
         let issue = missing_issue(2);
         let params = params_with(&[("src_mode", "dead_end_priority")]);
         let mut rng = MazeRng::seed_from_u64(5);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edges().count() > 0);
     }
@@ -294,11 +421,27 @@ mod tests {
 
         let mut maze_a = two_level_maze(4);
         let mut rng_a = MazeRng::seed_from_u64(123);
-        apply_and_commit(&any_strategy(), &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze_a,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         let mut maze_b = two_level_maze(4);
         let mut rng_b = MazeRng::seed_from_u64(123);
-        apply_and_commit(&any_strategy(), &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze_b,
+            &mut rng_b,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -309,13 +452,30 @@ mod tests {
     fn passage_type_two_way_always_adds_both_directions() {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(1);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::TwoWay };
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::TwoWay,
+        };
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), 2, "TwoWay must add both directions regardless of one_way_balance");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "TwoWay must add both directions regardless of one_way_balance"
+        );
         for edge in maze.graph.edges() {
-            assert!(maze.graph.edge_between(edge.to, edge.from).is_some(), "every added edge must have its reverse");
+            assert!(
+                maze.graph.edge_between(edge.to, edge.from).is_some(),
+                "every added edge must have its reverse"
+            );
         }
     }
 
@@ -323,11 +483,25 @@ mod tests {
     fn passage_type_one_way_always_adds_a_single_directed_edge() {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(1);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWay };
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWay,
+        };
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), 1, "OneWay must add exactly one direction regardless of one_way_balance");
+        assert_eq!(
+            maze.graph.edges().count(),
+            1,
+            "OneWay must add exactly one direction regardless of one_way_balance"
+        );
     }
 
     #[test]
@@ -335,14 +509,31 @@ mod tests {
         let mut maze = two_level_maze(1);
         let bottom = maze.field.levels_ordered().next().unwrap();
         let top = maze.field.levels_ordered().last().unwrap();
-        let b0 = maze.field.node_at(bottom, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        let t0 = maze.field.node_at(top, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let b0 = maze
+            .field
+            .node_at(bottom, crate::space::SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let t0 = maze
+            .field
+            .node_at(top, crate::space::SquarePoint { x: 0, y: 0 })
+            .unwrap();
         maze.graph.add_edge(b0, t0, EdgeKind::VerticalPassage);
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed), "the only candidate pair already has an edge in one direction, so no reverse may be added to complete it into a two-way passage");
+        let result = apply_and_commit(
+            &any_strategy(),
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "the only candidate pair already has an edge in one direction, so no reverse may be added to complete it into a two-way passage"
+        );
         assert_eq!(maze.graph.edges().count(), 1);
     }
 
@@ -350,16 +541,32 @@ mod tests {
     fn passage_type_one_way_up_only_ever_adds_an_upward_edge() {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(3);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWayUp };
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWayUp,
+        };
         let mut rng = MazeRng::seed_from_u64(5);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edges().count() > 0);
         for edge in maze.graph.edges() {
             let from_idx = maze.field.level_index_of(edge.from).unwrap();
             let to_idx = maze.field.level_index_of(edge.to).unwrap();
-            assert!(from_idx < to_idx, "OneWayUp must only ever add edges going from a lower floor to a higher one");
-            assert!(maze.graph.edge_between(edge.to, edge.from).is_none(), "OneWayUp must never add a two-way passage");
+            assert!(
+                from_idx < to_idx,
+                "OneWayUp must only ever add edges going from a lower floor to a higher one"
+            );
+            assert!(
+                maze.graph.edge_between(edge.to, edge.from).is_none(),
+                "OneWayUp must never add a two-way passage"
+            );
         }
     }
 
@@ -367,15 +574,28 @@ mod tests {
     fn passage_type_one_way_down_only_ever_adds_a_downward_edge() {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(3);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWayDown };
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWayDown,
+        };
         let mut rng = MazeRng::seed_from_u64(9);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edges().count() > 0);
         for edge in maze.graph.edges() {
             let from_idx = maze.field.level_index_of(edge.from).unwrap();
             let to_idx = maze.field.level_index_of(edge.to).unwrap();
-            assert!(from_idx > to_idx, "OneWayDown must only ever add edges going from a higher floor to a lower one");
+            assert!(
+                from_idx > to_idx,
+                "OneWayDown must only ever add edges going from a higher floor to a lower one"
+            );
         }
     }
 
@@ -390,15 +610,34 @@ mod tests {
         // out via preset_state must make the strategy fail rather than silently add the edge.
         let mut maze = two_level_maze(1);
         let bottom = maze.field.levels_ordered().next().unwrap();
-        let src = maze.field.node_at(bottom, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let src = maze
+            .field
+            .node_at(bottom, crate::space::SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(src);
 
-        let issue = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![(RepairArea::Level(bottom), 1)]);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWay };
+        let issue = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_count",
+            vec![(RepairArea::Level(bottom), 1)],
+        );
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWay,
+        };
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
-        assert!(matches!(result, RepairResult::Failed), "the only candidate's source is locked_out, so no one-way edge may be added");
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "the only candidate's source is locked_out, so no one-way edge may be added"
+        );
         assert_eq!(maze.graph.edges().count(), 0);
     }
 
@@ -410,12 +649,28 @@ mod tests {
         // here -- the point being tested is that this must never fall back to the only floor that
         // *is* reachable.
         let bottom = maze.field.levels_ordered().next().unwrap();
-        let issue = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![(RepairArea::Level(bottom), 1)]);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWay };
+        let issue = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_count",
+            vec![(RepairArea::Level(bottom), 1)],
+        );
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWay,
+        };
         let params = params_with(&[(PARAM_DIRECTION_BALANCE, "0")]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed), "direction_balance=0 must never substitute an upward edge just because it's the only one available");
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "direction_balance=0 must never substitute an upward edge just because it's the only one available"
+        );
         assert_eq!(maze.graph.edges().count(), 0);
     }
 
@@ -425,12 +680,28 @@ mod tests {
         // Mirrors the balance=0 test above, scoped to the top floor -- its only neighbor is down,
         // which `direction_balance=1` (pinned to up) must not fall back to.
         let top = maze.field.levels_ordered().last().unwrap();
-        let issue = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![(RepairArea::Level(top), 1)]);
-        let strategy = AddVerticalPassageStrategy { passage_type: VerticalPassageType::OneWay };
+        let issue = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_count",
+            vec![(RepairArea::Level(top), 1)],
+        );
+        let strategy = AddVerticalPassageStrategy {
+            passage_type: VerticalPassageType::OneWay,
+        };
         let params = params_with(&[(PARAM_DIRECTION_BALANCE, "1")]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed), "direction_balance=1 must never substitute a downward edge just because it's the only one available");
+        let result = apply_and_commit(
+            &strategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "direction_balance=1 must never substitute a downward edge just because it's the only one available"
+        );
         assert_eq!(maze.graph.edges().count(), 0);
     }
 }

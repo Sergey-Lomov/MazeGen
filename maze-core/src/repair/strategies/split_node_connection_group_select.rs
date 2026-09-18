@@ -1,17 +1,22 @@
-use std::collections::HashMap;
-use rand::RngCore;
-use rand::seq::SliceRandom;
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::graph::route_protection::is_edge_on_route;
-use crate::quality_control::{SplitNodeConnectionGroupKind, InvalidSplitNodeConnectionGroupIssue, InvalidSplitNodeConnectionIssue, INVALID_SPLIT_NODE_CONNECTION};
 use crate::generation::PresetState;
+use crate::graph::route_protection::is_edge_on_route;
+use crate::ids::EdgeId;
+use crate::quality_control::{
+    INVALID_SPLIT_NODE_CONNECTION, InvalidSplitNodeConnectionGroupIssue,
+    InvalidSplitNodeConnectionIssue, SplitNodeConnectionGroupKind,
+};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
-use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::group_select_apply;
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::Tessellation;
+use rand::RngCore;
+use rand::seq::SliceRandom;
+use std::collections::HashMap;
 
 pub const PARAM_SELECTION: &str = "selection";
 pub const PARAM_PROTECT_ORIGINAL: &str = "protect_original";
@@ -21,13 +26,20 @@ pub const SELECTION_RANDOM: &str = "random";
 pub const SELECTION_MOST_CONNECTED: &str = "most_connected";
 pub const SELECTION_LEAST_CONNECTED: &str = "least_connected";
 
-pub static SELECTION_OPTIONS: &[&str] = &[SELECTION_RANDOM, SELECTION_MOST_CONNECTED, SELECTION_LEAST_CONNECTED];
+pub static SELECTION_OPTIONS: &[&str] = &[
+    SELECTION_RANDOM,
+    SELECTION_MOST_CONNECTED,
+    SELECTION_LEAST_CONNECTED,
+];
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_SELECTION,
         label: "Node selection method",
-        kind: StrategyParamKind::Enum { options: SELECTION_OPTIONS, default: SELECTION_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: SELECTION_OPTIONS,
+            default: SELECTION_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_PROTECT_ORIGINAL,
@@ -46,9 +58,13 @@ static PARAMS: &[StrategyParam] = &[
 /// handling strategy.
 pub const SLOT_FIX_TARGET: &str = "fix_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_SPLIT_NODE_CONNECTION, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_FIX_TARGET,
+    kind: INVALID_SPLIT_NODE_CONNECTION,
+    min: 1,
+    max: Some(1),
+    dispatch_kind: NestedDispatchKind::Unordered,
+}];
 
 /// Handles `INVALID_SPLIT_NODE_CONNECTION_GROUP` — see GitHub issue #251, epic #246. For each
 /// problematic group flagged by `SplitNodeConnectionPerNeighborCheck`/
@@ -82,8 +98,12 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// excluded by any reason is simply never offered.
 pub struct SplitNodeConnectionGroupSelectStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> for SplitNodeConnectionGroupSelectStrategy {
-    fn strategy_id(&self) -> &'static str { "split_node_connection_group_select" }
+impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue>
+    for SplitNodeConnectionGroupSelectStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "split_node_connection_group_select"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -102,10 +122,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let matching: Vec<&NestedStrategyConfig<T>> =
-            nested.iter().filter(|n| n.slot.slot_id == SLOT_FIX_TARGET).collect();
-        debug_assert!(matching.len() <= 1,
-            "SplitNodeConnectionGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it");
+        let matching: Vec<&NestedStrategyConfig<T>> = nested
+            .iter()
+            .filter(|n| n.slot.slot_id == SLOT_FIX_TARGET)
+            .collect();
+        debug_assert!(
+            matching.len() <= 1,
+            "SplitNodeConnectionGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it"
+        );
         let Some(&fix_target) = matching.first() else {
             if issue.groups.is_empty() {
                 return (RepairResult::Fixed { score: None }, vec![]);
@@ -113,13 +137,25 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
             return (RepairResult::Failed, vec![]);
         };
 
-        let protect_original = matches!(params.get(PARAM_PROTECT_ORIGINAL), Some(StrategyParamValue::Bool(true)));
-        let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
+        let protect_original = matches!(
+            params.get(PARAM_PROTECT_ORIGINAL),
+            Some(StrategyParamValue::Bool(true))
+        );
+        let protect_route = matches!(
+            params.get(PARAM_PROTECT_ROUTE),
+            Some(StrategyParamValue::Bool(true))
+        );
 
         let is_original_node = |edge: &EdgeId| -> bool {
-            let Some(e) = maze.graph.edge(*edge) else { return false };
-            let Some(level) = maze.field.level_of(e.from) else { return false };
-            let Some(point) = maze.field.point_of(e.from) else { return false };
+            let Some(e) = maze.graph.edge(*edge) else {
+                return false;
+            };
+            let Some(level) = maze.field.level_of(e.from) else {
+                return false;
+            };
+            let Some(point) = maze.field.point_of(e.from) else {
+                return false;
+            };
             maze.field.nodes_at(level, point).first() == Some(&e.from)
         };
         // A candidate whose removal (forward + reverse, per `RemoveEdgeWithReverse` semantics) is
@@ -129,7 +165,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
         // report. Excluding it upfront (mirrors `invalid_loop_random.rs`/`invalid_loop_scored.rs`)
         // keeps the group `Failed` instead of falsely `Fixed`.
         let removal_feasible = |edge: &EdgeId| -> bool {
-            let Some(e) = maze.graph.edge(*edge) else { return false };
+            let Some(e) = maze.graph.edge(*edge) else {
+                return false;
+            };
             let forward_ok = !preset_state.is_preset_edge(e.from, e.to);
             let reverse_exists = maze.graph.edge_between(e.to, e.from).is_some();
             let reverse_ok = reverse_exists && !preset_state.is_preset_edge(e.to, e.from);
@@ -140,13 +178,22 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
                 && (!protect_route || !is_edge_on_route(maze, *edge))
                 && removal_feasible(edge)
         };
-        let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
-            Box::new(InvalidSplitNodeConnectionIssue::new_from_check(source_check, vec![*target]))
+        let build_nested_issue = |source_check: &str,
+                                  target: &EdgeId,
+                                  _others: &[EdgeId]|
+         -> Box<dyn crate::quality_control::Issue> {
+            Box::new(InvalidSplitNodeConnectionIssue::new_from_check(
+                source_check,
+                vec![*target],
+            ))
         };
-        let element_invalidated = |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
-            crate::repair::removed_edge_ids(nested_commands).contains(edge)
-        };
-        let order_candidates = |candidates: &mut Vec<EdgeId>, _membership: &HashMap<EdgeId, usize>, rng: &mut dyn RngCore| {
+        let element_invalidated =
+            |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+                crate::repair::removed_edge_ids(nested_commands).contains(edge)
+            };
+        let order_candidates = |candidates: &mut Vec<EdgeId>,
+                                _membership: &HashMap<EdgeId, usize>,
+                                rng: &mut dyn RngCore| {
             let selection = match params.get(PARAM_SELECTION) {
                 Some(StrategyParamValue::Enum(v)) => v.as_str(),
                 _ => SELECTION_RANDOM,
@@ -155,7 +202,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
             if selection == SELECTION_MOST_CONNECTED || selection == SELECTION_LEAST_CONNECTED {
                 let degree = node_degree_map(maze);
                 let origin_degree = |edge: &EdgeId| -> usize {
-                    maze.graph.edge(*edge).and_then(|e| degree.get(&e.from).copied()).unwrap_or(0)
+                    maze.graph
+                        .edge(*edge)
+                        .and_then(|e| degree.get(&e.from).copied())
+                        .unwrap_or(0)
                 };
                 if selection == SELECTION_MOST_CONNECTED {
                     candidates.sort_by_key(|e| std::cmp::Reverse(origin_degree(e)));
@@ -165,7 +215,17 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
             }
         };
 
-        group_select_apply::<T, SplitNodeConnectionGroupKind>(issue, maze, rng, preset_state, fix_target, element_allowed, build_nested_issue, element_invalidated, order_candidates)
+        group_select_apply::<T, SplitNodeConnectionGroupKind>(
+            issue,
+            maze,
+            rng,
+            preset_state,
+            fix_target,
+            element_allowed,
+            build_nested_issue,
+            element_invalidated,
+            order_candidates,
+        )
     }
 }
 
@@ -180,7 +240,10 @@ fn node_degree_map<T: Tessellation>(maze: &Maze<T>) -> HashMap<crate::ids::NodeI
     degree
 }
 
-crate::impl_erased_repair_strategy!(SplitNodeConnectionGroupSelectStrategy, InvalidSplitNodeConnectionGroupIssue);
+crate::impl_erased_repair_strategy!(
+    SplitNodeConnectionGroupSelectStrategy,
+    InvalidSplitNodeConnectionGroupIssue
+);
 
 #[cfg(test)]
 #[path = "split_node_connection_group_select_tests.rs"]

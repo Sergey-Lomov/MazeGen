@@ -1,5 +1,5 @@
-use crate::quality_control::VerticalPassageType;
 use crate::generation::SplitPattern;
+use crate::quality_control::VerticalPassageType;
 
 /// Descriptor for a single rule-level parameter — see GitHub issue #253. Mirrors
 /// `repair::params::StrategyParam`'s shape, but is not tied to `RepairStrategy`/`StrategyParams`:
@@ -16,8 +16,12 @@ pub struct RuleParamDescriptor {
 }
 
 pub enum RuleParamKind {
-    Bool { default: bool },
-    VerticalPassageTypeEnum { default: VerticalPassageType },
+    Bool {
+        default: bool,
+    },
+    VerticalPassageTypeEnum {
+        default: VerticalPassageType,
+    },
     /// Split-pattern membership list (GitHub issue #389) — always defaults to empty (no `const`
     /// default is possible for a `Vec`-carrying variant, unlike the scalar kinds above).
     PatternList,
@@ -56,7 +60,9 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
     },
     RuleParamDescriptor {
         id: PARAM_VERTICAL_PASSAGE_TYPE,
-        kind: RuleParamKind::VerticalPassageTypeEnum { default: VerticalPassageType::Any },
+        kind: RuleParamKind::VerticalPassageTypeEnum {
+            default: VerticalPassageType::Any,
+        },
         applies_to: &[
             "min_vertical_passage_count",
             "min_vertical_passage_ratio",
@@ -96,7 +102,8 @@ impl Default for RuleParams {
 }
 
 fn default_bool(id: &str) -> bool {
-    RULE_PARAM_DESCRIPTORS.iter()
+    RULE_PARAM_DESCRIPTORS
+        .iter()
         .find(|d| d.id == id)
         .map(|d| match d.kind {
             RuleParamKind::Bool { default } => default,
@@ -106,7 +113,8 @@ fn default_bool(id: &str) -> bool {
 }
 
 fn default_vertical_passage_type(id: &str) -> VerticalPassageType {
-    RULE_PARAM_DESCRIPTORS.iter()
+    RULE_PARAM_DESCRIPTORS
+        .iter()
         .find(|d| d.id == id)
         .map(|d| match d.kind {
             RuleParamKind::VerticalPassageTypeEnum { default } => default,
@@ -123,7 +131,8 @@ fn default_vertical_passage_type(id: &str) -> VerticalPassageType {
 /// string compare and a strategy-side `&[&str]` const), both of which could silently drift from
 /// `applies_to` as new rule-level params are added.
 pub fn rule_param_applies_to(param_id: &str, member_id: &str) -> bool {
-    RULE_PARAM_DESCRIPTORS.iter()
+    RULE_PARAM_DESCRIPTORS
+        .iter()
         .find(|d| d.id == param_id)
         .is_some_and(|d| d.applies_to.contains(&member_id))
 }

@@ -1,10 +1,12 @@
-use std::collections::HashMap;
-#[cfg(test)]
-use std::collections::HashSet;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ELEVATOR_HEIGHT};
 use super::invalid_elevator::ElevatorNodes;
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_ELEVATOR_HEIGHT,
+};
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashSet;
 
 /// Produced by `MinElevatorHeightCheck` — an existing elevator's stop span is shorter than the
 /// configured minimum. See GitHub issue #402, part of epic #344. `missing` holds one entry per
@@ -22,8 +24,15 @@ pub struct MissingElevatorHeightIssue {
 
 impl MissingElevatorHeightIssue {
     pub fn new_from_check(source_check: &str, missing: Vec<(ElevatorNodes, u32)>) -> Self {
-        let invalid_sources = missing.iter().map(|e| (e.clone(), vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), missing, invalid_sources }
+        let invalid_sources = missing
+            .iter()
+            .map(|e| (e.clone(), vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            missing,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -70,28 +79,59 @@ mod tests {
 
     #[test]
     fn merge_concatenates_entries_without_deduping_by_elevator() {
-        let mut a = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![0, 1]), 6)]);
-        let b = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![0, 1]), 6)]);
+        let mut a = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![0, 1]), 6)],
+        );
+        let b = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![0, 1]), 6)],
+        );
         a.merge(b);
         assert_eq!(a.missing.len(), 2);
     }
 
     #[test]
     fn merge_keeps_source_check_and_details() {
-        let mut a = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![0, 1]), 6)])
-            .with_detail("min_elevator_height", "min_elevator_height", "6".to_string());
-        let b = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![2, 3]), 6)])
-            .with_detail("min_elevator_height", "min_elevator_height", "6".to_string());
+        let mut a = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![0, 1]), 6)],
+        )
+        .with_detail(
+            "min_elevator_height",
+            "min_elevator_height",
+            "6".to_string(),
+        );
+        let b = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![2, 3]), 6)],
+        )
+        .with_detail(
+            "min_elevator_height",
+            "min_elevator_height",
+            "6".to_string(),
+        );
         a.merge(b);
 
         assert_eq!(a.source_checks(), vec!["min_elevator_height".to_string()]);
-        assert_eq!(a.details().get("min_elevator_height").and_then(|kv| kv.get("min_elevator_height")), Some(&"6".to_string()));
+        assert_eq!(
+            a.details()
+                .get("min_elevator_height")
+                .and_then(|kv| kv.get("min_elevator_height")),
+            Some(&"6".to_string())
+        );
     }
 
     #[test]
     fn merge_keeps_disjoint_elevators_from_both_sides() {
-        let mut a = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![0, 1]), 6)]);
-        let b = MissingElevatorHeightIssue::new_from_check("min_elevator_height", vec![(elevator(vec![5, 6]), 4)]);
+        let mut a = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![0, 1]), 6)],
+        );
+        let b = MissingElevatorHeightIssue::new_from_check(
+            "min_elevator_height",
+            vec![(elevator(vec![5, 6]), 4)],
+        );
         a.merge(b);
         let elevators: HashSet<_> = a.missing.iter().map(|(e, _)| e.clone()).collect();
         assert_eq!(elevators.len(), 2);

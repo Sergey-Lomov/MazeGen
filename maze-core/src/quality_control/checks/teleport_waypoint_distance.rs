@@ -1,12 +1,12 @@
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_teleport_route_protected;
-use crate::space::Tessellation;
+use crate::quality_control::InvalidTeleportIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::{InvalidTeleportIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -53,9 +53,17 @@ pub struct TeleportWaypointDistanceCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanceCheck {
-    fn check_type_id(&self) -> &'static str { "teleport_waypoint_distance" }
+    fn check_type_id(&self) -> &'static str {
+        "teleport_waypoint_distance"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidTeleportIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
         let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
         let (need_start, need_finish) = match self.waypoint {
@@ -65,8 +73,12 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
         };
         // Silently skip if the maze doesn't have the waypoint(s) this instance needs set —
         // covered by MissingEndpointsCheck, same rationale as the loop-distance checks.
-        if need_start && dist_from_start.is_none() { return; }
-        if need_finish && dist_from_finish.is_none() { return; }
+        if need_start && dist_from_start.is_none() {
+            return;
+        }
+        if need_finish && dist_from_finish.is_none() {
+            return;
+        }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
 
@@ -76,15 +88,29 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
             let nav_id = nav.nav_node_for(node_id)?;
             let mut best: Option<usize> = None;
             if need_start {
-                best = min_optional_distance(best, dist_from_start.as_ref().and_then(|m| m.get(&nav_id)).copied());
+                best = min_optional_distance(
+                    best,
+                    dist_from_start
+                        .as_ref()
+                        .and_then(|m| m.get(&nav_id))
+                        .copied(),
+                );
             }
             if need_finish {
-                best = min_optional_distance(best, dist_from_finish.as_ref().and_then(|m| m.get(&nav_id)).copied());
+                best = min_optional_distance(
+                    best,
+                    dist_from_finish
+                        .as_ref()
+                        .and_then(|m| m.get(&nav_id))
+                        .copied(),
+                );
             }
             best
         };
 
-        let invalid: Vec<_> = maze.graph.edges()
+        let invalid: Vec<_> = maze
+            .graph
+            .edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|t| {
                 let entry_dist = waypoint_distance(t.from);
@@ -92,7 +118,8 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
                     TeleportEdgeSelector::EntryOnly => None,
                     TeleportEdgeSelector::EntryOrExit => waypoint_distance(t.to),
                 };
-                min_optional_distance(entry_dist, exit_dist).is_some_and(|d| self.comparison.compare(d as u32, self.distance))
+                min_optional_distance(entry_dist, exit_dist)
+                    .is_some_and(|d| self.comparison.compare(d as u32, self.distance))
             })
             .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
@@ -101,32 +128,40 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
         if invalid.is_empty() {
             return;
         }
-        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid).with_detail(
+            &self.instance_id,
+            "distance",
+            self.distance.to_string(),
+        );
         issues.push(issue);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
+    use crate::quality_control::Issue;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "teleport_waypoint_distance";
 
     /// start(0) -- 1 -- 2 -- ... -- (teleport_from) ... teleport to a far node, independent
     /// of the corridor. `teleport_from` sits at `entry_distance` tiles from start.
-    fn maze_with_teleport_entry_at_distance(entry_distance: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
+    fn maze_with_teleport_entry_at_distance(
+        entry_distance: usize,
+    ) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let width = entry_distance + 2;
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let nodes: Vec<_> = (0..width as i32).map(p).collect();
         for x in 0..entry_distance as i32 {
@@ -138,7 +173,10 @@ mod tests {
         g.add_edge(entry, far, EdgeKind::Teleport);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(nodes[0]), finish: None };
+        maze.meta = MazeMeta {
+            start: Some(nodes[0]),
+            finish: None,
+        };
         (maze, nodes)
     }
 
@@ -220,10 +258,13 @@ mod tests {
         // Build so the teleport's exit is close to start via a separate path, even though entry
         // is far -- EntryOrExit must catch it via the exit side.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // start -- 1 -- 2 (exit, distance 2 from start)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
@@ -233,7 +274,10 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None };
+        maze.meta = MazeMeta {
+            start: Some(start),
+            finish: None,
+        };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -246,17 +290,24 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1, "exit at distance 2 from start must be caught even though entry is unreachable/far");
+        assert_eq!(
+            issues.len(),
+            1,
+            "exit at distance 2 from start must be caught even though entry is unreachable/far"
+        );
     }
 
     #[test]
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         // finish is very close to the teleport entry, start is far -- Any must catch it via finish.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // finish(0) -- 1 -- 2 (entry, distance 2 from finish, following reverse edges)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
@@ -268,7 +319,10 @@ mod tests {
         let (start, finish) = (p(10), p(0));
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: Some(finish) };
+        maze.meta = MazeMeta {
+            start: Some(start),
+            finish: Some(finish),
+        };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -281,7 +335,11 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1, "entry is 2 tiles from finish (reverse-reachable) even though far from start");
+        assert_eq!(
+            issues.len(),
+            1,
+            "entry is 2 tiles from finish (reverse-reachable) even though far from start"
+        );
     }
 
     #[test]
@@ -303,7 +361,10 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+        assert!(
+            issues.is_empty(),
+            "route-critical teleport must not be flagged when protect_route is enabled"
+        );
     }
 
     #[test]
@@ -322,7 +383,11 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1, "protect_route disabled must flag the teleport exactly like before #78");
+        assert_eq!(
+            issues.len(),
+            1,
+            "protect_route disabled must flag the teleport exactly like before #78"
+        );
     }
 
     #[test]
@@ -339,7 +404,10 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "a threshold of 0 should never flag any teleport");
+        assert!(
+            issues.is_empty(),
+            "a threshold of 0 should never flag any teleport"
+        );
     }
 
     #[test]
@@ -357,7 +425,10 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "missing start is MissingEndpointsCheck's job");
+        assert!(
+            issues.is_empty(),
+            "missing start is MissingEndpointsCheck's job"
+        );
     }
 
     #[test]
@@ -365,10 +436,13 @@ mod tests {
         // Entry node has no path back to/from start at all (one-way corridor away from start,
         // teleport starts past a one-way wall) -- distance map has no entry for it.
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // Isolated pair -- no edge at all connects it to start's component.
         g.add_bidirectional_edge(p(2), p(3), EdgeKind::Basic);
@@ -376,7 +450,10 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None };
+        maze.meta = MazeMeta {
+            start: Some(start),
+            finish: None,
+        };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -389,6 +466,9 @@ mod tests {
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert!(issues.is_empty(), "unreachable entry must not be treated as distance 0");
+        assert!(
+            issues.is_empty(),
+            "unreachable entry must not be treated as distance 0"
+        );
     }
 }

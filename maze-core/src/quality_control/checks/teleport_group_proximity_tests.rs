@@ -1,23 +1,41 @@
 use super::*;
 use crate::quality_control::Issue;
-use rand::SeedableRng;
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
-use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+use rand::SeedableRng;
 
 const TEST_ID: &str = "teleport_group_proximity";
 
-fn check(distance: f64, own_edge: TeleportProximityEdge, other_edge: TeleportProximityEdge) -> TeleportGroupProximityCheck {
-    TeleportGroupProximityCheck { instance_id: TEST_ID.to_string(), distance, own_edge, other_edge, protect_route: true }
+fn check(
+    distance: f64,
+    own_edge: TeleportProximityEdge,
+    other_edge: TeleportProximityEdge,
+) -> TeleportGroupProximityCheck {
+    TeleportGroupProximityCheck {
+        instance_id: TEST_ID.to_string(),
+        distance,
+        own_edge,
+        other_edge,
+        protect_route: true,
+    }
 }
 
 /// Flattens `issue.groups` (`Vec<(Vec<EdgeId>, u32)>`, each entry a two-element proximity pair)
 /// back into `(EdgeId, EdgeId)` pairs -- lets the rest of this file's assertions read the same
 /// way they did before GitHub issue #209 migrated the issue onto the generic group shape.
 fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
-    issue.groups.iter().map(|(g, _)| {
-        assert_eq!(g.len(), 2, "every teleport proximity group must have exactly two elements");
-        (g[0], g[1])
-    }).collect()
+    issue
+        .groups
+        .iter()
+        .map(|(g, _)| {
+            assert_eq!(
+                g.len(),
+                2,
+                "every teleport proximity group must have exactly two elements"
+            );
+            (g[0], g[1])
+        })
+        .collect()
 }
 
 /// Shared test-maze bootstrap: a `width`-wide, 1-tall `SquareTessellation` field with an empty
@@ -25,9 +43,12 @@ fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
 /// every test below builds its own edges on top of this same field/graph shape.
 fn bootstrap_row(width: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
     (field, g)
 }
 
@@ -35,19 +56,31 @@ fn bootstrap_row(width: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
 fn silent_with_fewer_than_two_teleports() {
     let (field, mut g) = bootstrap_row(3);
     let field_level = field.single_level_id();
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        1000.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert!(issues.is_empty());
 }
 
 /// Two teleports whose entries sit `entry_gap` nav-hops apart on a shared corridor:
 /// entry_a(0) -- ... -- entry_b(entry_gap), each teleporting off to its own far node.
-fn maze_with_two_teleport_entries_at_gap(entry_gap: usize) -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
+fn maze_with_two_teleport_entries_at_gap(
+    entry_gap: usize,
+) -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let width = entry_gap + 3;
     let (field, mut g) = bootstrap_row(width);
     let field_level = field.single_level_id();
@@ -70,10 +103,19 @@ fn fires_when_entries_closer_than_threshold() {
     let (maze, id_a, id_b) = maze_with_two_teleport_entries_at_gap(2);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
     let pairs = pairs_of(&issues[0]);
-    assert_eq!(pairs.len(), 2, "both directions of the scan (a->b and b->a) each record their own pair entry");
+    assert_eq!(
+        pairs.len(),
+        2,
+        "both directions of the scan (a->b and b->a) each record their own pair entry"
+    );
     for &(x, y) in &pairs {
         assert!((x == id_a && y == id_b) || (x == id_b && y == id_a));
     }
@@ -84,7 +126,12 @@ fn silent_when_entries_farther_than_threshold() {
     let (maze, _, _) = maze_with_two_teleport_entries_at_gap(10);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert!(issues.is_empty());
 }
 
@@ -93,8 +140,16 @@ fn silent_when_threshold_is_zero() {
     let (maze, _, _) = maze_with_two_teleport_entries_at_gap(0);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(0.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "a threshold of 0 should never flag any pair");
+    check(
+        0.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "a threshold of 0 should never flag any pair"
+    );
 }
 
 #[test]
@@ -106,14 +161,31 @@ fn fractional_distance_cleanly_separates_integer_tile_hop_counts() {
     let (maze_close, _, _) = maze_with_two_teleport_entries_at_gap(1);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze_close, &mut issues, &mut rng, ());
-    assert_eq!(issues.len(), 1, "gap of 1 tile-hop must fire against threshold 1.5");
+    check(
+        1.5,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze_close, &mut issues, &mut rng, ());
+    assert_eq!(
+        issues.len(),
+        1,
+        "gap of 1 tile-hop must fire against threshold 1.5"
+    );
 
     let (maze_far, _, _) = maze_with_two_teleport_entries_at_gap(2);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze_far, &mut issues, &mut rng, ());
-    assert!(issues.is_empty(), "gap of 2 tile-hops must stay silent against threshold 1.5");
+    check(
+        1.5,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze_far, &mut issues, &mut rng, ());
+    assert!(
+        issues.is_empty(),
+        "gap of 2 tile-hops must stay silent against threshold 1.5"
+    );
 }
 
 #[test]
@@ -121,9 +193,20 @@ fn records_a_fractional_distance_as_a_detail_without_truncation() {
     let (maze, _, _) = maze_with_two_teleport_entries_at_gap(1);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        1.5,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].details().get(TEST_ID).and_then(|kv| kv.get("distance")), Some(&"1.5".to_string()));
+    assert_eq!(
+        issues[0]
+            .details()
+            .get(TEST_ID)
+            .and_then(|kv| kv.get("distance")),
+        Some(&"1.5".to_string())
+    );
 }
 
 #[test]
@@ -141,10 +224,18 @@ fn respects_directed_edges_reverse_still_counts_via_min() {
 
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
     let pairs = pairs_of(&issues[0]);
-    assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b), "forward a->b (distance 2) must be caught even though b->a is unreachable");
+    assert!(
+        pairs.iter().any(|&(x, y)| x == id_a && y == id_b),
+        "forward a->b (distance 2) must be caught even though b->a is unreachable"
+    );
 }
 
 #[test]
@@ -152,14 +243,29 @@ fn records_the_configured_distance_as_a_detail() {
     let (maze, _, _) = maze_with_two_teleport_entries_at_gap(2);
     let mut issues = Vec::new();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
-    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    check(
+        5.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    )
+    .repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].details().get(TEST_ID).and_then(|kv| kv.get("distance")), Some(&"5".to_string()));
+    assert_eq!(
+        issues[0]
+            .details()
+            .get(TEST_ID)
+            .and_then(|kv| kv.get("distance")),
+        Some(&"5".to_string())
+    );
 }
 
 #[test]
 fn check_type_id_matches_registered_type_id() {
-    let c = check(0.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry);
+    let c = check(
+        0.0,
+        TeleportProximityEdge::Entry,
+        TeleportProximityEdge::Entry,
+    );
     assert_eq!(<TeleportGroupProximityCheck as Check<SquareTessellation, InvalidTeleportGroupIssue>>::check_type_id(&c), "teleport_group_proximity");
 }
 

@@ -15,9 +15,14 @@ use crate::space::Tessellation;
 /// This is the exact idiom every one-way check inlined before its extraction
 /// (`MinOneWayCountCheck`, `MaxOneWayCountCheck`, `OneWayGroupGeometricProximityCheck`, ...).
 pub fn one_way_edge_ids<T: Tessellation>(maze: &Maze<T>) -> Vec<EdgeId> {
-    maze.graph.edges()
+    maze.graph
+        .edges()
         .filter(|e| e.kind == EdgeKind::Basic)
-        .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
+        .filter(|e| {
+            maze.graph
+                .edge_between_kind(e.to, e.from, &EdgeKind::Basic)
+                .is_none()
+        })
         .map(|e| e.id)
         .collect()
 }
@@ -27,9 +32,14 @@ pub fn one_way_edge_ids<T: Tessellation>(maze: &Maze<T>) -> Vec<EdgeId> {
 pub fn one_way_edges_with_endpoints<T: Tessellation>(
     maze: &Maze<T>,
 ) -> Vec<(EdgeId, crate::ids::NodeId, crate::ids::NodeId)> {
-    maze.graph.edges()
+    maze.graph
+        .edges()
         .filter(|e| e.kind == EdgeKind::Basic)
-        .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
+        .filter(|e| {
+            maze.graph
+                .edge_between_kind(e.to, e.from, &EdgeKind::Basic)
+                .is_none()
+        })
         .map(|e| (e.id, e.from, e.to))
         .collect()
 }
@@ -37,15 +47,19 @@ pub fn one_way_edges_with_endpoints<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
-    fn maze_with(edges: impl FnOnce(&mut Graph, &dyn Fn(i32) -> crate::ids::NodeId)) -> Maze<SquareTessellation> {
+    fn maze_with(
+        edges: impl FnOnce(&mut Graph, &dyn Fn(i32) -> crate::ids::NodeId),
+    ) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         edges(&mut g, &p);
         Maze::new(field, g)
@@ -53,19 +67,25 @@ mod tests {
 
     #[test]
     fn counts_single_direction_basic_edge() {
-        let maze = maze_with(|g, p| { g.add_edge(p(0), p(1), EdgeKind::Basic); });
+        let maze = maze_with(|g, p| {
+            g.add_edge(p(0), p(1), EdgeKind::Basic);
+        });
         assert_eq!(one_way_edge_ids(&maze).len(), 1);
     }
 
     #[test]
     fn ignores_bidirectional_passage() {
-        let maze = maze_with(|g, p| { g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic); });
+        let maze = maze_with(|g, p| {
+            g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
+        });
         assert!(one_way_edge_ids(&maze).is_empty());
     }
 
     #[test]
     fn ignores_teleport_edge() {
-        let maze = maze_with(|g, p| { g.add_edge(p(0), p(1), EdgeKind::Teleport); });
+        let maze = maze_with(|g, p| {
+            g.add_edge(p(0), p(1), EdgeKind::Teleport);
+        });
         assert!(one_way_edge_ids(&maze).is_empty());
     }
 
@@ -80,7 +100,9 @@ mod tests {
 
     #[test]
     fn endpoints_variant_yields_from_to() {
-        let maze = maze_with(|g, p| { g.add_edge(p(0), p(1), EdgeKind::Basic); });
+        let maze = maze_with(|g, p| {
+            g.add_edge(p(0), p(1), EdgeKind::Basic);
+        });
         let ep = one_way_edges_with_endpoints(&maze);
         assert_eq!(ep.len(), 1);
     }

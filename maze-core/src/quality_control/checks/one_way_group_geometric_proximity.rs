@@ -1,14 +1,15 @@
-use rand::RngCore;
+use super::proximity_scan_core::pairwise_geometric_scan;
 use crate::Maze;
 use crate::graph::route_protection::is_edge_on_route;
-use crate::space::{Tessellation, floor_aware_edge_distance};
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::{GeometricFloorMode, InvalidOneWayGroupIssue};
-use super::proximity_scan_core::pairwise_geometric_scan;
+use crate::space::{Tessellation, floor_aware_edge_distance};
+use rand::RngCore;
 
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
-pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
+pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode =
+    GeometricFloorMode::SameFloorOnly;
 
 /// Flags a pair of one-way passage edges (`EdgeKind::Basic`, single direction) placed too close
 /// to each other in geometric (Euclidean, unit tile scale — see `space::floor_aware_edge_distance`)
@@ -41,10 +42,19 @@ pub struct OneWayGroupGeometricProximityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometricProximityCheck {
-    fn check_type_id(&self) -> &'static str { "one_way_group_geometric_proximity" }
+    fn check_type_id(&self) -> &'static str {
+        "one_way_group_geometric_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let one_ways: Vec<_> = one_way_edges_with_endpoints(maze).into_iter()
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidOneWayGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
+        let one_ways: Vec<_> = one_way_edges_with_endpoints(maze)
+            .into_iter()
             .filter_map(|(id, e_from, e_to)| {
                 let level = maze.field.level_index_of(e_from)?;
                 let from = maze.field.point_of(e_from)?;
@@ -60,15 +70,32 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             &one_ways,
             self.distance,
             |&(own_id, own_level, ..), &(other_id, other_level, ..)| {
-                other_id == own_id || (self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level)
+                other_id == own_id
+                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly
+                        && own_level != other_level)
             },
-            |&(own_id, own_level, own_from, own_to), &(other_id, other_level, other_from, other_to)| {
-                let dist = floor_aware_edge_distance::<T>(own_level, own_from, own_to, other_level, other_from, other_to, self.floor_mode.include_height());
-                let both_route_protected = self.protect_route && is_edge_on_route(maze, own_id) && is_edge_on_route(maze, other_id);
+            |&(own_id, own_level, own_from, own_to),
+             &(other_id, other_level, other_from, other_to)| {
+                let dist = floor_aware_edge_distance::<T>(
+                    own_level,
+                    own_from,
+                    own_to,
+                    other_level,
+                    other_from,
+                    other_to,
+                    self.floor_mode.include_height(),
+                );
+                let both_route_protected = self.protect_route
+                    && is_edge_on_route(maze, own_id)
+                    && is_edge_on_route(maze, other_id);
                 // A route-protected pair must never register as "close" -- the scan keeps trying
                 // farther candidates for `own_id` instead of stopping on this one, same as the
                 // pre-extraction loop's own `if !both_route_protected { ...; break }` shape.
-                if both_route_protected { f64::INFINITY } else { dist }
+                if both_route_protected {
+                    f64::INFINITY
+                } else {
+                    dist
+                }
             },
             |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
         );
@@ -76,8 +103,11 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
         if groups.is_empty() {
             return;
         }
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups).with_detail(
+            &self.instance_id,
+            "distance",
+            self.distance.to_string(),
+        );
         issues.push(issue);
     }
 }

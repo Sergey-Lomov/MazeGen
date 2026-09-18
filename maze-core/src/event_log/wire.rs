@@ -90,7 +90,9 @@ pub(super) struct ScopeNameInterner<'a> {
 
 impl<'a> ScopeNameInterner<'a> {
     pub(super) fn new() -> Self {
-        Self { offsets: std::collections::HashMap::new() }
+        Self {
+            offsets: std::collections::HashMap::new(),
+        }
     }
 
     pub(super) fn intern(&mut self, name: &'a str, payload: &mut Vec<u8>) -> (u32, u32) {
@@ -120,7 +122,10 @@ impl<E: DebugEvent + EncodeEventPayload> DebugTape<E> {
                     event.encode_payload(&mut payload);
                     let len = payload.len() as u32 - offset;
                     let type_id = event.type_id();
-                    debug_assert_ne!(type_id, TAG_SCOPE, "EncodeEventPayload::type_id() must never return TAG_SCOPE (0) — it is reserved for scope nodes");
+                    debug_assert_ne!(
+                        type_id, TAG_SCOPE,
+                        "EncodeEventPayload::type_id() must never return TAG_SCOPE (0) — it is reserved for scope nodes"
+                    );
                     (type_id, offset, len)
                 }
             };
@@ -135,7 +140,10 @@ impl<E: DebugEvent + EncodeEventPayload> DebugTape<E> {
             .write(&mut node_table);
         }
 
-        EncodedTape { node_table, payload }
+        EncodedTape {
+            node_table,
+            payload,
+        }
     }
 }
 
@@ -178,7 +186,14 @@ mod tests {
     /// flat byte buffer.
     fn read_node_record(node_table: &[u8], index: usize) -> (u32, u32, u32, u16, u32, u32) {
         let record = NodeRecord::read(node_table, index);
-        (record.parent, record.first_child, record.next_sibling, record.tag, record.payload_offset, record.payload_len)
+        (
+            record.parent,
+            record.first_child,
+            record.next_sibling,
+            record.tag,
+            record.payload_offset,
+            record.payload_len,
+        )
     }
 
     #[test]
@@ -198,43 +213,75 @@ mod tests {
         assert_eq!(encoded.node_table.len(), 5 * NODE_RECORD_SIZE);
 
         // Node 0: root scope — no parent, first child is node 1, tag = TAG_SCOPE.
-        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) = read_node_record(&encoded.node_table, 0);
+        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) =
+            read_node_record(&encoded.node_table, 0);
         assert_eq!((parent, next_sibling), (NO_NODE, NO_NODE));
         assert_eq!(first_child, 1);
         assert_eq!(tag, TAG_SCOPE);
-        assert_eq!(&encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize], b"root");
+        assert_eq!(
+            &encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize],
+            b"root"
+        );
 
         // Node 1: Mutating(1) — sibling is node 2 ("step" scope).
-        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) = read_node_record(&encoded.node_table, 1);
+        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) =
+            read_node_record(&encoded.node_table, 1);
         assert_eq!(parent, 0);
         assert_eq!(first_child, NO_NODE);
         assert_eq!(next_sibling, 2);
         assert_eq!(tag, TEST_TAG_MUTATING);
         assert_eq!(payload_len, 4);
-        assert_eq!(u32::from_le_bytes(encoded.payload[payload_offset as usize..(payload_offset + 4) as usize].try_into().unwrap()), 1);
+        assert_eq!(
+            u32::from_le_bytes(
+                encoded.payload[payload_offset as usize..(payload_offset + 4) as usize]
+                    .try_into()
+                    .unwrap()
+            ),
+            1
+        );
 
         // Node 2: "step" scope — first child is node 3 (Trace(2)), no next sibling.
-        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) = read_node_record(&encoded.node_table, 2);
+        let (parent, first_child, next_sibling, tag, payload_offset, payload_len) =
+            read_node_record(&encoded.node_table, 2);
         assert_eq!(parent, 0);
         assert_eq!(first_child, 3);
         assert_eq!(next_sibling, NO_NODE);
         assert_eq!(tag, TAG_SCOPE);
-        assert_eq!(&encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize], b"step");
+        assert_eq!(
+            &encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize],
+            b"step"
+        );
 
         // Node 3: Trace(2) — sibling is node 4 (Mutating(3)).
-        let (parent, first_child, next_sibling, tag, payload_offset, _payload_len) = read_node_record(&encoded.node_table, 3);
+        let (parent, first_child, next_sibling, tag, payload_offset, _payload_len) =
+            read_node_record(&encoded.node_table, 3);
         assert_eq!(parent, 2);
         assert_eq!(first_child, NO_NODE);
         assert_eq!(next_sibling, 4);
         assert_eq!(tag, TEST_TAG_TRACE);
-        assert_eq!(u32::from_le_bytes(encoded.payload[payload_offset as usize..(payload_offset + 4) as usize].try_into().unwrap()), 2);
+        assert_eq!(
+            u32::from_le_bytes(
+                encoded.payload[payload_offset as usize..(payload_offset + 4) as usize]
+                    .try_into()
+                    .unwrap()
+            ),
+            2
+        );
 
         // Node 4: Mutating(3) — last child of "step", no siblings.
-        let (parent, first_child, next_sibling, tag, payload_offset, _payload_len) = read_node_record(&encoded.node_table, 4);
+        let (parent, first_child, next_sibling, tag, payload_offset, _payload_len) =
+            read_node_record(&encoded.node_table, 4);
         assert_eq!(parent, 2);
         assert_eq!((first_child, next_sibling), (NO_NODE, NO_NODE));
         assert_eq!(tag, TEST_TAG_MUTATING);
-        assert_eq!(u32::from_le_bytes(encoded.payload[payload_offset as usize..(payload_offset + 4) as usize].try_into().unwrap()), 3);
+        assert_eq!(
+            u32::from_le_bytes(
+                encoded.payload[payload_offset as usize..(payload_offset + 4) as usize]
+                    .try_into()
+                    .unwrap()
+            ),
+            3
+        );
     }
 
     #[test]
@@ -276,7 +323,11 @@ mod tests {
 
         let (_, _, _, _, offset_a, len_a) = read_node_record(&encoded.node_table, 1); // first "step" scope
         let (_, _, _, _, offset_b, len_b) = read_node_record(&encoded.node_table, 3); // second "step" scope
-        assert_eq!((offset_a, len_a), (offset_b, len_b), "repeated scope name must reuse the same payload slice");
+        assert_eq!(
+            (offset_a, len_a),
+            (offset_b, len_b),
+            "repeated scope name must reuse the same payload slice"
+        );
         // Payload arena holds "root" once + "step" once (4 bytes each) plus two 4-byte u32 event payloads = 16 bytes.
         assert_eq!(encoded.payload.len(), 16);
     }
@@ -290,10 +341,14 @@ mod tests {
             Ids(Vec<u32>),
         }
         impl DebugEvent for ListEvent {
-            fn is_mutating(&self) -> bool { false }
+            fn is_mutating(&self) -> bool {
+                false
+            }
         }
         impl EncodeEventPayload for ListEvent {
-            fn type_id(&self) -> u16 { 1 }
+            fn type_id(&self) -> u16 {
+                1
+            }
             fn encode_payload(&self, out: &mut Vec<u8>) {
                 let ListEvent::Ids(ids) = self;
                 out.extend_from_slice(&(ids.len() as u32).to_le_bytes());
@@ -312,10 +367,14 @@ mod tests {
         assert_eq!(tag, 1);
         assert_eq!(payload_len, 4 + 3 * 4); // len prefix + 3 u32s
 
-        let bytes = &encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize];
+        let bytes =
+            &encoded.payload[payload_offset as usize..(payload_offset + payload_len) as usize];
         let len = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
         assert_eq!(len, 3);
-        let ids: Vec<u32> = bytes[4..].chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+        let ids: Vec<u32> = bytes[4..]
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+            .collect();
         assert_eq!(ids, vec![10, 20, 30]);
     }
 }

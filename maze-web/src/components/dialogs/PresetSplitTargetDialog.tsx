@@ -9,6 +9,7 @@ import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
+import type { NodeLockKind } from "../../wasm/types";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
@@ -41,6 +42,8 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const rawSplitPoints = useMazeStore((s) => s.presetSplitPoints);
   const rawConnections = useMazeStore((s) => s.presetConnections);
+  const lockedNodes = useMazeStore((s) => s.lockedNodes);
+  const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const level = useMazeStore(activeFloorLevel);
 
   const point = prompt?.point ?? null;
@@ -71,10 +74,21 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   const [x, y] = point;
   // The picker always offers the original node first, then one row per declared slot.
   const options: (number | undefined)[] = [undefined, ...prompt.slotIds];
+  const lockAction = prompt.action.tool === "lock_in" || prompt.action.tool === "lock_out" || prompt.action.tool === "full_lock";
+  const requestedLock: NodeLockKind | undefined = lockAction
+    ? prompt.action.tool === "lock_in" ? "in" : prompt.action.tool === "lock_out" ? "out" : "both"
+    : undefined;
+  const lockStatus = (slotId: number | undefined): "cancel" | "replace" | null => {
+    if (!requestedLock) return null;
+    const key = `${x},${y}${slotId === undefined ? "" : `:${slotId}`}${level === undefined ? "" : `@${level}`}`;
+    const existing = lockedNodes.get(key);
+    if (existing !== undefined) return existing === requestedLock ? "cancel" : "replace";
+    return autoLockedNodes.has(key) ? "replace" : null;
+  };
 
   return (
-    <Modal title={m["preset.split_target_title"]({ x, y })} size="approve" onClose={onClose}>
-      <p style={styles.hint}>{m["preset.split_target_hint"]()}</p>
+    <Modal title={lockAction ? m["preset.lock_target_title"]() : m["preset.split_target_title"]({ x, y })} size="approve" onClose={onClose}>
+      <p style={styles.hint}>{lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}</p>
       <div style={styles.body}>
         <div style={styles.list}>
           {options.map((slotId, index) => (
@@ -86,6 +100,8 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
               {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
+              {lockStatus(slotId) === "cancel" && <span style={styles.lockState}>{m["preset.lock_target_cancel"]()}</span>}
+              {lockStatus(slotId) === "replace" && <span style={styles.lockState}>{m["preset.lock_target_replace"]()}</span>}
             </Button>
           ))}
         </div>
@@ -155,5 +171,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
+  },
+  lockState: {
+    marginLeft: "auto",
+    color: ui.text.secondary,
+    fontSize: 11,
   },
 };

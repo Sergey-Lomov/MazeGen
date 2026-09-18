@@ -1,7 +1,7 @@
 use super::*;
-use std::collections::HashSet;
+use crate::graph::{EdgeKind, Graph};
 use crate::ids::NodeId;
-use crate::graph::{Graph, EdgeKind};
+use std::collections::HashSet;
 
 fn add_bidir(g: &mut Graph, a: NodeId, b: NodeId) {
     g.add_edge(a, b, EdgeKind::Basic);
@@ -13,7 +13,9 @@ fn add_bidir(g: &mut Graph, a: NodeId, b: NodeId) {
 #[test]
 fn test_simple_ring() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
     add_bidir(&mut g, 3, 1);
@@ -29,7 +31,9 @@ fn test_simple_ring() {
 #[test]
 fn test_ring_with_extra_junction_neighbor() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 10] { g.add_node(id); }
+    for id in [1u64, 2, 3, 10] {
+        g.add_node(id);
+    }
     // ring 1⇄2⇄3⇄1
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
@@ -43,10 +47,22 @@ fn test_ring_with_extra_junction_neighbor() {
     // nodes 2,3: each has 2 symmetric bidir neighbors → corridor
     // Expected: nav nodes = {1, 10}, edges = 10→1, 1→10, 1→1(CW), 1→1(CCW)
     let node_ids: Vec<NodeId> = nav.nodes.iter().map(|n| n.node_id).collect();
-    assert!(!node_ids.contains(&2), "node 2 should be corridor (absorbed)");
-    assert!(!node_ids.contains(&3), "node 3 should be corridor (absorbed)");
-    assert!(node_ids.contains(&1), "node 1 should be junction (nav node)");
-    assert!(node_ids.contains(&10), "node 10 should be junction (nav node)");
+    assert!(
+        !node_ids.contains(&2),
+        "node 2 should be corridor (absorbed)"
+    );
+    assert!(
+        !node_ids.contains(&3),
+        "node 3 should be corridor (absorbed)"
+    );
+    assert!(
+        node_ids.contains(&1),
+        "node 1 should be junction (nav node)"
+    );
+    assert!(
+        node_ids.contains(&10),
+        "node 10 should be junction (nav node)"
+    );
 }
 
 // Ring A⇄B⇄C⇄A, pinned={A}.
@@ -56,7 +72,9 @@ fn test_ring_with_extra_junction_neighbor() {
 #[test]
 fn test_ring_with_pinned_node() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
     add_bidir(&mut g, 3, 1);
@@ -65,7 +83,11 @@ fn test_ring_with_pinned_node() {
     pinned.insert(1u64);
 
     let nav = build_nav_graph_pinned(&g, &pinned);
-    assert_eq!(nav.nodes.len(), 1, "pinned ring → 1 nav node (the pinned anchor)");
+    assert_eq!(
+        nav.nodes.len(),
+        1,
+        "pinned ring → 1 nav node (the pinned anchor)"
+    );
     assert_eq!(nav.edges().count(), 2, "pinned ring → 2 self-edges");
     assert_eq!(nav.nodes[0].node_id, 1, "anchor should be pinned node 1");
 }
@@ -77,7 +99,9 @@ fn test_ring_with_pinned_node() {
 #[test]
 fn test_ring_pinned_with_extra_ring_neighbor() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 4, 5, 6] { g.add_node(id); }
+    for id in [1u64, 2, 3, 4, 5, 6] {
+        g.add_node(id);
+    }
     // ring1: 1⇄2⇄3⇄1
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
@@ -111,7 +135,9 @@ fn test_ring_pinned_with_extra_ring_neighbor() {
 #[test]
 fn corridor_index_maps_interior_nodes_to_destination() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 4] { g.add_node(id); }
+    for id in [1u64, 2, 3, 4] {
+        g.add_node(id);
+    }
     // linear corridor 1⇄2⇄3⇄4; 1 and 4 are dead-end junctions, 2 and 3 are corridor.
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
@@ -127,18 +153,32 @@ fn corridor_index_maps_interior_nodes_to_destination() {
     // both are valid corridor->destination mappings, so just check the indexed value is
     // one of the two valid destinations for both interior nodes.
     let valid = [nav1, nav4];
-    assert!(valid.contains(&nav.corridor_index[&2]), "node 2 corridor_index must point to a real nav node");
-    assert!(valid.contains(&nav.corridor_index[&3]), "node 3 corridor_index must point to a real nav node");
+    assert!(
+        valid.contains(&nav.corridor_index[&2]),
+        "node 2 corridor_index must point to a real nav node"
+    );
+    assert!(
+        valid.contains(&nav.corridor_index[&3]),
+        "node 3 corridor_index must point to a real nav node"
+    );
     // Junction nodes themselves must not appear in corridor_index.
-    assert!(!nav.corridor_index.contains_key(&1), "junction node must not be in corridor_index");
-    assert!(!nav.corridor_index.contains_key(&4), "junction node must not be in corridor_index");
+    assert!(
+        !nav.corridor_index.contains_key(&1),
+        "junction node must not be in corridor_index"
+    );
+    assert!(
+        !nav.corridor_index.contains_key(&4),
+        "junction node must not be in corridor_index"
+    );
 }
 
 // link_reverse_edges must pair up the two directed edges of a bidirectional corridor.
 #[test]
 fn reverse_edge_linked_for_bidirectional_corridor() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 2, 3);
 
@@ -147,11 +187,17 @@ fn reverse_edge_linked_for_bidirectional_corridor() {
 
     let edges: Vec<&NavEdge> = nav.edges().collect();
     for e in &edges {
-        let rev_idx = e.reverse_edge.expect("bidirectional edge must have a reverse_edge");
+        let rev_idx = e
+            .reverse_edge
+            .expect("bidirectional edge must have a reverse_edge");
         let rev = nav.edge_by_idx(rev_idx);
         assert_eq!(rev.from, e.to, "reverse edge must swap from/to");
         assert_eq!(rev.to, e.from, "reverse edge must swap from/to");
-        assert_eq!(rev.path, e.path.iter().copied().rev().collect::<Vec<_>>(), "reverse edge path must be reversed");
+        assert_eq!(
+            rev.path,
+            e.path.iter().copied().rev().collect::<Vec<_>>(),
+            "reverse edge path must be reversed"
+        );
     }
 }
 
@@ -160,14 +206,19 @@ fn reverse_edge_linked_for_bidirectional_corridor() {
 #[test]
 fn reverse_edge_none_for_one_way_corridor() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     // one-way chain 1->2->3, no edges back
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 3, EdgeKind::Basic);
 
     let nav = build_nav_graph(&g);
     for e in nav.edges() {
-        assert!(e.reverse_edge.is_none(), "one-way edge must not have a reverse_edge");
+        assert!(
+            e.reverse_edge.is_none(),
+            "one-way edge must not have a reverse_edge"
+        );
     }
 }
 
@@ -180,7 +231,9 @@ fn reverse_edge_none_for_one_way_corridor() {
 #[test]
 fn reverse_edge_links_same_kind_only_for_parallel_basic_and_teleport_edges() {
     let mut g = Graph::new();
-    for id in [1u64, 2] { g.add_node(id); }
+    for id in [1u64, 2] {
+        g.add_node(id);
+    }
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Teleport);
     g.add_edge(2, 1, EdgeKind::Basic);
@@ -188,19 +241,38 @@ fn reverse_edge_links_same_kind_only_for_parallel_basic_and_teleport_edges() {
 
     let nav = build_nav_graph(&g);
     let edges: Vec<&NavEdge> = nav.edges().collect();
-    assert_eq!(edges.len(), 4, "expected one NavEdge per physical graph edge");
+    assert_eq!(
+        edges.len(),
+        4,
+        "expected one NavEdge per physical graph edge"
+    );
 
     for e in &edges {
-        let rev_idx = e.reverse_edge.expect("every edge here has a same-kind counterpart in the opposite direction");
+        let rev_idx = e
+            .reverse_edge
+            .expect("every edge here has a same-kind counterpart in the opposite direction");
         let rev = nav.edge_by_idx(rev_idx);
-        assert_eq!(rev.is_teleport, e.is_teleport, "reverse_edge must link edges of the same is_teleport kind");
-        assert_eq!(rev.path, e.path.iter().copied().rev().collect::<Vec<_>>(), "reverse edge path must be reversed");
+        assert_eq!(
+            rev.is_teleport, e.is_teleport,
+            "reverse_edge must link edges of the same is_teleport kind"
+        );
+        assert_eq!(
+            rev.path,
+            e.path.iter().copied().rev().collect::<Vec<_>>(),
+            "reverse edge path must be reversed"
+        );
     }
 
     let teleport_count = edges.iter().filter(|e| e.is_teleport).count();
     let basic_count = edges.iter().filter(|e| !e.is_teleport).count();
-    assert_eq!(teleport_count, 2, "expected 2 teleport-backed one-hop edges (one per direction)");
-    assert_eq!(basic_count, 2, "expected 2 basic-backed one-hop edges (one per direction)");
+    assert_eq!(
+        teleport_count, 2,
+        "expected 2 teleport-backed one-hop edges (one per direction)"
+    );
+    assert_eq!(
+        basic_count, 2,
+        "expected 2 basic-backed one-hop edges (one per direction)"
+    );
 }
 
 // GitHub issue #372, same rationale as #197 above but for Elevator: with a Basic and an Elevator
@@ -212,7 +284,9 @@ fn reverse_edge_links_same_kind_only_for_parallel_basic_and_teleport_edges() {
 #[test]
 fn reverse_edge_links_same_kind_only_for_parallel_basic_and_elevator_edges() {
     let mut g = Graph::new();
-    for id in [1u64, 2] { g.add_node(id); }
+    for id in [1u64, 2] {
+        g.add_node(id);
+    }
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Elevator);
     g.add_edge(2, 1, EdgeKind::Basic);
@@ -220,19 +294,38 @@ fn reverse_edge_links_same_kind_only_for_parallel_basic_and_elevator_edges() {
 
     let nav = build_nav_graph(&g);
     let edges: Vec<&NavEdge> = nav.edges().collect();
-    assert_eq!(edges.len(), 4, "expected one NavEdge per physical graph edge");
+    assert_eq!(
+        edges.len(),
+        4,
+        "expected one NavEdge per physical graph edge"
+    );
 
     for e in &edges {
-        let rev_idx = e.reverse_edge.expect("every edge here has a same-kind counterpart in the opposite direction");
+        let rev_idx = e
+            .reverse_edge
+            .expect("every edge here has a same-kind counterpart in the opposite direction");
         let rev = nav.edge_by_idx(rev_idx);
-        assert_eq!(rev.is_elevator, e.is_elevator, "reverse_edge must link edges of the same is_elevator kind");
-        assert_eq!(rev.path, e.path.iter().copied().rev().collect::<Vec<_>>(), "reverse edge path must be reversed");
+        assert_eq!(
+            rev.is_elevator, e.is_elevator,
+            "reverse_edge must link edges of the same is_elevator kind"
+        );
+        assert_eq!(
+            rev.path,
+            e.path.iter().copied().rev().collect::<Vec<_>>(),
+            "reverse edge path must be reversed"
+        );
     }
 
     let elevator_count = edges.iter().filter(|e| e.is_elevator).count();
     let basic_count = edges.iter().filter(|e| !e.is_elevator).count();
-    assert_eq!(elevator_count, 2, "expected 2 elevator-backed one-hop edges (one per direction)");
-    assert_eq!(basic_count, 2, "expected 2 basic-backed one-hop edges (one per direction)");
+    assert_eq!(
+        elevator_count, 2,
+        "expected 2 elevator-backed one-hop edges (one per direction)"
+    );
+    assert_eq!(
+        basic_count, 2,
+        "expected 2 basic-backed one-hop edges (one per direction)"
+    );
 }
 
 // An Elevator endpoint must never be absorbed as a corridor node even when its degree happens to
@@ -242,7 +335,9 @@ fn reverse_edge_links_same_kind_only_for_parallel_basic_and_elevator_edges() {
 #[test]
 fn elevator_fan_endpoints_are_never_absorbed_as_corridor_nodes() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     g.add_edge(1, 2, EdgeKind::Elevator);
     g.add_edge(2, 1, EdgeKind::Elevator);
     g.add_edge(1, 3, EdgeKind::Elevator);
@@ -251,11 +346,22 @@ fn elevator_fan_endpoints_are_never_absorbed_as_corridor_nodes() {
     g.add_edge(3, 2, EdgeKind::Elevator);
 
     let nav = build_nav_graph(&g);
-    assert_eq!(nav.nodes.len(), 3, "every elevator floor must stay its own NavNode, not compress into a corridor");
+    assert_eq!(
+        nav.nodes.len(),
+        3,
+        "every elevator floor must stay its own NavNode, not compress into a corridor"
+    );
 
     let edges: Vec<&NavEdge> = nav.edges().collect();
-    assert_eq!(edges.len(), 6, "expected one direct one-hop NavEdge per directed elevator hop");
-    assert!(edges.iter().all(|e| e.is_elevator && e.path.len() == 2), "every hop must be a single-hop elevator edge");
+    assert_eq!(
+        edges.len(),
+        6,
+        "expected one direct one-hop NavEdge per directed elevator hop"
+    );
+    assert!(
+        edges.iter().all(|e| e.is_elevator && e.path.len() == 2),
+        "every hop must be a single-hop elevator edge"
+    );
 }
 
 // GitHub issue #517: a VerticalPassage endpoint must never be absorbed as a corridor node even
@@ -269,14 +375,19 @@ fn elevator_fan_endpoints_are_never_absorbed_as_corridor_nodes() {
 #[test]
 fn vertical_passage_endpoints_are_never_absorbed_as_corridor_nodes() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3] { g.add_node(id); }
+    for id in [1u64, 2, 3] {
+        g.add_node(id);
+    }
     g.add_edge(1, 2, EdgeKind::VerticalPassage);
     g.add_edge(2, 1, EdgeKind::VerticalPassage);
     g.add_edge(2, 3, EdgeKind::VerticalPassage);
     g.add_edge(3, 2, EdgeKind::VerticalPassage);
 
     let nav = build_nav_graph(&g);
-    assert!(nav.nav_node_for(2).is_some(), "node 2 must stay its own NavNode, not compress into an interior path node between 1 and 3");
+    assert!(
+        nav.nav_node_for(2).is_some(),
+        "node 2 must stay its own NavNode, not compress into an interior path node between 1 and 3"
+    );
 }
 
 // `non_corridor_endpoints` (nav/build.rs) computes the Teleport/Elevator/VerticalPassage
@@ -287,7 +398,9 @@ fn vertical_passage_endpoints_are_never_absorbed_as_corridor_nodes() {
 #[test]
 fn teleport_elevator_and_vertical_passage_endpoints_all_stay_own_nav_nodes_in_the_same_graph() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 4, 5, 6, 7, 8, 9] { g.add_node(id); }
+    for id in [1u64, 2, 3, 4, 5, 6, 7, 8, 9] {
+        g.add_node(id);
+    }
     // Node 2: one Basic pair + one Teleport edge = 2-symmetric shape by coincidence.
     add_bidir(&mut g, 1, 2);
     g.add_edge(2, 9, EdgeKind::Teleport);
@@ -304,9 +417,18 @@ fn teleport_elevator_and_vertical_passage_endpoints_all_stay_own_nav_nodes_in_th
     g.add_edge(9, 8, EdgeKind::VerticalPassage);
 
     let nav = build_nav_graph(&g);
-    assert!(nav.nav_node_for(2).is_some(), "the teleport endpoint must stay its own NavNode");
-    assert!(nav.nav_node_for(5).is_some(), "the elevator fan endpoint must stay its own NavNode");
-    assert!(nav.nav_node_for(8).is_some(), "the vertical passage endpoint must stay its own NavNode");
+    assert!(
+        nav.nav_node_for(2).is_some(),
+        "the teleport endpoint must stay its own NavNode"
+    );
+    assert!(
+        nav.nav_node_for(5).is_some(),
+        "the elevator fan endpoint must stay its own NavNode"
+    );
+    assert!(
+        nav.nav_node_for(8).is_some(),
+        "the vertical passage endpoint must stay its own NavNode"
+    );
 }
 
 // outgoing_edges/incoming_edges/edge_by_idx must return the correct edges for a junction
@@ -314,7 +436,9 @@ fn teleport_elevator_and_vertical_passage_endpoints_all_stay_own_nav_nodes_in_th
 #[test]
 fn outgoing_incoming_edges_getters() {
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 4] { g.add_node(id); }
+    for id in [1u64, 2, 3, 4] {
+        g.add_node(id);
+    }
     // junction 1 with two bidirectional dead-end neighbors 2 and 3 (no shared edges, so corridor check fails)
     add_bidir(&mut g, 1, 2);
     add_bidir(&mut g, 1, 3);
@@ -323,14 +447,28 @@ fn outgoing_incoming_edges_getters() {
     let nav = build_nav_graph(&g);
     let nav1 = nav.nav_node_for(1).unwrap();
 
-    let out: Vec<NodeId> = nav.outgoing_edges(nav1).map(|e| nav.nodes[e.to].node_id).collect();
-    let inc: Vec<NodeId> = nav.incoming_edges(nav1).map(|e| nav.nodes[e.from].node_id).collect();
+    let out: Vec<NodeId> = nav
+        .outgoing_edges(nav1)
+        .map(|e| nav.nodes[e.to].node_id)
+        .collect();
+    let inc: Vec<NodeId> = nav
+        .incoming_edges(nav1)
+        .map(|e| nav.nodes[e.from].node_id)
+        .collect();
     let mut out_sorted = out.clone();
     out_sorted.sort();
     let mut inc_sorted = inc.clone();
     inc_sorted.sort();
-    assert_eq!(out_sorted, vec![2, 3, 4], "node 1 must have outgoing edges to 2,3,4");
-    assert_eq!(inc_sorted, vec![2, 3, 4], "node 1 must have incoming edges from 2,3,4");
+    assert_eq!(
+        out_sorted,
+        vec![2, 3, 4],
+        "node 1 must have outgoing edges to 2,3,4"
+    );
+    assert_eq!(
+        inc_sorted,
+        vec![2, 3, 4],
+        "node 1 must have incoming edges from 2,3,4"
+    );
 
     // edge_by_idx must resolve the same edge instances returned by outgoing_edges.
     for e in nav.outgoing_edges(nav1) {
@@ -352,7 +490,9 @@ fn walk_corridor_detects_revisit_without_hanging() {
     // to a junction via a single bidirectional edge, then verify it terminates (no hang) and
     // produces a self-edge back to the junction's neighbor anchor — i.e. delegate to build_ring.
     let mut g = Graph::new();
-    for id in [1u64, 2, 3, 4, 5] { g.add_node(id); }
+    for id in [1u64, 2, 3, 4, 5] {
+        g.add_node(id);
+    }
     add_bidir(&mut g, 1, 2); // dead-end junction 1 attached to ring anchor 2
     add_bidir(&mut g, 2, 3);
     add_bidir(&mut g, 3, 4);
@@ -364,8 +504,19 @@ fn walk_corridor_detects_revisit_without_hanging() {
     // Must terminate (test itself proves no infinite loop) and cover all 5 nodes.
     let nav_ids: HashSet<NodeId> = nav.nodes.iter().map(|n| n.node_id).collect();
     let mut covered: HashSet<NodeId> = nav_ids.clone();
-    for e in nav.edges() { for &n in &e.path { covered.insert(n); } }
-    assert_eq!(covered.len(), 5, "all 5 nodes (including isolated node 5) must be covered");
-    assert!(nav_ids.contains(&1), "dead-end junction 1 must be a nav node");
+    for e in nav.edges() {
+        for &n in &e.path {
+            covered.insert(n);
+        }
+    }
+    assert_eq!(
+        covered.len(),
+        5,
+        "all 5 nodes (including isolated node 5) must be covered"
+    );
+    assert!(
+        nav_ids.contains(&1),
+        "dead-end junction 1 must be a nav node"
+    );
     assert!(nav_ids.contains(&5), "isolated node 5 must be a nav node");
 }

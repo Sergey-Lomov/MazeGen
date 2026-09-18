@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::ids::{NodeId, IdGenerator};
+use crate::ids::{IdGenerator, NodeId};
 use crate::space::{Field, Tessellation};
+use std::collections::HashMap;
 
 /// Stable identifier for one level (floor) inside a `MultiLevelField`. Never an index into any
 /// `Vec` — never reused, never renumbered when other levels are added/removed/reordered (GitHub
@@ -115,7 +115,10 @@ impl<T: Tessellation> MultiLevelField<T> {
         current.sort_unstable();
         let mut given: Vec<LevelId> = new_order.to_vec();
         given.sort_unstable();
-        assert_eq!(current, given, "reorder_levels: new_order must be a permutation of the current level set");
+        assert_eq!(
+            current, given,
+            "reorder_levels: new_order must be a permutation of the current level set"
+        );
         self.level_order = new_order.to_vec();
     }
 
@@ -170,7 +173,9 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// doesn't belong to any level — mirrors `Field::neighbors`'s existing behavior for an
     /// unknown node (not a panic).
     pub fn neighbors(&self, node: NodeId) -> Vec<NodeId> {
-        let Some(level) = self.level_of(node) else { return Vec::new(); };
+        let Some(level) = self.level_of(node) else {
+            return Vec::new();
+        };
         self.levels[&level].neighbors(node)
     }
 
@@ -191,9 +196,15 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// results unconditionally, and a boolean/enum parameter would require every one of those call
     /// sites to opt out explicitly instead of never being touched at all.
     pub fn vertical_neighbors(&self, node: NodeId) -> Vec<NodeId> {
-        let Some(point) = self.point_of(node) else { return Vec::new(); };
-        let Some(level) = self.level_of(node) else { return Vec::new(); };
-        let Some(idx) = self.level_order.iter().position(|&l| l == level) else { return Vec::new(); };
+        let Some(point) = self.point_of(node) else {
+            return Vec::new();
+        };
+        let Some(level) = self.level_of(node) else {
+            return Vec::new();
+        };
+        let Some(idx) = self.level_order.iter().position(|&l| l == level) else {
+            return Vec::new();
+        };
         let mut result = Vec::new();
         if idx > 0 {
             result.extend(self.nodes_at(self.level_order[idx - 1], point));
@@ -209,8 +220,14 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// undefined between levels (GitHub issue #337 will introduce a separate stairs/elevator
     /// notion, not through this method).
     pub fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool {
-        let (Some(lf), Some(lv), Some(lt)) = (self.level_of(from), self.level_of(via), self.level_of(to)) else { return false; };
-        if lf != lv || lv != lt { return false; }
+        let (Some(lf), Some(lv), Some(lt)) =
+            (self.level_of(from), self.level_of(via), self.level_of(to))
+        else {
+            return false;
+        };
+        if lf != lv || lv != lt {
+            return false;
+        }
         self.levels[&lf].is_straight(from, via, to)
     }
 
@@ -219,10 +236,15 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// once it's derivable from `node`). Panics if `node` doesn't belong to any level, mirroring
     /// `Field::remove_node_at`'s own panic-on-unknown-node contract — never a silent no-op.
     pub fn remove_node_at(&mut self, node: NodeId) {
-        let level = self.level_of(node)
+        let level = self
+            .level_of(node)
             .unwrap_or_else(|| panic!("remove_node_at: node does not belong to any level"));
-        let field = self.levels.get_mut(&level).expect("level present in node_to_level must exist in levels");
-        let point = field.point_of(node)
+        let field = self
+            .levels
+            .get_mut(&level)
+            .expect("level present in node_to_level must exist in levels");
+        let point = field
+            .point_of(node)
             .unwrap_or_else(|| panic!("remove_node_at: node does not belong to any level"));
         field.remove_node_at(point, node);
         self.node_to_level.remove(&node);
@@ -241,8 +263,15 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// Adds a node to `point` on `level` and registers it in `node_to_level`. Panics if `level`
     /// doesn't exist or `point` isn't already in that level's field — mirrors
     /// `Field::add_node_at`'s own panic contract.
-    pub fn add_node_at(&mut self, level: LevelId, point: T::Point, ids: &mut IdGenerator) -> NodeId {
-        let field = self.levels.get_mut(&level)
+    pub fn add_node_at(
+        &mut self,
+        level: LevelId,
+        point: T::Point,
+        ids: &mut IdGenerator,
+    ) -> NodeId {
+        let field = self
+            .levels
+            .get_mut(&level)
             .unwrap_or_else(|| panic!("add_node_at: level not in aggregator"));
         let node = field.add_node_at(point, ids);
         self.node_to_level.insert(node, level);
@@ -254,7 +283,9 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// any old id not in `new_ids` gives `level_of(old_id) == None`, and every id in `new_ids`
     /// gives `level_of(new_id) == Some(level)`.
     pub fn replace_nodes_at(&mut self, level: LevelId, point: T::Point, new_ids: Vec<NodeId>) {
-        let field = self.levels.get_mut(&level)
+        let field = self
+            .levels
+            .get_mut(&level)
             .unwrap_or_else(|| panic!("replace_nodes_at: level not in aggregator"));
         let old_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
         for old in &old_nodes {
@@ -299,12 +330,11 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// single-level/level-agnostic callers, prefer `field_of(level).all_points()` instead — this
     /// is for genuinely level-aware code (future multi-level UI/QC).
     pub fn all_points_with_level(&self) -> impl Iterator<Item = (LevelId, T::Point)> + '_ {
-        self.level_order.iter().flat_map(move |&level| {
-            self.levels[&level].all_points().map(move |p| (level, p))
-        })
+        self.level_order
+            .iter()
+            .flat_map(move |&level| self.levels[&level].all_points().map(move |p| (level, p)))
     }
 }
-
 
 #[cfg(test)]
 #[path = "multi_level_tests.rs"]

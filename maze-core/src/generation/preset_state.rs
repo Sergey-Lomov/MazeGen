@@ -1,20 +1,23 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-use crate::ids::{IdGenerator, NodeId};
-use crate::graph::{Graph, EdgeKind};
-use crate::space::{MultiLevelField, Tessellation};
+use super::preset_setup_event::{PresetSetupEvent, emit};
+use super::{
+    LockedNode, NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator,
+    PresetEndpoint, PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
+};
 use crate::event_log::EventLog;
-use super::{PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection};
-use super::preset_setup_event::{emit, PresetSetupEvent};
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::{IdGenerator, NodeId};
+use crate::space::{MultiLevelField, Tessellation};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
 #[derive(Debug)]
 pub struct PresetState {
     /// Edges the algorithm must not add (Wall presets).
-    pub blocked:    HashSet<(NodeId, NodeId)>,
+    pub blocked: HashSet<(NodeId, NodeId)>,
     /// Nodes the algorithm must not add outgoing edges from.
     pub locked_out: HashSet<NodeId>,
     /// Nodes the algorithm must not add incoming edges to.
-    pub locked_in:  HashSet<NodeId>,
+    pub locked_in: HashSet<NodeId>,
     /// Nodes already connected by preset Passage/OneWay edges — treated as visited at generation start.
     pub preset_connected: BTreeSet<NodeId>,
     /// Directed edges established by preset Passage/OneWay connections — must not be removed by repair.
@@ -87,7 +90,10 @@ impl PresetState {
         if !self.preset_declared_nodes.contains(&node) {
             return false;
         }
-        let incident: Vec<_> = graph.edges().filter(|e| e.from == node || e.to == node).collect();
+        let incident: Vec<_> = graph
+            .edges()
+            .filter(|e| e.from == node || e.to == node)
+            .collect();
         !incident.is_empty() && incident.iter().all(|e| self.is_preset_edge(e.from, e.to))
     }
 
@@ -100,23 +106,27 @@ impl PresetState {
     /// `is_preset_locked_node` above, which only applies to preset-*declared* (minted) nodes and
     /// says nothing about a pre-existing tile node whose own preset edge still blocks its removal.
     pub fn is_node_locked_for_removal(&self, node: NodeId) -> bool {
-        self.locked_out.contains(&node) || self.locked_in.contains(&node)
-            || self.preset_edges.iter().any(|&(from, to)| from == node || to == node)
+        self.locked_out.contains(&node)
+            || self.locked_in.contains(&node)
+            || self
+                .preset_edges
+                .iter()
+                .any(|&(from, to)| from == node || to == node)
     }
 
     pub fn empty() -> Self {
         Self {
-            blocked:         HashSet::new(),
-            locked_out:      HashSet::new(),
-            locked_in:       HashSet::new(),
+            blocked: HashSet::new(),
+            locked_out: HashSet::new(),
+            locked_in: HashSet::new(),
             preset_connected: BTreeSet::new(),
-            preset_edges:    HashSet::new(),
+            preset_edges: HashSet::new(),
             preset_edge_ids: HashSet::new(),
             preset_teleports: HashMap::new(),
-            slots_by_point:  HashMap::new(),
+            slots_by_point: HashMap::new(),
             preset_declared_nodes: HashSet::new(),
-            preset_start:    None,
-            preset_finish:   None,
+            preset_start: None,
+            preset_finish: None,
         }
     }
 
@@ -146,7 +156,10 @@ impl PresetState {
 /// Resolves a 0-based `levels_ordered()` index to a real `LevelId`, `None` for an out-of-range
 /// index. `field.levels_ordered()` yields levels in stable, deterministic order (level list is
 /// fixed for the duration of a generation run), so this is a pure lookup.
-fn level_id_at<T: Tessellation>(field: &MultiLevelField<T>, level_index: u32) -> Option<crate::space::LevelId> {
+fn level_id_at<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    level_index: u32,
+) -> Option<crate::space::LevelId> {
     field.levels_ordered().nth(level_index as usize)
 }
 
@@ -176,7 +189,8 @@ fn apply_split_points<T: Tessellation>(
 ) -> Result<(HashMap<(u32, i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
     // Sort by (level, point, slot) — `((i32,i32), u32, u32)`'s natural tuple order sorts by point
     // first, so re-key to (level_index, point, slot) before sorting.
-    let mut sorted: Vec<(u32, (i32, i32), u32)> = split_points.iter()
+    let mut sorted: Vec<(u32, (i32, i32), u32)> = split_points
+        .iter()
         .map(|&(xy, slot_id, level_index)| (level_index, xy, slot_id))
         .collect();
     sorted.sort_unstable();
@@ -188,7 +202,9 @@ fn apply_split_points<T: Tessellation>(
             .ok_or_else(|| format!("split_points references unknown level {level_index}"))?;
         let point = xy_to_point(xy.0, xy.1);
         if field.field_of(level).is_none_or(|f| !f.contains(point)) {
-            return Err(format!("split_points references unknown point {xy:?} on level {level_index}"));
+            return Err(format!(
+                "split_points references unknown point {xy:?} on level {level_index}"
+            ));
         }
         let node = field.add_node_at(level, point, ids);
         graph.add_node(node);
@@ -196,7 +212,10 @@ fn apply_split_points<T: Tessellation>(
         if let Some(state) = debug_state.as_deref_mut() {
             state.note(node, point);
         }
-        slots_by_point.entry((level_index, xy.0, xy.1)).or_default().push(slot_id);
+        slots_by_point
+            .entry((level_index, xy.0, xy.1))
+            .or_default()
+            .push(slot_id);
     }
     Ok((slots_by_point, minted_nodes))
 }
@@ -255,19 +274,23 @@ pub fn build_preset_state<T: Tessellation>(
     mut log: Option<&mut EventLog<PresetSetupEvent>>,
     debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<PresetState, String> {
-    let mut blocked:          HashSet<(NodeId, NodeId)> = HashSet::new();
-    let mut locked_out:       HashSet<NodeId> = HashSet::new();
-    let mut locked_in:        HashSet<NodeId> = HashSet::new();
+    let mut blocked: HashSet<(NodeId, NodeId)> = HashSet::new();
+    let mut locked_out: HashSet<NodeId> = HashSet::new();
+    let mut locked_in: HashSet<NodeId> = HashSet::new();
     let mut preset_connected: BTreeSet<NodeId> = BTreeSet::new();
     let mut preset_edges: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut preset_edge_ids: HashSet<crate::ids::EdgeId> = HashSet::new();
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-    let (slots_by_point, preset_declared_nodes) = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
-    let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
+    let (slots_by_point, preset_declared_nodes) =
+        apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
+    let resolve =
+        |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
 
     for preset in preset_connections {
-        let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else { continue };
+        let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else {
+            continue;
+        };
         match preset.state {
             PresetConnectionState::Wall => {
                 blocked.insert((from_id, to_id));
@@ -281,7 +304,13 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_edges.insert((from_id, to_id));
                 preset_edges.insert((to_id, from_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::PassageEstablished { from: from_id, to: to_id });
+                    emit(
+                        log,
+                        PresetSetupEvent::PassageEstablished {
+                            from: from_id,
+                            to: to_id,
+                        },
+                    );
                 }
             }
             PresetConnectionState::OneWayForward => {
@@ -291,7 +320,13 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::OneWayEstablished { from: from_id, to: to_id });
+                    emit(
+                        log,
+                        PresetSetupEvent::OneWayEstablished {
+                            from: from_id,
+                            to: to_id,
+                        },
+                    );
                 }
             }
             PresetConnectionState::OneWayBackward => {
@@ -301,36 +336,79 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(to_id);
                 preset_edges.insert((to_id, from_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::OneWayEstablished { from: to_id, to: from_id });
+                    emit(
+                        log,
+                        PresetSetupEvent::OneWayEstablished {
+                            from: to_id,
+                            to: from_id,
+                        },
+                    );
                 }
             }
             PresetConnectionState::Teleport(direction) => {
                 match direction {
                     TeleportDirection::Forward => {
-                        preset_edge_ids.insert(graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport));
+                        preset_edge_ids.insert(graph.build_initial_edge(
+                            from_id,
+                            to_id,
+                            EdgeKind::Teleport,
+                        ));
                         preset_edges.insert((from_id, to_id));
                         preset_teleports.entry(from_id).or_default().push(to_id);
                         if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: false });
+                            emit(
+                                log,
+                                PresetSetupEvent::TeleportEstablished {
+                                    from: from_id,
+                                    to: to_id,
+                                    two_way: false,
+                                },
+                            );
                         }
                     }
                     TeleportDirection::Backward => {
-                        preset_edge_ids.insert(graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport));
+                        preset_edge_ids.insert(graph.build_initial_edge(
+                            to_id,
+                            from_id,
+                            EdgeKind::Teleport,
+                        ));
                         preset_edges.insert((to_id, from_id));
                         preset_teleports.entry(to_id).or_default().push(from_id);
                         if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: to_id, to: from_id, two_way: false });
+                            emit(
+                                log,
+                                PresetSetupEvent::TeleportEstablished {
+                                    from: to_id,
+                                    to: from_id,
+                                    two_way: false,
+                                },
+                            );
                         }
                     }
                     TeleportDirection::TwoWay => {
-                        preset_edge_ids.insert(graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport));
-                        preset_edge_ids.insert(graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport));
+                        preset_edge_ids.insert(graph.build_initial_edge(
+                            from_id,
+                            to_id,
+                            EdgeKind::Teleport,
+                        ));
+                        preset_edge_ids.insert(graph.build_initial_edge(
+                            to_id,
+                            from_id,
+                            EdgeKind::Teleport,
+                        ));
                         preset_edges.insert((from_id, to_id));
                         preset_edges.insert((to_id, from_id));
                         preset_teleports.entry(from_id).or_default().push(to_id);
                         preset_teleports.entry(to_id).or_default().push(from_id);
                         if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: true });
+                            emit(
+                                log,
+                                PresetSetupEvent::TeleportEstablished {
+                                    from: from_id,
+                                    to: to_id,
+                                    two_way: true,
+                                },
+                            );
                         }
                     }
                 }
@@ -349,42 +427,85 @@ pub fn build_preset_state<T: Tessellation>(
     // shortcut; every generation algorithm already discovers a planted edge through the graph
     // itself, the same way it discovers any other pre-existing edge at start.
     for passage in preset_vertical_passages {
-        let (Some(from_id), Some(to_id)) = (resolve(passage.from), resolve(passage.to)) else { continue };
+        let (Some(from_id), Some(to_id)) = (resolve(passage.from), resolve(passage.to)) else {
+            continue;
+        };
         match passage.one_way {
             None => {
-                preset_edge_ids.insert(graph.build_initial_edge(from_id, to_id, EdgeKind::VerticalPassage));
-                preset_edge_ids.insert(graph.build_initial_edge(to_id, from_id, EdgeKind::VerticalPassage));
+                preset_edge_ids.insert(graph.build_initial_edge(
+                    from_id,
+                    to_id,
+                    EdgeKind::VerticalPassage,
+                ));
+                preset_edge_ids.insert(graph.build_initial_edge(
+                    to_id,
+                    from_id,
+                    EdgeKind::VerticalPassage,
+                ));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
                 preset_edges.insert((to_id, from_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: from_id, to: to_id, two_way: true });
+                    emit(
+                        log,
+                        PresetSetupEvent::VerticalPassageEstablished {
+                            from: from_id,
+                            to: to_id,
+                            two_way: true,
+                        },
+                    );
                 }
             }
             Some(VerticalPassageDirection::Forward) => {
-                preset_edge_ids.insert(graph.build_initial_edge(from_id, to_id, EdgeKind::VerticalPassage));
+                preset_edge_ids.insert(graph.build_initial_edge(
+                    from_id,
+                    to_id,
+                    EdgeKind::VerticalPassage,
+                ));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: from_id, to: to_id, two_way: false });
+                    emit(
+                        log,
+                        PresetSetupEvent::VerticalPassageEstablished {
+                            from: from_id,
+                            to: to_id,
+                            two_way: false,
+                        },
+                    );
                 }
             }
             Some(VerticalPassageDirection::Backward) => {
-                preset_edge_ids.insert(graph.build_initial_edge(to_id, from_id, EdgeKind::VerticalPassage));
+                preset_edge_ids.insert(graph.build_initial_edge(
+                    to_id,
+                    from_id,
+                    EdgeKind::VerticalPassage,
+                ));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((to_id, from_id));
                 if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: to_id, to: from_id, two_way: false });
+                    emit(
+                        log,
+                        PresetSetupEvent::VerticalPassageEstablished {
+                            from: to_id,
+                            to: from_id,
+                            two_way: false,
+                        },
+                    );
                 }
             }
         }
     }
 
     for elevator in preset_elevators {
-        let node_ids: Vec<NodeId> = elevator.floors.iter().filter_map(|&ep| resolve(ep)).collect();
+        let node_ids: Vec<NodeId> = elevator
+            .floors
+            .iter()
+            .filter_map(|&ep| resolve(ep))
+            .collect();
         // Fewer than 2 resolved endpoints (invalid/unresolvable entries filtered by the client,
         // but not assumed — same defensive-skip contract every other preset endpoint uses) means
         // no fan to connect.
@@ -404,20 +525,44 @@ pub fn build_preset_state<T: Tessellation>(
             }
         }
         if let Some(log) = log.as_deref_mut() {
-            emit(log, PresetSetupEvent::ElevatorEstablished { nodes: node_ids });
+            emit(
+                log,
+                PresetSetupEvent::ElevatorEstablished { nodes: node_ids },
+            );
         }
     }
 
     for lock in locked_nodes {
-        let Some(id) = resolve(lock.point) else { continue };
+        let Some(id) = resolve(lock.point) else {
+            continue;
+        };
         match lock.kind {
-            NodeLockKind::In   => { locked_in.insert(id); }
-            NodeLockKind::Out  => { locked_out.insert(id); }
-            NodeLockKind::Both => { locked_in.insert(id); locked_out.insert(id); }
+            NodeLockKind::In => {
+                locked_in.insert(id);
+            }
+            NodeLockKind::Out => {
+                locked_out.insert(id);
+            }
+            NodeLockKind::Both => {
+                locked_in.insert(id);
+                locked_out.insert(id);
+            }
         }
     }
 
-    Ok(PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges, preset_edge_ids, preset_teleports, slots_by_point, preset_declared_nodes, preset_start: None, preset_finish: None })
+    Ok(PresetState {
+        blocked,
+        locked_out,
+        locked_in,
+        preset_connected,
+        preset_edges,
+        preset_edge_ids,
+        preset_teleports,
+        slots_by_point,
+        preset_declared_nodes,
+        preset_start: None,
+        preset_finish: None,
+    })
 }
 
 #[cfg(test)]

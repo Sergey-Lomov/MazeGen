@@ -225,6 +225,22 @@ export class PresetConnectionsController extends BaseController {
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.presetConnectionsTool;
 
+    // Locks are cell tools (not VERTEX_TOOLS), but a split cell still needs an explicit node
+    // target. Defer the click to the same picker used by other split-node vertex actions.
+    if (button === 0 && (tool === "lock_in" || tool === "lock_out" || tool === "full_lock")) {
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const point: [number, number] = [cell.x, cell.y];
+      const level = activeFloorLevel(state);
+      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      const splitKey = level === undefined ? `${cell.x},${cell.y}` : `${cell.x},${cell.y}@${level}`;
+      const slotIds = state.presetSplitPoints[splitKey];
+      if (slotIds && slotIds.length > 0) {
+        state.requestPresetSplitTarget({ point, level, slotIds: [...slotIds].sort((a, b) => a - b), action: { tool } });
+        return;
+      }
+    }
+
     if (VERTEX_TOOLS.has(tool)) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);

@@ -1,16 +1,22 @@
 use super::*;
-use crate::repair::params::build_params;
-use std::collections::HashMap;
-use rand::SeedableRng;
-use crate::random::MazeRng;
-use crate::graph::{Graph, EdgeKind};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField, Field};
+use crate::graph::{EdgeKind, Graph};
+use crate::random::MazeRng;
+use crate::repair::params::build_params;
 use crate::repair::strategies::AddElevatorStrategy;
 use crate::repair::strategies::test_utils::apply_and_commit;
+use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use rand::SeedableRng;
+use std::collections::HashMap;
 
 fn no_params() -> StrategyParams {
-    build_params(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy), None)
+    build_params(
+        <AddElevatorStopStrategy as RepairStrategy<
+            SquareTessellation,
+            AreaMissingElevatorStopsIssue,
+        >>::params(&AddElevatorStopStrategy),
+        None,
+    )
 }
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -18,17 +24,32 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     for &(k, v) in overrides {
         map.insert(k.to_string(), v.to_string());
     }
-    build_params(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy), Some(&map))
+    build_params(
+        <AddElevatorStopStrategy as RepairStrategy<
+            SquareTessellation,
+            AreaMissingElevatorStopsIssue,
+        >>::params(&AddElevatorStopStrategy),
+        Some(&map),
+    )
 }
 
-fn multi_floor_maze(floors: usize, side: usize) -> (Maze<SquareTessellation>, Vec<crate::space::LevelId>) {
+fn multi_floor_maze(
+    floors: usize,
+    side: usize,
+) -> (Maze<SquareTessellation>, Vec<crate::space::LevelId>) {
     let mut ids = IdGenerator::new();
     let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
     let levels: Vec<_> = (0..floors)
-        .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(side, side), &mut ids).unwrap()))
+        .map(|_| {
+            mf.add_level(
+                Field::<SquareTessellation>::new(square_rect(side, side), &mut ids).unwrap(),
+            )
+        })
         .collect();
     let mut g = Graph::new();
-    for node in mf.all_node_ids() { g.add_node(node); }
+    for node in mf.all_node_ids() {
+        g.add_node(node);
+    }
     (Maze::new(mf, g), levels)
 }
 
@@ -48,9 +69,15 @@ fn missing_issue(missing: Vec<(RepairArea, u32)>) -> AreaMissingElevatorStopsIss
 /// Wires a fully-connected 3-stop elevator at x=0 spanning floors 0..2 (of a `floors`-floor
 /// maze), leaving every other column empty — a single reusable elevator with a well-defined span
 /// for the reuse-branch tests.
-fn maze_with_one_elevator_spanning_first_three_floors(floors: usize, side: usize) -> (Maze<SquareTessellation>, Vec<crate::space::LevelId>) {
+fn maze_with_one_elevator_spanning_first_three_floors(
+    floors: usize,
+    side: usize,
+) -> (Maze<SquareTessellation>, Vec<crate::space::LevelId>) {
     let (mut maze, levels) = multi_floor_maze(floors, side);
-    let stops: Vec<_> = levels[..3.min(floors)].iter().map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+    let stops: Vec<_> = levels[..3.min(floors)]
+        .iter()
+        .map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+        .collect();
     for i in 0..stops.len() {
         for j in (i + 1)..stops.len() {
             maze.graph.add_edge(stops[i], stops[j], EdgeKind::Elevator);
@@ -65,7 +92,15 @@ fn apply_succeeds_immediately_when_nothing_missing() {
     let (mut maze, _levels) = multi_floor_maze(4, 3);
     let issue = missing_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert_eq!(maze.graph.edges().count(), 0);
 }
@@ -78,14 +113,25 @@ fn reuse_branch_adds_a_stop_to_an_existing_elevator_on_the_target_floor() {
     let issue = missing_issue(vec![(RepairArea::Level(levels[3]), 1)]);
     let mut rng = MazeRng::seed_from_u64(3);
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     // A new stop wired to the 3 existing stops -> 3 new unordered pairs -> 6 directed edges.
     assert_eq!(maze.graph.edges().count(), edges_before + 6);
     let groups = elevator_groups(&maze);
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].stops.len(), 4);
-    let stop_on_floor_3 = maze.field.node_at(levels[3], SquarePoint { x: 0, y: 0 }).unwrap();
+    let stop_on_floor_3 = maze
+        .field
+        .node_at(levels[3], SquarePoint { x: 0, y: 0 })
+        .unwrap();
     assert!(groups[0].stops.contains(&stop_on_floor_3));
 }
 
@@ -97,10 +143,22 @@ fn add_new_branch_delegates_to_the_nested_strategy() {
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 1, "add-new branch must have built a brand-new elevator via the nested strategy");
+    assert_eq!(
+        groups.len(),
+        1,
+        "add-new branch must have built a brand-new elevator via the nested strategy"
+    );
     let _ = levels;
 }
 
@@ -119,10 +177,22 @@ fn add_new_branch_injects_its_own_reserve_percent_into_the_nested_strategy() {
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 2, "the parent's reserve_percent=100 must reach the nested strategy, doubling the single synthetic deficit unit to 2 elevators");
+    assert_eq!(
+        groups.len(),
+        2,
+        "the parent's reserve_percent=100 must reach the nested strategy, doubling the single synthetic deficit unit to 2 elevators"
+    );
 }
 
 #[test]
@@ -143,10 +213,22 @@ fn a_stale_nested_reserve_percent_override_is_overridden_by_the_parent_value() {
         param_overrides: stale,
         nested: vec![],
     }];
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 1, "stale nested reserve_percent must be stripped; parent's default 0% wins");
+    assert_eq!(
+        groups.len(),
+        1,
+        "stale nested reserve_percent must be stripped; parent's default 0% wins"
+    );
 }
 
 #[test]
@@ -157,8 +239,19 @@ fn reuse_branch_failure_falls_back_to_add_new() {
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
     let mut rng = MazeRng::seed_from_u64(11);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "reuse fails (no elevators exist) but must fall back to add-new");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "reuse fails (no elevators exist) but must fall back to add-new"
+    );
     assert_eq!(elevator_groups(&maze).len(), 1);
 }
 
@@ -173,25 +266,55 @@ fn add_new_branch_failure_falls_back_to_reuse() {
     let survivor_point = SquarePoint { x: 0, y: 0 };
     let mut preset_state = PresetState::empty();
     for level in maze.field.levels_ordered().collect::<Vec<_>>() {
-        for node in maze.field.field_of(level).unwrap().all_points().filter_map(|p| {
-            if p == survivor_point { None } else { maze.field.node_at(level, p) }
-        }) {
+        for node in maze
+            .field
+            .field_of(level)
+            .unwrap()
+            .all_points()
+            .filter_map(|p| {
+                if p == survivor_point {
+                    None
+                } else {
+                    maze.field.node_at(level, p)
+                }
+            })
+        {
             preset_state.locked_out.insert(node);
         }
     }
 
     let mut overrides = HashMap::new();
     overrides.insert("existing_reuse_balance".to_string(), "0".to_string());
-    let params = build_params(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy), Some(&overrides));
+    let params = build_params(
+        <AddElevatorStopStrategy as RepairStrategy<
+            SquareTessellation,
+            AreaMissingElevatorStopsIssue,
+        >>::params(&AddElevatorStopStrategy),
+        Some(&overrides),
+    );
 
     let nested = add_elevator_nested();
 
     let issue = missing_issue(vec![(RepairArea::Level(levels[3]), 1)]);
     let mut rng = MazeRng::seed_from_u64(2);
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &preset_state, &nested);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "add-new fails (every start locked out) but must fall back to reuse");
-    assert!(maze.graph.edges().count() > edges_before, "reuse fallback must have added a stop");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &preset_state,
+        &nested,
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "add-new fails (every start locked out) but must fall back to reuse"
+    );
+    assert!(
+        maze.graph.edges().count() > edges_before,
+        "reuse fallback must have added a stop"
+    );
 }
 
 #[test]
@@ -199,11 +322,25 @@ fn allow_span_extension_true_permits_extending_the_span_outward() {
     // Elevator spans floors 0..2 (indices 0,1,2) of a 4-floor maze; floor index 3 is outside
     // the span but adjacent -- only reachable with allow_span_extension=true.
     let (mut maze, levels) = maze_with_one_elevator_spanning_first_three_floors(4, 3);
-    let params = params_with(&[("existing_reuse_balance", "0"), ("allow_span_extension", "true")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "0"),
+        ("allow_span_extension", "true"),
+    ]);
     let issue = missing_issue(vec![(RepairArea::Level(levels[3]), 1)]);
     let mut rng = MazeRng::seed_from_u64(4);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "span extension must allow reaching floor 3");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "span extension must allow reaching floor 3"
+    );
     let groups = elevator_groups(&maze);
     assert_eq!(groups[0].stops.len(), 4);
 }
@@ -211,14 +348,28 @@ fn allow_span_extension_true_permits_extending_the_span_outward() {
 #[test]
 fn allow_span_extension_false_forbids_extending_the_span_outward() {
     let (mut maze, levels) = maze_with_one_elevator_spanning_first_three_floors(4, 3);
-    let params = params_with(&[("existing_reuse_balance", "0"), ("allow_span_extension", "false")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "0"),
+        ("allow_span_extension", "false"),
+    ]);
     let issue = missing_issue(vec![(RepairArea::Level(levels[3]), 1)]);
     let mut rng = MazeRng::seed_from_u64(4);
     // No nested strategy configured -> add-new branch (the only fallback) fails too, so the
     // whole call must fail: reuse is blocked by allow_span_extension=false and there's nothing
     // else to try.
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Failed), "extending the span outward must be forbidden when allow_span_extension=false");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "extending the span outward must be forbidden when allow_span_extension=false"
+    );
     let groups = elevator_groups(&maze);
     assert_eq!(groups[0].stops.len(), 3, "no new stop must have been added");
 }
@@ -228,16 +379,36 @@ fn allow_span_extension_false_still_permits_filling_an_interior_gap() {
     // Elevator stops at floor indices 0 and 2 (skipping 1) of a 4-floor maze -- floor 1 is a
     // genuine interior gap, fillable regardless of allow_span_extension.
     let (mut maze, levels) = multi_floor_maze(4, 3);
-    let a = maze.field.node_at(levels[0], SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = maze.field.node_at(levels[2], SquarePoint { x: 0, y: 0 }).unwrap();
+    let a = maze
+        .field
+        .node_at(levels[0], SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let b = maze
+        .field
+        .node_at(levels[2], SquarePoint { x: 0, y: 0 })
+        .unwrap();
     maze.graph.add_edge(a, b, EdgeKind::Elevator);
     maze.graph.add_edge(b, a, EdgeKind::Elevator);
 
-    let params = params_with(&[("existing_reuse_balance", "0"), ("allow_span_extension", "false")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "0"),
+        ("allow_span_extension", "false"),
+    ]);
     let issue = missing_issue(vec![(RepairArea::Level(levels[1]), 1)]);
     let mut rng = MazeRng::seed_from_u64(6);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "an interior gap must always be fillable");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "an interior gap must always be fillable"
+    );
     let groups = elevator_groups(&maze);
     assert_eq!(groups[0].stops.len(), 3);
 }
@@ -248,13 +419,30 @@ fn whole_maze_reuse_picks_a_floor_the_elevator_does_not_already_stop_at() {
     let params = params_with(&[("existing_reuse_balance", "0")]);
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
     let mut rng = MazeRng::seed_from_u64(8);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
     assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].stops.len(), 4, "exactly one new stop must have been added");
-    let stopped_floors: std::collections::HashSet<usize> = stop_floors(&groups[0], &maze).into_iter().collect();
-    assert_eq!(stopped_floors.len(), 4, "every stop must be on a distinct floor, including the newly added one");
+    assert_eq!(
+        groups[0].stops.len(),
+        4,
+        "exactly one new stop must have been added"
+    );
+    let stopped_floors: std::collections::HashSet<usize> =
+        stop_floors(&groups[0], &maze).into_iter().collect();
+    assert_eq!(
+        stopped_floors.len(),
+        4,
+        "every stop must be on a distinct floor, including the newly added one"
+    );
     let _ = levels;
 }
 
@@ -268,19 +456,41 @@ fn whole_maze_reuse_forbids_extending_the_span_outward_when_span_extension_is_di
     // deficit of 4 (one per free floor), only the 3 interior gaps may be filled; floor 5 must be
     // left alone, forcing the 4th unit to fail reuse and fall back to add-new instead.
     let (mut maze, levels) = multi_floor_maze(6, 3);
-    let stops: Vec<_> = [levels[0], levels[4]].iter().map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+    let stops: Vec<_> = [levels[0], levels[4]]
+        .iter()
+        .map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+        .collect();
     maze.graph.add_edge(stops[0], stops[1], EdgeKind::Elevator);
     maze.graph.add_edge(stops[1], stops[0], EdgeKind::Elevator);
 
-    let params = params_with(&[("existing_reuse_balance", "1"), ("allow_span_extension", "false")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "1"),
+        ("allow_span_extension", "false"),
+    ]);
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 3)]);
     let mut rng = MazeRng::seed_from_u64(21);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 1, "no nested add-new strategy configured -- only the preset elevator can gain stops");
+    assert_eq!(
+        groups.len(),
+        1,
+        "no nested add-new strategy configured -- only the preset elevator can gain stops"
+    );
     let floors = stop_floors(&groups[0], &maze);
-    assert_eq!(floors, vec![0, 1, 2, 3, 4], "must have filled exactly the 3 interior gaps, never floor 5 (an extension)");
+    assert_eq!(
+        floors,
+        vec![0, 1, 2, 3, 4],
+        "must have filled exactly the 3 interior gaps, never floor 5 (an extension)"
+    );
 }
 
 #[test]
@@ -291,11 +501,17 @@ fn level_scoped_reuse_forbids_extending_the_span_outward_when_span_extension_is_
     // floors' own per-floor deficit must fail reuse against the preset elevator and fall back to
     // building a brand-new one instead of growing the preset elevator past its original span.
     let (mut maze, levels) = multi_floor_maze(8, 3);
-    let stops: Vec<_> = [levels[0], levels[4]].iter().map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+    let stops: Vec<_> = [levels[0], levels[4]]
+        .iter()
+        .map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+        .collect();
     maze.graph.add_edge(stops[0], stops[1], EdgeKind::Elevator);
     maze.graph.add_edge(stops[1], stops[0], EdgeKind::Elevator);
 
-    let params = params_with(&[("existing_reuse_balance", "1"), ("allow_span_extension", "false")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "1"),
+        ("allow_span_extension", "false"),
+    ]);
     let issue = missing_issue(vec![
         (RepairArea::Level(levels[5]), 1),
         (RepairArea::Level(levels[6]), 1),
@@ -303,12 +519,24 @@ fn level_scoped_reuse_forbids_extending_the_span_outward_when_span_extension_is_
     ]);
     let mut rng = MazeRng::seed_from_u64(3);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
     let preset_group = groups.iter().find(|g| g.stops.contains(&stops[0])).unwrap();
     let preset_floors = stop_floors(preset_group, &maze);
-    assert_eq!(preset_floors, vec![0, 4], "the preset elevator's span must stay exactly 0..4 -- span extension is forbidden");
+    assert_eq!(
+        preset_floors,
+        vec![0, 4],
+        "the preset elevator's span must stay exactly 0..4 -- span extension is forbidden"
+    );
 }
 
 #[test]
@@ -317,10 +545,21 @@ fn per_floor_and_whole_maze_deficits_are_both_decremented_by_one_addition() {
     // RemainingDeficits itself documents -- one addition on the named floor must satisfy both.
     let (mut maze, levels) = maze_with_one_elevator_spanning_first_three_floors(4, 3);
     let params = params_with(&[("existing_reuse_balance", "0")]);
-    let issue = missing_issue(vec![(RepairArea::Level(levels[3]), 1), (RepairArea::WholeMaze, 1)]);
+    let issue = missing_issue(vec![
+        (RepairArea::Level(levels[3]), 1),
+        (RepairArea::WholeMaze, 1),
+    ]);
     let mut rng = MazeRng::seed_from_u64(9);
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     // Only 1 stop should have been added in total (6 new directed edges), not 2 (one per
     // deficit entry) -- the whole-maze entry is the same requirement as the per-floor one.
@@ -346,13 +585,31 @@ fn add_new_branch_for_a_per_floor_deficit_always_lands_a_stop_on_the_requested_f
         let target_level = levels[2];
         let issue = missing_issue(vec![(RepairArea::Level(target_level), 1)]);
         let mut rng = MazeRng::seed_from_u64(seed);
-        let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
-        assert!(matches!(result, RepairResult::Fixed { score: None }), "seed {seed}: must succeed");
+        let result = apply_and_commit(
+            &AddElevatorStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &nested,
+        );
+        assert!(
+            matches!(result, RepairResult::Fixed { score: None }),
+            "seed {seed}: must succeed"
+        );
         let groups = elevator_groups(&maze);
-        assert_eq!(groups.len(), 1, "seed {seed}: a per-floor deficit of 1 must be covered by exactly one elevator");
+        assert_eq!(
+            groups.len(),
+            1,
+            "seed {seed}: a per-floor deficit of 1 must be covered by exactly one elevator"
+        );
         let floors = stop_floors(&groups[0], &maze);
         let target_idx = levels.iter().position(|&l| l == target_level).unwrap();
-        assert!(floors.contains(&target_idx), "seed {seed}: the built elevator must stop on the requested floor");
+        assert!(
+            floors.contains(&target_idx),
+            "seed {seed}: the built elevator must stop on the requested floor"
+        );
     }
 }
 
@@ -367,10 +624,22 @@ fn add_new_branch_delivering_several_stops_at_once_does_not_overshoot_the_defici
     let issue = missing_issue(vec![(RepairArea::WholeMaze, 2)]);
     let mut rng = MazeRng::seed_from_u64(42);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 1, "one elevator with >=2 stops already covers a deficit of 2 -- must not build a second one");
+    assert_eq!(
+        groups.len(),
+        1,
+        "one elevator with >=2 stops already covers a deficit of 2 -- must not build a second one"
+    );
 }
 
 #[test]
@@ -384,7 +653,10 @@ fn reuse_branch_grows_an_elevator_planned_earlier_in_the_same_call_instead_of_bu
     // `maze` is an immutable pre-mutation snapshot) -- so reuse kept reporting "nothing to reuse"
     // and every deficit unit fell back to building a brand-new elevator.
     let (mut maze, levels) = multi_floor_maze(3, 3);
-    let params = params_with(&[("existing_reuse_balance", "1"), ("allow_span_extension", "true")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "1"),
+        ("allow_span_extension", "true"),
+    ]);
     let issue = missing_issue(vec![
         (RepairArea::Level(levels[0]), 2),
         (RepairArea::Level(levels[1]), 2),
@@ -392,12 +664,28 @@ fn reuse_branch_grows_an_elevator_planned_earlier_in_the_same_call_instead_of_bu
     ]);
     let mut rng = MazeRng::seed_from_u64(7);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 2, "a per-floor deficit of 2 on every floor must settle on 2 elevators, not spin up a new one per unit");
+    assert_eq!(
+        groups.len(),
+        2,
+        "a per-floor deficit of 2 on every floor must settle on 2 elevators, not spin up a new one per unit"
+    );
     for g in &groups {
-        assert_eq!(stop_floors(g, &maze).len(), 3, "each elevator must stop on every floor");
+        assert_eq!(
+            stop_floors(g, &maze).len(),
+            3,
+            "each elevator must stop on every floor"
+        );
     }
 }
 
@@ -411,8 +699,14 @@ fn reuse_branch_grows_both_preset_elevators_across_every_interior_floor() {
     let (mut maze, levels) = multi_floor_maze(8, 3);
     let a_point = SquarePoint { x: 0, y: 0 };
     let b_point = SquarePoint { x: 1, y: 0 };
-    let a_stops: Vec<_> = [levels[0], levels[7]].iter().map(|&l| maze.field.node_at(l, a_point).unwrap()).collect();
-    let b_stops: Vec<_> = [levels[0], levels[7]].iter().map(|&l| maze.field.node_at(l, b_point).unwrap()).collect();
+    let a_stops: Vec<_> = [levels[0], levels[7]]
+        .iter()
+        .map(|&l| maze.field.node_at(l, a_point).unwrap())
+        .collect();
+    let b_stops: Vec<_> = [levels[0], levels[7]]
+        .iter()
+        .map(|&l| maze.field.node_at(l, b_point).unwrap())
+        .collect();
     for stops in [&a_stops, &b_stops] {
         for i in 0..stops.len() {
             for j in (i + 1)..stops.len() {
@@ -422,22 +716,45 @@ fn reuse_branch_grows_both_preset_elevators_across_every_interior_floor() {
         }
     }
 
-    let params = params_with(&[("existing_reuse_balance", "1"), ("allow_span_extension", "true")]);
+    let params = params_with(&[
+        ("existing_reuse_balance", "1"),
+        ("allow_span_extension", "true"),
+    ]);
     // Floors 0 and 7 already have 2 stops each (one from each preset elevator) -- deficit there
     // is 0, already satisfied (mirrors what `MinElevatorStopsPerAreaCountCheck` would actually
     // report: `min - existing`). Only the interior floors 1..6 need anything.
-    let issue = missing_issue(levels.iter().enumerate()
-        .filter(|&(i, _)| i != 0 && i != 7)
-        .map(|(_, &l)| (RepairArea::Level(l), 2))
-        .collect());
+    let issue = missing_issue(
+        levels
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != 0 && i != 7)
+            .map(|(_, &l)| (RepairArea::Level(l), 2))
+            .collect(),
+    );
     let mut rng = MazeRng::seed_from_u64(13);
     let nested = add_elevator_nested();
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let groups = elevator_groups(&maze);
-    assert_eq!(groups.len(), 2, "every deficit unit is a gap-fill reachable by one of the 2 preset elevators -- no new elevator should be built");
+    assert_eq!(
+        groups.len(),
+        2,
+        "every deficit unit is a gap-fill reachable by one of the 2 preset elevators -- no new elevator should be built"
+    );
     for g in &groups {
-        assert_eq!(stop_floors(g, &maze).len(), 8, "each preset elevator must end up stopping on every floor");
+        assert_eq!(
+            stop_floors(g, &maze).len(),
+            8,
+            "each preset elevator must end up stopping on every floor"
+        );
     }
 }
 
@@ -459,7 +776,10 @@ fn attempts_limit_is_a_per_area_budget_not_shared_across_areas() {
     // With attempts_limit=1, floor 0's single guaranteed failure must not consume a budget that
     // floor 3's fillable deficit also needs.
     let (mut maze, levels) = multi_floor_maze(6, 3);
-    let stops: Vec<_> = [levels[1], levels[5]].iter().map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+    let stops: Vec<_> = [levels[1], levels[5]]
+        .iter()
+        .map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+        .collect();
     maze.graph.add_edge(stops[0], stops[1], EdgeKind::Elevator);
     maze.graph.add_edge(stops[1], stops[0], EdgeKind::Elevator);
 
@@ -473,12 +793,29 @@ fn attempts_limit_is_a_per_area_budget_not_shared_across_areas() {
         (RepairArea::Level(levels[3]), 1),
     ]);
     let mut rng = MazeRng::seed_from_u64(4);
-    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "floor 3's fillable deficit must not be starved by floor 0's exhausted budget");
+    let result = apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "floor 3's fillable deficit must not be starved by floor 0's exhausted budget"
+    );
     let groups = elevator_groups(&maze);
     let floors = stop_floors(&groups[0], &maze);
-    assert!(floors.contains(&3), "floor 3 (a genuine interior gap) must have gained a stop");
-    assert!(!floors.contains(&0), "floor 0 (an out-of-span extension) must never gain a stop with allow_span_extension=false");
+    assert!(
+        floors.contains(&3),
+        "floor 3 (a genuine interior gap) must have gained a stop"
+    );
+    assert!(
+        !floors.contains(&0),
+        "floor 0 (an out-of-span extension) must never gain a stop with allow_span_extension=false"
+    );
 }
 
 #[test]
@@ -488,12 +825,28 @@ fn apply_is_deterministic_for_fixed_seed() {
     let (mut maze_a, _) = maze_with_one_elevator_spanning_first_three_floors(6, 3);
     let mut rng_a = MazeRng::seed_from_u64(123);
     let nested_a = add_elevator_nested();
-    apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &nested_a);
+    apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze_a,
+        &mut rng_a,
+        &no_params(),
+        &PresetState::empty(),
+        &nested_a,
+    );
 
     let (mut maze_b, _) = maze_with_one_elevator_spanning_first_three_floors(6, 3);
     let mut rng_b = MazeRng::seed_from_u64(123);
     let nested_b = add_elevator_nested();
-    apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &nested_b);
+    apply_and_commit(
+        &AddElevatorStopStrategy,
+        &issue,
+        &mut maze_b,
+        &mut rng_b,
+        &no_params(),
+        &PresetState::empty(),
+        &nested_b,
+    );
 
     let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
     let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -507,21 +860,40 @@ fn add_stop_command_with_planned_rejects_a_stop_already_wired_via_a_planned_pair
     // check, a stop that's already been wired to `elevator` via a not-yet-applied command could be
     // "added" again, producing a duplicate AddBidirectionalElevator pair.
     let (mut maze, levels) = multi_floor_maze(3, 3);
-    let a = maze.field.node_at(levels[0], SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = maze.field.node_at(levels[1], SquarePoint { x: 0, y: 0 }).unwrap();
+    let a = maze
+        .field
+        .node_at(levels[0], SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let b = maze
+        .field
+        .node_at(levels[1], SquarePoint { x: 0, y: 0 })
+        .unwrap();
     maze.graph.add_edge(a, b, EdgeKind::Elevator);
     maze.graph.add_edge(b, a, EdgeKind::Elevator);
 
-    let elevator = Elevator { stops: vec![a, b], edges: Vec::new() };
+    let elevator = Elevator {
+        stops: vec![a, b],
+        edges: Vec::new(),
+    };
     let target_level = levels[2];
-    let new_stop = maze.field.node_at(target_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let new_stop = maze
+        .field
+        .node_at(target_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
 
     // Not yet a real edge in `maze.graph` -- only planned, as if an earlier iteration of this same
     // `apply()` call already queued a command wiring `a` to `new_stop`.
     let planned = vec![(a, new_stop)];
 
     assert!(
-        add_stop_command_with_planned(&maze, &planned, &elevator, target_level, &PresetState::empty()).is_none(),
+        add_stop_command_with_planned(
+            &maze,
+            &planned,
+            &elevator,
+            target_level,
+            &PresetState::empty()
+        )
+        .is_none(),
         "must reject a new_stop that already has a planned (not yet committed) edge to one of the elevator's stops"
     );
 }

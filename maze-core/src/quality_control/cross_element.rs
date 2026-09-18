@@ -126,24 +126,31 @@ pub struct CrossElementOccurrence<T: Tessellation> {
 /// route-protection check and for re-resolving during repair). Split/Start/Finish own no edges.
 pub fn cross_element_edges<T: Tessellation>(maze: &Maze<T>, element: &CrossElement) -> Vec<EdgeId> {
     match element {
-        CrossElement::Teleport((a, b)) => {
-            [
-                maze.graph.edge_between(*a, *b),
-                maze.graph.edge_between(*b, *a),
-            ]
-            .into_iter()
-            .flatten()
-            .filter(|&id| maze.graph.edge(id).is_some_and(|e| e.kind == EdgeKind::Teleport))
-            .collect()
-        }
+        CrossElement::Teleport((a, b)) => [
+            maze.graph.edge_between(*a, *b),
+            maze.graph.edge_between(*b, *a),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|&id| {
+            maze.graph
+                .edge(id)
+                .is_some_and(|e| e.kind == EdgeKind::Teleport)
+        })
+        .collect(),
         CrossElement::OneWay(id) | CrossElement::VerticalPassage(id) => {
-            let Some(edge) = maze.graph.edge(*id) else { return Vec::new() };
+            let Some(edge) = maze.graph.edge(*id) else {
+                return Vec::new();
+            };
             let mut edges = vec![*id];
             // A two-way vertical passage: include the reverse so `element_invalidated` sees the
             // whole passage gone only when both directions are removed.
             if edge.kind == EdgeKind::VerticalPassage {
                 if let Some(rev) = maze.graph.edge_between(edge.to, edge.from)
-                    && maze.graph.edge(rev).is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
+                    && maze
+                        .graph
+                        .edge(rev)
+                        .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
                 {
                     edges.push(rev);
                 }
@@ -176,7 +183,10 @@ pub fn cross_element_edges<T: Tessellation>(maze: &Maze<T>, element: &CrossEleme
 /// proximity checks to drop a pair whose *both* elements are route-protected (GitHub issue #376
 /// follow-up), the same "only exclude when both sides are on the route" rule the same-type checks
 /// use — a pair with one protected and one free element is still a legitimate repair target.
-pub fn cross_element_route_protected<T: Tessellation>(maze: &Maze<T>, element: &CrossElement) -> bool {
+pub fn cross_element_route_protected<T: Tessellation>(
+    maze: &Maze<T>,
+    element: &CrossElement,
+) -> bool {
     match element {
         CrossElement::Start(_) | CrossElement::Finish(_) => true,
         _ => cross_element_edges(maze, element)
@@ -195,21 +205,22 @@ pub fn cross_element_occurrences<T: Tessellation>(
     nav: &NavGraph,
 ) -> Vec<CrossElementOccurrence<T>> {
     let mut out = Vec::new();
-    let push_at = |out: &mut Vec<CrossElementOccurrence<T>>, element: CrossElement, node: NodeId| {
-        let (Some(level_index), Some(point)) =
-            (maze.field.level_index_of(node), maze.field.point_of(node))
-        else {
-            return;
+    let push_at =
+        |out: &mut Vec<CrossElementOccurrence<T>>, element: CrossElement, node: NodeId| {
+            let (Some(level_index), Some(point)) =
+                (maze.field.level_index_of(node), maze.field.point_of(node))
+            else {
+                return;
+            };
+            out.push(CrossElementOccurrence {
+                element,
+                node,
+                level_index,
+                point,
+                xy: T::cartesian(point),
+                nav_node: nav.nav_node_for(node),
+            });
         };
-        out.push(CrossElementOccurrence {
-            element,
-            node,
-            level_index,
-            point,
-            xy: T::cartesian(point),
-            nav_node: nav.nav_node_for(node),
-        });
-    };
 
     if set.teleport {
         let mut seen: HashSet<TeleportId> = HashSet::new();
@@ -230,7 +241,9 @@ pub fn cross_element_occurrences<T: Tessellation>(
         // the graph metric measures from per-endpoint, same as before), just with `xy` overwritten
         // on both after the fact.
         for (id, from, to) in one_way_edges_with_endpoints(maze) {
-            let (Some(from_point), Some(to_point)) = (maze.field.point_of(from), maze.field.point_of(to)) else {
+            let (Some(from_point), Some(to_point)) =
+                (maze.field.point_of(from), maze.field.point_of(to))
+            else {
                 continue;
             };
             let edge_xy = T::edge_position(from_point, to_point);
@@ -245,7 +258,11 @@ pub fn cross_element_occurrences<T: Tessellation>(
 
     if set.vertical_passage {
         for c in vertical_passage_proximity_candidates(maze, VerticalPassageType::Any, true) {
-            push_at(&mut out, CrossElement::VerticalPassage(c.canonical_edge), c.node);
+            push_at(
+                &mut out,
+                CrossElement::VerticalPassage(c.canonical_edge),
+                c.node,
+            );
         }
     }
 
@@ -277,10 +294,14 @@ pub fn cross_element_occurrences<T: Tessellation>(
         }
     }
 
-    if set.start && let Some(start) = maze.meta.start {
+    if set.start
+        && let Some(start) = maze.meta.start
+    {
         push_at(&mut out, CrossElement::Start(start), start);
     }
-    if set.finish && let Some(finish) = maze.meta.finish {
+    if set.finish
+        && let Some(finish) = maze.meta.finish
+    {
         push_at(&mut out, CrossElement::Finish(finish), finish);
     }
 
@@ -291,18 +312,21 @@ pub fn cross_element_occurrences<T: Tessellation>(
 /// Whether a cross-element still physically exists in the maze after a repair mutation — used by
 /// the strategy to decide when a nested fix has invalidated an element (and thus every group it
 /// was in). Element-specific: a removed edge, a collapsed tile, a vanished elevator fan.
-pub fn cross_element_still_violates<T: Tessellation>(maze: &Maze<T>, element: &CrossElement) -> bool {
+pub fn cross_element_still_violates<T: Tessellation>(
+    maze: &Maze<T>,
+    element: &CrossElement,
+) -> bool {
     match element {
-        CrossElement::Teleport(_)
-        | CrossElement::OneWay(_)
-        | CrossElement::VerticalPassage(_) => {
+        CrossElement::Teleport(_) | CrossElement::OneWay(_) | CrossElement::VerticalPassage(_) => {
             !cross_element_edges(maze, element).is_empty()
         }
         CrossElement::ElevatorStop(stop) => elevator_groups(maze)
             .iter()
             .any(|e| e.stops.len() >= 2 && e.stops.contains(stop)),
         CrossElement::Split(tile) => {
-            let Some(&node) = tile.0.first() else { return false };
+            let Some(&node) = tile.0.first() else {
+                return false;
+            };
             let (Some(level), Some(point)) = (maze.field.level_of(node), maze.field.point_of(node))
             else {
                 return false;
@@ -351,7 +375,8 @@ pub fn cross_element_preset_locked<T: Tessellation>(
 /// since an earlier fix in the same pass may have changed the tile.
 pub fn split_tile_nodes_of<T: Tessellation>(maze: &Maze<T>, cached: &[NodeId]) -> Vec<NodeId> {
     for &anchor in cached {
-        let (Some(level), Some(point)) = (maze.field.level_of(anchor), maze.field.point_of(anchor)) else {
+        let (Some(level), Some(point)) = (maze.field.level_of(anchor), maze.field.point_of(anchor))
+        else {
             continue;
         };
         let nodes = maze.field.nodes_at(level, point);
@@ -364,11 +389,7 @@ pub fn split_tile_nodes_of<T: Tessellation>(maze: &Maze<T>, cached: &[NodeId]) -
 }
 
 fn teleport_id(a: NodeId, b: NodeId) -> TeleportId {
-    if a <= b {
-        (a, b)
-    } else {
-        (b, a)
-    }
+    if a <= b { (a, b) } else { (b, a) }
 }
 
 #[cfg(test)]
@@ -411,7 +432,8 @@ mod tests {
     #[test]
     fn teleport_contributes_two_occurrences_for_one_portal_regardless_of_direction() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -428,8 +450,15 @@ mod tests {
             .iter()
             .filter(|o| matches!(o.element, CrossElement::Teleport(_)))
             .collect();
-        assert_eq!(teleports.len(), 2, "one portal, two ends, deduped across both directions");
-        assert!(teleports.iter().all(|o| o.element == teleports[0].element), "same canonical id");
+        assert_eq!(
+            teleports.len(),
+            2,
+            "one portal, two ends, deduped across both directions"
+        );
+        assert!(
+            teleports.iter().all(|o| o.element == teleports[0].element),
+            "same canonical id"
+        );
     }
 
     #[test]
@@ -437,7 +466,9 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -464,7 +495,11 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(stops.len(), 3, "3 stops -> 3 occurrences, one distinct element each");
+        assert_eq!(
+            stops.len(),
+            3,
+            "3 stops -> 3 occurrences, one distinct element each"
+        );
         stops.sort_unstable();
         let mut expected = nodes.clone();
         expected.sort_unstable();
@@ -474,7 +509,8 @@ mod tests {
     #[test]
     fn set_excludes_disabled_types_from_occurrences() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -488,13 +524,17 @@ mod tests {
         let mut set = all_types();
         set.one_way = false;
         let occ = cross_element_occurrences(&maze, &set, &nav);
-        assert!(occ.iter().all(|o| !matches!(o.element, CrossElement::OneWay(_))));
+        assert!(
+            occ.iter()
+                .all(|o| !matches!(o.element, CrossElement::OneWay(_)))
+        );
     }
 
     #[test]
     fn still_violates_tracks_edge_removal() {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -522,10 +562,16 @@ mod tests {
             g.add_node(n);
         }
         let mut maze = Maze::new(field, g);
-        let tile_nodes = maze.field.nodes_at(level, SquarePoint { x: 1, y: 0 }).to_vec();
+        let tile_nodes = maze
+            .field
+            .nodes_at(level, SquarePoint { x: 1, y: 0 })
+            .to_vec();
         assert_eq!(tile_nodes.len(), 2);
         let element = CrossElement::Split(SplitTileNodes::new(tile_nodes));
-        assert!(cross_element_still_violates(&maze, &element), "two nodes at the tile -> still a split");
+        assert!(
+            cross_element_still_violates(&maze, &element),
+            "two nodes at the tile -> still a split"
+        );
 
         maze.field.remove_node_at(extra);
         assert!(
@@ -539,7 +585,9 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
@@ -557,7 +605,10 @@ mod tests {
         }
         let mut maze = Maze::new(mf, g);
         let element = CrossElement::ElevatorStop(stops[0]);
-        assert!(cross_element_still_violates(&maze, &element), "3-stop fan -> stop is live");
+        assert!(
+            cross_element_still_violates(&maze, &element),
+            "3-stop fan -> stop is live"
+        );
 
         // Strip every Elevator edge touching stops[0]. The remaining fan {stops[1], stops[2]} still
         // exists, but stops[0] is no longer part of any elevator -> its element no longer violates.
@@ -580,8 +631,10 @@ mod tests {
     fn cross_element_edges_two_way_vertical_passage_includes_the_reverse_edge() {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let g0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let g1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let g0 =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let g1 =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
             g.add_node(n);
@@ -593,6 +646,10 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let edges = cross_element_edges(&maze, &CrossElement::VerticalPassage(fwd));
-        assert_eq!(edges.len(), 2, "a two-way vertical passage owns both directed edges");
+        assert_eq!(
+            edges.len(),
+            2,
+            "a two-way vertical passage owns both directed edges"
+        );
     }
 }

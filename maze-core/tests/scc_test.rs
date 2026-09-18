@@ -1,6 +1,6 @@
+use maze_core::graph::EdgeKind;
 use maze_core::graph::Graph;
 use maze_core::graph::scc::build_scc;
-use maze_core::graph::EdgeKind;
 use maze_core::ids::IdGenerator;
 
 fn make_graph(n: usize) -> (Graph, Vec<u64>) {

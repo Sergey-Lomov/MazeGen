@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ids::NodeId;
 use crate::quality_control::cross_element::CrossElement;
 use crate::quality_control::issue::{
-    Issue, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
-    INVALID_CROSS_ELEMENT_GROUP, INVALID_TELEPORT,
+    INVALID_CROSS_ELEMENT_GROUP, INVALID_TELEPORT, Issue, IssueKind, IssueKindConst, IssueMerge,
+    IssueMeta, IssueRequirement,
 };
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
@@ -167,8 +167,17 @@ mod tests {
         let mut a = issue("rule_1:a", vec![teleport(0, 1), one_way(2)]);
         let b = issue("rule_2:b", vec![one_way(2), teleport(0, 1)]);
         a.merge(b);
-        assert_eq!(a.groups().len(), 1, "same logical pair from two instances collapses to one group");
-        let sources = a.invalid_sources().values().flatten().cloned().collect::<Vec<_>>();
+        assert_eq!(
+            a.groups().len(),
+            1,
+            "same logical pair from two instances collapses to one group"
+        );
+        let sources = a
+            .invalid_sources()
+            .values()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>();
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_2:b".to_string()));
     }
@@ -191,17 +200,32 @@ mod tests {
 
         let mut close_a = HashMap::new();
         close_a.insert(key.clone(), HashMap::from([(teleport(0, 1), vec![0])]));
-        let mut a = InvalidCrossElementGroupIssue::new_from_check("rule_1:a", vec![(pair.clone(), 1)], close_a);
+        let mut a = InvalidCrossElementGroupIssue::new_from_check(
+            "rule_1:a",
+            vec![(pair.clone(), 1)],
+            close_a,
+        );
 
         let mut close_b = HashMap::new();
-        close_b.insert(key.clone(), HashMap::from([(teleport(0, 1), vec![1]), (one_way(2), vec![7])]));
-        let b = InvalidCrossElementGroupIssue::new_from_check("rule_1:b", vec![(pair.clone(), 1)], close_b);
+        close_b.insert(
+            key.clone(),
+            HashMap::from([(teleport(0, 1), vec![1]), (one_way(2), vec![7])]),
+        );
+        let b = InvalidCrossElementGroupIssue::new_from_check(
+            "rule_1:b",
+            vec![(pair.clone(), 1)],
+            close_b,
+        );
 
         a.merge(b);
         let merged = &a.close_nodes[&key];
         let mut tp_nodes = merged[&teleport(0, 1)].clone();
         tp_nodes.sort_unstable();
-        assert_eq!(tp_nodes, vec![0, 1], "both ends the two checks found are kept");
+        assert_eq!(
+            tp_nodes,
+            vec![0, 1],
+            "both ends the two checks found are kept"
+        );
         assert_eq!(merged[&one_way(2)], vec![7]);
     }
 }

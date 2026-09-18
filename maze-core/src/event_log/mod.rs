@@ -20,11 +20,12 @@ mod wire;
 pub mod wire_primitives;
 
 pub use deltas::{
-    DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EventedEventKind,
+    DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta,
+    DebugVertexOp, EventedEventKind,
 };
-pub use merge::{merge_tapes, TapeSource, LOCAL_TAG_MASK, SOURCE_MASK, SOURCE_SHIFT};
+pub use merge::{LOCAL_TAG_MASK, SOURCE_MASK, SOURCE_SHIFT, TapeSource, merge_tapes};
 pub use tape::{DebugEvent, EventLog, NodePayload, NodeView, ScopeGuard};
-pub use wire::{EncodeEventPayload, EncodedTape, NODE_RECORD_SIZE, NO_NODE, TAG_SCOPE};
+pub use wire::{EncodeEventPayload, EncodedTape, NO_NODE, NODE_RECORD_SIZE, TAG_SCOPE};
 
 // `DebugTape` lives in `tape` (its arena data is stored there) but grows methods in `wire`
 // (`encode`) — re-exported from here since it's the one type spanning multiple submodules.

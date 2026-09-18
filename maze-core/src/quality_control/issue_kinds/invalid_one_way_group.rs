@@ -1,5 +1,5 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
+use crate::quality_control::issue::{INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, IssueKind};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
@@ -58,7 +58,11 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 1)],
+            "the same group flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
@@ -67,7 +71,12 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups.len(), 1, "(0,1) and (1,0) must collapse to a single group: {:?}", a.groups);
+        assert_eq!(
+            a.groups.len(),
+            1,
+            "(0,1) and (1,0) must collapse to a single group: {:?}",
+            a.groups
+        );
     }
 
     #[test]
@@ -76,7 +85,11 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 3)],
+            "the larger to_remove must win"
+        );
     }
 
     #[test]
@@ -85,7 +98,11 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win regardless of which side already had it");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 3)],
+            "the larger to_remove must win regardless of which side already had it"
+        );
     }
 
     #[test]
@@ -94,8 +111,14 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&vec![0, 1]), Some(&vec!["rule_1:a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&vec![2, 3]), Some(&vec!["rule_1:b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&vec![0, 1]),
+            Some(&vec!["rule_1:a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&vec![2, 3]),
+            Some(&vec!["rule_1:b".to_string()])
+        );
     }
 
     #[test]
@@ -104,7 +127,10 @@ mod tests {
         let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 2)]);
         a.merge(b);
 
-        let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&vec![0, 1])
+            .expect("merged group must have recorded sources");
         assert_eq!(sources.len(), 2);
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_1:b".to_string()));
@@ -118,7 +144,10 @@ mod tests {
         a.merge(b);
 
         assert_eq!(a.groups, vec![(vec![0, 1], 5)]);
-        let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&vec![0, 1])
+            .expect("merged group must have recorded sources");
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_1:b".to_string()));
     }

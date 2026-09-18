@@ -1,13 +1,13 @@
-use rand::RngCore;
+use super::elevator_utils::remove_stop_commands;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::InvalidElevatorStopIssue;
 use crate::generation::PresetState;
+use crate::quality_control::InvalidElevatorStopIssue;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use super::elevator_utils::remove_stop_commands;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 static PARAMS: &[StrategyParam] = &[];
 
@@ -20,7 +20,9 @@ static PARAMS: &[StrategyParam] = &[];
 pub struct RemoveElevatorStopStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidElevatorStopIssue> for RemoveElevatorStopStrategy {
-    fn strategy_id(&self) -> &'static str { "remove_elevator_stop" }
+    fn strategy_id(&self) -> &'static str {
+        "remove_elevator_stop"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -50,27 +52,40 @@ crate::impl_erased_repair_strategy!(RemoveElevatorStopStrategy, InvalidElevatorS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     fn no_params() -> StrategyParams {
-        build_params(<RemoveElevatorStopStrategy as RepairStrategy<SquareTessellation, InvalidElevatorStopIssue>>::params(&RemoveElevatorStopStrategy), None)
+        build_params(
+            <RemoveElevatorStopStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidElevatorStopIssue,
+            >>::params(&RemoveElevatorStopStrategy),
+            None,
+        )
     }
 
     fn three_stop_elevator() -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         for i in 0..nodes.len() {
             for j in (i + 1)..nodes.len() {
                 g.add_edge(nodes[i], nodes[j], EdgeKind::Elevator);
@@ -85,11 +100,22 @@ mod tests {
         let (mut maze, nodes) = three_stop_elevator();
         let issue = InvalidElevatorStopIssue::new_from_check("test", vec![nodes[0]]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStopStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
         assert!(maze.graph.edge_between(nodes[0], nodes[2]).is_none());
-        assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_some(), "the remaining two stops must still be connected");
+        assert!(
+            maze.graph.edge_between(nodes[1], nodes[2]).is_some(),
+            "the remaining two stops must still be connected"
+        );
     }
 
     #[test]
@@ -97,9 +123,25 @@ mod tests {
         let (mut maze, nodes) = three_stop_elevator();
         let issue = InvalidElevatorStopIssue::new_from_check("test", vec![nodes[0], nodes[0]]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let _ = apply_and_commit(&RemoveElevatorStopStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let _ = apply_and_commit(
+            &RemoveElevatorStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         // Second application: nodes[0] is no longer part of any elevator, must not panic.
-        let result = apply_and_commit(&RemoveElevatorStopStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -108,7 +150,15 @@ mod tests {
         let (mut maze, _nodes) = three_stop_elevator();
         let issue = InvalidElevatorStopIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStopStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStopStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 }

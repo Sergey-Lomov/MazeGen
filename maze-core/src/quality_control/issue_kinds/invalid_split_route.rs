@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_SPLIT_ROUTE};
+use crate::quality_control::issue::{
+    INVALID_SPLIT_ROUTE, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// One flagged edge along a route, paired with whether it is incident to the split tile the route
 /// was found for (`from` or `to` resolves to that tile's own `Field::point_of`) — a repair
@@ -28,10 +30,15 @@ pub struct InvalidSplitRouteIssue {
 
 impl InvalidSplitRouteIssue {
     pub fn new_from_check(source_check: &str, routes: Vec<Vec<SplitRouteEdge>>) -> Self {
-        let invalid_sources = routes.iter()
+        let invalid_sources = routes
+            .iter()
             .map(|route| (route.clone(), vec![source_check.to_string()]))
             .collect();
-        Self { meta: IssueMeta::new_from_check(source_check), routes, invalid_sources }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            routes,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -58,7 +65,8 @@ impl IssueMerge for InvalidSplitRouteIssue {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
 
-        let mut seen: std::collections::HashSet<Vec<SplitRouteEdge>> = self.routes.iter().cloned().collect();
+        let mut seen: std::collections::HashSet<Vec<SplitRouteEdge>> =
+            self.routes.iter().cloned().collect();
         for route in other.routes {
             if seen.insert(route.clone()) {
                 self.routes.push(route);
@@ -82,8 +90,10 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_routes() {
-        let mut a = InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
-        let b = InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(2, false), (3, true)]]);
+        let mut a =
+            InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
+        let b =
+            InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(2, false), (3, true)]]);
         a.merge(b);
 
         assert_eq!(a.routes.len(), 2);
@@ -93,8 +103,10 @@ mod tests {
 
     #[test]
     fn merge_deduplicates_identical_route() {
-        let mut a = InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
-        let b = InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(0, true), (1, false)]]);
+        let mut a =
+            InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
+        let b =
+            InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(0, true), (1, false)]]);
         a.merge(b);
 
         assert_eq!(a.routes, vec![vec![(0, true), (1, false)]]);
@@ -104,11 +116,17 @@ mod tests {
     fn merge_keeps_reordered_edges_as_a_distinct_route() {
         // Same edge set, different order -- a route is a path, not a set, so this must NOT collapse
         // the way InvalidLoopIssue's canonical_cycle_key-based merge would.
-        let mut a = InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
-        let b = InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(1, false), (0, true)]]);
+        let mut a =
+            InvalidSplitRouteIssue::new_from_check("check_a", vec![vec![(0, true), (1, false)]]);
+        let b =
+            InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(1, false), (0, true)]]);
         a.merge(b);
 
-        assert_eq!(a.routes.len(), 2, "reordered edge sequence must be kept as a distinct route");
+        assert_eq!(
+            a.routes.len(),
+            2,
+            "reordered edge sequence must be kept as a distinct route"
+        );
     }
 
     #[test]
@@ -117,7 +135,10 @@ mod tests {
         let b = InvalidSplitRouteIssue::new_from_check("check_b", vec![vec![(0, true)]]);
         a.merge(b);
 
-        let sources = a.invalid_sources.get(&vec![(0, true)]).expect("merged route must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&vec![(0, true)])
+            .expect("merged route must have recorded sources");
         assert_eq!(sources.len(), 2);
         assert!(sources.contains(&"check_a".to_string()));
         assert!(sources.contains(&"check_b".to_string()));

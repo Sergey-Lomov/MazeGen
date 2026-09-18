@@ -1,22 +1,25 @@
-use super::types::*;
-use super::resolvers::*;
-use super::resolve_issue_payload;
-use super::super::issue_kinds::*;
 use super::super::issue::Issue;
+use super::super::issue_kinds::*;
 use super::super::repair_area::RepairArea;
+use super::resolve_issue_payload;
+use super::resolvers::*;
+use super::types::*;
+use crate::generation::PresetState;
 use crate::graph::Graph;
 use crate::graph::scc::ComponentId;
-use crate::generation::PresetState;
 use crate::graph::scc::ConnectedComponents;
+use crate::ids::IdGenerator;
 use crate::ids::NodeId;
 use crate::space::MultiLevelField;
-use std::collections::HashMap;
 use crate::space::{SquareTessellation, square_rect};
-use crate::ids::IdGenerator;
+use std::collections::HashMap;
 
 fn empty_graph_and_scc() -> (Graph, ConnectedComponents) {
     let graph = Graph::new();
-    let scc = ConnectedComponents { components: Vec::new(), node_component: HashMap::new() };
+    let scc = ConnectedComponents {
+        components: Vec::new(),
+        node_component: HashMap::new(),
+    };
     (graph, scc)
 }
 
@@ -30,7 +33,14 @@ fn dummy_field() -> MultiLevelField<SquareTessellation> {
 }
 
 fn resolve(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
-    resolve_issue_payload(issue, graph, &dummy_field(), scc, &PresetState::empty(), None)
+    resolve_issue_payload(
+        issue,
+        graph,
+        &dummy_field(),
+        scc,
+        &PresetState::empty(),
+        None,
+    )
 }
 
 #[test]
@@ -71,17 +81,27 @@ fn invalid_loop_group_issue_resolves_flagged_cycle_edges_keyed_by_source_check()
     let key = canonical_cycle_key(&cycle);
     let mut invalid_sources = HashMap::new();
     invalid_sources.insert(key, vec!["max_loop_density".to_string()]);
-    let issue = InvalidLoopGroupIssue::new_from_check("max_loop_density", vec![cycle], vec![], invalid_sources);
+    let issue = InvalidLoopGroupIssue::new_from_check(
+        "max_loop_density",
+        vec![cycle],
+        vec![],
+        invalid_sources,
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };
+    let IssuePayload::InvalidLoop { edges } = payload else {
+        panic!("expected InvalidLoop, got {payload:?}")
+    };
     assert_eq!(edges.len(), 1);
     let check1_cycles = &edges["max_loop_density"];
     assert_eq!(check1_cycles.len(), 1);
     let mut pairs = check1_cycles[0].edges.clone();
     pairs.sort();
     assert_eq!(pairs, vec![[1, 2], [2, 3], [3, 1]]);
-    assert!(!check1_cycles[0].preset_locked, "no preset state given -- must not be locked");
+    assert!(
+        !check1_cycles[0].preset_locked,
+        "no preset state given -- must not be locked"
+    );
 }
 
 #[test]
@@ -110,7 +130,9 @@ fn invalid_loop_issue_resolves_flagged_cycle_edges_keyed_by_source_check() {
     let issue = InvalidLoopIssue::new_from_check("check1", vec![cycle], vec![0], invalid_sources);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };
+    let IssuePayload::InvalidLoop { edges } = payload else {
+        panic!("expected InvalidLoop, got {payload:?}")
+    };
     assert_eq!(edges.len(), 1);
     let check1_cycles = &edges["check1"];
     assert_eq!(check1_cycles.len(), 1);
@@ -135,7 +157,9 @@ fn invalid_loop_issue_fans_a_shared_cycle_out_to_every_source_check() {
     invalid_sources.insert(key, vec!["check1".to_string(), "check2".to_string()]);
     let issue = InvalidLoopIssue::new_from_check("check1", vec![cycle], vec![0], invalid_sources);
 
-    let IssuePayload::InvalidLoop { edges } = resolve(&issue, &graph, &scc) else { panic!("expected InvalidLoop") };
+    let IssuePayload::InvalidLoop { edges } = resolve(&issue, &graph, &scc) else {
+        panic!("expected InvalidLoop")
+    };
     assert_eq!(edges.len(), 2);
     assert!(edges.contains_key("check1"));
     assert!(edges.contains_key("check2"));
@@ -165,8 +189,13 @@ fn invalid_loop_issue_marks_cycle_preset_locked_when_every_edge_is_preset_protec
     preset_state.preset_edges.insert((3, 1));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };
-    assert!(edges["check1"][0].preset_locked, "every edge in the cycle is preset-protected");
+    let IssuePayload::InvalidLoop { edges } = payload else {
+        panic!("expected InvalidLoop, got {payload:?}")
+    };
+    assert!(
+        edges["check1"][0].preset_locked,
+        "every edge in the cycle is preset-protected"
+    );
 }
 
 #[test]
@@ -193,8 +222,13 @@ fn invalid_loop_issue_not_preset_locked_when_only_part_of_the_cycle_is_protected
     // (3, 1) intentionally left unprotected.
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };
-    assert!(!edges["check1"][0].preset_locked, "one unprotected edge is enough to keep the whole cycle fixable");
+    let IssuePayload::InvalidLoop { edges } = payload else {
+        panic!("expected InvalidLoop, got {payload:?}")
+    };
+    assert!(
+        !edges["check1"][0].preset_locked,
+        "one unprotected edge is enough to keep the whole cycle fixable"
+    );
 }
 
 #[test]
@@ -221,9 +255,20 @@ fn invalid_loop_issue_reports_preset_locked_per_element_not_per_issue() {
     let locked_cycle = vec![e1, e2, e3];
     let unlocked_cycle = vec![e4, e5, e6];
     let mut invalid_sources = HashMap::new();
-    invalid_sources.insert(canonical_cycle_key(&locked_cycle), vec!["check1".to_string()]);
-    invalid_sources.insert(canonical_cycle_key(&unlocked_cycle), vec!["check1".to_string()]);
-    let issue = InvalidLoopIssue::new_from_check("check1", vec![locked_cycle, unlocked_cycle], vec![0, 1], invalid_sources);
+    invalid_sources.insert(
+        canonical_cycle_key(&locked_cycle),
+        vec!["check1".to_string()],
+    );
+    invalid_sources.insert(
+        canonical_cycle_key(&unlocked_cycle),
+        vec!["check1".to_string()],
+    );
+    let issue = InvalidLoopIssue::new_from_check(
+        "check1",
+        vec![locked_cycle, unlocked_cycle],
+        vec![0, 1],
+        invalid_sources,
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
@@ -231,11 +276,16 @@ fn invalid_loop_issue_reports_preset_locked_per_element_not_per_issue() {
     preset_state.preset_edges.insert((3, 1));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };
+    let IssuePayload::InvalidLoop { edges } = payload else {
+        panic!("expected InvalidLoop, got {payload:?}")
+    };
     let elements = &edges["check1"];
     assert_eq!(elements.len(), 2);
     let locked_count = elements.iter().filter(|e| e.preset_locked).count();
-    assert_eq!(locked_count, 1, "exactly one of the two cycles must be preset_locked");
+    assert_eq!(
+        locked_count, 1,
+        "exactly one of the two cycles must be preset_locked"
+    );
 }
 
 #[test]
@@ -259,14 +309,19 @@ fn region_needs_expansion_issue_resolves_flagged_region_node_ids_keyed_by_source
     let issue = RegionNeedsExpansionIssue::new_from_check("check1", vec![0], invalid_sources);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert_eq!(nodes.len(), 1);
     let check1_regions = &nodes["check1"];
     assert_eq!(check1_regions.len(), 1);
     let mut region = check1_regions[0].region.clone();
     region.sort();
     assert_eq!(region, vec![1, 2, 3]);
-    assert!(!check1_regions[0].preset_locked, "no preset state given -- must not be locked");
+    assert!(
+        !check1_regions[0].preset_locked,
+        "no preset state given -- must not be locked"
+    );
 }
 
 #[test]
@@ -288,14 +343,19 @@ fn region_needs_shrink_issue_resolves_flagged_region_node_ids_keyed_by_source_ch
     let issue = RegionNeedsShrinkIssue::new_from_check("check1", vec![0], invalid_sources);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::RegionNeedsShrink { nodes } = payload else { panic!("expected RegionNeedsShrink, got {payload:?}") };
+    let IssuePayload::RegionNeedsShrink { nodes } = payload else {
+        panic!("expected RegionNeedsShrink, got {payload:?}")
+    };
     assert_eq!(nodes.len(), 1);
     let check1_regions = &nodes["check1"];
     assert_eq!(check1_regions.len(), 1);
     let mut region = check1_regions[0].region.clone();
     region.sort();
     assert_eq!(region, vec![1, 2, 3]);
-    assert!(!check1_regions[0].preset_locked, "no preset edges anywhere -- must not be locked (empty region has no edges to group)");
+    assert!(
+        !check1_regions[0].preset_locked,
+        "no preset edges anywhere -- must not be locked (empty region has no edges to group)"
+    );
 }
 
 fn teleport_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {
@@ -323,7 +383,9 @@ fn invalid_teleport_issue_resolves_flagged_edge_as_one_element_group() {
     let issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check1_groups = &groups["teleport_duplicates_connection"];
     assert_eq!(check1_groups.len(), 1);
@@ -341,10 +403,15 @@ fn invalid_teleport_group_issue_with_no_flagged_pairs_resolves_to_none() {
 fn invalid_teleport_group_issue_resolves_flagged_pair_as_two_element_group() {
     let (graph, e1, e2) = teleport_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(vec![e1, e2], 1)]);
+    let issue = InvalidTeleportGroupIssue::new_from_check(
+        "teleport_group_proximity",
+        vec![(vec![e1, e2], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check1_groups = &groups["teleport_group_proximity"];
     assert_eq!(check1_groups.len(), 1);
@@ -363,22 +430,37 @@ fn invalid_teleport_group_issue_resolves_flagged_pair_as_two_element_group() {
 fn invalid_teleport_group_issue_for_a_max_count_batch_check_locks_only_the_preset_edge() {
     use crate::graph::EdgeKind;
     let mut graph = Graph::new();
-    for n in 1..=6 { graph.add_node(n); }
+    for n in 1..=6 {
+        graph.add_node(n);
+    }
     let e1 = graph.add_edge(1, 2, EdgeKind::Teleport);
     let e2 = graph.add_edge(3, 4, EdgeKind::Teleport);
     let e3 = graph.add_edge(5, 6, EdgeKind::Teleport);
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidTeleportGroupIssue::new_from_check("max_teleport_count", vec![(vec![e1, e2, e3], 2)]);
+    let issue = InvalidTeleportGroupIssue::new_from_check(
+        "max_teleport_count",
+        vec![(vec![e1, e2, e3], 2)],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
     let batch = &groups["max_teleport_count"];
-    assert_eq!(batch.len(), 3, "batch check must split into one payload per edge, not one per group");
+    assert_eq!(
+        batch.len(),
+        3,
+        "batch check must split into one payload per edge, not one per group"
+    );
     let locked: Vec<_> = batch.iter().filter(|p| p.preset_locked).collect();
-    assert_eq!(locked.len(), 1, "only the actually preset-protected portal must be locked");
+    assert_eq!(
+        locked.len(),
+        1,
+        "only the actually preset-protected portal must be locked"
+    );
     assert_eq!(locked[0].edges, vec![[1, 2]]);
 }
 
@@ -393,7 +475,9 @@ fn invalid_teleport_group_issue_for_a_max_count_batch_check_locks_only_the_prese
 fn invalid_teleport_group_issue_for_a_max_count_batch_check_resolves_instance_id_via_check_types() {
     use crate::graph::EdgeKind;
     let mut graph = Graph::new();
-    for n in 1..=6 { graph.add_node(n); }
+    for n in 1..=6 {
+        graph.add_node(n);
+    }
     let e1 = graph.add_edge(1, 2, EdgeKind::Teleport);
     let e2 = graph.add_edge(3, 4, EdgeKind::Teleport);
     let e3 = graph.add_edge(5, 6, EdgeKind::Teleport);
@@ -405,12 +489,29 @@ fn invalid_teleport_group_issue_for_a_max_count_batch_check_resolves_instance_id
     let mut check_types = HashMap::new();
     check_types.insert("rule_1:0".to_string(), "max_teleport_count".to_string());
 
-    let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, Some(&check_types));
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+    let payload = resolve_issue_payload(
+        &issue,
+        &graph,
+        &dummy_field(),
+        &scc,
+        &preset_state,
+        Some(&check_types),
+    );
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
     let batch = &groups["rule_1:0"];
-    assert_eq!(batch.len(), 3, "batch check must split into one payload per edge once resolved via check_types");
+    assert_eq!(
+        batch.len(),
+        3,
+        "batch check must split into one payload per edge once resolved via check_types"
+    );
     let locked: Vec<_> = batch.iter().filter(|p| p.preset_locked).collect();
-    assert_eq!(locked.len(), 1, "only the actually preset-protected portal must be locked");
+    assert_eq!(
+        locked.len(),
+        1,
+        "only the actually preset-protected portal must be locked"
+    );
     assert_eq!(locked[0].edges, vec![[1, 2]]);
 }
 
@@ -421,7 +522,9 @@ fn invalid_teleport_group_issue_for_a_max_count_batch_check_resolves_instance_id
 fn invalid_teleport_group_issue_stays_whole_group_when_source_is_missing_from_check_types() {
     use crate::graph::EdgeKind;
     let mut graph = Graph::new();
-    for n in 1..=6 { graph.add_node(n); }
+    for n in 1..=6 {
+        graph.add_node(n);
+    }
     let e1 = graph.add_edge(1, 2, EdgeKind::Teleport);
     let e2 = graph.add_edge(3, 4, EdgeKind::Teleport);
     let e3 = graph.add_edge(5, 6, EdgeKind::Teleport);
@@ -432,11 +535,27 @@ fn invalid_teleport_group_issue_stays_whole_group_when_source_is_missing_from_ch
     preset_state.preset_edges.insert((1, 2));
     let check_types: HashMap<String, String> = HashMap::new();
 
-    let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, Some(&check_types));
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+    let payload = resolve_issue_payload(
+        &issue,
+        &graph,
+        &dummy_field(),
+        &scc,
+        &preset_state,
+        Some(&check_types),
+    );
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
     let batch = &groups["rule_1:0"];
-    assert_eq!(batch.len(), 1, "unresolvable source must keep the original whole-group payload");
-    assert!(!batch[0].preset_locked, "not every edge is preset-protected, so the whole group is not locked");
+    assert_eq!(
+        batch.len(),
+        1,
+        "unresolvable source must keep the original whole-group payload"
+    );
+    assert!(
+        !batch[0].preset_locked,
+        "not every edge is preset-protected, so the whole group is not locked"
+    );
 }
 
 #[test]
@@ -447,13 +566,27 @@ fn invalid_teleport_issue_merged_from_two_checks_attributes_each_edge_to_only_it
     use crate::quality_control::issue::IssueMerge;
     let (graph, e1, e2) = teleport_graph();
     let (_, scc) = empty_graph_and_scc();
-    let mut issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1]);
-    issue.merge(InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", vec![e2]));
+    let mut issue =
+        InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1]);
+    issue.merge(InvalidTeleportIssue::new_from_check(
+        "teleport_waypoint_distance",
+        vec![e2],
+    ));
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
-    assert_eq!(groups["teleport_duplicates_connection"][0].edges, vec![[1, 2]], "must not include e2");
-    assert_eq!(groups["teleport_waypoint_distance"][0].edges, vec![[2, 3]], "must not include e1");
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
+    assert_eq!(
+        groups["teleport_duplicates_connection"][0].edges,
+        vec![[1, 2]],
+        "must not include e2"
+    );
+    assert_eq!(
+        groups["teleport_waypoint_distance"][0].edges,
+        vec![[2, 3]],
+        "must not include e1"
+    );
 }
 
 #[test]
@@ -463,11 +596,18 @@ fn invalid_teleport_issue_silently_skips_a_stale_edge_id_absent_from_the_graph()
     let (graph, e1, _) = teleport_graph();
     let (_, scc) = empty_graph_and_scc();
     let stale_id = e1 + 1000;
-    let issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1, stale_id]);
+    let issue =
+        InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1, stale_id]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
-    assert_eq!(groups["teleport_duplicates_connection"][0].edges, vec![[1, 2]], "stale edge id must be dropped, not panic");
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
+    assert_eq!(
+        groups["teleport_duplicates_connection"][0].edges,
+        vec![[1, 2]],
+        "stale edge id must be dropped, not panic"
+    );
 }
 
 #[test]
@@ -475,11 +615,20 @@ fn invalid_teleport_group_issue_silently_skips_a_group_with_a_stale_edge_id() {
     let (graph, e1, _) = teleport_graph();
     let (_, scc) = empty_graph_and_scc();
     let stale_id = e1 + 1000;
-    let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(vec![e1, stale_id], 1)]);
+    let issue = InvalidTeleportGroupIssue::new_from_check(
+        "teleport_group_proximity",
+        vec![(vec![e1, stale_id], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
-    assert_eq!(groups["teleport_group_proximity"][0].edges, vec![[1, 2]], "the stale edge id must be dropped, not panic, leaving only the resolvable edge");
+    let IssuePayload::InvalidTeleport { groups } = payload else {
+        panic!("expected InvalidTeleport, got {payload:?}")
+    };
+    assert_eq!(
+        groups["teleport_group_proximity"][0].edges,
+        vec![[1, 2]],
+        "the stale edge id must be dropped, not panic, leaving only the resolvable edge"
+    );
 }
 
 fn one_way_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {
@@ -507,7 +656,9 @@ fn invalid_one_way_issue_resolves_flagged_edge_as_one_element_group() {
     let issue = InvalidOneWayIssue::new_from_check("one_way_waypoint_distance", vec![e1]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     assert_eq!(groups["one_way_waypoint_distance"][0].edges, vec![[1, 2]]);
 }
@@ -520,12 +671,19 @@ fn invalid_one_way_issue_silently_skips_a_stale_edge_id_absent_from_the_graph() 
     let issue = InvalidOneWayIssue::new_from_check("one_way_waypoint_distance", vec![e1, stale_id]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
-    assert_eq!(groups["one_way_waypoint_distance"][0].edges, vec![[1, 2]], "stale edge id must be dropped, not panic");
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
+    assert_eq!(
+        groups["one_way_waypoint_distance"][0].edges,
+        vec![[1, 2]],
+        "stale edge id must be dropped, not panic"
+    );
 }
 
 #[test]
-fn invalid_one_way_issue_preset_locked_only_when_forward_direction_is_the_actual_preset_direction() {
+fn invalid_one_way_issue_preset_locked_only_when_forward_direction_is_the_actual_preset_direction()
+{
     // GitHub issue #245: a one-way preset only ever occupies one direction (`preset_edges`
     // stores the exact directed pair, `blocked` covers the reverse) -- the resolver must not
     // treat the flagged forward edge as locked when the "protection" it's checking against is
@@ -540,15 +698,25 @@ fn invalid_one_way_issue_preset_locked_only_when_forward_direction_is_the_actual
     preset_state.blocked.insert((2, 1));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
-    assert!(!groups["one_way_waypoint_distance"][0].preset_locked, "reverse-direction blocked must not count as this edge being preset-protected");
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
+    assert!(
+        !groups["one_way_waypoint_distance"][0].preset_locked,
+        "reverse-direction blocked must not count as this edge being preset-protected"
+    );
 
     // Now actually protect the flagged direction -- must become locked.
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
-    assert!(groups["one_way_waypoint_distance"][0].preset_locked, "the actual preset direction must be reported locked");
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
+    assert!(
+        groups["one_way_waypoint_distance"][0].preset_locked,
+        "the actual preset direction must be reported locked"
+    );
 }
 
 #[test]
@@ -562,10 +730,15 @@ fn invalid_one_way_group_issue_with_no_flagged_groups_resolves_to_none() {
 fn invalid_one_way_group_issue_resolves_flagged_group_edges() {
     let (graph, e1, e2) = one_way_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidOneWayGroupIssue::new_from_check("one_way_group_graph_proximity", vec![(vec![e1, e2], 1)]);
+    let issue = InvalidOneWayGroupIssue::new_from_check(
+        "one_way_group_graph_proximity",
+        vec![(vec![e1, e2], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let group_edges = &groups["one_way_group_graph_proximity"];
     assert_eq!(group_edges.len(), 1);
@@ -579,11 +752,20 @@ fn invalid_one_way_group_issue_silently_skips_a_group_with_a_stale_edge_id() {
     let (graph, e1, e2) = one_way_graph();
     let (_, scc) = empty_graph_and_scc();
     let stale_id = e2 + 1000;
-    let issue = InvalidOneWayGroupIssue::new_from_check("one_way_group_graph_proximity", vec![(vec![e1, stale_id], 1)]);
+    let issue = InvalidOneWayGroupIssue::new_from_check(
+        "one_way_group_graph_proximity",
+        vec![(vec![e1, stale_id], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
-    assert_eq!(groups["one_way_group_graph_proximity"][0].edges, vec![[1, 2]], "the stale edge id must be dropped, not panic, leaving only the resolvable edge");
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
+    assert_eq!(
+        groups["one_way_group_graph_proximity"][0].edges,
+        vec![[1, 2]],
+        "the stale edge id must be dropped, not panic, leaving only the resolvable edge"
+    );
 }
 
 #[test]
@@ -595,33 +777,47 @@ fn invalid_one_way_group_issue_preset_locked_ignores_to_remove_count() {
     // unfixable even though its nominal fix only demanded removing one of its two edges.
     let (graph, e1, e2) = one_way_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidOneWayGroupIssue::new_from_check("one_way_group_graph_proximity", vec![(vec![e1, e2], 1)]);
+    let issue = InvalidOneWayGroupIssue::new_from_check(
+        "one_way_group_graph_proximity",
+        vec![(vec![e1, e2], 1)],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
     preset_state.preset_edges.insert((2, 3));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
-    assert!(groups["one_way_group_graph_proximity"][0].preset_locked, "to_remove=1 must not exempt the group from being fully locked when both edges are protected");
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay, got {payload:?}")
+    };
+    assert!(
+        groups["one_way_group_graph_proximity"][0].preset_locked,
+        "to_remove=1 must not exempt the group from being fully locked when both edges are protected"
+    );
 }
 
 #[test]
-fn invalid_split_node_connection_group_issue_carries_preset_locked_through_the_invalid_one_way_reuse() {
+fn invalid_split_node_connection_group_issue_carries_preset_locked_through_the_invalid_one_way_reuse()
+ {
     // GitHub issue #245: `InvalidSplitNodeConnectionGroupIssue` reuses the `InvalidOneWay`
     // wire variant (see `resolve_issue_payload`'s doc comment on that arm) -- confirms the
     // preset_locked migration wasn't silently dropped for this reused kind.
     use crate::quality_control::issue_kinds::InvalidSplitNodeConnectionGroupIssue;
     let (graph, e1, e2) = one_way_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidSplitNodeConnectionGroupIssue::new_from_check("split_node_connection_per_neighbor", vec![(vec![e1, e2], 1)]);
+    let issue = InvalidSplitNodeConnectionGroupIssue::new_from_check(
+        "split_node_connection_per_neighbor",
+        vec![(vec![e1, e2], 1)],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
     preset_state.preset_edges.insert((2, 3));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay (reused wire shape), got {payload:?}") };
+    let IssuePayload::InvalidOneWay { groups } = payload else {
+        panic!("expected InvalidOneWay (reused wire shape), got {payload:?}")
+    };
     assert!(groups["split_node_connection_per_neighbor"][0].preset_locked);
 }
 
@@ -644,22 +840,38 @@ fn invalid_split_route_issue_resolves_flagged_route_edges_keyed_by_source_check(
     let (_, scc) = empty_graph_and_scc();
 
     let route: Vec<SplitRouteEdge> = vec![(e0, true), (e1, false)];
-    let issue = InvalidSplitRouteIssue::new_from_check("split_node_connection_traversal_distance", vec![route]);
+    let issue = InvalidSplitRouteIssue::new_from_check(
+        "split_node_connection_traversal_distance",
+        vec![route],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+    let IssuePayload::InvalidSplitRoute { routes } = payload else {
+        panic!("expected InvalidSplitRoute, got {payload:?}")
+    };
     assert_eq!(routes.len(), 1);
     let check_routes = &routes["split_node_connection_traversal_distance"];
     assert_eq!(check_routes.len(), 1);
     assert_eq!(
         check_routes[0].edges,
         vec![
-            IssueRouteEdge { from: 1, to: 2, is_split_edge: true },
-            IssueRouteEdge { from: 2, to: 3, is_split_edge: false },
+            IssueRouteEdge {
+                from: 1,
+                to: 2,
+                is_split_edge: true
+            },
+            IssueRouteEdge {
+                from: 2,
+                to: 3,
+                is_split_edge: false
+            },
         ],
         "edge order and the is_split_edge flag must be preserved exactly, not sorted or dropped"
     );
-    assert!(!check_routes[0].preset_locked, "no preset state given -- must not be locked");
+    assert!(
+        !check_routes[0].preset_locked,
+        "no preset state given -- must not be locked"
+    );
 }
 
 #[test]
@@ -678,13 +890,23 @@ fn invalid_split_route_issue_silently_drops_a_stale_edge_id_from_the_middle_of_a
     let issue = InvalidSplitRouteIssue::new_from_check("check", vec![route]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+    let IssuePayload::InvalidSplitRoute { routes } = payload else {
+        panic!("expected InvalidSplitRoute, got {payload:?}")
+    };
     assert_eq!(routes["check"].len(), 1);
     assert_eq!(
         routes["check"][0].edges,
         vec![
-            IssueRouteEdge { from: 1, to: 2, is_split_edge: true },
-            IssueRouteEdge { from: 2, to: 3, is_split_edge: true },
+            IssueRouteEdge {
+                from: 1,
+                to: 2,
+                is_split_edge: true
+            },
+            IssueRouteEdge {
+                from: 2,
+                to: 3,
+                is_split_edge: true
+            },
         ],
         "the stale edge id must be dropped, not panic, leaving the two resolvable edges"
     );
@@ -707,7 +929,8 @@ fn split_node_graph() -> (Graph, NodeId, NodeId) {
 fn invalid_split_node_issue_marks_node_preset_locked_via_is_node_locked_for_removal() {
     let (graph, split_node, _other) = split_node_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidSplitNodeIssue::new_from_check("split_node_connection_count", vec![split_node]);
+    let issue =
+        InvalidSplitNodeIssue::new_from_check("split_node_connection_count", vec![split_node]);
 
     // `preset_locked` now mirrors `remove_node_feasible`'s own predicate (GitHub issue #245's
     // review fix) -- a preset edge touching the node blocks removal regardless of whether the
@@ -716,10 +939,16 @@ fn invalid_split_node_issue_marks_node_preset_locked_via_is_node_locked_for_remo
     preset_state.preset_edges.insert((1, 2));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile (reused shape), got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile (reused shape), got {payload:?}")
+    };
     let entry = &groups["split_node_connection_count"][0];
     assert!(entry.preset_locked);
-    assert_eq!(entry.tiles.len(), 1, "a single flagged node wraps as its own 1-tile group");
+    assert_eq!(
+        entry.tiles.len(),
+        1,
+        "a single flagged node wraps as its own 1-tile group"
+    );
     assert!(entry.tiles[0].preset_locked);
 }
 
@@ -727,14 +956,17 @@ fn invalid_split_node_issue_marks_node_preset_locked_via_is_node_locked_for_remo
 fn invalid_split_node_issue_not_preset_locked_when_no_incident_edge_is_preset_protected() {
     let (graph, split_node, _other) = split_node_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidSplitNodeIssue::new_from_check("split_node_connection_count", vec![split_node]);
+    let issue =
+        InvalidSplitNodeIssue::new_from_check("split_node_connection_count", vec![split_node]);
 
     // No preset edge touches the node, and it isn't locked_out/locked_in either -- repair can
     // freely remove it.
     let preset_state = PresetState::empty();
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile (reused shape), got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile (reused shape), got {payload:?}")
+    };
     assert!(!groups["split_node_connection_count"][0].preset_locked);
 }
 
@@ -747,7 +979,10 @@ fn invalid_split_node_group_issue_resolves_via_the_new_arm_and_carries_preset_lo
     // tile-as-instance coincide here, unlike the multi-tile proximity case below).
     let (graph, split_node, other) = split_node_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidSplitNodeGroupIssue::new_from_check("split_tile_node_count", vec![(vec![split_node, other], 1)]);
+    let issue = InvalidSplitNodeGroupIssue::new_from_check(
+        "split_tile_node_count",
+        vec![(vec![split_node, other], 1)],
+    );
 
     // Only the (1, 2) direction is preset-protected -- both endpoints of that directed edge
     // are touched by `preset_edges`, so the whole tile is locked.
@@ -755,10 +990,19 @@ fn invalid_split_node_group_issue_resolves_via_the_new_arm_and_carries_preset_lo
     preset_state.preset_edges.insert((1, 2));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile (reused shape), got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile (reused shape), got {payload:?}")
+    };
     let entries = &groups["split_tile_node_count"];
-    assert_eq!(entries.len(), 1, "one group entry -- the check's whole node list is one overflowing tile");
-    assert!(entries[0].preset_locked, "both nodes of the tile are locked for removal");
+    assert_eq!(
+        entries.len(),
+        1,
+        "one group entry -- the check's whole node list is one overflowing tile"
+    );
+    assert!(
+        entries[0].preset_locked,
+        "both nodes of the tile are locked for removal"
+    );
     assert_eq!(entries[0].tiles.len(), 1);
     let mut tile_nodes = entries[0].tiles[0].nodes.clone();
     tile_nodes.sort_unstable();
@@ -781,7 +1025,9 @@ fn invalid_split_tile_issue_locks_the_whole_tile_when_a_non_declared_base_node_h
     preset_state.preset_edges.insert((1, 2)); // touches `base` (id 1), never declared
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile, got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile, got {payload:?}")
+    };
     assert!(groups["split_distance_from_waypoint"][0].preset_locked);
 }
 
@@ -792,8 +1038,17 @@ fn invalid_split_tile_issue_not_preset_locked_when_no_node_is_removal_locked() {
     let tile = SplitTileNodes::new(vec![base]);
     let issue = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint", vec![tile]);
 
-    let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &PresetState::empty(), None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile, got {payload:?}") };
+    let payload = resolve_issue_payload(
+        &issue,
+        &graph,
+        &dummy_field(),
+        &scc,
+        &PresetState::empty(),
+        None,
+    );
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile, got {payload:?}")
+    };
     assert!(!groups["split_distance_from_waypoint"][0].preset_locked);
 }
 
@@ -809,17 +1064,32 @@ fn invalid_split_tile_issue_resolves_one_group_per_flagged_tile_each_a_single_ti
     let (_, scc) = empty_graph_and_scc();
     let tile_a = SplitTileNodes::new(vec![1, 2]);
     let tile_b = SplitTileNodes::new(vec![3, 4]);
-    let issue = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint", vec![tile_a, tile_b]);
+    let issue =
+        InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint", vec![tile_a, tile_b]);
 
-    let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &PresetState::empty(), None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile, got {payload:?}") };
+    let payload = resolve_issue_payload(
+        &issue,
+        &graph,
+        &dummy_field(),
+        &scc,
+        &PresetState::empty(),
+        None,
+    );
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile, got {payload:?}")
+    };
     let entries = &groups["split_distance_from_waypoint"];
-    assert_eq!(entries.len(), 2, "each flagged tile resolves as its own group entry");
+    assert_eq!(
+        entries.len(),
+        2,
+        "each flagged tile resolves as its own group entry"
+    );
     assert!(entries.iter().all(|e| e.tiles.len() == 1));
 }
 
 #[test]
-fn invalid_split_tile_group_issue_preserves_a_multi_tile_group_and_locks_only_when_every_tile_is_locked() {
+fn invalid_split_tile_group_issue_preserves_a_multi_tile_group_and_locks_only_when_every_tile_is_locked()
+ {
     // A proximity pair's group must resolve as ONE entry carrying BOTH tiles (not flattened
     // into 2 separate entries) -- GitHub issue #245's review fix: web-side needs the real group
     // boundary to count "1 instance" for a pair, not "2 instances" (one per node/tile).
@@ -832,7 +1102,10 @@ fn invalid_split_tile_group_issue_preserves_a_multi_tile_group_and_locks_only_wh
     let (_, scc) = empty_graph_and_scc();
     let tile_a = SplitTileNodes::new(vec![1, 2]);
     let tile_b = SplitTileNodes::new(vec![3, 4]);
-    let issue = InvalidSplitTileGroupIssue::new_from_check("split_group_geometric_proximity", vec![(vec![tile_a.clone(), tile_b.clone()], 1)]);
+    let issue = InvalidSplitTileGroupIssue::new_from_check(
+        "split_group_geometric_proximity",
+        vec![(vec![tile_a.clone(), tile_b.clone()], 1)],
+    );
 
     // Only node 1 is preset-locked (touches a preset edge) -- tile_a is NOT fully locked (node
     // 2 isn't), so the whole group must not be locked either, even though it contains a locked
@@ -841,11 +1114,24 @@ fn invalid_split_tile_group_issue_preserves_a_multi_tile_group_and_locks_only_wh
     preset_state.preset_edges.insert((1, 3));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile, got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile, got {payload:?}")
+    };
     let entries = &groups["split_group_geometric_proximity"];
-    assert_eq!(entries.len(), 1, "the pair resolves as one group entry, not two");
-    assert_eq!(entries[0].tiles.len(), 2, "both tiles of the pair are preserved in the group");
-    assert!(!entries[0].preset_locked, "tile_a has an unlocked node, so the group as a whole is not locked");
+    assert_eq!(
+        entries.len(),
+        1,
+        "the pair resolves as one group entry, not two"
+    );
+    assert_eq!(
+        entries[0].tiles.len(),
+        2,
+        "both tiles of the pair are preserved in the group"
+    );
+    assert!(
+        !entries[0].preset_locked,
+        "tile_a has an unlocked node, so the group as a whole is not locked"
+    );
 }
 
 #[test]
@@ -857,13 +1143,18 @@ fn invalid_split_tile_group_issue_locks_the_group_when_every_tile_is_fully_locke
     let (_, scc) = empty_graph_and_scc();
     let tile_a = SplitTileNodes::new(vec![1]);
     let tile_b = SplitTileNodes::new(vec![2]);
-    let issue = InvalidSplitTileGroupIssue::new_from_check("split_group_geometric_proximity", vec![(vec![tile_a, tile_b], 1)]);
+    let issue = InvalidSplitTileGroupIssue::new_from_check(
+        "split_group_geometric_proximity",
+        vec![(vec![tile_a, tile_b], 1)],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitTile { groups } = payload else { panic!("expected InvalidSplitTile, got {payload:?}") };
+    let IssuePayload::InvalidSplitTile { groups } = payload else {
+        panic!("expected InvalidSplitTile, got {payload:?}")
+    };
     assert!(groups["split_group_geometric_proximity"][0].preset_locked);
 }
 
@@ -873,13 +1164,18 @@ fn invalid_split_route_issue_preset_locked_when_every_route_edge_is_protected() 
     let (_, scc) = empty_graph_and_scc();
     let eid = graph.edge_between(a, b).unwrap();
     let route: Vec<SplitRouteEdge> = vec![(eid, true)];
-    let issue = InvalidSplitRouteIssue::new_from_check("split_node_connection_traversal_distance", vec![route]);
+    let issue = InvalidSplitRouteIssue::new_from_check(
+        "split_node_connection_traversal_distance",
+        vec![route],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((a, b));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+    let IssuePayload::InvalidSplitRoute { routes } = payload else {
+        panic!("expected InvalidSplitRoute, got {payload:?}")
+    };
     assert!(routes["split_node_connection_traversal_distance"][0].preset_locked);
 }
 
@@ -906,14 +1202,27 @@ fn invalid_split_route_issue_preset_locked_is_independent_of_is_split_edge() {
     preset_state.preset_edges.insert((2, 3));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+    let IssuePayload::InvalidSplitRoute { routes } = payload else {
+        panic!("expected InvalidSplitRoute, got {payload:?}")
+    };
     let resolved = &routes["check"][0];
-    assert!(!resolved.preset_locked, "one unprotected edge is enough to keep the whole route fixable");
+    assert!(
+        !resolved.preset_locked,
+        "one unprotected edge is enough to keep the whole route fixable"
+    );
     assert_eq!(
         resolved.edges,
         vec![
-            IssueRouteEdge { from: 1, to: 2, is_split_edge: true },
-            IssueRouteEdge { from: 2, to: 3, is_split_edge: false },
+            IssueRouteEdge {
+                from: 1,
+                to: 2,
+                is_split_edge: true
+            },
+            IssueRouteEdge {
+                from: 2,
+                to: 3,
+                is_split_edge: false
+            },
         ],
         "is_split_edge must be preserved as-is, independent of preset protection"
     );
@@ -925,7 +1234,11 @@ fn invalid_split_route_issue_empty_route_is_not_preset_locked_and_is_skipped() {
     let (graph, scc) = empty_graph_and_scc();
     let empty_route: Vec<SplitRouteEdge> = vec![];
     let issue = InvalidSplitRouteIssue::new_from_check("check", vec![empty_route]);
-    assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None, "an empty route carries nothing to resolve or highlight");
+    assert_eq!(
+        resolve(&issue, &graph, &scc),
+        IssuePayload::None,
+        "an empty route carries nothing to resolve or highlight"
+    );
 }
 
 // --- Region preset_locked support (extends GitHub issue #245 to region-based issue kinds:
@@ -933,7 +1246,10 @@ fn invalid_split_route_issue_empty_route_is_not_preset_locked_and_is_skipped() {
 
 fn region_scc(region: Vec<NodeId>) -> ConnectedComponents {
     let node_component = region.iter().map(|&id| (id, 0)).collect();
-    ConnectedComponents { components: vec![region], node_component }
+    ConnectedComponents {
+        components: vec![region],
+        node_component,
+    }
 }
 
 /// Like `region_scc`, but also registers `external` nodes in a second component — a real SCC
@@ -941,11 +1257,15 @@ fn region_scc(region: Vec<NodeId>) -> ConnectedComponents {
 /// any neighbor missing from `node_component` entirely (treats it as "outside the graph"), so
 /// expansion tests need their boundary neighbor actually registered, not just the region itself.
 fn region_scc_with_external(region: Vec<NodeId>, external: &[NodeId]) -> ConnectedComponents {
-    let mut node_component: HashMap<NodeId, ComponentId> = region.iter().map(|&id| (id, 0)).collect();
+    let mut node_component: HashMap<NodeId, ComponentId> =
+        region.iter().map(|&id| (id, 0)).collect();
     for &id in external {
         node_component.insert(id, 1);
     }
-    ConnectedComponents { components: vec![region, external.to_vec()], node_component }
+    ConnectedComponents {
+        components: vec![region, external.to_vec()],
+        node_component,
+    }
 }
 
 fn triangle_graph() -> (Graph, [NodeId; 3]) {
@@ -979,7 +1299,9 @@ fn region_needs_shrink_locked_when_the_only_cut_set_is_entirely_preset_protected
     }
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsShrink { nodes } = payload else { panic!("expected RegionNeedsShrink, got {payload:?}") };
+    let IssuePayload::RegionNeedsShrink { nodes } = payload else {
+        panic!("expected RegionNeedsShrink, got {payload:?}")
+    };
     assert!(nodes["check1"][0].preset_locked);
 }
 
@@ -1000,8 +1322,13 @@ fn region_needs_shrink_not_locked_when_a_one_directional_preset_pair_leaves_the_
     // (b, a), (b, c)/(c, b), (c, a)/(a, c) intentionally left unprotected.
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsShrink { nodes } = payload else { panic!("expected RegionNeedsShrink, got {payload:?}") };
-    assert!(!nodes["check1"][0].preset_locked, "the unprotected (b,a) direction keeps a cut available");
+    let IssuePayload::RegionNeedsShrink { nodes } = payload else {
+        panic!("expected RegionNeedsShrink, got {payload:?}")
+    };
+    assert!(
+        !nodes["check1"][0].preset_locked,
+        "the unprotected (b,a) direction keeps a cut available"
+    );
 }
 
 #[test]
@@ -1019,7 +1346,9 @@ fn region_needs_shrink_not_locked_when_a_cut_through_a_non_preset_edge_exists() 
     preset_state.preset_edges.insert((b, a));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsShrink { nodes } = payload else { panic!("expected RegionNeedsShrink, got {payload:?}") };
+    let IssuePayload::RegionNeedsShrink { nodes } = payload else {
+        panic!("expected RegionNeedsShrink, got {payload:?}")
+    };
     assert!(!nodes["check1"][0].preset_locked);
 }
 
@@ -1028,13 +1357,14 @@ fn region_needs_shrink_criterion_matches_split_region_s_own_none_condition() {
     // Regression: `region_preset_locked_for_shrink`'s `groups.len() < 2` must stay identical to
     // `region_shrink_split::split_region`'s own None/Failed condition -- both evaluated on the
     // same graph/region/preset_state here and compared directly.
-    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use crate::Maze;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let (graph, [a, b, c]) = triangle_graph();
     let region = vec![a, b, c];
 
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
     let maze = Maze::new(field, graph.clone());
 
     let mut preset_state = PresetState::empty();
@@ -1043,22 +1373,46 @@ fn region_needs_shrink_criterion_matches_split_region_s_own_none_condition() {
     }
 
     let resolver_locked = region_preset_locked_for_shrink(&graph, &region, &preset_state);
-    let split_region_failed = crate::repair::strategies::region_shrink_split::split_region(&maze, &region, &preset_state, false).is_none();
-    assert_eq!(resolver_locked, split_region_failed, "resolver's preset_locked must agree with split_region's None/Failed signal");
-    assert!(resolver_locked, "sanity: this fixture is fully preset-protected");
+    let split_region_failed = crate::repair::strategies::region_shrink_split::split_region(
+        &maze,
+        &region,
+        &preset_state,
+        false,
+    )
+    .is_none();
+    assert_eq!(
+        resolver_locked, split_region_failed,
+        "resolver's preset_locked must agree with split_region's None/Failed signal"
+    );
+    assert!(
+        resolver_locked,
+        "sanity: this fixture is fully preset-protected"
+    );
 }
 
 /// 2x1 field: two adjacent points, each with one node -- the region is just node `a`, its only
 /// geometric neighbor is `b` (outside the region). Used by every expansion test below.
-fn two_point_field_and_region() -> (MultiLevelField<crate::space::SquareTessellation>, Graph, NodeId, NodeId) {
+fn two_point_field_and_region() -> (
+    MultiLevelField<crate::space::SquareTessellation>,
+    Graph,
+    NodeId,
+    NodeId,
+) {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
     let level = field.single_level_id();
-    let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(level, crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
+    let a = field
+        .node_at(level, crate::space::SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let b = field
+        .node_at(level, crate::space::SquarePoint { x: 1, y: 0 })
+        .unwrap();
     (field, graph, a, b)
 }
 
@@ -1068,18 +1422,25 @@ fn region_needs_expansion_not_locked_when_region_has_no_external_geometric_bound
     // false, so it must NOT be reported preset_locked (a different, non-preset problem).
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
     let level = field.single_level_id();
-    let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let a = field
+        .node_at(level, crate::space::SquarePoint { x: 0, y: 0 })
+        .unwrap();
     let scc = region_scc(vec![a]);
     let mut invalid_sources = HashMap::new();
     invalid_sources.insert(0usize, vec!["check1".to_string()]);
     let issue = RegionNeedsExpansionIssue::new_from_check("check1", vec![0], invalid_sources);
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert!(!nodes["check1"][0].preset_locked);
 }
 
@@ -1093,7 +1454,9 @@ fn region_needs_expansion_not_locked_when_at_least_one_boundary_is_free() {
 
     // No preset at all -- the boundary to b is free.
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert!(!nodes["check1"][0].preset_locked);
 }
 
@@ -1110,7 +1473,9 @@ fn region_needs_expansion_locked_when_every_boundary_is_wall_blocked() {
     preset_state.blocked.insert((b, a));
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert!(nodes["check1"][0].preset_locked);
 }
 
@@ -1128,7 +1493,9 @@ fn region_needs_expansion_locked_when_every_boundary_is_locked_out_or_in_not_wal
     preset_state.locked_in.insert(a);
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert!(nodes["check1"][0].preset_locked);
 }
 
@@ -1148,7 +1515,9 @@ fn region_needs_expansion_locked_via_asymmetric_locked_out_in_across_both_direct
     preset_state.locked_in.insert(b);
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state, None);
-    let IssuePayload::RegionNeedsExpansion { nodes } = payload else { panic!("expected RegionNeedsExpansion, got {payload:?}") };
+    let IssuePayload::RegionNeedsExpansion { nodes } = payload else {
+        panic!("expected RegionNeedsExpansion, got {payload:?}")
+    };
     assert!(nodes["check1"][0].preset_locked);
 }
 
@@ -1163,7 +1532,9 @@ fn excessive_scc_count_not_locked_with_no_preset_state() {
     let issue = excessive_scc_count_issue("check1", 1);
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else { panic!("expected ExcessiveSccCount, got {payload:?}") };
+    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else {
+        panic!("expected ExcessiveSccCount, got {payload:?}")
+    };
     assert!(!preset_locked["check1"]);
 }
 
@@ -1176,15 +1547,27 @@ fn excessive_scc_count_not_locked_when_only_one_region_is_preset_locked() {
     // even though a is fully locked.
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
     let level = field.single_level_id();
-    let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(level, crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
-    let c = field.node_at(level, crate::space::SquarePoint { x: 2, y: 0 }).unwrap();
+    let a = field
+        .node_at(level, crate::space::SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let b = field
+        .node_at(level, crate::space::SquarePoint { x: 1, y: 0 })
+        .unwrap();
+    let c = field
+        .node_at(level, crate::space::SquarePoint { x: 2, y: 0 })
+        .unwrap();
     let node_component = HashMap::from([(a, 0), (b, 1), (c, 2)]);
-    let scc = ConnectedComponents { components: vec![vec![a], vec![b], vec![c]], node_component };
+    let scc = ConnectedComponents {
+        components: vec![vec![a], vec![b], vec![c]],
+        node_component,
+    };
     let issue = excessive_scc_count_issue("check1", 1);
 
     let mut preset_state = PresetState::empty();
@@ -1192,7 +1575,9 @@ fn excessive_scc_count_not_locked_when_only_one_region_is_preset_locked() {
     preset_state.blocked.insert((b, a));
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state, None);
-    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else { panic!("expected ExcessiveSccCount, got {payload:?}") };
+    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else {
+        panic!("expected ExcessiveSccCount, got {payload:?}")
+    };
     assert!(!preset_locked["check1"]);
 }
 
@@ -1209,7 +1594,9 @@ fn excessive_scc_count_locked_when_every_region_is_preset_locked() {
     // so `b`'s region is equally locked -- both of the field's two regions are stuck.
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state, None);
-    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else { panic!("expected ExcessiveSccCount, got {payload:?}") };
+    let IssuePayload::ExcessiveSccCount { preset_locked } = payload else {
+        panic!("expected ExcessiveSccCount, got {payload:?}")
+    };
     assert!(preset_locked["check1"]);
 }
 
@@ -1235,10 +1622,15 @@ fn invalid_vertical_passage_issue_with_no_flagged_edges_resolves_to_none() {
 fn invalid_vertical_passage_issue_resolves_flagged_edge_as_one_element_group() {
     let (graph, e1, _) = vertical_passage_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1]);
+    let issue = InvalidVerticalPassageIssue::new_from_check(
+        "vertical_passage_group_geometric_proximity",
+        vec![e1],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+    let IssuePayload::InvalidVerticalPassage { groups } = payload else {
+        panic!("expected InvalidVerticalPassage, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check1_groups = &groups["vertical_passage_group_geometric_proximity"];
     assert_eq!(check1_groups.len(), 1);
@@ -1256,10 +1648,15 @@ fn invalid_vertical_passage_group_issue_with_no_flagged_pairs_resolves_to_none()
 fn invalid_vertical_passage_group_issue_resolves_flagged_pair_as_two_element_group() {
     let (graph, e1, e2) = vertical_passage_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidVerticalPassageGroupIssue::new_from_check("vertical_passage_group_graph_proximity", vec![(vec![e1, e2], 1)]);
+    let issue = InvalidVerticalPassageGroupIssue::new_from_check(
+        "vertical_passage_group_graph_proximity",
+        vec![(vec![e1, e2], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+    let IssuePayload::InvalidVerticalPassage { groups } = payload else {
+        panic!("expected InvalidVerticalPassage, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check1_groups = &groups["vertical_passage_group_graph_proximity"];
     assert_eq!(check1_groups.len(), 1);
@@ -1267,17 +1664,34 @@ fn invalid_vertical_passage_group_issue_resolves_flagged_pair_as_two_element_gro
 }
 
 #[test]
-fn invalid_vertical_passage_issue_merged_from_two_checks_attributes_each_edge_to_only_its_own_check() {
+fn invalid_vertical_passage_issue_merged_from_two_checks_attributes_each_edge_to_only_its_own_check()
+ {
     use crate::quality_control::issue::IssueMerge;
     let (graph, e1, e2) = vertical_passage_graph();
     let (_, scc) = empty_graph_and_scc();
-    let mut issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1]);
-    issue.merge(InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_graph_proximity", vec![e2]));
+    let mut issue = InvalidVerticalPassageIssue::new_from_check(
+        "vertical_passage_group_geometric_proximity",
+        vec![e1],
+    );
+    issue.merge(InvalidVerticalPassageIssue::new_from_check(
+        "vertical_passage_group_graph_proximity",
+        vec![e2],
+    ));
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
-    assert_eq!(groups["vertical_passage_group_geometric_proximity"][0].edges, vec![[1, 2]], "must not include e2");
-    assert_eq!(groups["vertical_passage_group_graph_proximity"][0].edges, vec![[2, 3]], "must not include e1");
+    let IssuePayload::InvalidVerticalPassage { groups } = payload else {
+        panic!("expected InvalidVerticalPassage, got {payload:?}")
+    };
+    assert_eq!(
+        groups["vertical_passage_group_geometric_proximity"][0].edges,
+        vec![[1, 2]],
+        "must not include e2"
+    );
+    assert_eq!(
+        groups["vertical_passage_group_graph_proximity"][0].edges,
+        vec![[2, 3]],
+        "must not include e1"
+    );
 }
 
 #[test]
@@ -1285,11 +1699,20 @@ fn invalid_vertical_passage_issue_silently_skips_a_stale_edge_id_absent_from_the
     let (graph, e1, _) = vertical_passage_graph();
     let (_, scc) = empty_graph_and_scc();
     let stale_id = e1 + 1000;
-    let issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1, stale_id]);
+    let issue = InvalidVerticalPassageIssue::new_from_check(
+        "vertical_passage_group_geometric_proximity",
+        vec![e1, stale_id],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
-    assert_eq!(groups["vertical_passage_group_geometric_proximity"][0].edges, vec![[1, 2]], "stale edge id must be dropped, not panic");
+    let IssuePayload::InvalidVerticalPassage { groups } = payload else {
+        panic!("expected InvalidVerticalPassage, got {payload:?}")
+    };
+    assert_eq!(
+        groups["vertical_passage_group_geometric_proximity"][0].edges,
+        vec![[1, 2]],
+        "stale edge id must be dropped, not panic"
+    );
 }
 
 fn elevator_graph() -> (Graph, ElevatorNodes) {
@@ -1321,7 +1744,9 @@ fn invalid_elevator_issue_resolves_flagged_elevator_as_its_full_edge_fan() {
     let issue = InvalidElevatorIssue::new_from_check("elevator_stop_count", vec![elevator]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+    let IssuePayload::InvalidElevator { groups } = payload else {
+        panic!("expected InvalidElevator, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check_groups = &groups["elevator_stop_count"];
     assert_eq!(check_groups.len(), 1);
@@ -1344,10 +1769,13 @@ fn invalid_elevator_group_issue_resolves_each_flagged_elevator_as_its_own_edge_f
     // resolves to one payload entry per flagged elevator, mirroring `resolve_invalid_elevator_payload`.
     let (graph, elevator) = elevator_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidElevatorGroupIssue::new_from_check("max_elevator_count", vec![(vec![elevator], 1)]);
+    let issue =
+        InvalidElevatorGroupIssue::new_from_check("max_elevator_count", vec![(vec![elevator], 1)]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+    let IssuePayload::InvalidElevator { groups } = payload else {
+        panic!("expected InvalidElevator, got {payload:?}")
+    };
     assert_eq!(groups.len(), 1);
     let check_groups = &groups["max_elevator_count"];
     assert_eq!(check_groups.len(), 1);
@@ -1360,7 +1788,10 @@ fn invalid_elevator_group_issue_resolves_each_flagged_elevator_as_its_own_edge_f
 fn invalid_elevator_group_issue_preset_locked_when_every_edge_is_preset_protected() {
     let (graph, elevator) = elevator_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidElevatorGroupIssue::new_from_check("max_elevator_density", vec![(vec![elevator], 1)]);
+    let issue = InvalidElevatorGroupIssue::new_from_check(
+        "max_elevator_density",
+        vec![(vec![elevator], 1)],
+    );
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
@@ -1371,7 +1802,9 @@ fn invalid_elevator_group_issue_preset_locked_when_every_edge_is_preset_protecte
     preset_state.preset_edges.insert((3, 2));
 
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+    let IssuePayload::InvalidElevator { groups } = payload else {
+        panic!("expected InvalidElevator, got {payload:?}")
+    };
     assert!(groups["max_elevator_density"][0].preset_locked);
 }
 
@@ -1389,12 +1822,18 @@ fn invalid_elevator_stop_issue_resolves_each_flagged_stop_as_its_own_single_node
     let issue = InvalidElevatorStopIssue::new_from_check("max_elevator_stops", vec![1, 2]);
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+    let IssuePayload::InvalidElevatorStop { nodes } = payload else {
+        panic!("expected InvalidElevatorStop, got {payload:?}")
+    };
     assert_eq!(nodes.len(), 1);
     let check_regions = &nodes["max_elevator_stops"];
     let mut regions: Vec<Vec<u32>> = check_regions.iter().map(|r| r.region.clone()).collect();
     regions.sort();
-    assert_eq!(regions, vec![vec![1], vec![2]], "each flagged stop must be its own single-node region, not one merged region");
+    assert_eq!(
+        regions,
+        vec![vec![1], vec![2]],
+        "each flagged stop must be its own single-node region, not one merged region"
+    );
 }
 
 #[test]
@@ -1406,7 +1845,9 @@ fn invalid_elevator_stop_issue_preset_locked_when_stop_touches_a_preset_edge() {
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+    let IssuePayload::InvalidElevatorStop { nodes } = payload else {
+        panic!("expected InvalidElevatorStop, got {payload:?}")
+    };
     assert!(nodes["max_elevator_stops"][0].preset_locked);
 }
 
@@ -1421,30 +1862,51 @@ fn invalid_elevator_stop_group_issue_with_no_flagged_groups_resolves_to_none() {
 fn invalid_elevator_stop_group_issue_resolves_each_stop_in_the_group_as_its_own_region() {
     let (graph, _elevator) = elevator_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops_per_floor", vec![(vec![1, 2, 3], 1)]);
+    let issue = InvalidElevatorStopGroupIssue::new_from_check(
+        "max_elevator_stops_per_floor",
+        vec![(vec![1, 2, 3], 1)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+    let IssuePayload::InvalidElevatorStop { nodes } = payload else {
+        panic!("expected InvalidElevatorStop, got {payload:?}")
+    };
     let check_regions = &nodes["max_elevator_stops_per_floor"];
     let mut regions: Vec<Vec<u32>> = check_regions.iter().map(|r| r.region.clone()).collect();
     regions.sort();
-    assert_eq!(regions, vec![vec![1], vec![2], vec![3]], "every stop in the group must be emitted as its own single-node region");
+    assert_eq!(
+        regions,
+        vec![vec![1], vec![2], vec![3]],
+        "every stop in the group must be emitted as its own single-node region"
+    );
 }
 
 #[test]
 fn invalid_elevator_stop_group_issue_preset_locked_when_stop_touches_a_preset_edge() {
     let (graph, _elevator) = elevator_graph();
     let (_, scc) = empty_graph_and_scc();
-    let issue = InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops", vec![(vec![1, 2], 1)]);
+    let issue =
+        InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops", vec![(vec![1, 2], 1)]);
 
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((1, 2));
     let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state, None);
-    let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+    let IssuePayload::InvalidElevatorStop { nodes } = payload else {
+        panic!("expected InvalidElevatorStop, got {payload:?}")
+    };
     let check_regions = &nodes["max_elevator_stops"];
-    let locked: HashMap<u32, bool> = check_regions.iter().map(|r| (r.region[0], r.preset_locked)).collect();
-    assert!(locked[&1], "stop 1 touches the preset edge (1,2), must be locked");
-    assert!(locked[&2], "stop 2 also touches the preset edge (1,2), must be locked");
+    let locked: HashMap<u32, bool> = check_regions
+        .iter()
+        .map(|r| (r.region[0], r.preset_locked))
+        .collect();
+    assert!(
+        locked[&1],
+        "stop 1 touches the preset edge (1,2), must be locked"
+    );
+    assert!(
+        locked[&2],
+        "stop 2 also touches the preset edge (1,2), must be locked"
+    );
 }
 
 // --- AreaDeficit resolver (hover-highlight follow-up to GitHub issue #408) — covers
@@ -1454,11 +1916,16 @@ fn invalid_elevator_stop_group_issue_preset_locked_when_stop_touches_a_preset_ed
 
 /// A two-floor field with no nodes wired into any graph — these tests only need `field.levels_ordered()`
 /// positions to resolve `RepairArea::Level`, not a real graph.
-fn two_level_field() -> (MultiLevelField<crate::space::SquareTessellation>, crate::space::LevelId, crate::space::LevelId) {
+fn two_level_field() -> (
+    MultiLevelField<crate::space::SquareTessellation>,
+    crate::space::LevelId,
+    crate::space::LevelId,
+) {
     use crate::space::{Field, SquareTessellation, square_rect};
     let mut ids = IdGenerator::new();
     let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let bottom =
+        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
     let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
     (mf, bottom, top)
 }
@@ -1480,10 +1947,16 @@ fn missing_vertical_passages_issue_resolves_whole_maze_and_level_entries_keyed_b
     );
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    let IssuePayload::AreaDeficit { areas } = payload else {
+        panic!("expected AreaDeficit, got {payload:?}")
+    };
     assert_eq!(areas.len(), 1);
     let entries = &areas["min_vertical_passage_count"];
-    assert_eq!(entries, &vec![None, Some(1)], "WholeMaze resolves to None, Level(top) resolves to its levels_ordered() index");
+    assert_eq!(
+        entries,
+        &vec![None, Some(1)],
+        "WholeMaze resolves to None, Level(top) resolves to its levels_ordered() index"
+    );
     let _ = bottom; // only used to build the two-level field
 }
 
@@ -1491,10 +1964,15 @@ fn missing_vertical_passages_issue_resolves_whole_maze_and_level_entries_keyed_b
 fn missing_teleports_issue_resolves_level_entry_to_its_levels_ordered_index() {
     let (field, bottom, _top) = two_level_field();
     let (graph, scc) = empty_graph_and_scc();
-    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::Level(bottom), 3)]);
+    let issue = MissingTeleportsIssue::new_from_check(
+        "min_teleport_count",
+        vec![(RepairArea::Level(bottom), 3)],
+    );
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    let IssuePayload::AreaDeficit { areas } = payload else {
+        panic!("expected AreaDeficit, got {payload:?}")
+    };
     assert_eq!(areas["min_teleport_count"], vec![Some(0)]);
 }
 
@@ -1503,10 +1981,15 @@ fn missing_elevators_issue_whole_maze_only_resolves_to_a_none_entry() {
     // GitHub issue #401's whole-maze-only scope — no specific floor to highlight, same
     // "no per-element highlight" precedent as ExcessiveSccCount, still routed through AreaDeficit.
     let (graph, scc) = empty_graph_and_scc();
-    let issue = MissingElevatorsIssue::new_from_check("min_elevator_count", vec![(RepairArea::WholeMaze, 4)]);
+    let issue = MissingElevatorsIssue::new_from_check(
+        "min_elevator_count",
+        vec![(RepairArea::WholeMaze, 4)],
+    );
 
     let payload = resolve(&issue, &graph, &scc);
-    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    let IssuePayload::AreaDeficit { areas } = payload else {
+        panic!("expected AreaDeficit, got {payload:?}")
+    };
     assert_eq!(areas["min_elevator_count"], vec![None]);
 }
 
@@ -1514,10 +1997,15 @@ fn missing_elevators_issue_whole_maze_only_resolves_to_a_none_entry() {
 fn area_missing_elevator_stops_issue_resolves_level_entry_to_its_levels_ordered_index() {
     let (field, _bottom, top) = two_level_field();
     let (graph, scc) = empty_graph_and_scc();
-    let issue = AreaMissingElevatorStopsIssue::new_from_check("min_elevator_stops_per_area_count", vec![(RepairArea::Level(top), 2)]);
+    let issue = AreaMissingElevatorStopsIssue::new_from_check(
+        "min_elevator_stops_per_area_count",
+        vec![(RepairArea::Level(top), 2)],
+    );
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    let IssuePayload::AreaDeficit { areas } = payload else {
+        panic!("expected AreaDeficit, got {payload:?}")
+    };
     assert_eq!(areas["min_elevator_stops_per_area_count"], vec![Some(1)]);
 }
 
@@ -1529,14 +2017,26 @@ fn area_deficit_fans_the_same_area_list_to_every_source_check() {
     use crate::quality_control::issue::IssueMerge;
     let (field, bottom, _top) = two_level_field();
     let (graph, scc) = empty_graph_and_scc();
-    let mut issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::Level(bottom), 2)]);
-    issue.merge(MissingTeleportsIssue::new_from_check("min_teleport_ratio", vec![(RepairArea::Level(bottom), 5)]));
+    let mut issue = MissingTeleportsIssue::new_from_check(
+        "min_teleport_count",
+        vec![(RepairArea::Level(bottom), 2)],
+    );
+    issue.merge(MissingTeleportsIssue::new_from_check(
+        "min_teleport_ratio",
+        vec![(RepairArea::Level(bottom), 5)],
+    ));
 
     let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty(), None);
-    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    let IssuePayload::AreaDeficit { areas } = payload else {
+        panic!("expected AreaDeficit, got {payload:?}")
+    };
     assert_eq!(areas.len(), 2);
     assert_eq!(areas["min_teleport_count"], vec![Some(0)]);
-    assert_eq!(areas["min_teleport_ratio"], vec![Some(0)], "merge keeps the larger missing count but both checks still see the same area list");
+    assert_eq!(
+        areas["min_teleport_ratio"],
+        vec![Some(0)],
+        "merge keeps the larger missing count but both checks still see the same area list"
+    );
 }
 
 /// Pins every batch-edge-group check's own `Check::is_batch_edge_group()` against
@@ -1549,39 +2049,60 @@ fn area_deficit_fans_the_same_area_list_to_every_source_check() {
 fn is_batch_edge_group_type_agrees_with_every_checks_own_is_batch_edge_group() {
     use crate::quality_control::check::Check;
     use crate::quality_control::checks::{
-        MaxTeleportCountCheck, MaxTeleportDensityCheck, MaxOneWayCountCheck, MaxOneWayRatioCheck,
+        MaxOneWayCountCheck, MaxOneWayRatioCheck, MaxTeleportCountCheck, MaxTeleportDensityCheck,
         MaxVerticalPassageCountCheck, MaxVerticalPassageRatioCheck,
     };
-    use crate::quality_control::{FloorScope, TeleportDirectionFilter, TeleportFloorKindFilter, VerticalPassageType};
+    use crate::quality_control::{
+        FloorScope, TeleportDirectionFilter, TeleportFloorKindFilter, VerticalPassageType,
+    };
 
-    fn assert_agrees<T: crate::space::Tessellation, I: crate::quality_control::IssueRequirement>(check: &dyn Check<T, I>) {
+    fn assert_agrees<T: crate::space::Tessellation, I: crate::quality_control::IssueRequirement>(
+        check: &dyn Check<T, I>,
+    ) {
         assert_eq!(
-            check.is_batch_edge_group(), is_batch_edge_group_type(check.check_type_id()),
+            check.is_batch_edge_group(),
+            is_batch_edge_group_type(check.check_type_id()),
             "'{}' disagrees between Check::is_batch_edge_group() and is_batch_edge_group_type()",
             check.check_type_id(),
         );
     }
 
     assert_agrees::<SquareTessellation, _>(&MaxTeleportCountCheck {
-        instance_id: "t".into(), max_teleports: 1, floor_scope: FloorScope::WholeMaze,
-        direction: TeleportDirectionFilter::Any, floor_kind: TeleportFloorKindFilter::Any,
+        instance_id: "t".into(),
+        max_teleports: 1,
+        floor_scope: FloorScope::WholeMaze,
+        direction: TeleportDirectionFilter::Any,
+        floor_kind: TeleportFloorKindFilter::Any,
     });
     assert_agrees::<SquareTessellation, _>(&MaxTeleportDensityCheck {
-        instance_id: "t".into(), max_density: 1.0, floor_scope: FloorScope::WholeMaze,
-        direction: TeleportDirectionFilter::Any, floor_kind: TeleportFloorKindFilter::Any,
+        instance_id: "t".into(),
+        max_density: 1.0,
+        floor_scope: FloorScope::WholeMaze,
+        direction: TeleportDirectionFilter::Any,
+        floor_kind: TeleportFloorKindFilter::Any,
     });
     assert_agrees::<SquareTessellation, _>(&MaxOneWayCountCheck {
-        instance_id: "t".into(), max_one_ways: 1, floor_scope: FloorScope::WholeMaze,
+        instance_id: "t".into(),
+        max_one_ways: 1,
+        floor_scope: FloorScope::WholeMaze,
     });
     assert_agrees::<SquareTessellation, _>(&MaxOneWayRatioCheck {
-        instance_id: "t".into(), max_ratio: 1.0, floor_scope: FloorScope::WholeMaze,
+        instance_id: "t".into(),
+        max_ratio: 1.0,
+        floor_scope: FloorScope::WholeMaze,
     });
     assert_agrees::<SquareTessellation, _>(&MaxVerticalPassageCountCheck {
-        instance_id: "t".into(), max_vertical_passages: 1, floor_scope: FloorScope::WholeMaze,
-        passage_type: VerticalPassageType::Any, count_incoming: false,
+        instance_id: "t".into(),
+        max_vertical_passages: 1,
+        floor_scope: FloorScope::WholeMaze,
+        passage_type: VerticalPassageType::Any,
+        count_incoming: false,
     });
     assert_agrees::<SquareTessellation, _>(&MaxVerticalPassageRatioCheck {
-        instance_id: "t".into(), max_ratio: 1.0, floor_scope: FloorScope::WholeMaze,
-        passage_type: VerticalPassageType::Any, count_incoming: false,
+        instance_id: "t".into(),
+        max_ratio: 1.0,
+        floor_scope: FloorScope::WholeMaze,
+        passage_type: VerticalPassageType::Any,
+        count_incoming: false,
     });
 }

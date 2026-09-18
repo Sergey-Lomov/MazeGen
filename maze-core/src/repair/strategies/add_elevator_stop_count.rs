@@ -1,26 +1,26 @@
-use rand::RngCore;
-use rand::seq::SliceRandom;
+use super::elevator_utils::find_elevator_by_stop;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::{LevelId, Tessellation};
-use crate::quality_control::MissingElevatorStopCountIssue;
 use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams, PriorityLevel};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
+use crate::ids::NodeId;
+use crate::quality_control::MissingElevatorStopCountIssue;
 use crate::repair::command::MutationCommand;
-use super::elevator_utils::find_elevator_by_stop;
+use crate::repair::params::{PriorityLevel, StrategyParam, StrategyParamKind, StrategyParams};
+use crate::repair::result::RepairResult;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
+use rand::seq::SliceRandom;
 
 pub const PARAM_EXPAND_ELEVATOR: &str = "expand_elevator";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_EXPAND_ELEVATOR,
-        label: "Expand elevator",
-        kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
+static PARAMS: &[StrategyParam] = &[StrategyParam {
+    id: PARAM_EXPAND_ELEVATOR,
+    label: "Expand elevator",
+    kind: StrategyParamKind::Priority {
+        default: PriorityLevel::Indifferent,
     },
-];
+}];
 
 /// Handles `MISSING_ELEVATOR_STOP_COUNT` -- see GitHub issue #402, part of epic #344. For each
 /// `missing` entry (one existing elevator, a stop count still needed, and every free floor at the
@@ -51,8 +51,12 @@ static PARAMS: &[StrategyParam] = &[
 /// failing the entry if that alone can't satisfy `count`.
 pub struct AddElevatorStopCountStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddElevatorStopCountStrategy {
-    fn strategy_id(&self) -> &'static str { "add_elevator_stop_count" }
+impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue>
+    for AddElevatorStopCountStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "add_elevator_stop_count"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -67,7 +71,10 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let expand_elevator = params.get(PARAM_EXPAND_ELEVATOR).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
+        let expand_elevator = params
+            .get(PARAM_EXPAND_ELEVATOR)
+            .and_then(|v| v.as_priority())
+            .unwrap_or(PriorityLevel::Indifferent);
 
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
@@ -76,25 +83,41 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
             if *count == 0 || available.is_empty() {
                 continue;
             }
-            let Some(&any_stop) = elevator_key.0.first() else { continue };
-            let Some(elevator) = find_elevator_by_stop(maze, any_stop) else { continue };
-            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else { continue };
+            let Some(&any_stop) = elevator_key.0.first() else {
+                continue;
+            };
+            let Some(elevator) = find_elevator_by_stop(maze, any_stop) else {
+                continue;
+            };
+            let Some(point) = elevator.stops.first().and_then(|&n| maze.field.point_of(n)) else {
+                continue;
+            };
 
             let mut current_stops: Vec<NodeId> = elevator.stops.clone();
 
-            let level_index: std::collections::HashMap<LevelId, usize> = maze.field.levels_ordered()
+            let level_index: std::collections::HashMap<LevelId, usize> = maze
+                .field
+                .levels_ordered()
                 .enumerate()
                 .map(|(i, level)| (level, i))
                 .collect();
-            let existing_indices: Vec<usize> = current_stops.iter()
+            let existing_indices: Vec<usize> = current_stops
+                .iter()
                 .filter_map(|&n| maze.field.level_index_of(n))
                 .collect();
-            let (Some(&bottom), Some(&top)) = (existing_indices.iter().min(), existing_indices.iter().max()) else { continue };
+            let (Some(&bottom), Some(&top)) =
+                (existing_indices.iter().min(), existing_indices.iter().max())
+            else {
+                continue;
+            };
             let is_inside = |level: &LevelId| {
-                level_index.get(level).is_some_and(|&i| i > bottom && i < top)
+                level_index
+                    .get(level)
+                    .is_some_and(|&i| i > bottom && i < top)
             };
 
-            let (mut inside, mut outside): (Vec<LevelId>, Vec<LevelId>) = available.iter().copied().partition(is_inside);
+            let (mut inside, mut outside): (Vec<LevelId>, Vec<LevelId>) =
+                available.iter().copied().partition(is_inside);
             inside.shuffle(rng);
             outside.shuffle(rng);
 
@@ -109,7 +132,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
                     if added_here >= *count {
                         break 'zones;
                     }
-                    let Some(node) = maze.field.node_at(level, point) else { continue };
+                    let Some(node) = maze.field.node_at(level, point) else {
+                        continue;
+                    };
                     if current_stops.contains(&node) {
                         continue;
                     }
@@ -117,14 +142,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
                         continue;
                     }
                     for &other in &current_stops {
-                        entry_commands.push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
+                        entry_commands
+                            .push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
                     }
                     current_stops.push(node);
                     added_here += 1;
                 }
             }
 
-            let zone_locked = matches!(expand_elevator, PriorityLevel::Forbidden | PriorityLevel::Required);
+            let zone_locked = matches!(
+                expand_elevator,
+                PriorityLevel::Forbidden | PriorityLevel::Required
+            );
             if zone_locked && added_here < *count {
                 continue;
             }
@@ -141,7 +170,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
 
 crate::impl_erased_repair_strategy!(AddElevatorStopCountStrategy, MissingElevatorStopCountIssue);
 
-fn stop_feasible<T: Tessellation>(maze: &Maze<T>, candidate: NodeId, current_stops: &[NodeId], preset_state: &PresetState) -> bool {
+fn stop_feasible<T: Tessellation>(
+    maze: &Maze<T>,
+    candidate: NodeId,
+    current_stops: &[NodeId],
+    preset_state: &PresetState,
+) -> bool {
     current_stops.iter().all(|&other| {
         maze.graph.edge_between(candidate, other).is_none()
             && maze.graph.edge_between(other, candidate).is_none()
@@ -152,35 +186,62 @@ fn stop_feasible<T: Tessellation>(maze: &Maze<T>, candidate: NodeId, current_sto
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::quality_control::checks::elevator_core::elevator_groups;
     use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
-    use crate::quality_control::checks::elevator_core::elevator_groups;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use rand::SeedableRng;
 
     fn no_params() -> StrategyParams {
-        build_params(<AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, MissingElevatorStopCountIssue>>::params(&AddElevatorStopCountStrategy), None)
+        build_params(
+            <AddElevatorStopCountStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingElevatorStopCountIssue,
+            >>::params(&AddElevatorStopCountStrategy),
+            None,
+        )
     }
 
     fn params_with(expand_elevator: &str) -> StrategyParams {
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_EXPAND_ELEVATOR.to_string(), expand_elevator.to_string());
-        build_params(<AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, MissingElevatorStopCountIssue>>::params(&AddElevatorStopCountStrategy), Some(&overrides))
+        overrides.insert(
+            PARAM_EXPAND_ELEVATOR.to_string(),
+            expand_elevator.to_string(),
+        );
+        build_params(
+            <AddElevatorStopCountStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingElevatorStopCountIssue,
+            >>::params(&AddElevatorStopCountStrategy),
+            Some(&overrides),
+        )
     }
 
-    fn maze_with_elevator(floor_count: usize, stop_floor_indices: &[usize]) -> (Maze<SquareTessellation>, Vec<NodeId>, Vec<crate::space::LevelId>) {
+    fn maze_with_elevator(
+        floor_count: usize,
+        stop_floor_indices: &[usize],
+    ) -> (
+        Maze<SquareTessellation>,
+        Vec<NodeId>,
+        Vec<crate::space::LevelId>,
+    ) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..floor_count)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = stop_floor_indices.iter()
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = stop_floor_indices
+            .iter()
             .map(|&i| mf.node_at(floors[i], SquarePoint { x: 0, y: 0 }).unwrap())
             .collect();
         for i in 0..nodes.len() {
@@ -200,12 +261,23 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 1, vec![floors[3]])],
         );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let groups = elevator_groups(&maze);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].stops.len(), 3);
-        let new_node = maze.field.node_at(floors[3], SquarePoint { x: 0, y: 0 }).unwrap();
+        let new_node = maze
+            .field
+            .node_at(floors[3], SquarePoint { x: 0, y: 0 })
+            .unwrap();
         assert!(maze.graph.edge_between(new_node, nodes[0]).is_some());
         assert!(maze.graph.edge_between(new_node, nodes[1]).is_some());
     }
@@ -213,27 +285,55 @@ mod tests {
     #[test]
     fn partial_success_when_only_some_requested_stops_could_be_added() {
         let (mut maze, nodes, floors) = maze_with_elevator(5, &[0, 1]);
-        let blocked = maze.field.node_at(floors[3], SquarePoint { x: 0, y: 0 }).unwrap();
-        let decoy = maze.field.node_at(floors[2], SquarePoint { x: 0, y: 0 }).unwrap();
+        let blocked = maze
+            .field
+            .node_at(floors[3], SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let decoy = maze
+            .field
+            .node_at(floors[2], SquarePoint { x: 0, y: 0 })
+            .unwrap();
         maze.graph.add_edge(blocked, decoy, EdgeKind::Basic);
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(blocked);
 
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[3], floors[4]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[3], floors[4]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(2);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
-        assert!(matches!(result, RepairResult::Fixed { score: None }), "adding at least one of two requested stops still counts as success");
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &[],
+        );
+        assert!(
+            matches!(result, RepairResult::Fixed { score: None }),
+            "adding at least one of two requested stops still counts as success"
+        );
         let groups = elevator_groups(&maze);
-        assert_eq!(groups[0].stops.len(), 3, "only floor 4 could be added; floor 3 is locked out");
+        assert_eq!(
+            groups[0].stops.len(),
+            3,
+            "only floor 4 could be added; floor 3 is locked out"
+        );
     }
 
     #[test]
     fn apply_fails_when_no_stop_could_be_added_at_all() {
         let (mut maze, nodes, floors) = maze_with_elevator(4, &[0, 1]);
-        let blocked = maze.field.node_at(floors[3], SquarePoint { x: 0, y: 0 }).unwrap();
+        let blocked = maze
+            .field
+            .node_at(floors[3], SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(blocked);
 
@@ -242,23 +342,45 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 1, vec![floors[3]])],
         );
         let mut rng = MazeRng::seed_from_u64(3);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
-        assert_eq!(maze.graph.edges().count(), 2, "only the original 2 elevator edges remain, nothing added");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "only the original 2 elevator edges remain, nothing added"
+        );
     }
 
     #[test]
     fn apply_skips_an_entry_whose_elevator_no_longer_exists() {
         let (mut maze, nodes, floors) = maze_with_elevator(4, &[0, 1]);
-        maze.graph.remove_edge(maze.graph.edge_between(nodes[0], nodes[1]).unwrap());
-        maze.graph.remove_edge(maze.graph.edge_between(nodes[1], nodes[0]).unwrap());
+        maze.graph
+            .remove_edge(maze.graph.edge_between(nodes[0], nodes[1]).unwrap());
+        maze.graph
+            .remove_edge(maze.graph.edge_between(nodes[1], nodes[0]).unwrap());
 
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
             vec![(ElevatorNodes::new(nodes.clone()), 1, vec![floors[3]])],
         );
         let mut rng = MazeRng::seed_from_u64(4);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -267,18 +389,42 @@ mod tests {
         let (mut maze_a, nodes_a, floors_a) = maze_with_elevator(6, &[0, 1]);
         let issue_a = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes_a.clone()), 1, vec![floors_a[2], floors_a[3], floors_a[4], floors_a[5]])],
+            vec![(
+                ElevatorNodes::new(nodes_a.clone()),
+                1,
+                vec![floors_a[2], floors_a[3], floors_a[4], floors_a[5]],
+            )],
         );
         let mut rng_a = MazeRng::seed_from_u64(99);
-        apply_and_commit(&AddElevatorStopCountStrategy, &issue_a, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue_a,
+            &mut maze_a,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         let (mut maze_b, nodes_b, floors_b) = maze_with_elevator(6, &[0, 1]);
         let issue_b = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes_b.clone()), 1, vec![floors_b[2], floors_b[3], floors_b[4], floors_b[5]])],
+            vec![(
+                ElevatorNodes::new(nodes_b.clone()),
+                1,
+                vec![floors_b[2], floors_b[3], floors_b[4], floors_b[5]],
+            )],
         );
         let mut rng_b = MazeRng::seed_from_u64(99);
-        apply_and_commit(&AddElevatorStopCountStrategy, &issue_b, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue_b,
+            &mut maze_b,
+            &mut rng_b,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -291,14 +437,33 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(7, &[0, 4]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[5], floors[6]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[2], floors[3], floors[5], floors[6]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(10);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("forbidden"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("forbidden"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
+        let indices: Vec<usize> = elevator_groups(&maze)[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
         for i in &indices {
-            assert!(*i == 0 || *i == 4 || (*i > 0 && *i < 4), "forbidden must never pick an outside floor, got index {i}");
+            assert!(
+                *i == 0 || *i == 4 || (*i > 0 && *i < 4),
+                "forbidden must never pick an outside floor, got index {i}"
+            );
         }
     }
 
@@ -308,12 +473,28 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(5, &[0, 2]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[3], floors[4]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[3], floors[4]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(11);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("forbidden"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("forbidden"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
-        assert_eq!(maze.graph.edges().count(), 2, "entry skipped entirely, nothing added");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "entry skipped entirely, nothing added"
+        );
     }
 
     #[test]
@@ -321,13 +502,32 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(7, &[0, 4]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[5], floors[6]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[2], floors[3], floors[5], floors[6]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(12);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("required"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("required"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
-        assert!(indices.contains(&5) && indices.contains(&6), "required must add both outside floors 5,6");
+        let indices: Vec<usize> = elevator_groups(&maze)[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
+        assert!(
+            indices.contains(&5) && indices.contains(&6),
+            "required must add both outside floors 5,6"
+        );
     }
 
     #[test]
@@ -335,12 +535,28 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(5, &[0, 4]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[2], floors[3]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(13);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("required"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("required"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
-        assert_eq!(maze.graph.edges().count(), 2, "no outside floors exist at all, entry skipped");
+        assert_eq!(
+            maze.graph.edges().count(),
+            2,
+            "no outside floors exist at all, entry skipped"
+        );
     }
 
     #[test]
@@ -349,14 +565,37 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(7, &[0, 2]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[3], floors[4], floors[5], floors[6]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[3], floors[4], floors[5], floors[6]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(14);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("discouraged"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("discouraged"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
-        assert!(indices.contains(&1), "the one inside floor must be used first");
-        assert_eq!(indices.len(), 4, "2 existing + 2 newly added (1 inside + 1 outside fallback)");
+        let indices: Vec<usize> = elevator_groups(&maze)[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
+        assert!(
+            indices.contains(&1),
+            "the one inside floor must be used first"
+        );
+        assert_eq!(
+            indices.len(),
+            4,
+            "2 existing + 2 newly added (1 inside + 1 outside fallback)"
+        );
     }
 
     #[test]
@@ -365,13 +604,36 @@ mod tests {
         let (mut maze, nodes, floors) = maze_with_elevator(7, &[0, 4]);
         let issue = MissingElevatorStopCountIssue::new_from_check(
             "min_elevator_stop_count",
-            vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[6]])],
+            vec![(
+                ElevatorNodes::new(nodes.clone()),
+                2,
+                vec![floors[1], floors[2], floors[3], floors[6]],
+            )],
         );
         let mut rng = MazeRng::seed_from_u64(15);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("preferred"), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &AddElevatorStopCountStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with("preferred"),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
-        assert!(indices.contains(&6), "the one outside floor must be used first");
-        assert_eq!(indices.len(), 4, "2 existing + 2 newly added (1 outside + 1 inside fallback)");
+        let indices: Vec<usize> = elevator_groups(&maze)[0]
+            .stops
+            .iter()
+            .filter_map(|&n| maze.field.level_index_of(n))
+            .collect();
+        assert!(
+            indices.contains(&6),
+            "the one outside floor must be used first"
+        );
+        assert_eq!(
+            indices.len(),
+            4,
+            "2 existing + 2 newly added (1 outside + 1 inside fallback)"
+        );
     }
 }

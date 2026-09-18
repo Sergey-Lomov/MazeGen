@@ -1,7 +1,10 @@
+use maze_core::RegionClass;
+use maze_core::quality_control::{
+    Comparison, CycleKind, FloorScope, GeometricFloorMode, TeleportDirectionFilter,
+    TeleportFloorKindFilter, VerticalPassageType,
+};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType, TeleportDirectionFilter, TeleportFloorKindFilter};
-use maze_core::RegionClass;
 
 /// Conditional-visibility tag (GitHub issue #349) — shared by `ParamDescriptor`, `CheckDescriptor`
 /// and `StrategyDescriptor`. On a param, the web UI hides that param's whole row (label + control)
@@ -36,16 +39,36 @@ pub struct ParamDescriptor {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ParamKindDto {
-    Float { default: f64, min: f64, max: f64 },
-    Integer { default: i64, min: i64, max: i64 },
-    Bool { default: bool },
-    Enum { options: Vec<&'static str>, default: &'static str },
-    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    Float {
+        default: f64,
+        min: f64,
+        max: f64,
+    },
+    Integer {
+        default: i64,
+        min: i64,
+        max: i64,
+    },
+    Bool {
+        default: bool,
+    },
+    Enum {
+        options: Vec<&'static str>,
+        default: &'static str,
+    },
+    Interval {
+        default_min: f64,
+        default_max: f64,
+        min: f64,
+        max: f64,
+    },
     /// A fixed 5-value priority enum between two candidate groups — see
     /// `maze_core::repair::PriorityLevel`'s own doc comment. Rendered by the web UI with one
     /// shared, hardcoded-once set of labels/explanations (`priority.*` i18n keys), not per-param
     /// entries the way a plain `Enum` needs (GitHub issue #381 follow-up).
-    Priority { default: &'static str },
+    Priority {
+        default: &'static str,
+    },
     /// A split-pattern list (GitHub issue #247) — signals the web UI to render the dedicated
     /// pattern-list dialog instead of a generic input. Value is carried as a JSON-serialized
     /// `Vec<SplitPatternDto>` string in the check/strategy's own `params` map (the same wire shape
@@ -53,7 +76,9 @@ pub enum ParamKindDto {
     /// `with_weights` distinguishes a plain "all vs this list" filter (a check's own pattern-list
     /// param, no weights) from a full weighted pattern pool with an unconstrained-mode switch (a
     /// strategy's own pattern-selection config).
-    PatternList { with_weights: bool },
+    PatternList {
+        with_weights: bool,
+    },
     /// A full split-generation config — pattern mode toggle, `max_split_nodes` (unconstrained
     /// mode), and a weighted pattern list (pattern mode) — bundled behind one settings button that
     /// opens the same dialog generation's own split settings use (`AddSplitStrategy`'s `patterns`
@@ -73,7 +98,9 @@ pub enum ParamKindDto {
     /// string when in non-pattern mode — same "which shape depends on sibling rule state" contract
     /// `add_vertical_passage`'s slider overrides already follow, just for a param whose control
     /// type itself switches, not just its value.
-    AddSplitConfig { max_split_nodes_default: u32 },
+    AddSplitConfig {
+        max_split_nodes_default: u32,
+    },
 }
 
 #[derive(Serialize)]
@@ -119,26 +146,42 @@ pub struct RuleParamDescriptorDto {
 /// anyway, resolving display text from its own i18n keyed by `id`, same as every other
 /// `ParamDescriptor.label` in this module).
 pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
-    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, PARAM_SPLIT_PATTERNS, VerticalPassageType};
-    RULE_PARAM_DESCRIPTORS.iter().map(|d| {
-        let kind = match d.kind {
-            RuleParamKind::Bool { default } => ParamKindDto::Bool { default },
-            RuleParamKind::VerticalPassageTypeEnum { default } => ParamKindDto::Enum {
-                options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
-                default: default.as_str(),
-            },
-            // No weight input at rule-level (GitHub issue #389) — `SplitPattern::weight` here is
-            // only a fallback default for `AddSplitStrategy`'s own `pattern_weights` override.
-            RuleParamKind::PatternList => ParamKindDto::PatternList { with_weights: false },
-        };
-        let label = match d.id {
-            id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
-            id if id == PARAM_VERTICAL_PASSAGE_TYPE => "Type",
-            id if id == PARAM_SPLIT_PATTERNS => "Split patterns",
-            other => other,
-        };
-        RuleParamDescriptorDto { id: d.id, label, kind, applies_to: d.applies_to }
-    }).collect()
+    use maze_core::quality_control::{
+        PARAM_PROTECT_ROUTE, PARAM_SPLIT_PATTERNS, PARAM_VERTICAL_PASSAGE_TYPE,
+        RULE_PARAM_DESCRIPTORS, RuleParamKind, VerticalPassageType,
+    };
+    RULE_PARAM_DESCRIPTORS
+        .iter()
+        .map(|d| {
+            let kind = match d.kind {
+                RuleParamKind::Bool { default } => ParamKindDto::Bool { default },
+                RuleParamKind::VerticalPassageTypeEnum { default } => ParamKindDto::Enum {
+                    options: VerticalPassageType::ALL_VALUES
+                        .iter()
+                        .map(|t| t.as_str())
+                        .collect(),
+                    default: default.as_str(),
+                },
+                // No weight input at rule-level (GitHub issue #389) — `SplitPattern::weight` here is
+                // only a fallback default for `AddSplitStrategy`'s own `pattern_weights` override.
+                RuleParamKind::PatternList => ParamKindDto::PatternList {
+                    with_weights: false,
+                },
+            };
+            let label = match d.id {
+                id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
+                id if id == PARAM_VERTICAL_PASSAGE_TYPE => "Type",
+                id if id == PARAM_SPLIT_PATTERNS => "Split patterns",
+                other => other,
+            };
+            RuleParamDescriptorDto {
+                id: d.id,
+                label,
+                kind,
+                applies_to: d.applies_to,
+            }
+        })
+        .collect()
 }
 
 #[wasm_bindgen]
@@ -165,7 +208,6 @@ pub fn region_class_filter_param() -> ParamDescriptor {
         visibility: None,
     }
 }
-
 
 /// Shared `comparison` param descriptor — GitHub issue #177: checks merged around `Comparison`
 /// (min/max validating a single entity, both flagging the same issue kind) expose one `comparison`
@@ -248,7 +290,10 @@ pub fn vertical_passage_type_param(default: VerticalPassageType) -> ParamDescrip
         id: "passage_type",
         label: "Type",
         kind: ParamKindDto::Enum {
-            options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            options: VerticalPassageType::ALL_VALUES
+                .iter()
+                .map(|t| t.as_str())
+                .collect(),
             default: default.as_str(),
         },
         visibility: None,
@@ -260,7 +305,10 @@ pub fn teleport_direction_param(default: TeleportDirectionFilter) -> ParamDescri
         id: "teleport_direction",
         label: "Direction",
         kind: ParamKindDto::Enum {
-            options: TeleportDirectionFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            options: TeleportDirectionFilter::ALL_VALUES
+                .iter()
+                .map(|t| t.as_str())
+                .collect(),
             default: default.as_str(),
         },
         visibility: None,
@@ -272,7 +320,10 @@ pub fn teleport_floor_kind_param(default: TeleportFloorKindFilter) -> ParamDescr
         id: "teleport_floor_kind",
         label: "Floor kind",
         kind: ParamKindDto::Enum {
-            options: TeleportFloorKindFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            options: TeleportFloorKindFilter::ALL_VALUES
+                .iter()
+                .map(|t| t.as_str())
+                .collect(),
             default: default.as_str(),
         },
         // Every teleport collapses to SameFloor with 1 floor -- the filter has nothing to
@@ -314,7 +365,12 @@ pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
 /// issue #376) — there is no multi-select param kind, so the type set is 7 independent bools. A
 /// set with zero enabled types makes the check a silent no-op; one enabled type is a valid
 /// same-type scan.
-pub fn cross_element_include_param(id: &'static str, label: &'static str, default: bool, visibility: Option<EntityVisibility>) -> ParamDescriptor {
+pub fn cross_element_include_param(
+    id: &'static str,
+    label: &'static str,
+    default: bool,
+    visibility: Option<EntityVisibility>,
+) -> ParamDescriptor {
     ParamDescriptor {
         id,
         label,
@@ -325,4 +381,3 @@ pub fn cross_element_include_param(id: &'static str, label: &'static str, defaul
         visibility,
     }
 }
-

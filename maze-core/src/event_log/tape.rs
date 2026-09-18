@@ -44,7 +44,11 @@ impl<E> EventLog<E> {
             next_sibling: None,
             kind: NodeKind::Scope(Cow::Borrowed("root")),
         };
-        Self { nodes: vec![root], cursor: 0, numbered_counters: std::collections::HashMap::new() }
+        Self {
+            nodes: vec![root],
+            cursor: 0,
+            numbered_counters: std::collections::HashMap::new(),
+        }
     }
 
     /// Next 1-based index for `base_name` among same-name siblings opened directly under the
@@ -195,7 +199,10 @@ impl<E> DebugTape<E> {
     /// structure (scope names, parent/child relationships), which `iter`/`mutating_events`
     /// deliberately flatten away.
     pub fn root(&self) -> NodeView<'_, E> {
-        NodeView { tape: self, index: 0 }
+        NodeView {
+            tape: self,
+            index: 0,
+        }
     }
 }
 
@@ -243,7 +250,10 @@ impl<'a, E> NodeView<'a, E> {
     }
 
     pub fn parent(&self) -> Option<NodeView<'a, E>> {
-        self.node().parent.map(|i| NodeView { tape: self.tape, index: i })
+        self.node().parent.map(|i| NodeView {
+            tape: self.tape,
+            index: i,
+        })
     }
 
     /// Children in emission order (first child first).

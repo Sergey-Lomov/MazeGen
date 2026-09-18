@@ -95,7 +95,10 @@ mod tests {
 
     #[test]
     fn to_snake_case_converts_pascal_to_snake() {
-        assert_eq!(to_snake_case("RecursiveBacktrackerEvent"), "recursive_backtracker_event");
+        assert_eq!(
+            to_snake_case("RecursiveBacktrackerEvent"),
+            "recursive_backtracker_event"
+        );
         assert_eq!(to_snake_case("Kruskal"), "kruskal");
     }
 }

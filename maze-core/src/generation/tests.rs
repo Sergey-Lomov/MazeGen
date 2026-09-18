@@ -1,9 +1,11 @@
-use super::*;
 use super::test_utils::*;
+use super::*;
 use crate::space::SquarePoint;
 use rand::SeedableRng;
 
-fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
+fn rng(seed: u64) -> MazeRng {
+    MazeRng::seed_from_u64(seed)
+}
 
 fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
     let level = field.single_level_id();
@@ -214,7 +216,13 @@ fn try_add_edge_rng_parity_matches_add_edge_when_unconstrained() {
     let (_, mut graph_b) = make_field_and_graph(3, 3);
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
-    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
+    let elements = ElementsConfig {
+        one_way_chance: 1.0,
+        teleport_chance: 0.0,
+        teleport_one_way_chance: 0.0,
+        split_chance: 0.0,
+        ..Default::default()
+    };
 
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((b, a)); // force reverse_blocked branch
@@ -248,8 +256,16 @@ fn add_edge_kind_zero_chance_always_bidirectional_with_given_kind() {
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &mut rng(1));
-    assert!(graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport));
-    assert!(graph.edges().any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport));
+    assert!(
+        graph
+            .edges()
+            .any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport)
+    );
+    assert!(
+        graph
+            .edges()
+            .any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport)
+    );
 }
 
 #[test]
@@ -258,9 +274,16 @@ fn add_edge_kind_one_chance_always_one_way_with_given_kind() {
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 1.0, &mut rng(1));
-    let ab = graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport);
-    let ba = graph.edges().any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport);
-    assert!(ab ^ ba, "one_way_chance=1.0 must produce exactly one direction, got ab={ab} ba={ba}");
+    let ab = graph
+        .edges()
+        .any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport);
+    let ba = graph
+        .edges()
+        .any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport);
+    assert!(
+        ab ^ ba,
+        "one_way_chance=1.0 must produce exactly one direction, got ab={ab} ba={ba}"
+    );
 }
 
 #[test]
@@ -270,8 +293,19 @@ fn try_add_edge_kind_respects_preset_state_for_teleport_kind() {
     let b = node_at(&field, 1, 0);
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(a);
-    try_add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &preset_state, &mut rng(1));
-    assert!(graph.edges().count() == 0, "locked_out source must block a Teleport edge exactly like a Basic one");
+    try_add_edge_kind(
+        &mut graph,
+        a,
+        b,
+        EdgeKind::Teleport,
+        0.0,
+        &preset_state,
+        &mut rng(1),
+    );
+    assert!(
+        graph.edges().count() == 0,
+        "locked_out source must block a Teleport edge exactly like a Basic one"
+    );
 }
 
 #[test]
@@ -281,8 +315,20 @@ fn try_add_edge_kind_forces_forward_only_when_reverse_blocked_for_teleport_kind(
     let b = node_at(&field, 1, 0);
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((b, a));
-    try_add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &preset_state, &mut rng(1));
-    assert!(graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport));
+    try_add_edge_kind(
+        &mut graph,
+        a,
+        b,
+        EdgeKind::Teleport,
+        0.0,
+        &preset_state,
+        &mut rng(1),
+    );
+    assert!(
+        graph
+            .edges()
+            .any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport)
+    );
     assert!(!graph.edges().any(|e| e.from == b && e.to == a));
 }
 
@@ -294,14 +340,34 @@ fn try_add_edge_delegates_to_try_add_edge_kind_with_basic_and_one_way_chance() {
     let (_, mut graph_b) = make_field_and_graph(3, 3);
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
-    let elements = ElementsConfig { one_way_chance: 0.5, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
+    let elements = ElementsConfig {
+        one_way_chance: 0.5,
+        teleport_chance: 0.0,
+        teleport_one_way_chance: 0.0,
+        split_chance: 0.0,
+        ..Default::default()
+    };
     let preset_state = PresetState::empty();
 
     try_add_edge(&mut graph_a, a, b, &elements, &preset_state, &mut rng(3));
-    try_add_edge_kind(&mut graph_b, a, b, EdgeKind::Basic, elements.one_way_chance, &preset_state, &mut rng(3));
+    try_add_edge_kind(
+        &mut graph_b,
+        a,
+        b,
+        EdgeKind::Basic,
+        elements.one_way_chance,
+        &preset_state,
+        &mut rng(3),
+    );
 
-    let mut ea: Vec<_> = graph_a.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
-    let mut eb: Vec<_> = graph_b.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
+    let mut ea: Vec<_> = graph_a
+        .edges()
+        .map(|e| (e.from, e.to, e.kind.clone()))
+        .collect();
+    let mut eb: Vec<_> = graph_b
+        .edges()
+        .map(|e| (e.from, e.to, e.kind.clone()))
+        .collect();
     ea.sort_by_key(|(f, t, _)| (*f, *t));
     eb.sort_by_key(|(f, t, _)| (*f, *t));
     assert_eq!(ea, eb);
@@ -315,11 +381,20 @@ use crate::event_log::DebugValueKind;
 fn qualify_debug_value_names_leaves_a_single_source_unqualified() {
     // The only case exercised via generate_maze_with_events today (always exactly one source) —
     // names must pass through verbatim, matching every existing test/UI expectation.
-    let sources = [("generation", vec![("visited", DebugValueKind::Region), ("recursion_stack", DebugValueKind::Sequence)])];
+    let sources = [(
+        "generation",
+        vec![
+            ("visited", DebugValueKind::Region),
+            ("recursion_stack", DebugValueKind::Sequence),
+        ],
+    )];
     let result = qualify_debug_value_names(&sources);
     assert_eq!(
         result,
-        vec![("visited".to_string(), DebugValueKind::Region), ("recursion_stack".to_string(), DebugValueKind::Sequence)]
+        vec![
+            ("visited".to_string(), DebugValueKind::Region),
+            ("recursion_stack".to_string(), DebugValueKind::Sequence)
+        ]
     );
 }
 
@@ -337,7 +412,13 @@ fn qualify_debug_value_names_qualifies_every_name_with_its_scope_when_two_source
     // both sources here, mirroring the real collision RB/Wilson/CustomVertexBased
     // already have independently (see Specs/event_log.md) — qualification must disambiguate it.
     let sources = [
-        ("generation", vec![("visited", DebugValueKind::Region), ("recursion_stack", DebugValueKind::Sequence)]),
+        (
+            "generation",
+            vec![
+                ("visited", DebugValueKind::Region),
+                ("recursion_stack", DebugValueKind::Sequence),
+            ],
+        ),
         ("quality_control", vec![("visited", DebugValueKind::Region)]),
     ];
     let result = qualify_debug_value_names(&sources);
@@ -345,8 +426,14 @@ fn qualify_debug_value_names_qualifies_every_name_with_its_scope_when_two_source
         result,
         vec![
             ("generation:visited".to_string(), DebugValueKind::Region),
-            ("generation:recursion_stack".to_string(), DebugValueKind::Sequence),
-            ("quality_control:visited".to_string(), DebugValueKind::Region),
+            (
+                "generation:recursion_stack".to_string(),
+                DebugValueKind::Sequence
+            ),
+            (
+                "quality_control:visited".to_string(),
+                DebugValueKind::Region
+            ),
         ]
     );
 }
@@ -358,6 +445,8 @@ fn qualify_debug_value_names_with_two_sources_where_one_declares_nothing() {
         ("quality_control", vec![]),
     ];
     let result = qualify_debug_value_names(&sources);
-    assert_eq!(result, vec![("generation:visited".to_string(), DebugValueKind::Region)]);
+    assert_eq!(
+        result,
+        vec![("generation:visited".to_string(), DebugValueKind::Region)]
+    );
 }
-

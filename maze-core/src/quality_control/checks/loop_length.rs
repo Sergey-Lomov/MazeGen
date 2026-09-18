@@ -1,10 +1,10 @@
-use rand::RngCore;
+use super::cycle_check_core::{build_issue, find_invalid_cycles, tile_length};
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
-use super::cycle_check_core::{find_invalid_cycles, build_issue, tile_length};
+use crate::quality_control::{CycleKind, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const LOOP_LENGTH_DEFAULT: u32 = 10;
 pub const LOOP_LENGTH_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -24,26 +24,48 @@ pub struct LoopLengthCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopLengthCheck {
-    fn check_type_id(&self) -> &'static str { "loop_length" }
+    fn check_type_id(&self) -> &'static str {
+        "loop_length"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, requirement: InvalidLoopRequirement) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidLoopIssue>,
+        _rng: &mut dyn RngCore,
+        requirement: InvalidLoopRequirement,
+    ) {
         // Silently skip on overflow (see `CycleSearchResult::TooManyCycles`) — issue #22.
-        let Some((nav, cycles, flagged)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
-            self.comparison.compare(tile_length(nav, cycle), self.length)
-        }) else { return };
+        let Some((nav, cycles, flagged)) =
+            find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
+                self.comparison
+                    .compare(tile_length(nav, cycle), self.length)
+            })
+        else {
+            return;
+        };
 
-        issues.push(build_issue(&nav, &cycles, flagged, &maze.graph, &self.instance_id, "threshold", self.length, requirement));
+        issues.push(build_issue(
+            &nav,
+            &cycles,
+            flagged,
+            &maze.graph,
+            &self.instance_id,
+            "threshold",
+            self.length,
+            requirement,
+        ));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
     use crate::graph::EdgeKind;
+    use crate::quality_control::Issue;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "loop_length";
 
@@ -52,8 +74,15 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -63,7 +92,12 @@ mod tests {
     #[test]
     fn lt_fires_when_short_cycle_exists() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -71,7 +105,10 @@ mod tests {
         assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("threshold")),
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("threshold")),
             Some(&"10".to_string()),
         );
     }
@@ -79,7 +116,12 @@ mod tests {
     #[test]
     fn lt_silent_when_cycle_not_shorter_than_threshold() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 3, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -89,14 +131,22 @@ mod tests {
     #[test]
     fn gt_fires_when_long_cycle_exists() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 2, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Gt,
+            length: 2,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("threshold")),
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("threshold")),
             Some(&"2".to_string()),
         );
     }
@@ -104,7 +154,12 @@ mod tests {
     #[test]
     fn gt_silent_when_cycle_not_longer_than_threshold() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 3, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Gt,
+            length: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -114,7 +169,12 @@ mod tests {
     #[test]
     fn le_fires_when_cycle_equals_threshold() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Le, length: 3, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Le,
+            length: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -124,7 +184,12 @@ mod tests {
     #[test]
     fn ge_fires_when_cycle_equals_threshold() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Ge, length: 3, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Ge,
+            length: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -134,13 +199,23 @@ mod tests {
     #[test]
     fn eq_fires_only_on_exact_match() {
         let maze = maze_with_triangle();
-        let matching = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Eq, length: 3, cycle_kind: CycleKind::Any };
+        let matching = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Eq,
+            length: 3,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         matching.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
 
-        let non_matching = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Eq, length: 4, cycle_kind: CycleKind::Any };
+        let non_matching = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Eq,
+            length: 4,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues2 = Vec::new();
         non_matching.repair_check(&maze, &mut issues2, &mut rng, InvalidLoopRequirement::all());
         assert!(issues2.is_empty());
@@ -152,29 +227,45 @@ mod tests {
         // (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
+                .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         for y in 0..SIDE {
             for x in 0..SIDE {
                 let here = field.node_at(field_level, SquarePoint { x, y }).unwrap();
                 if x + 1 < SIDE {
-                    let right = field.node_at(field_level, SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field
+                        .node_at(field_level, SquarePoint { x: x + 1, y })
+                        .unwrap();
                     g.add_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.node_at(field_level, SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field
+                        .node_at(field_level, SquarePoint { x, y: y + 1 })
+                        .unwrap();
                     g.add_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
+        assert!(
+            issues.is_empty(),
+            "overflow must skip silently, not surface a partial/incorrect issue"
+        );
     }
 
     #[test]
@@ -183,12 +274,24 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::Any,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -203,8 +306,15 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(13, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -221,28 +331,69 @@ mod tests {
     #[test]
     fn full_resolves_every_cycle_invalid_only_resolves_only_flagged_ones() {
         let maze = maze_with_one_invalid_and_one_valid_cycle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::Any,
+        };
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
 
         let mut full_issues = Vec::new();
-        check.repair_check(&maze, &mut full_issues, &mut rng, InvalidLoopRequirement::all());
+        check.repair_check(
+            &maze,
+            &mut full_issues,
+            &mut rng,
+            InvalidLoopRequirement::all(),
+        );
         assert_eq!(full_issues.len(), 1);
         let full = &full_issues[0];
         assert_eq!(full.invalid.len(), 1, "only the triangle is invalid");
-        assert_eq!(full.all.len(), 2, "all() resolves both the invalid triangle and the valid long loop");
-        assert!(!full.invalid_sources.is_empty(), "all() builds invalid_sources");
+        assert_eq!(
+            full.all.len(),
+            2,
+            "all() resolves both the invalid triangle and the valid long loop"
+        );
+        assert!(
+            !full.invalid_sources.is_empty(),
+            "all() builds invalid_sources"
+        );
 
         let mut invalid_only_issues = Vec::new();
-        check.repair_check(&maze, &mut invalid_only_issues, &mut rng, InvalidLoopRequirement::empty());
+        check.repair_check(
+            &maze,
+            &mut invalid_only_issues,
+            &mut rng,
+            InvalidLoopRequirement::empty(),
+        );
         assert_eq!(invalid_only_issues.len(), 1);
         let invalid_only = &invalid_only_issues[0];
-        assert_eq!(invalid_only.all.len(), invalid_only.invalid.len(), "InvalidOnly resolves only the flagged cycles, all == invalid in length");
-        assert_eq!(invalid_only.all.len(), 1, "only the triangle was resolved, the valid loop was skipped entirely");
-        assert!(invalid_only.invalid_sources.is_empty(), "InvalidOnly does not build invalid_sources");
+        assert_eq!(
+            invalid_only.all.len(),
+            invalid_only.invalid.len(),
+            "InvalidOnly resolves only the flagged cycles, all == invalid in length"
+        );
+        assert_eq!(
+            invalid_only.all.len(),
+            1,
+            "only the triangle was resolved, the valid loop was skipped entirely"
+        );
+        assert!(
+            invalid_only.invalid_sources.is_empty(),
+            "InvalidOnly does not build invalid_sources"
+        );
 
-        let full_cycle_edges: std::collections::HashSet<_> = full.all[full.invalid[0]].iter().copied().collect();
-        let invalid_only_cycle_edges: std::collections::HashSet<_> = invalid_only.all[invalid_only.invalid[0]].iter().copied().collect();
-        assert_eq!(full_cycle_edges, invalid_only_cycle_edges, "both variants must flag the exact same cycle");
+        let full_cycle_edges: std::collections::HashSet<_> =
+            full.all[full.invalid[0]].iter().copied().collect();
+        let invalid_only_cycle_edges: std::collections::HashSet<_> = invalid_only.all
+            [invalid_only.invalid[0]]
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(
+            full_cycle_edges, invalid_only_cycle_edges,
+            "both variants must flag the exact same cycle"
+        );
     }
 
     /// Fully bidirectional triangle A<->B<->C<->A — every nav-edge in the cycle has a
@@ -252,8 +403,15 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         g.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_bidirectional_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_bidirectional_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -263,11 +421,20 @@ mod tests {
     #[test]
     fn cycle_kind_two_way_fires_on_a_fully_bidirectional_cycle() {
         let maze = maze_with_two_way_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::TwoWay };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::TwoWay,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert_eq!(issues.len(), 1, "every edge in this cycle has a reverse_edge, so TwoWay must match it");
+        assert_eq!(
+            issues.len(),
+            1,
+            "every edge in this cycle has a reverse_edge, so TwoWay must match it"
+        );
     }
 
     #[test]
@@ -275,30 +442,55 @@ mod tests {
         // maze_with_triangle() builds A->B->C->A with directed (not bidirectional) edges — no
         // edge in the cycle has a reverse_edge.
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::TwoWay };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::TwoWay,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "the one-way triangle must not match TwoWay");
+        assert!(
+            issues.is_empty(),
+            "the one-way triangle must not match TwoWay"
+        );
     }
 
     #[test]
     fn cycle_kind_one_way_fires_on_a_one_way_cycle() {
         let maze = maze_with_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::OneWay };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::OneWay,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert_eq!(issues.len(), 1, "the one-way triangle has no reverse_edge on any of its edges, so OneWay must match it");
+        assert_eq!(
+            issues.len(),
+            1,
+            "the one-way triangle has no reverse_edge on any of its edges, so OneWay must match it"
+        );
     }
 
     #[test]
     fn cycle_kind_one_way_silent_on_a_fully_bidirectional_cycle() {
         let maze = maze_with_two_way_triangle();
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::OneWay };
+        let check = LoopLengthCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            length: 10,
+            cycle_kind: CycleKind::OneWay,
+        };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "a fully bidirectional cycle must not match OneWay");
+        assert!(
+            issues.is_empty(),
+            "a fully bidirectional cycle must not match OneWay"
+        );
     }
 }

@@ -1,5 +1,7 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{IssueKind, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP};
+use crate::quality_control::issue::{
+    INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, IssueKind,
+};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
@@ -29,7 +31,8 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let mut a =
+            InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
         let b = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
@@ -40,19 +43,29 @@ mod tests {
 
     #[test]
     fn merge_deduplicates_identical_group() {
-        let mut a = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let mut a =
+            InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
         let b = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 1)],
+            "the same group flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
     fn merge_keeps_the_larger_to_remove_for_the_same_group() {
-        let mut a = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let mut a =
+            InvalidVerticalPassageGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
         let b = InvalidVerticalPassageGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 3)],
+            "the larger to_remove must win"
+        );
     }
 }

@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{IssueKind, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP};
+use crate::quality_control::issue::{INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, IssueKind};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 use crate::quality_control::issue_kinds::invalid_elevator::ElevatorNodes;
 
@@ -35,8 +35,14 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidElevatorGroupIssue::new_from_check("rule_1:a", vec![(vec![elevator(vec![0, 1])], 1)]);
-        let b = InvalidElevatorGroupIssue::new_from_check("rule_1:b", vec![(vec![elevator(vec![2, 3])], 1)]);
+        let mut a = InvalidElevatorGroupIssue::new_from_check(
+            "rule_1:a",
+            vec![(vec![elevator(vec![0, 1])], 1)],
+        );
+        let b = InvalidElevatorGroupIssue::new_from_check(
+            "rule_1:b",
+            vec![(vec![elevator(vec![2, 3])], 1)],
+        );
         a.merge(b);
 
         assert_eq!(a.groups.len(), 2);
@@ -44,10 +50,20 @@ mod tests {
 
     #[test]
     fn merge_deduplicates_identical_group() {
-        let mut a = InvalidElevatorGroupIssue::new_from_check("rule_1:a", vec![(vec![elevator(vec![0, 1])], 1)]);
-        let b = InvalidElevatorGroupIssue::new_from_check("rule_1:b", vec![(vec![elevator(vec![0, 1])], 1)]);
+        let mut a = InvalidElevatorGroupIssue::new_from_check(
+            "rule_1:a",
+            vec![(vec![elevator(vec![0, 1])], 1)],
+        );
+        let b = InvalidElevatorGroupIssue::new_from_check(
+            "rule_1:b",
+            vec![(vec![elevator(vec![0, 1])], 1)],
+        );
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![elevator(vec![0, 1])], 1)], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![elevator(vec![0, 1])], 1)],
+            "the same group flagged by both checks must not be duplicated"
+        );
     }
 }

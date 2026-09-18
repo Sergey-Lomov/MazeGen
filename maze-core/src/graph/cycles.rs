@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
-use crate::ids::EdgeId;
-use crate::dsu::Dsu;
 use super::Graph;
-use super::nav::{NavGraph, NavNodeId, NavEdge};
 use super::gf2_basis::{GF2Basis, set_bit};
+use super::nav::{NavEdge, NavGraph, NavNodeId};
+use crate::dsu::Dsu;
+use crate::ids::EdgeId;
+use std::collections::{HashMap, HashSet};
 
 /// Result of `find_all_simple_cycles`: either the full list of simple cycles plus the
 /// independent GF(2) basis derived incrementally alongside it (see `GF2Basis`), or a signal
@@ -16,7 +16,10 @@ use super::gf2_basis::{GF2Basis, set_bit};
 /// when needed, or (see GitHub issue #284) simply used as-is where it is already known to be
 /// free of what that filter would drop.
 pub(crate) enum CycleSearchResult {
-    Cycles { cycles: Vec<Vec<usize>>, basis: Vec<Vec<usize>> },
+    Cycles {
+        cycles: Vec<Vec<usize>>,
+        basis: Vec<Vec<usize>>,
+    },
     TooManyCycles,
 }
 
@@ -52,7 +55,10 @@ fn offer_to_basis(
     if *basis_count >= basis_target {
         return;
     }
-    let bits = set_bit(words_per_row, cycle.iter().map(|&i| canonical_index(edges[i], i)));
+    let bits = set_bit(
+        words_per_row,
+        cycle.iter().map(|&i| canonical_index(edges[i], i)),
+    );
     if basis_gf2.try_insert(bits) {
         basis.push(cycle.to_vec());
         *basis_count += 1;
@@ -88,7 +94,10 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let n = nav.nodes.len();
     if n == 0 {
-        return CycleSearchResult::Cycles { cycles: Vec::new(), basis: Vec::new() };
+        return CycleSearchResult::Cycles {
+            cycles: Vec::new(),
+            basis: Vec::new(),
+        };
     }
 
     // adjacency[node] = list of (edge_idx, to)
@@ -130,7 +139,8 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     // bowtie-graph regression: summing 2 + 1 fragment targets falsely allowed a 3rd, dependent
     // cycle into a true rank-2 space). The only correct target is the WHOLE graph's rank,
     // known in full before any vertex is consumed — computed here from the initial `sccs`.
-    let global_basis_target: usize = sccs.iter()
+    let global_basis_target: usize = sccs
+        .iter()
         .filter(|scc| is_nontrivial(scc, &adjacency))
         .map(|scc| {
             let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
@@ -163,7 +173,8 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     while !remaining.is_empty() {
         // Smallest-index nontrivial SCC first (deterministic order); also handles
         // self-loop size-1 SCCs and drops size-1-no-self-loop SCCs from `remaining`.
-        let Some((scc_pos, _)) = sccs.iter()
+        let Some((scc_pos, _)) = sccs
+            .iter()
             .enumerate()
             .filter(|(_, scc)| is_nontrivial(scc, &adjacency))
             .min_by_key(|(_, scc)| *scc.iter().min().unwrap())
@@ -180,12 +191,22 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             for &(idx, to) in &adjacency[start] {
                 if to == start {
                     let cycle = vec![idx];
-                    offer_to_basis(&cycle, &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis);
+                    offer_to_basis(
+                        &cycle,
+                        &edges,
+                        words_per_row,
+                        global_basis_target,
+                        &mut global_basis,
+                        &mut global_basis_count,
+                        &mut basis,
+                    );
                     cycles.push(cycle);
                 }
             }
         } else {
-            for &node in &scc_set { scc_mask[node] = true; }
+            for &node in &scc_set {
+                scc_mask[node] = true;
+            }
             let mut path_nodes: Vec<NavNodeId> = vec![start];
             let mut path_edges: Vec<usize> = Vec::new();
             blocked[start] = true;
@@ -195,10 +216,23 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             // condition (johnson_circuit only ever returns `None` after pushing past that
             // bound), so re-checking it from the return value would be redundant.
             johnson_circuit(
-                start, start, &adjacency, &scc_mask,
-                &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
-                &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis,
-                &elevator_groups, &mut path_elevator_groups,
+                start,
+                start,
+                &adjacency,
+                &scc_mask,
+                &mut blocked,
+                &mut block_map,
+                &mut path_nodes,
+                &mut path_edges,
+                &mut cycles,
+                &edges,
+                words_per_row,
+                global_basis_target,
+                &mut global_basis,
+                &mut global_basis_count,
+                &mut basis,
+                &elevator_groups,
+                &mut path_elevator_groups,
             );
 
             // Reset just the touched entries (`O(|scc|)`) instead of reallocating the buffers
@@ -239,7 +273,8 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         // removing `start` cannot affect a node outside its own SCC.
         let mut remainder_set = scc_set;
         remainder_set.remove(&start);
-        let split_sccs = strongly_connected_components(&adjacency, &remainder_set, &mut scc_scratch);
+        let split_sccs =
+            strongly_connected_components(&adjacency, &remainder_set, &mut scc_scratch);
         sccs.swap_remove(scc_pos);
         sccs.extend(split_sccs);
     }
@@ -270,13 +305,16 @@ fn elevator_edge_groups(edges: &[&NavEdge], n: usize) -> (Vec<Option<usize>>, us
         }
     }
     let mut dense_id: HashMap<NavNodeId, usize> = HashMap::new();
-    let groups = edges.iter().map(|edge| {
-        edge.is_elevator.then(|| {
-            let root = dsu.find(edge.from);
-            let next_id = dense_id.len();
-            *dense_id.entry(root).or_insert(next_id)
+    let groups = edges
+        .iter()
+        .map(|edge| {
+            edge.is_elevator.then(|| {
+                let root = dsu.find(edge.from);
+                let next_id = dense_id.len();
+                *dense_id.entry(root).or_insert(next_id)
+            })
         })
-    }).collect();
+        .collect();
     (groups, dense_id.len())
 }
 
@@ -377,7 +415,8 @@ fn johnson_circuit(
         // recent one — since a cycle mixing two hops through the same fan is still just that
         // one fan's instantaneous jump, not a genuine detour (see this function's doc comment).
         if let Some(group) = elevator_groups[edge_idx]
-            && path_elevator_groups[group] {
+            && path_elevator_groups[group]
+        {
             continue;
         }
         if w == start {
@@ -387,10 +426,19 @@ fn johnson_circuit(
             // `cycles`/offered to the basis: a trivial "walk out and back" 2-cycle is not a real
             // loop and would otherwise flood `cycles` with one entry per bidirectional edge in
             // the graph.
-            let is_trivial = path_edges.len() == 1 && first_edge.and_then(|e| edges[e].reverse_edge) == Some(edge_idx);
+            let is_trivial = path_edges.len() == 1
+                && first_edge.and_then(|e| edges[e].reverse_edge) == Some(edge_idx);
             if !is_trivial {
                 path_edges.push(edge_idx);
-                offer_to_basis(path_edges, edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis);
+                offer_to_basis(
+                    path_edges,
+                    edges,
+                    words_per_row,
+                    basis_target,
+                    scc_basis,
+                    scc_basis_count,
+                    basis,
+                );
                 cycles.push(path_edges.clone());
                 path_edges.pop();
             }
@@ -407,9 +455,23 @@ fn johnson_circuit(
             });
 
             let result = johnson_circuit(
-                start, w, adjacency, scc_mask, blocked, block_map, path_nodes, path_edges, cycles,
-                edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis,
-                elevator_groups, path_elevator_groups,
+                start,
+                w,
+                adjacency,
+                scc_mask,
+                blocked,
+                block_map,
+                path_nodes,
+                path_edges,
+                cycles,
+                edges,
+                words_per_row,
+                basis_target,
+                scc_basis,
+                scc_basis_count,
+                basis,
+                elevator_groups,
+                path_elevator_groups,
             );
 
             if group_newly_inserted {
@@ -445,11 +507,7 @@ fn johnson_circuit(
 /// own recursion is bounded the same way, by simple-cycle length (also `<= V`). Left
 /// recursive rather than rewritten iteratively to avoid risking the blocking invariant on a
 /// theoretical-only risk — see issue #24 if pathologically deep graphs ever become a concern.
-fn unblock(
-    node: NavNodeId,
-    blocked: &mut [bool],
-    block_map: &mut [HashSet<NavNodeId>],
-) {
+fn unblock(node: NavNodeId, blocked: &mut [bool], block_map: &mut [HashSet<NavNodeId>]) {
     blocked[node] = false;
     let dependents = std::mem::take(&mut block_map[node]);
     for dep in dependents {
@@ -496,7 +554,11 @@ fn strongly_connected_components(
     nodes: &HashSet<NavNodeId>,
     scratch: &mut SccScratch,
 ) -> Vec<Vec<NavNodeId>> {
-    let SccScratch { on_stack, state, neighbor_cache } = scratch;
+    let SccScratch {
+        on_stack,
+        state,
+        neighbor_cache,
+    } = scratch;
 
     let mut index_counter = 0usize;
     let mut stack: Vec<NavNodeId> = Vec::new();
@@ -511,7 +573,10 @@ fn strongly_connected_components(
         if state[root].is_some() {
             continue;
         }
-        state[root] = Some(TarjanState { index: index_counter, lowlink: index_counter });
+        state[root] = Some(TarjanState {
+            index: index_counter,
+            lowlink: index_counter,
+        });
         index_counter += 1;
         stack.push(root);
         on_stack[root] = true;
@@ -520,7 +585,8 @@ fn strongly_connected_components(
         while !work.is_empty() {
             let (v, ni) = *work.last().unwrap();
             let neighbors = neighbor_cache[v].get_or_insert_with(|| {
-                adjacency[v].iter()
+                adjacency[v]
+                    .iter()
                     .map(|&(_, to)| to)
                     .filter(|to| nodes.contains(to))
                     .collect()
@@ -530,7 +596,10 @@ fn strongly_connected_components(
                 work.last_mut().unwrap().1 += 1;
                 let w = neighbors[ni];
                 if state[w].is_none() {
-                    state[w] = Some(TarjanState { index: index_counter, lowlink: index_counter });
+                    state[w] = Some(TarjanState {
+                        index: index_counter,
+                        lowlink: index_counter,
+                    });
                     index_counter += 1;
                     stack.push(w);
                     on_stack[w] = true;
@@ -541,7 +610,10 @@ fn strongly_connected_components(
                     s_v.lowlink = s_v.lowlink.min(idx_w);
                 }
             } else {
-                let is_root = { let s_v = state[v].as_ref().unwrap(); s_v.lowlink == s_v.index };
+                let is_root = {
+                    let s_v = state[v].as_ref().unwrap();
+                    s_v.lowlink == s_v.index
+                };
                 if is_root {
                     let mut component = Vec::new();
                     loop {
@@ -606,13 +678,19 @@ pub(crate) fn find_deduped_simple_cycles(nav: &NavGraph) -> Option<Vec<Vec<usize
 /// `reverse_edge` pairs (ordinary bidirectional corridors, or a self-loop CW/CCW pair on
 /// the same nav-node) into one entry. A cycle using at least one one-way edge keeps its own
 /// distinct key (no reverse to fold into) — genuinely different directed cycles stay separate.
-pub(crate) fn dedup_bidirectional_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+pub(crate) fn dedup_bidirectional_pairs(
+    nav: &NavGraph,
+    cycles: Vec<Vec<usize>>,
+) -> Vec<Vec<usize>> {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let mut seen: HashSet<Vec<usize>> = HashSet::new();
     let mut result: Vec<Vec<usize>> = Vec::new();
 
     for cycle in cycles {
-        let mut key: Vec<usize> = cycle.iter().map(|&i| canonical_index(edges[i], i)).collect();
+        let mut key: Vec<usize> = cycle
+            .iter()
+            .map(|&i| canonical_index(edges[i], i))
+            .collect();
         key.sort_unstable();
         if seen.insert(key) {
             result.push(cycle);
@@ -631,20 +709,24 @@ pub(crate) fn resolve_to_edge_ids(
     nav_cycles: &[Vec<usize>],
     graph: &Graph,
 ) -> Vec<Vec<EdgeId>> {
-    nav_cycles.iter().map(|nav_cycle| {
-        let mut tiles: Vec<u64> = Vec::new();
-        for &e_idx in nav_cycle {
-            let edge = nav.edge_by_idx(e_idx);
-            if tiles.is_empty() {
-                tiles.extend(edge.path.iter().copied());
-            } else {
-                tiles.extend(edge.path[1..].iter().copied());
+    nav_cycles
+        .iter()
+        .map(|nav_cycle| {
+            let mut tiles: Vec<u64> = Vec::new();
+            for &e_idx in nav_cycle {
+                let edge = nav.edge_by_idx(e_idx);
+                if tiles.is_empty() {
+                    tiles.extend(edge.path.iter().copied());
+                } else {
+                    tiles.extend(edge.path[1..].iter().copied());
+                }
             }
-        }
-        tiles.windows(2)
-            .filter_map(|pair| graph.edge_between(pair[0], pair[1]))
-            .collect()
-    }).collect()
+            tiles
+                .windows(2)
+                .filter_map(|pair| graph.edge_between(pair[0], pair[1]))
+                .collect()
+        })
+        .collect()
 }
 
 /// True (unrounded) density per 100 field cells — GitHub issue #265: density/ratio thresholds are

@@ -10,47 +10,41 @@
 //! literals — keep every check id spelled out as a string literal inside that invocation (not
 //! built up programmatically) so that scan keeps working.
 
-use std::collections::{HashMap, HashSet};
-use maze_core::{
-    space::Tessellation,
-    quality_control::{
-        RuleTrait, Rule,
-        MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
-        InvalidLoopGroupIssue,
-        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
-        InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
-        MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
-        MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
-        InvalidSplitNodeGroupIssue, InvalidSplitRouteIssue,
-        MissingVerticalPassagesIssue, InvalidVerticalPassageGroupIssue,
-        InvalidElevatorIssue, InvalidElevatorGroupIssue,
-        InvalidElevatorStopGroupIssue,
-        MissingElevatorsIssue,
-        AreaMissingElevatorStopsIssue,
-        MissingElevatorStopCountIssue, MissingElevatorHeightIssue, ExcessiveElevatorStopGapIssue,
-        InvalidCrossElementGroupIssue,
-    },
-};
 use super::check_factory::{
-    composite_check_id,
-    build_missing_endpoints_check, build_unreachable_finish_check, build_missing_loops_check,
-    build_invalid_loop_check, build_invalid_loop_group_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
-    build_region_needs_shrink_check,
-    build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
-    build_invalid_one_way_check, build_one_way_group_proximity_check, build_missing_one_ways_check,
-    build_missing_teleports_check, build_invalid_split_tile_check, build_split_group_check,
-    build_missing_split_tiles_check, build_invalid_split_node_check, build_split_node_connection_group_check,
-    build_split_node_group_check, build_invalid_split_route_check,
-    build_missing_vertical_passages_check, build_invalid_vertical_passage_group_check,
-    build_invalid_elevator_check, build_invalid_elevator_group_check, build_invalid_elevator_stop_group_check,
-    build_missing_elevators_check,
-    build_area_missing_elevator_stops_check,
-    build_missing_elevator_stop_count_check,
-    build_missing_elevator_height_check, build_excessive_elevator_stop_gap_check,
-    build_cross_element_group_check,
+    build_area_missing_elevator_stops_check, build_cross_element_group_check,
+    build_excessive_elevator_stop_gap_check, build_excessive_scc_count_check,
+    build_invalid_elevator_check, build_invalid_elevator_group_check,
+    build_invalid_elevator_stop_group_check, build_invalid_loop_check,
+    build_invalid_loop_group_check, build_invalid_one_way_check, build_invalid_split_node_check,
+    build_invalid_split_route_check, build_invalid_split_tile_check, build_invalid_teleport_check,
+    build_invalid_vertical_passage_group_check, build_missing_elevator_height_check,
+    build_missing_elevator_stop_count_check, build_missing_elevators_check,
+    build_missing_endpoints_check, build_missing_loops_check, build_missing_one_ways_check,
+    build_missing_regions_check, build_missing_split_tiles_check, build_missing_teleports_check,
+    build_missing_vertical_passages_check, build_one_way_group_proximity_check,
+    build_region_needs_expansion_check, build_region_needs_shrink_check, build_split_group_check,
+    build_split_node_connection_group_check, build_split_node_group_check,
+    build_teleport_group_proximity_check, build_unreachable_finish_check, composite_check_id,
 };
-use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 use super::rule_params::resolve_rule_params;
+use super::strategy_factory::{build_nested, build_strategy_erased, downcast_strategy};
+use maze_core::{
+    quality_control::{
+        AreaMissingElevatorStopsIssue, ExcessiveElevatorStopGapIssue, ExcessiveSccCountIssue,
+        InvalidCrossElementGroupIssue, InvalidElevatorGroupIssue, InvalidElevatorIssue,
+        InvalidElevatorStopGroupIssue, InvalidLoopGroupIssue, InvalidLoopIssue,
+        InvalidOneWayGroupIssue, InvalidOneWayIssue, InvalidSplitNodeConnectionGroupIssue,
+        InvalidSplitNodeGroupIssue, InvalidSplitNodeIssue, InvalidSplitRouteIssue,
+        InvalidSplitTileGroupIssue, InvalidSplitTileIssue, InvalidTeleportGroupIssue,
+        InvalidTeleportIssue, InvalidVerticalPassageGroupIssue, MissingElevatorHeightIssue,
+        MissingElevatorStopCountIssue, MissingElevatorsIssue, MissingEndpointsIssue,
+        MissingLoopsIssue, MissingOneWaysIssue, MissingRegionsIssue, MissingSplitTilesIssue,
+        MissingTeleportsIssue, MissingVerticalPassagesIssue, RegionNeedsExpansionIssue,
+        RegionNeedsShrinkIssue, Rule, RuleTrait, UnreachableFinishIssue,
+    },
+    space::Tessellation,
+};
+use std::collections::{HashMap, HashSet};
 
 /// Generates the common body for one registry entry's `build_rule` arm: collects `rule_cfg`'s
 /// checks via `$check_ctor` (erroring if any `type_id` doesn't belong to this arm's `I`, i.e.
@@ -210,8 +204,17 @@ mod tests {
 
     #[test]
     fn known_type_id_resolves() {
-        assert_eq!(check_kind_for_type("missing_endpoints"), KindTag::MissingEndpoints);
-        assert_eq!(check_kind_for_type("min_loop_density"), KindTag::MissingLoops);
-        assert_eq!(check_kind_for_type("max_elevator_density"), KindTag::InvalidElevatorGroup);
+        assert_eq!(
+            check_kind_for_type("missing_endpoints"),
+            KindTag::MissingEndpoints
+        );
+        assert_eq!(
+            check_kind_for_type("min_loop_density"),
+            KindTag::MissingLoops
+        );
+        assert_eq!(
+            check_kind_for_type("max_elevator_density"),
+            KindTag::InvalidElevatorGroup
+        );
     }
 }

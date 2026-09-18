@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde::Serialize;
 use maze_core_macros::Dto;
+use serde::Serialize;
+use std::collections::HashMap;
 
 /// Tagged payload carried by `IssueDto` — replaces the old parallel-optional-fields shape
 /// (`invalid_loop_edges` / `region_needs_expansion_nodes`) with one discriminated union, tagged

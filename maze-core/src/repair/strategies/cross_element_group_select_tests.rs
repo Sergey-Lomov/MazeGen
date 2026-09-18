@@ -1,12 +1,15 @@
 use super::*;
-use rand::SeedableRng;
-use crate::{Graph, IdGenerator};
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
 use crate::quality_control::cross_element::CrossElement;
 use crate::repair::strategies::test_utils::apply_and_commit;
-use crate::repair::strategies::{RemoveTeleportStrategy, OneWayToWallStrategy, RemoveVerticalPassageStrategy, RemoveElevatorStopStrategy, RemoveSplitStrategy};
-use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+use crate::repair::strategies::{
+    OneWayToWallStrategy, RemoveElevatorStopStrategy, RemoveSplitStrategy, RemoveTeleportStrategy,
+    RemoveVerticalPassageStrategy,
+};
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use crate::{Graph, IdGenerator};
+use rand::SeedableRng;
 
 fn rng() -> crate::random::MazeRng {
     crate::random::MazeRng::seed_from_u64(0)
@@ -16,7 +19,10 @@ fn no_params() -> StrategyParams {
     crate::repair::params::build_params(PARAMS, None)
 }
 
-fn nested_config(idx: usize, strategy: Box<dyn crate::repair::strategy::ErasedRepairStrategy<SquareTessellation>>) -> NestedStrategyConfig<SquareTessellation> {
+fn nested_config(
+    idx: usize,
+    strategy: Box<dyn crate::repair::strategy::ErasedRepairStrategy<SquareTessellation>>,
+) -> NestedStrategyConfig<SquareTessellation> {
     NestedStrategyConfig {
         slot: &NESTED_SLOTS[idx],
         strategy,
@@ -41,13 +47,19 @@ fn tp_id(a: NodeId, b: NodeId) -> (NodeId, NodeId) {
 
 /// Width-`w` single-floor corridor, teleport portal between x=0 and x=`w-1`, split tile at
 /// `split_x` (extra node added there).
-fn corridor_teleport_split(w: usize, split_x: i32) -> (Maze<SquareTessellation>, CrossElement, CrossElement) {
+fn corridor_teleport_split(
+    w: usize,
+    split_x: i32,
+) -> (Maze<SquareTessellation>, CrossElement, CrossElement) {
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    for n in mf.all_node_ids() { g.add_node(n); }
+    for n in mf.all_node_ids() {
+        g.add_node(n);
+    }
     let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
     for x in 0..w as i32 - 1 {
         g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -55,7 +67,9 @@ fn corridor_teleport_split(w: usize, split_x: i32) -> (Maze<SquareTessellation>,
     let (n0, nlast) = (p(0), p(w as i32 - 1));
     g.add_edge(n0, nlast, EdgeKind::Teleport);
     g.add_edge(nlast, n0, EdgeKind::Teleport);
-    let split_nodes = mf.nodes_at(level, SquarePoint { x: split_x, y: 0 }).to_vec();
+    let split_nodes = mf
+        .nodes_at(level, SquarePoint { x: split_x, y: 0 })
+        .to_vec();
     let maze = Maze::new(mf, g);
     (
         maze,
@@ -78,15 +92,32 @@ fn split_count(m: &Maze<SquareTessellation>, x: i32) -> usize {
 }
 
 fn teleport_count(m: &Maze<SquareTessellation>) -> usize {
-    m.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count()
+    m.graph
+        .edges()
+        .filter(|e| e.kind == EdgeKind::Teleport)
+        .count()
 }
 
 #[test]
 fn apply_succeeds_on_empty_groups_without_touching_nested() {
     let (mut maze, _tp, _sp) = corridor_teleport_split(5, 1);
-    let issue = InvalidCrossElementGroupIssue::new_from_check("rule:cross", vec![], std::collections::HashMap::new());
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &all_slots());
+    let issue = InvalidCrossElementGroupIssue::new_from_check(
+        "rule:cross",
+        vec![],
+        std::collections::HashMap::new(),
+    );
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &all_slots(),
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
 }
 
@@ -94,22 +125,38 @@ fn apply_succeeds_on_empty_groups_without_touching_nested() {
 fn teleport_and_split_pair_removes_exactly_one_side() {
     let (mut maze, tp, sp) = corridor_teleport_split(6, 1);
     let issue = issue_with_pair(&tp, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let (tp_before, sp_before) = (teleport_count(&maze), split_count(&maze, 1));
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &all_slots());
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &all_slots(),
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
     let teleport_gone = teleport_count(&maze) < tp_before;
     let split_gone = split_count(&maze, 1) < sp_before;
-    assert!(teleport_gone ^ split_gone, "exactly one side removed (teleport_gone={teleport_gone}, split_gone={split_gone})");
+    assert!(
+        teleport_gone ^ split_gone,
+        "exactly one side removed (teleport_gone={teleport_gone}, split_gone={split_gone})"
+    );
 }
 
 #[test]
 fn start_finish_pair_fails_and_keeps_the_issue() {
     let mut ids = IdGenerator::new();
-    let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     let mut g = Graph::new();
-    for n in mf.all_node_ids() { g.add_node(n); }
+    for n in mf.all_node_ids() {
+        g.add_node(n);
+    }
     let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
     let (s, f) = (p(0), p(1));
     let mut maze = Maze::new(mf, g);
@@ -117,9 +164,22 @@ fn start_finish_pair_fails_and_keeps_the_issue() {
     maze.meta.finish = Some(f);
 
     let issue = issue_with_pair(&CrossElement::Start(s), &CrossElement::Finish(f));
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &all_slots());
-    assert!(matches!(result, RepairResult::Failed), "neither Start nor Finish is removable -> Failed");
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &all_slots(),
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "neither Start nor Finish is removable -> Failed"
+    );
 }
 
 #[test]
@@ -127,13 +187,27 @@ fn teleport_and_finish_pair_removes_only_the_teleport() {
     let (mut maze, tp, _sp) = corridor_teleport_split(6, 4);
     let finish_node = {
         let l = maze.field.single_level_id();
-        maze.field.nodes_at(l, SquarePoint { x: 2, y: 0 }).first().copied().unwrap()
+        maze.field
+            .nodes_at(l, SquarePoint { x: 2, y: 0 })
+            .first()
+            .copied()
+            .unwrap()
     };
     maze.meta.finish = Some(finish_node);
     let issue = issue_with_pair(&tp, &CrossElement::Finish(finish_node));
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let tp_before = teleport_count(&maze);
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &all_slots());
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &all_slots(),
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
     assert!(teleport_count(&maze) < tp_before, "teleport removed");
     assert_eq!(maze.meta.finish, Some(finish_node), "finish untouched");
@@ -152,7 +226,10 @@ fn preset_locked_teleport_is_never_removed_and_the_issue_survives() {
     };
     let mut preset_state = PresetState::empty();
     for &(from, to) in &[(n0, nlast), (nlast, n0)] {
-        let id = maze.graph.edge_between_kind(from, to, &EdgeKind::Teleport).unwrap();
+        let id = maze
+            .graph
+            .edge_between_kind(from, to, &EdgeKind::Teleport)
+            .unwrap();
         preset_state.preset_edge_ids.insert(id);
     }
     // Lock the split tile's nodes too, so the split side is not an escape hatch.
@@ -168,11 +245,28 @@ fn preset_locked_teleport_is_never_removed_and_the_issue_survives() {
     }
 
     let issue = issue_with_pair(&tp, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let tp_before = teleport_count(&maze);
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &preset_state, &all_slots());
-    assert!(matches!(result, RepairResult::Failed), "no removable candidate -> Failed");
-    assert_eq!(teleport_count(&maze), tp_before, "preset teleport must survive");
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &preset_state,
+        &all_slots(),
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "no removable candidate -> Failed"
+    );
+    assert_eq!(
+        teleport_count(&maze),
+        tp_before,
+        "preset teleport must survive"
+    );
 }
 
 #[test]
@@ -184,22 +278,46 @@ fn shared_element_across_two_groups_resolves_both_in_one_call() {
     let (mut maze, tp, sp) = corridor_teleport_split(6, 1);
     let finish_node = {
         let l = maze.field.single_level_id();
-        maze.field.nodes_at(l, SquarePoint { x: 3, y: 0 }).first().copied().unwrap()
+        maze.field
+            .nodes_at(l, SquarePoint { x: 3, y: 0 })
+            .first()
+            .copied()
+            .unwrap()
     };
     maze.meta.finish = Some(finish_node);
     let finish = CrossElement::Finish(finish_node);
     let issue = InvalidCrossElementGroupIssue::new_from_check(
         "rule:cross",
-        vec![(vec![tp.clone(), sp.clone()], 1), (vec![tp.clone(), finish.clone()], 1)],
+        vec![
+            (vec![tp.clone(), sp.clone()], 1),
+            (vec![tp.clone(), finish.clone()], 1),
+        ],
         std::collections::HashMap::new(),
     );
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let teleport_only = vec![nested_config(0, Box::new(RemoveTeleportStrategy))];
     let (tp_before, sp_before) = (teleport_count(&maze), split_count(&maze, 1));
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &teleport_only);
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &teleport_only,
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert!(teleport_count(&maze) < tp_before, "the shared teleport must be removed");
-    assert_eq!(split_count(&maze, 1), sp_before, "split untouched -- it had no slot, only the shared teleport was fixed");
+    assert!(
+        teleport_count(&maze) < tp_before,
+        "the shared teleport must be removed"
+    );
+    assert_eq!(
+        split_count(&maze, 1),
+        sp_before,
+        "split untouched -- it had no slot, only the shared teleport was fixed"
+    );
     assert_eq!(maze.meta.finish, Some(finish_node), "finish untouched");
 }
 
@@ -219,7 +337,9 @@ fn corridor_elevator_split(
     let g2 = mf.add_level(Field::<SquareTessellation>::new(square_rect(w, 1), &mut ids).unwrap());
     mf.add_node_at(g0, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    for n in mf.all_node_ids() { g.add_node(n); }
+    for n in mf.all_node_ids() {
+        g.add_node(n);
+    }
     let ground = mf.node_at(g0, SquarePoint { x: elev_x, y: 0 }).unwrap();
     let stops = [
         ground,
@@ -234,11 +354,17 @@ fn corridor_elevator_split(
     }
     let split_nodes = mf.nodes_at(g0, SquarePoint { x: split_x, y: 0 }).to_vec();
     let maze = Maze::new(mf, g);
-    (maze, ground, CrossElement::Split(SplitTileNodes::new(split_nodes)))
+    (
+        maze,
+        ground,
+        CrossElement::Split(SplitTileNodes::new(split_nodes)),
+    )
 }
 
 fn elevator_stop_count(m: &Maze<SquareTessellation>) -> usize {
-    let mut nodes: Vec<NodeId> = m.graph.edges()
+    let mut nodes: Vec<NodeId> = m
+        .graph
+        .edges()
         .filter(|e| e.kind == EdgeKind::Elevator)
         .flat_map(|e| [e.from, e.to])
         .collect();
@@ -253,13 +379,27 @@ fn elevator_stop_and_split_pair_removes_only_the_one_stop() {
     // one stop and leaves the other two connected.
     let (mut maze, ground_stop, sp) = corridor_elevator_split(4, 1, 2);
     let issue = issue_with_pair(&CrossElement::ElevatorStop(ground_stop), &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let elevator_stop_only = vec![nested_config(3, Box::new(RemoveElevatorStopStrategy))];
     let (stops_before, sp_before) = (elevator_stop_count(&maze), split_count(&maze, 2));
     assert_eq!(stops_before, 3);
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &elevator_stop_only);
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &elevator_stop_only,
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert_eq!(elevator_stop_count(&maze), 2, "exactly the one flagged stop is gone, the elevator survives");
+    assert_eq!(
+        elevator_stop_count(&maze),
+        2,
+        "exactly the one flagged stop is gone, the elevator survives"
+    );
     assert_eq!(split_count(&maze, 2), sp_before, "split untouched");
 }
 
@@ -269,13 +409,21 @@ fn elevator_stop_and_split_pair_removes_only_the_one_stop() {
 fn routed_teleport_one_way_split(
     w: usize,
     split_x: i32,
-) -> (Maze<SquareTessellation>, CrossElement, CrossElement, CrossElement) {
+) -> (
+    Maze<SquareTessellation>,
+    CrossElement,
+    CrossElement,
+    CrossElement,
+) {
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
     let level = mf.single_level_id();
     mf.add_node_at(level, SquarePoint { x: split_x, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    for n in mf.all_node_ids() { g.add_node(n); }
+    for n in mf.all_node_ids() {
+        g.add_node(n);
+    }
     let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
     // Plain two-way passages between every adjacent pair EXCEPT x=1->x=2, which is forward-only
     // (a one-way). That one-way is not on the start->finish route (the route takes the teleport).
@@ -290,7 +438,9 @@ fn routed_teleport_one_way_split(
     g.add_edge(nlast, n0, EdgeKind::Teleport);
     // The x=1->x=2 forward-only Basic edge is the one-way.
     let ow_edge = g.edge_between_kind(p(1), p(2), &EdgeKind::Basic).unwrap();
-    let split_nodes = mf.nodes_at(level, SquarePoint { x: split_x, y: 0 }).to_vec();
+    let split_nodes = mf
+        .nodes_at(level, SquarePoint { x: split_x, y: 0 })
+        .to_vec();
     let mut maze = Maze::new(mf, g);
     maze.meta.start = Some(n0);
     maze.meta.finish = Some(nlast);
@@ -309,12 +459,29 @@ fn protect_route_blocks_the_route_critical_teleport_and_fixes_the_pair_through_i
     // collapsing the split, the teleport stays intact.
     let (mut maze, tp, _ow, sp) = routed_teleport_one_way_split(6, 1);
     let issue = issue_with_pair(&tp, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: true };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: true,
+    };
     let (tp_before, sp_before) = (teleport_count(&maze), split_count(&maze, 1));
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &all_slots());
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &all_slots(),
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert_eq!(teleport_count(&maze), tp_before, "route-critical teleport must survive protect_route");
-    assert!(split_count(&maze, 1) < sp_before, "the pair is fixed through the free split side");
+    assert_eq!(
+        teleport_count(&maze),
+        tp_before,
+        "route-critical teleport must survive protect_route"
+    );
+    assert!(
+        split_count(&maze, 1) < sp_before,
+        "the pair is fixed through the free split side"
+    );
 }
 
 #[test]
@@ -323,12 +490,25 @@ fn protect_route_off_lets_the_route_critical_teleport_be_removed() {
     // slot is offered, so the fix must go through the teleport even though it is on the route.
     let (mut maze, tp, _ow, sp) = routed_teleport_one_way_split(6, 1);
     let issue = issue_with_pair(&tp, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let teleport_only = vec![nested_config(0, Box::new(RemoveTeleportStrategy))];
     let tp_before = teleport_count(&maze);
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &teleport_only);
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &teleport_only,
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert!(teleport_count(&maze) < tp_before, "without protect_route the route-critical teleport is removable");
+    assert!(
+        teleport_count(&maze) < tp_before,
+        "without protect_route the route-critical teleport is removable"
+    );
 }
 
 #[test]
@@ -337,13 +517,32 @@ fn one_way_and_split_pair_is_fixed_through_the_one_way_slot() {
     // only the one-way slot offered -> OneWayToWallStrategy walls the one-way edge.
     let (mut maze, _tp, ow, sp) = routed_teleport_one_way_split(6, 2);
     let issue = issue_with_pair(&ow, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let one_way_only = vec![nested_config(1, Box::new(OneWayToWallStrategy))];
-    let ow_edge = match &ow { CrossElement::OneWay(id) => *id, _ => unreachable!() };
-    assert!(maze.graph.edge(ow_edge).is_some(), "one-way edge present before repair");
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &one_way_only);
+    let ow_edge = match &ow {
+        CrossElement::OneWay(id) => *id,
+        _ => unreachable!(),
+    };
+    assert!(
+        maze.graph.edge(ow_edge).is_some(),
+        "one-way edge present before repair"
+    );
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &one_way_only,
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert!(maze.graph.edge(ow_edge).is_none(), "the one-way edge is walled off");
+    assert!(
+        maze.graph.edge(ow_edge).is_none(),
+        "the one-way edge is walled off"
+    );
 }
 
 #[test]
@@ -352,12 +551,25 @@ fn missing_slot_for_a_type_makes_that_candidate_unfixable() {
     // resolved through its split side.
     let (mut maze, tp, sp) = corridor_teleport_split(6, 1);
     let issue = issue_with_pair(&tp, &sp);
-    let strat = CrossElementGroupSelectStrategy { protect_route: false };
+    let strat = CrossElementGroupSelectStrategy {
+        protect_route: false,
+    };
     let split_only = vec![nested_config(4, Box::new(RemoveSplitStrategy))];
     let sp_before = split_count(&maze, 1);
     let tp_before = teleport_count(&maze);
-    let result = apply_and_commit(&strat, &issue, &mut maze, &mut rng(), &no_params(), &PresetState::empty(), &split_only);
+    let result = apply_and_commit(
+        &strat,
+        &issue,
+        &mut maze,
+        &mut rng(),
+        &no_params(),
+        &PresetState::empty(),
+        &split_only,
+    );
     assert!(matches!(result, RepairResult::Fixed { .. }));
-    assert!(split_count(&maze, 1) < sp_before, "split side collapsed since the teleport had no slot");
+    assert!(
+        split_count(&maze, 1) < sp_before,
+        "split side collapsed since the teleport had no slot"
+    );
     assert_eq!(teleport_count(&maze), tp_before, "teleport untouched");
 }

@@ -65,21 +65,21 @@ impl Default for ElementsConfig {
 
 #[derive(Debug, Clone)]
 pub struct GenerationParams {
-    pub depth_first:     f64,
+    pub depth_first: f64,
     pub corridor_chance: f64,
-    pub branching:       f64,
-    pub directionality:  f64,
-    pub cyclicity:       f64,
+    pub branching: f64,
+    pub directionality: f64,
+    pub cyclicity: f64,
 }
 
 impl Default for GenerationParams {
     fn default() -> Self {
         GenerationParams {
-            depth_first:     0.9,
+            depth_first: 0.9,
             corridor_chance: 0.7,
-            branching:       0.5,
-            directionality:  0.0,
-            cyclicity:       0.0,
+            branching: 0.5,
+            directionality: 0.0,
+            cyclicity: 0.0,
         }
     }
 }
@@ -128,14 +128,18 @@ pub struct PresetEndpoint {
 
 impl PresetEndpoint {
     pub fn original(point: (i32, i32)) -> Self {
-        Self { point, slot: None, level: None }
+        Self {
+            point,
+            slot: None,
+            level: None,
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct PresetConnection {
     pub from: PresetEndpoint,
-    pub to:   PresetEndpoint,
+    pub to: PresetEndpoint,
     pub state: PresetConnectionState,
 }
 
@@ -169,7 +173,7 @@ pub enum VerticalPassageDirection {
 #[derive(Debug, Clone)]
 pub struct PresetVerticalPassage {
     pub from: PresetEndpoint,
-    pub to:   PresetEndpoint,
+    pub to: PresetEndpoint,
     /// `None` = two-way (both directions planted). `Some(dir)` = one-way in that direction.
     pub one_way: Option<VerticalPassageDirection>,
 }
@@ -196,20 +200,20 @@ pub enum NodeLockKind {
 #[derive(Debug, Clone)]
 pub struct LockedNode {
     pub point: PresetEndpoint,
-    pub kind:  NodeLockKind,
+    pub kind: NodeLockKind,
 }
 
 #[derive(Debug, Clone)]
 pub struct GenerationConfig {
-    pub algorithm:          GenerationAlgorithm,
-    pub elements:           ElementsConfig,
+    pub algorithm: GenerationAlgorithm,
+    pub elements: ElementsConfig,
     pub preset_connections: Vec<PresetConnection>,
     /// User-placed `VerticalPassage` presets (GitHub issue #357) — see `PresetVerticalPassage`'s
     /// own doc comment for why these live in their own field rather than `preset_connections`.
     pub preset_vertical_passages: Vec<PresetVerticalPassage>,
     /// User-placed `Elevator` presets (GitHub issue #357) — see `PresetElevator`'s own doc comment.
-    pub preset_elevators:   Vec<PresetElevator>,
-    pub locked_nodes:       Vec<LockedNode>,
+    pub preset_elevators: Vec<PresetElevator>,
+    pub locked_nodes: Vec<LockedNode>,
     /// Extra nodes to create at declared points before any preset above is resolved — one entry
     /// per `(point, slot, level)` triple (GitHub issue #231; `level` added by #340 — 0-based
     /// `levels_ordered()` index, same space `PresetEndpoint.level` uses). Applied via
@@ -225,15 +229,14 @@ pub struct GenerationConfig {
 impl Default for GenerationConfig {
     fn default() -> Self {
         GenerationConfig {
-            algorithm:          GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
-            elements:           ElementsConfig::default(),
+            algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
+            elements: ElementsConfig::default(),
             preset_connections: vec![],
             preset_vertical_passages: vec![],
-            preset_elevators:   vec![],
-            locked_nodes:       vec![],
-            split_points:       vec![],
-            split_generation:   crate::generation::split_pattern::SplitGenerationConfig::default(),
+            preset_elevators: vec![],
+            locked_nodes: vec![],
+            split_points: vec![],
+            split_generation: crate::generation::split_pattern::SplitGenerationConfig::default(),
         }
     }
 }
-

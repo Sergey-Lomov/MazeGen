@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use rand::RngCore;
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 
 /// Descriptor for a single configurable parameter of a repair strategy.
 pub struct StrategyParam {
@@ -10,19 +10,35 @@ pub struct StrategyParam {
 }
 
 pub enum StrategyParamKind {
-    Float { default: f64, min: f64, max: f64 },
-    Bool { default: bool },
-    Enum { options: &'static [&'static str], default: &'static str },
+    Float {
+        default: f64,
+        min: f64,
+        max: f64,
+    },
+    Bool {
+        default: bool,
+    },
+    Enum {
+        options: &'static [&'static str],
+        default: &'static str,
+    },
     /// A `[min, max]` range, e.g. a desired distance band — see `MissingTeleportsStrategy`'s
     /// `PARAM_DESIRED_LENGTH` (GitHub issue #212). `default_min`/`default_max` bound the same
     /// range the UI slider starts at; `min`/`max` bound what a config override may set either
     /// endpoint to.
-    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    Interval {
+        default_min: f64,
+        default_max: f64,
+        min: f64,
+        max: f64,
+    },
     /// A fixed 5-value priority enum (`PriorityLevel`) between two candidate groups — see
     /// `PriorityLevel`'s own doc comment. Distinct from a plain `Enum` so the web UI can render
     /// every occurrence with one shared, hardcoded-once set of 5 labels/explanations instead of
     /// each param needing its own i18n entries (GitHub issue #381 follow-up).
-    Priority { default: PriorityLevel },
+    Priority {
+        default: PriorityLevel,
+    },
 }
 
 /// Runtime value for a strategy parameter.
@@ -37,15 +53,27 @@ pub enum StrategyParamValue {
 
 impl StrategyParamValue {
     pub fn as_float(&self) -> Option<f64> {
-        if let Self::Float(v) = self { Some(*v) } else { None }
+        if let Self::Float(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     pub fn as_interval(&self) -> Option<(f64, f64)> {
-        if let Self::Interval(lo, hi) = self { Some((*lo, *hi)) } else { None }
+        if let Self::Interval(lo, hi) = self {
+            Some((*lo, *hi))
+        } else {
+            None
+        }
     }
 
     pub fn as_priority(&self) -> Option<PriorityLevel> {
-        if let Self::Priority(p) = self { Some(*p) } else { None }
+        if let Self::Priority(p) = self {
+            Some(*p)
+        } else {
+            None
+        }
     }
 }
 
@@ -106,7 +134,12 @@ impl PriorityLevel {
     /// group gets tried); `Indifferent` merges both into one zone and shuffles it, so a caller that
     /// consumes it in order (not just picking one random element) doesn't get a hidden
     /// preferred-then-other bias.
-    pub fn order_zones<T>(self, preferred: Vec<T>, other: Vec<T>, rng: &mut dyn RngCore) -> Vec<Vec<T>> {
+    pub fn order_zones<T>(
+        self,
+        preferred: Vec<T>,
+        other: Vec<T>,
+        rng: &mut dyn RngCore,
+    ) -> Vec<Vec<T>> {
         match self {
             PriorityLevel::Required => vec![preferred],
             PriorityLevel::Forbidden => vec![other],
@@ -125,8 +158,8 @@ impl PriorityLevel {
 #[cfg(test)]
 mod priority_level_tests {
     use super::*;
-    use rand::SeedableRng;
     use crate::random::MazeRng;
+    use rand::SeedableRng;
 
     #[test]
     fn as_str_round_trips_through_from_str() {
@@ -143,25 +176,37 @@ mod priority_level_tests {
     #[test]
     fn order_zones_required_is_preferred_only_no_fallback() {
         let mut rng = MazeRng::seed_from_u64(1);
-        assert_eq!(PriorityLevel::Required.order_zones(vec![1], vec![2], &mut rng), vec![vec![1]]);
+        assert_eq!(
+            PriorityLevel::Required.order_zones(vec![1], vec![2], &mut rng),
+            vec![vec![1]]
+        );
     }
 
     #[test]
     fn order_zones_forbidden_is_other_only_no_fallback() {
         let mut rng = MazeRng::seed_from_u64(1);
-        assert_eq!(PriorityLevel::Forbidden.order_zones(vec![1], vec![2], &mut rng), vec![vec![2]]);
+        assert_eq!(
+            PriorityLevel::Forbidden.order_zones(vec![1], vec![2], &mut rng),
+            vec![vec![2]]
+        );
     }
 
     #[test]
     fn order_zones_preferred_falls_back_to_other() {
         let mut rng = MazeRng::seed_from_u64(1);
-        assert_eq!(PriorityLevel::Preferred.order_zones(vec![1], vec![2], &mut rng), vec![vec![1], vec![2]]);
+        assert_eq!(
+            PriorityLevel::Preferred.order_zones(vec![1], vec![2], &mut rng),
+            vec![vec![1], vec![2]]
+        );
     }
 
     #[test]
     fn order_zones_discouraged_falls_back_to_preferred() {
         let mut rng = MazeRng::seed_from_u64(1);
-        assert_eq!(PriorityLevel::Discouraged.order_zones(vec![1], vec![2], &mut rng), vec![vec![2], vec![1]]);
+        assert_eq!(
+            PriorityLevel::Discouraged.order_zones(vec![1], vec![2], &mut rng),
+            vec![vec![2], vec![1]]
+        );
     }
 
     #[test]
@@ -184,10 +229,14 @@ mod priority_level_tests {
         let unshuffled: Vec<i32> = preferred.iter().chain(other.iter()).copied().collect();
         let saw_different_order = (0..10u64).any(|seed| {
             let mut rng = MazeRng::seed_from_u64(seed);
-            let zones = PriorityLevel::Indifferent.order_zones(preferred.clone(), other.clone(), &mut rng);
+            let zones =
+                PriorityLevel::Indifferent.order_zones(preferred.clone(), other.clone(), &mut rng);
             zones[0] != unshuffled
         });
-        assert!(saw_different_order, "expected at least one seed to produce a shuffled order");
+        assert!(
+            saw_different_order,
+            "expected at least one seed to produce a shuffled order"
+        );
     }
 }
 
@@ -216,14 +265,20 @@ fn default_value(kind: &StrategyParamKind) -> StrategyParamValue {
         StrategyParamKind::Float { default, .. } => StrategyParamValue::Float(*default),
         StrategyParamKind::Bool { default } => StrategyParamValue::Bool(*default),
         StrategyParamKind::Enum { default, .. } => StrategyParamValue::Enum(default.to_string()),
-        StrategyParamKind::Interval { default_min, default_max, .. } => StrategyParamValue::Interval(*default_min, *default_max),
+        StrategyParamKind::Interval {
+            default_min,
+            default_max,
+            ..
+        } => StrategyParamValue::Interval(*default_min, *default_max),
         StrategyParamKind::Priority { default } => StrategyParamValue::Priority(*default),
     }
 }
 
 fn parse_param(raw: &str, kind: &StrategyParamKind) -> Option<StrategyParamValue> {
     match kind {
-        StrategyParamKind::Float { min, max, .. } => raw.parse::<f64>().ok()
+        StrategyParamKind::Float { min, max, .. } => raw
+            .parse::<f64>()
+            .ok()
             .filter(|v| v.is_finite())
             .map(|v| StrategyParamValue::Float(v.clamp(*min, *max))),
         StrategyParamKind::Bool { .. } => match raw {
@@ -242,13 +297,26 @@ fn parse_param(raw: &str, kind: &StrategyParamKind) -> Option<StrategyParamValue
         // own interval slider serialization.
         StrategyParamKind::Interval { min, max, .. } => {
             let (lo_raw, hi_raw) = raw.split_once(',')?;
-            let lo = lo_raw.trim().parse::<f64>().ok().filter(|v| v.is_finite())?;
-            let hi = hi_raw.trim().parse::<f64>().ok().filter(|v| v.is_finite())?;
+            let lo = lo_raw
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite())?;
+            let hi = hi_raw
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite())?;
             if lo > hi {
                 return None;
             }
-            Some(StrategyParamValue::Interval(lo.clamp(*min, *max), hi.clamp(*min, *max)))
+            Some(StrategyParamValue::Interval(
+                lo.clamp(*min, *max),
+                hi.clamp(*min, *max),
+            ))
         }
-        StrategyParamKind::Priority { .. } => PriorityLevel::from_str(raw).map(StrategyParamValue::Priority),
+        StrategyParamKind::Priority { .. } => {
+            PriorityLevel::from_str(raw).map(StrategyParamValue::Priority)
+        }
     }
 }

@@ -1,8 +1,8 @@
-use crate::ids::{EdgeId, NodeId};
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::generation::PresetState;
 use super::command::MutationCommand;
+use crate::Maze;
+use crate::generation::PresetState;
+use crate::ids::{EdgeId, NodeId};
+use crate::space::Tessellation;
 
 /// Thin wrapper around a draft `Maze` (see `Maze::draft`) that records every mutation as a
 /// `MutationCommand` at the moment it happens, via the same `try_*` helpers a strategy already
@@ -28,7 +28,10 @@ pub struct DraftMaze<T: Tessellation> {
 
 impl<T: Tessellation> DraftMaze<T> {
     pub fn new(maze: Maze<T>) -> Self {
-        Self { maze, commands: Vec::new() }
+        Self {
+            maze,
+            commands: Vec::new(),
+        }
     }
 
     /// Consumes `self`, returning the accumulated commands — called once an attempt this draft
@@ -48,32 +51,54 @@ impl<T: Tessellation> DraftMaze<T> {
         self.commands.extend(inner.commands);
     }
 
-    pub fn try_add_directed_edge(&mut self, from: NodeId, to: NodeId, preset_state: &PresetState) -> bool {
-        let added = crate::generation::try_add_directed_edge(&mut self.maze.graph, from, to, preset_state);
+    pub fn try_add_directed_edge(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        preset_state: &PresetState,
+    ) -> bool {
+        let added =
+            crate::generation::try_add_directed_edge(&mut self.maze.graph, from, to, preset_state);
         if added {
-            self.commands.push(MutationCommand::AddDirectedEdge { from, to });
+            self.commands
+                .push(MutationCommand::AddDirectedEdge { from, to });
         }
         added
     }
 
-    pub fn try_add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, preset_state: &PresetState) -> bool {
-        let added = crate::generation::try_add_bidirectional_edge(&mut self.maze.graph, a, b, preset_state);
+    pub fn try_add_bidirectional_edge(
+        &mut self,
+        a: NodeId,
+        b: NodeId,
+        preset_state: &PresetState,
+    ) -> bool {
+        let added =
+            crate::generation::try_add_bidirectional_edge(&mut self.maze.graph, a, b, preset_state);
         if added {
-            self.commands.push(MutationCommand::AddBidirectionalEdge { a, b });
+            self.commands
+                .push(MutationCommand::AddBidirectionalEdge { a, b });
         }
         added
     }
 
-    pub fn try_remove_edge(&mut self, from: NodeId, to: NodeId, preset_state: &PresetState) -> bool {
-        let removed = crate::generation::try_remove_edge(&mut self.maze.graph, from, to, preset_state);
+    pub fn try_remove_edge(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        preset_state: &PresetState,
+    ) -> bool {
+        let removed =
+            crate::generation::try_remove_edge(&mut self.maze.graph, from, to, preset_state);
         if removed {
-            self.commands.push(MutationCommand::RemoveEdgeBetween { from, to });
+            self.commands
+                .push(MutationCommand::RemoveEdgeBetween { from, to });
         }
         removed
     }
 
     pub fn try_remove_edge_by_id(&mut self, id: EdgeId, preset_state: &PresetState) -> bool {
-        let removed = crate::generation::try_remove_edge_by_id(&mut self.maze.graph, id, preset_state);
+        let removed =
+            crate::generation::try_remove_edge_by_id(&mut self.maze.graph, id, preset_state);
         if removed {
             self.commands.push(MutationCommand::RemoveEdge { id });
         }
@@ -89,16 +114,23 @@ impl<T: Tessellation> DraftMaze<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Graph, EdgeKind};
-    use crate::space::{SquareTessellation, MultiLevelField, square_rect};
+    use crate::graph::{EdgeKind, Graph};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = crate::IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         (Maze::new(field, g), nodes)
     }
 
@@ -115,7 +147,13 @@ mod tests {
         let mut draft = DraftMaze::new(maze);
         assert!(draft.try_add_directed_edge(nodes[0], nodes[1], &PresetState::empty()));
         assert!(draft.maze.graph.edge_between(nodes[0], nodes[1]).is_some());
-        assert_eq!(draft.into_commands(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }]);
+        assert_eq!(
+            draft.into_commands(),
+            vec![MutationCommand::AddDirectedEdge {
+                from: nodes[0],
+                to: nodes[1]
+            }]
+        );
     }
 
     #[test]
@@ -135,52 +173,83 @@ mod tests {
         assert!(draft.try_add_bidirectional_edge(nodes[0], nodes[1], &PresetState::empty()));
         assert!(draft.maze.graph.edge_between(nodes[0], nodes[1]).is_some());
         assert!(draft.maze.graph.edge_between(nodes[1], nodes[0]).is_some());
-        assert_eq!(draft.into_commands(), vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }]);
+        assert_eq!(
+            draft.into_commands(),
+            vec![MutationCommand::AddBidirectionalEdge {
+                a: nodes[0],
+                b: nodes[1]
+            }]
+        );
     }
 
     #[test]
     fn try_remove_edge_mutates_and_records() {
         let (mut maze, nodes) = maze_n(2);
-        maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        maze.graph
+            .build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut draft = DraftMaze::new(maze);
         assert!(draft.try_remove_edge(nodes[0], nodes[1], &PresetState::empty()));
         assert!(draft.maze.graph.edge_between(nodes[0], nodes[1]).is_none());
-        assert_eq!(draft.into_commands(), vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }]);
+        assert_eq!(
+            draft.into_commands(),
+            vec![MutationCommand::RemoveEdgeBetween {
+                from: nodes[0],
+                to: nodes[1]
+            }]
+        );
     }
 
     #[test]
     fn try_remove_edge_by_id_mutates_and_records() {
         let (mut maze, nodes) = maze_n(2);
-        let id = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let id = maze
+            .graph
+            .build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut draft = DraftMaze::new(maze);
         assert!(draft.try_remove_edge_by_id(id, &PresetState::empty()));
         assert!(draft.maze.graph.edge(id).is_none());
-        assert_eq!(draft.into_commands(), vec![MutationCommand::RemoveEdge { id }]);
+        assert_eq!(
+            draft.into_commands(),
+            vec![MutationCommand::RemoveEdge { id }]
+        );
     }
 
     #[test]
     fn try_remove_edge_by_id_failure_records_nothing() {
         let (mut maze, nodes) = maze_n(2);
-        let id = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let id = maze
+            .graph
+            .build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut preset_state = PresetState::empty();
         preset_state.preset_edges.insert((nodes[0], nodes[1]));
         let mut draft = DraftMaze::new(maze);
         assert!(!draft.try_remove_edge_by_id(id, &preset_state));
-        assert!(draft.maze.graph.edge(id).is_some(), "preset-protected edge must survive");
+        assert!(
+            draft.maze.graph.edge(id).is_some(),
+            "preset-protected edge must survive"
+        );
         assert!(draft.into_commands().is_empty());
     }
 
     #[test]
     fn multiple_mutations_accumulate_commands_in_call_order() {
         let (mut maze, nodes) = maze_n(3);
-        let id = maze.graph.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        let id = maze
+            .graph
+            .build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let mut draft = DraftMaze::new(maze);
         draft.try_add_directed_edge(nodes[0], nodes[1], &PresetState::empty());
         draft.try_remove_edge_by_id(id, &PresetState::empty());
-        assert_eq!(draft.into_commands(), vec![
-            MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] },
-            MutationCommand::RemoveEdge { id },
-        ]);
+        assert_eq!(
+            draft.into_commands(),
+            vec![
+                MutationCommand::AddDirectedEdge {
+                    from: nodes[0],
+                    to: nodes[1]
+                },
+                MutationCommand::RemoveEdge { id },
+            ]
+        );
     }
 
     #[test]
@@ -200,10 +269,19 @@ mod tests {
         assert!(outer.maze.graph.edge_between(nodes[0], nodes[1]).is_some());
         assert!(outer.maze.graph.edge_between(nodes[1], nodes[2]).is_some());
         // Commands from both levels appear in order: outer's own first, then inner's.
-        assert_eq!(outer.into_commands(), vec![
-            MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] },
-            MutationCommand::AddDirectedEdge { from: nodes[1], to: nodes[2] },
-        ]);
+        assert_eq!(
+            outer.into_commands(),
+            vec![
+                MutationCommand::AddDirectedEdge {
+                    from: nodes[0],
+                    to: nodes[1]
+                },
+                MutationCommand::AddDirectedEdge {
+                    from: nodes[1],
+                    to: nodes[2]
+                },
+            ]
+        );
     }
 
     #[test]
@@ -221,7 +299,13 @@ mod tests {
             // inner drops here — ordinary Rust drop, nothing to undo.
         }
 
-        assert_eq!(outer.into_commands(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }],
-            "a dropped failed inner draft must leave no trace on the outer draft's command log");
+        assert_eq!(
+            outer.into_commands(),
+            vec![MutationCommand::AddDirectedEdge {
+                from: nodes[0],
+                to: nodes[1]
+            }],
+            "a dropped failed inner draft must leave no trace on the outer draft's command log"
+        );
     }
 }

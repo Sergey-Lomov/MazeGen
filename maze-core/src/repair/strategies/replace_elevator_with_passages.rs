@@ -1,24 +1,22 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::InvalidElevatorIssue;
 use crate::generation::PresetState;
+use crate::ids::NodeId;
+use crate::quality_control::InvalidElevatorIssue;
+use crate::quality_control::checks::elevator_core::{Elevator, elevator_groups};
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use crate::quality_control::checks::elevator_core::{elevator_groups, Elevator};
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const PARAM_ADJACENT_FLOORS_ONLY: &str = "adjacent_floors_only";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_ADJACENT_FLOORS_ONLY,
-        label: "Adjacent floors only",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-];
+static PARAMS: &[StrategyParam] = &[StrategyParam {
+    id: PARAM_ADJACENT_FLOORS_ONLY,
+    label: "Adjacent floors only",
+    kind: StrategyParamKind::Bool { default: true },
+}];
 
 /// Handles `INVALID_ELEVATOR` — see GitHub issue #397. Replaces each flagged elevator with
 /// sequential two-way `VerticalPassage` edges, then removes the elevator's own fan edges.
@@ -35,8 +33,12 @@ static PARAMS: &[StrategyParam] = &[
 ///   gap.
 pub struct ReplaceElevatorWithPassagesStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, InvalidElevatorIssue> for ReplaceElevatorWithPassagesStrategy {
-    fn strategy_id(&self) -> &'static str { "replace_elevator_with_passages" }
+impl<T: Tessellation> RepairStrategy<T, InvalidElevatorIssue>
+    for ReplaceElevatorWithPassagesStrategy
+{
+    fn strategy_id(&self) -> &'static str {
+        "replace_elevator_with_passages"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -51,7 +53,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorIssue> for ReplaceElevato
         _preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let adjacent_floors_only = !matches!(params.get(PARAM_ADJACENT_FLOORS_ONLY), Some(StrategyParamValue::Bool(false)));
+        let adjacent_floors_only = !matches!(
+            params.get(PARAM_ADJACENT_FLOORS_ONLY),
+            Some(StrategyParamValue::Bool(false))
+        );
 
         let current = elevator_groups(maze);
         let mut commands = Vec::new();
@@ -104,12 +109,18 @@ impl<T: Tessellation> RepairStrategy<T, InvalidElevatorIssue> for ReplaceElevato
 /// Pairs of the elevator's own stops that are genuinely floor-adjacent (consecutive floor
 /// indices) — used for `adjacent_floors_only = true`. A gap in the elevator's own stop floors
 /// (e.g. stops at floors 1 and 5) produces no pair at all for that gap, never a pair spanning it.
-fn own_stops_adjacent_pairs<T: Tessellation>(maze: &Maze<T>, elevator: &Elevator) -> Vec<(NodeId, NodeId)> {
-    let mut by_floor: Vec<(usize, NodeId)> = elevator.stops.iter()
+fn own_stops_adjacent_pairs<T: Tessellation>(
+    maze: &Maze<T>,
+    elevator: &Elevator,
+) -> Vec<(NodeId, NodeId)> {
+    let mut by_floor: Vec<(usize, NodeId)> = elevator
+        .stops
+        .iter()
         .filter_map(|&n| maze.field.level_index_of(n).map(|idx| (idx, n)))
         .collect();
     by_floor.sort_unstable_by_key(|&(idx, _)| idx);
-    by_floor.windows(2)
+    by_floor
+        .windows(2)
         .filter(|w| w[1].0 == w[0].0 + 1)
         .map(|w| (w[0].1, w[1].1))
         .collect()
@@ -119,22 +130,36 @@ fn own_stops_adjacent_pairs<T: Tessellation>(maze: &Maze<T>, elevator: &Elevator
 /// adjacent floor step — used for `adjacent_floors_only = false`. A floor where the elevator's
 /// point has no node (see `MultiLevelField::node_at`) drops both the pair into it and the pair out
 /// of it; the chain does not reconnect around the gap.
-fn full_floor_span_pairs<T: Tessellation>(maze: &Maze<T>, elevator: &Elevator) -> Vec<(NodeId, NodeId)> {
-    let Some(&first) = elevator.stops.first() else { return vec![] };
-    let Some(point) = maze.field.point_of(first) else { return vec![] };
+fn full_floor_span_pairs<T: Tessellation>(
+    maze: &Maze<T>,
+    elevator: &Elevator,
+) -> Vec<(NodeId, NodeId)> {
+    let Some(&first) = elevator.stops.first() else {
+        return vec![];
+    };
+    let Some(point) = maze.field.point_of(first) else {
+        return vec![];
+    };
 
-    let mut floor_indices: Vec<usize> = elevator.stops.iter()
+    let mut floor_indices: Vec<usize> = elevator
+        .stops
+        .iter()
         .filter_map(|&n| maze.field.level_index_of(n))
         .collect();
     floor_indices.sort_unstable();
-    let (Some(&bottom), Some(&top)) = (floor_indices.first(), floor_indices.last()) else { return vec![] };
+    let (Some(&bottom), Some(&top)) = (floor_indices.first(), floor_indices.last()) else {
+        return vec![];
+    };
 
-    let nodes_by_floor: Vec<Option<NodeId>> = maze.field.levels_ordered()
+    let nodes_by_floor: Vec<Option<NodeId>> = maze
+        .field
+        .levels_ordered()
         .enumerate()
         .filter(|&(idx, _)| idx >= bottom && idx <= top)
         .map(|(_, level)| maze.field.node_at(level, point.clone()))
         .collect();
-    nodes_by_floor.windows(2)
+    nodes_by_floor
+        .windows(2)
         .filter_map(|w| match (w[0], w[1]) {
             (Some(a), Some(b)) => Some((a, b)),
             _ => None,
@@ -147,18 +172,24 @@ crate::impl_erased_repair_strategy!(ReplaceElevatorWithPassagesStrategy, Invalid
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
-    use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
+    use std::collections::HashMap;
 
     fn no_params() -> StrategyParams {
-        build_params(<ReplaceElevatorWithPassagesStrategy as RepairStrategy<SquareTessellation, InvalidElevatorIssue>>::params(&ReplaceElevatorWithPassagesStrategy), None)
+        build_params(
+            <ReplaceElevatorWithPassagesStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidElevatorIssue,
+            >>::params(&ReplaceElevatorWithPassagesStrategy),
+            None,
+        )
     }
 
     fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -166,18 +197,31 @@ mod tests {
         for &(k, v) in overrides {
             map.insert(k.to_string(), v.to_string());
         }
-        build_params(<ReplaceElevatorWithPassagesStrategy as RepairStrategy<SquareTessellation, InvalidElevatorIssue>>::params(&ReplaceElevatorWithPassagesStrategy), Some(&map))
+        build_params(
+            <ReplaceElevatorWithPassagesStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidElevatorIssue,
+            >>::params(&ReplaceElevatorWithPassagesStrategy),
+            Some(&map),
+        )
     }
 
     fn n_floor_maze(count: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..count)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         (Maze::new(mf, g), nodes)
     }
 
@@ -196,9 +240,18 @@ mod tests {
         // Elevator stops at floors 0, 1, 3 — 0/1 are floor-adjacent, 1/3 are not.
         let stops = vec![nodes[0], nodes[1], nodes[3]];
         connect_fan(&mut maze, &stops);
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Elevator));
         // Only the floor-adjacent pair 0<->1 gets a passage; 1<->3 is not floor-adjacent, so no
@@ -206,19 +259,34 @@ mod tests {
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
         assert!(maze.graph.edge_between(nodes[1], nodes[3]).is_none());
         assert!(maze.graph.edge_between(nodes[0], nodes[3]).is_none());
-        assert!(!maze.graph.edges().any(|e| e.from == nodes[2] || e.to == nodes[2]));
+        assert!(
+            !maze
+                .graph
+                .edges()
+                .any(|e| e.from == nodes[2] || e.to == nodes[2])
+        );
     }
 
     #[test]
-    fn adjacent_floors_only_with_no_adjacent_pair_at_all_removes_elevator_without_adding_any_passage() {
+    fn adjacent_floors_only_with_no_adjacent_pair_at_all_removes_elevator_without_adding_any_passage()
+     {
         // Elevator stops at floors 1 and 5 (0-based) — no floor-adjacent pair exists among its
         // own stops, so the elevator must simply vanish, never get a passage spanning the gap.
         let (mut maze, nodes) = n_floor_maze(6);
         let stops = vec![nodes[1], nodes[5]];
         connect_fan(&mut maze, &stops);
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Elevator));
         assert!(maze.graph.edge_between(nodes[1], nodes[5]).is_none());
@@ -229,15 +297,27 @@ mod tests {
         let (mut maze, nodes) = n_floor_maze(4);
         let stops = vec![nodes[0], nodes[3]];
         connect_fan(&mut maze, &stops);
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
         let params = params_with(&[(PARAM_ADJACENT_FLOORS_ONLY, "false")]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
         assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_some());
         assert!(maze.graph.edge_between(nodes[2], nodes[3]).is_some());
-        assert!(maze.graph.edge_between(nodes[0], nodes[3]).is_none(), "must chain through intervening floors, not jump directly");
+        assert!(
+            maze.graph.edge_between(nodes[0], nodes[3]).is_none(),
+            "must chain through intervening floors, not jump directly"
+        );
     }
 
     #[test]
@@ -250,12 +330,18 @@ mod tests {
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..5)
             .map(|i| {
-                let points = if i == 2 { vec![SquarePoint { x: 1, y: 0 }] } else { square_rect(2, 1) };
+                let points = if i == 2 {
+                    vec![SquarePoint { x: 1, y: 0 }]
+                } else {
+                    square_rect(2, 1)
+                };
                 mf.add_level(Field::<SquareTessellation>::new(points, &mut ids).unwrap())
             })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let node_at_floor = |i: usize| mf.node_at(floors[i], SquarePoint { x: 0, y: 0 }).unwrap();
         let n0 = node_at_floor(0);
         let n1 = node_at_floor(1);
@@ -265,14 +351,26 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g.clone());
         let stops = vec![n0, n4];
         connect_fan(&mut maze, &stops);
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops.clone())]);
         let params = params_with(&[(PARAM_ADJACENT_FLOORS_ONLY, "false")]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params,
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(n0, n1).is_some());
         assert!(maze.graph.edge_between(n3, n4).is_some());
-        assert!(maze.graph.edge_between(n1, n3).is_none(), "must not jump across the missing floor 2 node");
+        assert!(
+            maze.graph.edge_between(n1, n3).is_none(),
+            "must not jump across the missing floor 2 node"
+        );
         assert!(maze.graph.edge_between(n0, n4).is_none());
         let _ = g;
     }
@@ -282,7 +380,15 @@ mod tests {
         let (mut maze, _nodes) = n_floor_maze(3);
         let issue = InvalidElevatorIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -295,7 +401,15 @@ mod tests {
         let stops = vec![nodes[0]];
         let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(stops)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&ReplaceElevatorWithPassagesStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &ReplaceElevatorWithPassagesStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 }

@@ -1,20 +1,38 @@
 use super::*;
-use crate::generation::split_pattern::{SplitGenerationConfig, SplitPattern, SplitPatternFace, SplitFaceRequirement};
-use crate::generation::{ElementsConfig, GenerationParams, PresetState};
+use crate::generation::split_pattern::{
+    SplitFaceRequirement, SplitGenerationConfig, SplitPattern, SplitPatternFace,
+};
 use crate::generation::test_utils::make_field_graph_ids;
+use crate::generation::{ElementsConfig, GenerationParams, PresetState};
 use crate::space::{SquarePoint, Tessellation};
 
 fn no_split_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
+    ElementsConfig {
+        one_way_chance: 0.0,
+        teleport_chance: 0.0,
+        teleport_one_way_chance: 0.0,
+        split_chance: 0.0,
+        ..Default::default()
+    }
 }
 
 fn full_split_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 1.0, ..Default::default() }
+    ElementsConfig {
+        one_way_chance: 0.0,
+        teleport_chance: 0.0,
+        teleport_one_way_chance: 0.0,
+        split_chance: 1.0,
+        ..Default::default()
+    }
 }
 
-fn empty_presets() -> PresetState { PresetState::empty() }
+fn empty_presets() -> PresetState {
+    PresetState::empty()
+}
 
-fn no_split_config() -> SplitGenerationConfig { SplitGenerationConfig::default() }
+fn no_split_config() -> SplitGenerationConfig {
+    SplitGenerationConfig::default()
+}
 
 // ─── face_index / face_at round-trip ────────────────────────────────────
 
@@ -51,29 +69,54 @@ fn split_chance_zero_matches_baseline_exactly() {
     for seed in [1u64, 7, 42, 1234] {
         let (mut field_a, mut graph_a, mut ids_a) = make_field_graph_ids(6, 6);
         let field_a_level = field_a.single_level_id();
-        let start_a = field_a.node_at(field_a_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let start_a = field_a
+            .node_at(field_a_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut sr_a = None;
         super::super::vertex_based::generate(
-            &mut graph_a, &mut field_a, &mut ids_a, seed, start_a,
-            &GenerationParams::default(), &no_split_elements(), &no_split_config(),
-            &empty_presets(), &mut sr_a, None, None,
+            &mut graph_a,
+            &mut field_a,
+            &mut ids_a,
+            seed,
+            start_a,
+            &GenerationParams::default(),
+            &no_split_elements(),
+            &no_split_config(),
+            &empty_presets(),
+            &mut sr_a,
+            None,
+            None,
         );
 
         let (mut field_b, mut graph_b, mut ids_b) = make_field_graph_ids(6, 6);
         let field_b_level = field_b.single_level_id();
-        let start_b = field_b.node_at(field_b_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let start_b = field_b
+            .node_at(field_b_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
         let mut sr_b = None;
         super::super::vertex_based::generate(
-            &mut graph_b, &mut field_b, &mut ids_b, seed, start_b,
-            &GenerationParams::default(), &no_split_elements(), &no_split_config(),
-            &empty_presets(), &mut sr_b, None, None,
+            &mut graph_b,
+            &mut field_b,
+            &mut ids_b,
+            seed,
+            start_b,
+            &GenerationParams::default(),
+            &no_split_elements(),
+            &no_split_config(),
+            &empty_presets(),
+            &mut sr_b,
+            None,
+            None,
         );
 
         let mut e_a: Vec<_> = graph_a.edges().map(|e| (e.from, e.to)).collect();
         let mut e_b: Vec<_> = graph_b.edges().map(|e| (e.from, e.to)).collect();
         e_a.sort();
         e_b.sort();
-        assert_eq!(e_a, e_b, "seed {seed}: split_chance=0.0 must be fully deterministic");
+        assert_eq!(
+            e_a, e_b,
+            "seed {seed}: split_chance=0.0 must be fully deterministic"
+        );
         assert!(sr_a.is_none() && sr_b.is_none());
     }
 }
@@ -83,23 +126,45 @@ fn split_chance_zero_matches_baseline_exactly() {
 #[test]
 fn non_pattern_split_creates_exact_node_count() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
     let node_count_before = graph.nodes().count();
-    let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 3, patterns: vec![] };
+    let split_config = SplitGenerationConfig {
+        pattern_mode: false,
+        max_split_nodes: 3,
+        patterns: vec![],
+    };
     let mut sr = None;
     super::super::vertex_based::generate(
-        &mut graph, &mut field, &mut ids, 5, start,
-        &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        5,
+        start,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut sr,
+        None,
+        None,
     );
     // At least one split must have fired somewhere (split_chance=1.0, many steps) creating
     // extra nodes beyond the field's original point count.
-    assert!(graph.nodes().count() > node_count_before, "split_chance=1.0 must create extra nodes");
+    assert!(
+        graph.nodes().count() > node_count_before,
+        "split_chance=1.0 must create extra nodes"
+    );
     // Node count only ever grows in multiples matching max_split_nodes - 1 per split event, so
     // the total extra nodes must be a multiple of (max_split_nodes - 1).
     let extra = graph.nodes().count() - node_count_before;
-    assert_eq!(extra % 2, 0, "each split adds exactly max_split_nodes - 1 = 2 nodes, extra={extra}");
+    assert_eq!(
+        extra % 2,
+        0,
+        "each split adds exactly max_split_nodes - 1 = 2 nodes, extra={extra}"
+    );
 }
 
 #[test]
@@ -112,14 +177,29 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
     // (partitioning can't manufacture neighbors that don't exist) falls back to an already-visited
     // geometric neighbor of the point — see `non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left`.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-    let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let split_config = SplitGenerationConfig {
+        pattern_mode: false,
+        max_split_nodes: 2,
+        patterns: vec![],
+    };
     let mut sr = None;
     super::super::vertex_based::generate(
-        &mut graph, &mut field, &mut ids, 5, start,
-        &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        5,
+        start,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut sr,
+        None,
+        None,
     );
     let mut checked_a_split = false;
     for point in field.field_of(field_level).unwrap().all_points() {
@@ -130,10 +210,16 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
         checked_a_split = true;
         for &n in nodes {
             let degree = graph.outgoing_neighbors(n).count() + graph.incoming_neighbors(n).count();
-            assert!(degree > 0, "split node {n:?} at {point:?} has no connection at all");
+            assert!(
+                degree > 0,
+                "split node {n:?} at {point:?} has no connection at all"
+            );
         }
     }
-    assert!(checked_a_split, "test setup must actually exercise at least one split");
+    assert!(
+        checked_a_split,
+        "test setup must actually exercise at least one split"
+    );
 }
 
 #[test]
@@ -142,23 +228,45 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
     // corridor/junction step can't connect any resulting node to anything new), each node must
     // still fall back to an already-visited neighbor rather than end up permanently isolated.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 1, y: 1 }).unwrap();
-    let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 1, y: 1 })
+        .unwrap();
+    let split_config = SplitGenerationConfig {
+        pattern_mode: false,
+        max_split_nodes: 2,
+        patterns: vec![],
+    };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     for n in field.neighbors(start) {
         state.visited.insert(n);
     }
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     let point = field.point_of(start).unwrap();
     for &n in field.nodes_at(field_level, point) {
         let degree = graph.outgoing_neighbors(n).count() + graph.incoming_neighbors(n).count();
-        assert!(degree > 0, "split node {n:?} must fall back to a visited neighbor, not stay isolated");
+        assert!(
+            degree > 0,
+            "split node {n:?} must fall back to a visited neighbor, not stay isolated"
+        );
     }
 }
 
@@ -166,17 +274,36 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
 fn non_pattern_max_split_nodes_one_is_a_valid_noop() {
     // max_split_nodes == 1 spends the split roll's RNG sample but mints nothing new.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
     let node_count_before = graph.nodes().count();
-    let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 1, patterns: vec![] };
+    let split_config = SplitGenerationConfig {
+        pattern_mode: false,
+        max_split_nodes: 1,
+        patterns: vec![],
+    };
     let mut sr = None;
     super::super::vertex_based::generate(
-        &mut graph, &mut field, &mut ids, 3, start,
-        &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        3,
+        start,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut sr,
+        None,
+        None,
     );
-    assert_eq!(graph.nodes().count(), node_count_before, "max_split_nodes=1 must never mint new nodes");
+    assert_eq!(
+        graph.nodes().count(),
+        node_count_before,
+        "max_split_nodes=1 must never mint new nodes"
+    );
 }
 
 // ─── split_is_eligible ───────────────────────────────────────────────────
@@ -218,13 +345,28 @@ fn split_is_eligible_true_for_plain_unlocked_unsplit_node() {
 #[test]
 fn try_split_src_returns_miss_when_roll_misses() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &no_split_elements(),
-        &no_split_config(), &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &no_split_elements(),
+        &no_split_config(),
+        &empty_presets(),
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
     assert_eq!(outcome, SplitOutcome::Miss);
 }
@@ -232,15 +374,30 @@ fn try_split_src_returns_miss_when_roll_misses() {
 #[test]
 fn try_split_src_returns_ineligible_when_locked() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(start);
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &no_split_config(), &preset_state, &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &no_split_config(),
+        &preset_state,
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
     assert_eq!(outcome, SplitOutcome::Ineligible);
 }
@@ -252,8 +409,10 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
     // and retried against a lower-weight pattern that *can* adapt, rather than the whole split
     // failing outright.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
 
     // SquareFace order [N, S, E, W] (indices 0-3). At (0,0) on a 3x3 grid: S (index 1) points
     // off-field, E (index 2) has a real neighbor at (1,0).
@@ -261,7 +420,11 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         node_count: 2,
         faces: vec![
             vec![],
-            vec![SplitPatternFace { face_index: 1, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+            vec![SplitPatternFace {
+                face_index: 1,
+                requirement: SplitFaceRequirement::Passage,
+                sibling_target: None,
+            }],
         ],
         weight: 1000.0,
     };
@@ -269,7 +432,11 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         node_count: 2,
         faces: vec![
             vec![],
-            vec![SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+            vec![SplitPatternFace {
+                face_index: 2,
+                requirement: SplitFaceRequirement::Passage,
+                sibling_target: None,
+            }],
         ],
         weight: 0.001,
     };
@@ -281,23 +448,59 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
-    assert_eq!(outcome, SplitOutcome::Handled, "must retry onto the second pattern instead of giving up after the first pattern's adaptation search comes up empty");
+    assert_eq!(
+        outcome,
+        SplitOutcome::Handled,
+        "must retry onto the second pattern instead of giving up after the first pattern's adaptation search comes up empty"
+    );
 }
 
 #[test]
 fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-    let split_config = SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![] };
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let split_config = SplitGenerationConfig {
+        pattern_mode: true,
+        max_split_nodes: 2,
+        patterns: vec![],
+    };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
     assert_eq!(outcome, SplitOutcome::NoAdaptation);
 }
@@ -305,17 +508,39 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
 #[test]
 fn try_split_src_returns_handled_on_non_pattern_hit() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
-    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-    let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
+    let field_level = field.single_level_id();
+    let start = field
+        .node_at(field_level, SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let split_config = SplitGenerationConfig {
+        pattern_mode: false,
+        max_split_nodes: 2,
+        patterns: vec![],
+    };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
-        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+        &mut graph,
+        &mut field,
+        &mut ids,
+        &GenerationParams::default(),
+        &full_split_elements(),
+        &split_config,
+        &empty_presets(),
+        &mut state,
+        start,
+        None,
+        None,
+        start,
+        &mut sr,
+        None,
+        None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
-    assert!(graph.nodes().count() > 9, "a hit must have minted an extra node");
+    assert!(
+        graph.nodes().count() > 9,
+        "a hit must have minted an extra node"
+    );
 }
 
 // ─── split_points collision ──────────────────────────────────────────────
@@ -325,7 +550,7 @@ fn split_roll_skipped_entirely_for_a_point_with_declared_split_points() {
     // A point already split via GenerationConfig.split_points (issue #231) must never be
     // re-split by the generator — split_is_eligible must reject it outright.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-        let field_level = field.single_level_id();
+    let field_level = field.single_level_id();
     let point = SquarePoint { x: 1, y: 1 };
     let extra = field.add_node_at(field_level, point, &mut ids);
     graph.add_node(extra);

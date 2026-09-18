@@ -1,14 +1,16 @@
-use std::collections::HashSet;
-use rand::Rng;
-use crate::ids::{IdGenerator, NodeId};
-use crate::graph::{Graph, EdgeKind};
-use crate::space::{MultiLevelField, Tessellation};
-use crate::event_log::ScopeGuard;
-use super::{ElementsConfig, PresetState};
 use super::debug_state::DebugGenerationState;
 use super::edge_ops::try_add_edge_kind;
-use super::vertex_based::{VertexBasedEvent, GenState, add_to_frontier, add_edge_and_detect_direction};
 use super::split_logic::StartReassignment;
+use super::vertex_based::{
+    GenState, VertexBasedEvent, add_edge_and_detect_direction, add_to_frontier,
+};
+use super::{ElementsConfig, PresetState};
+use crate::event_log::ScopeGuard;
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::{IdGenerator, NodeId};
+use crate::space::{MultiLevelField, Tessellation};
+use rand::Rng;
+use std::collections::HashSet;
 
 /// Mints `count - 1` new nodes at `src`'s point (total `count` including `src`), syncing
 /// `state.all_nodes` immediately so later-in-event RNG pools (teleport-connect, cyclic-widened
@@ -61,10 +63,16 @@ pub(super) fn maybe_reassign_start(
     }
     let idx = state.rng.random_range(0..all_split_nodes.len());
     let reassigned_to = all_split_nodes[idx];
-    *start_reassignment = Some(StartReassignment { original: start, reassigned_to });
+    *start_reassignment = Some(StartReassignment {
+        original: start,
+        reassigned_to,
+    });
     if reassigned_to != start {
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::SplitStartReassigned { original: start, reassigned_to });
+            log.emit(VertexBasedEvent::SplitStartReassigned {
+                original: start,
+                reassigned_to,
+            });
         }
     }
 }
@@ -74,14 +82,23 @@ pub(super) fn maybe_reassign_start(
 /// `split_nodes` (a `sibling_target` face connecting two of this event's own nodes): those are
 /// already fully resolved by the event that created them and must never re-enter `frontier` (see
 /// `apply_pattern_adaptation`'s own doc comment).
-pub(super) fn mark_connected(state: &mut GenState, dst: NodeId, src: NodeId, split_nodes: &[NodeId], mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>) {
+pub(super) fn mark_connected(
+    state: &mut GenState,
+    dst: NodeId,
+    src: NodeId,
+    split_nodes: &[NodeId],
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) {
     state.visited.insert(dst);
     state.in_reserve.remove(&dst);
     if !split_nodes.contains(&dst) {
         add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
     }
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::NodeVisited { node: dst, parent: src });
+        log.emit(VertexBasedEvent::NodeVisited {
+            node: dst,
+            parent: src,
+        });
     }
 }
 
@@ -100,25 +117,52 @@ pub(super) fn apply_split_teleport(
     let fired = roll < elements.teleport_chance;
     if !fired {
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::SplitTeleportRolled { roll, teleport_chance: elements.teleport_chance, fired, anchor: None });
+            log.emit(VertexBasedEvent::SplitTeleportRolled {
+                roll,
+                teleport_chance: elements.teleport_chance,
+                fired,
+                anchor: None,
+            });
         }
         return;
     }
     let anchor = nodes[state.rng.random_range(0..nodes.len())];
     if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::SplitTeleportRolled { roll, teleport_chance: elements.teleport_chance, fired, anchor: Some(anchor) });
+        log.emit(VertexBasedEvent::SplitTeleportRolled {
+            roll,
+            teleport_chance: elements.teleport_chance,
+            fired,
+            anchor: Some(anchor),
+        });
     }
-    let unvisited: Vec<NodeId> = state.all_nodes.iter().copied().filter(|n| !state.visited.contains(n)).collect();
+    let unvisited: Vec<NodeId> = state
+        .all_nodes
+        .iter()
+        .copied()
+        .filter(|n| !state.visited.contains(n))
+        .collect();
     if unvisited.is_empty() {
         return;
     }
     let dst = unvisited[state.rng.random_range(0..unvisited.len())];
     let added = add_edge_and_detect_direction(graph, anchor, dst, |g| {
-        try_add_edge_kind(g, anchor, dst, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut state.rng)
+        try_add_edge_kind(
+            g,
+            anchor,
+            dst,
+            EdgeKind::Teleport,
+            elements.teleport_one_way_chance,
+            preset_state,
+            &mut state.rng,
+        )
     });
     if let Some((from, to, bidirectional)) = added {
         if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::TeleportConnectAdded { src: from, dst: to, bidirectional });
+            log.emit(VertexBasedEvent::TeleportConnectAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
     }
     mark_connected(state, dst, anchor, &[], scope);

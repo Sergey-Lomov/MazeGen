@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::ids::EdgeId;
-use crate::quality_control::check::Check;
 use crate::quality_control::InvalidSplitNodeConnectionGroupIssue;
+use crate::quality_control::check::Check;
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT: u32 = 1;
 
@@ -28,12 +28,24 @@ pub struct SplitNodeConnectionPerFaceCheck {
     pub max: u32,
 }
 
-impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue> for SplitNodeConnectionPerFaceCheck {
-    fn check_type_id(&self) -> &'static str { "split_node_connection_per_face" }
+impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
+    for SplitNodeConnectionPerFaceCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "split_node_connection_per_face"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitNodeConnectionGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitNodeConnectionGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut seen_points = std::collections::HashSet::new();
-        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze.field.all_points_with_level()
+        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter(|&(level, point)| maze.field.nodes_at(level, point).len() >= 2)
             .collect();
@@ -53,12 +65,18 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue> for SplitNo
                 if !nodes.contains(&edge.from) {
                     continue;
                 }
-                let Some(neighbor_point) = maze.field.point_of(edge.to) else { continue };
+                let Some(neighbor_point) = maze.field.point_of(edge.to) else {
+                    continue;
+                };
                 if neighbor_point == point {
                     continue; // sibling edge to another node of the same split -- not "outside".
                 }
-                let Some(face) = T::face_between(point, neighbor_point) else { continue };
-                let Some(face_index) = T::face_index(face) else { continue };
+                let Some(face) = T::face_between(point, neighbor_point) else {
+                    continue;
+                };
+                let Some(face_index) = T::face_index(face) else {
+                    continue;
+                };
                 by_face.entry(face_index).or_default().push(edge.id);
             }
 

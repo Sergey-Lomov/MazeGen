@@ -1,20 +1,20 @@
-pub mod nav;
-pub mod scc;
+pub mod bisect;
 pub mod classify;
-pub mod stats;
-pub mod routing;
+pub(crate) mod cycles;
+pub(crate) mod distance_map;
+pub(crate) mod gf2_basis;
 pub mod graph_analytics;
-pub mod split_topology;
+pub mod nav;
+pub(crate) mod pathfinding;
 pub mod region_class;
 pub mod route_protection;
-pub mod bisect;
-pub(crate) mod pathfinding;
-pub(crate) mod cycles;
-pub(crate) mod gf2_basis;
-pub(crate) mod distance_map;
+pub mod routing;
+pub mod scc;
+pub mod split_topology;
+pub mod stats;
 
+use crate::ids::{EdgeId, NodeId};
 use std::collections::{HashMap, HashSet, VecDeque};
-use crate::ids::{NodeId, EdgeId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
@@ -77,8 +77,14 @@ impl Graph {
     }
 
     pub(crate) fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
-        debug_assert!(self.outgoing.contains_key(&from), "add_edge: node {from} not in graph");
-        debug_assert!(self.incoming.contains_key(&to), "add_edge: node {to} not in graph");
+        debug_assert!(
+            self.outgoing.contains_key(&from),
+            "add_edge: node {from} not in graph"
+        );
+        debug_assert!(
+            self.incoming.contains_key(&to),
+            "add_edge: node {to} not in graph"
+        );
         if let Some(existing) = self.edge_between_kind(from, to, &kind) {
             return existing;
         }
@@ -97,13 +103,29 @@ impl Graph {
     /// a *specific* kind of edge exists between a pair (not just "any edge") can ask directly,
     /// instead of resolving the ambiguity of `edge_between`'s "arbitrary matching edge" itself.
     /// Callers needing "any kind" use the public `edge_between` instead.
-    pub(crate) fn edge_between_kind(&self, from: NodeId, to: NodeId, kind: &EdgeKind) -> Option<EdgeId> {
-        self.outgoing.get(&from)?.iter().find(|&&eid| {
-            self.edges[eid].as_ref().map_or(false, |e| e.to == to && &e.kind == kind)
-        }).copied()
+    pub(crate) fn edge_between_kind(
+        &self,
+        from: NodeId,
+        to: NodeId,
+        kind: &EdgeKind,
+    ) -> Option<EdgeId> {
+        self.outgoing
+            .get(&from)?
+            .iter()
+            .find(|&&eid| {
+                self.edges[eid]
+                    .as_ref()
+                    .map_or(false, |e| e.to == to && &e.kind == kind)
+            })
+            .copied()
     }
 
-    pub(crate) fn add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
+    pub(crate) fn add_bidirectional_edge(
+        &mut self,
+        a: NodeId,
+        b: NodeId,
+        kind: EdgeKind,
+    ) -> (EdgeId, EdgeId) {
         let ab = self.add_edge(a, b, kind.clone());
         let ba = self.add_edge(b, a, kind);
         (ab, ba)
@@ -119,7 +141,12 @@ impl Graph {
     }
 
     /// Bidirectional counterpart of `build_initial_edge` — same unchecked-construction contract.
-    pub fn build_initial_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
+    pub fn build_initial_bidirectional_edge(
+        &mut self,
+        a: NodeId,
+        b: NodeId,
+        kind: EdgeKind,
+    ) -> (EdgeId, EdgeId) {
         self.add_bidirectional_edge(a, b, kind)
     }
 
@@ -132,8 +159,12 @@ impl Graph {
 
     pub(crate) fn remove_edge(&mut self, id: EdgeId) {
         if let Some(edge) = self.edges[id].take() {
-            self.outgoing.entry(edge.from).and_modify(|v| v.retain(|&e| e != id));
-            self.incoming.entry(edge.to).and_modify(|v| v.retain(|&e| e != id));
+            self.outgoing
+                .entry(edge.from)
+                .and_modify(|v| v.retain(|&e| e != id));
+            self.incoming
+                .entry(edge.to)
+                .and_modify(|v| v.retain(|&e| e != id));
             self.version += 1;
         }
     }
@@ -143,9 +174,7 @@ impl Graph {
             .get(&node)
             .into_iter()
             .flat_map(|ids| ids.iter())
-            .filter_map(move |&eid| {
-                self.edges[eid].as_ref().map(|e| e.to)
-            })
+            .filter_map(move |&eid| self.edges[eid].as_ref().map(|e| e.to))
     }
 
     /// Like `outgoing_neighbors`, but yields the full `Edge` (kind included) rather than just the
@@ -165,9 +194,7 @@ impl Graph {
             .get(&node)
             .into_iter()
             .flat_map(|ids| ids.iter())
-            .filter_map(move |&eid| {
-                self.edges[eid].as_ref().map(|e| e.from)
-            })
+            .filter_map(move |&eid| self.edges[eid].as_ref().map(|e| e.from))
     }
 
     pub fn edge(&self, id: EdgeId) -> Option<&Edge> {
@@ -180,9 +207,11 @@ impl Graph {
     /// specific kind must filter `edges()` themselves; the private `edge_between_kind` is used
     /// internally by `add_edge` for that purpose.
     pub fn edge_between(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {
-        self.outgoing.get(&from)?.iter().find(|&&eid| {
-            self.edges[eid].as_ref().map_or(false, |e| e.to == to)
-        }).copied()
+        self.outgoing
+            .get(&from)?
+            .iter()
+            .find(|&&eid| self.edges[eid].as_ref().map_or(false, |e| e.to == to))
+            .copied()
     }
 
     /// Structural-only dry-run for a `MutationCommand` builder (`cmd_remove_edge`/
@@ -209,10 +238,14 @@ impl Graph {
     /// (a one-way teleport).
     pub fn teleport_reverse(&self, id: EdgeId) -> Option<EdgeId> {
         let edge = self.edge(id)?;
-        if edge.kind != EdgeKind::Teleport { return None; }
-        self.edges().find(|other| {
-            other.kind == EdgeKind::Teleport && other.from == edge.to && other.to == edge.from
-        }).map(|other| other.id)
+        if edge.kind != EdgeKind::Teleport {
+            return None;
+        }
+        self.edges()
+            .find(|other| {
+                other.kind == EdgeKind::Teleport && other.from == edge.to && other.to == edge.from
+            })
+            .map(|other| other.id)
     }
 
     /// Returns the opposite-direction `VerticalPassage` edge of a two-way vertical passage, if any
@@ -221,10 +254,16 @@ impl Graph {
     /// reverse (a one-way vertical passage).
     pub fn vertical_passage_reverse(&self, id: EdgeId) -> Option<EdgeId> {
         let edge = self.edge(id)?;
-        if edge.kind != EdgeKind::VerticalPassage { return None; }
-        self.edges().find(|other| {
-            other.kind == EdgeKind::VerticalPassage && other.from == edge.to && other.to == edge.from
-        }).map(|other| other.id)
+        if edge.kind != EdgeKind::VerticalPassage {
+            return None;
+        }
+        self.edges()
+            .find(|other| {
+                other.kind == EdgeKind::VerticalPassage
+                    && other.from == edge.to
+                    && other.to == edge.from
+            })
+            .map(|other| other.id)
     }
 
     pub fn reachable_to(&self, target: NodeId) -> Vec<NodeId> {
@@ -375,7 +414,9 @@ mod elevator_groups_tests {
     #[test]
     fn full_fan_across_three_floors_is_one_group_with_all_members() {
         let mut g = Graph::new();
-        for n in [0, 1, 2] { g.add_node(n); }
+        for n in [0, 1, 2] {
+            g.add_node(n);
+        }
         g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
         g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
         g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
@@ -390,7 +431,9 @@ mod elevator_groups_tests {
         // separate one, connected to each other by nothing — must not merge into one group just
         // because both touch the graph.
         let mut g = Graph::new();
-        for n in 0..6 { g.add_node(n); }
+        for n in 0..6 {
+            g.add_node(n);
+        }
         g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
         g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
         g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
@@ -400,7 +443,14 @@ mod elevator_groups_tests {
 
         let groups = g.elevator_groups();
         assert_eq!(groups.len(), 2);
-        let mut sorted: Vec<Vec<NodeId>> = groups.iter().map(|s| { let mut v: Vec<_> = s.iter().copied().collect(); v.sort_unstable(); v }).collect();
+        let mut sorted: Vec<Vec<NodeId>> = groups
+            .iter()
+            .map(|s| {
+                let mut v: Vec<_> = s.iter().copied().collect();
+                v.sort_unstable();
+                v
+            })
+            .collect();
         sorted.sort();
         assert_eq!(sorted, vec![vec![0, 1, 2], vec![3, 4, 5]]);
     }

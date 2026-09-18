@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde::Serialize;
 use maze_core_macros::Dto;
+use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 pub struct JunctionBucket {

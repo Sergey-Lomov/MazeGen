@@ -1,6 +1,8 @@
-use std::collections::HashMap;
-use maze_core::quality_control::{RuleParams, RuleParamKind, RULE_PARAM_DESCRIPTORS, VerticalPassageType};
 use crate::config::parse_split_patterns_param;
+use maze_core::quality_control::{
+    RULE_PARAM_DESCRIPTORS, RuleParamKind, RuleParams, VerticalPassageType,
+};
+use std::collections::HashMap;
 
 /// Resolves a `QcRuleConfig.params` raw string map into a typed `RuleParams` — see GitHub issue
 /// #253. Every key must match a descriptor in `RULE_PARAM_DESCRIPTORS`; an unrecognized key
@@ -18,7 +20,8 @@ pub(crate) fn resolve_rule_params(raw: &HashMap<String, String>) -> Result<RuleP
     for descriptor in RULE_PARAM_DESCRIPTORS {
         match descriptor.kind {
             RuleParamKind::Bool { default } => {
-                let value = raw.get(descriptor.id)
+                let value = raw
+                    .get(descriptor.id)
                     .map(|raw| match raw.as_str() {
                         "true" | "1" => true,
                         "false" | "0" => false,
@@ -27,23 +30,37 @@ pub(crate) fn resolve_rule_params(raw: &HashMap<String, String>) -> Result<RuleP
                     .unwrap_or(default);
                 match descriptor.id {
                     maze_core::quality_control::PARAM_PROTECT_ROUTE => params.protect_route = value,
-                    _ => unreachable!("RuleParamDescriptor {} has no matching RuleParams field — add one", descriptor.id),
+                    _ => unreachable!(
+                        "RuleParamDescriptor {} has no matching RuleParams field — add one",
+                        descriptor.id
+                    ),
                 }
             }
             RuleParamKind::VerticalPassageTypeEnum { default } => {
-                let value = raw.get(descriptor.id)
+                let value = raw
+                    .get(descriptor.id)
                     .and_then(|raw| VerticalPassageType::from_str(raw))
                     .unwrap_or(default);
                 match descriptor.id {
-                    maze_core::quality_control::PARAM_VERTICAL_PASSAGE_TYPE => params.vertical_passage_type = value,
-                    _ => unreachable!("RuleParamDescriptor {} has no matching RuleParams field — add one", descriptor.id),
+                    maze_core::quality_control::PARAM_VERTICAL_PASSAGE_TYPE => {
+                        params.vertical_passage_type = value
+                    }
+                    _ => unreachable!(
+                        "RuleParamDescriptor {} has no matching RuleParams field — add one",
+                        descriptor.id
+                    ),
                 }
             }
             RuleParamKind::PatternList => {
                 let value = parse_split_patterns_param(raw.get(descriptor.id));
                 match descriptor.id {
-                    maze_core::quality_control::PARAM_SPLIT_PATTERNS => params.split_patterns = value,
-                    _ => unreachable!("RuleParamDescriptor {} has no matching RuleParams field — add one", descriptor.id),
+                    maze_core::quality_control::PARAM_SPLIT_PATTERNS => {
+                        params.split_patterns = value
+                    }
+                    _ => unreachable!(
+                        "RuleParamDescriptor {} has no matching RuleParams field — add one",
+                        descriptor.id
+                    ),
                 }
             }
         }
@@ -110,7 +127,8 @@ mod tests {
     /// panics here via the `unreachable!` above, rather than staying silently unresolved.
     #[test]
     fn every_descriptor_resolves_without_panicking() {
-        let raw: HashMap<String, String> = RULE_PARAM_DESCRIPTORS.iter()
+        let raw: HashMap<String, String> = RULE_PARAM_DESCRIPTORS
+            .iter()
             .map(|d| (d.id.to_string(), "true".to_string()))
             .collect();
         resolve_rule_params(&raw).unwrap();

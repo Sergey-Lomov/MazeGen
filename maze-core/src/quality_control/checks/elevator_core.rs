@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
 use crate::Maze;
+use crate::graph::EdgeKind;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::{LevelId, Tessellation};
-use crate::graph::EdgeKind;
+use std::collections::{HashMap, HashSet};
 
 /// One `Elevator` — a maximal connected component of `EdgeKind::Elevator` edges, i.e. one
 /// user-visible elevator's full stop set. Generation/preset setup always wires an elevator's
@@ -28,7 +28,10 @@ pub struct Elevator {
 pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator> {
     let mut adjacency: HashMap<NodeId, Vec<(NodeId, EdgeId)>> = HashMap::new();
     for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Elevator) {
-        adjacency.entry(edge.from).or_default().push((edge.to, edge.id));
+        adjacency
+            .entry(edge.from)
+            .or_default()
+            .push((edge.to, edge.id));
     }
 
     let mut visited: HashSet<NodeId> = HashSet::new();
@@ -56,7 +59,11 @@ pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator> {
         let mut edges = Vec::new();
         for &node in &component {
             for &(neighbor, eid) in adjacency.get(&node).into_iter().flatten() {
-                let key = if node < neighbor { (node, neighbor) } else { (neighbor, node) };
+                let key = if node < neighbor {
+                    (node, neighbor)
+                } else {
+                    (neighbor, node)
+                };
                 if seen_pairs.insert(key) {
                     edges.push(eid);
                 }
@@ -76,7 +83,9 @@ pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator> {
 /// (currently never generated, but not assumed impossible) multi-node-per-floor elevator stop
 /// would otherwise double-count a floor.
 pub fn stop_floors<T: Tessellation>(elevator: &Elevator, maze: &Maze<T>) -> Vec<usize> {
-    let mut floors: Vec<usize> = elevator.stops.iter()
+    let mut floors: Vec<usize> = elevator
+        .stops
+        .iter()
         .filter_map(|&n| maze.field.level_index_of(n))
         .collect();
     floors.sort_unstable();
@@ -102,18 +111,25 @@ pub fn elevator_stops_per_floor<T: Tessellation>(maze: &Maze<T>) -> HashMap<Leve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     fn three_floor_maze() -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<NodeId> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<NodeId> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         (Maze::new(mf, g), nodes)
     }
 
@@ -147,10 +163,14 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..2)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let a0 = mf.node_at(floors[0], SquarePoint { x: 0, y: 0 }).unwrap();
         let a1 = mf.node_at(floors[1], SquarePoint { x: 0, y: 0 }).unwrap();
         let b0 = mf.node_at(floors[0], SquarePoint { x: 1, y: 0 }).unwrap();
@@ -162,7 +182,11 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let groups = elevator_groups(&maze);
-        assert_eq!(groups.len(), 2, "two disjoint stop-pairs must not merge into one elevator");
+        assert_eq!(
+            groups.len(),
+            2,
+            "two disjoint stop-pairs must not merge into one elevator"
+        );
     }
 
     #[test]
@@ -179,8 +203,10 @@ mod tests {
     #[test]
     fn ignores_basic_and_vertical_passage_edges() {
         let (mut maze, nodes) = three_floor_maze();
-        maze.graph.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
-        maze.graph.add_edge(nodes[1], nodes[0], EdgeKind::VerticalPassage);
+        maze.graph
+            .add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
+        maze.graph
+            .add_edge(nodes[1], nodes[0], EdgeKind::VerticalPassage);
         assert!(elevator_groups(&maze).is_empty());
     }
 }

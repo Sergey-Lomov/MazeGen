@@ -1,16 +1,18 @@
 #[path = "kruskal_wire.rs"]
 mod kruskal_wire;
 
-use std::collections::{BTreeSet, HashMap};
-use rand::{Rng, SeedableRng};
-use crate::random::MazeRng;
-use crate::ids::NodeId;
-use crate::graph::{EdgeKind, Graph};
-use crate::space::{MultiLevelField, Tessellation};
+use super::{
+    PresetState, bidirectional_edge_feasible, split_aware_neighbors, try_add_bidirectional_edge,
+};
 use crate::dsu::Dsu;
 use crate::event_log::EventLog;
 use crate::event_log::wire_primitives::write_node_id;
-use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
+use crate::graph::{EdgeKind, Graph};
+use crate::ids::NodeId;
+use crate::random::MazeRng;
+use crate::space::{MultiLevelField, Tessellation};
+use rand::{Rng, SeedableRng};
+use std::collections::{BTreeSet, HashMap};
 
 /// Narration-level events for Kruskal's algorithm (see GitHub issue #146). Unlike Recursive
 /// Backtracker's stack-driven step loop, Kruskal's single decision per iteration is a union-find
@@ -39,7 +41,12 @@ pub enum KruskalEvent {
     /// remember the preceding sibling event — this event is self-sufficient: "root of `from` is
     /// `root_of_from`, root of `to` is `root_of_to`" reads directly off one payload.
     #[wire(tag = 2)]
-    RootsCompared { from: NodeId, to: NodeId, root_of_from: NodeId, root_of_to: NodeId },
+    RootsCompared {
+        from: NodeId,
+        to: NodeId,
+        root_of_from: NodeId,
+        root_of_to: NodeId,
+    },
     /// The edge was rejected — its endpoints already share a root (would create a cycle). Carries
     /// no fields: the rejected pair is already fully stated by the preceding `RootsCompared` event
     /// in the same `"edge N"` scope (`from`/`to`, plus the equal roots that caused the rejection),
@@ -50,7 +57,11 @@ pub enum KruskalEvent {
     /// opened in both directions (Kruskal always adds both when `try_add_bidirectional_edge`
     /// succeeds) — carried explicitly so replay consumers don't have to assume it.
     #[wire(tag = 4, mutating)]
-    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
+    EdgeAdded {
+        from: NodeId,
+        to: NodeId,
+        bidirectional: bool,
+    },
     /// The two disjoint sets containing the edge's endpoints were merged. `root_a`/`root_b` are
     /// the two pre-merge roots (same values `RootsCompared` reported); the merged set's new root
     /// is `min(root_a, root_b)` by construction (`Dsu::union_by_min`) — not carried explicitly to
@@ -133,8 +144,14 @@ pub fn generate<T: Tessellation>(
     let mut edge_set: BTreeSet<(NodeId, NodeId)> = BTreeSet::new();
     for node in graph.nodes().map(|n| n.id).collect::<Vec<_>>() {
         for neighbor in split_aware_neighbors(field, graph, node) {
-            if !bidirectional_edge_feasible(preset_state, node, neighbor) { continue; }
-            let pair = if node < neighbor { (node, neighbor) } else { (neighbor, node) };
+            if !bidirectional_edge_feasible(preset_state, node, neighbor) {
+                continue;
+            }
+            let pair = if node < neighbor {
+                (node, neighbor)
+            } else {
+                (neighbor, node)
+            };
             edge_set.insert(pair);
         }
     }
@@ -155,14 +172,19 @@ pub fn generate<T: Tessellation>(
     // original "lowest NodeId wins as root" determinism.
     let mut sorted_ids: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
     sorted_ids.sort_unstable();
-    let node_index: HashMap<NodeId, usize> = sorted_ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
+    let node_index: HashMap<NodeId, usize> = sorted_ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| (id, i))
+        .collect();
     let mut dsu = Dsu::new(node_index.len());
 
     // Pre-union nodes already connected by preset edges so Kruskal doesn't add duplicate edges.
     // Kept in actual graph direction (not canonicalized to min/max) — a one-way preset (basic or
     // teleport) exists as a single directed edge at this point, and collapsing direction here
     // would misrepresent it as bidirectional once replayed for debug rendering (GitHub issue #193).
-    let preset_edges: Vec<(NodeId, NodeId, EdgeKind)> = graph.edges()
+    let preset_edges: Vec<(NodeId, NodeId, EdgeKind)> = graph
+        .edges()
         .map(|e| (e.from, e.to, e.kind.clone()))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
@@ -177,7 +199,9 @@ pub fn generate<T: Tessellation>(
     }
 
     for (a, b) in edges {
-        let mut scope_guard = event_log.as_deref_mut().map(|log| log.enter_numbered("edge"));
+        let mut scope_guard = event_log
+            .as_deref_mut()
+            .map(|log| log.enter_numbered("edge"));
         if let Some(g) = scope_guard.as_mut() {
             g.emit(KruskalEvent::EdgeSelected { from: a, to: b });
         }
@@ -187,7 +211,12 @@ pub fn generate<T: Tessellation>(
         let root_a = sorted_ids[ra];
         let root_b = sorted_ids[rb];
         if let Some(g) = scope_guard.as_mut() {
-            g.emit(KruskalEvent::RootsCompared { from: a, to: b, root_of_from: root_a, root_of_to: root_b });
+            g.emit(KruskalEvent::RootsCompared {
+                from: a,
+                to: b,
+                root_of_from: root_a,
+                root_of_to: root_b,
+            });
         }
 
         // A split point's several nodes share the same geometric neighbor pool (`Field` has no
@@ -198,9 +227,19 @@ pub fn generate<T: Tessellation>(
         // Re-check here, against the graph as it stands mid-loop, so whichever sibling's edge to
         // that neighbor gets added first (shuffle order) locks it out for every other sibling —
         // same "first come, first served" semantics as the DSU cycle check itself.
-        let has_edge = |x: NodeId, y: NodeId| graph.edge_between(x, y).is_some() || graph.edge_between(y, x).is_some();
-        let a_siblings = field.level_of(a).zip(field.point_of(a)).map(|(l, p)| field.nodes_at(l, p)).unwrap_or(&[]);
-        let b_siblings = field.level_of(b).zip(field.point_of(b)).map(|(l, p)| field.nodes_at(l, p)).unwrap_or(&[]);
+        let has_edge = |x: NodeId, y: NodeId| {
+            graph.edge_between(x, y).is_some() || graph.edge_between(y, x).is_some()
+        };
+        let a_siblings = field
+            .level_of(a)
+            .zip(field.point_of(a))
+            .map(|(l, p)| field.nodes_at(l, p))
+            .unwrap_or(&[]);
+        let b_siblings = field
+            .level_of(b)
+            .zip(field.point_of(b))
+            .map(|(l, p)| field.nodes_at(l, p))
+            .unwrap_or(&[]);
         let split_conflict = a_siblings.iter().any(|&sib| sib != a && has_edge(sib, b))
             || b_siblings.iter().any(|&sib| sib != b && has_edge(sib, a));
 
@@ -214,7 +253,11 @@ pub fn generate<T: Tessellation>(
         dsu.union_by_min(ra, rb);
         try_add_bidirectional_edge(graph, a, b, preset_state);
         if let Some(g) = scope_guard.as_mut() {
-            g.emit(KruskalEvent::EdgeAdded { from: a, to: b, bidirectional: true });
+            g.emit(KruskalEvent::EdgeAdded {
+                from: a,
+                to: b,
+                bidirectional: true,
+            });
             g.emit(KruskalEvent::SetsMerged { root_a, root_b });
         }
     }

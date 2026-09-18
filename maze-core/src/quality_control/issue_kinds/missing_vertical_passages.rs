@@ -1,8 +1,10 @@
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_VERTICAL_PASSAGES};
-use crate::quality_control::RepairArea;
 use super::merge_repair_area_deficits;
+use crate::quality_control::RepairArea;
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, MISSING_VERTICAL_PASSAGES,
+};
 
 /// Produced by any check that flags the maze as short on `VerticalPassage` edges overall
 /// (currently `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`) — see GitHub issue
@@ -16,7 +18,10 @@ pub struct MissingVerticalPassagesIssue {
 
 impl MissingVerticalPassagesIssue {
     pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), missing }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            missing,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -48,22 +53,54 @@ mod tests {
 
     #[test]
     fn merge_takes_the_larger_missing_value_for_the_same_area() {
-        let mut a = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![(RepairArea::WholeMaze, 5)]);
-        let b = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_ratio", vec![(RepairArea::WholeMaze, 8)]);
+        let mut a = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_count",
+            vec![(RepairArea::WholeMaze, 5)],
+        );
+        let b = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_ratio",
+            vec![(RepairArea::WholeMaze, 8)],
+        );
         a.merge(b);
-        assert_eq!(a.missing, vec![(RepairArea::WholeMaze, 8)], "must not silently keep the smaller self value");
+        assert_eq!(
+            a.missing,
+            vec![(RepairArea::WholeMaze, 8)],
+            "must not silently keep the smaller self value"
+        );
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![(RepairArea::WholeMaze, 5)])
-            .with_detail("min_vertical_passage_count", "missing", "5".to_string());
-        let b = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_ratio", vec![(RepairArea::WholeMaze, 8)])
-            .with_detail("min_vertical_passage_ratio", "missing", "8".to_string());
+        let mut a = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_count",
+            vec![(RepairArea::WholeMaze, 5)],
+        )
+        .with_detail("min_vertical_passage_count", "missing", "5".to_string());
+        let b = MissingVerticalPassagesIssue::new_from_check(
+            "min_vertical_passage_ratio",
+            vec![(RepairArea::WholeMaze, 8)],
+        )
+        .with_detail("min_vertical_passage_ratio", "missing", "8".to_string());
         a.merge(b);
 
-        assert_eq!(a.source_checks(), vec!["min_vertical_passage_count".to_string(), "min_vertical_passage_ratio".to_string()]);
-        assert_eq!(a.details().get("min_vertical_passage_count").and_then(|kv| kv.get("missing")), Some(&"5".to_string()));
-        assert_eq!(a.details().get("min_vertical_passage_ratio").and_then(|kv| kv.get("missing")), Some(&"8".to_string()));
+        assert_eq!(
+            a.source_checks(),
+            vec![
+                "min_vertical_passage_count".to_string(),
+                "min_vertical_passage_ratio".to_string()
+            ]
+        );
+        assert_eq!(
+            a.details()
+                .get("min_vertical_passage_count")
+                .and_then(|kv| kv.get("missing")),
+            Some(&"5".to_string())
+        );
+        assert_eq!(
+            a.details()
+                .get("min_vertical_passage_ratio")
+                .and_then(|kv| kv.get("missing")),
+            Some(&"8".to_string())
+        );
     }
 }

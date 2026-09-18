@@ -1,18 +1,24 @@
-use std::collections::HashMap;
-use crate::ids::{EdgeId, NodeId};
-use crate::graph::{Graph, bisect::group_by_unremovable_edges, scc::{ConnectedComponents, ComponentId}};
-use crate::generation::PresetState;
-use crate::generation::edge_ops::bidirectional_edge_feasible;
-use crate::space::{MultiLevelField, Tessellation};
-use crate::graph::EdgeKind;
-use crate::quality_control::cross_element::CrossElement;
-use super::super::issue_kinds::{canonical_cycle_key, SplitTileNodes, SplitRouteEdge, ElevatorNodes};
+use super::super::issue_kinds::{
+    ElevatorNodes, SplitRouteEdge, SplitTileNodes, canonical_cycle_key,
+};
 use super::super::repair_area::RepairArea;
 use super::types::{
-    all_preset_locked, CrossElementPayloadEntry, IssuePayload, IssueEdgeGroupPayload,
-    IssueSplitTilePayload, IssueSplitGroupPayload, IssueRouteEdge, IssueRoutePayload,
-    IssueRegionPayload, IssueMissingElevatorStopsPayload,
+    CrossElementPayloadEntry, IssueEdgeGroupPayload, IssueMissingElevatorStopsPayload,
+    IssuePayload, IssueRegionPayload, IssueRouteEdge, IssueRoutePayload, IssueSplitGroupPayload,
+    IssueSplitTilePayload, all_preset_locked,
 };
+use crate::generation::PresetState;
+use crate::generation::edge_ops::bidirectional_edge_feasible;
+use crate::graph::EdgeKind;
+use crate::graph::{
+    Graph,
+    bisect::group_by_unremovable_edges,
+    scc::{ComponentId, ConnectedComponents},
+};
+use crate::ids::{EdgeId, NodeId};
+use crate::quality_control::cross_element::CrossElement;
+use crate::space::{MultiLevelField, Tessellation};
+use std::collections::HashMap;
 
 /// Resolves one `EdgeId` into a base-graph `[from, to]` node-id pair, or `None` if the edge is
 /// stale (already removed from `graph`) or either endpoint doesn't fit `u32` — shared by every
@@ -38,14 +44,27 @@ pub(super) fn resolve_cycle_payload<'a>(
 ) -> Option<IssuePayload> {
     let mut edges: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for loop_edges in cycles {
-        let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
+        let edge_pairs: Vec<[u32; 2]> = loop_edges
+            .iter()
+            .filter_map(|&eid| edge_pair(graph, eid))
+            .collect();
         let preset_locked = all_preset_locked(loop_edges, graph, preset_state);
         let key = canonical_cycle_key(loop_edges);
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            edges.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edge_pairs.clone(), preset_locked });
+            edges
+                .entry(source.clone())
+                .or_default()
+                .push(IssueEdgeGroupPayload {
+                    edges: edge_pairs.clone(),
+                    preset_locked,
+                });
         }
     }
-    if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
+    if edges.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidLoop { edges })
+    }
 }
 
 /// Resolves a single flagged edge (teleport or one-way) into a one-edge group, keyed by the
@@ -55,13 +74,26 @@ pub(super) fn resolve_cycle_payload<'a>(
 /// combining two checks' flagged edges would highlight every edge on every contributing check's
 /// bubble, not just the edges that specific check actually flagged (the bug
 /// `InvalidLoopIssue.invalid_sources` already avoids).
-pub(super) fn resolve_single_edge_map(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
+pub(super) fn resolve_single_edge_map(
+    invalid: &[crate::ids::EdgeId],
+    invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
     let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for &eid in invalid {
-        let Some(pair) = edge_pair(graph, eid) else { continue };
+        let Some(pair) = edge_pair(graph, eid) else {
+            continue;
+        };
         let preset_locked = all_preset_locked(&[eid], graph, preset_state);
         for source in invalid_sources.get(&eid).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: vec![pair], preset_locked });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueEdgeGroupPayload {
+                    edges: vec![pair],
+                    preset_locked,
+                });
         }
     }
     groups
@@ -87,10 +119,14 @@ pub(super) fn resolve_single_edge_map(invalid: &[crate::ids::EdgeId], invalid_so
 /// id string, never a constructed check instance. `issue_payload::tests` pins every one of these
 /// checks' own `is_batch_edge_group()` against this list so the two can't silently drift.
 pub(super) fn is_batch_edge_group_type(type_id: &str) -> bool {
-    matches!(type_id,
-        "max_teleport_count" | "max_teleport_density" |
-        "max_one_way_count" | "max_one_way_ratio" |
-        "max_vertical_passage_count" | "max_vertical_passage_ratio"
+    matches!(
+        type_id,
+        "max_teleport_count"
+            | "max_teleport_density"
+            | "max_one_way_count"
+            | "max_one_way_ratio"
+            | "max_vertical_passage_count"
+            | "max_vertical_passage_ratio"
     )
 }
 
@@ -105,28 +141,52 @@ pub(super) fn is_batch_edge_group_type(type_id: &str) -> bool {
 /// whole-group `preset_locked`. `source` here is a check *instance* id (e.g. `"rule_1:0"`), not the
 /// type id `is_batch_edge_group_type` expects — `check_types` (`None` in most tests, always `Some`
 /// from real rule/analytics callers) resolves instance to type.
-pub(super) fn resolve_edge_group_map(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph, preset_state: &PresetState, check_types: Option<&HashMap<String, String>>) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
+pub(super) fn resolve_edge_group_map(
+    groups: &[(Vec<crate::ids::EdgeId>, u32)],
+    invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+    check_types: Option<&HashMap<String, String>>,
+) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
     let mut out: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
         let mut key = group.clone();
         key.sort_unstable();
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            let type_id = check_types.and_then(|m| m.get(source)).map(String::as_str).unwrap_or(source.as_str());
+            let type_id = check_types
+                .and_then(|m| m.get(source))
+                .map(String::as_str)
+                .unwrap_or(source.as_str());
             let is_batch = is_batch_edge_group_type(type_id);
             if is_batch {
                 for &eid in group {
-                    let Some(pair) = edge_pair(graph, eid) else { continue };
+                    let Some(pair) = edge_pair(graph, eid) else {
+                        continue;
+                    };
                     let edge_locked = all_preset_locked(&[eid], graph, preset_state);
-                    out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: vec![pair], preset_locked: edge_locked });
+                    out.entry(source.clone())
+                        .or_default()
+                        .push(IssueEdgeGroupPayload {
+                            edges: vec![pair],
+                            preset_locked: edge_locked,
+                        });
                 }
             } else {
-                let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
+                let edge_pairs: Vec<[u32; 2]> = group
+                    .iter()
+                    .filter_map(|&eid| edge_pair(graph, eid))
+                    .collect();
                 // `preset_locked` ignores `to_remove` — even a group whose fix only requires
                 // removing some of its edges is truly unfixable if every edge is
                 // preset-protected, since each individual removal attempt refuses regardless of
                 // how many total removals were needed.
                 let preset_locked = all_preset_locked(group, graph, preset_state);
-                out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edge_pairs, preset_locked });
+                out.entry(source.clone())
+                    .or_default()
+                    .push(IssueEdgeGroupPayload {
+                        edges: edge_pairs,
+                        preset_locked,
+                    });
             }
         }
     }
@@ -137,23 +197,46 @@ pub(super) fn resolve_edge_group_map(groups: &[(Vec<crate::ids::EdgeId>, u32)], 
 /// the (sorted, `u32`-fittable-only) node ids with whether the whole tile is preset-locked (every
 /// node in it is `is_node_locked_for_removal`). Shared by every resolver below that emits tiles.
 pub(super) fn tile_payload(nodes: &[NodeId], preset_state: &PresetState) -> IssueSplitTilePayload {
-    let ids: Vec<u32> = nodes.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-    let preset_locked = !ids.is_empty() && nodes.iter().all(|&id| preset_state.is_node_locked_for_removal(id));
-    IssueSplitTilePayload { nodes: ids, preset_locked }
+    let ids: Vec<u32> = nodes
+        .iter()
+        .filter_map(|&id| u32::try_from(id).ok())
+        .collect();
+    let preset_locked = !ids.is_empty()
+        && nodes
+            .iter()
+            .all(|&id| preset_state.is_node_locked_for_removal(id));
+    IssueSplitTilePayload {
+        nodes: ids,
+        preset_locked,
+    }
 }
 
 /// Resolves flagged split tiles into one `IssueSplitGroupPayload` (a single tile) per flagged
 /// tile, keyed by the specific check(s) that flagged *that* tile (`invalid_sources`) — mirrors
 /// `resolve_invalid_teleport_payload`'s per-element attribution rationale.
-pub(super) fn resolve_invalid_split_tile_payload(invalid: &[SplitTileNodes], invalid_sources: &HashMap<SplitTileNodes, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_split_tile_payload(
+    invalid: &[SplitTileNodes],
+    invalid_sources: &HashMap<SplitTileNodes, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueSplitGroupPayload>> = HashMap::new();
     for tile in invalid {
         let payload = tile_payload(&tile.0, preset_state);
         for source in invalid_sources.get(tile).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueSplitGroupPayload { preset_locked: payload.preset_locked, tiles: vec![payload.clone()] });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueSplitGroupPayload {
+                    preset_locked: payload.preset_locked,
+                    tiles: vec![payload.clone()],
+                });
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidSplitTile { groups })
+    }
 }
 
 /// Resolves every flagged split-tile group into one `IssueSplitGroupPayload` per `groups[i]`
@@ -163,18 +246,34 @@ pub(super) fn resolve_invalid_split_tile_payload(invalid: &[SplitTileNodes], inv
 /// tile/group boundaries to pick the right "how many instances" granularity per check type — see
 /// `issueRegistry.ts`). `to_remove` carries no highlight meaning and is dropped here, same
 /// rationale as `resolve_invalid_one_way_group_payload`.
-pub(super) fn resolve_invalid_split_tile_group_payload(groups: &[(Vec<SplitTileNodes>, u32)], invalid_sources: &HashMap<Vec<SplitTileNodes>, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_split_tile_group_payload(
+    groups: &[(Vec<SplitTileNodes>, u32)],
+    invalid_sources: &HashMap<Vec<SplitTileNodes>, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut out: HashMap<String, Vec<IssueSplitGroupPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
         let mut key = group.clone();
         key.sort_unstable();
-        let tiles: Vec<IssueSplitTilePayload> = group.iter().map(|tile| tile_payload(&tile.0, preset_state)).collect();
+        let tiles: Vec<IssueSplitTilePayload> = group
+            .iter()
+            .map(|tile| tile_payload(&tile.0, preset_state))
+            .collect();
         let preset_locked = !tiles.is_empty() && tiles.iter().all(|t| t.preset_locked);
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            out.entry(source.clone()).or_default().push(IssueSplitGroupPayload { tiles: tiles.clone(), preset_locked });
+            out.entry(source.clone())
+                .or_default()
+                .push(IssueSplitGroupPayload {
+                    tiles: tiles.clone(),
+                    preset_locked,
+                });
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { groups: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidSplitTile { groups: out })
+    }
 }
 
 /// Resolves flagged single split nodes into one `IssueSplitGroupPayload` (a degenerate single
@@ -183,15 +282,29 @@ pub(super) fn resolve_invalid_split_tile_group_payload(groups: &[(Vec<SplitTileN
 /// flagged node has no tile grouping of its own — wrapping it as a 1-node tile keeps the wire
 /// shape uniform while still counting one instance per node, which is the correct granularity for
 /// this genuinely per-node check (`split_node_connection_count`).
-pub(super) fn resolve_invalid_split_node_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_split_node_payload(
+    invalid: &[NodeId],
+    invalid_sources: &HashMap<NodeId, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueSplitGroupPayload>> = HashMap::new();
     for &id in invalid {
         let payload = tile_payload(std::slice::from_ref(&id), preset_state);
         for source in invalid_sources.get(&id).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueSplitGroupPayload { preset_locked: payload.preset_locked, tiles: vec![payload.clone()] });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueSplitGroupPayload {
+                    preset_locked: payload.preset_locked,
+                    tiles: vec![payload.clone()],
+                });
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidSplitTile { groups })
+    }
 }
 
 /// New `invalid_split_node_group` resolver — reuses the `InvalidSplitTile` wire shape (see that
@@ -200,24 +313,42 @@ pub(super) fn resolve_invalid_split_node_payload(invalid: &[NodeId], invalid_sou
 /// this wraps it as a single-tile group — group-as-instance and tile-as-instance coincide here.
 /// `to_remove` carries no highlight meaning and is dropped, same rationale as
 /// `resolve_invalid_one_way_group_payload`/`resolve_invalid_split_tile_group_payload`.
-pub(super) fn resolve_invalid_split_node_group_payload(groups: &[(Vec<NodeId>, u32)], invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_split_node_group_payload(
+    groups: &[(Vec<NodeId>, u32)],
+    invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut out: HashMap<String, Vec<IssueSplitGroupPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
         let mut key = group.clone();
         key.sort_unstable();
         let payload = tile_payload(group, preset_state);
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            out.entry(source.clone()).or_default().push(IssueSplitGroupPayload { preset_locked: payload.preset_locked, tiles: vec![payload.clone()] });
+            out.entry(source.clone())
+                .or_default()
+                .push(IssueSplitGroupPayload {
+                    preset_locked: payload.preset_locked,
+                    tiles: vec![payload.clone()],
+                });
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { groups: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidSplitTile { groups: out })
+    }
 }
 
 /// Resolves every flagged route's edges into `(from, to, is_split_edge)` triples, keyed by the
 /// specific check(s) that flagged *that* route (`invalid_sources`, keyed by the route's own exact
 /// `SplitRouteEdge` sequence — see `InvalidSplitRouteIssue::merge`'s doc comment for why no
 /// canonicalization applies here, unlike every cycle/group payload above).
-pub(super) fn resolve_invalid_split_route_payload(routes: &[Vec<SplitRouteEdge>], invalid_sources: &HashMap<Vec<SplitRouteEdge>, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_split_route_payload(
+    routes: &[Vec<SplitRouteEdge>],
+    invalid_sources: &HashMap<Vec<SplitRouteEdge>, Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut out: HashMap<String, Vec<IssueRoutePayload>> = HashMap::new();
     for route in routes {
         if route.is_empty() {
@@ -225,17 +356,33 @@ pub(super) fn resolve_invalid_split_route_payload(routes: &[Vec<SplitRouteEdge>]
         }
         let edge_ids: Vec<crate::ids::EdgeId> = route.iter().map(|&(eid, _)| eid).collect();
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
-        let resolved: Vec<IssueRouteEdge> = route.iter().filter_map(|&(eid, is_split_edge)| {
-            let edge = graph.edge(eid)?;
-            let from = u32::try_from(edge.from).ok()?;
-            let to = u32::try_from(edge.to).ok()?;
-            Some(IssueRouteEdge { from, to, is_split_edge })
-        }).collect();
+        let resolved: Vec<IssueRouteEdge> = route
+            .iter()
+            .filter_map(|&(eid, is_split_edge)| {
+                let edge = graph.edge(eid)?;
+                let from = u32::try_from(edge.from).ok()?;
+                let to = u32::try_from(edge.to).ok()?;
+                Some(IssueRouteEdge {
+                    from,
+                    to,
+                    is_split_edge,
+                })
+            })
+            .collect();
         for source in invalid_sources.get(route).into_iter().flatten() {
-            out.entry(source.clone()).or_default().push(IssueRoutePayload { edges: resolved.clone(), preset_locked });
+            out.entry(source.clone())
+                .or_default()
+                .push(IssueRoutePayload {
+                    edges: resolved.clone(),
+                    preset_locked,
+                });
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidSplitRoute { routes: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidSplitRoute { routes: out })
+    }
 }
 
 /// Resolves flagged SCC regions' `NodeId`s into the shared `nodes: HashMap<String, Vec<IssueRegionPayload>>`
@@ -251,11 +398,22 @@ pub(super) fn resolve_region_map(
 ) -> HashMap<String, Vec<IssueRegionPayload>> {
     let mut nodes: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
     for &idx in invalid {
-        let Some(region) = scc.components.get(idx) else { continue };
-        let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+        let Some(region) = scc.components.get(idx) else {
+            continue;
+        };
+        let node_ids: Vec<u32> = region
+            .iter()
+            .filter_map(|&id| u32::try_from(id).ok())
+            .collect();
         let preset_locked = is_locked(idx, region);
         for source in invalid_sources.get(&idx).into_iter().flatten() {
-            nodes.entry(source.clone()).or_default().push(IssueRegionPayload { region: node_ids.clone(), preset_locked });
+            nodes
+                .entry(source.clone())
+                .or_default()
+                .push(IssueRegionPayload {
+                    region: node_ids.clone(),
+                    preset_locked,
+                });
         }
     }
     nodes
@@ -267,7 +425,11 @@ pub(super) fn resolve_region_map(
 /// `region_shrink_split::split_region` uses for its own `None`/Failed return (see that function's
 /// doc comment) — deliberately not `protect_route`-aware, since "preset_locked" here means
 /// "blocked by user-placed presets", not "temporarily protected by the current route".
-pub(super) fn region_preset_locked_for_shrink(graph: &Graph, region: &[NodeId], preset_state: &PresetState) -> bool {
+pub(super) fn region_preset_locked_for_shrink(
+    graph: &Graph,
+    region: &[NodeId],
+    preset_state: &PresetState,
+) -> bool {
     group_by_unremovable_edges(graph, region, |a, b| preset_state.is_preset_edge(a, b)).len() < 2
 }
 
@@ -291,7 +453,9 @@ pub(super) fn region_preset_locked_for_expansion<T: Tessellation>(
     let mut has_boundary = false;
     for &node in region {
         for neighbor in field.neighbors(node) {
-            let Some(neighbor_idx) = scc.component_of(neighbor) else { continue };
+            let Some(neighbor_idx) = scc.component_of(neighbor) else {
+                continue;
+            };
             if neighbor_idx == region_idx {
                 continue;
             }
@@ -310,10 +474,15 @@ pub(super) fn region_preset_locked_for_expansion<T: Tessellation>(
 /// when there is nowhere left to merge anything into, anywhere on the field. A field with zero
 /// regions (never happens once the check has fired, since firing requires at least 2 components)
 /// is vacuously not locked.
-pub(super) fn excessive_scc_count_preset_locked<T: Tessellation>(field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> bool {
-    !scc.components.is_empty() && scc.components.iter().enumerate().all(|(idx, region)| {
-        region_preset_locked_for_expansion(field, region, idx, scc, preset_state)
-    })
+pub(super) fn excessive_scc_count_preset_locked<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    scc: &ConnectedComponents,
+    preset_state: &PresetState,
+) -> bool {
+    !scc.components.is_empty()
+        && scc.components.iter().enumerate().all(|(idx, region)| {
+            region_preset_locked_for_expansion(field, region, idx, scc, preset_state)
+        })
 }
 
 /// Resolves one elevator's stop-node set into its currently-live fan of `EdgeKind::Elevator`
@@ -323,7 +492,10 @@ pub(super) fn excessive_scc_count_preset_locked<T: Tessellation>(field: &MultiLe
 /// fan has already been fully removed by an earlier repair pass resolves to an empty edge list
 /// rather than being skipped, same convention as `edge_pair`'s stale-edge handling elsewhere in
 /// this file.
-pub(super) fn elevator_edges(elevator: &ElevatorNodes, graph: &Graph) -> (Vec<[u32; 2]>, Vec<crate::ids::EdgeId>) {
+pub(super) fn elevator_edges(
+    elevator: &ElevatorNodes,
+    graph: &Graph,
+) -> (Vec<[u32; 2]>, Vec<crate::ids::EdgeId>) {
     let mut edges = Vec::new();
     let mut edge_ids = Vec::new();
     for &a in &elevator.0 {
@@ -333,7 +505,10 @@ pub(super) fn elevator_edges(elevator: &ElevatorNodes, graph: &Graph) -> (Vec<[u
             }
             for (from, to) in [(a, b), (b, a)] {
                 if let Some(eid) = graph.edge_between(from, to) {
-                    if graph.edge(eid).is_some_and(|e| e.kind == EdgeKind::Elevator) {
+                    if graph
+                        .edge(eid)
+                        .is_some_and(|e| e.kind == EdgeKind::Elevator)
+                    {
                         if let Some(pair) = edge_pair(graph, eid) {
                             edges.push(pair);
                             edge_ids.push(eid);
@@ -349,16 +524,31 @@ pub(super) fn elevator_edges(elevator: &ElevatorNodes, graph: &Graph) -> (Vec<[u
 /// Resolves every flagged elevator's stop-node set into its currently-live fan of
 /// `EdgeKind::Elevator` edges, keyed by the specific check(s) that flagged *that* elevator
 /// (`invalid_sources`) — mirrors `resolve_invalid_split_tile_payload`'s per-element attribution.
-pub(super) fn resolve_invalid_elevator_payload(invalid: &[ElevatorNodes], invalid_sources: &HashMap<ElevatorNodes, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_elevator_payload(
+    invalid: &[ElevatorNodes],
+    invalid_sources: &HashMap<ElevatorNodes, Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for elevator in invalid {
         let (edges, edge_ids) = elevator_edges(elevator, graph);
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
         for source in invalid_sources.get(elevator).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueEdgeGroupPayload {
+                    edges: edges.clone(),
+                    preset_locked,
+                });
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevator { groups })
+    }
 }
 
 /// Resolves every flagged elevator group (excess count/density, whole-maze scope — see GitHub
@@ -369,7 +559,12 @@ pub(super) fn resolve_invalid_elevator_payload(invalid: &[ElevatorNodes], invali
 /// one entry per flagged instance the same way `resolve_invalid_elevator_payload` already
 /// produces for `INVALID_ELEVATOR`. Reuses the same `IssuePayload::InvalidElevator` wire shape as
 /// `INVALID_ELEVATOR` — mirrors `InvalidOneWayGroupIssue` reusing `InvalidOneWay`.
-pub(super) fn resolve_elevator_group_map(groups: &[(Vec<ElevatorNodes>, u32)], invalid_sources: &HashMap<Vec<ElevatorNodes>, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_elevator_group_map(
+    groups: &[(Vec<ElevatorNodes>, u32)],
+    invalid_sources: &HashMap<Vec<ElevatorNodes>, Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut out: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
         let mut key = group.clone();
@@ -379,11 +574,20 @@ pub(super) fn resolve_elevator_group_map(groups: &[(Vec<ElevatorNodes>, u32)], i
             let (edges, edge_ids) = elevator_edges(elevator, graph);
             let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
             for source in sources.into_iter().flatten() {
-                out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+                out.entry(source.clone())
+                    .or_default()
+                    .push(IssueEdgeGroupPayload {
+                        edges: edges.clone(),
+                        preset_locked,
+                    });
             }
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevator { groups: out })
+    }
 }
 
 /// Resolves flagged single elevator stops into one `IssueRegionPayload` (a single-node "region")
@@ -391,16 +595,32 @@ pub(super) fn resolve_elevator_group_map(groups: &[(Vec<ElevatorNodes>, u32)], i
 /// — mirrors `resolve_invalid_split_node_payload`'s per-node attribution. `preset_locked` uses the
 /// same node-removal-lock predicate as split nodes (`is_node_locked_for_removal`), since a flagged
 /// stop is fixed the same way — removing it from its elevator's edge fan (`RemoveElevatorStopStrategy`).
-pub(super) fn resolve_invalid_elevator_stop_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_invalid_elevator_stop_payload(
+    invalid: &[NodeId],
+    invalid_sources: &HashMap<NodeId, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut nodes: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
     for &id in invalid {
-        let Some(id32) = u32::try_from(id).ok() else { continue };
+        let Some(id32) = u32::try_from(id).ok() else {
+            continue;
+        };
         let preset_locked = preset_state.is_node_locked_for_removal(id);
         for source in invalid_sources.get(&id).into_iter().flatten() {
-            nodes.entry(source.clone()).or_default().push(IssueRegionPayload { region: vec![id32], preset_locked });
+            nodes
+                .entry(source.clone())
+                .or_default()
+                .push(IssueRegionPayload {
+                    region: vec![id32],
+                    preset_locked,
+                });
         }
     }
-    if nodes.is_empty() { None } else { Some(IssuePayload::InvalidElevatorStop { nodes }) }
+    if nodes.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevatorStop { nodes })
+    }
 }
 
 /// Resolves every flagged elevator-stop group (excess count/density — see GitHub issue #399) into
@@ -408,21 +628,36 @@ pub(super) fn resolve_invalid_elevator_stop_payload(invalid: &[NodeId], invalid_
 /// *that group* (`invalid_sources`, canonical-group-key-keyed) — mirrors `resolve_elevator_group_map`'s
 /// per-group attribution, but emits one entry per stop (not one entry per whole group) since each
 /// stop highlights as its own independent single-node region, unlike a whole elevator's edge fan.
-pub(super) fn resolve_elevator_stop_group_map(groups: &[(Vec<NodeId>, u32)], invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_elevator_stop_group_map(
+    groups: &[(Vec<NodeId>, u32)],
+    invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut out: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
         let mut key = group.clone();
         key.sort_unstable();
         let sources = invalid_sources.get(&key);
         for &id in group {
-            let Some(id32) = u32::try_from(id).ok() else { continue };
+            let Some(id32) = u32::try_from(id).ok() else {
+                continue;
+            };
             let preset_locked = preset_state.is_node_locked_for_removal(id);
             for source in sources.into_iter().flatten() {
-                out.entry(source.clone()).or_default().push(IssueRegionPayload { region: vec![id32], preset_locked });
+                out.entry(source.clone())
+                    .or_default()
+                    .push(IssueRegionPayload {
+                        region: vec![id32],
+                        preset_locked,
+                    });
             }
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidElevatorStop { nodes: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevatorStop { nodes: out })
+    }
 }
 
 /// Resolves a deficit issue's `missing: Vec<(RepairArea, u32)>` (shared shape of
@@ -442,10 +677,16 @@ pub(super) fn resolve_area_deficit_map<T: Tessellation>(
     if missing.is_empty() || source_checks.is_empty() {
         return out;
     }
-    let areas: Vec<Option<u32>> = missing.iter().map(|&(area, _count)| match area {
-        RepairArea::WholeMaze => None,
-        RepairArea::Level(level) => field.levels_ordered().position(|l| l == level).and_then(|idx| u32::try_from(idx).ok()),
-    }).collect();
+    let areas: Vec<Option<u32>> = missing
+        .iter()
+        .map(|&(area, _count)| match area {
+            RepairArea::WholeMaze => None,
+            RepairArea::Level(level) => field
+                .levels_ordered()
+                .position(|l| l == level)
+                .and_then(|idx| u32::try_from(idx).ok()),
+        })
+        .collect();
     for check in source_checks {
         out.insert(check.clone(), areas.clone());
     }
@@ -469,35 +710,65 @@ pub(super) fn resolve_missing_elevator_stop_count_payload<T: Tessellation>(
 ) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> = HashMap::new();
     for entry @ (elevator, count, levels) in missing {
-        let Some(point) = elevator.0.first().and_then(|&n| field.point_of(n)) else { continue };
+        let Some(point) = elevator.0.first().and_then(|&n| field.point_of(n)) else {
+            continue;
+        };
         let (edges, edge_ids) = elevator_edges(elevator, graph);
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
-        let available: Vec<u32> = levels.iter()
+        let available: Vec<u32> = levels
+            .iter()
             .filter_map(|&level| field.node_at(level, point))
             .filter_map(|node| u32::try_from(node).ok())
             .collect();
-        let payload = IssueMissingElevatorStopsPayload { edges, missing: *count, available, preset_locked };
+        let payload = IssueMissingElevatorStopsPayload {
+            edges,
+            missing: *count,
+            available,
+            preset_locked,
+        };
         for source in invalid_sources.get(entry).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(payload.clone());
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(payload.clone());
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::MissingElevatorStopCount { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::MissingElevatorStopCount { groups })
+    }
 }
 
 /// Resolves every flagged elevator height-deficit entry (GitHub issue #402) into the shared
 /// `InvalidElevator` edge-group wire shape — reuses `elevator_edges`/`all_preset_locked` the same
 /// way `resolve_invalid_elevator_payload` does. No candidate-floor data: growing the stop interval
 /// is `AddElevatorHeightStopStrategy`'s job, so there's nothing to offer as a hover candidate.
-pub(super) fn resolve_missing_elevator_height_payload(missing: &[(ElevatorNodes, u32)], invalid_sources: &HashMap<(ElevatorNodes, u32), Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_missing_elevator_height_payload(
+    missing: &[(ElevatorNodes, u32)],
+    invalid_sources: &HashMap<(ElevatorNodes, u32), Vec<String>>,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for entry @ (elevator, _) in missing {
         let (edges, edge_ids) = elevator_edges(elevator, graph);
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
         for source in invalid_sources.get(entry).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueEdgeGroupPayload {
+                    edges: edges.clone(),
+                    preset_locked,
+                });
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevator { groups })
+    }
 }
 
 /// The canonical-group-key of a cross-element group — sorted, deduped clone, mirroring
@@ -517,7 +788,10 @@ fn teleport_portal_edges(graph: &Graph, a: NodeId, b: NodeId) -> (Vec<[u32; 2]>,
     let mut ids = Vec::new();
     for (from, to) in [(a, b), (b, a)] {
         if let Some(eid) = graph.edge_between(from, to) {
-            if graph.edge(eid).is_some_and(|e| e.kind == EdgeKind::Teleport) {
+            if graph
+                .edge(eid)
+                .is_some_and(|e| e.kind == EdgeKind::Teleport)
+            {
                 if let Some(pair) = edge_pair(graph, eid) {
                     pairs.push(pair);
                     ids.push(eid);
@@ -591,7 +865,10 @@ fn cross_element_entry<T: Tessellation>(
             if let Some(edge) = graph.edge(*id) {
                 if edge.kind == EdgeKind::VerticalPassage {
                     if let Some(rev) = graph.edge_between(edge.to, edge.from) {
-                        if graph.edge(rev).is_some_and(|e| e.kind == EdgeKind::VerticalPassage) {
+                        if graph
+                            .edge(rev)
+                            .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
+                        {
                             edge_ids.push(rev);
                         }
                     }
@@ -611,7 +888,10 @@ fn cross_element_entry<T: Tessellation>(
                     preset_locked: all_preset_locked(&edge_ids, graph, preset_state),
                 };
             }
-            let edges: Vec<[u32; 2]> = edge_ids.iter().filter_map(|&e| edge_pair(graph, e)).collect();
+            let edges: Vec<[u32; 2]> = edge_ids
+                .iter()
+                .filter_map(|&e| edge_pair(graph, e))
+                .collect();
             CrossElementPayloadEntry {
                 kind: "vertical_passage",
                 edges,
@@ -644,18 +924,26 @@ fn cross_element_entry<T: Tessellation>(
         }
         CrossElement::Split(tile) => {
             // Re-resolve the tile's live node set by whichever cached node still maps to a point.
-            let nodes: Vec<NodeId> = tile.0.iter().find_map(|&anchor| {
-                let level = field.level_of(anchor)?;
-                let point = field.point_of(anchor)?;
-                let live = field.nodes_at(level, point);
-                (live.len() >= 2).then(|| live.to_vec())
-            }).unwrap_or_default();
+            let nodes: Vec<NodeId> = tile
+                .0
+                .iter()
+                .find_map(|&anchor| {
+                    let level = field.level_of(anchor)?;
+                    let point = field.point_of(anchor)?;
+                    let live = field.nodes_at(level, point);
+                    (live.len() >= 2).then(|| live.to_vec())
+                })
+                .unwrap_or_default();
             // Narrow to just the close nodes when the scan pinned them down (all split
             // occurrences share one point, so this is rarely a strict subset — but honor it).
             let narrowed: Vec<NodeId> = if close_nodes.is_empty() {
                 nodes.clone()
             } else {
-                let kept: Vec<NodeId> = nodes.iter().copied().filter(|n| close_nodes.contains(n)).collect();
+                let kept: Vec<NodeId> = nodes
+                    .iter()
+                    .copied()
+                    .filter(|n| close_nodes.contains(n))
+                    .collect();
                 if kept.is_empty() { nodes.clone() } else { kept }
             };
             let payload = tile_payload(&narrowed, preset_state);
@@ -721,23 +1009,45 @@ pub(super) fn resolve_cross_element_group_payload<T: Tessellation>(
             out.entry(source.clone()).or_default().push(entries.clone());
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidCrossElementGroup { groups: out }) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidCrossElementGroup { groups: out })
+    }
 }
 
 /// Resolves every flagged excessive-stop-gap entry (GitHub issue #402) into the shared
 /// `InvalidElevator` edge-group wire shape — same rationale as
 /// `resolve_missing_elevator_height_payload`: picking the fill-in floor is
 /// `AddElevatorStopForGapStrategy`'s job, not something to highlight as a candidate.
-pub(super) fn resolve_excessive_elevator_stop_gap_payload(missing: &[(ElevatorNodes, crate::space::LevelId, crate::space::LevelId)], invalid_sources: &HashMap<(ElevatorNodes, crate::space::LevelId, crate::space::LevelId), Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+pub(super) fn resolve_excessive_elevator_stop_gap_payload(
+    missing: &[(ElevatorNodes, crate::space::LevelId, crate::space::LevelId)],
+    invalid_sources: &HashMap<
+        (ElevatorNodes, crate::space::LevelId, crate::space::LevelId),
+        Vec<String>,
+    >,
+    graph: &Graph,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
     let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for entry @ (elevator, _, _) in missing {
         let (edges, edge_ids) = elevator_edges(elevator, graph);
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
         for source in invalid_sources.get(entry).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+            groups
+                .entry(source.clone())
+                .or_default()
+                .push(IssueEdgeGroupPayload {
+                    edges: edges.clone(),
+                    preset_locked,
+                });
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+    if groups.is_empty() {
+        None
+    } else {
+        Some(IssuePayload::InvalidElevator { groups })
+    }
 }
 
 #[cfg(test)]
@@ -762,12 +1072,18 @@ mod cross_element_preset_tests {
         pinned.preset_start = Some(node);
         let entry = cross_element_entry(&CrossElement::Start(node), &[], &graph, &field, &pinned);
         assert_eq!(entry.kind, "start");
-        assert!(entry.preset_locked, "a preset-pinned start must be preset_locked");
+        assert!(
+            entry.preset_locked,
+            "a preset-pinned start must be preset_locked"
+        );
         assert!(!entry.removable);
 
         let free = PresetState::empty();
         let entry = cross_element_entry(&CrossElement::Start(node), &[], &graph, &field, &free);
-        assert!(!entry.preset_locked, "a generator-chosen start must not be preset_locked");
+        assert!(
+            !entry.preset_locked,
+            "a generator-chosen start must not be preset_locked"
+        );
     }
 
     #[test]
@@ -779,11 +1095,17 @@ mod cross_element_preset_tests {
 
         let mut pinned = PresetState::empty();
         pinned.preset_finish = Some(node);
-        assert!(cross_element_entry(&CrossElement::Finish(node), &[], &graph, &field, &pinned).preset_locked);
+        assert!(
+            cross_element_entry(&CrossElement::Finish(node), &[], &graph, &field, &pinned)
+                .preset_locked
+        );
 
         // A `preset_finish` pinning a *different* node leaves this finish movable.
         let mut other = PresetState::empty();
         other.preset_finish = Some(nodes[0]);
-        assert!(!cross_element_entry(&CrossElement::Finish(node), &[], &graph, &field, &other).preset_locked);
+        assert!(
+            !cross_element_entry(&CrossElement::Finish(node), &[], &graph, &field, &other)
+                .preset_locked
+        );
     }
 }

@@ -1,6 +1,8 @@
+use crate::quality_control::issue::{
+    Issue, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use crate::quality_control::issue::{Issue, IssueKind, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta};
 
 /// What distinguishes one `InvalidGroupIssue<K>` instantiation from another — see GitHub issue
 /// #208. `K` is a zero-sized marker type (never constructed), used only to give
@@ -68,16 +70,27 @@ pub struct InvalidGroupIssue<K: InvalidGroupIssueKind> {
 
 impl<K: InvalidGroupIssueKind> Default for InvalidGroupIssue<K> {
     fn default() -> Self {
-        Self { meta: IssueMeta::default(), groups: Vec::new(), invalid_sources: HashMap::new(), _marker: PhantomData }
+        Self {
+            meta: IssueMeta::default(),
+            groups: Vec::new(),
+            invalid_sources: HashMap::new(),
+            _marker: PhantomData,
+        }
     }
 }
 
 impl<K: InvalidGroupIssueKind> InvalidGroupIssue<K> {
     pub fn new_from_check(source_check: &str, groups: Vec<(Vec<K::Element>, u32)>) -> Self {
-        let invalid_sources = groups.iter()
+        let invalid_sources = groups
+            .iter()
             .map(|(g, _)| (canonical_group_key(g), vec![source_check.to_string()]))
             .collect();
-        Self { meta: IssueMeta::new_from_check(source_check), groups, invalid_sources, _marker: PhantomData }
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            groups,
+            invalid_sources,
+            _marker: PhantomData,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -95,10 +108,18 @@ impl<K: InvalidGroupIssueKind> IssueRequirement for InvalidGroupIssue<K> {
 }
 
 impl<K: InvalidGroupIssueKind> Issue for InvalidGroupIssue<K> {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn kind(&self) -> IssueKind {
+        Self::KIND
+    }
+    fn meta(&self) -> &IssueMeta {
+        &self.meta
+    }
+    fn meta_mut(&mut self) -> &mut IssueMeta {
+        &mut self.meta
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl<K: InvalidGroupIssueKind> IssueMerge for InvalidGroupIssue<K> {
@@ -113,7 +134,10 @@ impl<K: InvalidGroupIssueKind> IssueMerge for InvalidGroupIssue<K> {
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
 
-        let mut by_key: HashMap<Vec<K::Element>, usize> = self.groups.iter().enumerate()
+        let mut by_key: HashMap<Vec<K::Element>, usize> = self
+            .groups
+            .iter()
+            .enumerate()
             .map(|(i, (g, _))| (canonical_group_key(g), i))
             .collect();
         for (group, to_remove) in other.groups {
@@ -174,7 +198,11 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 1)],
+            "the same group flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
@@ -183,7 +211,12 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups.len(), 1, "(0,1) and (1,0) must collapse to a single group: {:?}", a.groups);
+        assert_eq!(
+            a.groups.len(),
+            1,
+            "(0,1) and (1,0) must collapse to a single group: {:?}",
+            a.groups
+        );
     }
 
     #[test]
@@ -192,7 +225,11 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 3)],
+            "the larger to_remove must win"
+        );
     }
 
     #[test]
@@ -201,7 +238,11 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win regardless of which side already had it");
+        assert_eq!(
+            a.groups,
+            vec![(vec![0, 1], 3)],
+            "the larger to_remove must win regardless of which side already had it"
+        );
     }
 
     #[test]
@@ -210,8 +251,14 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&vec![0, 1]), Some(&vec!["rule_1:a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&vec![2, 3]), Some(&vec!["rule_1:b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&vec![0, 1]),
+            Some(&vec!["rule_1:a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&vec![2, 3]),
+            Some(&vec!["rule_1:b".to_string()])
+        );
     }
 
     #[test]
@@ -220,7 +267,10 @@ mod tests {
         let b = TestIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 2)]);
         a.merge(b);
 
-        let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&vec![0, 1])
+            .expect("merged group must have recorded sources");
         assert_eq!(sources.len(), 2);
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_1:b".to_string()));
@@ -233,7 +283,10 @@ mod tests {
         a.merge(b);
 
         assert_eq!(a.groups, vec![(vec![0, 1], 5)]);
-        let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
+        let sources = a
+            .invalid_sources
+            .get(&vec![0, 1])
+            .expect("merged group must have recorded sources");
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_1:b".to_string()));
     }

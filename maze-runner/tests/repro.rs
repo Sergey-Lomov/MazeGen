@@ -18,9 +18,19 @@ fn repro_86_farthest_endpoints_wrong_finish() {
     let result = run_fixture("tests/fixtures/issue-86-farthest-preset-start.json", 42);
     println!("start={:?} finish={:?}", result.start, result.finish);
     assert!(result.start.is_some(), "preset start must be honored");
-    assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
-    assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
+    assert!(
+        result.finish.is_some(),
+        "farthest_endpoints must assign a finish"
+    );
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
+    assert!(
+        kinds.is_empty(),
+        "no remaining issues expected, got {kinds:?}"
+    );
 }
 
 /// Regression for GitHub issue #248's user report: with a preset-protected split node (the
@@ -32,9 +42,20 @@ fn repro_86_farthest_endpoints_wrong_finish() {
 /// `remove_node_feasible` up front and reporting `Failed` when nothing is actually removable.
 #[test]
 fn repro_248_split_distance_from_waypoint_fails_fast_on_a_preset_protected_node() {
-    let result = run_fixture("tests/fixtures/repro-248-split-distance-from-waypoint.json", 0);
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
-    assert_eq!(kinds, vec!["invalid_split_tile"], "must surface the split-tile issue directly, without burning the repair budget into repair_limit_reached");
+    let result = run_fixture(
+        "tests/fixtures/repro-248-split-distance-from-waypoint.json",
+        0,
+    );
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["invalid_split_tile"],
+        "must surface the split-tile issue directly, without burning the repair budget into repair_limit_reached"
+    );
 }
 
 /// GitHub issue #248 follow-up: a split node whose only two edges form a plain pass-through
@@ -47,8 +68,16 @@ fn repro_248_split_distance_from_waypoint_fails_fast_on_a_preset_protected_node(
 #[test]
 fn repro_248_split_distance_from_waypoint_fires_for_a_compressed_corridor_split_node() {
     let result = run_fixture("tests/fixtures/repro-248-compressed-corridor-split.json", 0);
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
-    assert_eq!(kinds, vec!["invalid_split_tile"], "must fire even though the split node is a compressed pass-through corridor, not a junction");
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["invalid_split_tile"],
+        "must fire even though the split node is a compressed pass-through corridor, not a junction"
+    );
 }
 
 /// Template — copy + rename + add assertions.
@@ -84,11 +113,20 @@ fn repro_template() {
 #[test]
 fn repro_315556_weighted_one_way_edges_survive_when_picked() {
     let result = run_fixture("tests/fixtures/weighted_1_9_repro.json", 0);
-    let one_way: Vec<_> = result.graph.edges()
+    let one_way: Vec<_> = result
+        .graph
+        .edges()
         .filter(|e| result.graph.edge_between(e.to, e.from).is_none())
         .collect();
-    println!("total_edges={} one_way_edges={}", result.graph.edges().count(), one_way.len());
-    assert!(!one_way.is_empty(), "seed 0 is known to pick+apply the one_way candidate at least once for this fixture");
+    println!(
+        "total_edges={} one_way_edges={}",
+        result.graph.edges().count(),
+        one_way.len()
+    );
+    assert!(
+        !one_way.is_empty(),
+        "seed 0 is known to pick+apply the one_way candidate at least once for this fixture"
+    );
 }
 
 /// Seed 287903: MissingRegionsStrategy fails to create Alternative despite large isolated regions.
@@ -96,11 +134,20 @@ fn repro_315556_weighted_one_way_edges_survive_when_picked() {
 fn repro_287903_alternative_not_created() {
     let result = run_fixture("tests/fixtures/maze-debug-call-287903.json", 287903);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -111,11 +158,20 @@ fn repro_287903_alternative_not_created() {
 fn repro_268_trap_reuse_vs_carve() {
     let result = run_fixture("tests/fixtures/maze-debug-call-268-trap.json", 268);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -126,11 +182,20 @@ fn repro_268_trap_reuse_vs_carve() {
 fn repro_268_carve_trap_from_path() {
     let result = run_fixture("tests/fixtures/maze-debug-call-268-carve.json", 268);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -141,14 +206,26 @@ fn repro_268_carve_trap_from_path() {
 fn repro_qc_experiment_small_regions_not_merged() {
     let result = run_fixture("tests/fixtures/qc-experiment-small-regions.json", 42);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
     let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
-    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one");
+    assert_eq!(
+        scc_count, 1,
+        "all 25 single-node regions must merge into one"
+    );
 }
 
 /// Same 5x5 all-wall setup as above, but every cell is also auto-locked "both" (as the browser
@@ -161,14 +238,26 @@ fn repro_qc_experiment_small_regions_not_merged() {
 fn repro_qc_experiment_locked_small_regions_not_merged() {
     let result = run_fixture("tests/fixtures/qc-experiment-small-regions-locked.json", 42);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
     let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
-    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one, even with every node auto-locked");
+    assert_eq!(
+        scc_count, 1,
+        "all 25 single-node regions must merge into one, even with every node auto-locked"
+    );
 }
 
 /// Seed 268: large Unreachable region (~50 nodes) present but MissingRegionsStrategy
@@ -177,11 +266,20 @@ fn repro_qc_experiment_locked_small_regions_not_merged() {
 fn repro_268_alternative_not_created() {
     let result = run_fixture("tests/fixtures/maze-debug-call-268.json", 268);
 
-    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+    for cls in [
+        RegionClass::Path,
+        RegionClass::Alternative,
+        RegionClass::Trap,
+        RegionClass::Unreachable,
+    ] {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -195,33 +293,51 @@ fn repro_147_qc_debug_events_tape_matches_applied_mutations() {
     use maze_core::event_log::DebugEvent;
     use maze_core::quality_control::QcEvent;
 
-    let result = run_fixture("tests/fixtures/qc-experiment-small-regions-debug-events.json", 42);
+    let result = run_fixture(
+        "tests/fixtures/qc-experiment-small-regions-debug-events.json",
+        42,
+    );
 
     let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
-    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one (same outcome as the non-debug fixture)");
+    assert_eq!(
+        scc_count, 1,
+        "all 25 single-node regions must merge into one (same outcome as the non-debug fixture)"
+    );
 
-    let tape = result.qc_tape.expect("debug_events: true must produce a QC tape");
+    let tape = result
+        .qc_tape
+        .expect("debug_events: true must produce a QC tape");
     let mutating_events: Vec<&QcEvent> = tape.mutating_events().collect();
-    assert!(!mutating_events.is_empty(), "merging 25 regions into 1 must apply at least one mutating command");
+    assert!(
+        !mutating_events.is_empty(),
+        "merging 25 regions into 1 must apply at least one mutating command"
+    );
 
     // Every mutating event must actually be mutating per QcEvent::is_mutating (the tape only
     // contains events built by real apply_commands calls, so this also guards against a stray
     // *Declined trace variant leaking into mutating_events()).
     for event in &mutating_events {
-        assert!(event.is_mutating(), "mutating_events() yielded a non-mutating event: {event:?}");
+        assert!(
+            event.is_mutating(),
+            "mutating_events() yielded a non-mutating event: {event:?}"
+        );
     }
 
     // The tree must contain at least a "stage stage_2" scope (where the merging happens) with a
     // nested "iteration N" scope — proves the tape actually reflects QualityControlEngine's real
     // stage/iteration structure, not just a flat event list.
     let root = tape.root();
-    let stage_scope_names: Vec<String> = root.children()
+    let stage_scope_names: Vec<String> = root
+        .children()
         .filter_map(|c| match c.payload() {
             maze_core::event_log::NodePayload::Scope(name) => Some(name.to_string()),
             maze_core::event_log::NodePayload::Event(_) => None,
         })
         .collect();
-    assert!(stage_scope_names.contains(&"stage stage_2".to_string()), "expected a \"stage stage_2\" top-level scope, got {stage_scope_names:?}");
+    assert!(
+        stage_scope_names.contains(&"stage stage_2".to_string()),
+        "expected a \"stage stage_2\" top-level scope, got {stage_scope_names:?}"
+    );
 }
 
 /// Issue #95 (exact debug-toolbar "Copy config JSON" export, QC-only preset graph). Documents
@@ -233,12 +349,24 @@ fn repro_147_qc_debug_events_tape_matches_applied_mutations() {
 #[test]
 fn repro_95_qc_only_official_export() {
     let result = run_fixture("tests/fixtures/issue-95-qc-only-official.json", 42);
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
-    assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
-    assert!(result.start.is_some(), "farthest_endpoints must assign a start");
-    assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
+    let kinds: Vec<&str> = result
+        .remaining_issues
+        .iter()
+        .map(|i| i.kind().as_str())
+        .collect();
+    assert!(
+        kinds.is_empty(),
+        "no remaining issues expected, got {kinds:?}"
+    );
+    assert!(
+        result.start.is_some(),
+        "farthest_endpoints must assign a start"
+    );
+    assert!(
+        result.finish.is_some(),
+        "farthest_endpoints must assign a finish"
+    );
 }
-
 
 /// GitHub issue #231: a preset connection addressing a declared split slot must route through
 /// that specific node, not the point's original node. Fixture: a 2-cell square field, (-1,0)
@@ -254,19 +382,30 @@ fn repro_231_preset_connection_addressing_declared_split_slot_routes_through_tha
     let result = run_fixture("tests/fixtures/issue-231-preset-split-node-passage.json", 0);
 
     // 2 field points, one split into 2 nodes (original + slot 0) -- 3 nodes total.
-    assert_eq!(result.graph.node_count(), 3, "field has 2 points, one split into 2 nodes");
+    assert_eq!(
+        result.graph.node_count(),
+        3,
+        "field has 2 points, one split into 2 nodes"
+    );
 
     // Exactly one bidirectional passage exists in the final graph (the slot-addressed preset) --
     // the plain (original-node) edge is walled, so it must not exist at all.
     let edge_count = result.graph.edges().count();
-    assert_eq!(edge_count, 2, "exactly one bidirectional passage (2 directed edges) expected");
+    assert_eq!(
+        edge_count, 2,
+        "exactly one bidirectional passage (2 directed edges) expected"
+    );
 
     // The original node at (-1,0) must have zero edges -- only the wall preset (which adds no
     // edge) ever referenced it; the passage went to the split slot instead.
-    let original_has_no_edges = result.graph.nodes().any(|n| {
-        result.graph.edges().all(|e| e.from != n.id && e.to != n.id)
-    });
-    assert!(original_has_no_edges, "the point's original node must remain edgeless — the passage targeted its split slot, not it");
+    let original_has_no_edges = result
+        .graph
+        .nodes()
+        .any(|n| result.graph.edges().all(|e| e.from != n.id && e.to != n.id));
+    assert!(
+        original_has_no_edges,
+        "the point's original node must remain edgeless — the passage targeted its split slot, not it"
+    );
 }
 
 /// GitHub issue #173: an empty 5x5 field, no preset connections, `qc_experiment` + `debug_events`
@@ -281,10 +420,21 @@ fn repro_173_qc_only_empty_field_no_preset_yields_a_present_but_empty_qc_tape() 
     use maze_core::quality_control::QcEvent;
 
     let result = run_fixture("tests/fixtures/issue-173-qc-only-empty-no-preset.json", 42);
-    assert!(result.start.is_none(), "no strategy can assign a start on an edgeless graph");
-    assert!(result.finish.is_none(), "no strategy can assign a finish on an edgeless graph");
+    assert!(
+        result.start.is_none(),
+        "no strategy can assign a start on an edgeless graph"
+    );
+    assert!(
+        result.finish.is_none(),
+        "no strategy can assign a finish on an edgeless graph"
+    );
 
-    let tape = result.qc_tape.expect("debug_events: true must still produce a QC tape even with zero mutating events");
+    let tape = result
+        .qc_tape
+        .expect("debug_events: true must still produce a QC tape even with zero mutating events");
     let mutating_events: Vec<&QcEvent> = tape.mutating_events().collect();
-    assert!(mutating_events.is_empty(), "an edgeless graph with no preset connections has nothing for repair to mutate");
+    assert!(
+        mutating_events.is_empty(),
+        "an edgeless graph with no preset connections has nothing for repair to mutate"
+    );
 }

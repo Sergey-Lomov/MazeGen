@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
-use maze_core::{
-    space::Tessellation,
-    graph::{Graph, EdgeKind},
-    space::{Field, MultiLevelField},
-    Maze,
-};
 use crate::dto::{PostEditEdgeDto, PostEditEndpointDto, VerticalEdgeDto};
 use crate::generation_config::PresetConnectionDto;
+use maze_core::{
+    Maze,
+    graph::{EdgeKind, Graph},
+    space::Tessellation,
+    space::{Field, MultiLevelField},
+};
+use std::collections::{HashMap, HashSet};
 
 /// Resolves one `PostEditEndpointDto` to a real `NodeId` (as `u64`). `Node` passes through as-is;
 /// `Split` looks up `(point, slot_id, level)` in `split_map` (built by `apply_split_points`) — `Err`
@@ -44,7 +44,7 @@ pub(crate) fn build_graph_from_post_edit_edges(
 ) -> Result<(), String> {
     for e in edges {
         let from_id = resolve_post_edit_endpoint(&e.from, split_map)?;
-        let to_id   = resolve_post_edit_endpoint(&e.to, split_map)?;
+        let to_id = resolve_post_edit_endpoint(&e.to, split_map)?;
         match e.kind.as_str() {
             "basic" => {
                 graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
@@ -74,10 +74,16 @@ pub(crate) fn restore_vertical_edges(graph: &mut Graph, edges: &[VerticalEdgeDto
     let node_ids: HashSet<u64> = graph.nodes().map(|n| n.id).collect();
     for e in edges {
         let (from, to) = (e.from as u64, e.to as u64);
-        if !node_ids.contains(&from) || !node_ids.contains(&to) { continue; }
+        if !node_ids.contains(&from) || !node_ids.contains(&to) {
+            continue;
+        }
         match e.kind.as_str() {
-            "vertical_passage" => { graph.build_initial_edge(from, to, EdgeKind::VerticalPassage); }
-            "elevator" => { graph.build_initial_edge(from, to, EdgeKind::Elevator); }
+            "vertical_passage" => {
+                graph.build_initial_edge(from, to, EdgeKind::VerticalPassage);
+            }
+            "elevator" => {
+                graph.build_initial_edge(from, to, EdgeKind::Elevator);
+            }
             _ => continue,
         }
     }
@@ -120,11 +126,16 @@ pub(crate) fn apply_split_points<T: Tessellation>(
         let node = match existing_by_index.get(&(xy, slot_id + 1, level_index)) {
             Some(&id) => id,
             None => {
-                let &level = level_ids.get(level_index as usize)
-                    .ok_or_else(|| format!("split_points references unknown level {level_index}"))?;
+                let &level = level_ids.get(level_index as usize).ok_or_else(|| {
+                    format!("split_points references unknown level {level_index}")
+                })?;
                 let point = xy_to_point(xy)
                     .filter(|&p| maze.field.field_of(level).is_some_and(|f| f.contains(p)))
-                    .ok_or_else(|| format!("split_points references unknown point {xy:?} on level {level_index}"))?;
+                    .ok_or_else(|| {
+                        format!(
+                            "split_points references unknown point {xy:?} on level {level_index}"
+                        )
+                    })?;
                 maze.add_node_at_on_level(level, point)
             }
         };
@@ -171,7 +182,9 @@ pub(crate) fn preset_edges_for_post_edit(
         let (Some(from_id), Some(to_id)) = (
             resolve_preset_endpoint_for_post_edit(&preset.from, existing_by_index, split_map),
             resolve_preset_endpoint_for_post_edit(&preset.to, existing_by_index, split_map),
-        ) else { continue };
+        ) else {
+            continue;
+        };
         match &preset.state {
             maze_runner::config::PresetConnectionStateDto::Wall => {}
             maze_runner::config::PresetConnectionStateDto::Passage => {
@@ -213,8 +226,14 @@ pub(crate) fn resolve_preset_nodes_for_post_edit(
     existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
     split_map: &HashMap<([i32; 2], u32, u32), u64>,
 ) -> HashSet<u64> {
-    preset_split_points.iter()
-        .filter_map(|&(point, slot, level)| split_map.get(&(point, slot, level)).or_else(|| existing_by_index.get(&(point, slot + 1, level))).copied())
+    preset_split_points
+        .iter()
+        .filter_map(|&(point, slot, level)| {
+            split_map
+                .get(&(point, slot, level))
+                .or_else(|| existing_by_index.get(&(point, slot + 1, level)))
+                .copied()
+        })
         .collect()
 }
 
@@ -254,30 +273,45 @@ pub(crate) fn build_field_from_nodes<T: Tessellation>(
     nodes: &[crate::dto::NodeDto],
     level_field_count: usize,
     xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
-) -> Result<(MultiLevelField<T>, HashMap<([i32; 2], u32, u32), u64>, HashMap<u64, u32>, Vec<maze_core::space::LevelId>), String>
+) -> Result<
+    (
+        MultiLevelField<T>,
+        HashMap<([i32; 2], u32, u32), u64>,
+        HashMap<u64, u32>,
+        Vec<maze_core::space::LevelId>,
+    ),
+    String,
+>
 where
     T::Point: Copy,
 {
     let mut entries_by_level: Vec<Vec<(u64, T::Point, u32)>> = vec![Vec::new(); level_field_count];
     for n in nodes {
-        let entries = entries_by_level.get_mut(n.level as usize)
+        let entries = entries_by_level
+            .get_mut(n.level as usize)
             .ok_or_else(|| format!("node {} references unknown level {}", n.id, n.level))?;
-        let point = xy_to_point([n.x, n.y])
-            .ok_or_else(|| format!("node {} references a point outside the current tessellation: [{}, {}] (level {})", n.id, n.x, n.y, n.level))?;
+        let point = xy_to_point([n.x, n.y]).ok_or_else(|| {
+            format!(
+                "node {} references a point outside the current tessellation: [{}, {}] (level {})",
+                n.id, n.x, n.y, n.level
+            )
+        })?;
         entries.push((n.id as u64, point, n.i));
     }
     for entries in &mut entries_by_level {
         entries.sort_by_key(|&(_, _, i)| i);
     }
-    let existing_by_index: HashMap<([i32; 2], u32, u32), u64> = nodes.iter()
+    let existing_by_index: HashMap<([i32; 2], u32, u32), u64> = nodes
+        .iter()
         .map(|n| (([n.x, n.y], n.i, n.level), n.id as u64))
         .collect();
-    let index_by_node: HashMap<u64, u32> = nodes.iter()
-        .map(|n| (n.id as u64, n.i))
-        .collect();
-    let mut level_fields = entries_by_level.into_iter()
+    let index_by_node: HashMap<u64, u32> = nodes.iter().map(|n| (n.id as u64, n.i)).collect();
+    let mut level_fields = entries_by_level
+        .into_iter()
         .map(|entries| Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p))));
-    let first = level_fields.next().ok_or_else(|| "level_fields must not be empty".to_string())?;
+    let first = level_fields
+        .next()
+        .ok_or_else(|| "level_fields must not be empty".to_string())?;
     let mut field = MultiLevelField::new([first]);
     for level_field in level_fields {
         field.add_level(level_field);
@@ -285,7 +319,6 @@ where
     let level_ids: Vec<maze_core::space::LevelId> = field.levels_ordered().collect();
     Ok((field, existing_by_index, index_by_node, level_ids))
 }
-
 
 #[cfg(test)]
 #[path = "post_edit_tests.rs"]

@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
-use rand::RngCore;
 use crate::Maze;
 use crate::ids::EdgeId;
-use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edge_ids;
-use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
 use crate::quality_control::floor_group::floors_of_edge;
+use crate::quality_control::{FloorScope, InvalidOneWayGroupIssue};
+use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
+use std::collections::{HashMap, HashSet};
 
 pub const MAX_ONE_WAY_COUNT_DEFAULT: u32 = 1_000;
 pub const MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
@@ -31,10 +31,20 @@ pub struct MaxOneWayCountCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck {
-    fn check_type_id(&self) -> &'static str { "max_one_way_count" }
-    fn is_batch_edge_group(&self) -> bool { true }
+    fn check_type_id(&self) -> &'static str {
+        "max_one_way_count"
+    }
+    fn is_batch_edge_group(&self) -> bool {
+        true
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidOneWayGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let one_ways: Vec<EdgeId> = one_way_edge_ids(maze);
 
         // Under `PerFloor` the whole group is reported (and `to_remove` computed) against
@@ -51,7 +61,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
             FloorScope::PerFloor => {
                 let mut per_floor_count: HashMap<LevelId, u32> =
                     maze.field.levels_ordered().map(|l| (l, 0)).collect();
-                let one_way_floors: Vec<_> = one_ways.iter()
+                let one_way_floors: Vec<_> = one_ways
+                    .iter()
                     .map(|&id| floors_of_edge(&maze.field, &maze.graph, id))
                     .collect();
                 for floors in &one_way_floors {
@@ -59,7 +70,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
                         *per_floor_count.entry(level).or_insert(0) += 1;
                     }
                 }
-                let over_budget: HashSet<LevelId> = per_floor_count.iter()
+                let over_budget: HashSet<LevelId> = per_floor_count
+                    .iter()
                     .filter(|&(_, &count)| count > self.max_one_ways)
                     .map(|(&level, _)| level)
                     .collect();
@@ -74,21 +86,32 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
                 let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
                 for &level in &over_budget {
                     let excess = per_floor_count[&level] - self.max_one_ways;
-                    let flagged: Vec<EdgeId> = one_ways.iter().zip(&one_way_floors)
+                    let flagged: Vec<EdgeId> = one_ways
+                        .iter()
+                        .zip(&one_way_floors)
                         .filter(|(_, floors)| floors.contains(&level))
                         .map(|(&id, _)| id)
                         .collect();
                     groups.push((flagged, excess));
                 }
                 let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
-                    .with_detail(&self.instance_id, "max_one_ways", self.max_one_ways.to_string());
+                    .with_detail(
+                        &self.instance_id,
+                        "max_one_ways",
+                        self.max_one_ways.to_string(),
+                    );
                 issues.push(issue);
                 return;
             }
         };
 
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
-            .with_detail(&self.instance_id, "max_one_ways", self.max_one_ways.to_string());
+        let issue =
+            InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
+                .with_detail(
+                    &self.instance_id,
+                    "max_one_ways",
+                    self.max_one_ways.to_string(),
+                );
         issues.push(issue);
     }
 }

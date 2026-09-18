@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
-import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -178,16 +178,17 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setHighlightOrphanSplitNodes: (highlight) => set({ highlightOrphanSplitNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
 
-  setLockedNode: (x, y, kind) => set((state) => {
+  setLockedNode: (x, y, kind, slotId) => set((state) => {
     const next = new Map(state.lockedNodes);
     const level = activeFloorLevel(state);
-    next.set(level === undefined ? `${x},${y}` : `${x},${y}@${level}`, kind);
+    const point = presetEndpoint([x, y], slotId, level);
+    next.set(presetEndpointKey(point), kind);
     return { lockedNodes: next, debugStale: debugStaleOf(state) };
   }),
 
-  removeLockedNode: (x, y) => set((state) => {
+  removeLockedNode: (x, y, slotId) => set((state) => {
     const level = activeFloorLevel(state);
-    const key = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
+    const key = presetEndpointKey(presetEndpoint([x, y], slotId, level));
     if (!state.lockedNodes.has(key)) return {};
     const next = new Map(state.lockedNodes);
     next.delete(key);
@@ -375,10 +376,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         if (refsTarget(entry.from) || refsTarget(entry.to)) presetConnections.delete(key);
       }
       const presetTeleports = state.presetTeleports.filter(t => !refsTarget(t.from) && !refsTarget(t.to));
-      // Locked nodes are keyed by plain "x,y[@level]" (point + level only, no slot) — a lock
-      // addressing this exact split node isn't representable in that map today (locks are always
-      // original-node only), so nothing to clean up there.
-
+      const lockedNodes = new Map(state.lockedNodes);
+      lockedNodes.delete(presetEndpointKey(presetEndpoint(point, slotId, level)));
       const { splitPoints, activeMap } = removeSlot(
         state.presetSplitPoints, state.presetActiveSplitNode, point, slotId,
         (entry, point, slotId) => entry.slotId !== undefined && presetEndpointIsSplit(entry, { point, slotId }) && (entry.level ?? 0) === (level ?? 0),
@@ -386,7 +385,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       );
 
       return withRecomputedAutoLock(state, {
-        presetConnections, presetTeleports,
+        presetConnections, presetTeleports, lockedNodes,
         presetSplitPoints: splitPoints, presetActiveSplitNode: activeMap,
         presetsDirty: true,
       });
@@ -441,6 +440,18 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const presetElevators = state.presetElevators.map((e) => (
       e.floors.some(isRemovedNode) ? { ...e, floors: e.floors.map(retarget) } : e
     ));
+    const lockedNodes = new Map(state.lockedNodes);
+    const originalKey = presetEndpointKey(original);
+    const mergeLock = (a: NodeLockKind | undefined, b: NodeLockKind): NodeLockKind =>
+      a === undefined || a === b ? (a ?? b) : "both";
+    for (const slotId of slotIds) {
+      const removedKey = presetEndpointKey(presetEndpoint(point, slotId, level));
+      const removedKind = lockedNodes.get(removedKey);
+      if (removedKind !== undefined) {
+        lockedNodes.delete(removedKey);
+        lockedNodes.set(originalKey, mergeLock(lockedNodes.get(originalKey), removedKind));
+      }
+    }
 
     const presetSplitPoints = { ...state.presetSplitPoints };
     delete presetSplitPoints[key];
@@ -448,7 +459,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     delete presetActiveSplitNode[key];
 
     return withRecomputedAutoLock(state, {
-      presetConnections, presetTeleports, presetVerticalPassages, presetElevators,
+      presetConnections, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes,
       presetSplitPoints, presetActiveSplitNode,
       presetStart: state.presetStart && isRemovedNode(state.presetStart) ? retarget(state.presetStart) : state.presetStart,
       presetFinish: state.presetFinish && isRemovedNode(state.presetFinish) ? retarget(state.presetFinish) : state.presetFinish,
@@ -601,7 +612,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const presetGenSource = state.presetGenSource !== null && touchesPoint(state.presetGenSource) ? null : state.presetGenSource;
 
     const lockedNodes = new Map(state.lockedNodes);
-    lockedNodes.delete(key);
+    for (const endpoint of allNodesAt(point, state.presetSplitPoints, level)) {
+      lockedNodes.delete(presetEndpointKey(endpoint));
+    }
 
     return withRecomputedAutoLock(state, {
       presetConnections, presetTeleports, presetVerticalPassages, presetElevators,
@@ -628,6 +641,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       case "set_finish":
         get().setPresetFinishEndpoint(endpoint);
         break;
+      case "lock_in":
+      case "lock_out":
+      case "full_lock": {
+        const kind: NodeLockKind = action.tool === "lock_in" ? "in" : action.tool === "lock_out" ? "out" : "both";
+        if (get().lockedNodes.get(presetEndpointKey(endpoint)) === kind) get().removeLockedNode(endpoint.point[0], endpoint.point[1], endpoint.slotId);
+        else get().setLockedNode(endpoint.point[0], endpoint.point[1], kind, endpoint.slotId);
+        break;
+      }
       case "gen_source":
         get().setPresetGenSourceEndpoint(endpoint);
         break;
@@ -702,7 +723,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         get().removePresetElevator(Number(descriptor.id));
         break;
       case "lock":
-        get().removeLockedNode(descriptor.endpoint.point[0], descriptor.endpoint.point[1]);
+        get().removeLockedNode(descriptor.endpoint.point[0], descriptor.endpoint.point[1], descriptor.endpoint.slotId);
         break;
       case "edge":
         set((state) => {

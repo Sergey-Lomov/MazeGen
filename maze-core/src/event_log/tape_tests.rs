@@ -40,7 +40,11 @@ fn nested_scopes_restore_cursor_on_drop() {
     let all: Vec<_> = tape.iter().cloned().collect();
     assert_eq!(
         all,
-        vec![TestEvent::Mutating(1), TestEvent::Trace(2), TestEvent::Mutating(3)]
+        vec![
+            TestEvent::Mutating(1),
+            TestEvent::Trace(2),
+            TestEvent::Mutating(3)
+        ]
     );
 }
 
@@ -92,7 +96,11 @@ fn panic_inside_nested_scope_still_restores_cursor() {
     let all: Vec<_> = tape.iter().cloned().collect();
     assert_eq!(
         all,
-        vec![TestEvent::Mutating(1), TestEvent::Mutating(2), TestEvent::Mutating(3)]
+        vec![
+            TestEvent::Mutating(1),
+            TestEvent::Mutating(2),
+            TestEvent::Mutating(3)
+        ]
     );
 }
 
@@ -144,22 +152,48 @@ fn node_view_exposes_scope_names_and_children_in_order() {
     assert!(matches!(root.payload(), NodePayload::Scope("root")));
 
     let root_children: Vec<_> = root.children().collect();
-    assert_eq!(root_children.len(), 2, "root has 2 children: the top-level event and the \"step\" scope");
-    assert!(matches!(root_children[0].payload(), NodePayload::Event(TestEvent::Mutating(1))));
-    assert!(matches!(root_children[1].payload(), NodePayload::Scope("step")));
+    assert_eq!(
+        root_children.len(),
+        2,
+        "root has 2 children: the top-level event and the \"step\" scope"
+    );
+    assert!(matches!(
+        root_children[0].payload(),
+        NodePayload::Event(TestEvent::Mutating(1))
+    ));
+    assert!(matches!(
+        root_children[1].payload(),
+        NodePayload::Scope("step")
+    ));
 
     let step_children: Vec<_> = root_children[1].children().collect();
-    assert_eq!(step_children.len(), 2, "\"step\" has 2 children: the trace event and the \"roll\" scope");
-    assert!(matches!(step_children[0].payload(), NodePayload::Event(TestEvent::Trace(2))));
-    assert!(matches!(step_children[1].payload(), NodePayload::Scope("roll")));
+    assert_eq!(
+        step_children.len(),
+        2,
+        "\"step\" has 2 children: the trace event and the \"roll\" scope"
+    );
+    assert!(matches!(
+        step_children[0].payload(),
+        NodePayload::Event(TestEvent::Trace(2))
+    ));
+    assert!(matches!(
+        step_children[1].payload(),
+        NodePayload::Scope("roll")
+    ));
 
     let roll_children: Vec<_> = step_children[1].children().collect();
     assert_eq!(roll_children.len(), 1);
-    assert!(matches!(roll_children[0].payload(), NodePayload::Event(TestEvent::Mutating(3))));
+    assert!(matches!(
+        roll_children[0].payload(),
+        NodePayload::Event(TestEvent::Mutating(3))
+    ));
 
     // parent() walks back up correctly
     let roll_scope = step_children[1];
-    assert!(matches!(roll_scope.parent().unwrap().payload(), NodePayload::Scope("step")));
+    assert!(matches!(
+        roll_scope.parent().unwrap().payload(),
+        NodePayload::Scope("step")
+    ));
     assert!(root.parent().is_none(), "root has no parent");
 
     // Event payload actually carries the right value, not just matching the variant shape.
@@ -176,7 +210,10 @@ fn default_is_equivalent_to_new() {
     log.emit(TestEvent::Mutating(1));
     let tape = log.finish();
     assert!(matches!(tape.root().payload(), NodePayload::Scope("root")));
-    assert_eq!(tape.iter().cloned().collect::<Vec<_>>(), vec![TestEvent::Mutating(1)]);
+    assert_eq!(
+        tape.iter().cloned().collect::<Vec<_>>(),
+        vec![TestEvent::Mutating(1)]
+    );
 }
 
 #[test]
@@ -236,7 +273,11 @@ fn iter_skips_scopes_at_any_depth_when_no_events_are_emitted() {
         }
     }
     let tape = log.finish();
-    assert_eq!(tape.iter().count(), 0, "no events were emitted anywhere in the tree");
+    assert_eq!(
+        tape.iter().count(),
+        0,
+        "no events were emitted anywhere in the tree"
+    );
 }
 
 // --- enter_numbered() (GitHub issue #133) ---
@@ -288,8 +329,14 @@ fn enter_numbered_counts_independently_per_parent_scope() {
     let tape = log.finish();
     let root_children: Vec<_> = tape.root().children().collect();
     assert_eq!(root_children.len(), 2);
-    assert!(matches!(root_children[0].payload(), NodePayload::Scope("step 1")));
-    assert!(matches!(root_children[1].payload(), NodePayload::Scope("outer 1")));
+    assert!(matches!(
+        root_children[0].payload(),
+        NodePayload::Scope("step 1")
+    ));
+    assert!(matches!(
+        root_children[1].payload(),
+        NodePayload::Scope("outer 1")
+    ));
 
     let nested_step = root_children[1].children().next().unwrap();
     assert!(
@@ -323,9 +370,16 @@ fn parent_guard_reusable_between_and_after_sibling_child_scopes() {
     assert!(matches!(walk.payload(), NodePayload::Scope("walk")));
 
     let walk_children: Vec<_> = walk.children().collect();
-    assert_eq!(walk_children.len(), 7, "1 leading event + 3 * (child scope + trailing event)");
+    assert_eq!(
+        walk_children.len(),
+        7,
+        "1 leading event + 3 * (child scope + trailing event)"
+    );
 
-    assert!(matches!(walk_children[0].payload(), NodePayload::Event(TestEvent::Trace(0))));
+    assert!(matches!(
+        walk_children[0].payload(),
+        NodePayload::Event(TestEvent::Trace(0))
+    ));
     for i in 1..=3u32 {
         let base = ((i - 1) * 2 + 1) as usize;
         let step_scope = walk_children[base];
@@ -333,7 +387,9 @@ fn parent_guard_reusable_between_and_after_sibling_child_scopes() {
         assert!(matches!(step_scope.payload(), NodePayload::Scope(name) if name == expected_name));
         let step_children: Vec<_> = step_scope.children().collect();
         assert_eq!(step_children.len(), 1);
-        assert!(matches!(step_children[0].payload(), NodePayload::Event(TestEvent::Mutating(v)) if *v == i));
+        assert!(
+            matches!(step_children[0].payload(), NodePayload::Event(TestEvent::Mutating(v)) if *v == i)
+        );
 
         // The trailing per-iteration event lands as `walk`'s direct child, not `step i`'s —
         // proof that `parent.emit` after the child drops reaches the right scope.

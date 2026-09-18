@@ -1,11 +1,11 @@
-use std::collections::HashSet;
-use rand::{Rng, RngCore};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::region_class::RegionClass;
-use crate::space::Tessellation;
 use crate::generation::PresetState;
+use crate::graph::region_class::RegionClass;
+use crate::ids::NodeId;
 use crate::repair::draft::DraftMaze;
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::HashSet;
 
 /// Converts `members` into `target` by auditing its existing inbound/outbound connectivity and
 /// adjusting only what's actually wrong, then validating the result via membership-check
@@ -67,12 +67,29 @@ pub(super) fn convert_region<T: Tessellation>(
     // outbound already succeeded — if the inbound edge alone (before outbound) already leaves
     // `members` matching `target`, nothing else is attempted for that side.
     if needs_inbound && !needs_outbound {
-        let reachable_from_start = draft.maze.analysis.reachable_from_start(&draft.maze.graph, &draft.maze.meta).unwrap_or_default();
+        let reachable_from_start = draft
+            .maze
+            .analysis
+            .reachable_from_start(&draft.maze.graph, &draft.maze.meta)
+            .unwrap_or_default();
         if !has_inbound(&draft.maze, members, &reachable_from_start)
-            && try_bridge(draft, members, &reachable_from_start, false, preset_state, rng).is_none() {
+            && try_bridge(
+                draft,
+                members,
+                &reachable_from_start,
+                false,
+                preset_state,
+                rng,
+            )
+            .is_none()
+        {
             return None;
         }
-        return if membership_matches(&draft.maze, members, target) { Some(members.clone()) } else { None };
+        return if membership_matches(&draft.maze, members, target) {
+            Some(members.clone())
+        } else {
+            None
+        };
     }
 
     if needs_outbound {
@@ -110,9 +127,20 @@ fn audit_connectivity<T: Tessellation>(
     preset_state: &PresetState,
 ) -> bool {
     if !needs_outbound {
-        let reachable_to_finish = draft.maze.analysis.reachable_to_finish(&draft.maze.graph, &draft.maze.meta).unwrap_or_default();
-        let mut to_cut: Vec<(NodeId, NodeId)> = members.iter()
-            .flat_map(|&n| draft.maze.graph.outgoing_neighbors(n).map(move |nb| (n, nb)))
+        let reachable_to_finish = draft
+            .maze
+            .analysis
+            .reachable_to_finish(&draft.maze.graph, &draft.maze.meta)
+            .unwrap_or_default();
+        let mut to_cut: Vec<(NodeId, NodeId)> = members
+            .iter()
+            .flat_map(|&n| {
+                draft
+                    .maze
+                    .graph
+                    .outgoing_neighbors(n)
+                    .map(move |nb| (n, nb))
+            })
             .filter(|(_, nb)| !members.contains(nb) && reachable_to_finish.contains(nb))
             .collect();
         to_cut.sort_unstable();
@@ -124,9 +152,20 @@ fn audit_connectivity<T: Tessellation>(
         }
     }
     if !needs_inbound {
-        let reachable_from_start = draft.maze.analysis.reachable_from_start(&draft.maze.graph, &draft.maze.meta).unwrap_or_default();
-        let mut to_cut: Vec<(NodeId, NodeId)> = members.iter()
-            .flat_map(|&n| draft.maze.graph.incoming_neighbors(n).map(move |nb| (nb, n)))
+        let reachable_from_start = draft
+            .maze
+            .analysis
+            .reachable_from_start(&draft.maze.graph, &draft.maze.meta)
+            .unwrap_or_default();
+        let mut to_cut: Vec<(NodeId, NodeId)> = members
+            .iter()
+            .flat_map(|&n| {
+                draft
+                    .maze
+                    .graph
+                    .incoming_neighbors(n)
+                    .map(move |nb| (nb, n))
+            })
             .filter(|(from, _)| !members.contains(from) && reachable_from_start.contains(from))
             .collect();
         to_cut.sort_unstable();
@@ -140,22 +179,47 @@ fn audit_connectivity<T: Tessellation>(
     true
 }
 
-fn has_inbound<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>, reachable_from_start: &HashSet<NodeId>) -> bool {
-    members.iter().any(|&n| maze.graph.incoming_neighbors(n).any(|nb| reachable_from_start.contains(&nb)))
+fn has_inbound<T: Tessellation>(
+    maze: &Maze<T>,
+    members: &HashSet<NodeId>,
+    reachable_from_start: &HashSet<NodeId>,
+) -> bool {
+    members.iter().any(|&n| {
+        maze.graph
+            .incoming_neighbors(n)
+            .any(|nb| reachable_from_start.contains(&nb))
+    })
 }
 
-fn has_outbound<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>, reachable_to_finish: &HashSet<NodeId>) -> bool {
-    members.iter().any(|&n| maze.graph.outgoing_neighbors(n).any(|nb| reachable_to_finish.contains(&nb)))
+fn has_outbound<T: Tessellation>(
+    maze: &Maze<T>,
+    members: &HashSet<NodeId>,
+    reachable_to_finish: &HashSet<NodeId>,
+) -> bool {
+    members.iter().any(|&n| {
+        maze.graph
+            .outgoing_neighbors(n)
+            .any(|nb| reachable_to_finish.contains(&nb))
+    })
 }
 
-fn bridging_candidates<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>, side: &HashSet<NodeId>, outbound: bool) -> Vec<(NodeId, NodeId)> {
+fn bridging_candidates<T: Tessellation>(
+    maze: &Maze<T>,
+    members: &HashSet<NodeId>,
+    side: &HashSet<NodeId>,
+    outbound: bool,
+) -> Vec<(NodeId, NodeId)> {
     let mut candidates: Vec<(NodeId, NodeId)> = Vec::new();
     for &m in members {
         for neighbor in maze.field.neighbors(m) {
             if !side.contains(&neighbor) {
                 continue;
             }
-            candidates.push(if outbound { (m, neighbor) } else { (neighbor, m) });
+            candidates.push(if outbound {
+                (m, neighbor)
+            } else {
+                (neighbor, m)
+            });
         }
     }
     candidates.sort_unstable();
@@ -183,11 +247,23 @@ fn add_side_with_membership_retry<T: Tessellation>(
     rng: &mut dyn RngCore,
 ) -> bool {
     let side = if outbound {
-        draft.maze.analysis.reachable_to_finish(&draft.maze.graph, &draft.maze.meta).unwrap_or_default()
+        draft
+            .maze
+            .analysis
+            .reachable_to_finish(&draft.maze.graph, &draft.maze.meta)
+            .unwrap_or_default()
     } else {
-        draft.maze.analysis.reachable_from_start(&draft.maze.graph, &draft.maze.meta).unwrap_or_default()
+        draft
+            .maze
+            .analysis
+            .reachable_from_start(&draft.maze.graph, &draft.maze.meta)
+            .unwrap_or_default()
     };
-    let already_has = if outbound { has_outbound(&draft.maze, members, &side) } else { has_inbound(&draft.maze, members, &side) };
+    let already_has = if outbound {
+        has_outbound(&draft.maze, members, &side)
+    } else {
+        has_inbound(&draft.maze, members, &side)
+    };
     if already_has {
         return current_class(&draft.maze, members).is_some();
     }
@@ -212,7 +288,10 @@ fn add_side_with_membership_retry<T: Tessellation>(
         // it here means this candidate merged `members` into the start/finish component (directly
         // or by closing a cycle through the existing graph), which is exactly the failure mode
         // this retry loop exists to route around.
-        if !matches!(current_class(&draft.maze, members), None | Some(RegionClass::Path)) {
+        if !matches!(
+            current_class(&draft.maze, members),
+            None | Some(RegionClass::Path)
+        ) {
             return true;
         }
         let _ = draft.try_remove_edge(from, to, &PresetState::empty());
@@ -223,10 +302,16 @@ fn add_side_with_membership_retry<T: Tessellation>(
 /// The single `RegionClass` every node in `members` currently resolves to, or `None` if
 /// `members` spans more than one class (or is empty) — i.e. `members` isn't a single coherent
 /// region right now.
-fn current_class<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>) -> Option<RegionClass> {
+fn current_class<T: Tessellation>(
+    maze: &Maze<T>,
+    members: &HashSet<NodeId>,
+) -> Option<RegionClass> {
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
-    let result_classes: HashSet<RegionClass> = members.iter()
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
+    let result_classes: HashSet<RegionClass> = members
+        .iter()
         .filter_map(|n| scc.component_of(*n))
         .filter_map(|idx| classes.get(&idx).copied())
         .collect();
@@ -238,7 +323,11 @@ fn current_class<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>) -> 
     Some(only)
 }
 
-pub(super) fn membership_matches<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>, target: RegionClass) -> bool {
+pub(super) fn membership_matches<T: Tessellation>(
+    maze: &Maze<T>,
+    members: &HashSet<NodeId>,
+    target: RegionClass,
+) -> bool {
     current_class(maze, members) == Some(target)
 }
 
@@ -267,7 +356,9 @@ fn try_bridge<T: Tessellation>(
         candidates.swap(i, j);
     }
     for (from, to) in candidates {
-        if draft.maze.graph.edge_between(from, to).is_some() || draft.try_add_directed_edge(from, to, preset_state) {
+        if draft.maze.graph.edge_between(from, to).is_some()
+            || draft.try_add_directed_edge(from, to, preset_state)
+        {
             return Some(members.clone());
         }
     }

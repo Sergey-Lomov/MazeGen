@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
 use crate::Maze;
+use crate::generation::PresetState;
 use crate::graph::EdgeKind;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::generation::PresetState;
+use std::collections::{HashMap, HashSet};
 
 /// Shared param id for how a cycle-breaking strategy treats `VerticalPassage` edges among its
 /// cut candidates — see `Specs/repair.md`. Used by both `InvalidLoopRandomStrategy` and
@@ -14,8 +14,11 @@ pub(super) const VERTICAL_PASSAGE_PRIORITIZED: &str = "prioritized";
 pub(super) const VERTICAL_PASSAGE_NEUTRAL: &str = "neutral";
 pub(super) const VERTICAL_PASSAGE_PROTECTED: &str = "protected";
 
-pub(super) static VERTICAL_PASSAGE_PRIORITY_OPTIONS: &[&str] =
-    &[VERTICAL_PASSAGE_PRIORITIZED, VERTICAL_PASSAGE_NEUTRAL, VERTICAL_PASSAGE_PROTECTED];
+pub(super) static VERTICAL_PASSAGE_PRIORITY_OPTIONS: &[&str] = &[
+    VERTICAL_PASSAGE_PRIORITIZED,
+    VERTICAL_PASSAGE_NEUTRAL,
+    VERTICAL_PASSAGE_PROTECTED,
+];
 
 /// Narrows `candidates` (already preset/already-cut filtered by `candidate_edges`) by
 /// `vertical_passage_priority`: `prioritized` keeps only the `VerticalPassage` candidates when at
@@ -29,10 +32,16 @@ pub(super) fn apply_vertical_passage_priority<T: Tessellation>(
 ) -> Vec<EdgeId> {
     match priority {
         VERTICAL_PASSAGE_PRIORITIZED => {
-            let vertical: Vec<EdgeId> = candidates.iter().copied()
+            let vertical: Vec<EdgeId> = candidates
+                .iter()
+                .copied()
                 .filter(|&id| is_vertical_passage(maze, id))
                 .collect();
-            if vertical.is_empty() { candidates } else { vertical }
+            if vertical.is_empty() {
+                candidates
+            } else {
+                vertical
+            }
         }
         VERTICAL_PASSAGE_PROTECTED => {
             candidates.retain(|&id| !is_vertical_passage(maze, id));
@@ -43,7 +52,9 @@ pub(super) fn apply_vertical_passage_priority<T: Tessellation>(
 }
 
 fn is_vertical_passage<T: Tessellation>(maze: &Maze<T>, id: EdgeId) -> bool {
-    maze.graph.edge(id).is_some_and(|edge| edge.kind == EdgeKind::VerticalPassage)
+    maze.graph
+        .edge(id)
+        .is_some_and(|edge| edge.kind == EdgeKind::VerticalPassage)
 }
 
 /// Maps each edge to the indices (into `all`) of every cycle that contains it. Used to find,
@@ -67,7 +78,9 @@ pub(super) fn discard_cycles_with_edge(
     owners: &HashMap<EdgeId, Vec<usize>>,
     edge_id: EdgeId,
 ) {
-    let Some(owned) = owners.get(&edge_id) else { return };
+    let Some(owned) = owners.get(&edge_id) else {
+        return;
+    };
     pending.retain(|idx| !owned.contains(idx));
 }
 
@@ -83,7 +96,9 @@ pub(super) fn candidate_edges<T: Tessellation>(
     preset_state: &PresetState,
     already_cut: &HashSet<EdgeId>,
 ) -> Vec<EdgeId> {
-    cycle.iter().copied()
+    cycle
+        .iter()
+        .copied()
         .filter(|id| maze.graph.edge(*id).is_some())
         .filter(|id| !already_cut.contains(id))
         .filter(|&id| {
@@ -96,17 +111,24 @@ pub(super) fn candidate_edges<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Graph, EdgeKind};
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::IdGenerator;
+    use crate::graph::{EdgeKind, Graph};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     fn make_maze_and_edges(n: usize) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         let mut edge_ids = Vec::new();
         for i in 0..n - 1 {
             edge_ids.push(graph.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic));
@@ -136,7 +158,11 @@ mod tests {
         let owners = edge_to_cycles_map(&all);
         let mut pending = vec![0, 1, 2];
         discard_cycles_with_edge(&mut pending, &owners, 2);
-        assert_eq!(pending, vec![2], "cycles 0 and 1 both contain edge 2 -> both dropped");
+        assert_eq!(
+            pending,
+            vec![2],
+            "cycles 0 and 1 both contain edge 2 -> both dropped"
+        );
     }
 
     #[test]
@@ -186,8 +212,15 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         let mut edge_ids = Vec::new();
         for (i, &kind) in kinds.iter().enumerate() {
             edge_ids.push(graph.add_edge(nodes[i], nodes[i + 1], kind));
@@ -197,22 +230,27 @@ mod tests {
 
     #[test]
     fn vertical_priority_prioritized_keeps_only_vertical_when_present() {
-        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
-        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
+        let (maze, edges) =
+            make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
+        let narrowed =
+            apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
         assert_eq!(narrowed, vec![edges[1]]);
     }
 
     #[test]
     fn vertical_priority_prioritized_falls_back_to_full_pool_when_no_vertical() {
         let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::Teleport]);
-        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
+        let narrowed =
+            apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
         assert_eq!(narrowed, edges);
     }
 
     #[test]
     fn vertical_priority_protected_drops_vertical_candidates() {
-        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
-        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PROTECTED);
+        let (maze, edges) =
+            make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
+        let narrowed =
+            apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PROTECTED);
         assert_eq!(narrowed, vec![edges[0], edges[2]]);
     }
 
@@ -226,7 +264,8 @@ mod tests {
     #[test]
     fn vertical_priority_neutral_leaves_pool_untouched() {
         let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage]);
-        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_NEUTRAL);
+        let narrowed =
+            apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_NEUTRAL);
         assert_eq!(narrowed, edges);
     }
 

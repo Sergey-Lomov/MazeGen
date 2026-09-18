@@ -1,5 +1,7 @@
+use crate::quality_control::issue::{
+    IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement, REGION_NEEDS_EXPANSION,
+};
 use std::collections::HashMap;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REGION_NEEDS_EXPANSION};
 
 /// Produced by any check that flags an SCC region as needing expansion for a check-specific
 /// reason (currently `MinRegionSizeCheck`/`MinRegionRatioCheck`; future checks may flag a region
@@ -19,14 +21,26 @@ pub struct RegionNeedsExpansionIssue {
 }
 
 impl RegionNeedsExpansionIssue {
-    pub fn new_from_check(source_check: &str, invalid: Vec<usize>, invalid_sources: HashMap<usize, Vec<String>>) -> Self {
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+    pub fn new_from_check(
+        source_check: &str,
+        invalid: Vec<usize>,
+        invalid_sources: HashMap<usize, Vec<String>>,
+    ) -> Self {
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     /// For synthetic issues built by a parent `RepairStrategy` (e.g. `ReduceSccCountStrategy`)
     /// for a nested-strategy call — no source check.
     pub fn synthetic(invalid: Vec<usize>) -> Self {
-        Self { meta: IssueMeta::new(), invalid, invalid_sources: HashMap::new() }
+        Self {
+            meta: IssueMeta::new(),
+            invalid,
+            invalid_sources: HashMap::new(),
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -51,7 +65,12 @@ impl IssueMerge for RegionNeedsExpansionIssue {
     /// index means the same region on both sides.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+        super::merge_id_sets(
+            &mut self.invalid,
+            &mut self.invalid_sources,
+            other.invalid,
+            other.invalid_sources,
+        );
     }
 }
 
@@ -62,7 +81,10 @@ mod tests {
     fn issue(source_check: &str, invalid: Vec<usize>) -> RegionNeedsExpansionIssue {
         let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(source_check.to_string());
+            invalid_sources
+                .entry(idx)
+                .or_default()
+                .push(source_check.to_string());
         }
         RegionNeedsExpansionIssue::new_from_check(source_check, invalid, invalid_sources)
     }
@@ -84,8 +106,15 @@ mod tests {
         let b = issue("min_region_ratio", vec![0]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same region index found by both checks must not be duplicated");
-        let sources = a.invalid_sources.get(&0).expect("region 0 must have recorded sources");
+        assert_eq!(
+            a.invalid,
+            vec![0],
+            "the same region index found by both checks must not be duplicated"
+        );
+        let sources = a
+            .invalid_sources
+            .get(&0)
+            .expect("region 0 must have recorded sources");
         assert!(sources.contains(&"min_region_size".to_string()));
         assert!(sources.contains(&"min_region_ratio".to_string()));
     }

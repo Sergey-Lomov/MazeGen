@@ -1,10 +1,10 @@
-use rand::RngCore;
+use super::elevator_core::elevator_groups;
 use crate::Maze;
-use crate::space::Tessellation;
 use crate::graph::cycles::density_per_100;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidElevatorGroupIssue, ElevatorNodes};
-use super::elevator_core::elevator_groups;
+use crate::quality_control::{ElevatorNodes, InvalidElevatorGroupIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const MAX_ELEVATOR_DENSITY_DEFAULT: f64 = 30.0;
 
@@ -23,22 +23,38 @@ pub struct MaxElevatorDensityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidElevatorGroupIssue> for MaxElevatorDensityCheck {
-    fn check_type_id(&self) -> &'static str { "max_elevator_density" }
+    fn check_type_id(&self) -> &'static str {
+        "max_elevator_density"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidElevatorGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidElevatorGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }
-        let elevators: Vec<ElevatorNodes> = elevator_groups(maze).into_iter()
+        let elevators: Vec<ElevatorNodes> = elevator_groups(maze)
+            .into_iter()
             .map(|e| ElevatorNodes::new(e.stops))
             .collect();
         let to_remove = Self::to_remove_for(elevators.len(), field_cells, self.max_density);
         if to_remove == 0 {
             return;
         }
-        let issue = InvalidElevatorGroupIssue::new_from_check(&self.instance_id, vec![(elevators, to_remove)])
-            .with_detail(&self.instance_id, "max_elevator_density", self.max_density.to_string());
+        let issue = InvalidElevatorGroupIssue::new_from_check(
+            &self.instance_id,
+            vec![(elevators, to_remove)],
+        )
+        .with_detail(
+            &self.instance_id,
+            "max_elevator_density",
+            self.max_density.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -56,10 +72,10 @@ impl MaxElevatorDensityCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "max_elevator_density";
 
@@ -71,10 +87,14 @@ mod tests {
     fn maze_with_elevators(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         for x in 0..count as i32 {
             let b = mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
             let t = mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
@@ -88,27 +108,42 @@ mod tests {
     fn fires_and_flags_every_elevator_when_density_exceeds_max() {
         // 3 elevators / 20 cells = 15% density.
         let maze = maze_with_elevators(3);
-        let check = MaxElevatorDensityCheck { instance_id: TEST_ID.to_string(), max_density: 10.0 };
+        let check = MaxElevatorDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 10.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].groups[0].0.len(), 3);
-        assert_eq!(issues[0].groups[0].1, 1, "collapsing 1 elevator brings density to 10%, at the max");
+        assert_eq!(
+            issues[0].groups[0].1, 1,
+            "collapsing 1 elevator brings density to 10%, at the max"
+        );
     }
 
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_elevators(2);
-        let check = MaxElevatorDensityCheck { instance_id: TEST_ID.to_string(), max_density: 10.0 };
+        let check = MaxElevatorDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 10.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "10% density must not fire against a max of 10");
+        assert!(
+            issues.is_empty(),
+            "10% density must not fire against a max of 10"
+        );
     }
 
     #[test]
     fn silent_when_no_elevators() {
         let maze = maze_with_elevators(0);
-        let check = MaxElevatorDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0.0 };
+        let check = MaxElevatorDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 0.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -118,10 +153,14 @@ mod tests {
     fn maze_with_300_of_1000_elevators() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         for x in 0..300 {
             let b = mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
             let t = mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
@@ -137,15 +176,31 @@ mod tests {
         // must fire (density exceeds it fractionally) -- pins that the gate compares the true
         // density, not one rounded to a whole percentage first.
         let maze = maze_with_300_of_1000_elevators();
-        let check = MaxElevatorDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.1 };
+        let check = MaxElevatorDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 30.1,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "30% density must not exceed a fractional maximum of 30.1");
+        assert!(
+            issues.is_empty(),
+            "30% density must not exceed a fractional maximum of 30.1"
+        );
 
-        let check = MaxElevatorDensityCheck { instance_id: TEST_ID.to_string(), max_density: 29.9 };
+        let check = MaxElevatorDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            max_density: 29.9,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "30% density must exceed a fractional maximum of 29.9");
-        assert_eq!(issues[0].groups[0].1, 1, "target_count=round(29.9*1000/100)=299, to_remove=300-299=1");
+        assert_eq!(
+            issues.len(),
+            1,
+            "30% density must exceed a fractional maximum of 29.9"
+        );
+        assert_eq!(
+            issues[0].groups[0].1, 1,
+            "target_count=round(29.9*1000/100)=299, to_remove=300-299=1"
+        );
     }
 }

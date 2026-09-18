@@ -1,11 +1,11 @@
-use rand::RngCore;
+use super::elevator_core::{elevator_groups, stop_floors};
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::quality_control::InvalidElevatorIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::InvalidElevatorIssue;
 use crate::quality_control::issue_kinds::ElevatorNodes;
-use super::elevator_core::{elevator_groups, stop_floors};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const ELEVATOR_STOP_COUNT_DEFAULT: u32 = 2;
 pub const ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -22,19 +22,34 @@ pub struct ElevatorStopCountCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidElevatorIssue> for ElevatorStopCountCheck {
-    fn check_type_id(&self) -> &'static str { "elevator_stop_count" }
+    fn check_type_id(&self) -> &'static str {
+        "elevator_stop_count"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidElevatorIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let mut invalid: Vec<ElevatorNodes> = elevator_groups(maze).into_iter()
-            .filter(|elevator| self.comparison.compare(stop_floors(elevator, maze).len() as u32, self.count))
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidElevatorIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
+        let mut invalid: Vec<ElevatorNodes> = elevator_groups(maze)
+            .into_iter()
+            .filter(|elevator| {
+                self.comparison
+                    .compare(stop_floors(elevator, maze).len() as u32, self.count)
+            })
             .map(|elevator| ElevatorNodes::new(elevator.stops))
             .collect();
         if invalid.is_empty() {
             return;
         }
         invalid.sort();
-        let issue = InvalidElevatorIssue::new_from_check(&self.instance_id, invalid)
-            .with_detail(&self.instance_id, "count", self.count.to_string());
+        let issue = InvalidElevatorIssue::new_from_check(&self.instance_id, invalid).with_detail(
+            &self.instance_id,
+            "count",
+            self.count.to_string(),
+        );
         issues.push(issue);
     }
 }
@@ -42,10 +57,10 @@ impl<T: Tessellation> Check<T, InvalidElevatorIssue> for ElevatorStopCountCheck 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "elevator_stop_count";
 
@@ -57,11 +72,18 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         (Maze::new(mf, g), nodes)
     }
 
@@ -77,7 +99,11 @@ mod tests {
     #[test]
     fn silent_when_no_elevators() {
         let (maze, _nodes) = three_floor_maze();
-        let check = ElevatorStopCountCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, count: 2 };
+        let check = ElevatorStopCountCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            count: 2,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -87,7 +113,11 @@ mod tests {
     fn lt_flags_an_elevator_with_too_few_stops() {
         let (mut maze, nodes) = three_floor_maze();
         connect_fan(&mut maze, &nodes[0..2]);
-        let check = ElevatorStopCountCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, count: 3 };
+        let check = ElevatorStopCountCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            count: 3,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -98,7 +128,11 @@ mod tests {
     fn lt_silent_when_stop_count_meets_threshold() {
         let (mut maze, nodes) = three_floor_maze();
         connect_fan(&mut maze, &nodes);
-        let check = ElevatorStopCountCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, count: 3 };
+        let check = ElevatorStopCountCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            count: 3,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -108,7 +142,11 @@ mod tests {
     fn gt_flags_an_elevator_with_too_many_stops() {
         let (mut maze, nodes) = three_floor_maze();
         connect_fan(&mut maze, &nodes);
-        let check = ElevatorStopCountCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, count: 2 };
+        let check = ElevatorStopCountCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Gt,
+            count: 2,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -119,19 +157,33 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let a: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
-        let b: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let a: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
+        let b: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap())
+            .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g.clone());
         connect_fan(&mut maze, &a);
         // b only gets 2 stops, a gets all 3.
         maze.graph.add_edge(b[0], b[1], EdgeKind::Elevator);
         maze.graph.add_edge(b[1], b[0], EdgeKind::Elevator);
 
-        let check = ElevatorStopCountCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, count: 3 };
+        let check = ElevatorStopCountCheck {
+            instance_id: TEST_ID.to_string(),
+            comparison: Comparison::Lt,
+            count: 3,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);

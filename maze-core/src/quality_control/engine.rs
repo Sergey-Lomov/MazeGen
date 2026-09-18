@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-use rand::RngCore;
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::generation::PresetState;
-use crate::generation::pipeline::{RepairLimits, GenerationTiming};
-use crate::event_log::EventLog;
-use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue};
 use super::event::QcEvent;
 use super::issue::Issue;
-use super::stage::{Stage, StageOutcome, RuleTimingAcc, stage_node};
+use super::stage::{RuleTimingAcc, Stage, StageOutcome, stage_node};
+use crate::Maze;
+use crate::event_log::EventLog;
+use crate::generation::PresetState;
+use crate::generation::pipeline::{GenerationTiming, RepairLimits};
+use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 /// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
 /// `iterations_done`/`start_ms` are NOT reset per stage (see `Specs/repair.md`'s "Stages and the
@@ -24,13 +24,21 @@ pub(crate) struct RepairBudget {
 
 impl RepairBudget {
     fn new(limits: RepairLimits, now_ms: &impl Fn() -> f64) -> Self {
-        Self { limits, iterations_done: 0, start_ms: now_ms(), limit_reached: None }
+        Self {
+            limits,
+            iterations_done: 0,
+            start_ms: now_ms(),
+            limit_reached: None,
+        }
     }
 
     /// `Some(kind)` for the first bound that has already been exhausted (max_iterations checked
     /// before time_budget, matching the pre-#106 flat pipeline's check order), `None` if neither
     /// bound is configured or both still have room.
-    pub(crate) fn exhausted(&self, now_ms: &(impl Fn() -> f64 + ?Sized)) -> Option<RepairLimitKind> {
+    pub(crate) fn exhausted(
+        &self,
+        now_ms: &(impl Fn() -> f64 + ?Sized),
+    ) -> Option<RepairLimitKind> {
         if let Some(max) = self.limits.max_iterations() {
             if self.iterations_done >= max {
                 return Some(RepairLimitKind::MaxIterations);
@@ -86,16 +94,30 @@ impl<T: Tessellation> QualityControlEngine<T> {
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
-        let (budget, mut repair_timing, iterations) = self.run_repair_stages(maze, rng, preset_state, limits, &now_ms, event_log.as_deref_mut(), debug_state.as_deref_mut());
+        let (budget, mut repair_timing, iterations) = self.run_repair_stages(
+            maze,
+            rng,
+            preset_state,
+            limits,
+            &now_ms,
+            event_log.as_deref_mut(),
+            debug_state.as_deref_mut(),
+        );
 
         let mut remaining = self.collect_final_report(maze, rng, &mut repair_timing, &now_ms);
         if let Some(limit) = budget.limit_reached {
             remaining.push(Box::new(RepairLimitReachedIssue::new(limit)));
         }
-        timing.qc = self.stages.iter()
+        timing.qc = self
+            .stages
+            .iter()
             .filter_map(|stage| {
                 let rules = repair_timing.remove(&stage.id)?;
-                stage_node(&stage.id, rules, iterations.get(&stage.id).copied().unwrap_or(0))
+                stage_node(
+                    &stage.id,
+                    rules,
+                    iterations.get(&stage.id).copied().unwrap_or(0),
+                )
             })
             .collect();
         (remaining, timing)
@@ -105,7 +127,12 @@ impl<T: Tessellation> QualityControlEngine<T> {
     /// problem instance). Replaces both the pre-#106 final-report pass inside `build_maze`
     /// (`run_report_timed`) and `build_analytics_snapshot`'s plain `run` call — issue #106
     /// unifies these into one code path with one semantics.
-    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Box<dyn Issue>> {
+    pub fn run_check_only(
+        &self,
+        maze: &Maze<T>,
+        rng: &mut dyn RngCore,
+        now_ms: impl Fn() -> f64,
+    ) -> Vec<Box<dyn Issue>> {
         let mut timing_out = HashMap::new();
         self.collect_final_report(maze, rng, &mut timing_out, &now_ms)
     }
@@ -127,19 +154,40 @@ impl<T: Tessellation> QualityControlEngine<T> {
         now_ms: &impl Fn() -> f64,
         mut event_log: Option<&mut EventLog<QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
-    ) -> (RepairBudget, HashMap<String, HashMap<String, RuleTimingAcc>>, HashMap<String, u32>) {
+    ) -> (
+        RepairBudget,
+        HashMap<String, HashMap<String, RuleTimingAcc>>,
+        HashMap<String, u32>,
+    ) {
         let mut budget = RepairBudget::new(limits, now_ms);
         let mut timing: HashMap<String, HashMap<String, RuleTimingAcc>> = HashMap::new();
         let mut iterations: HashMap<String, u32> = HashMap::new();
         for stage in &self.stages {
             let stage_timing = timing.entry(stage.id.clone()).or_default();
             let outcome = {
-                let mut stage_scope = event_log.as_deref_mut().map(|log| log.enter(format!("stage {}", stage.id)));
-                stage.run_repair(maze, rng, preset_state, &mut budget, stage_timing, now_ms, stage_scope.as_mut(), debug_state.as_deref_mut())
+                let mut stage_scope = event_log
+                    .as_deref_mut()
+                    .map(|log| log.enter(format!("stage {}", stage.id)));
+                stage.run_repair(
+                    maze,
+                    rng,
+                    preset_state,
+                    &mut budget,
+                    stage_timing,
+                    now_ms,
+                    stage_scope.as_mut(),
+                    debug_state.as_deref_mut(),
+                )
             };
             match outcome {
-                StageOutcome::Done { iterations: n } => { iterations.insert(stage.id.clone(), n); continue; }
-                StageOutcome::LimitReached { kind, iterations: n } => {
+                StageOutcome::Done { iterations: n } => {
+                    iterations.insert(stage.id.clone(), n);
+                    continue;
+                }
+                StageOutcome::LimitReached {
+                    kind,
+                    iterations: n,
+                } => {
                     iterations.insert(stage.id.clone(), n);
                     budget.limit_reached = Some(kind);
                     break;
@@ -192,7 +240,10 @@ mod repair_budget_tests {
         let limits = RepairLimits::new(Some(3), None).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 3;
-        assert_eq!(budget.exhausted(&clock_at(0.0)), Some(RepairLimitKind::MaxIterations));
+        assert_eq!(
+            budget.exhausted(&clock_at(0.0)),
+            Some(RepairLimitKind::MaxIterations)
+        );
     }
 
     #[test]
@@ -206,7 +257,10 @@ mod repair_budget_tests {
     fn time_budget_elapsed_is_exhausted() {
         let limits = RepairLimits::new(None, Some(1.0)).unwrap();
         let budget = RepairBudget::new(limits, &clock_at(0.0));
-        assert_eq!(budget.exhausted(&clock_at(1000.0)), Some(RepairLimitKind::TimeBudget));
+        assert_eq!(
+            budget.exhausted(&clock_at(1000.0)),
+            Some(RepairLimitKind::TimeBudget)
+        );
     }
 
     #[test]
@@ -216,7 +270,10 @@ mod repair_budget_tests {
         let limits = RepairLimits::new(Some(1), Some(1.0)).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 1;
-        assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::MaxIterations));
+        assert_eq!(
+            budget.exhausted(&clock_at(2000.0)),
+            Some(RepairLimitKind::MaxIterations)
+        );
     }
 
     #[test]
@@ -227,7 +284,10 @@ mod repair_budget_tests {
         let limits = RepairLimits::new(Some(100), Some(1.0)).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 1;
-        assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::TimeBudget));
+        assert_eq!(
+            budget.exhausted(&clock_at(2000.0)),
+            Some(RepairLimitKind::TimeBudget)
+        );
     }
 
     #[test]

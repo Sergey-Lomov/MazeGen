@@ -1,17 +1,19 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::{MissingLoopsIssue, Issue, MISSING_LOOPS};
 use crate::generation::PresetState;
-use std::collections::HashMap;
-use crate::repair::params::{StrategyParam, StrategyParamValue, StrategyParams};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
+use crate::quality_control::{Issue, MISSING_LOOPS, MissingLoopsIssue};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::params::{StrategyParam, StrategyParamValue, StrategyParams};
+use crate::repair::result::RepairResult;
 use crate::repair::strategies::standard_add_params::{
-    RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM, PARAM_RESERVE_PERCENT, PARAM_ATTEMPTS_LIMIT,
+    ATTEMPTS_LIMIT_PARAM, PARAM_ATTEMPTS_LIMIT, PARAM_RESERVE_PERCENT, RESERVE_PERCENT_PARAM,
 };
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 /// Slot id for the nested missing-loops strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Its own constant, deliberately not
@@ -21,9 +23,13 @@ use crate::repair::strategies::standard_add_params::{
 /// `PriorityRegionMergeStrategy`/`WeightedRegionMergeStrategy`'s `merge_target`.
 pub const SLOT_LOOP_SEED_TARGET: &str = "loop_seed_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_LOOP_SEED_TARGET, kind: MISSING_LOOPS, min: 1, max: None, dispatch_kind: NestedDispatchKind::Priority },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_LOOP_SEED_TARGET,
+    kind: MISSING_LOOPS,
+    min: 1,
+    max: None,
+    dispatch_kind: NestedDispatchKind::Priority,
+}];
 
 /// Only the shared standard add block — this dispatcher has no strategy-specific knob of its own.
 /// `src_mode` is deliberately excluded: it belongs to each nested strategy, not the dispatcher.
@@ -52,7 +58,9 @@ static PARAMS: [StrategyParam; 2] = [RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM
 pub struct PriorityMissingLoopsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLoopsStrategy {
-    fn strategy_id(&self) -> &'static str { "priority_missing_loops" }
+    fn strategy_id(&self) -> &'static str {
+        "priority_missing_loops"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &PARAMS
@@ -78,8 +86,10 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
         // Defensive runtime filter, not the primary validation: `maze-runner`'s `build_nested`
         // already guarantees every entry in `nested` fills a slot this strategy actually
         // declared. This filter only protects direct `apply()` calls made outside the runner.
-        let candidates: Vec<&NestedStrategyConfig<T>> =
-            nested.iter().filter(|n| n.slot.slot_id == SLOT_LOOP_SEED_TARGET).collect();
+        let candidates: Vec<&NestedStrategyConfig<T>> = nested
+            .iter()
+            .filter(|n| n.slot.slot_id == SLOT_LOOP_SEED_TARGET)
+            .collect();
         if candidates.is_empty() {
             return (RepairResult::Failed, vec![]);
         }
@@ -95,7 +105,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
             inherited.insert(PARAM_ATTEMPTS_LIMIT.to_string(), v.to_string());
         }
 
-        dispatch_priority(issue as &dyn Issue, maze, rng, preset_state, &candidates, &inherited)
+        dispatch_priority(
+            issue as &dyn Issue,
+            maze,
+            rng,
+            preset_state,
+            &candidates,
+            &inherited,
+        )
     }
 }
 
@@ -104,36 +121,55 @@ crate::impl_erased_repair_strategy!(PriorityMissingLoopsStrategy, MissingLoopsIs
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
-    use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+    use crate::graph::Graph;
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
+    use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::repair::strategies::{MissingLoopsRandomStrategy, MissingLoopsSplitStrategy};
     use crate::repair::strategy::ErasedRepairStrategy;
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use rand::SeedableRng;
     use std::collections::HashMap;
-    use crate::repair::strategies::test_utils::apply_and_commit;
 
     fn no_params() -> StrategyParams {
-        build_params(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy), None)
+        build_params(
+            <PriorityMissingLoopsStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingLoopsIssue,
+            >>::params(&PriorityMissingLoopsStrategy),
+            None,
+        )
     }
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         Maze::new(field, g)
     }
 
     fn missing_issue(missing: u32) -> MissingLoopsIssue {
-        let entries = if missing == 0 { vec![] } else { vec![(crate::quality_control::RepairArea::WholeMaze, missing)] };
+        let entries = if missing == 0 {
+            vec![]
+        } else {
+            vec![(crate::quality_control::RepairArea::WholeMaze, missing)]
+        };
         MissingLoopsIssue::new_from_check("test", entries)
     }
 
-    fn nested_with(strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>) -> NestedStrategyConfig<SquareTessellation> {
-        NestedStrategyConfig { slot: &NESTED_SLOTS[0], strategy, param_overrides: HashMap::new(), nested: vec![] }
+    fn nested_with(
+        strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>,
+    ) -> NestedStrategyConfig<SquareTessellation> {
+        NestedStrategyConfig {
+            slot: &NESTED_SLOTS[0],
+            strategy,
+            param_overrides: HashMap::new(),
+            nested: vec![],
+        }
     }
 
     #[test]
@@ -143,10 +179,22 @@ mod tests {
         let mut rng_a = MazeRng::seed_from_u64(1);
         let mut rng_b = MazeRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
-        assert_eq!(rng_a.next_u64(), rng_b.next_u64(), "rng must not be consumed on the no-deficit idempotency path");
+        assert_eq!(
+            rng_a.next_u64(),
+            rng_b.next_u64(),
+            "rng must not be consumed on the no-deficit idempotency path"
+        );
     }
 
     #[test]
@@ -154,7 +202,15 @@ mod tests {
         let mut maze = maze_grid(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -164,9 +220,20 @@ mod tests {
         let issue = missing_issue(2);
         let mut rng = MazeRng::seed_from_u64(42);
         let nested = vec![nested_with(Box::new(MissingLoopsRandomStrategy))];
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert!(maze.graph.edges().count() > 0, "delegate must have actually added connections");
+        assert!(
+            maze.graph.edges().count() > 0,
+            "delegate must have actually added connections"
+        );
     }
 
     #[test]
@@ -181,8 +248,15 @@ mod tests {
         let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let mut preset_state = PresetState::empty();
@@ -193,16 +267,32 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![
             nested_with(Box::new(MissingLoopsRandomStrategy)),
-            nested_with(Box::new(MissingLoopsSplitStrategy { config: Default::default() })),
+            nested_with(Box::new(MissingLoopsSplitStrategy {
+                config: Default::default(),
+            })),
         ];
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &nested);
-        assert!(matches!(result, RepairResult::Failed), "both candidates must fail on a fixture with no feasible connection and no split tiles");
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &preset_state,
+            &nested,
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "both candidates must fail on a fixture with no feasible connection and no split tiles"
+        );
         assert_eq!(maze.graph.edges().count(), 0);
     }
 
     fn params_with(overrides: &HashMap<String, String>) -> StrategyParams {
         build_params(
-            <PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy),
+            <PriorityMissingLoopsStrategy as RepairStrategy<
+                SquareTessellation,
+                MissingLoopsIssue,
+            >>::params(&PriorityMissingLoopsStrategy),
             Some(overrides),
         )
     }
@@ -218,9 +308,21 @@ mod tests {
         overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "50".to_string());
         let mut rng = MazeRng::seed_from_u64(42);
         let nested = vec![nested_with(Box::new(MissingLoopsRandomStrategy))];
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &params_with(&overrides), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&overrides),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert_eq!(maze.graph.edges().count(), 6, "dispatcher-owned reserve_percent must govern the nested build target");
+        assert_eq!(
+            maze.graph.edges().count(),
+            6,
+            "dispatcher-owned reserve_percent must govern the nested build target"
+        );
     }
 
     #[test]
@@ -237,9 +339,21 @@ mod tests {
             param_overrides: stale,
             nested: vec![],
         }];
-        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        assert_eq!(maze.graph.edges().count(), 4, "stale nested reserve_percent must be stripped; dispatcher default 0% wins");
+        assert_eq!(
+            maze.graph.edges().count(),
+            4,
+            "stale nested reserve_percent must be stripped; dispatcher default 0% wins"
+        );
     }
 
     #[test]
@@ -249,12 +363,28 @@ mod tests {
         let mut maze_a = maze_grid(4);
         let mut rng_a = MazeRng::seed_from_u64(123);
         let nested_a = vec![nested_with(Box::new(MissingLoopsRandomStrategy))];
-        apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &nested_a);
+        apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze_a,
+            &mut rng_a,
+            &no_params(),
+            &PresetState::empty(),
+            &nested_a,
+        );
 
         let mut maze_b = maze_grid(4);
         let mut rng_b = MazeRng::seed_from_u64(123);
         let nested_b = vec![nested_with(Box::new(MissingLoopsRandomStrategy))];
-        apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &nested_b);
+        apply_and_commit(
+            &PriorityMissingLoopsStrategy,
+            &issue,
+            &mut maze_b,
+            &mut rng_b,
+            &no_params(),
+            &PresetState::empty(),
+            &nested_b,
+        );
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();

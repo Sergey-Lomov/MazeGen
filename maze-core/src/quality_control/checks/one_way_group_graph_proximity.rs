@@ -1,14 +1,16 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, min_optional_distance, DistanceDirection};
+use crate::graph::distance_map::{
+    DistanceDirection, compute_distance_map_filtered_bounded, min_optional_distance,
+};
 use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_edge_on_route;
 use crate::ids::EdgeId;
-use crate::space::Tessellation;
+use crate::quality_control::InvalidOneWayGroupIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
-use crate::quality_control::{InvalidOneWayGroupIssue};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 pub const ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -49,7 +51,12 @@ struct DirectedDistanceCache<'a> {
 
 impl<'a> DirectedDistanceCache<'a> {
     fn new(nav: &'a crate::graph::nav::NavGraph, max_dist: usize) -> Self {
-        Self { nav, max_dist, forward: HashMap::new(), reverse: HashMap::new() }
+        Self {
+            nav,
+            max_dist,
+            forward: HashMap::new(),
+            reverse: HashMap::new(),
+        }
     }
 
     fn is_not_teleport_hop(edge: &NavEdge) -> bool {
@@ -61,21 +68,52 @@ impl<'a> DirectedDistanceCache<'a> {
             return Some(0);
         }
         let max_dist = self.max_dist;
-        let fwd = self.forward.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(e), max_dist))
-            .get(&b).copied();
-        let rev = self.reverse.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(e), max_dist))
-            .get(&b).copied();
+        let fwd = self
+            .forward
+            .entry(a)
+            .or_insert_with(|| {
+                compute_distance_map_filtered_bounded(
+                    self.nav,
+                    a,
+                    DistanceDirection::Forward,
+                    |e| Self::is_not_teleport_hop(e),
+                    max_dist,
+                )
+            })
+            .get(&b)
+            .copied();
+        let rev = self
+            .reverse
+            .entry(a)
+            .or_insert_with(|| {
+                compute_distance_map_filtered_bounded(
+                    self.nav,
+                    a,
+                    DistanceDirection::Reverse,
+                    |e| Self::is_not_teleport_hop(e),
+                    max_dist,
+                )
+            })
+            .get(&b)
+            .copied();
         min_optional_distance(fwd, rev)
     }
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProximityCheck {
-    fn check_type_id(&self) -> &'static str { "one_way_group_graph_proximity" }
+    fn check_type_id(&self) -> &'static str {
+        "one_way_group_graph_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let one_ways: Vec<(EdgeId, crate::ids::NodeId, crate::ids::NodeId)> = one_way_edges_with_endpoints(maze);
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidOneWayGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
+        let one_ways: Vec<(EdgeId, crate::ids::NodeId, crate::ids::NodeId)> =
+            one_way_edges_with_endpoints(maze);
         if one_ways.len() < 2 {
             return;
         }
@@ -89,7 +127,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
         let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &one_ways {
-            let own_navs: Vec<NavNodeId> = [own_from, own_to].into_iter()
+            let own_navs: Vec<NavNodeId> = [own_from, own_to]
+                .into_iter()
                 .filter_map(|n| nav.nav_node_for(n))
                 .collect();
             if own_navs.is_empty() {
@@ -100,14 +139,16 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
                 if other_id == own_id {
                     continue;
                 }
-                let other_navs: Vec<NavNodeId> = [other_from, other_to].into_iter()
+                let other_navs: Vec<NavNodeId> = [other_from, other_to]
+                    .into_iter()
                     .filter_map(|n| nav.nav_node_for(n))
                     .collect();
                 if other_navs.is_empty() {
                     continue;
                 }
 
-                let closest = own_navs.iter()
+                let closest = own_navs
+                    .iter()
                     .flat_map(|&a| other_navs.iter().map(move |&b| (a, b)))
                     .filter_map(|(a, b)| dist_cache.distance(a, b))
                     .min();
@@ -131,8 +172,11 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
         if groups.is_empty() {
             return;
         }
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups).with_detail(
+            &self.instance_id,
+            "distance",
+            self.distance.to_string(),
+        );
         issues.push(issue);
     }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  presetEndpoint, presetEndpointsEqual, presetEndpointIsSplit, presetEndpointKey, presetEndpointToDto,
+  presetEndpoint, presetEndpointsEqual, presetEndpointIsSplit, presetEndpointKey, presetEndpointFromKey, presetEndpointToDto,
   presetEndpointLevelLabel,
 } from "../pixi/presetEndpoint";
 
@@ -63,6 +63,18 @@ describe("presetEndpointToDto", () => {
 
   it("split node — slot field present, renamed from slotId", () => {
     expect(presetEndpointToDto(presetEndpoint([1, 2], 3))).toEqual({ point: [1, 2], slot: 3 });
+  });
+});
+
+describe("presetEndpointFromKey", () => {
+  it("round-trips original and split endpoints, including level", () => {
+    expect(presetEndpointFromKey("1,2")).toEqual(presetEndpoint([1, 2]));
+    expect(presetEndpointFromKey("1,2:3@2")).toEqual(presetEndpoint([1, 2], 3, 2));
+  });
+
+  it("rejects malformed keys instead of producing NaN coordinates", () => {
+    expect(presetEndpointFromKey("1,2:bad")).toBeNull();
+    expect(presetEndpointFromKey("1,2:3@bad")).toBeNull();
   });
 });
 

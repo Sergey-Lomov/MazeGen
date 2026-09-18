@@ -300,7 +300,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `presetStart` | `PresetEndpoint \| null` | Start marker point (+ optional slot) |
 | `presetFinish` | `PresetEndpoint \| null` | Finish marker point (+ optional slot) |
 | `presetGenSource` | `PresetEndpoint \| null` | Generator start point (+ optional slot; overrides `presetStart` in WASM config) |
-| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes, keyed `"x,y"`/`"x,y@level"` (always the original node — see "Multi-floor presets") |
+| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes, keyed by `PresetEndpointKey`: `"x,y"` for the original node, `"x,y:slot"` for a split slot, with optional `@level` |
 | `autoLock` | `boolean` | Whether auto-lock is enabled |
 | `autoLockedNodes` | `Set<string>` | Nodes auto-locked because all their interior edges are preset |
 | `highlightInvalidPresets` | `boolean` | Whether to draw the invalid highlight overlay |
@@ -366,15 +366,15 @@ Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as 
 
 ## Node locking
 
-`lockedNodes: Map<"x,y", NodeLockKind>` stores explicitly locked nodes. `NodeLockKind` is `"in" | "out" | "both"`.
+`lockedNodes: Map<PresetEndpointKey, NodeLockKind>` stores explicitly locked nodes. `NodeLockKind` is `"in" | "out" | "both"`. Lock tools open the split-node picker on a split point, so the selected original node or slot is locked explicitly.
 
 `autoLockedNodes: Set<"x,y">` is recomputed whenever `presetConnections` changes (if `autoLock` is enabled). A node is auto-locked when all its interior edges have a preset entry with `state !== "undefined"`. Edges with `state: "undefined"` are treated as undecided and prevent auto-lock. Auto-locked nodes always use `"both"` kind.
 
-For a declared split point (see "Split nodes" below), auto-lock checks **every one of its nodes** (the original node plus each declared slot), not just the original's own edges — `computeAutoLockedNodes` takes an extra `presetSplitPoints` parameter for this. A point auto-locks only once every one of its nodes has every interior face decided; one node with an undecided/missing face on any side keeps the whole point unlocked, even if another of its nodes already has all its own faces decided.
+For a declared split point (see "Split nodes" below), auto-lock checks **every one of its nodes** (the original node plus each declared slot), not just the original's own edges — `computeAutoLockedNodes` takes an extra `presetSplitPoints` parameter for this. A split point auto-locks only once every one of its nodes has every interior face decided; then an exact key is emitted for each node, so generation locks all split nodes. One node with an undecided/missing face on any side keeps the whole split unlocked.
 
 Both sets are merged when rendering (`buildLocks`) and when checking for isolated nodes (`buildIsolatedCellHighlights`).
 
-**Isolated node**: a node locked `"both"` (manually or via auto-lock) with no non-wall preset on any of its edges. The UI shows a warning and highlights such cells.
+**Isolated node**: a node locked `"both"` (manually or via auto-lock) with no non-wall preset on any of that exact node's edges. Split slots are checked by their full endpoint identity, not merely by the shared point coordinates. The UI shows a warning and highlights such cells.
 
 ## Card status
 
@@ -453,7 +453,7 @@ interface PresetEndpoint {
 
 Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionEntry.from`/`.to`, `PresetTeleportEntry.from`/`.to`, `presetStart`/`presetFinish`/`presetGenSource`. **No slot means the original node only** — this is a deliberate narrowing from the pre-#231 behavior, where a preset with no split-node concept applied to *every* node at a point (see `maze-core`'s `build_preset_state`, GitHub issue #219/#220). A preset explicitly addressing a declared slot now resolves to exactly that node.
 
-`lockedNodes` (the `Map<string, NodeLockKind>` powering the lock tools) is keyed the same way every other preset collection now is (`"x,y"` or `"x,y@level"`, see "Multi-floor presets" below) — locks always address the original node only; there is no lock-tool UI for addressing a specific slot.
+`lockedNodes` (the `Map<string, NodeLockKind>` powering the lock tools) is keyed the same way every other preset collection now is (`"x,y"`, `"x,y:slot"`, with optional `@level`) — locks address the exact original node or slot selected in the split picker.
 
 ## Multi-floor presets (GitHub issue #340)
 
@@ -551,13 +551,13 @@ Deleting the contents of a point used to be one unconditional action (`resetPres
 
 **Split-node row.** Appears in `point_all` scope whenever the point has any declared slot, regardless of whether that slot currently hosts other entities — titled the same way as a `PresetSplitTargetDialog`/cell-inspector row (`"Node N"`, or the semantic shape name for a recognized special topology). Removing it calls `removePresetSplitAll` (see "Split nodes" above): the whole split point is removed at once, its hosted entities migrate onto the original node, its internal edges revert to default.
 
-**Lock row.** Only a manually-set lock (`lockedNodes`) gets a row — an auto-computed one (`autoLockedNodes`) isn't user-removable. Shown only on the point's original node, same rule the status bar uses.
+**Lock row.** Only a manually-set lock (`lockedNodes`) gets a row — an auto-computed one (`autoLockedNodes`) isn't user-removable. The row is attached to the exact original node or split slot it addresses.
 
 **Count-based dispatch** (`requestPresetEntityDelete(point, level, scope, bulk)`). Builds the scoped descriptor list and: 0 entities → no-op; exactly 1 → removes it directly via `removePresetPointEntity` (no dialog — matches the pre-#540 single-entity UX); more than 1 → opens `presetEntityDeletePrompt: { point, level, scope }`. The same count check re-runs after every row removal inside an open dialog, closing it automatically once the scoped list empties. Passing `bulk: true` (shift-held at gesture start, captured once and not re-read mid-drag) skips straight to the old unconditional bulk removal instead of counting: `resetPresetPoint` for `point_all`, or a per-descriptor removal loop for `vertex_markers`.
 
 `presetEntityDeletePrompt` stores only the point/level/scope address, never node indices or a snapshot of the entities — the open dialog rebuilds its list from live state on every render, so a mutation elsewhere (or a row it just removed) is reflected immediately, and if the scoped list goes empty the dialog closes itself.
 
-**Removal.** `removePresetPointEntity(descriptor)` switches on `descriptor.kind` to the existing per-entity mutator (`setPresetStartEndpoint(null)`, `removePresetTeleport(id)`, `removePresetVerticalPassage(id)`, `removePresetElevator(id)`, `removeLockedNode`, `removePresetSplitAll`, or a single-edge revert-to-default). `removeAllPresetPointEntities()` is the dialog's "Delete all": for `point_all` scope it delegates to the legacy `resetPresetPoint` (proven byte-identical to the old one-shot behavior); for `vertex_markers` scope it removes only the entities in that scope's live descriptor list, in a fixed kind-priority order, leaving edges/lock/split_node and any out-of-scope node untouched.
+**Removal.** `removePresetPointEntity(descriptor)` switches on `descriptor.kind` to the existing per-entity mutator (`setPresetStartEndpoint(null)`, `removePresetTeleport(id)`, `removePresetVerticalPassage(id)`, `removePresetElevator(id)`, `removeLockedNode`, `removePresetSplitAll`, or a single-edge revert-to-default). `resetPresetPoint` removes locks from every original/slot node at the point, as well as its other entities. `removeAllPresetPointEntities()` is the dialog's "Delete all": for `point_all` scope it delegates to the legacy `resetPresetPoint` (proven byte-identical to the old one-shot behavior); for `vertex_markers` scope it removes only the entities in that scope's live descriptor list, in a fixed kind-priority order, leaving edges/lock/split_node and any out-of-scope node untouched.
 
 **Mutual exclusion.** Opening `presetEntityDeletePrompt` closes `presetSplitTargetPrompt` and vice versa — the two are never open together. ESC cancels whichever is open (`cancelPresetEntityDelete`/`cancelPresetSplitTarget` are idempotent no-ops on `null`, so one handler can safely call both).
 
@@ -621,7 +621,7 @@ Marker lines shown per node (exact `PresetEndpoint` match via `presetEndpointsEq
 - `Teleport <arrow> (target)` — from `presetTeleports`, direction arrow (`<->`/`->`/`<-`) same convention as post-generation; cross-floor target shows the floor label (`L{n}`), same-floor shows coordinates
 - `Vertical passage <arrow> (L{n})` — from `presetVerticalPassages`, always floor-label target
 - `Elevator (L{a}, L{b}, ...)` — from `presetElevators`, no arrow (always bidirectional), sorted/deduped floor list
-- `Lock (in|out|both)` — from merged `lockedNodes`/`autoLockedNodes` (`"both"` for an auto-locked node), reported **only on the point's original node** (`slotId === undefined`) even for a split point, since locks always address the original node only
+- `Lock (in|out|both)` — from merged `lockedNodes`/`autoLockedNodes` (`"both"` for an auto-locked node), reported on the exact node addressed by the lock
 
 These per-node marker lines are built by `buildPresetNodeMarkerLines`, itself a thin `entities.map(e => e.title)` adapter over `presetVertexMarkerEntities` (see "Entity delete/reset dialog" above) plus the lock line appended separately (locks aren't part of that shared marker-entity set) — the output is unchanged, only the implementation is now shared with the entity-delete dialog.
 

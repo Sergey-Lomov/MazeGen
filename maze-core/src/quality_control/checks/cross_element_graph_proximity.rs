@@ -1,17 +1,19 @@
-use std::collections::HashSet;
-use rand::RngCore;
+use super::cross_element_geometric_proximity::{
+    RawClosePair, aggregate_pairs, elevator_of_stop, route_protected_elements, same_elevator_pair,
+};
+use super::proximity_scan_core::pairwise_graph_proximity_scan;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::nav::NavNodeId;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::check::Check;
-use crate::quality_control::cross_element::{CrossElement, CrossElementSet, cross_element_occurrences};
 use crate::quality_control::InvalidCrossElementGroupIssue;
-use super::proximity_scan_core::pairwise_graph_proximity_scan;
-use super::cross_element_geometric_proximity::{
-    aggregate_pairs, elevator_of_stop, route_protected_elements, same_elevator_pair, RawClosePair,
+use crate::quality_control::check::Check;
+use crate::quality_control::cross_element::{
+    CrossElement, CrossElementSet, cross_element_occurrences,
 };
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashSet;
 
 pub const CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 1;
 
@@ -37,9 +39,17 @@ pub struct CrossElementGraphProximityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGraphProximityCheck {
-    fn check_type_id(&self) -> &'static str { "cross_element_graph_proximity" }
+    fn check_type_id(&self) -> &'static str {
+        "cross_element_graph_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidCrossElementGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidCrossElementGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         if self.set.enabled_count() < 1 {
             return;
         }
@@ -47,8 +57,15 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGr
 
         // Instant-relocation edges are excluded from the traversal — proximity here means "close
         // on foot", not "reachable by teleport/passage/elevator".
-        let hop_pairs: HashSet<(NodeId, NodeId)> = maze.graph.edges()
-            .filter(|e| matches!(e.kind, EdgeKind::Teleport | EdgeKind::VerticalPassage | EdgeKind::Elevator))
+        let hop_pairs: HashSet<(NodeId, NodeId)> = maze
+            .graph
+            .edges()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    EdgeKind::Teleport | EdgeKind::VerticalPassage | EdgeKind::Elevator
+                )
+            })
             .map(|e| (e.from, e.to))
             .collect();
 
@@ -92,8 +109,9 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGr
         if groups.is_empty() {
             return;
         }
-        let issue = InvalidCrossElementGroupIssue::new_from_check(&self.instance_id, groups, close_nodes)
-            .with_detail(&self.instance_id, "distance", self.distance.to_string());
+        let issue =
+            InvalidCrossElementGroupIssue::new_from_check(&self.instance_id, groups, close_nodes)
+                .with_detail(&self.instance_id, "distance", self.distance.to_string());
         issues.push(issue);
     }
 }
@@ -101,10 +119,10 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "cross_element_graph_proximity";
 
@@ -125,7 +143,12 @@ mod tests {
     }
 
     fn check(distance: u32, set: CrossElementSet) -> CrossElementGraphProximityCheck {
-        CrossElementGraphProximityCheck { instance_id: TEST_ID.to_string(), distance, set, protect_route: false }
+        CrossElementGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance,
+            set,
+            protect_route: false,
+        }
     }
 
     /// Single floor corridor of width `w`. A teleport portal between x=0 and x=`w-1`, and a
@@ -133,10 +156,13 @@ mod tests {
     /// is a two-way Basic passage.
     fn corridor_with_teleport_and_one_way(w: usize, ow: i32) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(w, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..w as i32 - 1 {
             if x == ow {
@@ -157,7 +183,11 @@ mod tests {
         let mut issues = Vec::new();
         check(3, set_teleport_one_way()).repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].groups().len(), 1, "one logical pair despite the teleport having two ends and the one-way two endpoints");
+        assert_eq!(
+            issues[0].groups().len(),
+            1,
+            "one logical pair despite the teleport having two ends and the one-way two endpoints"
+        );
     }
 
     #[test]
@@ -176,7 +206,11 @@ mod tests {
         let maze = corridor_with_teleport_and_one_way(8, 5);
         let mut issues = Vec::new();
         check(3, set_teleport_one_way()).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "still one logical pair — the near end is close, aggregation keeps it to one group");
+        assert_eq!(
+            issues.len(),
+            1,
+            "still one logical pair — the near end is close, aggregation keeps it to one group"
+        );
         assert_eq!(issues[0].groups().len(), 1);
     }
 
@@ -185,8 +219,13 @@ mod tests {
         let maze = corridor_with_teleport_and_one_way(7, 1);
         let mut issues = Vec::new();
         let set = CrossElementSet {
-            teleport: false, one_way: false, vertical_passage: false, elevator_stop: false,
-            split: false, start: false, finish: false,
+            teleport: false,
+            one_way: false,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: false,
+            start: false,
+            finish: false,
         };
         check(100, set).repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -197,10 +236,13 @@ mod tests {
         // Two one-ways one hop apart, only `one_way` enabled -> a valid same-type scan (subsumes
         // the old `one_way_group_graph_proximity`).
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic); // one-way x=0->x=1
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -210,22 +252,34 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let set = CrossElementSet {
-            teleport: false, one_way: true, vertical_passage: false, elevator_stop: false,
-            split: false, start: false, finish: false,
+            teleport: false,
+            one_way: true,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: false,
+            start: false,
+            finish: false,
         };
         let mut issues = Vec::new();
         check(3, set).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "two distinct one-ways within the hop threshold -> one same-type pair");
+        assert_eq!(
+            issues.len(),
+            1,
+            "two distinct one-ways within the hop threshold -> one same-type pair"
+        );
         assert_eq!(issues[0].groups().len(), 1);
     }
 
     #[test]
     fn start_and_finish_pair_is_flagged() {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..3 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -236,8 +290,13 @@ mod tests {
         maze.meta.finish = Some(f);
 
         let set = CrossElementSet {
-            teleport: false, one_way: false, vertical_passage: false, elevator_stop: false,
-            split: false, start: true, finish: true,
+            teleport: false,
+            one_way: false,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: false,
+            start: true,
+            finish: true,
         };
         let mut issues = Vec::new();
         check(3, set).repair_check(&maze, &mut issues, &mut rng(), ());
@@ -252,10 +311,13 @@ mod tests {
         // Width-6 corridor. Route: x=0 ->(one-way) x=1 -> x=2 ->(teleport) x=5. Both the one-way
         // and the teleport lie on it. Their occurrences are ~1 hop apart.
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic); // one-way
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -274,7 +336,10 @@ mod tests {
         c.protect_route = true;
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "both elements on the protected route -> pair excluded");
+        assert!(
+            issues.is_empty(),
+            "both elements on the protected route -> pair excluded"
+        );
 
         let mut c = check(5, set);
         c.protect_route = false;
@@ -286,10 +351,13 @@ mod tests {
     #[test]
     fn silent_with_a_single_occurrence() {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let level = mf.single_level_id();
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let s = p(0);
@@ -297,12 +365,20 @@ mod tests {
         maze.meta.start = Some(s);
 
         let set = CrossElementSet {
-            teleport: false, one_way: false, vertical_passage: false, elevator_stop: false,
-            split: false, start: true, finish: true,
+            teleport: false,
+            one_way: false,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: false,
+            start: true,
+            finish: true,
         };
         let mut issues = Vec::new();
         check(100, set).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "only start is set, finish is None -> one occurrence -> nothing to pair");
+        assert!(
+            issues.is_empty(),
+            "only start is set, finish is None -> one occurrence -> nothing to pair"
+        );
     }
 
     #[test]
@@ -316,7 +392,9 @@ mod tests {
         let level = mf.single_level_id();
         mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // second node at the split tile
         let mut g = Graph::new();
-        for n in mf.all_node_ids() { g.add_node(n); }
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
         let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..4 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -329,12 +407,21 @@ mod tests {
         let maze = Maze::new(mf, g);
 
         let set = CrossElementSet {
-            teleport: true, one_way: false, vertical_passage: false, elevator_stop: false,
-            split: true, start: false, finish: false,
+            teleport: true,
+            one_way: false,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: true,
+            start: false,
+            finish: false,
         };
         let mut issues = Vec::new();
         check(3, set).repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "the teleport end at x=0 is within 3 hops of the split tile at x=2");
+        assert_eq!(
+            issues.len(),
+            1,
+            "the teleport end at x=0 is within 3 hops of the split tile at x=2"
+        );
         assert_eq!(issues[0].groups().len(), 1);
     }
 }

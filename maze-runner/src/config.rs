@@ -1,18 +1,23 @@
-use std::collections::HashMap;
-use serde::Deserialize;
-use maze_core::{
-    generation::{GenerationParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection},
-    quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
-    RepairLimits,
-};
-pub use crate::config_dto::{
-    StrategyConfig, CheckInstanceConfig, QcRuleConfig, StageConfig, TessellationType, TessellationConfig,
-    GenerationParamsConfig, ElementsConfigDto,
-    SplitFaceRequirementDto, OneWayDirectionDto, SplitPatternFaceDto, SplitPatternDto, SplitGenerationConfigDto,
-    PresetConnectionStateDto, PresetEndpointDto, PresetConnectionDto, VerticalPassageDirectionDto,
-    PresetVerticalPassageDto, PresetElevatorDto, NodeLockKindDto, LockedNodeDto, InitialGenerationConfig,
-};
 use crate::config_dto::default_level_fields;
+pub use crate::config_dto::{
+    CheckInstanceConfig, ElementsConfigDto, GenerationParamsConfig, InitialGenerationConfig,
+    LockedNodeDto, NodeLockKindDto, OneWayDirectionDto, PresetConnectionDto,
+    PresetConnectionStateDto, PresetElevatorDto, PresetEndpointDto, PresetVerticalPassageDto,
+    QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto, SplitPatternDto,
+    SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig, TessellationType,
+    VerticalPassageDirectionDto,
+};
+use maze_core::{
+    RepairLimits,
+    generation::{
+        ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
+        NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,
+        PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
+    },
+    quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+};
+use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct GenerateConfig {
@@ -80,39 +85,37 @@ impl Default for GenerateConfig {
         Self {
             tessellation: TessellationConfig::default(),
             level_fields: default_level_fields(),
-            stages: vec![
-                StageConfig {
-                    id: "stage_1".to_string(),
-                    name: "Stage 1".to_string(),
-                    rules: vec![
-                        QcRuleConfig {
-                            id: "default_missing_endpoints".to_string(),
-                            checks: vec![CheckInstanceConfig {
-                                local_id: MISSING_ENDPOINTS.as_str().to_string(),
-                                type_id: MISSING_ENDPOINTS.as_str().to_string(),
-                                params: HashMap::new(),
-                            }],
-                            strategy: Some(StrategyConfig {
-                                id: "farthest_endpoints".to_string(),
-                                params: HashMap::new(),
-                                slot_id: None,
-                                nested: vec![],
-                            }),
+            stages: vec![StageConfig {
+                id: "stage_1".to_string(),
+                name: "Stage 1".to_string(),
+                rules: vec![
+                    QcRuleConfig {
+                        id: "default_missing_endpoints".to_string(),
+                        checks: vec![CheckInstanceConfig {
+                            local_id: MISSING_ENDPOINTS.as_str().to_string(),
+                            type_id: MISSING_ENDPOINTS.as_str().to_string(),
                             params: HashMap::new(),
-                        },
-                        QcRuleConfig {
-                            id: "default_unreachable_finish".to_string(),
-                            checks: vec![CheckInstanceConfig {
-                                local_id: UNREACHABLE_FINISH.as_str().to_string(),
-                                type_id: UNREACHABLE_FINISH.as_str().to_string(),
-                                params: HashMap::new(),
-                            }],
-                            strategy: None,
+                        }],
+                        strategy: Some(StrategyConfig {
+                            id: "farthest_endpoints".to_string(),
                             params: HashMap::new(),
-                        },
-                    ],
-                },
-            ],
+                            slot_id: None,
+                            nested: vec![],
+                        }),
+                        params: HashMap::new(),
+                    },
+                    QcRuleConfig {
+                        id: "default_unreachable_finish".to_string(),
+                        checks: vec![CheckInstanceConfig {
+                            local_id: UNREACHABLE_FINISH.as_str().to_string(),
+                            type_id: UNREACHABLE_FINISH.as_str().to_string(),
+                            params: HashMap::new(),
+                        }],
+                        strategy: None,
+                        params: HashMap::new(),
+                    },
+                ],
+            }],
             repair_max_iterations: default_repair_max_iterations(),
             repair_time_budget_secs: default_repair_time_budget_secs(),
             initial: InitialGenerationConfig::default(),
@@ -152,51 +155,80 @@ pub fn build_repair_limits(config: &GenerateConfig) -> Result<RepairLimits, Stri
 
 pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
     let algorithm = match &config.initial {
-        InitialGenerationConfig::CustomVertexBased(p) =>
-            GenerationAlgorithm::CustomVertexBased(build_gen_params(p)),
-        InitialGenerationConfig::RecursiveBacktracker =>
-            GenerationAlgorithm::RecursiveBacktracker,
-        InitialGenerationConfig::WilsonAlgorithm =>
-            GenerationAlgorithm::WilsonAlgorithm,
-        InitialGenerationConfig::KruskalAlgorithm =>
-            GenerationAlgorithm::KruskalAlgorithm,
+        InitialGenerationConfig::CustomVertexBased(p) => {
+            GenerationAlgorithm::CustomVertexBased(build_gen_params(p))
+        }
+        InitialGenerationConfig::RecursiveBacktracker => GenerationAlgorithm::RecursiveBacktracker,
+        InitialGenerationConfig::WilsonAlgorithm => GenerationAlgorithm::WilsonAlgorithm,
+        InitialGenerationConfig::KruskalAlgorithm => GenerationAlgorithm::KruskalAlgorithm,
     };
     let elements = build_elements_config(&config.elements);
-    let preset_connections = config.preset_connections.iter().map(|dto| PresetConnection {
-        from: build_preset_endpoint(&dto.from),
-        to:   build_preset_endpoint(&dto.to),
-        state: match dto.state {
-            PresetConnectionStateDto::Wall             => PresetConnectionState::Wall,
-            PresetConnectionStateDto::Passage          => PresetConnectionState::Passage,
-            PresetConnectionStateDto::OneWayForward     => PresetConnectionState::OneWayForward,
-            PresetConnectionStateDto::OneWayBackward    => PresetConnectionState::OneWayBackward,
-            PresetConnectionStateDto::TeleportForward   => PresetConnectionState::Teleport(TeleportDirection::Forward),
-            PresetConnectionStateDto::TeleportBackward  => PresetConnectionState::Teleport(TeleportDirection::Backward),
-            PresetConnectionStateDto::TeleportTwoWay    => PresetConnectionState::Teleport(TeleportDirection::TwoWay),
-        },
-    }).collect();
-    let preset_vertical_passages = config.preset_vertical_passages.iter().map(|dto| PresetVerticalPassage {
-        from: build_preset_endpoint(&dto.from),
-        to:   build_preset_endpoint(&dto.to),
-        one_way: dto.one_way.as_ref().map(|d| match d {
-            VerticalPassageDirectionDto::Forward  => VerticalPassageDirection::Forward,
-            VerticalPassageDirectionDto::Backward => VerticalPassageDirection::Backward,
-        }),
-    }).collect();
-    let preset_elevators = config.preset_elevators.iter().map(|dto| PresetElevator {
-        floors: dto.floors.iter().map(build_preset_endpoint).collect(),
-    }).collect();
-    let locked_nodes = config.locked_nodes.iter().map(|dto| LockedNode {
-        point: build_preset_endpoint(&dto.point),
-        kind: match dto.kind {
-            NodeLockKindDto::In   => NodeLockKind::In,
-            NodeLockKindDto::Out  => NodeLockKind::Out,
-            NodeLockKindDto::Both => NodeLockKind::Both,
-        },
-    }).collect();
+    let preset_connections = config
+        .preset_connections
+        .iter()
+        .map(|dto| PresetConnection {
+            from: build_preset_endpoint(&dto.from),
+            to: build_preset_endpoint(&dto.to),
+            state: match dto.state {
+                PresetConnectionStateDto::Wall => PresetConnectionState::Wall,
+                PresetConnectionStateDto::Passage => PresetConnectionState::Passage,
+                PresetConnectionStateDto::OneWayForward => PresetConnectionState::OneWayForward,
+                PresetConnectionStateDto::OneWayBackward => PresetConnectionState::OneWayBackward,
+                PresetConnectionStateDto::TeleportForward => {
+                    PresetConnectionState::Teleport(TeleportDirection::Forward)
+                }
+                PresetConnectionStateDto::TeleportBackward => {
+                    PresetConnectionState::Teleport(TeleportDirection::Backward)
+                }
+                PresetConnectionStateDto::TeleportTwoWay => {
+                    PresetConnectionState::Teleport(TeleportDirection::TwoWay)
+                }
+            },
+        })
+        .collect();
+    let preset_vertical_passages = config
+        .preset_vertical_passages
+        .iter()
+        .map(|dto| PresetVerticalPassage {
+            from: build_preset_endpoint(&dto.from),
+            to: build_preset_endpoint(&dto.to),
+            one_way: dto.one_way.as_ref().map(|d| match d {
+                VerticalPassageDirectionDto::Forward => VerticalPassageDirection::Forward,
+                VerticalPassageDirectionDto::Backward => VerticalPassageDirection::Backward,
+            }),
+        })
+        .collect();
+    let preset_elevators = config
+        .preset_elevators
+        .iter()
+        .map(|dto| PresetElevator {
+            floors: dto.floors.iter().map(build_preset_endpoint).collect(),
+        })
+        .collect();
+    let locked_nodes = config
+        .locked_nodes
+        .iter()
+        .map(|dto| LockedNode {
+            point: build_preset_endpoint(&dto.point),
+            kind: match dto.kind {
+                NodeLockKindDto::In => NodeLockKind::In,
+                NodeLockKindDto::Out => NodeLockKind::Out,
+                NodeLockKindDto::Both => NodeLockKind::Both,
+            },
+        })
+        .collect();
     let split_points = config.split_points.clone();
     let split_generation = build_split_generation_config(&config.split_generation);
-    GenerationConfig { algorithm, elements, preset_connections, preset_vertical_passages, preset_elevators, locked_nodes, split_points, split_generation }
+    GenerationConfig {
+        algorithm,
+        elements,
+        preset_connections,
+        preset_vertical_passages,
+        preset_elevators,
+        locked_nodes,
+        split_points,
+        split_generation,
+    }
 }
 
 /// Builds `SplitGenerationConfig` from the wire DTO. `max_split_nodes` is clamped to `.max(1)` —
@@ -204,7 +236,9 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
 /// `maze_core::generation::SplitGenerationConfig`'s doc comment). `face_index` is passed through
 /// unvalidated here — this layer isn't generic over a concrete `T: Tessellation`, so the
 /// degree-range check happens later, once `T` is known (`dispatch`/`run_generate_typed`).
-pub(crate) fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> maze_core::generation::SplitGenerationConfig {
+pub(crate) fn build_split_generation_config(
+    dto: &SplitGenerationConfigDto,
+) -> maze_core::generation::SplitGenerationConfig {
     let max_split_nodes = dto.max_split_nodes.unwrap_or(2).max(1);
     let patterns = build_split_patterns(&dto.patterns);
     maze_core::generation::SplitGenerationConfig {
@@ -218,25 +252,44 @@ pub(crate) fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> m
 /// shared by generation's own `split_generation` field and, via `parse_split_patterns_param`
 /// (GitHub issue #247), any check/strategy param carrying its own independent pattern list
 /// (`SplitCountCheck`/`SplitDensityCheck`/`AddSplitStrategy`).
-pub(crate) fn build_split_patterns(dtos: &[SplitPatternDto]) -> Vec<maze_core::generation::SplitPattern> {
-    use maze_core::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement, OneWayDirection};
-    dtos.iter().map(|p| SplitPattern {
-        node_count: p.node_count,
-        faces: p.faces.iter().map(|node_faces| node_faces.iter().map(|f| SplitPatternFace {
-            face_index: f.face_index,
-            requirement: match &f.requirement {
-                SplitFaceRequirementDto::Passage => SplitFaceRequirement::Passage,
-                SplitFaceRequirementDto::OneWay { direction } => SplitFaceRequirement::OneWay(match direction {
-                    OneWayDirectionDto::Forward => OneWayDirection::Forward,
-                    OneWayDirectionDto::Backward => OneWayDirection::Backward,
-                }),
-                SplitFaceRequirementDto::Wall => SplitFaceRequirement::Wall,
-                SplitFaceRequirementDto::Unspecified => SplitFaceRequirement::Unspecified,
-            },
-            sibling_target: f.sibling_target,
-        }).collect()).collect(),
-        weight: p.weight.max(0.0),
-    }).collect()
+pub(crate) fn build_split_patterns(
+    dtos: &[SplitPatternDto],
+) -> Vec<maze_core::generation::SplitPattern> {
+    use maze_core::generation::{
+        OneWayDirection, SplitFaceRequirement, SplitPattern, SplitPatternFace,
+    };
+    dtos.iter()
+        .map(|p| SplitPattern {
+            node_count: p.node_count,
+            faces: p
+                .faces
+                .iter()
+                .map(|node_faces| {
+                    node_faces
+                        .iter()
+                        .map(|f| SplitPatternFace {
+                            face_index: f.face_index,
+                            requirement: match &f.requirement {
+                                SplitFaceRequirementDto::Passage => SplitFaceRequirement::Passage,
+                                SplitFaceRequirementDto::OneWay { direction } => {
+                                    SplitFaceRequirement::OneWay(match direction {
+                                        OneWayDirectionDto::Forward => OneWayDirection::Forward,
+                                        OneWayDirectionDto::Backward => OneWayDirection::Backward,
+                                    })
+                                }
+                                SplitFaceRequirementDto::Wall => SplitFaceRequirement::Wall,
+                                SplitFaceRequirementDto::Unspecified => {
+                                    SplitFaceRequirement::Unspecified
+                                }
+                            },
+                            sibling_target: f.sibling_target,
+                        })
+                        .collect()
+                })
+                .collect(),
+            weight: p.weight.max(0.0),
+        })
+        .collect()
 }
 
 /// Parses a `params["split_patterns"]`-style value (GitHub issue #389) — a JSON array of
@@ -246,9 +299,15 @@ pub(crate) fn build_split_patterns(dtos: &[SplitPatternDto]) -> Vec<maze_core::g
 /// (the check's own "no filter"/the strategy's own "unconstrained" default) rather than erroring
 /// the whole config — same "invalid falls back to documented default" contract every other
 /// `params` value in this factory follows.
-pub(crate) fn parse_split_patterns_param(param: Option<&String>) -> Vec<maze_core::generation::SplitPattern> {
-    let Some(raw) = param else { return Vec::new(); };
-    let Ok(dtos) = serde_json::from_str::<Vec<SplitPatternDto>>(raw) else { return Vec::new(); };
+pub(crate) fn parse_split_patterns_param(
+    param: Option<&String>,
+) -> Vec<maze_core::generation::SplitPattern> {
+    let Some(raw) = param else {
+        return Vec::new();
+    };
+    let Ok(dtos) = serde_json::from_str::<Vec<SplitPatternDto>>(raw) else {
+        return Vec::new();
+    };
     build_split_patterns(&dtos)
 }
 
@@ -259,9 +318,15 @@ pub(crate) fn parse_split_patterns_param(param: Option<&String>) -> Vec<maze_cor
 /// or malformed JSON both fall back to the type's own `Default` (unconstrained mode,
 /// `max_split_nodes: 2`, no patterns) — same "invalid falls back to documented default" contract
 /// `parse_split_patterns_param` follows.
-pub(crate) fn parse_split_config_param(param: Option<&String>) -> maze_core::generation::SplitGenerationConfig {
-    let Some(raw) = param else { return Default::default(); };
-    let Ok(dto) = serde_json::from_str::<SplitGenerationConfigDto>(raw) else { return Default::default(); };
+pub(crate) fn parse_split_config_param(
+    param: Option<&String>,
+) -> maze_core::generation::SplitGenerationConfig {
+    let Some(raw) = param else {
+        return Default::default();
+    };
+    let Ok(dto) = serde_json::from_str::<SplitGenerationConfigDto>(raw) else {
+        return Default::default();
+    };
     build_split_generation_config(&dto)
 }
 
@@ -272,7 +337,9 @@ pub(crate) fn parse_split_config_param(param: Option<&String>) -> maze_core::gen
 /// the simpler/cheaper parse; malformed or missing input yields `(0, vec![])` — each half is read
 /// only by the mode that's actually active, so the unused half's fallback never matters.
 pub(crate) fn parse_add_split_config_param(param: Option<&String>) -> (u32, Vec<f64>) {
-    let Some(raw) = param else { return (0, Vec::new()); };
+    let Some(raw) = param else {
+        return (0, Vec::new());
+    };
     if let Ok(n) = raw.trim().parse::<u32>() {
         return (n, Vec::new());
     }
@@ -280,34 +347,76 @@ pub(crate) fn parse_add_split_config_param(param: Option<&String>) -> (u32, Vec<
 }
 
 fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {
-    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot, level: dto.level }
+    PresetEndpoint {
+        point: (dto.point[0], dto.point[1]),
+        slot: dto.slot,
+        level: dto.level,
+    }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     let mut p = GenerationParams::default();
-    if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.cyclicity       { p.cyclicity       = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.depth_first {
+        p.depth_first = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = cfg.corridor_chance {
+        p.corridor_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = cfg.branching {
+        p.branching = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = cfg.directionality {
+        p.directionality = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = cfg.cyclicity {
+        p.cyclicity = v.clamp(0.0, 1.0);
+    }
     p
 }
 
 fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     let mut e = ElementsConfig::default();
-    if let Some(v) = dto.one_way_chance { e.one_way_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.teleport_chance { e.teleport_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.teleport_one_way_chance { e.teleport_one_way_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.split_chance { e.split_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.cross_floor_teleport_balance { e.cross_floor_teleport_balance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.vertical_chance { e.vertical_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.vertical_passage_elevator_balance { e.vertical_passage_elevator_balance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.one_way_vertical_passage_chance { e.one_way_vertical_passage_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.vertical_up_down_balance { e.vertical_up_down_balance = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.elevator_span_min { e.elevator_span_min = v.max(1); }
-    if let Some(v) = dto.elevator_span_max { e.elevator_span_max = v.max(1); }
-    if let Some(v) = dto.elevator_branching { e.elevator_branching = v.clamp(0.0, 1.0); }
-    if let Some(v) = dto.allow_non_consecutive_elevator_floors { e.allow_non_consecutive_elevator_floors = v; }
-    if e.elevator_span_max < e.elevator_span_min { e.elevator_span_max = e.elevator_span_min; }
+    if let Some(v) = dto.one_way_chance {
+        e.one_way_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.teleport_chance {
+        e.teleport_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.teleport_one_way_chance {
+        e.teleport_one_way_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.split_chance {
+        e.split_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.cross_floor_teleport_balance {
+        e.cross_floor_teleport_balance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.vertical_chance {
+        e.vertical_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.vertical_passage_elevator_balance {
+        e.vertical_passage_elevator_balance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.one_way_vertical_passage_chance {
+        e.one_way_vertical_passage_chance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.vertical_up_down_balance {
+        e.vertical_up_down_balance = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.elevator_span_min {
+        e.elevator_span_min = v.max(1);
+    }
+    if let Some(v) = dto.elevator_span_max {
+        e.elevator_span_max = v.max(1);
+    }
+    if let Some(v) = dto.elevator_branching {
+        e.elevator_branching = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = dto.allow_non_consecutive_elevator_floors {
+        e.allow_non_consecutive_elevator_floors = v;
+    }
+    if e.elevator_span_max < e.elevator_span_min {
+        e.elevator_span_max = e.elevator_span_min;
+    }
     e
 }

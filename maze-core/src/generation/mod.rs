@@ -1,68 +1,79 @@
 pub mod pipeline;
 
+mod debug_state;
+pub(crate) mod edge_ops;
+pub(crate) mod kruskal;
+mod mutation_commands;
+mod node_ops;
+mod preset_setup_event;
+mod preset_state;
+pub(crate) mod recursive_backtracker;
+mod split_logic;
+mod split_non_pattern;
+mod split_pattern;
+mod split_pattern_logic;
+mod split_shared;
+mod types;
 pub(crate) mod vertex_based;
 pub(crate) mod wilson;
-pub(crate) mod kruskal;
-pub(crate) mod recursive_backtracker;
-mod preset_state;
-mod preset_setup_event;
-mod types;
-pub(crate) mod edge_ops;
-mod node_ops;
-mod mutation_commands;
-mod split_pattern;
-mod split_logic;
-mod split_shared;
-mod split_non_pattern;
-mod split_pattern_logic;
-mod debug_state;
 
 pub use debug_state::DebugGenerationState;
 
-pub use preset_state::{PresetState, build_preset_state};
-pub use preset_setup_event::{PresetSetupEvent, PRESET_SETUP_SCOPE_NAME};
-pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
-pub use kruskal::{generate as generate_kruskal, KruskalEvent};
-pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};
-pub use vertex_based::{generate as generate_vertex_based, VertexBasedEvent, debug_value_names as vertex_based_debug_value_names};
-pub use types::{
-    ElementsConfig, GenerationParams, GenerationAlgorithm,
-    PresetConnectionState, TeleportDirection, PresetConnection, PresetEndpoint, NodeLockKind, LockedNode,
-    VerticalPassageDirection, PresetVerticalPassage, PresetElevator,
-    GenerationConfig,
+#[cfg(test)]
+pub(crate) use edge_ops::{add_edge, add_edge_kind};
+pub(crate) use edge_ops::{
+    add_edge_and_detect_direction, bidirectional_edge_feasible, can_connect,
+    directed_edge_feasible, split_aware_neighbors, try_add_bidirectional_edge,
+    try_add_bidirectional_elevator, try_add_bidirectional_teleport,
+    try_add_bidirectional_vertical_passage, try_add_directed_edge, try_add_directed_teleport,
+    try_add_directed_vertical_passage, try_add_edge, try_add_edge_kind, try_remove_edge,
+    try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,
+    try_remove_vertical_passage_with_reverse,
 };
-pub use split_pattern::{
-    SplitFaceRequirement, OneWayDirection, SplitPatternFace, SplitPattern, SplitGenerationConfig,
-    validate_split_patterns,
+pub use kruskal::{KruskalEvent, generate as generate_kruskal};
+pub(crate) use mutation_commands::{
+    cmd_add_bidirectional_edge, cmd_add_bidirectional_teleport, cmd_add_directed_edge,
+    cmd_add_directed_teleport, cmd_remove_edge_by_id,
+};
+#[allow(unused_imports)]
+pub(crate) use mutation_commands::{
+    cmd_remove_edge, cmd_remove_edge_with_reverse, cmd_remove_node,
+    cmd_remove_teleport_with_reverse,
+};
+pub(crate) use node_ops::{
+    remove_node_feasible, replace_point_nodes_feasible, try_remove_node, try_replace_point_nodes,
+};
+pub use preset_setup_event::{PRESET_SETUP_SCOPE_NAME, PresetSetupEvent};
+pub use preset_state::{PresetState, build_preset_state};
+pub use recursive_backtracker::{
+    RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names,
+    generate as generate_recursive_backtracker,
 };
 pub use split_logic::StartReassignment;
 pub(crate) use split_logic::split_is_eligible;
-pub(crate) use edge_ops::{
-    can_connect, split_aware_neighbors,
-    try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
-    try_add_directed_edge, try_add_directed_teleport, try_add_bidirectional_teleport,
-    try_add_directed_vertical_passage, try_add_bidirectional_vertical_passage,
-    try_add_bidirectional_elevator,
-    try_remove_edge, try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,
-    try_remove_vertical_passage_with_reverse,
-    bidirectional_edge_feasible, directed_edge_feasible, add_edge_and_detect_direction,
+pub use split_pattern::{
+    OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern, SplitPatternFace,
+    validate_split_patterns,
 };
-pub(crate) use node_ops::{try_remove_node, remove_node_feasible, try_replace_point_nodes, replace_point_nodes_feasible};
-#[cfg(test)]
-pub(crate) use edge_ops::{add_edge, add_edge_kind};
-pub(crate) use mutation_commands::{
-    cmd_add_directed_edge, cmd_add_bidirectional_edge, cmd_add_directed_teleport,
-    cmd_add_bidirectional_teleport, cmd_remove_edge_by_id,
+pub use types::{
+    ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
+    NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,
+    PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
 };
-#[allow(unused_imports)]
-pub(crate) use mutation_commands::{cmd_remove_edge, cmd_remove_edge_with_reverse, cmd_remove_teleport_with_reverse, cmd_remove_node};
+pub use vertex_based::{
+    VertexBasedEvent, debug_value_names as vertex_based_debug_value_names,
+    generate as generate_vertex_based,
+};
+pub use wilson::{
+    WilsonEvent, debug_value_names as wilson_debug_value_names, generate as generate_wilson,
+};
 
-use crate::random::MazeRng;
-use crate::ids::NodeId;
-use crate::graph::Graph;
-use crate::space::{MultiLevelField, Tessellation};
 #[cfg(test)]
 use crate::graph::EdgeKind;
+use crate::graph::Graph;
+use crate::ids::NodeId;
+use crate::random::MazeRng;
+use crate::space::{MultiLevelField, Tessellation};
 #[cfg(test)]
 use rand::Rng as _;
 
@@ -83,8 +94,18 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut start_reassignment = None;
             vertex_based::generate(
-                graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
-                preset_state, &mut start_reassignment, None, None,
+                graph,
+                field,
+                ids,
+                seed,
+                start,
+                &params,
+                &config.elements,
+                &config.split_generation,
+                preset_state,
+                &mut start_reassignment,
+                None,
+                None,
             );
             start_reassignment
         }
@@ -162,11 +183,18 @@ pub fn qualify_debug_value_names(
     sources: &[(&'static str, Vec<(&str, crate::event_log::DebugValueKind)>)],
 ) -> Vec<(String, crate::event_log::DebugValueKind)> {
     if sources.len() <= 1 {
-        return sources.iter().flat_map(|(_, names)| names.iter().map(|(name, kind)| (name.to_string(), *kind))).collect();
+        return sources
+            .iter()
+            .flat_map(|(_, names)| names.iter().map(|(name, kind)| (name.to_string(), *kind)))
+            .collect();
     }
     sources
         .iter()
-        .flat_map(|(scope_name, names)| names.iter().map(move |(name, kind)| (format!("{scope_name}:{name}"), *kind)))
+        .flat_map(|(scope_name, names)| {
+            names
+                .iter()
+                .map(move |(name, kind)| (format!("{scope_name}:{name}"), *kind))
+        })
         .collect()
 }
 
@@ -199,7 +227,14 @@ pub fn generate_maze_with_events<T: Tessellation>(
     ) = match config.algorithm {
         GenerationAlgorithm::RecursiveBacktracker => {
             let mut log = crate::event_log::EventLog::new();
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, Some(&mut log));
+            recursive_backtracker::generate(
+                graph,
+                field,
+                seed,
+                start,
+                preset_state,
+                Some(&mut log),
+            );
             (
                 "generation",
                 crate::event_log::EventedEventKind::RecursiveBacktracker,
@@ -210,27 +245,55 @@ pub fn generate_maze_with_events<T: Tessellation>(
         GenerationAlgorithm::KruskalAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             kruskal::generate(graph, field, seed, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::Kruskal, log.finish().encode(), &[])
+            (
+                "generation",
+                crate::event_log::EventedEventKind::Kruskal,
+                log.finish().encode(),
+                &[],
+            )
         }
         GenerationAlgorithm::WilsonAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             wilson::generate(graph, field, seed, start, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::Wilson, log.finish().encode(), wilson::debug_value_names())
+            (
+                "generation",
+                crate::event_log::EventedEventKind::Wilson,
+                log.finish().encode(),
+                wilson::debug_value_names(),
+            )
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();
             vertex_based::generate(
-                graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
-                preset_state, &mut start_reassignment, Some(&mut log), Some(&mut debug_state),
+                graph,
+                field,
+                ids,
+                seed,
+                start,
+                &params,
+                &config.elements,
+                &config.split_generation,
+                preset_state,
+                &mut start_reassignment,
+                Some(&mut log),
+                Some(&mut debug_state),
             );
-            ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), vertex_based::debug_value_names())
+            (
+                "generation",
+                crate::event_log::EventedEventKind::VertexBased,
+                log.finish().encode(),
+                vertex_based::debug_value_names(),
+            )
         }
     };
 
     EventedGenerationResult {
         raw_source: crate::event_log::TapeSource { scope_name, tape },
         event_kind,
-        debug_value_names: debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect(),
+        debug_value_names: debug_value_names
+            .iter()
+            .map(|(name, kind)| (name.to_string(), *kind))
+            .collect(),
         start_reassignment,
         all_node_points: debug_state.all_node_points().collect(),
     }
@@ -238,29 +301,47 @@ pub fn generate_maze_with_events<T: Tessellation>(
 
 #[cfg(test)]
 pub(crate) mod test_utils {
+    use super::ElementsConfig;
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
-    use super::ElementsConfig;
 
-    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() } }
+    pub fn default_elements() -> ElementsConfig {
+        ElementsConfig {
+            one_way_chance: 0.0,
+            teleport_chance: 0.0,
+            teleport_one_way_chance: 0.0,
+            split_chance: 0.0,
+            ..Default::default()
+        }
+    }
 
-    pub fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
+    pub fn make_field_and_graph(
+        w: usize,
+        h: usize,
+    ) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
         (field, graph)
     }
 
     /// Same as `make_field_and_graph`, but also hands back the `IdGenerator` used to build the
     /// field — needed by any test calling `vertex_based::generate` directly, since it now takes
     /// `&mut IdGenerator` for the split-node-minting path (GitHub issue #222).
-    pub fn make_field_graph_ids(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator) {
+    pub fn make_field_graph_ids(
+        w: usize,
+        h: usize,
+    ) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator) {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
+        for node in field.all_node_ids() {
+            graph.add_node(node);
+        }
         (field, graph, ids)
     }
 }

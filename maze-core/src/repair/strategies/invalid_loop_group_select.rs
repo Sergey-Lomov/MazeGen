@@ -1,14 +1,18 @@
-use std::collections::{HashSet, VecDeque};
-use rand::{Rng, RngCore};
 use crate::Maze;
-use crate::ids::EdgeId;
-use crate::space::Tessellation;
-use crate::quality_control::{InvalidLoopIssue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, INVALID_LOOP};
 use crate::generation::PresetState;
+use crate::ids::EdgeId;
+use crate::quality_control::{
+    INVALID_LOOP, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, InvalidLoopIssue,
+};
+use crate::repair::command::{MutationCommand, removed_edge_ids};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
-use crate::repair::command::{MutationCommand, removed_edge_ids};
+use crate::repair::strategy::{
+    NestedDispatchKind, NestedSlot, NestedStrategyConfig, RepairStrategy,
+};
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::{HashSet, VecDeque};
 
 pub const PARAM_SELECTION_MODE: &str = "selection_mode";
 pub const PARAM_SAMPLE_MODE: &str = "sample_mode";
@@ -28,17 +32,27 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_SELECTION_MODE,
         label: "Target cycle selection",
-        kind: StrategyParamKind::Enum { options: SELECTION_MODE_OPTIONS, default: SELECTION_RANDOM },
+        kind: StrategyParamKind::Enum {
+            options: SELECTION_MODE_OPTIONS,
+            default: SELECTION_RANDOM,
+        },
     },
     StrategyParam {
         id: PARAM_SAMPLE_MODE,
         label: "Sample size mode",
-        kind: StrategyParamKind::Enum { options: SAMPLE_MODE_OPTIONS, default: SAMPLE_MODE_COUNT },
+        kind: StrategyParamKind::Enum {
+            options: SAMPLE_MODE_OPTIONS,
+            default: SAMPLE_MODE_COUNT,
+        },
     },
     StrategyParam {
         id: PARAM_SAMPLE_SIZE,
         label: "Sample size",
-        kind: StrategyParamKind::Float { default: 1.0, min: 0.0, max: 100_000.0 },
+        kind: StrategyParamKind::Float {
+            default: 1.0,
+            min: 0.0,
+            max: 100_000.0,
+        },
     },
 ];
 
@@ -46,9 +60,13 @@ static PARAMS: &[StrategyParam] = &[
 /// `Specs/repair.md`'s nested-strategy pattern.
 pub const SLOT_CUT_TARGET: &str = "cut_target";
 
-static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_CUT_TARGET, kind: INVALID_LOOP, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
-];
+static NESTED_SLOTS: &[NestedSlot] = &[NestedSlot {
+    slot_id: SLOT_CUT_TARGET,
+    kind: INVALID_LOOP,
+    min: 1,
+    max: Some(1),
+    dispatch_kind: NestedDispatchKind::Unordered,
+}];
 
 /// Handles `INVALID_LOOP_GROUP` (see GitHub issue #183) by picking a *sample* of the flagged
 /// cycles (sized by `sample_mode`/`sample_size`, ordered by `selection_mode`) and resolving them
@@ -79,7 +97,9 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 pub struct InvalidLoopGroupSelectStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopGroupIssue> for InvalidLoopGroupSelectStrategy {
-    fn strategy_id(&self) -> &'static str { "invalid_loop_group_select" }
+    fn strategy_id(&self) -> &'static str {
+        "invalid_loop_group_select"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -115,10 +135,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopGroupIssue> for InvalidLoopGr
         // `build_nested` (maze-runner) already enforces exactly one nested strategy for this
         // slot via `expected_nested()`'s `max: Some(1)` — this is a defensive re-check, not the
         // primary guard, same posture `ReduceSccCountStrategy` takes toward its own nested slot.
-        let matching: Vec<&NestedStrategyConfig<T>> =
-            nested.iter().filter(|n| n.slot.slot_id == SLOT_CUT_TARGET).collect();
-        debug_assert!(matching.len() <= 1,
-            "InvalidLoopGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_CUT_TARGET}\" should prevent more than one nested strategy filling it");
+        let matching: Vec<&NestedStrategyConfig<T>> = nested
+            .iter()
+            .filter(|n| n.slot.slot_id == SLOT_CUT_TARGET)
+            .collect();
+        debug_assert!(
+            matching.len() <= 1,
+            "InvalidLoopGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_CUT_TARGET}\" should prevent more than one nested strategy filling it"
+        );
         let Some(&cut_target) = matching.first() else {
             return (RepairResult::Failed, vec![]);
         };
@@ -131,7 +155,10 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopGroupIssue> for InvalidLoopGr
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => SAMPLE_MODE_COUNT,
         };
-        let sample_size = params.get(PARAM_SAMPLE_SIZE).and_then(|v| v.as_float()).unwrap_or(1.0);
+        let sample_size = params
+            .get(PARAM_SAMPLE_SIZE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(1.0);
 
         let mut ordered_indices: Vec<usize> = (0..issue.invalid.len()).collect();
         sort_by_selection_mode(&mut ordered_indices, &issue.invalid, selection_mode, rng);
@@ -139,24 +166,43 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopGroupIssue> for InvalidLoopGr
         let sample_count = resolve_sample_count(issue.invalid.len(), sample_mode, sample_size);
         let (sample_indices, rest_indices) = ordered_indices.split_at(sample_count);
 
-        let mut pending: VecDeque<Vec<EdgeId>> = sample_indices.iter().map(|&idx| issue.invalid[idx].clone()).collect();
-        let mut local_valid: Vec<Vec<EdgeId>> = rest_indices.iter().map(|&idx| issue.invalid[idx].clone())
+        let mut pending: VecDeque<Vec<EdgeId>> = sample_indices
+            .iter()
+            .map(|&idx| issue.invalid[idx].clone())
+            .collect();
+        let mut local_valid: Vec<Vec<EdgeId>> = rest_indices
+            .iter()
+            .map(|&idx| issue.invalid[idx].clone())
             .chain(issue.valid.iter().cloned())
             .collect();
 
-        let nested_params = crate::repair::params::build_params(cut_target.strategy.params(), Some(&cut_target.param_overrides));
+        let nested_params = crate::repair::params::build_params(
+            cut_target.strategy.params(),
+            Some(&cut_target.param_overrides),
+        );
         let mut commands = Vec::new();
         let mut any_succeeded = false;
 
         while let Some(target) = pending.pop_front() {
-            let mut synthetic_all: Vec<Vec<EdgeId>> = Vec::with_capacity(1 + pending.len() + local_valid.len());
+            let mut synthetic_all: Vec<Vec<EdgeId>> =
+                Vec::with_capacity(1 + pending.len() + local_valid.len());
             synthetic_all.push(target);
             synthetic_all.extend(pending.iter().cloned());
             synthetic_all.extend(local_valid.iter().cloned());
-            let synthetic = InvalidLoopIssue::new_from_check("invalid_loop_group_select", synthetic_all, vec![0], Default::default());
+            let synthetic = InvalidLoopIssue::new_from_check(
+                "invalid_loop_group_select",
+                synthetic_all,
+                vec![0],
+                Default::default(),
+            );
 
             let (nested_result, nested_commands) = cut_target.strategy.apply(
-                &synthetic as &dyn crate::quality_control::Issue, maze, rng, &nested_params, preset_state, &cut_target.nested,
+                &synthetic as &dyn crate::quality_control::Issue,
+                maze,
+                rng,
+                &nested_params,
+                preset_state,
+                &cut_target.nested,
             );
             any_succeeded |= matches!(nested_result, RepairResult::Fixed { .. });
 
@@ -183,7 +229,12 @@ crate::impl_erased_repair_strategy!(InvalidLoopGroupSelectStrategy, InvalidLoopG
 /// (ties broken by ascending original index for determinism), `random`/unrecognized via a
 /// Fisher-Yates shuffle through `rng` (seed-reproducible, unlike leaving ascending index order in
 /// place under a "random" label).
-fn sort_by_selection_mode(indices: &mut [usize], invalid: &[Vec<EdgeId>], mode: &str, rng: &mut dyn RngCore) {
+fn sort_by_selection_mode(
+    indices: &mut [usize],
+    invalid: &[Vec<EdgeId>],
+    mode: &str,
+    rng: &mut dyn RngCore,
+) {
     match mode {
         SELECTION_SHORTEST => indices.sort_by_key(|&i| (invalid[i].len(), i)),
         SELECTION_LONGEST => indices.sort_by_key(|&i| (std::cmp::Reverse(invalid[i].len()), i)),
@@ -212,16 +263,22 @@ fn resolve_sample_count(invalid_count: usize, sample_mode: &str, sample_size: f6
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, square_rect};
+    use crate::random::MazeRng;
     use crate::repair::strategies::InvalidLoopRandomStrategy;
     use crate::repair::strategies::test_utils::apply_and_commit;
+    use crate::space::{SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     fn no_params() -> StrategyParams {
-        crate::repair::params::build_params(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidLoopGroupIssue>>::params(&InvalidLoopGroupSelectStrategy), None)
+        crate::repair::params::build_params(
+            <InvalidLoopGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidLoopGroupIssue,
+            >>::params(&InvalidLoopGroupSelectStrategy),
+            None,
+        )
     }
 
     fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -229,7 +286,13 @@ mod tests {
         for &(k, v) in overrides {
             map.insert(k.to_string(), v.to_string());
         }
-        crate::repair::params::build_params(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidLoopGroupIssue>>::params(&InvalidLoopGroupSelectStrategy), Some(&map))
+        crate::repair::params::build_params(
+            <InvalidLoopGroupSelectStrategy as RepairStrategy<
+                SquareTessellation,
+                InvalidLoopGroupIssue,
+            >>::params(&InvalidLoopGroupSelectStrategy),
+            Some(&map),
+        )
     }
 
     fn cut_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
@@ -245,11 +308,19 @@ mod tests {
     /// flagged invalid.
     fn maze_with_two_disjoint_loops() -> (Maze<SquareTessellation>, Vec<EdgeId>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = crate::space::MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+        let field =
+            crate::space::MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -263,7 +334,12 @@ mod tests {
     }
 
     fn group_issue(invalid: Vec<Vec<EdgeId>>) -> InvalidLoopGroupIssue {
-        InvalidLoopGroupIssue::new_from_check("max_loop_density", invalid, vec![], Default::default())
+        InvalidLoopGroupIssue::new_from_check(
+            "max_loop_density",
+            invalid,
+            vec![],
+            Default::default(),
+        )
     }
 
     #[test]
@@ -271,7 +347,15 @@ mod tests {
         let (mut maze, triangle, square) = maze_with_two_disjoint_loops();
         let issue = group_issue(vec![triangle, square]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -281,7 +365,15 @@ mod tests {
         let issue = group_issue(vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -291,10 +383,21 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_SELECTION_MODE, SELECTION_SHORTEST)]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[(PARAM_SELECTION_MODE, SELECTION_SHORTEST)]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(square_intact, "sample size 1: only the shorter (triangle) loop must be touched");
+        assert!(
+            square_intact,
+            "sample size 1: only the shorter (triangle) loop must be touched"
+        );
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
         assert!(!triangle_intact, "the triangle must have lost an edge");
     }
@@ -305,12 +408,26 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_SELECTION_MODE, SELECTION_LONGEST)]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[(PARAM_SELECTION_MODE, SELECTION_LONGEST)]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(triangle_intact, "sample size 1, longest mode: the shorter (triangle) loop must survive untouched");
+        assert!(
+            triangle_intact,
+            "sample size 1, longest mode: the shorter (triangle) loop must survive untouched"
+        );
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(!square_intact, "the longer (square) loop must have lost an edge");
+        assert!(
+            !square_intact,
+            "the longer (square) loop must have lost an edge"
+        );
     }
 
     #[test]
@@ -319,12 +436,25 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "2")]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "2"),
+            ]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(!triangle_intact && !square_intact, "sample size 2: both loops must be cut in one apply() call");
+        assert!(
+            !triangle_intact && !square_intact,
+            "sample size 2: both loops must be cut in one apply() call"
+        );
     }
 
     #[test]
@@ -333,12 +463,25 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_PERCENT), (PARAM_SAMPLE_SIZE, "100")]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_PERCENT),
+                (PARAM_SAMPLE_SIZE, "100"),
+            ]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(!triangle_intact && !square_intact, "100% sample must resolve every flagged loop");
+        assert!(
+            !triangle_intact && !square_intact,
+            "100% sample must resolve every flagged loop"
+        );
     }
 
     #[test]
@@ -349,12 +492,26 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_PERCENT), (PARAM_SAMPLE_SIZE, "10"), (PARAM_SELECTION_MODE, SELECTION_SHORTEST)]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_PERCENT),
+                (PARAM_SAMPLE_SIZE, "10"),
+                (PARAM_SELECTION_MODE, SELECTION_SHORTEST),
+            ]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(square_intact && !triangle_intact, "10% of 2 must round up to sample exactly 1 (the shortest)");
+        assert!(
+            square_intact && !triangle_intact,
+            "10% of 2 must round up to sample exactly 1 (the shortest)"
+        );
     }
 
     #[test]
@@ -363,12 +520,25 @@ mod tests {
         let issue = group_issue(vec![triangle.clone(), square.clone()]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "50")]), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "50"),
+            ]),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let triangle_intact = triangle.iter().all(|&id| maze.graph.edge(id).is_some());
         let square_intact = square.iter().all(|&id| maze.graph.edge(id).is_some());
-        assert!(!triangle_intact && !square_intact, "sample size beyond invalid.len() must clamp, not panic or skip");
+        assert!(
+            !triangle_intact && !square_intact,
+            "sample size beyond invalid.len() must clamp, not panic or skip"
+        );
     }
 
     #[test]
@@ -378,11 +548,19 @@ mod tests {
         // already broken and must be dropped from the queue rather than offered to the nested
         // strategy a second time.
         let mut ids = IdGenerator::new();
-        let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field: crate::space::MultiLevelField<SquareTessellation> =
+            crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = field
+            .field_of(field_level)
+            .unwrap()
+            .all_points()
+            .map(|p| field.node_at(field_level, p).unwrap())
+            .collect();
         let shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
         let bc = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
         let ca = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A
@@ -406,13 +584,30 @@ mod tests {
         let mut maze_try = maze;
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = cut_target_nested();
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze_try, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "2")]), &preset_state, &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze_try,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "2"),
+            ]),
+            &preset_state,
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         let d = nodes[3];
-        let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
-        assert!(d_degree > 0, "D must keep at least one edge -- the second triangle must be dropped from the queue once the shared edge is cut, not independently cut again");
+        let d_degree = maze_try
+            .graph
+            .edges()
+            .filter(|e| e.from == d || e.to == d)
+            .count();
+        assert!(
+            d_degree > 0,
+            "D must keep at least one edge -- the second triangle must be dropped from the queue once the shared edge is cut, not independently cut again"
+        );
     }
 
     #[test]
@@ -423,14 +618,34 @@ mod tests {
         let (mut maze_a, _, _) = maze_with_two_disjoint_loops();
         let mut rng_a = MazeRng::seed_from_u64(42);
         let nested_a = cut_target_nested();
-        apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze_a, &mut rng_a,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "2")]), &PresetState::empty(), &nested_a);
+        apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze_a,
+            &mut rng_a,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "2"),
+            ]),
+            &PresetState::empty(),
+            &nested_a,
+        );
 
         let (mut maze_b, _, _) = maze_with_two_disjoint_loops();
         let mut rng_b = MazeRng::seed_from_u64(42);
         let nested_b = cut_target_nested();
-        apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze_b, &mut rng_b,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "2")]), &PresetState::empty(), &nested_b);
+        apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze_b,
+            &mut rng_b,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "2"),
+            ]),
+            &PresetState::empty(),
+            &nested_b,
+        );
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| e.id).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| e.id).collect();
@@ -442,14 +657,28 @@ mod tests {
         let (mut maze, triangle, square) = maze_with_two_disjoint_loops();
         let issue = group_issue(vec![triangle, square]);
         let mut rng = MazeRng::seed_from_u64(1);
-        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: INVALID_LOOP, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered };
+        static OTHER_SLOT: NestedSlot = NestedSlot {
+            slot_id: "some_other_slot",
+            kind: INVALID_LOOP,
+            min: 1,
+            max: Some(1),
+            dispatch_kind: NestedDispatchKind::Unordered,
+        };
         let nested = vec![NestedStrategyConfig {
             slot: &OTHER_SLOT,
             strategy: Box::new(InvalidLoopRandomStrategy),
             param_overrides: std::collections::HashMap::new(),
             nested: vec![],
         }];
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &nested,
+        );
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -460,10 +689,17 @@ mod tests {
     struct AlwaysFailsStrategy;
 
     impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for AlwaysFailsStrategy {
-        fn strategy_id(&self) -> &'static str { "always_fails_stub" }
+        fn strategy_id(&self) -> &'static str {
+            "always_fails_stub"
+        }
         fn apply(
-            &self, _issue: &InvalidLoopIssue, _maze: &Maze<T>, _rng: &mut dyn RngCore,
-            _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>],
+            &self,
+            _issue: &InvalidLoopIssue,
+            _maze: &Maze<T>,
+            _rng: &mut dyn RngCore,
+            _params: &StrategyParams,
+            _preset_state: &PresetState,
+            _nested: &[NestedStrategyConfig<T>],
         ) -> (RepairResult, Vec<MutationCommand>) {
             (RepairResult::Failed, vec![])
         }
@@ -481,23 +717,52 @@ mod tests {
             param_overrides: std::collections::HashMap::new(),
             nested: vec![],
         }];
-        let result = apply_and_commit(&InvalidLoopGroupSelectStrategy, &issue, &mut maze, &mut rng,
-            &params_with(&[(PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT), (PARAM_SAMPLE_SIZE, "2")]), &PresetState::empty(), &nested);
-        assert!(matches!(result, RepairResult::Failed), "every nested call failed, so the batch as a whole must be Failed");
+        let result = apply_and_commit(
+            &InvalidLoopGroupSelectStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &params_with(&[
+                (PARAM_SAMPLE_MODE, SAMPLE_MODE_COUNT),
+                (PARAM_SAMPLE_SIZE, "2"),
+            ]),
+            &PresetState::empty(),
+            &nested,
+        );
+        assert!(
+            matches!(result, RepairResult::Failed),
+            "every nested call failed, so the batch as a whole must be Failed"
+        );
     }
 
     #[test]
     fn resolve_sample_count_count_mode_rounds_up_and_clamps() {
         assert_eq!(resolve_sample_count(10, SAMPLE_MODE_COUNT, 3.2), 4);
-        assert_eq!(resolve_sample_count(10, SAMPLE_MODE_COUNT, 0.0), 1, "must never go below 1");
-        assert_eq!(resolve_sample_count(10, SAMPLE_MODE_COUNT, 999.0), 10, "must clamp to invalid_count");
+        assert_eq!(
+            resolve_sample_count(10, SAMPLE_MODE_COUNT, 0.0),
+            1,
+            "must never go below 1"
+        );
+        assert_eq!(
+            resolve_sample_count(10, SAMPLE_MODE_COUNT, 999.0),
+            10,
+            "must clamp to invalid_count"
+        );
     }
 
     #[test]
     fn resolve_sample_count_percent_mode_rounds_up_and_clamps() {
         assert_eq!(resolve_sample_count(10, SAMPLE_MODE_PERCENT, 50.0), 5);
-        assert_eq!(resolve_sample_count(2, SAMPLE_MODE_PERCENT, 10.0), 1, "10% of 2 rounds up to 1, not down to 0");
+        assert_eq!(
+            resolve_sample_count(2, SAMPLE_MODE_PERCENT, 10.0),
+            1,
+            "10% of 2 rounds up to 1, not down to 0"
+        );
         assert_eq!(resolve_sample_count(4, SAMPLE_MODE_PERCENT, 100.0), 4);
-        assert_eq!(resolve_sample_count(4, SAMPLE_MODE_PERCENT, 0.0), 1, "must never go below 1");
+        assert_eq!(
+            resolve_sample_count(4, SAMPLE_MODE_PERCENT, 0.0),
+            1,
+            "must never go below 1"
+        );
     }
 }

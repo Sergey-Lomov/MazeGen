@@ -1,8 +1,8 @@
 #[path = "vertex_based_wire.rs"]
 mod vertex_based_wire;
 
-use crate::ids::NodeId;
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp};
+use crate::ids::NodeId;
 
 /// Narration-level events for `CustomVertexBased` generation (see GitHub issue #143). `vertex_based`
 /// has two distinct entry points into its main loop — `handle_empty_frontier` (teleport-bridge or
@@ -20,7 +20,11 @@ pub enum VertexBasedEvent {
     /// `elements.teleport_chance` — a hit bridges a new node into the maze via teleport instead
     /// of a reserve pop, replacing this step's entire mechanism. `fired` is `roll < teleport_chance`.
     #[wire(tag = 1)]
-    TeleportBridgeRolled { roll: f64, teleport_chance: f64, fired: bool },
+    TeleportBridgeRolled {
+        roll: f64,
+        teleport_chance: f64,
+        fired: bool,
+    },
     /// A teleport bridge was added from `src` (an already-visited node, picked uniformly at
     /// random) to `dst` (an unvisited node, picked uniformly at random) — `src`/`dst` are the
     /// actual graph direction, not necessarily the roll's own naming, since `try_add_edge_kind`'s
@@ -29,7 +33,11 @@ pub enum VertexBasedEvent {
     /// an edge — `try_add_edge_kind` silently declines on a preset conflict, detected by comparing
     /// `graph.edge_between` before/after.
     #[wire(tag = 2, mutating)]
-    TeleportBridgeAdded { src: NodeId, dst: NodeId, bidirectional: bool },
+    TeleportBridgeAdded {
+        src: NodeId,
+        dst: NodeId,
+        bidirectional: bool,
+    },
     /// One candidate popped off `reserve` during the reserve-scan (`"reserve_search"` sub-scope)
     /// was rejected and pushed back — either because it was already visited (`already_visited:
     /// true`), or because none of its geometric neighbors are visited yet (`already_visited:
@@ -49,50 +57,86 @@ pub enum VertexBasedEvent {
     /// uniformly at random) to `dst` (the reserve-chosen candidate) — direction-detected the same
     /// way as `TeleportBridgeAdded`.
     #[wire(tag = 6, mutating)]
-    BridgeAdded { src: NodeId, dst: NodeId, bidirectional: bool },
+    BridgeAdded {
+        src: NodeId,
+        dst: NodeId,
+        bidirectional: bool,
+    },
     /// `src` chosen via gaussian-weighted sampling over `frontier` by position (oldest = index 0,
     /// newest = `frontier_len - 1`), skewed by `params.depth_first`. `position` is the sampled
     /// index into `frontier`, before `src` is removed from it. Opens every `"step N"` scope that
     /// reaches `step_from_frontier` (as opposed to `handle_empty_frontier`).
     #[wire(tag = 7, mutating)]
-    SrcChosenFromFrontier { src: NodeId, frontier_len: usize, position: usize, depth_first: f64 },
+    SrcChosenFromFrontier {
+        src: NodeId,
+        frontier_len: usize,
+        position: usize,
+        depth_first: f64,
+    },
     /// The teleport roll for `src` against `elements.teleport_chance`, taken immediately after
     /// `src` is fixed — a hit widens the cyclic-roll's candidate pool (see
     /// `CyclicCandidatesComputed`) and adds an extra teleport connection alongside whatever the
     /// corridor/junction roll produces (see `TeleportConnectAdded`), unless the cyclic roll
     /// consumes it first. `fired` is `roll < teleport_chance`.
     #[wire(tag = 8)]
-    TeleportRolled { src: NodeId, roll: f64, teleport_chance: f64, fired: bool },
+    TeleportRolled {
+        src: NodeId,
+        roll: f64,
+        teleport_chance: f64,
+        fired: bool,
+    },
     /// The cyclic-edge roll for `src` against `params.cyclicity`, decided independently of the
     /// teleport roll. `fired` is `roll < cyclicity`.
     #[wire(tag = 9)]
-    CyclicRolled { src: NodeId, roll: f64, cyclicity: f64, fired: bool },
+    CyclicRolled {
+        src: NodeId,
+        roll: f64,
+        cyclicity: f64,
+        fired: bool,
+    },
     /// The candidate pool computed for the cyclic edge attempt (only emitted when
     /// `CyclicRolled.fired` was true): visited nodes `src` could still connect to without
     /// duplicating an existing edge. `geometric = true` means visited geometric neighbors of
     /// `src`; `geometric = false` (the teleport-widened pool) means any visited node in the graph.
     /// Empty means the cyclic edge attempt is skipped.
     #[wire(tag = 10)]
-    CyclicCandidatesComputed { src: NodeId, geometric: bool, candidates: Vec<NodeId> },
+    CyclicCandidatesComputed {
+        src: NodeId,
+        geometric: bool,
+        candidates: Vec<NodeId>,
+    },
     /// A cyclic edge was added from `src` to a node drawn from `CyclicCandidatesComputed`'s pool,
     /// independent of the step's corridor/junction connect choice. `teleport` is whether it was
     /// added as a `Teleport` edge (widened pool) vs. a `Basic` edge (geometric pool).
     /// `src`/`dst` are the actual graph direction, detected the same way as `TeleportBridgeAdded`.
     #[wire(tag = 11, mutating)]
-    CyclicEdgeAdded { src: NodeId, dst: NodeId, teleport: bool, bidirectional: bool },
+    CyclicEdgeAdded {
+        src: NodeId,
+        dst: NodeId,
+        teleport: bool,
+        bidirectional: bool,
+    },
     /// The corridor-vs-junction roll for this step's connect choice, against `params.corridor_chance`.
     /// `is_corridor` is `roll < corridor_chance` — when true, at most one candidate is connected
     /// (`CandidateChosen`); when false, `junction_count`'s branching rolls decide how many
     /// (`JunctionSlotRolled` + `JunctionCandidatesChosen`).
     #[wire(tag = 12)]
-    CorridorRolled { roll: f64, corridor_chance: f64, is_corridor: bool },
+    CorridorRolled {
+        roll: f64,
+        corridor_chance: f64,
+        is_corridor: bool,
+    },
     /// The corridor branch's single candidate pick from `free_regular`, via directionality-aware
     /// sampling: `used_directionality` records whether the pick actually took the "continue
     /// straight from `parent`" shortcut (a `directionality`-weighted roll hit AND a straight
     /// continuation existed among the candidates) rather than falling back to a uniform pick.
     /// Not emitted when `free_regular` is empty (no candidate to choose from at all).
     #[wire(tag = 13)]
-    CandidateChosen { src: NodeId, dst: NodeId, used_directionality: bool },
+    CandidateChosen {
+        src: NodeId,
+        dst: NodeId,
+        used_directionality: bool,
+    },
     /// `choose_candidate` had exactly one candidate to pick from and `parent` was `Some` — the
     /// directionality roll never happens at all (nothing to weigh it against), which would
     /// otherwise silently read the same as a roll that happened but missed. Emitted right before
@@ -115,7 +159,12 @@ pub enum VertexBasedEvent {
     /// the first pick's own directionality flag. Emitted right before the
     /// `CandidateChosen`/first-pick-of-`JunctionCandidatesChosen` it precedes.
     #[wire(tag = 25)]
-    DirectionalityRolled { roll: f64, directionality: f64, fired: bool, straight_found: bool },
+    DirectionalityRolled {
+        roll: f64,
+        directionality: f64,
+        fired: bool,
+        straight_found: bool,
+    },
     /// Opens `junction_count`'s roll series: `max` connections are possible in total for this
     /// step (2 mandatory + `max - 2` optional slots, each independently rolled against
     /// `params.branching` — see `JunctionSlotRolled`). Emitted once, directly under the
@@ -132,7 +181,12 @@ pub enum VertexBasedEvent {
     /// roll is `2 + (number of `taken: true` rolls so far, including this one)` — not carried on
     /// the wire, since a narration/replay consumer can tally it from the roll sequence itself.
     #[wire(tag = 14)]
-    JunctionSlotRolled { slot: usize, roll: f64, branching: f64, taken: bool },
+    JunctionSlotRolled {
+        slot: usize,
+        roll: f64,
+        branching: f64,
+        taken: bool,
+    },
     /// The junction branch's chosen candidate set, drawn from `free_regular` — the first pick uses
     /// the same directionality-aware sampling as `CandidateChosen`'s single pick, the rest are
     /// uniform random draws from the remaining pool. `geometric_count` is how many of the final
@@ -140,12 +194,19 @@ pub enum VertexBasedEvent {
     /// one slot is reserved for a pending teleport connect when applicable, so
     /// `candidates.len() == geometric_count` always holds.
     #[wire(tag = 15)]
-    JunctionCandidatesChosen { src: NodeId, candidates: Vec<NodeId> },
+    JunctionCandidatesChosen {
+        src: NodeId,
+        candidates: Vec<NodeId>,
+    },
     /// The step's main (corridor or junction) edge from `src` to `dst` was added — direction
     /// detected the same way as `TeleportBridgeAdded`/`BridgeAdded`. Emitted once per candidate in
     /// `CandidateChosen`/`JunctionCandidatesChosen`.
     #[wire(tag = 16, mutating)]
-    EdgeAdded { src: NodeId, dst: NodeId, bidirectional: bool },
+    EdgeAdded {
+        src: NodeId,
+        dst: NodeId,
+        bidirectional: bool,
+    },
     /// `dst` is a preset-connected neighbor of `src` — its edge was already built by
     /// `build_preset_state` before generation started, so no `EdgeAdded` follows; `dst` is simply
     /// marked visited and pushed to the frontier.
@@ -155,7 +216,11 @@ pub enum VertexBasedEvent {
     /// `TeleportRolled.fired` was true and not already spent on a cyclic edge): `dst` is a random
     /// unvisited node in the graph. Skipped (no event) when no unvisited node remains.
     #[wire(tag = 18, mutating)]
-    TeleportConnectAdded { src: NodeId, dst: NodeId, bidirectional: bool },
+    TeleportConnectAdded {
+        src: NodeId,
+        dst: NodeId,
+        bidirectional: bool,
+    },
     /// `node` was marked visited and pushed onto the frontier, parented to `whoever just
     /// connected to it. Emitted for every node that enters `visited` this step — the
     /// teleport-bridge/reserve-bridge target in `handle_empty_frontier`, each `free_preset`/
@@ -180,42 +245,74 @@ pub enum VertexBasedEvent {
     /// necessarily mean the split is applied — see `eligible`/`SplitNodesCreated`: an ineligible
     /// or pattern-exhausted hit still falls back to the ordinary per-step flow for `src`.
     #[wire(tag = 26)]
-    SplitRolled { src: NodeId, roll: f64, split_chance: f64, fired: bool, eligible: bool },
+    SplitRolled {
+        src: NodeId,
+        roll: f64,
+        split_chance: f64,
+        fired: bool,
+        eligible: bool,
+    },
     /// A split was actually applied to `src`'s tile: `nodes` is every resulting node (index 0 is
     /// always `src` itself), `pattern` is `Some(pattern index)` in pattern mode or `None` in
     /// non-pattern mode.
     #[wire(tag = 27, mutating)]
-    SplitNodesCreated { src: NodeId, nodes: Vec<NodeId>, pattern: Option<usize> },
+    SplitNodesCreated {
+        src: NodeId,
+        nodes: Vec<NodeId>,
+        pattern: Option<usize>,
+    },
     /// Pattern mode's once-per-event cyclic roll (distinct from the ordinary per-node
     /// `CyclicRolled` — pattern mode rolls cyclicity once for the whole split event, not once per
     /// resulting node). `fired` is `roll < cyclicity`; a hit allows exactly one pattern face to
     /// resolve to an already-visited neighbor instead of requiring every `Passage`/`OneWay` face
     /// to land on an unvisited one.
     #[wire(tag = 28)]
-    SplitCyclicRolled { src: NodeId, roll: f64, cyclicity: f64, fired: bool },
+    SplitCyclicRolled {
+        src: NodeId,
+        roll: f64,
+        cyclicity: f64,
+        fired: bool,
+    },
     /// Every valid rotation/mirror adaptation found for the chosen pattern, before one is picked —
     /// `count` is `adaptations.len()`, kept alongside since an empty result (pattern excluded,
     /// loop retries another) is exactly as narratively interesting as a non-empty one.
     #[wire(tag = 29)]
-    PatternAdaptationsComputed { src: NodeId, pattern: usize, count: usize },
+    PatternAdaptationsComputed {
+        src: NodeId,
+        pattern: usize,
+        count: usize,
+    },
     /// The adaptation actually applied, picked uniformly at random from
     /// `PatternAdaptationsComputed`'s candidate set. `rotation` indexes
     /// `Tessellation::rotation_symmetries()`; `mirror` indexes `Tessellation::mirror_symmetries()`
     /// (`None` when no mirror was applied) — see GitHub issue #275 (the old plain `bool` assumed
     /// every tessellation has at most one mirror symmetry, which hex's 3 mirror axes violate).
     #[wire(tag = 30)]
-    PatternAdaptationChosen { src: NodeId, pattern: usize, rotation: usize, mirror: Option<usize> },
+    PatternAdaptationChosen {
+        src: NodeId,
+        pattern: usize,
+        rotation: usize,
+        mirror: Option<usize>,
+    },
     /// The split event's once-per-event teleport roll (mirrors `TeleportRolled`, but rolled once
     /// for the whole split event rather than per resulting node — matches pattern mode's
     /// once-per-event cyclicity). `anchor` is the resulting node the teleport connects from, when
     /// it fires.
     #[wire(tag = 31)]
-    SplitTeleportRolled { roll: f64, teleport_chance: f64, fired: bool, anchor: Option<NodeId> },
+    SplitTeleportRolled {
+        roll: f64,
+        teleport_chance: f64,
+        fired: bool,
+        anchor: Option<NodeId>,
+    },
     /// `start` was reassigned from `original` to `reassigned_to` because the run's traversal-seed
     /// node was split — only possible once per run (`start` is only ever the pre-split seed the
     /// very first time this could apply), and only when no explicit `preset_start` pins it.
     #[wire(tag = 32, mutating)]
-    SplitStartReassigned { original: NodeId, reassigned_to: NodeId },
+    SplitStartReassigned {
+        original: NodeId,
+        reassigned_to: NodeId,
+    },
     /// `src`'s pre-existing edge to its real traversal parent (already in the graph before this
     /// split event — see `try_split_src`'s doc comment on `parent`) was relocated: the edge between
     /// `parent` and `src` was removed, and the same direction/kind was recreated between `parent`
@@ -223,42 +320,78 @@ pub enum VertexBasedEvent {
     /// with a matching requirement. `taken_by == src` means the edge effectively stayed put (`src`
     /// itself caught its own parent face).
     #[wire(tag = 33, mutating)]
-    SplitParentEdgeRelocated { parent: NodeId, src: NodeId, taken_by: NodeId },
+    SplitParentEdgeRelocated {
+        parent: NodeId,
+        src: NodeId,
+        taken_by: NodeId,
+    },
     /// The vertical-connection roll for `src` against `params.vertical_chance`, taken after the
     /// cyclic roll (`CyclicRolled`) — opposite order from `TeleportRolled` (GitHub issue #337).
     /// Only rolled when the maze has more than one floor. `fired` is `roll < vertical_chance`.
     #[wire(tag = 34)]
-    VerticalRolled { src: NodeId, roll: f64, vertical_chance: f64, fired: bool },
+    VerticalRolled {
+        src: NodeId,
+        roll: f64,
+        vertical_chance: f64,
+        fired: bool,
+    },
     /// The passage-vs-elevator balance roll for `src`, taken once `VerticalRolled.fired` is true —
     /// always consumed regardless of whether a valid target is later found. `is_elevator` is
     /// `roll < vertical_passage_elevator_balance`.
     #[wire(tag = 35)]
-    VerticalBalanceRolled { src: NodeId, roll: f64, balance: f64, is_elevator: bool },
+    VerticalBalanceRolled {
+        src: NodeId,
+        roll: f64,
+        balance: f64,
+        is_elevator: bool,
+    },
     /// The one-way-vs-two-way roll for a `VerticalPassage` edge against
     /// `params.one_way_vertical_passage_chance`, taken once a passage target has been resolved.
     /// `fired` is `roll < one_way_vertical_passage_chance`.
     #[wire(tag = 43)]
-    VerticalPassageOneWayRolled { roll: f64, one_way_chance: f64, fired: bool },
+    VerticalPassageOneWayRolled {
+        roll: f64,
+        one_way_chance: f64,
+        fired: bool,
+    },
     /// The up/down direction roll for a one-way `VerticalPassage` edge, only rolled when
     /// `VerticalPassageOneWayRolled.fired` is true. `upward` is `roll < vertical_up_down_balance`.
     #[wire(tag = 44)]
-    VerticalPassageDirectionRolled { roll: f64, balance: f64, upward: bool },
+    VerticalPassageDirectionRolled {
+        roll: f64,
+        balance: f64,
+        upward: bool,
+    },
     /// A `VerticalPassage` edge was added from `src` to `dst` (the resolved target-floor node) —
     /// direction detected the same way as `TeleportBridgeAdded`. `one_way`/`upward` describe the
     /// roll outcome: `upward` is only meaningful when `one_way` is true.
     #[wire(tag = 36, mutating)]
-    VerticalPassageAdded { src: NodeId, dst: NodeId, one_way: bool, upward: bool },
+    VerticalPassageAdded {
+        src: NodeId,
+        dst: NodeId,
+        one_way: bool,
+        upward: bool,
+    },
     /// `VerticalPassage` construction failed for this attempt (no geometric neighbor in the needed
     /// direction, `node_at` resolved to nothing on the neighbor floor, or the resolved neighbor
     /// didn't satisfy the growth/cyclic context) — narrates the fallback decision point.
     /// `elevator_fallback_allowed` reflects whether `vertical_passage_elevator_balance != 0`.
     #[wire(tag = 37)]
-    VerticalPassageFailed { src: NodeId, elevator_fallback_allowed: bool },
+    VerticalPassageFailed {
+        src: NodeId,
+        elevator_fallback_allowed: bool,
+    },
     /// The elevator floor-count algorithm's inputs, computed before any branching roll:
     /// `unvisited_pool_size` (after the non-consecutive contiguous-run clamp, if applicable),
     /// `has_cyclic_visited`, and the clamped `max_slots`/`elevator_span_min` bounds actually used.
     #[wire(tag = 38)]
-    ElevatorSlotsComputed { src: NodeId, unvisited_pool_size: usize, has_cyclic_visited: bool, max_slots: usize, span_min: usize },
+    ElevatorSlotsComputed {
+        src: NodeId,
+        unvisited_pool_size: usize,
+        has_cyclic_visited: bool,
+        max_slots: usize,
+        span_min: usize,
+    },
     /// Elevator floor-count construction failed (`max_slots < elevator_span_min`) — narrates
     /// which fallback path this attempt is eligible for. `fallback_allowed` reflects the balance
     /// gate for the current context (cyclic: always geometric-cyclic; growth: VerticalPassage only
@@ -274,12 +407,19 @@ pub enum VertexBasedEvent {
     /// directed edges were actually added (may be fewer if a preset conflict silently declined one
     /// or more pairs — see `vertex_based.rs`'s transactionality note).
     #[wire(tag = 41, mutating)]
-    ElevatorAdded { nodes: Vec<NodeId>, edges_added: usize },
+    ElevatorAdded {
+        nodes: Vec<NodeId>,
+        edges_added: usize,
+    },
     /// The cross-floor-vs-same-floor balance roll for a teleport target, taken after
     /// `TeleportRolled`/`TeleportBridgeRolled` already hit. `other_floor_preferred` is
     /// `roll < cross_floor_teleport_balance`.
     #[wire(tag = 42)]
-    CrossFloorTeleportRolled { roll: f64, balance: f64, other_floor_preferred: bool },
+    CrossFloorTeleportRolled {
+        roll: f64,
+        balance: f64,
+        other_floor_preferred: bool,
+    },
 }
 
 pub const VISITED: &str = "visited";
@@ -313,14 +453,20 @@ impl DebugValueDelta<NodeId> for VertexBasedEvent {
             VertexBasedEvent::ReserveCandidateChosen { node } => {
                 vec![(RESERVE, DebugValueOp::Remove, *node)]
             }
-            VertexBasedEvent::ReserveCandidateRejected { node, already_visited: false } => {
+            VertexBasedEvent::ReserveCandidateRejected {
+                node,
+                already_visited: false,
+            } => {
                 vec![(RESERVE, DebugValueOp::Insert, *node)]
             }
             VertexBasedEvent::NodeQueuedToReserve { node } => {
                 vec![(RESERVE, DebugValueOp::Insert, *node)]
             }
             VertexBasedEvent::StartVisited { node } => {
-                vec![(VISITED, DebugValueOp::Insert, *node), (FRONTIER, DebugValueOp::Insert, *node)]
+                vec![
+                    (VISITED, DebugValueOp::Insert, *node),
+                    (FRONTIER, DebugValueOp::Insert, *node),
+                ]
             }
             VertexBasedEvent::SrcChosenFromFrontier { src, .. } => {
                 vec![(FRONTIER, DebugValueOp::Remove, *src)]
@@ -332,7 +478,11 @@ impl DebugValueDelta<NodeId> for VertexBasedEvent {
                 // path actually connected it to anything this event, which is decided per-node
                 // by the ordinary/pattern apply step and carried by that node's own `NodeVisited`
                 // (or, for a zero-connection pattern node, this is its only delta: `VISITED` only).
-                nodes.iter().skip(1).map(|n| (VISITED, DebugValueOp::Insert, *n)).collect()
+                nodes
+                    .iter()
+                    .skip(1)
+                    .map(|n| (VISITED, DebugValueOp::Insert, *n))
+                    .collect()
             }
             _ => Vec::new(),
         }

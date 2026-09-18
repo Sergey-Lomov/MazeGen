@@ -1,16 +1,16 @@
-use std::collections::{HashMap, HashSet};
-use rand::RngCore;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::region_class::RegionClass;
-use crate::space::Tessellation;
-use crate::quality_control::MissingRegionsIssue;
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
+use crate::graph::region_class::RegionClass;
+use crate::ids::NodeId;
+use crate::quality_control::MissingRegionsIssue;
 use crate::repair::command::MutationCommand;
 use crate::repair::draft::DraftMaze;
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
+use crate::repair::result::RepairResult;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::{HashMap, HashSet};
 
 mod convert;
 mod grow;
@@ -29,13 +29,21 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_LOCALITY,
         label: "Growth directionality",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+        kind: StrategyParamKind::Float {
+            default: 0.5,
+            min: 0.0,
+            max: 1.0,
+        },
     },
     StrategyParam {
         id: PARAM_MIN_REGION_SIZE,
         // Value is a node count — rounded to usize before use (see `min_region_size`).
         label: "Minimum grown region size",
-        kind: StrategyParamKind::Float { default: 2.0, min: 1.0, max: 64.0 },
+        kind: StrategyParamKind::Float {
+            default: 2.0,
+            min: 1.0,
+            max: 64.0,
+        },
     },
 ];
 
@@ -79,13 +87,17 @@ pub(super) struct GrowContext<'a> {
 pub struct MissingRegionsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsStrategy {
-    fn strategy_id(&self) -> &'static str { "missing_regions" }
+    fn strategy_id(&self) -> &'static str {
+        "missing_regions"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
     }
 
-    fn is_experimental(&self) -> bool { true }
+    fn is_experimental(&self) -> bool {
+        true
+    }
 
     fn apply(
         &self,
@@ -101,7 +113,10 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
             return (RepairResult::Failed, vec![]);
         }
 
-        let locality = params.get(PARAM_LOCALITY).and_then(|v| v.as_float()).unwrap_or(0.5);
+        let locality = params
+            .get(PARAM_LOCALITY)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5);
         let min_region_size = params
             .get(PARAM_MIN_REGION_SIZE)
             .and_then(|v| v.as_float())
@@ -113,7 +128,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
         // per-process, same rationale as `expand_region_passage.rs`'s key-sorting. Only negative
         // (shortfall) entries are creation targets; positive (surplus) entries are spendable
         // budget for cross-region growth (`try_open_excess_neighbor`), not targets themselves.
-        let mut classes: Vec<RegionClass> = balance_by_class.keys()
+        let mut classes: Vec<RegionClass> = balance_by_class
+            .keys()
             .filter(|&&c| balance_by_class.get(&c).copied().unwrap_or(0) < 0)
             .copied()
             .collect();
@@ -124,7 +140,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
         // (`try_open_excess_neighbor`); a rolled-back attempt restores its own debit (see
         // `try_grow`'s `budget_before` snapshot/restore), so this map always reflects only
         // successfully spent surplus, never a failed attempt's speculative spend.
-        let mut excess_budget: HashMap<RegionClass, i32> = balance_by_class.iter()
+        let mut excess_budget: HashMap<RegionClass, i32> = balance_by_class
+            .iter()
             .filter(|&(_, &balance)| balance > 0)
             .map(|(&class, &balance)| (class, balance))
             .collect();
@@ -145,7 +162,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
             if class == RegionClass::Path {
                 continue;
             }
-            let mut remaining = balance_by_class.get(&class).copied().unwrap_or(0).unsigned_abs();
+            let mut remaining = balance_by_class
+                .get(&class)
+                .copied()
+                .unwrap_or(0)
+                .unsigned_abs();
 
             while remaining > 0 {
                 if total_failures >= MAX_TOTAL_FAILURES {
@@ -160,7 +181,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
                 };
                 let mut attempt = DraftMaze::new(current.maze.draft());
                 let outcome = attempt_one_region(
-                    &mut attempt, class, locality, min_region_size, &mut excess_budget, &ctx, rng,
+                    &mut attempt,
+                    class,
+                    locality,
+                    min_region_size,
+                    &mut excess_budget,
+                    &ctx,
+                    rng,
                 );
 
                 match outcome {
@@ -204,5 +231,13 @@ fn attempt_one_region<T: Tessellation>(
     if let Some(members) = try_reuse(attempt, target, min_region_size, excess_budget, ctx, rng) {
         return Some(members);
     }
-    try_grow(attempt, target, locality, min_region_size, excess_budget, ctx, rng)
+    try_grow(
+        attempt,
+        target,
+        locality,
+        min_region_size,
+        excess_budget,
+        ctx,
+        rng,
+    )
 }

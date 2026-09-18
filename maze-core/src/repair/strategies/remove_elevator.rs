@@ -1,13 +1,13 @@
-use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::InvalidElevatorIssue;
 use crate::generation::PresetState;
+use crate::quality_control::InvalidElevatorIssue;
+use crate::quality_control::checks::elevator_core::elevator_groups;
+use crate::repair::command::MutationCommand;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use crate::quality_control::checks::elevator_core::elevator_groups;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 static PARAMS: &[StrategyParam] = &[];
 
@@ -21,7 +21,9 @@ static PARAMS: &[StrategyParam] = &[];
 pub struct RemoveElevatorStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidElevatorIssue> for RemoveElevatorStrategy {
-    fn strategy_id(&self) -> &'static str { "remove_elevator" }
+    fn strategy_id(&self) -> &'static str {
+        "remove_elevator"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -61,14 +63,14 @@ crate::impl_erased_repair_strategy!(RemoveElevatorStrategy, InvalidElevatorIssue
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
-    use crate::{Graph, IdGenerator};
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::random::MazeRng;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
-    use crate::quality_control::issue_kinds::ElevatorNodes;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     fn no_params() -> StrategyParams {
         build_params(<RemoveElevatorStrategy as RepairStrategy<SquareTessellation, InvalidElevatorIssue>>::params(&RemoveElevatorStrategy), None)
@@ -78,11 +80,18 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..3)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let nodes: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let nodes: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
         (Maze::new(mf, g), nodes)
     }
 
@@ -95,9 +104,18 @@ mod tests {
                 maze.graph.add_edge(nodes[j], nodes[i], EdgeKind::Elevator);
             }
         }
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(nodes.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(nodes.clone())]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Elevator));
     }
@@ -107,24 +125,46 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..2)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let a: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
-        let b: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let a: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
+        let b: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap())
+            .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
         maze.graph.add_edge(a[0], a[1], EdgeKind::Elevator);
         maze.graph.add_edge(a[1], a[0], EdgeKind::Elevator);
         maze.graph.add_edge(b[0], b[1], EdgeKind::Elevator);
         maze.graph.add_edge(b[1], b[0], EdgeKind::Elevator);
 
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(a.clone())]);
+        let issue =
+            InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(a.clone())]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(a[0], a[1]).is_none());
-        assert!(maze.graph.edge_between(b[0], b[1]).is_some(), "the other elevator must survive");
+        assert!(
+            maze.graph.edge_between(b[0], b[1]).is_some(),
+            "the other elevator must survive"
+        );
     }
 
     #[test]
@@ -135,20 +175,41 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
         let floors: Vec<_> = (0..2)
-            .map(|_| mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap()))
+            .map(|_| {
+                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+            })
             .collect();
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
-        let a: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
-        let b: Vec<_> = floors.iter().map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap()).collect();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let a: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap())
+            .collect();
+        let b: Vec<_> = floors
+            .iter()
+            .map(|&l| mf.node_at(l, SquarePoint { x: 1, y: 0 }).unwrap())
+            .collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
         // Only b is actually wired as an elevator; a is flagged but was never (or no longer) one.
         maze.graph.add_edge(b[0], b[1], EdgeKind::Elevator);
         maze.graph.add_edge(b[1], b[0], EdgeKind::Elevator);
 
-        let issue = InvalidElevatorIssue::new_from_check("test", vec![ElevatorNodes::new(a.clone()), ElevatorNodes::new(b.clone())]);
+        let issue = InvalidElevatorIssue::new_from_check(
+            "test",
+            vec![ElevatorNodes::new(a.clone()), ElevatorNodes::new(b.clone())],
+        );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(b[0], b[1]).is_none());
     }
@@ -158,7 +219,15 @@ mod tests {
         let (mut maze, _nodes) = three_floor_maze();
         let issue = InvalidElevatorIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&RemoveElevatorStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(
+            &RemoveElevatorStrategy,
+            &issue,
+            &mut maze,
+            &mut rng,
+            &no_params(),
+            &PresetState::empty(),
+            &[],
+        );
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 }

@@ -315,13 +315,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
-    const lockEntries = buildLocks(lockedNodes, autoLockedNodes);
-    this.locks.render({ locks: lockEntries }, cfg);
-
-    // One node-anchor map per redraw, resolving every preset marker/edge endpoint below (start/
-    // finish markers, teleports, vertical passages, elevators) — a split node draws at the same
-    // shape-aware anchor everywhere (GitHub issue #474 follow-up).
+    // One node-anchor map per redraw, shared by split markers and locks.
     const nodePositions = buildPresetNodePositions(cfg, presetSplitPoints, presetConnections);
+    const lockEntries = buildLocks(lockedNodes, autoLockedNodes, nodePositions, presetSplitPoints);
+    this.locks.render({ locks: lockEntries }, cfg);
 
     const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);
     this.markers.render({ markers: markerData });

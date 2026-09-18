@@ -29,9 +29,9 @@
 //! is *not* suppressed — it controls geometry inside a single strategy, which the dispatcher has no
 //! say over.
 
-use std::collections::HashMap;
 use crate::quality_control::RepairArea;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use std::collections::HashMap;
 
 pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 pub const PARAM_ATTEMPTS_LIMIT: &str = "attempts_limit";
@@ -46,13 +46,21 @@ pub const ATTEMPTS_LIMIT_DEFAULT: f64 = 25.0;
 pub const RESERVE_PERCENT_PARAM: StrategyParam = StrategyParam {
     id: PARAM_RESERVE_PERCENT,
     label: "Reserve percent",
-    kind: StrategyParamKind::Float { default: RESERVE_PERCENT_DEFAULT, min: 0.0, max: 500.0 },
+    kind: StrategyParamKind::Float {
+        default: RESERVE_PERCENT_DEFAULT,
+        min: 0.0,
+        max: 500.0,
+    },
 };
 
 pub const ATTEMPTS_LIMIT_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ATTEMPTS_LIMIT,
     label: "Attempts limit",
-    kind: StrategyParamKind::Float { default: ATTEMPTS_LIMIT_DEFAULT, min: 1.0, max: 10_000.0 },
+    kind: StrategyParamKind::Float {
+        default: ATTEMPTS_LIMIT_DEFAULT,
+        min: 1.0,
+        max: 10_000.0,
+    },
 };
 
 /// The ids an add strategy hides (and a dispatcher strips) when the strategy runs nested — see the
@@ -115,8 +123,14 @@ pub fn reserve_target(params: &StrategyParams, missing: u32) -> u32 {
 /// scaled the same way `reserve_target` scales one, so a strategy that feeds `missing` straight
 /// into `RemainingDeficits` gets the reserve boost per area without touching the deficit
 /// bookkeeping itself. An empty input, or the default 0% reserve, returns the list unchanged.
-pub fn reserve_scaled_missing(params: &StrategyParams, missing: &[(RepairArea, u32)]) -> Vec<(RepairArea, u32)> {
-    missing.iter().map(|&(area, count)| (area, reserve_target(params, count))).collect()
+pub fn reserve_scaled_missing(
+    params: &StrategyParams,
+    missing: &[(RepairArea, u32)],
+) -> Vec<(RepairArea, u32)> {
+    missing
+        .iter()
+        .map(|&(area, count)| (area, reserve_target(params, count)))
+        .collect()
 }
 
 /// The dispatcher-owned add params (`reserve_percent`, `attempts_limit`) resolved to string
@@ -154,37 +168,63 @@ pub fn src_mode(params: &StrategyParams) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use super::super::dead_end_priority::{
+        PARAM_SRC_MODE, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_RANDOM,
+    };
     use super::*;
     use crate::repair::params::build_params;
     use std::collections::HashMap;
-    use super::super::dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIORITY};
 
     const ONE_WAY_CHANCE: StrategyParam = StrategyParam {
         id: "one_way_chance",
         label: "One-way chance",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float {
+            default: 0.0,
+            min: 0.0,
+            max: 100.0,
+        },
     };
 
     static WITH_SRC: [StrategyParam; 4] = crate::add_strategy_params!(ONE_WAY_CHANCE);
-    static WITHOUT_SRC: [StrategyParam; 3] = crate::add_strategy_params!(no_src_mode: ONE_WAY_CHANCE);
+    static WITHOUT_SRC: [StrategyParam; 3] =
+        crate::add_strategy_params!(no_src_mode: ONE_WAY_CHANCE);
 
     #[test]
     fn standard_set_appends_in_specific_then_shared_order() {
         let ids: Vec<&str> = WITH_SRC.iter().map(|p| p.id).collect();
-        assert_eq!(ids, vec!["one_way_chance", PARAM_RESERVE_PERCENT, PARAM_SRC_MODE, PARAM_ATTEMPTS_LIMIT]);
+        assert_eq!(
+            ids,
+            vec![
+                "one_way_chance",
+                PARAM_RESERVE_PERCENT,
+                PARAM_SRC_MODE,
+                PARAM_ATTEMPTS_LIMIT
+            ]
+        );
     }
 
     #[test]
     fn reserve_and_attempts_only_set_omits_src_mode() {
         let ids: Vec<&str> = WITHOUT_SRC.iter().map(|p| p.id).collect();
-        assert_eq!(ids, vec!["one_way_chance", PARAM_RESERVE_PERCENT, PARAM_ATTEMPTS_LIMIT]);
+        assert_eq!(
+            ids,
+            vec![
+                "one_way_chance",
+                PARAM_RESERVE_PERCENT,
+                PARAM_ATTEMPTS_LIMIT
+            ]
+        );
     }
 
     #[test]
     fn reserve_target_applies_ceil_of_missing_times_reserve() {
         let params = build_params(&WITH_SRC, None);
         assert_eq!(reserve_target(&params, 0), 0);
-        assert_eq!(reserve_target(&params, 4), 4, "default reserve 0 builds exactly the deficit");
+        assert_eq!(
+            reserve_target(&params, 4),
+            4,
+            "default reserve 0 builds exactly the deficit"
+        );
 
         let mut ov = HashMap::new();
         ov.insert(PARAM_RESERVE_PERCENT.to_string(), "50".to_string());
@@ -210,7 +250,10 @@ mod tests {
         assert_eq!(src_mode(&params), SRC_MODE_RANDOM);
 
         let mut ov = HashMap::new();
-        ov.insert(PARAM_SRC_MODE.to_string(), SRC_MODE_DEAD_END_PRIORITY.to_string());
+        ov.insert(
+            PARAM_SRC_MODE.to_string(),
+            SRC_MODE_DEAD_END_PRIORITY.to_string(),
+        );
         let params = build_params(&WITH_SRC, Some(&ov));
         assert_eq!(src_mode(&params), SRC_MODE_DEAD_END_PRIORITY);
     }

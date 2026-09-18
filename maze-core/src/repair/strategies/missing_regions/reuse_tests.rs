@@ -1,10 +1,10 @@
 use super::*;
-use crate::graph::{Graph as G, EdgeKind as EK};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, MultiLevelField};
-use crate::repair::draft::DraftMaze;
-use rand::SeedableRng;
+use crate::graph::{EdgeKind as EK, Graph as G};
 use crate::random::MazeRng;
+use crate::repair::draft::DraftMaze;
+use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+use rand::SeedableRng;
 
 #[test]
 fn filter_by_border_drops_a_candidate_with_zero_border_on_every_needed_side() {
@@ -16,15 +16,32 @@ fn filter_by_border_drops_a_candidate_with_zero_border_on_every_needed_side() {
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
-    let reachable_from_start: HashSet<NodeId> = maze.graph.reachable_from(start).into_iter().collect();
-    let reachable_to_finish: HashSet<NodeId> = maze.graph.reachable_to(finish).into_iter().collect();
-    filter_by_border(&maze, &mut candidates, RegionClass::Trap, &classes, &scc, &reachable_from_start, &reachable_to_finish, true, true);
+    let reachable_from_start: HashSet<NodeId> =
+        maze.graph.reachable_from(start).into_iter().collect();
+    let reachable_to_finish: HashSet<NodeId> =
+        maze.graph.reachable_to(finish).into_iter().collect();
+    filter_by_border(
+        &maze,
+        &mut candidates,
+        RegionClass::Trap,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        true,
+        true,
+    );
 
-    assert!(!candidates.contains(&n3_component), "{{n3,n4,n5}} has zero inbound border -- must be filtered out");
+    assert!(
+        !candidates.contains(&n3_component),
+        "{{n3,n4,n5}} has zero inbound border -- must be filtered out"
+    );
 }
 
 #[test]
@@ -36,16 +53,36 @@ fn filter_by_border_keeps_a_candidate_with_the_needed_border() {
     let finish = nodes[1];
     let region6 = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
     let region6_component = scc.component_of(region6).unwrap();
     let mut candidates = vec![region6_component];
 
-    let reachable_from_start: HashSet<NodeId> = maze.graph.reachable_from(start).into_iter().collect();
-    let reachable_to_finish: HashSet<NodeId> = maze.graph.reachable_to(finish).into_iter().collect();
-    let border_count = filter_by_border(&maze, &mut candidates, RegionClass::Trap, &classes, &scc, &reachable_from_start, &reachable_to_finish, true, true);
+    let reachable_from_start: HashSet<NodeId> =
+        maze.graph.reachable_from(start).into_iter().collect();
+    let reachable_to_finish: HashSet<NodeId> =
+        maze.graph.reachable_to(finish).into_iter().collect();
+    let border_count = filter_by_border(
+        &maze,
+        &mut candidates,
+        RegionClass::Trap,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        true,
+        true,
+    );
 
-    assert!(candidates.contains(&region6_component), "region6 has an inbound border -- must survive the filter");
-    assert!(border_count.get(&region6_component).copied().unwrap_or(0) > 0, "surviving border-needing candidate must have a recorded border-count");
+    assert!(
+        candidates.contains(&region6_component),
+        "region6 has an inbound border -- must survive the filter"
+    );
+    assert!(
+        border_count.get(&region6_component).copied().unwrap_or(0) > 0,
+        "surviving border-needing candidate must have a recorded border-count"
+    );
 }
 
 #[test]
@@ -61,17 +98,37 @@ fn filter_by_border_keeps_alternative_candidate_with_only_one_of_the_two_needed_
     let region6 = nodes[2];
     let n5 = nodes[5];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
     let region6_component = scc.component_of(region6).unwrap();
     let mut candidates = vec![region6_component];
 
-    let reachable_from_start: HashSet<NodeId> = maze.graph.reachable_from(start).into_iter().collect();
-    let reachable_to_finish: HashSet<NodeId> = maze.graph.reachable_to(finish).into_iter().collect();
-    assert!(!reachable_to_finish.contains(&n5), "sanity: n5 (region6's only other neighbor) must not be finish-reachable");
+    let reachable_from_start: HashSet<NodeId> =
+        maze.graph.reachable_from(start).into_iter().collect();
+    let reachable_to_finish: HashSet<NodeId> =
+        maze.graph.reachable_to(finish).into_iter().collect();
+    assert!(
+        !reachable_to_finish.contains(&n5),
+        "sanity: n5 (region6's only other neighbor) must not be finish-reachable"
+    );
 
-    filter_by_border(&maze, &mut candidates, RegionClass::Alternative, &classes, &scc, &reachable_from_start, &reachable_to_finish, true, true);
+    filter_by_border(
+        &maze,
+        &mut candidates,
+        RegionClass::Alternative,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        true,
+        true,
+    );
 
-    assert!(candidates.contains(&region6_component), "region6 has only an inbound border (no outbound) -- must still survive the OR-filter for Alternative");
+    assert!(
+        candidates.contains(&region6_component),
+        "region6 has only an inbound border (no outbound) -- must still survive the OR-filter for Alternative"
+    );
 }
 
 #[test]
@@ -85,16 +142,36 @@ fn filter_by_border_keeps_a_border_less_candidate_when_its_needed_side_has_geome
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
-    let reachable_from_start: HashSet<NodeId> = maze.graph.reachable_from(start).into_iter().collect();
-    let reachable_to_finish: HashSet<NodeId> = maze.graph.reachable_to(finish).into_iter().collect();
-    let border_count = filter_by_border(&maze, &mut candidates, RegionClass::Trap, &classes, &scc, &reachable_from_start, &reachable_to_finish, false, true);
+    let reachable_from_start: HashSet<NodeId> =
+        maze.graph.reachable_from(start).into_iter().collect();
+    let reachable_to_finish: HashSet<NodeId> =
+        maze.graph.reachable_to(finish).into_iter().collect();
+    let border_count = filter_by_border(
+        &maze,
+        &mut candidates,
+        RegionClass::Trap,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        false,
+        true,
+    );
 
-    assert!(candidates.contains(&n3_component), "inbound geometry disabled -- border-less {{n3,n4,n5}} must survive");
-    assert!(!border_count.contains_key(&n3_component), "a side with geometry disabled contributes no border-count");
+    assert!(
+        candidates.contains(&n3_component),
+        "inbound geometry disabled -- border-less {{n3,n4,n5}} must survive"
+    );
+    assert!(
+        !border_count.contains_key(&n3_component),
+        "a side with geometry disabled contributes no border-count"
+    );
 }
 
 #[test]
@@ -107,16 +184,36 @@ fn filter_by_border_keeps_everything_when_both_geometry_flags_are_disabled() {
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
-    let reachable_from_start: HashSet<NodeId> = maze.graph.reachable_from(start).into_iter().collect();
-    let reachable_to_finish: HashSet<NodeId> = maze.graph.reachable_to(finish).into_iter().collect();
-    let border_count = filter_by_border(&maze, &mut candidates, RegionClass::Alternative, &classes, &scc, &reachable_from_start, &reachable_to_finish, false, false);
+    let reachable_from_start: HashSet<NodeId> =
+        maze.graph.reachable_from(start).into_iter().collect();
+    let reachable_to_finish: HashSet<NodeId> =
+        maze.graph.reachable_to(finish).into_iter().collect();
+    let border_count = filter_by_border(
+        &maze,
+        &mut candidates,
+        RegionClass::Alternative,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        false,
+        false,
+    );
 
-    assert!(candidates.contains(&n3_component), "both geometry requirements disabled -- border-less {{n3,n4,n5}} must survive even for Alternative (needs both sides)");
-    assert!(border_count.is_empty(), "no side requires geometry -- no border-count should be recorded for anyone");
+    assert!(
+        candidates.contains(&n3_component),
+        "both geometry requirements disabled -- border-less {{n3,n4,n5}} must survive even for Alternative (needs both sides)"
+    );
+    assert!(
+        border_count.is_empty(),
+        "no side requires geometry -- no border-count should be recorded for anyone"
+    );
 }
 
 /// 1x5 row: 0=start, 1=finish (edge 0->1), 2=candidate (singleton Unreachable, field-neighbor
@@ -140,9 +237,20 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
-    assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable));
-    assert_eq!(classes.get(&scc.component_of(trap_neighbor).unwrap()).copied(), Some(RegionClass::Trap), "sanity: neighbor must be a DIFFERENT class than the candidate");
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
+    assert_eq!(
+        classes.get(&scc.component_of(candidate).unwrap()).copied(),
+        Some(RegionClass::Unreachable)
+    );
+    assert_eq!(
+        classes
+            .get(&scc.component_of(trap_neighbor).unwrap())
+            .copied(),
+        Some(RegionClass::Trap),
+        "sanity: neighbor must be a DIFFERENT class than the candidate"
+    );
 
     let candidate_idx = scc.component_of(candidate).unwrap();
     let mut members: HashSet<NodeId> = [candidate].into_iter().collect();
@@ -151,12 +259,44 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
     let mut rng = MazeRng::seed_from_u64(1);
 
     let mut draft = DraftMaze::new(maze);
-    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
+    absorb_until_min_size(
+        &mut draft,
+        &mut members,
+        candidate_idx,
+        2,
+        &scc,
+        &classes,
+        &mut budget,
+        &critical,
+        &test_ctx(&HashSet::new(), &PresetState::empty()),
+        &mut rng,
+    );
 
-    assert!(members.contains(&trap_neighbor), "trap_neighbor has its own budget -- must be absorbed despite being a different class");
-    assert_eq!(budget.get(&RegionClass::Trap), None, "trap_neighbor's budget (1) fully spent on its own 1-node size -- entry removed");
-    assert!(draft.maze.graph.edge_between(candidate, trap_neighbor).is_some(), "a bidirectional bridge must have been added");
-    assert!(draft.maze.graph.edge_between(trap_neighbor, candidate).is_some(), "a bidirectional bridge must have been added");
+    assert!(
+        members.contains(&trap_neighbor),
+        "trap_neighbor has its own budget -- must be absorbed despite being a different class"
+    );
+    assert_eq!(
+        budget.get(&RegionClass::Trap),
+        None,
+        "trap_neighbor's budget (1) fully spent on its own 1-node size -- entry removed"
+    );
+    assert!(
+        draft
+            .maze
+            .graph
+            .edge_between(candidate, trap_neighbor)
+            .is_some(),
+        "a bidirectional bridge must have been added"
+    );
+    assert!(
+        draft
+            .maze
+            .graph
+            .edge_between(trap_neighbor, candidate)
+            .is_some(),
+        "a bidirectional bridge must have been added"
+    );
 }
 
 #[test]
@@ -165,7 +305,9 @@ fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
 
     let candidate_idx = scc.component_of(candidate).unwrap();
     let mut members: HashSet<NodeId> = [candidate].into_iter().collect();
@@ -174,11 +316,36 @@ fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
     let mut rng = MazeRng::seed_from_u64(1);
 
     let mut draft = DraftMaze::new(maze);
-    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
+    absorb_until_min_size(
+        &mut draft,
+        &mut members,
+        candidate_idx,
+        2,
+        &scc,
+        &classes,
+        &mut budget,
+        &critical,
+        &test_ctx(&HashSet::new(), &PresetState::empty()),
+        &mut rng,
+    );
 
-    assert!(!members.contains(&trap_neighbor), "no budget entry for Trap at all -- trap_neighbor must remain outside members");
-    assert_eq!(members.len(), 1, "members must stay at just the candidate's own node");
-    assert!(draft.maze.graph.edge_between(candidate, trap_neighbor).is_none(), "no edge should have been added");
+    assert!(
+        !members.contains(&trap_neighbor),
+        "no budget entry for Trap at all -- trap_neighbor must remain outside members"
+    );
+    assert_eq!(
+        members.len(),
+        1,
+        "members must stay at just the candidate's own node"
+    );
+    assert!(
+        draft
+            .maze
+            .graph
+            .edge_between(candidate, trap_neighbor)
+            .is_none(),
+        "no edge should have been added"
+    );
 }
 
 #[test]
@@ -189,11 +356,18 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     // component, proving a single blocked edge is discarded from the pool, not its entire
     // bordering component.
     let mut ids = IdGenerator::new();
-    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
-        let field_level = field.single_level_id();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = G::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let n = |x: i32, y: i32| {
+        field
+            .node_at(field_level, crate::space::SquarePoint { x, y })
+            .unwrap()
+    };
     let start = n(2, 0);
     let finish = n(2, 1);
     let candidate = n(1, 0); // Unreachable singleton, field-neighbors: start(2,0), trap_a(0,0), trap_b(1,1)
@@ -207,10 +381,23 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     maze.meta.finish = Some(finish);
 
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
-    assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable));
-    assert_eq!(classes.get(&scc.component_of(trap_a).unwrap()).copied(), Some(RegionClass::Trap), "sanity: {{trap_a,trap_b}} must be one Trap component");
-    assert_eq!(scc.component_of(trap_a), scc.component_of(trap_b), "sanity: both bridge targets must be the SAME component");
+    let classes = maze
+        .analysis
+        .region_classes(&maze.graph, &maze.field, &maze.meta);
+    assert_eq!(
+        classes.get(&scc.component_of(candidate).unwrap()).copied(),
+        Some(RegionClass::Unreachable)
+    );
+    assert_eq!(
+        classes.get(&scc.component_of(trap_a).unwrap()).copied(),
+        Some(RegionClass::Trap),
+        "sanity: {{trap_a,trap_b}} must be one Trap component"
+    );
+    assert_eq!(
+        scc.component_of(trap_a),
+        scc.component_of(trap_b),
+        "sanity: both bridge targets must be the SAME component"
+    );
 
     let mut preset_state = PresetState::empty();
     // Block only the candidate<->trap_a edge -- the candidate<->trap_b edge into the SAME
@@ -225,13 +412,39 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     let mut rng = MazeRng::seed_from_u64(1);
 
     let mut draft = DraftMaze::new(maze);
-    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &preset_state), &mut rng);
+    absorb_until_min_size(
+        &mut draft,
+        &mut members,
+        candidate_idx,
+        2,
+        &scc,
+        &classes,
+        &mut budget,
+        &critical,
+        &test_ctx(&HashSet::new(), &preset_state),
+        &mut rng,
+    );
 
-    assert!(members.contains(&trap_a) && members.contains(&trap_b), "the component must still be absorbed via the non-blocked edge");
-    assert!(draft.maze.graph.edge_between(candidate, trap_a).is_none(), "the blocked edge must never have been added");
-    assert!(draft.maze.graph.edge_between(trap_a, candidate).is_none(), "the blocked edge must never have been added");
-    assert!(draft.maze.graph.edge_between(candidate, trap_b).is_some(), "the non-blocked edge must have been added instead");
-    assert!(draft.maze.graph.edge_between(trap_b, candidate).is_some(), "the non-blocked edge must have been added instead");
+    assert!(
+        members.contains(&trap_a) && members.contains(&trap_b),
+        "the component must still be absorbed via the non-blocked edge"
+    );
+    assert!(
+        draft.maze.graph.edge_between(candidate, trap_a).is_none(),
+        "the blocked edge must never have been added"
+    );
+    assert!(
+        draft.maze.graph.edge_between(trap_a, candidate).is_none(),
+        "the blocked edge must never have been added"
+    );
+    assert!(
+        draft.maze.graph.edge_between(candidate, trap_b).is_some(),
+        "the non-blocked edge must have been added instead"
+    );
+    assert!(
+        draft.maze.graph.edge_between(trap_b, candidate).is_some(),
+        "the non-blocked edge must have been added instead"
+    );
 }
 
 #[test]
@@ -252,7 +465,10 @@ fn prioritize_candidates_puts_a_large_enough_candidate_ahead_of_a_smaller_one_wi
 
     prioritize_candidates(&mut candidates, &scc, &border_count, 2, &mut rng);
 
-    assert_eq!(candidates[0], n3_component, "size >= min_region_size must outrank a smaller candidate regardless of border_count");
+    assert_eq!(
+        candidates[0], n3_component,
+        "size >= min_region_size must outrank a smaller candidate regardless of border_count"
+    );
 }
 
 #[test]
@@ -271,5 +487,8 @@ fn prioritize_candidates_orders_by_border_count_within_the_same_size_tier() {
 
     prioritize_candidates(&mut candidates, &scc, &border_count, 10, &mut rng);
 
-    assert_eq!(candidates[0], n3_component, "within the same size tier, higher border_count must sort first");
+    assert_eq!(
+        candidates[0], n3_component,
+        "within the same size tier, higher border_count must sort first"
+    );
 }

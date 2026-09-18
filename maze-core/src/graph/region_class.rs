@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use crate::ids::NodeId;
+use super::Graph;
 use crate::graph::routing::RouteInfo;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
-use super::Graph;
+use crate::ids::NodeId;
+use std::collections::{HashMap, HashSet};
 
 /// Classification of an SCC region relative to `start`/`finish`. Every region gets exactly one
 /// class — see `Specs/graph-analytics.md`'s "Region Classes" section.
@@ -75,34 +75,38 @@ pub fn classify_regions(
         .map(|r| r.path.iter().filter_map(|n| scc.component_of(*n)).collect())
         .unwrap_or_default();
 
-    scc.components.iter().enumerate().map(|(comp_id, members)| {
-        let is_path = path_components.contains(&comp_id);
+    scc.components
+        .iter()
+        .enumerate()
+        .map(|(comp_id, members)| {
+            let is_path = path_components.contains(&comp_id);
 
-        let class = if is_path {
-            RegionClass::Path
-        } else {
-            let reachable = members.iter().any(|n| reachable_from_start.contains(n));
-            if !reachable {
-                RegionClass::Unreachable
-            } else if members.iter().any(|n| can_reach_finish.contains(n)) {
-                RegionClass::Alternative
+            let class = if is_path {
+                RegionClass::Path
             } else {
-                RegionClass::Trap
-            }
-        };
-        (comp_id, class)
-    }).collect()
+                let reachable = members.iter().any(|n| reachable_from_start.contains(n));
+                if !reachable {
+                    RegionClass::Unreachable
+                } else if members.iter().any(|n| can_reach_finish.contains(n)) {
+                    RegionClass::Alternative
+                } else {
+                    RegionClass::Trap
+                }
+            };
+            (comp_id, class)
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
     use crate::graph::nav::build_nav_graph_pinned;
     use crate::graph::routing::compute_route_info;
     use crate::graph::scc::build_scc;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
 
     /// Layout (all one-way, left to right unless noted):
     /// start(0) -> 1 -> finish(2)   (the shortest path, each node its own SCC)
@@ -111,10 +115,13 @@ mod tests {
     /// 1 -> 6                       (trap: reachable from start, dead end, can't reach finish)
     fn layout() -> (MultiLevelField<SquareTessellation>, Graph, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let nodes: Vec<NodeId> = (0..7)
             .map(|x| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap())
             .collect();
@@ -156,19 +163,29 @@ mod tests {
         // start fully walled off (no edges at all) — its region must not be Path just because
         // it's the start (regression for issue #104).
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
-        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
+        let a = field
+            .node_at(field_level, SquarePoint { x: 0, y: 0 })
+            .unwrap();
+        let b = field
+            .node_at(field_level, SquarePoint { x: 1, y: 0 })
+            .unwrap();
         let scc = build_scc(&g);
 
         let classes = classify_regions(&g, &scc, None, a, b);
 
         // a is trivially reachable from itself but has no edges out, so it can't reach finish.
         assert_eq!(classes[&scc.component_of(a).unwrap()], RegionClass::Trap);
-        assert_eq!(classes[&scc.component_of(b).unwrap()], RegionClass::Unreachable);
+        assert_eq!(
+            classes[&scc.component_of(b).unwrap()],
+            RegionClass::Unreachable
+        );
     }
 
     #[test]
@@ -183,7 +200,13 @@ mod tests {
 
         let classes = classify_regions(&g, &scc, Some(&route), start, finish);
 
-        assert_eq!(classes[&scc.component_of(start).unwrap()], RegionClass::Path);
-        assert_eq!(classes[&scc.component_of(finish).unwrap()], RegionClass::Path);
+        assert_eq!(
+            classes[&scc.component_of(start).unwrap()],
+            RegionClass::Path
+        );
+        assert_eq!(
+            classes[&scc.component_of(finish).unwrap()],
+            RegionClass::Path
+        );
     }
 }

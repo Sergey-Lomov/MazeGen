@@ -1,6 +1,8 @@
-use std::collections::HashMap;
 use crate::ids::NodeId;
-use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_ELEVATOR_STOP};
+use crate::quality_control::issue::{
+    INVALID_ELEVATOR_STOP, IssueKind, IssueKindConst, IssueMerge, IssueMeta, IssueRequirement,
+};
+use std::collections::HashMap;
 
 /// Produced by any check that flags specific stop nodes of an elevator invalid for a
 /// check-specific reason — see GitHub issue #399. `invalid` holds one `NodeId` per flagged stop
@@ -17,8 +19,15 @@ pub struct InvalidElevatorStopIssue {
 
 impl InvalidElevatorStopIssue {
     pub fn new_from_check(source_check: &str, invalid: Vec<NodeId>) -> Self {
-        let invalid_sources = invalid.iter().map(|&n| (n, vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
+        let invalid_sources = invalid
+            .iter()
+            .map(|&n| (n, vec![source_check.to_string()]))
+            .collect();
+        Self {
+            meta: IssueMeta::new_from_check(source_check),
+            invalid,
+            invalid_sources,
+        }
     }
 
     pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
@@ -79,7 +88,11 @@ mod tests {
         let b = InvalidElevatorStopIssue::new_from_check("elevator_stop_count_b", vec![1]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0, 1], "the same stop flagged by both checks must not be duplicated");
+        assert_eq!(
+            a.invalid,
+            vec![0, 1],
+            "the same stop flagged by both checks must not be duplicated"
+        );
     }
 
     #[test]
@@ -88,7 +101,13 @@ mod tests {
         let b = InvalidElevatorStopIssue::new_from_check("max_elevator_stops_per_floor_b", vec![1]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&0), Some(&vec!["max_elevator_stops_a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&1), Some(&vec!["max_elevator_stops_per_floor_b".to_string()]));
+        assert_eq!(
+            a.invalid_sources.get(&0),
+            Some(&vec!["max_elevator_stops_a".to_string()])
+        );
+        assert_eq!(
+            a.invalid_sources.get(&1),
+            Some(&vec!["max_elevator_stops_per_floor_b".to_string()])
+        );
     }
 }

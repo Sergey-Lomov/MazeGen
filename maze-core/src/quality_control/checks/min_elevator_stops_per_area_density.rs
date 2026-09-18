@@ -1,13 +1,14 @@
-use rand::RngCore;
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::quality_control::check::Check;
-use crate::quality_control::{AreaMissingElevatorStopsIssue, FloorScope, RepairArea};
-use crate::quality_control::floor_group::floor_point_count;
 use super::elevator_core::elevator_stops_per_floor;
+use crate::Maze;
+use crate::quality_control::check::Check;
+use crate::quality_control::floor_group::floor_point_count;
+use crate::quality_control::{AreaMissingElevatorStopsIssue, FloorScope, RepairArea};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT: f64 = 10.0;
-pub const MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
+pub const MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope =
+    FloorScope::PerFloor;
 
 /// Flags a deficit against the share of elevator stops relative to field size, expressed per 100
 /// field cells — see GitHub issue #408, part of epic #344. Mirrors `MinElevatorStopsPerAreaCountCheck`
@@ -20,10 +21,20 @@ pub struct MinElevatorStopsPerAreaDensityCheck {
     pub floor_scope: FloorScope,
 }
 
-impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue> for MinElevatorStopsPerAreaDensityCheck {
-    fn check_type_id(&self) -> &'static str { "min_elevator_stops_per_area_density" }
+impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue>
+    for MinElevatorStopsPerAreaDensityCheck
+{
+    fn check_type_id(&self) -> &'static str {
+        "min_elevator_stops_per_area_density"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<AreaMissingElevatorStopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<AreaMissingElevatorStopsIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let min_ratio = self.min_stops_ratio;
         let per_floor = elevator_stops_per_floor(maze);
 
@@ -32,13 +43,24 @@ impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue> for MinElevatorSto
                 let total: u64 = per_floor.values().map(|stops| stops.len() as u64).sum();
                 let field_cells = maze.field.point_count() as u64;
                 let missing = Self::missing_for(total, field_cells, min_ratio);
-                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+                if missing == 0 {
+                    vec![]
+                } else {
+                    vec![(RepairArea::WholeMaze, missing)]
+                }
             }
             FloorScope::PerFloor => {
-                let mut missing: Vec<(RepairArea, u32)> = maze.field.levels_ordered().into_iter()
+                let mut missing: Vec<(RepairArea, u32)> = maze
+                    .field
+                    .levels_ordered()
+                    .into_iter()
                     .filter_map(|level| {
                         let count = per_floor.get(&level).map_or(0, |stops| stops.len() as u64);
-                        let missing = Self::missing_for(count, floor_point_count(&maze.field, level) as u64, min_ratio);
+                        let missing = Self::missing_for(
+                            count,
+                            floor_point_count(&maze.field, level) as u64,
+                            min_ratio,
+                        );
                         (missing > 0).then_some((RepairArea::Level(level), missing))
                     })
                     .collect();
@@ -68,12 +90,12 @@ impl MinElevatorStopsPerAreaDensityCheck {
 
 #[cfg(test)]
 mod tests {
-    use crate::quality_control::Issue;
     use super::*;
-    use rand::SeedableRng;
-    use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::Issue;
+    use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use crate::{Graph, IdGenerator};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "min_elevator_stops_per_area_density";
 
@@ -83,13 +105,21 @@ mod tests {
 
     /// Two 10-cell floors (20 field cells total), one elevator stopping on both -> 2 stops total,
     /// 10 per 100 cells maze-wide.
-    fn maze_with_one_elevator_on_ten_cell_floors() -> (Maze<SquareTessellation>, crate::ids::NodeId, crate::ids::NodeId) {
+    fn maze_with_one_elevator_on_ten_cell_floors() -> (
+        Maze<SquareTessellation>,
+        crate::ids::NodeId,
+        crate::ids::NodeId,
+    ) {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let b0 = mf.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
         let t0 = mf.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         (Maze::new(mf, g), b0, t0)
@@ -100,7 +130,11 @@ mod tests {
         let (mut maze, b0, t0) = maze_with_one_elevator_on_ten_cell_floors();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaDensityCheck { instance_id: TEST_ID.to_string(), min_stops_ratio: 10.0, floor_scope: FloorScope::WholeMaze };
+        let check = MinElevatorStopsPerAreaDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops_ratio: 10.0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -111,14 +145,21 @@ mod tests {
         let (mut maze, b0, t0) = maze_with_one_elevator_on_ten_cell_floors();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaDensityCheck { instance_id: TEST_ID.to_string(), min_stops_ratio: 30.0, floor_scope: FloorScope::WholeMaze };
+        let check = MinElevatorStopsPerAreaDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops_ratio: 30.0,
+            floor_scope: FloorScope::WholeMaze,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         // required = round(30*20/100) = 6, missing = 6 - 2 = 4.
         assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 4)]);
         assert_eq!(
-            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
+            issues[0]
+                .details()
+                .get(TEST_ID)
+                .and_then(|kv| kv.get("missing")),
             Some(&"4".to_string()),
         );
     }
@@ -131,20 +172,31 @@ mod tests {
     fn accepts_a_genuinely_fractional_threshold() {
         let mut ids = IdGenerator::new();
         let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
         let mut g = Graph::new();
-        for node in mf.all_node_ids() { g.add_node(node); }
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
         let b0 = mf.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
         let t0 = mf.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
         g.add_edge(b0, t0, EdgeKind::Elevator);
         g.add_edge(t0, b0, EdgeKind::Elevator);
         let maze = Maze::new(mf, g);
         // 1 stop on the bottom floor's 10 cells is exactly 10 per 100 cells.
-        let check = MinElevatorStopsPerAreaDensityCheck { instance_id: TEST_ID.to_string(), min_stops_ratio: 10.0, floor_scope: FloorScope::PerFloor };
+        let check = MinElevatorStopsPerAreaDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops_ratio: 10.0,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "exactly meeting the ratio must not fire, even with floating point cross-multiplication");
+        assert!(
+            issues.is_empty(),
+            "exactly meeting the ratio must not fire, even with floating point cross-multiplication"
+        );
     }
 
     #[test]
@@ -152,10 +204,18 @@ mod tests {
         let (mut maze, b0, t0) = maze_with_one_elevator_on_ten_cell_floors();
         maze.graph.add_edge(b0, t0, EdgeKind::Elevator);
         maze.graph.add_edge(t0, b0, EdgeKind::Elevator);
-        let check = MinElevatorStopsPerAreaDensityCheck { instance_id: TEST_ID.to_string(), min_stops_ratio: 20.0, floor_scope: FloorScope::PerFloor };
+        let check = MinElevatorStopsPerAreaDensityCheck {
+            instance_id: TEST_ID.to_string(),
+            min_stops_ratio: 20.0,
+            floor_scope: FloorScope::PerFloor,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing.len(), 2, "both floors have 1 stop on 10 cells (10 per 100), deficient against a 20 per 100 minimum");
+        assert_eq!(
+            issues[0].missing.len(),
+            2,
+            "both floors have 1 stop on 10 cells (10 per 100), deficient against a 20 per 100 minimum"
+        );
     }
 }

@@ -1,19 +1,23 @@
+use super::dead_end_priority::is_dead_end;
+use super::farthest_reachable::{
+    SEARCH_MODE_EXHAUSTIVE, SEARCH_MODE_PARAM, farthest_from, farthest_from_exhaustive, search_mode,
+};
+use super::remaining_deficits::RemainingDeficits;
+use super::standard_add_params::{self, attempts_limit, reserve_target};
+use crate::Maze;
+use crate::generation::PresetState;
+use crate::generation::{cmd_add_bidirectional_teleport, cmd_add_directed_teleport};
+use crate::ids::NodeId;
+use crate::quality_control::{MissingTeleportsIssue, RepairArea};
+use crate::repair::command::MutationCommand;
+use crate::repair::params::{
+    PriorityLevel, StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams,
+};
+use crate::repair::result::RepairResult;
+use crate::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+use crate::space::Tessellation;
 use rand::{Rng, RngCore};
 use std::collections::{HashSet, VecDeque};
-use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
-use crate::quality_control::{MissingTeleportsIssue, RepairArea};
-use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, PriorityLevel};
-use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::MutationCommand;
-use crate::generation::{cmd_add_directed_teleport, cmd_add_bidirectional_teleport};
-use super::farthest_reachable::{farthest_from, farthest_from_exhaustive, search_mode, SEARCH_MODE_PARAM, SEARCH_MODE_EXHAUSTIVE};
-use super::standard_add_params::{self, reserve_target, attempts_limit};
-use super::remaining_deficits::RemainingDeficits;
-use super::dead_end_priority::is_dead_end;
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
 pub const PARAM_EXIT_PICK: &str = "exit_pick";
@@ -28,7 +32,11 @@ pub const ENTRY_RANDOM: &str = "random";
 pub const ENTRY_FARTHEST_FROM_RANDOM: &str = "farthest_from_random";
 pub const ENTRY_DEAD_END_PRIORITY: &str = "dead_end_priority";
 
-static ENTRY_OPTIONS: &[&str] = &[ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM, ENTRY_DEAD_END_PRIORITY];
+static ENTRY_OPTIONS: &[&str] = &[
+    ENTRY_RANDOM,
+    ENTRY_FARTHEST_FROM_RANDOM,
+    ENTRY_DEAD_END_PRIORITY,
+];
 
 pub const EXIT_RANDOM: &str = "random";
 pub const EXIT_DEAD_END_PRIORITY: &str = "dead_end_priority";
@@ -40,27 +48,44 @@ pub const CROSS_FLOOR_FORBIDDEN: &str = "forbidden";
 pub const CROSS_FLOOR_NATURAL: &str = "natural";
 pub const CROSS_FLOOR_MANUAL: &str = "manual";
 
-static CROSS_FLOOR_MODE_OPTIONS: &[&str] = &[CROSS_FLOOR_FORBIDDEN, CROSS_FLOOR_NATURAL, CROSS_FLOOR_MANUAL];
+static CROSS_FLOOR_MODE_OPTIONS: &[&str] = &[
+    CROSS_FLOOR_FORBIDDEN,
+    CROSS_FLOOR_NATURAL,
+    CROSS_FLOOR_MANUAL,
+];
 
 const ENTRY_PICK_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ENTRY_PICK,
     label: "Entry pick",
-    kind: StrategyParamKind::Enum { options: ENTRY_OPTIONS, default: ENTRY_RANDOM },
+    kind: StrategyParamKind::Enum {
+        options: ENTRY_OPTIONS,
+        default: ENTRY_RANDOM,
+    },
 };
 const EXIT_PICK_PARAM: StrategyParam = StrategyParam {
     id: PARAM_EXIT_PICK,
     label: "Exit pick",
-    kind: StrategyParamKind::Enum { options: EXIT_OPTIONS, default: EXIT_RANDOM },
+    kind: StrategyParamKind::Enum {
+        options: EXIT_OPTIONS,
+        default: EXIT_RANDOM,
+    },
 };
 const UNREACHABLE_PRIORITY_PARAM: StrategyParam = StrategyParam {
     id: PARAM_UNREACHABLE_PRIORITY,
     label: "Unreachable area priority",
-    kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
+    kind: StrategyParamKind::Priority {
+        default: PriorityLevel::Indifferent,
+    },
 };
 const DESIRED_LENGTH_PARAM: StrategyParam = StrategyParam {
     id: PARAM_DESIRED_LENGTH,
     label: "Desired graph length",
-    kind: StrategyParamKind::Interval { default_min: 0.0, default_max: 1000.0, min: 0.0, max: 100_000.0 },
+    kind: StrategyParamKind::Interval {
+        default_min: 0.0,
+        default_max: 1000.0,
+        min: 0.0,
+        max: 100_000.0,
+    },
 };
 const ALLOW_OUT_OF_INTERVAL_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ALLOW_OUT_OF_INTERVAL,
@@ -70,17 +95,28 @@ const ALLOW_OUT_OF_INTERVAL_PARAM: StrategyParam = StrategyParam {
 const ONE_WAY_CHANCE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_ONE_WAY_CHANCE,
     label: "One-way teleport chance",
-    kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 100.0 },
+    kind: StrategyParamKind::Float {
+        default: 50.0,
+        min: 0.0,
+        max: 100.0,
+    },
 };
 const CROSS_FLOOR_MODE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_CROSS_FLOOR_MODE,
     label: "Cross-floor mode",
-    kind: StrategyParamKind::Enum { options: CROSS_FLOOR_MODE_OPTIONS, default: CROSS_FLOOR_NATURAL },
+    kind: StrategyParamKind::Enum {
+        options: CROSS_FLOOR_MODE_OPTIONS,
+        default: CROSS_FLOOR_NATURAL,
+    },
 };
 const CROSS_FLOOR_BALANCE_PARAM: StrategyParam = StrategyParam {
     id: PARAM_CROSS_FLOOR_BALANCE,
     label: "Cross-floor balance",
-    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+    kind: StrategyParamKind::Float {
+        default: 0.5,
+        min: 0.0,
+        max: 1.0,
+    },
 };
 
 // `no_src_mode`: the entry pool is node-based, but this strategy already has `entry_pick` as its
@@ -136,7 +172,9 @@ static PARAMS: [StrategyParam; 11] = crate::add_strategy_params!(no_src_mode:
 pub struct MissingTeleportsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTeleportsStrategy {
-    fn strategy_id(&self) -> &'static str { "missing_teleports" }
+    fn strategy_id(&self) -> &'static str {
+        "missing_teleports"
+    }
 
     fn params(&self) -> &'static [StrategyParam] {
         &PARAMS
@@ -168,28 +206,45 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             _ => EXIT_RANDOM,
         };
         let search_mode = search_mode(params);
-        let unreachable_priority = params.get(PARAM_UNREACHABLE_PRIORITY).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
-        let (desired_min, desired_max) = params.get(PARAM_DESIRED_LENGTH).and_then(|v| v.as_interval()).unwrap_or((0.0, 1000.0));
+        let unreachable_priority = params
+            .get(PARAM_UNREACHABLE_PRIORITY)
+            .and_then(|v| v.as_priority())
+            .unwrap_or(PriorityLevel::Indifferent);
+        let (desired_min, desired_max) = params
+            .get(PARAM_DESIRED_LENGTH)
+            .and_then(|v| v.as_interval())
+            .unwrap_or((0.0, 1000.0));
         let desired_min = desired_min.max(0.0) as usize;
         let desired_max = desired_max.max(0.0) as usize;
         let allow_out_of_interval = matches!(params.get(PARAM_ALLOW_OUT_OF_INTERVAL), Some(StrategyParamValue::Bool(b)) if *b);
-        let one_way_chance = params.get(PARAM_ONE_WAY_CHANCE).and_then(|v| v.as_float()).unwrap_or(50.0);
+        let one_way_chance = params
+            .get(PARAM_ONE_WAY_CHANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(50.0);
         let attempts_limit = attempts_limit(params);
         let cross_floor_mode = match params.get(PARAM_CROSS_FLOOR_MODE) {
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => CROSS_FLOOR_NATURAL,
         };
-        let cross_floor_balance = params.get(PARAM_CROSS_FLOOR_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5).clamp(0.0, 1.0);
+        let cross_floor_balance = params
+            .get(PARAM_CROSS_FLOOR_BALANCE)
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.5)
+            .clamp(0.0, 1.0);
 
         // Computed once per `apply()` call rather than per attempt: `is_dead_end` only depends on
         // `maze.graph`, which this call never mutates (mutations flow out as `MutationCommand`s,
         // committed by the caller after `apply()` returns) — so every attempt's dead-end filtering
         // can look this up instead of rescanning the current pool/set's neighbors from scratch.
-        let dead_ends: HashSet<NodeId> = if entry_pick == ENTRY_DEAD_END_PRIORITY || exit_pick == EXIT_DEAD_END_PRIORITY {
-            maze.field.all_node_ids().filter(|&n| is_dead_end(maze, n)).collect()
-        } else {
-            HashSet::new()
-        };
+        let dead_ends: HashSet<NodeId> =
+            if entry_pick == ENTRY_DEAD_END_PRIORITY || exit_pick == EXIT_DEAD_END_PRIORITY {
+                maze.field
+                    .all_node_ids()
+                    .filter(|&n| is_dead_end(maze, n))
+                    .collect()
+            } else {
+                HashSet::new()
+            };
 
         let mut proposed: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
@@ -209,7 +264,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             // legitimately connect points on different floors, so forcing the exit onto the same
             // area as the entry would rule out exactly the cross-floor teleports this strategy is
             // meant to be able to add.
-            let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+            let mut pool: Vec<NodeId> = maze
+                .field
+                .all_node_ids()
                 .filter(|&n| match area {
                     RepairArea::WholeMaze => true,
                     RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
@@ -228,21 +285,37 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
                     let candidate = pool[pick];
 
                     let entry = match entry_pick {
-                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate, search_mode),
+                        ENTRY_FARTHEST_FROM_RANDOM => {
+                            farthest_from_via_nav(maze, candidate, search_mode)
+                        }
                         _ => candidate,
                     };
 
                     let Some(exit) = pick_exit(
-                        maze, entry, desired_min, desired_max, allow_out_of_interval,
-                        unreachable_priority, preset_state, &proposed, rng,
-                        cross_floor_mode, cross_floor_balance, exit_pick, &dead_ends,
+                        maze,
+                        entry,
+                        desired_min,
+                        desired_max,
+                        allow_out_of_interval,
+                        unreachable_priority,
+                        preset_state,
+                        &proposed,
+                        rng,
+                        cross_floor_mode,
+                        cross_floor_balance,
+                        exit_pick,
+                        &dead_ends,
                     ) else {
                         pool.swap_remove(pick);
                         continue;
                     };
 
                     let want_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0));
-                    let bidi_cmds = if want_reverse { cmd_add_bidirectional_teleport(entry, exit, preset_state) } else { vec![] };
+                    let bidi_cmds = if want_reverse {
+                        cmd_add_bidirectional_teleport(entry, exit, preset_state)
+                    } else {
+                        vec![]
+                    };
                     if !bidi_cmds.is_empty() {
                         commands.extend(bidi_cmds);
                         proposed.insert((entry, exit));
@@ -309,12 +382,19 @@ crate::impl_erased_repair_strategy!(MissingTeleportsStrategy, MissingTeleportsIs
 /// no-op. Note: a true farthest point can still land mid-corridor when loops are present —
 /// `farthest_from` only ever considers nav nodes, so that deeper limitation is exactly what
 /// `SEARCH_MODE_EXHAUSTIVE` exists to address.
-fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId, search_mode: &str) -> NodeId {
+fn farthest_from_via_nav<T: Tessellation>(
+    maze: &Maze<T>,
+    from: NodeId,
+    search_mode: &str,
+) -> NodeId {
     if search_mode == SEARCH_MODE_EXHAUSTIVE {
         return farthest_from_exhaustive(&maze.graph, from);
     }
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-    let Some(nav_id) = nav.nav_node_for(from).or_else(|| nav.corridor_index.get(&from).copied()) else {
+    let Some(nav_id) = nav
+        .nav_node_for(from)
+        .or_else(|| nav.corridor_index.get(&from).copied())
+    else {
         return from;
     };
     farthest_from(&nav, nav_id)
@@ -326,9 +406,16 @@ fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId, search_m
 /// as a plain uniform pick, so callers never branch on `entry_pick` themselves for the pool-index
 /// step. `dead_ends` is precomputed once per `apply()` call (`dead_end_priority::is_dead_end`
 /// only depends on the graph, which `apply()` never mutates), not rescanned per attempt.
-fn pick_pool_index(pool: &[NodeId], entry_pick: &str, dead_ends: &HashSet<NodeId>, rng: &mut dyn RngCore) -> usize {
+fn pick_pool_index(
+    pool: &[NodeId],
+    entry_pick: &str,
+    dead_ends: &HashSet<NodeId>,
+    rng: &mut dyn RngCore,
+) -> usize {
     if entry_pick == ENTRY_DEAD_END_PRIORITY {
-        let dead_end_indices: Vec<usize> = pool.iter().enumerate()
+        let dead_end_indices: Vec<usize> = pool
+            .iter()
+            .enumerate()
             .filter(|&(_, &n)| dead_ends.contains(&n))
             .map(|(i, _)| i)
             .collect();
@@ -342,7 +429,10 @@ fn pick_pool_index(pool: &[NodeId], entry_pick: &str, dead_ends: &HashSet<NodeId
 /// Tile-hop BFS distances from `source` over the raw graph (outgoing edges only) — deliberately
 /// not the `NavGraph`, see `MissingTeleportsStrategy`'s doc comment. `usize::MAX` for any node
 /// never visited (unreachable from `source`).
-fn bfs_distances<T: Tessellation>(maze: &Maze<T>, source: NodeId) -> std::collections::HashMap<NodeId, usize> {
+fn bfs_distances<T: Tessellation>(
+    maze: &Maze<T>,
+    source: NodeId,
+) -> std::collections::HashMap<NodeId, usize> {
     let mut dist = std::collections::HashMap::new();
     let mut queue: VecDeque<(NodeId, usize)> = VecDeque::new();
     dist.insert(source, 0);
@@ -383,7 +473,8 @@ fn pick_exit<T: Tessellation>(
             && !proposed.contains(&(entry, *exit))
             && maze.graph.edge_between(entry, *exit).is_none()
             && crate::generation::directed_edge_feasible(preset_state, entry, *exit)
-            && (cross_floor_mode != CROSS_FLOOR_FORBIDDEN || maze.field.level_of(*exit) == entry_level)
+            && (cross_floor_mode != CROSS_FLOOR_FORBIDDEN
+                || maze.field.level_of(*exit) == entry_level)
     };
 
     let mut in_interval: Vec<NodeId> = Vec::new();
@@ -405,13 +496,31 @@ fn pick_exit<T: Tessellation>(
     let zones = unreachable_priority.order_zones(unreachable, in_interval, rng);
 
     for zone in &zones {
-        if let Some(exit) = pick_from_set(zone, entry_level, cross_floor_mode, cross_floor_balance, exit_pick, dead_ends, maze, rng) {
+        if let Some(exit) = pick_from_set(
+            zone,
+            entry_level,
+            cross_floor_mode,
+            cross_floor_balance,
+            exit_pick,
+            dead_ends,
+            maze,
+            rng,
+        ) {
             return Some(exit);
         }
     }
 
     if allow_out_of_interval {
-        if let Some(exit) = pick_from_set(&out_of_interval, entry_level, cross_floor_mode, cross_floor_balance, exit_pick, dead_ends, maze, rng) {
+        if let Some(exit) = pick_from_set(
+            &out_of_interval,
+            entry_level,
+            cross_floor_mode,
+            cross_floor_balance,
+            exit_pick,
+            dead_ends,
+            maze,
+            rng,
+        ) {
             return Some(exit);
         }
     }
@@ -446,19 +555,21 @@ fn pick_from_set<T: Tessellation>(
         return Some(pick_biased(set, exit_pick, dead_ends, rng));
     }
 
-    let (same_floor, other_floor): (Vec<NodeId>, Vec<NodeId>) =
-        set.iter().partition(|&&n| maze.field.level_of(n) == entry_level);
+    let (same_floor, other_floor): (Vec<NodeId>, Vec<NodeId>) = set
+        .iter()
+        .partition(|&&n| maze.field.level_of(n) == entry_level);
 
     // Extreme balance values are a hard preference, not just a strong one — no fallback to the
     // opposite group when it's the only one left (mirrors `Forbidden`'s own hard exclusion, just
     // expressed as a balance extreme instead of a separate mode).
     let want_other = rng.random_bool(cross_floor_balance);
-    let (preferred, fallback): (&[NodeId], Option<&[NodeId]>) = match (want_other, cross_floor_balance) {
-        (_, b) if b <= 0.0 => (&same_floor, None),
-        (_, b) if b >= 1.0 => (&other_floor, None),
-        (true, _) => (&other_floor, Some(&same_floor)),
-        (false, _) => (&same_floor, Some(&other_floor)),
-    };
+    let (preferred, fallback): (&[NodeId], Option<&[NodeId]>) =
+        match (want_other, cross_floor_balance) {
+            (_, b) if b <= 0.0 => (&same_floor, None),
+            (_, b) if b >= 1.0 => (&other_floor, None),
+            (true, _) => (&other_floor, Some(&same_floor)),
+            (false, _) => (&same_floor, Some(&other_floor)),
+        };
 
     let chosen = if !preferred.is_empty() {
         preferred
@@ -472,16 +583,24 @@ fn pick_from_set<T: Tessellation>(
 /// exist, otherwise a plain uniform pick over the whole set. Mirrors `pick_pool_index`'s own
 /// fallback shape on the entry side. `dead_ends` is precomputed once per `apply()` call, not
 /// rescanned per pick — see its own doc comment.
-fn pick_biased(set: &[NodeId], exit_pick: &str, dead_ends: &HashSet<NodeId>, rng: &mut dyn RngCore) -> NodeId {
+fn pick_biased(
+    set: &[NodeId],
+    exit_pick: &str,
+    dead_ends: &HashSet<NodeId>,
+    rng: &mut dyn RngCore,
+) -> NodeId {
     if exit_pick == EXIT_DEAD_END_PRIORITY {
-        let in_set: Vec<NodeId> = set.iter().copied().filter(|n| dead_ends.contains(n)).collect();
+        let in_set: Vec<NodeId> = set
+            .iter()
+            .copied()
+            .filter(|n| dead_ends.contains(n))
+            .collect();
         if !in_set.is_empty() {
             return in_set[rng.random_range(0..in_set.len())];
         }
     }
     set[rng.random_range(0..set.len())]
 }
-
 
 #[cfg(test)]
 #[path = "missing_teleports_tests.rs"]

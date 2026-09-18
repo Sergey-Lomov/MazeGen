@@ -1,10 +1,10 @@
-use rand::RngCore;
 use crate::Maze;
 use crate::graph::distance_map::{exact_tile_distance, min_optional_distance};
 use crate::ids::NodeId;
-use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::space::Tessellation;
+use rand::RngCore;
 
 pub const SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -31,15 +31,29 @@ pub struct SplitGroupGraphProximityCheck {
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphProximityCheck {
-    fn check_type_id(&self) -> &'static str { "split_group_graph_proximity" }
+    fn check_type_id(&self) -> &'static str {
+        "split_group_graph_proximity"
+    }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(
+        &self,
+        maze: &Maze<T>,
+        issues: &mut Vec<InvalidSplitTileGroupIssue>,
+        _rng: &mut dyn RngCore,
+        _requirement: (),
+    ) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze.field.all_points_with_level()
+        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze
+            .field
+            .all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { None } else { Some((point, nodes.to_vec())) }
+                if nodes.len() < 2 {
+                    None
+                } else {
+                    Some((point, nodes.to_vec()))
+                }
             })
             .collect();
         if tiles.len() < 2 {
@@ -56,20 +70,26 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
                     continue;
                 }
 
-                let closest = own_nodes.iter()
+                let closest = own_nodes
+                    .iter()
                     .flat_map(|&a| other_nodes.iter().map(move |&b| (a, b)))
-                    .filter_map(|(a, b)| min_optional_distance(
-                        exact_tile_distance(&nav, a, b, Some(max_dist)),
-                        exact_tile_distance(&nav, b, a, Some(max_dist)),
-                    ))
+                    .filter_map(|(a, b)| {
+                        min_optional_distance(
+                            exact_tile_distance(&nav, a, b, Some(max_dist)),
+                            exact_tile_distance(&nav, b, a, Some(max_dist)),
+                        )
+                    })
                     .min();
 
                 if let Some(dist) = closest {
                     if (dist as f64) < self.distance {
-                        groups.push((vec![
-                            SplitTileNodes::new(own_nodes.clone()),
-                            SplitTileNodes::new(other_nodes.clone()),
-                        ], 1));
+                        groups.push((
+                            vec![
+                                SplitTileNodes::new(own_nodes.clone()),
+                                SplitTileNodes::new(other_nodes.clone()),
+                            ],
+                            1,
+                        ));
                         break;
                     }
                 }
@@ -88,10 +108,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use crate::graph::EdgeKind;
+    use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use rand::SeedableRng;
 
     const TEST_ID: &str = "split_group_graph_proximity";
 
@@ -102,13 +122,16 @@ mod tests {
     /// A straight corridor of `width` tiles, with an extra split node minted at each of `xs`.
     fn maze_with_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for &x in xs {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..(width as i32 - 1) {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -125,7 +148,10 @@ mod tests {
     #[test]
     fn fires_when_two_split_tiles_closer_than_threshold() {
         let maze = maze_with_splits_at(10, &[0, 1]);
-        let check = SplitGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance: 5.0 };
+        let check = SplitGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -134,14 +160,20 @@ mod tests {
         assert_eq!(issues[0].groups.len(), 2);
         for (group, to_remove) in &issues[0].groups {
             assert_eq!(group.len(), 2);
-            assert_eq!(*to_remove, 1, "fixing either tile alone already resolves the pair");
+            assert_eq!(
+                *to_remove, 1,
+                "fixing either tile alone already resolves the pair"
+            );
         }
     }
 
     #[test]
     fn silent_when_split_tiles_farther_than_threshold() {
         let maze = maze_with_splits_at(10, &[0, 8]);
-        let check = SplitGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance: 3.0 };
+        let check = SplitGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 3.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -150,7 +182,10 @@ mod tests {
     #[test]
     fn silent_with_fewer_than_two_split_tiles() {
         let maze = maze_with_splits_at(10, &[0]);
-        let check = SplitGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance: 1000.0 };
+        let check = SplitGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 1000.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -164,13 +199,16 @@ mod tests {
     /// tiles actually separate them (GitHub issue #249 regression report).
     fn maze_with_inline_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for &x in xs {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        for node in field.all_node_ids() { g.add_node(node); }
+        for node in field.all_node_ids() {
+            g.add_node(node);
+        }
         let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..(width as i32 - 1) {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -192,18 +230,31 @@ mod tests {
         // Splits at x=0 and x=8 on a 10-wide corridor -- genuinely 8 tiles apart -- both wired
         // in-line (pass-through), so both extras compress into the same corridor's interior.
         let maze = maze_with_inline_splits_at(10, &[0, 8]);
-        let check = SplitGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance: 3.0 };
+        let check = SplitGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 3.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "tiles are 8 tile-hops apart, must not fire against a threshold of 3");
+        assert!(
+            issues.is_empty(),
+            "tiles are 8 tile-hops apart, must not fire against a threshold of 3"
+        );
     }
 
     #[test]
     fn exact_distance_still_fires_when_inline_split_nodes_are_genuinely_close() {
         let maze = maze_with_inline_splits_at(10, &[0, 1]);
-        let check = SplitGroupGraphProximityCheck { instance_id: TEST_ID.to_string(), distance: 5.0 };
+        let check = SplitGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5.0,
+        };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "tiles are 1 tile-hop apart, must fire against a threshold of 5");
+        assert_eq!(
+            issues.len(),
+            1,
+            "tiles are 1 tile-hop apart, must fire against a threshold of 5"
+        );
     }
 }

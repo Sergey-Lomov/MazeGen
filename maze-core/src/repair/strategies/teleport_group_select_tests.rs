@@ -1,20 +1,26 @@
 use super::*;
-use rand::SeedableRng;
-use crate::random::MazeRng;
 use crate::graph::EdgeKind;
-use crate::{Graph, IdGenerator};
-use crate::space::{SquareTessellation, square_rect};
 use crate::quality_control::IssueKindConst;
+use crate::random::MazeRng;
 use crate::repair::strategies::RemoveTeleportStrategy;
-use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::repair::strategies::group_select::PRIORITY_RANDOM;
+use crate::repair::strategies::test_utils::apply_and_commit;
+use crate::space::{SquareTessellation, square_rect};
+use crate::{Graph, IdGenerator};
+use rand::SeedableRng;
 
 fn strategy(protect_route: bool) -> TeleportGroupSelectStrategy {
     TeleportGroupSelectStrategy { protect_route }
 }
 
 fn no_params() -> StrategyParams {
-    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&strategy(true)), None)
+    crate::repair::params::build_params(
+        <TeleportGroupSelectStrategy as RepairStrategy<
+            SquareTessellation,
+            InvalidTeleportGroupIssue,
+        >>::params(&strategy(true)),
+        None,
+    )
 }
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -22,7 +28,13 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     for &(k, v) in overrides {
         map.insert(k.to_string(), v.to_string());
     }
-    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&strategy(true)), Some(&map))
+    crate::repair::params::build_params(
+        <TeleportGroupSelectStrategy as RepairStrategy<
+            SquareTessellation,
+            InvalidTeleportGroupIssue,
+        >>::params(&strategy(true)),
+        Some(&map),
+    )
 }
 
 fn fix_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
@@ -57,8 +69,15 @@ fn maze_with_two_teleports() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     (Maze::new(field, g), id_a, id_b)
@@ -70,7 +89,15 @@ fn apply_succeeds_on_empty_pairs() {
     let issue = pair_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -79,7 +106,15 @@ fn apply_fails_when_nested_is_empty() {
     let (mut maze, id_a, id_b) = maze_with_two_teleports();
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -90,7 +125,15 @@ fn apply_succeeds_on_empty_pairs_even_with_no_nested_configured() {
     let (mut maze, _, _) = maze_with_two_teleports();
     let issue = pair_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &[],
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -100,10 +143,25 @@ fn random_priority_removes_exactly_one_of_the_pair() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
-    let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
-    assert_eq!(remaining, 1, "exactly one teleport of the pair must survive");
+    let remaining = maze
+        .graph
+        .edges()
+        .filter(|e| e.kind == EdgeKind::Teleport)
+        .count();
+    assert_eq!(
+        remaining, 1,
+        "exactly one teleport of the pair must survive"
+    );
 }
 
 #[test]
@@ -114,8 +172,15 @@ fn problematic_priority_removes_the_teleport_in_more_pairs() {
     let field = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let id_c = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
@@ -124,12 +189,29 @@ fn problematic_priority_removes_the_teleport_in_more_pairs() {
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_none(), "a (member of 2 pairs) must be removed");
-    assert!(maze.graph.edge(id_b).is_some(), "b (member of 1 pair) must survive");
-    assert!(maze.graph.edge(id_c).is_some(), "c (member of 1 pair) must survive");
+    assert!(
+        maze.graph.edge(id_a).is_none(),
+        "a (member of 2 pairs) must be removed"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_some(),
+        "b (member of 1 pair) must survive"
+    );
+    assert!(
+        maze.graph.edge(id_c).is_some(),
+        "c (member of 1 pair) must survive"
+    );
 }
 
 #[test]
@@ -140,10 +222,25 @@ fn problematic_priority_removes_exactly_one_on_a_tie() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
-    let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
-    assert_eq!(remaining, 1, "a tie must still resolve to removing exactly one of the pair");
+    let remaining = maze
+        .graph
+        .edges()
+        .filter(|e| e.kind == EdgeKind::Teleport)
+        .count();
+    assert_eq!(
+        remaining, 1,
+        "a tie must still resolve to removing exactly one of the pair"
+    );
 }
 
 #[test]
@@ -154,8 +251,15 @@ fn missing_priority_override_falls_back_to_problematic_default() {
     let field = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let id_c = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
@@ -164,18 +268,38 @@ fn missing_priority_override_falls_back_to_problematic_default() {
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_none(), "default priority must behave like 'problematic' and remove a (member of 2 pairs)");
+    assert!(
+        maze.graph.edge(id_a).is_none(),
+        "default priority must behave like 'problematic' and remove a (member of 2 pairs)"
+    );
     assert!(maze.graph.edge(id_b).is_some());
     assert!(maze.graph.edge(id_c).is_some());
 }
 
 #[test]
 fn strategy_id_and_handles_match_registration() {
-    assert_eq!(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::strategy_id(&strategy(true)), "teleport_group_select");
-    assert_eq!(InvalidTeleportGroupIssue::KIND, crate::quality_control::INVALID_TELEPORT_GROUP);
+    assert_eq!(
+        <TeleportGroupSelectStrategy as RepairStrategy<
+            SquareTessellation,
+            InvalidTeleportGroupIssue,
+        >>::strategy_id(&strategy(true)),
+        "teleport_group_select"
+    );
+    assert_eq!(
+        InvalidTeleportGroupIssue::KIND,
+        crate::quality_control::INVALID_TELEPORT_GROUP
+    );
 }
 
 #[test]
@@ -186,8 +310,15 @@ fn already_resolved_pair_is_skipped() {
     let field = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let id_c = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
@@ -199,11 +330,26 @@ fn already_resolved_pair_is_skipped() {
     // "problematic" priority deterministically picks `a` (member of both pairs) -- the
     // second pair's evaluation must detect `a` is already gone and skip acting on it again,
     // rather than then removing `c` too.
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
-    assert_eq!(remaining, 2, "removing a resolves both pairs -- b and c both survive, only a is removed");
+    let remaining = maze
+        .graph
+        .edges()
+        .filter(|e| e.kind == EdgeKind::Teleport)
+        .count();
+    assert_eq!(
+        remaining, 2,
+        "removing a resolves both pairs -- b and c both survive, only a is removed"
+    );
 }
 
 #[test]
@@ -218,8 +364,15 @@ fn removing_a_teleport_also_resolves_a_pair_referencing_its_reverse_direction() 
     let field = crate::space::MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let a_bwd = g.add_edge(nodes[1], nodes[0], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
@@ -231,14 +384,37 @@ fn removing_a_teleport_also_resolves_a_pair_referencing_its_reverse_direction() 
     let issue = pair_issue(vec![(a_fwd, id_c), (a_fwd, id_d), (a_bwd, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(a_fwd).is_none(), "a_fwd (member of 2 pairs) must be picked and removed");
-    assert!(maze.graph.edge(a_bwd).is_none(), "a_bwd must be removed too, as a_fwd's reverse counterpart");
-    assert!(maze.graph.edge(id_b).is_some(), "b must survive -- its pair (a_bwd, b) is resolved by a_bwd's reverse-removal alone, never touching b directly");
-    assert!(maze.graph.edge(id_c).is_some(), "c must survive -- only a_fwd is removed from its pair");
-    assert!(maze.graph.edge(id_d).is_some(), "d must survive -- only a_fwd is removed from its pair");
+    assert!(
+        maze.graph.edge(a_fwd).is_none(),
+        "a_fwd (member of 2 pairs) must be picked and removed"
+    );
+    assert!(
+        maze.graph.edge(a_bwd).is_none(),
+        "a_bwd must be removed too, as a_fwd's reverse counterpart"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_some(),
+        "b must survive -- its pair (a_bwd, b) is resolved by a_bwd's reverse-removal alone, never touching b directly"
+    );
+    assert!(
+        maze.graph.edge(id_c).is_some(),
+        "c must survive -- only a_fwd is removed from its pair"
+    );
+    assert!(
+        maze.graph.edge(id_d).is_some(),
+        "d must survive -- only a_fwd is removed from its pair"
+    );
 }
 
 #[test]
@@ -251,8 +427,15 @@ fn protect_route_falls_back_to_the_non_route_side_of_the_pair() {
     let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -262,11 +445,25 @@ fn protect_route_falls_back_to_the_non_route_side_of_the_pair() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_some(), "route-critical teleport a must survive");
-    assert!(maze.graph.edge(id_b).is_none(), "non-route teleport b must be removed instead");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "route-critical teleport a must survive"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_none(),
+        "non-route teleport b must be removed instead"
+    );
 }
 
 #[test]
@@ -282,8 +479,15 @@ fn protect_route_leaves_pair_untouched_and_fails_when_both_sides_are_route_criti
     let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[1], nodes[2], EdgeKind::Teleport);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -293,11 +497,28 @@ fn protect_route_leaves_pair_untouched_and_fails_when_both_sides_are_route_criti
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
-    assert!(matches!(result, RepairResult::Failed), "no pair in the batch could be fixed -- both route-protected, nothing succeeded");
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
+    assert!(
+        matches!(result, RepairResult::Failed),
+        "no pair in the batch could be fixed -- both route-protected, nothing succeeded"
+    );
 
-    assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
-    assert!(maze.graph.edge(id_b).is_some(), "b is route-critical and must survive");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "a is route-critical and must survive"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_some(),
+        "b is route-critical and must survive"
+    );
 }
 
 #[test]
@@ -309,8 +530,15 @@ fn protect_route_untouched_pair_does_not_block_a_different_fixable_pair() {
     let field = crate::space::MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[1], nodes[2], EdgeKind::Teleport);
     let id_c = g.add_edge(nodes[3], nodes[4], EdgeKind::Teleport);
@@ -322,13 +550,36 @@ fn protect_route_untouched_pair_does_not_block_a_different_fixable_pair() {
     let issue = pair_issue(vec![(id_a, id_b), (id_c, id_d)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
-    assert!(matches!(result, RepairResult::Fixed { score: None }), "the fixable pair's own progress must make the whole call Fixed");
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
+    assert!(
+        matches!(result, RepairResult::Fixed { score: None }),
+        "the fixable pair's own progress must make the whole call Fixed"
+    );
 
-    assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
-    assert!(maze.graph.edge(id_b).is_some(), "b is route-critical and must survive");
-    let cd_remaining = [id_c, id_d].iter().filter(|&&id| maze.graph.edge(id).is_some()).count();
-    assert_eq!(cd_remaining, 1, "exactly one of the unprotected pair must be removed");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "a is route-critical and must survive"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_some(),
+        "b is route-critical and must survive"
+    );
+    let cd_remaining = [id_c, id_d]
+        .iter()
+        .filter(|&&id| maze.graph.edge(id).is_some())
+        .count();
+    assert_eq!(
+        cd_remaining, 1,
+        "exactly one of the unprotected pair must be removed"
+    );
 }
 
 #[test]
@@ -340,8 +591,15 @@ fn protect_route_falls_back_correctly_across_multiple_pairs_sharing_the_protecte
     let field = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let id_c = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
@@ -352,12 +610,29 @@ fn protect_route_falls_back_correctly_across_multiple_pairs_sharing_the_protecte
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive both pair resolutions");
-    assert!(maze.graph.edge(id_b).is_none(), "b must be removed as the fallback for the first pair");
-    assert!(maze.graph.edge(id_c).is_none(), "c must be removed as the fallback for the second pair");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "a is route-critical and must survive both pair resolutions"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_none(),
+        "b must be removed as the fallback for the first pair"
+    );
+    assert!(
+        maze.graph.edge(id_c).is_none(),
+        "c must be removed as the fallback for the second pair"
+    );
 }
 
 #[test]
@@ -369,8 +644,15 @@ fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
     let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let b_fwd = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let b_bwd = g.add_edge(nodes[3], nodes[2], EdgeKind::Teleport);
@@ -381,12 +663,29 @@ fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
     let issue = pair_issue(vec![(id_a, b_fwd)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
-    assert!(maze.graph.edge(b_fwd).is_none(), "b_fwd must be removed as the fallback");
-    assert!(maze.graph.edge(b_bwd).is_none(), "b_bwd must be removed too, as b_fwd's reverse counterpart");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "route-critical a must survive"
+    );
+    assert!(
+        maze.graph.edge(b_fwd).is_none(),
+        "b_fwd must be removed as the fallback"
+    );
+    assert!(
+        maze.graph.edge(b_bwd).is_none(),
+        "b_bwd must be removed too, as b_fwd's reverse counterpart"
+    );
 }
 
 #[test]
@@ -399,8 +698,15 @@ fn nested_allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport
     let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let a_bwd = g.add_edge(nodes[1], nodes[0], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
@@ -409,18 +715,30 @@ fn nested_allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport
     let issue = pair_issue(vec![(a_fwd, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested_allow_reverse();
-    let result = apply_and_commit(&strategy(false), &issue, &mut maze, &mut rng,
+    let result = apply_and_commit(
+        &strategy(false),
+        &issue,
+        &mut maze,
+        &mut rng,
         &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
-        &PresetState::empty(), &nested);
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     // Either a_fwd or b was removed ("random" priority) -- whichever it is, its reverse (if
     // any) must survive under allow_reverse.
     if maze.graph.edge(a_fwd).is_none() {
-        assert!(maze.graph.edge(a_bwd).is_some(), "allow_reverse must leave a_bwd intact when a_fwd is removed");
+        assert!(
+            maze.graph.edge(a_bwd).is_some(),
+            "allow_reverse must leave a_bwd intact when a_fwd is removed"
+        );
         assert!(maze.graph.edge(id_b).is_some());
     } else {
-        assert!(maze.graph.edge(a_bwd).is_some(), "a_bwd must survive: only a_fwd or b was targeted, never a_bwd");
+        assert!(
+            maze.graph.edge(a_bwd).is_some(),
+            "a_bwd must survive: only a_fwd or b was targeted, never a_bwd"
+        );
         assert!(maze.graph.edge(id_b).is_none());
     }
 }
@@ -434,8 +752,15 @@ fn protect_route_default_is_true_when_no_override_is_given() {
     let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
-    for node in field.all_node_ids() { g.add_node(node); }
-    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+    for node in field.all_node_ids() {
+        g.add_node(node);
+    }
+    let nodes: Vec<_> = field
+        .field_of(field_level)
+        .unwrap()
+        .all_points()
+        .map(|p| field.node_at(field_level, p).unwrap())
+        .collect();
     let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -445,9 +770,23 @@ fn protect_route_default_is_true_when_no_override_is_given() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(
+        &strategy(true),
+        &issue,
+        &mut maze,
+        &mut rng,
+        &no_params(),
+        &PresetState::empty(),
+        &nested,
+    );
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive: protect_route defaults to true with no override");
-    assert!(maze.graph.edge(id_b).is_none(), "non-route b must still be removed");
+    assert!(
+        maze.graph.edge(id_a).is_some(),
+        "route-critical a must survive: protect_route defaults to true with no override"
+    );
+    assert!(
+        maze.graph.edge(id_b).is_none(),
+        "non-route b must still be removed"
+    );
 }

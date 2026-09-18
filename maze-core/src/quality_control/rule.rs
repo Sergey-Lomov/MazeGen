@@ -1,14 +1,17 @@
-use std::collections::HashMap;
-use rand::RngCore;
-use crate::Maze;
-use crate::space::Tessellation;
-use crate::generation::PresetState;
-use crate::repair::{RepairStrategy, RepairResult, NestedStrategyConfig, params::{build_params, StrategyParams}};
-use crate::event_log::ScopeGuard;
-use super::apply_commands::{apply_commands, qc_event_proposed_for_command, ApplyOutcome};
+use super::apply_commands::{ApplyOutcome, apply_commands, qc_event_proposed_for_command};
 use super::check::Check;
 use super::event::QcEvent;
-use super::issue::{Issue, IssueRequirement, IssueMerge};
+use super::issue::{Issue, IssueMerge, IssueRequirement};
+use crate::Maze;
+use crate::event_log::ScopeGuard;
+use crate::generation::PresetState;
+use crate::repair::{
+    NestedStrategyConfig, RepairResult, RepairStrategy,
+    params::{StrategyParams, build_params},
+};
+use crate::space::Tessellation;
+use rand::RngCore;
+use std::collections::HashMap;
 
 /// One rule's strategy assignment — checks + strategy + resolved params/requirement, held
 /// together so `Rule` can dispatch repair by itself. `None` on `Rule::strategy` (not this type)
@@ -61,14 +64,25 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         let strategy = strategy.map(|strategy| {
             let params = build_params(strategy.params(), Some(&param_overrides));
             let requirement = strategy.requirement(&params);
-            RuleStrategy { strategy, nested, params, requirement }
+            RuleStrategy {
+                strategy,
+                nested,
+                params,
+                requirement,
+            }
         });
-        Self { id, checks, strategy }
+        Self {
+            id,
+            checks,
+            strategy,
+        }
     }
 
     /// `(local_id, &dyn Check<T, I>)` pairs, in the order checks were configured.
     pub fn checks(&self) -> impl Iterator<Item = (&str, &dyn Check<T, I>)> {
-        self.checks.iter().map(|(local_id, check)| (local_id.as_str(), check.as_ref()))
+        self.checks
+            .iter()
+            .map(|(local_id, check)| (local_id.as_str(), check.as_ref()))
     }
 
     pub fn has_strategy(&self) -> bool {
@@ -99,12 +113,16 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         // Resolved once per call (not per check) from the bound strategy's cached requirement —
         // no_fix (no strategy) falls back to the default (all()), same as an unmigrated check
         // always got before this mechanism existed. See GitHub issue #105.
-        let requirement = self.strategy.as_ref()
+        let requirement = self
+            .strategy
+            .as_ref()
             .map(|s| s.requirement)
             .unwrap_or_default();
         // Built once, only when narration is actually on — `resolve_issue_payload` is the only
         // consumer, and most issue kinds don't even need it (see its own doc comment).
-        let scc = event_log.is_some().then(|| crate::graph::scc::build_scc(&maze.graph));
+        let scc = event_log
+            .is_some()
+            .then(|| crate::graph::scc::build_scc(&maze.graph));
         // Instance id -> type id, exposed to the frontend via `IssueDto::source_check_types` (see
         // `maze-wasm/src/analytics/snapshot.rs`) and needed by `resolve_issue_payload`'s
         // `resolve_edge_group_map` (via `resolvers::is_batch_edge_group_type`) to tell a batch
@@ -112,8 +130,14 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         // resolver — only this rule's own checks (their type id is only known here, via
         // `Check::check_type_id`), same lazy-build rationale as `scc` above.
         let check_types: Option<HashMap<String, String>> = event_log.is_some().then(|| {
-            self.checks.iter()
-                .map(|(local_id, check)| (format!("{}:{}", self.id, local_id), check.check_type_id().to_string()))
+            self.checks
+                .iter()
+                .map(|(local_id, check)| {
+                    (
+                        format!("{}:{}", self.id, local_id),
+                        check.check_type_id().to_string(),
+                    )
+                })
                 .collect()
         });
 
@@ -133,14 +157,31 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                 check.repair_check(maze, &mut v, rng, requirement);
                 v
             });
-            let check_issue = issues.into_iter().reduce(|mut acc, issue| { acc.merge(issue); acc });
+            let check_issue = issues.into_iter().reduce(|mut acc, issue| {
+                acc.merge(issue);
+                acc
+            });
             if let Some(log) = event_log.as_mut() {
                 let payload = check_issue.as_ref().map(|issue| {
-                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state, check_types.as_ref());
-                    let details = issue.details().get(instance_id.as_str()).cloned().unwrap_or_default();
+                    let payload = super::issue_payload::resolve_issue_payload(
+                        issue,
+                        &maze.graph,
+                        &maze.field,
+                        scc.as_ref().unwrap(),
+                        preset_state,
+                        check_types.as_ref(),
+                    );
+                    let details = issue
+                        .details()
+                        .get(instance_id.as_str())
+                        .cloned()
+                        .unwrap_or_default();
                     (I::KIND, payload, details)
                 });
-                log.emit(QcEvent::CheckRan { check_id: instance_id, issue: payload });
+                log.emit(QcEvent::CheckRan {
+                    check_id: instance_id,
+                    issue: payload,
+                });
             }
             if let Some(issue) = check_issue {
                 contributing_checks += 1;
@@ -152,11 +193,28 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         }
         if contributing_checks > 1 {
             if let Some(log) = event_log.as_mut() {
-                let payload = merged.as_ref()
-                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state, check_types.as_ref()))
+                let payload = merged
+                    .as_ref()
+                    .map(|issue| {
+                        super::issue_payload::resolve_issue_payload(
+                            issue,
+                            &maze.graph,
+                            &maze.field,
+                            scc.as_ref().unwrap(),
+                            preset_state,
+                            check_types.as_ref(),
+                        )
+                    })
                     .unwrap_or_default();
-                let details = merged.as_ref().map(|issue| issue.details().clone()).unwrap_or_default();
-                log.emit(QcEvent::IssuesMerged { issue_kind: I::KIND, payload, details });
+                let details = merged
+                    .as_ref()
+                    .map(|issue| issue.details().clone())
+                    .unwrap_or_default();
+                log.emit(QcEvent::IssuesMerged {
+                    issue_kind: I::KIND,
+                    payload,
+                    details,
+                });
             }
         }
         merged
@@ -202,16 +260,41 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        let issue = self.run_checks_typed(maze, rng, preset_state, per_check, now_ms, event_log.as_deref_mut());
-        let Some(issue) = issue else { return RuleIterationOutcome::NoIssue };
-        let Some(rule_strategy) = self.strategy.as_ref() else { return RuleIterationOutcome::NoStrategy };
+        let issue = self.run_checks_typed(
+            maze,
+            rng,
+            preset_state,
+            per_check,
+            now_ms,
+            event_log.as_deref_mut(),
+        );
+        let Some(issue) = issue else {
+            return RuleIterationOutcome::NoIssue;
+        };
+        let Some(rule_strategy) = self.strategy.as_ref() else {
+            return RuleIterationOutcome::NoStrategy;
+        };
 
-        let (result, commands) = timed(per_strategy, rule_strategy.strategy.strategy_id(), now_ms, || {
-            rule_strategy.strategy.apply(&issue, maze, rng, &rule_strategy.params, preset_state, &rule_strategy.nested)
-        });
+        let (result, commands) = timed(
+            per_strategy,
+            rule_strategy.strategy.strategy_id(),
+            now_ms,
+            || {
+                rule_strategy.strategy.apply(
+                    &issue,
+                    maze,
+                    rng,
+                    &rule_strategy.params,
+                    preset_state,
+                    &rule_strategy.nested,
+                )
+            },
+        );
 
         {
-            let mut strategy_scope = event_log.as_mut().map(|log| log.enter(format!("strategy {}", rule_strategy.strategy.strategy_id())));
+            let mut strategy_scope = event_log
+                .as_mut()
+                .map(|log| log.enter(format!("strategy {}", rule_strategy.strategy.strategy_id())));
             if let Some(scope) = strategy_scope.as_mut() {
                 for cmd in &commands {
                     if let Some(event) = qc_event_proposed_for_command(cmd, maze) {
@@ -219,16 +302,30 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                     }
                 }
                 if matches!(result, RepairResult::Failed) {
-                    scope.emit(QcEvent::StrategyFailed { strategy_id: rule_strategy.strategy.strategy_id() });
+                    scope.emit(QcEvent::StrategyFailed {
+                        strategy_id: rule_strategy.strategy.strategy_id(),
+                    });
                 }
             }
         }
 
         let outcome = if commands.is_empty() {
-            apply_commands(maze, preset_state, commands, None, debug_state.as_deref_mut())
+            apply_commands(
+                maze,
+                preset_state,
+                commands,
+                None,
+                debug_state.as_deref_mut(),
+            )
         } else {
             let mut apply_scope = event_log.as_mut().map(|log| log.enter("apply requests"));
-            apply_commands(maze, preset_state, commands, apply_scope.as_mut(), debug_state.as_deref_mut())
+            apply_commands(
+                maze,
+                preset_state,
+                commands,
+                apply_scope.as_mut(),
+                debug_state.as_deref_mut(),
+            )
         };
         RuleIterationOutcome::Repaired(result, outcome)
     }
@@ -244,7 +341,9 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     ) -> Vec<I> {
         let mut issues = Vec::new();
         for (_, check) in &self.checks {
-            let mut found = timed(timing, check.check_type_id(), now_ms, || check.report_check(maze, rng));
+            let mut found = timed(timing, check.check_type_id(), now_ms, || {
+                check.report_check(maze, rng)
+            });
             issues.append(&mut found);
         }
         issues
@@ -259,15 +358,21 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
 pub trait RuleTrait<T: Tessellation> {
     fn id(&self) -> &str;
     fn report_checks(
-        &self, maze: &Maze<T>, rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
+        &self,
+        maze: &Maze<T>,
+        rng: &mut dyn RngCore,
+        timing: &mut HashMap<&'static str, (f64, u32)>,
+        now_ms: &dyn Fn() -> f64,
     ) -> Vec<Box<dyn Issue>>;
     fn check_and_repair(
-        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore,
+        &self,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
         preset_state: &PresetState,
         per_check: &mut HashMap<&'static str, (f64, u32)>,
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        now_ms: &dyn Fn() -> f64,
+        event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome;
 }
@@ -278,23 +383,39 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
     }
 
     fn report_checks(
-        &self, maze: &Maze<T>, rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
+        &self,
+        maze: &Maze<T>,
+        rng: &mut dyn RngCore,
+        timing: &mut HashMap<&'static str, (f64, u32)>,
+        now_ms: &dyn Fn() -> f64,
     ) -> Vec<Box<dyn Issue>> {
-        self.report_checks_typed(maze, rng, timing, now_ms).into_iter()
+        self.report_checks_typed(maze, rng, timing, now_ms)
+            .into_iter()
             .map(|i| Box::new(i) as Box<dyn Issue>)
             .collect()
     }
 
     fn check_and_repair(
-        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore,
+        &self,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
         preset_state: &PresetState,
         per_check: &mut HashMap<&'static str, (f64, u32)>,
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        now_ms: &dyn Fn() -> f64,
+        event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        self.check_and_repair_typed(maze, rng, preset_state, per_check, per_strategy, now_ms, event_log, debug_state)
+        self.check_and_repair_typed(
+            maze,
+            rng,
+            preset_state,
+            per_check,
+            per_strategy,
+            now_ms,
+            event_log,
+            debug_state,
+        )
     }
 }
 

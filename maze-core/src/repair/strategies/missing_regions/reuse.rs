@@ -1,15 +1,15 @@
-use std::collections::{HashMap, HashSet};
-use rand::{Rng, RngCore};
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::graph::scc::ComponentId;
-use crate::graph::region_class::RegionClass;
-use crate::space::Tessellation;
 use crate::generation::PresetState;
+use crate::graph::region_class::RegionClass;
+use crate::graph::scc::ComponentId;
+use crate::ids::NodeId;
 use crate::repair::draft::DraftMaze;
+use crate::space::Tessellation;
+use rand::{Rng, RngCore};
+use std::collections::{HashMap, HashSet};
 
-use super::{MAX_REUSE_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
+use super::{GrowContext, MAX_REUSE_ATTEMPTS};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_reuse<T: Tessellation>(
@@ -23,16 +23,32 @@ pub(super) fn try_reuse<T: Tessellation>(
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
     let scc = outer.maze.analysis.scc(&outer.maze.graph);
-    let classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
-    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
-    let critical: HashSet<NodeId> = route.as_ref().map(|r| r.path.iter().copied().collect()).unwrap_or_default();
+    let classes =
+        outer
+            .maze
+            .analysis
+            .region_classes(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
+    let route =
+        outer
+            .maze
+            .analysis
+            .route_info(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
+    let critical: HashSet<NodeId> = route
+        .as_ref()
+        .map(|r| r.path.iter().copied().collect())
+        .unwrap_or_default();
 
-    let mut candidates: Vec<ComponentId> = scc.components.iter().enumerate()
+    let mut candidates: Vec<ComponentId> = scc
+        .components
+        .iter()
+        .enumerate()
         .filter(|(idx, members)| {
             if classes.get(idx).is_none() {
                 return false;
             }
-            !members.iter().any(|n| critical.contains(n) || committed_nodes.contains(n))
+            !members
+                .iter()
+                .any(|n| critical.contains(n) || committed_nodes.contains(n))
         })
         .map(|(idx, _)| idx)
         .collect();
@@ -49,11 +65,26 @@ pub(super) fn try_reuse<T: Tessellation>(
     // always `true, true` — plain inbound/outbound edges need an actual field-adjacent bridge; a
     // future teleport-based bridging mechanism, with no geometric placement requirement, would
     // pass the corresponding flag(s) as `false` instead).
-    let reachable_from_start = outer.maze.analysis.reachable_from_start(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
-    let reachable_to_finish = outer.maze.analysis.reachable_to_finish(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
+    let reachable_from_start = outer
+        .maze
+        .analysis
+        .reachable_from_start(&outer.maze.graph, &outer.maze.meta)
+        .unwrap_or_default();
+    let reachable_to_finish = outer
+        .maze
+        .analysis
+        .reachable_to_finish(&outer.maze.graph, &outer.maze.meta)
+        .unwrap_or_default();
     let border_count = filter_by_border(
-        &outer.maze, &mut candidates, target, &classes, &scc, &reachable_from_start, &reachable_to_finish,
-        ctx.inbound_requires_geometry, ctx.outbound_requires_geometry,
+        &outer.maze,
+        &mut candidates,
+        target,
+        &classes,
+        &scc,
+        &reachable_from_start,
+        &reachable_to_finish,
+        ctx.inbound_requires_geometry,
+        ctx.outbound_requires_geometry,
     );
 
     if candidates.is_empty() {
@@ -79,7 +110,16 @@ pub(super) fn try_reuse<T: Tessellation>(
         let budget_before = excess_budget.clone();
 
         absorb_until_min_size(
-            &mut inner, &mut members, idx, min_region_size, &scc, &classes, excess_budget, &critical, ctx, rng,
+            &mut inner,
+            &mut members,
+            idx,
+            min_region_size,
+            &scc,
+            &classes,
+            excess_budget,
+            &critical,
+            ctx,
+            rng,
         );
 
         let converted = convert_region(&mut inner, &members, target, preset_state, rng);
@@ -127,7 +167,10 @@ pub(super) fn prioritize_candidates(
     }
     candidates.sort_by_key(|&idx| {
         let is_large_enough = scc.components[idx].len() >= min_region_size;
-        (std::cmp::Reverse(is_large_enough), std::cmp::Reverse(*border_count.get(&idx).unwrap_or(&usize::MAX)))
+        (
+            std::cmp::Reverse(is_large_enough),
+            std::cmp::Reverse(*border_count.get(&idx).unwrap_or(&usize::MAX)),
+        )
     });
 }
 
@@ -169,8 +212,16 @@ pub(super) fn absorb_until_min_size<T: Tessellation>(
     let preset_state = ctx.preset_state;
     let mut allowed_components: HashSet<ComponentId> = HashSet::from([candidate_idx]);
     'outer: while members.len() < min_region_size {
-        let mut edge_pool: Vec<(NodeId, NodeId, ComponentId)> = members.iter()
-            .flat_map(|&m| draft.maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
+        let mut edge_pool: Vec<(NodeId, NodeId, ComponentId)> = members
+            .iter()
+            .flat_map(|&m| {
+                draft
+                    .maze
+                    .field
+                    .neighbors(m)
+                    .into_iter()
+                    .map(move |nb| (m, nb))
+            })
             .filter(|(_, nb)| !critical.contains(nb) && !committed_nodes.contains(nb))
             .filter_map(|(m, nb)| {
                 let component = scc.component_of(nb)?;
@@ -192,7 +243,8 @@ pub(super) fn absorb_until_min_size<T: Tessellation>(
             let i = rng.random_range(0..edge_pool.len());
             let (from, to, component) = edge_pool.remove(i);
             let forward_added = draft.try_add_directed_edge(from, to, preset_state);
-            let bidirectional_added = forward_added && draft.try_add_directed_edge(to, from, preset_state);
+            let bidirectional_added =
+                forward_added && draft.try_add_directed_edge(to, from, preset_state);
             if !bidirectional_added {
                 // Roll back a lone forward edge if only the return direction was blocked —
                 // this pair is being discarded, so it must not leave a one-way edge behind
@@ -262,10 +314,18 @@ pub(super) fn filter_by_border<T: Tessellation>(
     let mut border_count: HashMap<ComponentId, usize> = HashMap::new();
     candidates.retain(|&idx| {
         let class = classes[&idx];
-        let needs_inbound = inbound_requires_geometry && matches!((class, target),
-            (RegionClass::Unreachable, RegionClass::Trap) | (RegionClass::Unreachable, RegionClass::Alternative));
-        let needs_outbound = outbound_requires_geometry && matches!((class, target),
-            (RegionClass::Unreachable, RegionClass::Alternative) | (RegionClass::Trap, RegionClass::Alternative));
+        let needs_inbound = inbound_requires_geometry
+            && matches!(
+                (class, target),
+                (RegionClass::Unreachable, RegionClass::Trap)
+                    | (RegionClass::Unreachable, RegionClass::Alternative)
+            );
+        let needs_outbound = outbound_requires_geometry
+            && matches!(
+                (class, target),
+                (RegionClass::Unreachable, RegionClass::Alternative)
+                    | (RegionClass::Trap, RegionClass::Alternative)
+            );
         if !needs_inbound && !needs_outbound {
             // Either a cut-transition (Trap/Alternative -> Unreachable, Alternative -> Trap,
             // which never needs a NEW geometric border — they cut an edge that already exists)
@@ -274,7 +334,8 @@ pub(super) fn filter_by_border<T: Tessellation>(
             return true;
         }
         let inbound_count = if needs_inbound {
-            scc.components[idx].iter()
+            scc.components[idx]
+                .iter()
                 .flat_map(|&n| maze.field.neighbors(n))
                 .filter(|nb| reachable_from_start.contains(nb))
                 .count()
@@ -282,7 +343,8 @@ pub(super) fn filter_by_border<T: Tessellation>(
             0
         };
         let outbound_count = if needs_outbound {
-            scc.components[idx].iter()
+            scc.components[idx]
+                .iter()
                 .flat_map(|&n| maze.field.neighbors(n))
                 .filter(|nb| reachable_to_finish.contains(nb))
                 .count()

@@ -2,88 +2,94 @@
 //! GitHub issue #113. Each type carries its own data fields directly (no shared `IssueData`
 //! enum) plus a `meta: IssueMeta` for the common `source_checks`/`details` bookkeeping.
 
-use std::collections::{HashMap, HashSet};
 use crate::quality_control::RepairArea;
+use std::collections::{HashMap, HashSet};
 
-mod missing_endpoints;
-mod unreachable_finish;
+mod area_missing_elevator_stops;
+mod cycle_analysis_overflowed;
+mod excessive_elevator_stop_gap;
+mod excessive_scc_count;
+pub(crate) mod group_issue;
+mod invalid_cross_element_group;
+mod invalid_elevator;
+mod invalid_elevator_group;
+mod invalid_elevator_stop;
+mod invalid_elevator_stop_group;
 mod invalid_loop;
 mod invalid_loop_group;
-mod missing_loops;
-mod cycle_analysis_overflowed;
-mod repair_limit_reached;
-mod excessive_scc_count;
-mod region_needs_expansion;
-mod region_needs_shrink;
-mod missing_regions;
-mod invalid_teleport;
-mod invalid_teleport_group;
 mod invalid_one_way;
-pub(crate) mod group_issue;
 mod invalid_one_way_group;
-mod invalid_cross_element_group;
-mod missing_one_ways;
-mod missing_teleports;
-mod invalid_split_tile;
-mod invalid_split_tile_group;
-mod missing_split_tiles;
 mod invalid_split_node;
 mod invalid_split_node_connection;
 mod invalid_split_node_connection_group;
 mod invalid_split_node_group;
 mod invalid_split_route;
+mod invalid_split_tile;
+mod invalid_split_tile_group;
+mod invalid_teleport;
+mod invalid_teleport_group;
 mod invalid_vertical_passage;
 mod invalid_vertical_passage_group;
-mod missing_vertical_passages;
-mod invalid_elevator;
-mod invalid_elevator_group;
-mod invalid_elevator_stop;
-mod invalid_elevator_stop_group;
-mod missing_elevators;
-mod area_missing_elevator_stops;
-mod missing_elevator_stop_count;
 mod missing_elevator_height;
-mod excessive_elevator_stop_gap;
+mod missing_elevator_stop_count;
+mod missing_elevators;
+mod missing_endpoints;
+mod missing_loops;
+mod missing_one_ways;
+mod missing_regions;
+mod missing_split_tiles;
+mod missing_teleports;
+mod missing_vertical_passages;
+mod region_needs_expansion;
+mod region_needs_shrink;
+mod repair_limit_reached;
+mod unreachable_finish;
 
+pub use area_missing_elevator_stops::AreaMissingElevatorStopsIssue;
+pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
+pub use excessive_elevator_stop_gap::ExcessiveElevatorStopGapIssue;
+pub use excessive_scc_count::ExcessiveSccCountIssue;
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
-pub use missing_endpoints::MissingEndpointsIssue;
-pub use unreachable_finish::UnreachableFinishIssue;
+pub use invalid_cross_element_group::{
+    CrossElementCloseNodes, CrossElementGroupKind, InvalidCrossElementGroupIssue,
+};
+pub use invalid_elevator::{ElevatorNodes, InvalidElevatorIssue};
+pub use invalid_elevator_group::{ElevatorGroupKind, InvalidElevatorGroupIssue};
+pub use invalid_elevator_stop::InvalidElevatorStopIssue;
+pub use invalid_elevator_stop_group::{ElevatorStopGroupKind, InvalidElevatorStopGroupIssue};
 pub use invalid_loop::{InvalidLoopIssue, InvalidLoopRequirement};
 pub use invalid_loop_group::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
-pub use missing_loops::MissingLoopsIssue;
-pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
-pub use repair_limit_reached::{RepairLimitReachedIssue, RepairLimitKind};
-pub use excessive_scc_count::ExcessiveSccCountIssue;
-pub use region_needs_expansion::RegionNeedsExpansionIssue;
-pub use region_needs_shrink::RegionNeedsShrinkIssue;
-pub use missing_regions::MissingRegionsIssue;
-pub use invalid_teleport::InvalidTeleportIssue;
-pub use invalid_teleport_group::{InvalidTeleportGroupIssue, TeleportGroupKind};
 pub use invalid_one_way::InvalidOneWayIssue;
 pub use invalid_one_way_group::{InvalidOneWayGroupIssue, OneWayGroupKind};
-pub use invalid_cross_element_group::{InvalidCrossElementGroupIssue, CrossElementGroupKind, CrossElementCloseNodes};
-pub use missing_one_ways::MissingOneWaysIssue;
-pub use missing_teleports::MissingTeleportsIssue;
-pub use invalid_split_tile::InvalidSplitTileIssue;
-pub use invalid_split_tile_group::{InvalidSplitTileGroupIssue, SplitGroupKind, SplitTileNodes};
-pub use missing_split_tiles::MissingSplitTilesIssue;
 pub use invalid_split_node::InvalidSplitNodeIssue;
 pub use invalid_split_node_connection::InvalidSplitNodeConnectionIssue;
-pub use invalid_split_node_connection_group::{InvalidSplitNodeConnectionGroupIssue, SplitNodeConnectionGroupKind};
+pub use invalid_split_node_connection_group::{
+    InvalidSplitNodeConnectionGroupIssue, SplitNodeConnectionGroupKind,
+};
 pub use invalid_split_node_group::{InvalidSplitNodeGroupIssue, SplitNodeGroupKind};
 pub use invalid_split_route::{InvalidSplitRouteIssue, SplitRouteEdge};
+pub use invalid_split_tile::InvalidSplitTileIssue;
+pub use invalid_split_tile_group::{InvalidSplitTileGroupIssue, SplitGroupKind, SplitTileNodes};
+pub use invalid_teleport::InvalidTeleportIssue;
+pub use invalid_teleport_group::{InvalidTeleportGroupIssue, TeleportGroupKind};
 pub use invalid_vertical_passage::InvalidVerticalPassageIssue;
-pub use invalid_vertical_passage_group::{InvalidVerticalPassageGroupIssue, VerticalPassageGroupKind};
-pub use missing_vertical_passages::MissingVerticalPassagesIssue;
-pub use invalid_elevator::{InvalidElevatorIssue, ElevatorNodes};
-pub use invalid_elevator_group::{InvalidElevatorGroupIssue, ElevatorGroupKind};
-pub use invalid_elevator_stop::InvalidElevatorStopIssue;
-pub use invalid_elevator_stop_group::{InvalidElevatorStopGroupIssue, ElevatorStopGroupKind};
-pub use missing_elevators::MissingElevatorsIssue;
-pub use area_missing_elevator_stops::AreaMissingElevatorStopsIssue;
-pub use missing_elevator_stop_count::MissingElevatorStopCountIssue;
+pub use invalid_vertical_passage_group::{
+    InvalidVerticalPassageGroupIssue, VerticalPassageGroupKind,
+};
 pub use missing_elevator_height::MissingElevatorHeightIssue;
-pub use excessive_elevator_stop_gap::ExcessiveElevatorStopGapIssue;
+pub use missing_elevator_stop_count::MissingElevatorStopCountIssue;
+pub use missing_elevators::MissingElevatorsIssue;
+pub use missing_endpoints::MissingEndpointsIssue;
+pub use missing_loops::MissingLoopsIssue;
+pub use missing_one_ways::MissingOneWaysIssue;
+pub use missing_regions::MissingRegionsIssue;
+pub use missing_split_tiles::MissingSplitTilesIssue;
+pub use missing_teleports::MissingTeleportsIssue;
+pub use missing_vertical_passages::MissingVerticalPassagesIssue;
+pub use region_needs_expansion::RegionNeedsExpansionIssue;
+pub use region_needs_shrink::RegionNeedsShrinkIssue;
+pub use repair_limit_reached::{RepairLimitKind, RepairLimitReachedIssue};
+pub use unreachable_finish::UnreachableFinishIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
@@ -150,7 +156,11 @@ pub(crate) fn merge_cycle_sets(
     let mut seen_invalid: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for &old_idx in self_invalid.iter() {
         let Some(&new_idx) = existing_old_to_new.get(old_idx) else {
-            debug_assert!(false, "{context}::merge: invalid index {old_idx} out of range for self.all (len {})", existing_old_to_new.len());
+            debug_assert!(
+                false,
+                "{context}::merge: invalid index {old_idx} out of range for self.all (len {})",
+                existing_old_to_new.len()
+            );
             continue;
         };
         if seen_invalid.insert(new_idx) {
@@ -159,7 +169,11 @@ pub(crate) fn merge_cycle_sets(
     }
     for &old_idx in other_invalid.iter() {
         let Some(&new_idx) = incoming_old_to_new.get(old_idx) else {
-            debug_assert!(false, "{context}::merge: invalid index {old_idx} out of range for other.all (len {})", incoming_old_to_new.len());
+            debug_assert!(
+                false,
+                "{context}::merge: invalid index {old_idx} out of range for other.all (len {})",
+                incoming_old_to_new.len()
+            );
             continue;
         };
         if seen_invalid.insert(new_idx) {

@@ -363,6 +363,38 @@ describe("computeAutoLockedNodes", () => {
     ]);
     const result = computeAutoLockedNodes(connections, squareLevelFields, { "-1,-1": [0] });
     expect(result.has("-1,-1")).toBe(true);
+    expect(result.has("-1,-1:0")).toBe(true);
+  });
+
+  it("autoblock resolves a decided connection to a neighboring split node", () => {
+    const splitPoints = { "-1,-1": [0], "0,-1": [0] };
+    const connections = new Map<string, PresetConnectionEntry>();
+    const put = (from: ReturnType<typeof presetEndpoint>, to: ReturnType<typeof presetEndpoint>) => {
+      connections.set(presetEdgeKey(from, to), {
+        from, to, state: "passage", source: "user",
+      });
+    };
+    const points: [number, number][] = [[-1, -1], [0, -1]];
+    for (const point of points) {
+      const endpoints = [presetEndpoint(point), presetEndpoint(point, 0)];
+      for (const from of endpoints) {
+        for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+          const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+          if (neighbor[0] < -1 || neighbor[0] > 1 || neighbor[1] < -1 || neighbor[1] > 1) continue;
+          const isSplitNeighbor = neighbor[0] === 0 && neighbor[1] === -1;
+          const to = isSplitNeighbor
+            ? presetEndpoint(neighbor, from.slotId === undefined ? 0 : undefined)
+            : presetEndpoint(neighbor);
+          put(from, to);
+        }
+      }
+    }
+
+    const result = computeAutoLockedNodes(connections, squareLevelFields, splitPoints);
+    expect(result.has("-1,-1")).toBe(true);
+    expect(result.has("-1,-1:0")).toBe(true);
+    expect(result.has("0,-1")).toBe(true);
+    expect(result.has("0,-1:0")).toBe(true);
   });
 });
 
