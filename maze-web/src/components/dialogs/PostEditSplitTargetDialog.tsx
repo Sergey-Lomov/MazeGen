@@ -8,7 +8,7 @@ import { splitPointFaceKindsByNode } from "../../pixi/splitNodeGeometry";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
-import { resolveEndpoint, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
+import { resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "../../pixi/postEditEndpoint";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import type { EdgeDto } from "../../wasm/types";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
@@ -57,30 +57,42 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     // Draft basic/one-way edges + teleports as directed real-id edges, resolved against the
     // confirmed node snapshot — the full floor's set (a split point's edges run to neighbouring
     // cells) feeds the preview geometry and special-shape detection alike.
+    //
+    // `bareNodeMap`/`resolveSplit` are scoped to THIS floor alone (bare "x,y" keys, built from
+    // `floorNodes` only, `level` stripped off every endpoint before resolving) — not maze-wide.
+    // `buildSplitNodeResolver` refuses to fall back from an "x,y@level" lookup to the bare key
+    // (GitHub issue #425's fix), so on any floor above the first, resolving a `draftEdges`
+    // endpoint by its own real (non-undefined) `level` against a bare-only map always failed,
+    // silently dropping every edge touching that floor's split slot — the slot rendered with only
+    // wall faces and no marker dot (GitHub issue #546 tenth follow-up).
+    const floorNodeIds = new Set(floorNodes.map((n) => n.id));
     const bareNodeMap = new Map<string, number[]>();
-    for (const n of allNodes) {
+    for (const n of floorNodes) {
       const k = `${n.x},${n.y}`;
       const list = bareNodeMap.get(k);
       if (list) list.push(n.id); else bareNodeMap.set(k, [n.id]);
     }
     const resolveSplit = buildSplitNodeResolver(bareNodeMap, recordOnLevel(splitPoints, level));
-    const floorNodeIds = new Set(floorNodes.map((n) => n.id));
     const edges: EdgeDto[] = [];
     for (const e of Object.values(draftEdges ?? {})) {
       if (e.kind === "wall") continue;
-      const from = resolveEndpoint(e.from, resolveSplit);
-      const to = resolveEndpoint(e.to, resolveSplit);
-      if (from === undefined || to === undefined) continue;
-      if (!floorNodeIds.has(from) || !floorNodeIds.has(to)) continue;
-      edges.push({ from, to, kind: "basic" });
+      const from = floorScopedEndpoint(e.from, level, floorNodeIds);
+      const to = floorScopedEndpoint(e.to, level, floorNodeIds);
+      if (!from || !to) continue;
+      const fromId = resolveEndpoint(from, resolveSplit);
+      const toId = resolveEndpoint(to, resolveSplit);
+      if (fromId === undefined || toId === undefined) continue;
+      edges.push({ from: fromId, to: toId, kind: "basic" });
     }
     for (const t of draftTeleports) {
-      const from = resolveEndpoint(t.from, resolveSplit);
-      const to = resolveEndpoint(t.to, resolveSplit);
-      if (from === undefined || to === undefined) continue;
-      if (!floorNodeIds.has(from) || !floorNodeIds.has(to)) continue;
-      if (t.direction !== "backward") edges.push({ from, to, kind: "teleport" });
-      if (t.direction !== "forward") edges.push({ from: to, to: from, kind: "teleport" });
+      const from = floorScopedEndpoint(t.from, level, floorNodeIds);
+      const to = floorScopedEndpoint(t.to, level, floorNodeIds);
+      if (!from || !to) continue;
+      const fromId = resolveEndpoint(from, resolveSplit);
+      const toId = resolveEndpoint(to, resolveSplit);
+      if (fromId === undefined || toId === undefined) continue;
+      if (t.direction !== "backward") edges.push({ from: fromId, to: toId, kind: "teleport" });
+      if (t.direction !== "forward") edges.push({ from: toId, to: fromId, kind: "teleport" });
     }
 
     const directed = new Set(

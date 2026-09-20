@@ -31,7 +31,7 @@ import { configAllCells } from "../../pixi/tessellationCells";
 import {
   toWasmEndpoint, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage,
   buildPostEditBaseline, appendPostEditCommand, replacePostEditCommands,
-  derivedStateToLegacyFields as legacyFieldsFor,
+  derivedStateToLegacyFields as legacyFieldsFor, resolveActiveNodeIdAt,
 } from "./postEditSliceHelpers";
 
 /** Every face currently wired on `target` (a split node's own endpoint), read from live
@@ -527,19 +527,19 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       endpointRefsTarget(e.from) || endpointRefsTarget(e.to);
 
     if (derived.meta.start !== null && endpointRefsTarget(derived.meta.start)) {
-      appendPostEditCommand(get, set, { kind: "setMeta", slot: "start", endpoint: null });
+      appendPostEditCommand(get, set, { kind: "setMeta", slot: "start", endpoint: null, previousEndpoint: derived.meta.start });
     }
     if (derived.meta.finish !== null && endpointRefsTarget(derived.meta.finish)) {
-      appendPostEditCommand(get, set, { kind: "setMeta", slot: "finish", endpoint: null });
+      appendPostEditCommand(get, set, { kind: "setMeta", slot: "finish", endpoint: null, previousEndpoint: derived.meta.finish });
     }
     for (const t of derived.teleports) {
-      if (refsTarget(t)) appendPostEditCommand(get, set, { kind: "removeTeleport", id: t.id });
+      if (refsTarget(t)) appendPostEditCommand(get, set, { kind: "removeTeleport", id: t.id, from: t.from, to: t.to, direction: t.direction });
     }
     for (const p of derived.verticalPassages) {
-      if (refsTarget(p)) appendPostEditCommand(get, set, { kind: "removeVerticalPassage", id: p.id });
+      if (refsTarget(p)) appendPostEditCommand(get, set, { kind: "removeVerticalPassage", id: p.id, from: p.from, to: p.to, direction: p.direction });
     }
     for (const e of derived.elevators) {
-      if (e.floors.some(endpointRefsTarget)) appendPostEditCommand(get, set, { kind: "removeElevator", id: e.id });
+      if (e.floors.some(endpointRefsTarget)) appendPostEditCommand(get, set, { kind: "removeElevator", id: e.id, floors: e.floors });
     }
 
     for (const e of context.edges) {
@@ -572,7 +572,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
   clearPostEditEndpoint: (kind) => {
-    appendPostEditCommand(get, set, { kind: "setMeta", slot: kind, endpoint: null });
+    const previousEndpoint = get().postEditDerived?.meta[kind] ?? undefined;
+    appendPostEditCommand(get, set, { kind: "setMeta", slot: kind, endpoint: null, previousEndpoint });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -593,21 +594,27 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const target = get().postEditDraftTeleports.find((t) => t.id === id);
     if (!target || target.direction === "two_way") return;
     const direction = target.direction === "forward" ? "backward" : "forward";
-    appendPostEditCommand(get, set, { kind: "setTeleportDirection", id, direction });
+    appendPostEditCommand(get, set, { kind: "setTeleportDirection", id, direction, from: target.from, to: target.to });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
   },
 
   removePostEditTeleport: (id) => {
-    appendPostEditCommand(get, set, { kind: "removeTeleport", id });
+    const target = get().postEditDraftTeleports.find((t) => t.id === id);
+    if (!target) return;
+    appendPostEditCommand(get, set, { kind: "removeTeleport", id, from: target.from, to: target.to, direction: target.direction });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
   },
 
   movePostEditTeleportEndpoint: (id, end, endpoint) => {
-    appendPostEditCommand(get, set, { kind: "moveTeleportEndpoint", id, end, endpoint });
+    const target = get().postEditDraftTeleports.find((t) => t.id === id);
+    const from = end === "from" ? endpoint : target?.from;
+    const to = end === "to" ? endpoint : target?.to;
+    if (!from || !to || !target) return;
+    appendPostEditCommand(get, set, { kind: "moveTeleportEndpoint", id, end, endpoint, from, to, direction: target.direction });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -944,6 +951,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // re-edit doc comment for why this can't be "only on first edit".
     appendPostEditCommand(get, set, {
       kind: "setVerticalPassageDirection", id, direction: target.direction,
+      from: target.from, to: target.to,
       suppressPair: [target.from, target.to],
     });
     if (get().postEditAutoConfirm) {
@@ -952,7 +960,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   removePostEditVerticalPassage: (id) => {
-    appendPostEditCommand(get, set, { kind: "removeVerticalPassage", id });
+    const target = get().postEditDraftVerticalPassages.find((p) => p.id === id);
+    if (!target) return;
+    appendPostEditCommand(get, set, { kind: "removeVerticalPassage", id, from: target.from, to: target.to, direction: target.direction });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -960,15 +970,19 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   movePostEditVerticalPassageEndpoint: (id, end, endpoint) => {
     const target = get().postEditDraftVerticalPassages.find((p) => p.id === id);
-    appendPostEditCommand(get, set, { kind: "moveVerticalPassageEndpoint", id, end, endpoint });
     // Suppress both the pair's old endpoints (its previous confirm's own edge, now stale) and its
-    // new ones (this move's own edge, about to be confirmed) — same rationale as
-    // `cyclePostEditVerticalPassageDirection`'s own doc comment.
-    if (target) {
-      appendPostEditCommand(get, set, { kind: "suppressGenerationPair", entity: "verticalPassage", a: target.from, b: target.to });
-      const otherEnd = end === "from" ? target.to : target.from;
-      appendPostEditCommand(get, set, { kind: "suppressGenerationPair", entity: "verticalPassage", a: endpoint, b: otherEnd });
-    }
+    // new ones (this move's own edge, about to be confirmed) — folded into this SAME command
+    // (GitHub issue #546 sixth follow-up) instead of two trailing `suppressGenerationPair`
+    // commands, same "one gesture, one log entry" fix `addElevator`'s `suppressPairs` already has.
+    const suppressPairs: [PostEditEndpoint, PostEditEndpoint][] | undefined = target
+      ? [[target.from, target.to], [endpoint, end === "from" ? target.to : target.from]]
+      : undefined;
+    // `from`/`to` (GitHub issue #564 follow-up) are the RESULTING pair after this move, not the
+    // pre-move `target.from`/`target.to` — the "Changes" panel must show where the passage ended up.
+    const from = end === "from" ? endpoint : target?.from;
+    const to = end === "to" ? endpoint : target?.to;
+    if (!from || !to || !target) return;
+    appendPostEditCommand(get, set, { kind: "moveVerticalPassageEndpoint", id, end, endpoint, from, to, direction: target.direction, suppressPairs });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -1050,13 +1064,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const originNode = state.nodes.find((n) => n.id === originId);
     if (!originNode) return;
     const point: [number, number] = [originNode.x, originNode.y];
-    // Every selected floor resolves to that floor's own original node at `point` — mirrors
-    // `confirmPresetElevatorPlacement`, addressed by `PostEditEndpoint` (node id) instead of a
-    // `PresetEndpoint` (cell + level).
+    // Every selected floor resolves to whichever node the user last picked at `point` on that
+    // floor (GitHub issue #546 fifth follow-up — `postEditActiveSplitNode`, same map the edge
+    // tools already read via `PostEditController.resolveActiveEndpointAt`), falling back to that
+    // floor's own original node only when nothing's been picked there yet. Previously always took
+    // the original node outright, silently ignoring a split floor's actually-clicked slot.
     const floors: PostEditEndpoint[] = [];
     for (const level of Array.from(pending.floors).sort((a, b) => a - b)) {
-      const node = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === level);
-      if (node) floors.push(nodeEndpoint(node.id));
+      const nodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === level).map((n) => n.id);
+      const nodeId = resolveActiveNodeIdAt(point, nodeIds, state.postEditActiveSplitNode, level === 0 ? undefined : level);
+      if (nodeId !== undefined) floors.push(nodeEndpoint(nodeId));
     }
     if (floors.length < 2) return;
     const editingId = pending.editingId;
@@ -1088,7 +1105,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   cancelPostEditElevatorPlacement: () => set({ postEditElevatorPending: null }),
 
   removePostEditElevator: (id) => {
-    appendPostEditCommand(get, set, { kind: "removeElevator", id });
+    const target = get().postEditDraftElevators.find((e) => e.id === id);
+    if (!target) return;
+    appendPostEditCommand(get, set, { kind: "removeElevator", id, floors: target.floors });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }

@@ -366,7 +366,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
 
     const { nodes, edges, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
-    const { postEditDraftVerticalPassages: overrideVerticalPassages } = this.dragOverrideFields(state);
+    const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages } = this.dragOverrideFields(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -427,11 +427,19 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // without the active-floor filter `postEditDraftTeleports` above applies, so the reverse-
     // direction edge of a bidirectional cross-floor pair (its own `from` on the other floor) is
     // available for `byPair`'s bidirectional check the same way `TeleportFloorContext`'s own doc
-    // comment requires.
+    // comment requires. Must read `overrideTeleportsUnscoped` (the drag-overridden field), not raw
+    // `state.postEditDraftTeleports` — a same-floor drag's in-progress override is already applied
+    // by the time it reaches `floorScoped`'s own `postEditDraftTeleports`, so this stale-vs-live
+    // mismatch never showed there, but a CROSS-floor drag's badge/blocked-cells context kept reading
+    // the pre-drag position from here while `activeEdges` below already drew the live dragged one,
+    // rendering both a stale and a live copy for the whole duration of every drag (not just the
+    // first one, unlike the vertical-passage confirmed-mirror bug this resembles — there's no
+    // confirmed-graph fallback for teleports, this was purely two different reads of the draft
+    // disagreeing on which one was current).
     const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
     const unscopedActiveEdges = [
       ...postEditEdgesToDto(state.postEditDraftEdges ?? {}, unscopedResolveSplit),
-      ...postEditTeleportsToDto(state.postEditDraftTeleports, unscopedResolveSplit),
+      ...postEditTeleportsToDto(overrideTeleportsUnscoped, unscopedResolveSplit),
     ];
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
@@ -463,6 +471,30 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // the reverse-direction edge of a bidirectional passage, whose own `from` lives on the other
     // floor).
     const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, state.postEditDraftElevators, resolveSplit);
+    // A draft vertical passage's own already-confirmed mirror in `state.edges` (folded back by
+    // every `confirmPostEdit`, per `cyclePostEditVerticalPassageDirection`'s own doc comment) is
+    // only added to `postEditSuppressedVerticalPassagePairs` on the NEXT edit's own command
+    // (`moveVerticalPassageEndpoint`'s `suppressPairs`, `setVerticalPassageDirection`'s
+    // `suppressPair`) — a log-derived fact, updated on release/confirm, not on every render frame.
+    // While a drag is in progress but not yet released, the confirmed mirror is thus still
+    // unsuppressed at its OLD position, and `draftVerticalEdges` above already draws the SAME
+    // entity at its live drag-override position — both rendered at once, reading as "duplicated"
+    // (GitHub issue #564 follow-up: only the very first drag right after creating/confirming a
+    // passage showed this, since every subsequent drag's own release had already added the
+    // suppress pair for the entity's current position by the time the next drag started). Fixed by
+    // always suppressing a draft entity's own current confirmed mirror here, unconditionally —
+    // computed fresh every render from `state.postEditDraftVerticalPassages`'s un-overridden from/to
+    // (the entity's own identity, not wherever the in-progress drag currently points it), not read
+    // from the log-derived set at all.
+    const ownDraftVerticalPairKeys = new Set(
+      state.postEditDraftVerticalPassages
+        .map((p) => {
+          const from = resolveEndpoint(p.from, resolveSplit);
+          const to = resolveEndpoint(p.to, resolveSplit);
+          return from !== undefined && to !== undefined ? suppressionPairKey(nodeEndpoint(from), nodeEndpoint(to)) : null;
+        })
+        .filter((k): k is string => k !== null),
+    );
     // Drop a generation-time `elevator`/`vertical_passage` edge once the user has edited that
     // connection (see `postEditSuppressedElevatorPairs`'s/`postEditSuppressedVerticalPassagePairs`'s
     // own doc comments) — draws the same "draft is now authoritative" state confirmPostEdit will
@@ -470,6 +502,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const isSuppressedEdge = (e: { from: number; to: number; kind: string }) => {
       if (e.kind !== "elevator" && e.kind !== "vertical_passage") return false;
       const key = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
+      if (e.kind === "vertical_passage" && ownDraftVerticalPairKeys.has(key)) return true;
       return e.kind === "elevator"
         ? state.postEditSuppressedElevatorPairs.has(key)
         : state.postEditSuppressedVerticalPassagePairs.has(key);

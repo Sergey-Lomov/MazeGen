@@ -261,7 +261,8 @@ export function applyPostEditCommand(
     case "moveVerticalPassageEndpoint": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
       const next = movePostEditVerticalPassageEndpoint(state.verticalPassages, { id: command.id, end: command.end }, command.endpoint);
-      return ok({ ...state, verticalPassages: next });
+      const suppressedVerticalPassagePairs = addSuppressPairs(state.suppressedVerticalPassagePairs, command.suppressPairs);
+      return ok({ ...state, verticalPassages: next, suppressedVerticalPassagePairs });
     }
     case "removeVerticalPassage": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
@@ -412,7 +413,8 @@ function commandTouchesPoint(
     }
     case "moveVerticalPassageEndpoint": {
       const p = before.verticalPassages.find((x) => x.id === command.id);
-      return (p !== undefined && (epTouches(p.from) || epTouches(p.to))) || epTouches(command.endpoint);
+      return (p !== undefined && (epTouches(p.from) || epTouches(p.to))) || epTouches(command.endpoint)
+        || (command.suppressPairs ?? []).some(([a, b]) => epTouches(a) || epTouches(b));
     }
     case "addElevator":
       return command.floors.some(epTouches) || (command.suppressPairs ?? []).some(([a, b]) => epTouches(a) || epTouches(b));
@@ -457,13 +459,17 @@ function endpointsReferencedBy(command: PostEditCommand): PostEditEndpoint[] {
     case "setEdge": return [command.from, command.to];
     case "setEdgePair": return [command.a, command.b];
     case "addTeleport": return [command.from, command.to];
-    case "moveTeleportEndpoint": return [command.endpoint];
-    case "setMeta": return command.endpoint !== null ? [command.endpoint] : [];
+    case "setTeleportDirection": return [command.from, command.to];
+    case "moveTeleportEndpoint": return [command.endpoint, command.from, command.to];
+    case "removeTeleport": return [command.from, command.to];
+    case "setMeta": return command.endpoint !== null ? [command.endpoint] : (command.previousEndpoint ? [command.previousEndpoint] : []);
     case "addVerticalPassage": return [command.from, command.to];
-    case "setVerticalPassageDirection": return command.suppressPair ? [...command.suppressPair] : [];
-    case "moveVerticalPassageEndpoint": return [command.endpoint];
+    case "setVerticalPassageDirection": return [command.from, command.to, ...(command.suppressPair ?? [])];
+    case "moveVerticalPassageEndpoint": return [command.endpoint, command.from, command.to, ...(command.suppressPairs ?? []).flat()];
+    case "removeVerticalPassage": return [command.from, command.to];
     case "addElevator": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
     case "updateElevatorFloors": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
+    case "removeElevator": return command.floors;
     case "rotateSplitPoint": return command.moves.flatMap((m) => [m.from, m.to]);
     case "updateSplitNodeFaces": return command.faces.map((f) => f.neighbor);
     case "suppressGenerationPair": return [command.a, command.b];

@@ -46,10 +46,23 @@ type PostEditCommand =
   // rare single-direction case (`applySplitBlueprint`'s per-face wiring).
   | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind; directionFlip?: boolean }
   | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
-  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
-  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "removeTeleport"; id: number }
-  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null }
+  // `from`/`to` (GitHub issue #564 follow-up) are this teleport's own endpoints, denormalized onto
+  // the command at construction time - same fix already applied to every vertical-passage command;
+  // an id-only lookup into the CURRENT draft is correct only for the newest row about this id, and
+  // shows a stale (or, once removed, unresolved) location for every OLDER row about it.
+  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint }
+  // `from`/`to`/`direction` (same follow-up) are this teleport's own RESULTING pair/direction after
+  // this move - same denormalization reasoning as `setTeleportDirection` above.
+  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  // `from`/`to`/`direction` (same follow-up) are the removed teleport's own endpoints/direction,
+  // denormalized at construction time - without them the row has nothing left to resolve a
+  // location from once the entry is gone from `postEditDraftTeleports`.
+  | { kind: "removeTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  // `previousEndpoint` (GitHub issue #564 follow-up) is the slot's own endpoint right before this
+  // command, denormalized at construction time - only meaningful (and only ever set) when
+  // `endpoint` is `null` (a clear); without it, a "start/finish cleared" row had no coordinates left
+  // to show once the slot itself was empty.
+  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null; previousEndpoint?: PostEditEndpoint }
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
   // A split slot's face wiring, resolved atomically - every edge-tool click on one of a split
@@ -74,15 +87,40 @@ type PostEditCommand =
   // needs suppressing. `direction` here is always `"forward"`/`"backward"` - this command only
   // exists when leaving `two_way` (the store action no-ops on an already-`two_way` passage), so the
   // resulting passage is always one-way.
-  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
-  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "removeVerticalPassage"; id: number }
+  // `from`/`to` (GitHub issue #564 follow-up) are this passage's own endpoints at the time of this
+  // command, denormalized the same way `removeVerticalPassage` below is - an id-only lookup into
+  // `live` (the CURRENT draft) breaks for any OLD row once the referenced entity has since been
+  // removed or moved on by a later command, not just for the removal row itself; this used to show
+  // as a correct removal row (coordinates present) sitting above stale "?" move/direction rows for
+  // the SAME entity.
+  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
+  // `suppressPairs` folds the drag's own two stale-mesh pairs (the passage's pre-move endpoints,
+  // and its new endpoint against the unmoved other end) into the SAME command, rather than two
+  // trailing `suppressGenerationPair` commands - one drag gesture is one logical edit, mirrors
+  // `addElevator`'s `suppressPairs`. `undefined`/`[]` when nothing needs suppressing.
+  // `from`/`to` (GitHub issue #564 follow-up) are this passage's own RESULTING endpoints after this
+  // move (the moved `end` already replaced by `endpoint`) - same denormalization reasoning as
+  // `setVerticalPassageDirection`'s own `from`/`to` above. `direction` (same follow-up, second pass)
+  // is this passage's own CURRENT direction, unaffected by a plain endpoint move - without it the
+  // "Changes" panel's arrow fell back to a `live` id lookup, defaulting a since-removed two-way
+  // passage's old move row to a plain one-way "->" arrow.
+  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  // `from`/`to`/`direction` are the removed passage's own endpoints, denormalized onto the command
+  // at construction time (GitHub issue #564 partial) - without them the "Changes" panel has nothing
+  // left to resolve a location from once the entry is gone from `postEditDraftVerticalPassages`
+  // (the panel's `live` map is built from the CURRENT draft, which by definition no longer has this
+  // id), so a `removeVerticalPassage` row used to render as a bare "Vertical passage removed" with
+  // no coordinates at all.
+  | { kind: "removeVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   // `suppressPairs` folds the generation-time mesh pairs this elevator edit replaces into the SAME
   // command, rather than one separate `suppressGenerationPair` command per pair - a lift's floor
   // edit is one logical action. `undefined`/`[]` when nothing needs suppressing.
   | { kind: "addElevator"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
   | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
-  | { kind: "removeElevator"; id: number }
+  // `floors` is the removed elevator's own floor list, denormalized onto the command at
+  // construction time (GitHub issue #564 partial) - same reasoning as `removeVerticalPassage`'s
+  // `from`/`to` above.
+  | { kind: "removeElevator"; id: number; floors: PostEditEndpoint[] }
   // A generation-time vertical-passage/elevator mesh edge has been edited via a *seed* draft entry
   // derived from it - `confirmPostEdit` must stop re-emitting the original generation pair once a
   // draft entry exists for it. The pair (`a`/`b`, node endpoints, order-independent) is recorded on
@@ -224,58 +262,211 @@ directly.
 | `_postEditRequestId` | `number` | Versioning for stale async `confirmPostEdit` results; bumped by both `appendPostEditCommand`/`replacePostEditCommands` themselves, not only by an explicit `confirmPostEdit` call. |
 | `postEditDirty` | `boolean` | True after any manual post-edit change since the last generate/reset. |
 
-### Changes Panel (GitHub issue #545, bubbles + hover highlight added by #546, `pixi/postEditCommandLabels.ts`)
+### Changes Panel (GitHub issue #545, bubbles + hover highlight added by #546, per-point bubbles and
+row-hover redesign by #546 second follow-up, `pixi/postEditCommandLabels.ts`)
 
 Renders `postEditCommands` as a human-readable list — one row per command, each formatted by
-`postEditCommandLabel(command, nodeById, live, multiFloor)` into a `PostEditCommandLabel`
-(`{ action, bubbles, isLink }`). `nodeById` is built from the confirmed node snapshot
-(`buildNodeByIdMap`); `live` (`PostEditLiveEntries`, `buildLiveEntries`) resolves an id-only command
-(`setTeleportDirection`, `removeVerticalPassage`, ...) back to its current draft entry's from/to —
-these commands carry no coordinates of their own, only the entity's stable id. `multiFloor` is
-`floors.length > 1`, selecting the coordinate format below. An endpoint/entry that doesn't resolve
-(an unconfirmed split node, or an id whose entry was itself removed by a later command) falls back
-to a `"?"` bubble with no highlight, rather than throwing.
+`postEditCommandLabel(command, nodeById, multiFloor)` into a `PostEditCommandLabel`
+(`{ action, bubbles, showArrow, arrow, rowHighlight }`). `nodeById` is built from the confirmed node
+snapshot (`buildNodeByIdMap`). `multiFloor` is `floors.length > 1`, selecting the coordinate format
+below. An endpoint that doesn't resolve (an unconfirmed split node) falls back to a `"?"` bubble
+with no highlight, rather than throwing.
 
-Each `PostEditEntityBubble` (`{ text, highlight }`) renders as a hoverable chip — same monospace
-bubble style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles use — instead of a plain text
-string. `text` matches the debug event tree's own bubble convention exactly (`bubbleLabel`,
-`debugRowText.ts`): `x:y` on a single-floor maze, `Lf:x:y` (1-based floor) on a multi-floor one — no
-words, no parens; never a raw `NodeId`/entity id. `highlight` is a `PostEditHoveredEntity` (`point`
-for a plain point/node endpoint, `points` for the combined elevator/vertical-passage bubbles below;
-`null` for a bubble naming an entity nothing's left in the log to resolve a point from); hovering a
-bubble passes its `highlight` straight through to `postEditHoveredEntity`.
+Every teleport/vertical-passage command (`setTeleportDirection`/`moveTeleportEndpoint`/
+`removeTeleport`, `setVerticalPassageDirection`/`moveVerticalPassageEndpoint`/
+`removeVerticalPassage`) and every elevator/`setMeta`-clear row carries its own bubble-relevant
+from/to/direction/floors denormalized onto the command at construction time, rather than resolving
+through an id-keyed lookup into the CURRENT draft — mirroring every other pre-resolved field in
+`PostEditCommand` (the module doc comment in `postEditCommandTypes.ts` calls out
+`ResolvedRotateMove`/`applySplitBlueprint`'s `resolvedSlots` as the same pattern). An id-only lookup
+into the current draft is correct only for the newest/still-live row about an entity; any OLDER row
+about the same id breaks once a later command has moved or removed that entity — this was first
+found on `removeVerticalPassage`/`removeElevator` (GitHub issue #564 partial: those two rows
+rendered with no coordinates at all, since the entity is by definition already gone from the draft
+by the time a removal row renders), then found again (GitHub issue #564 follow-up) on
+`setVerticalPassageDirection`/`moveVerticalPassageEndpoint` (an old move/direction row for a
+since-removed passage rendered "?" bubbles once the removal row above it started showing correct
+coordinates, by contrast) and its own arrow (a second pass — `moveVerticalPassageEndpoint`'s
+`direction` had not been denormalized yet, so a since-removed two-way passage's old move row
+rendered a plain one-way "->" instead of "<->"), then the identical pattern was found and fixed
+across every teleport command and the `setMeta` clear case in one pass. The old `PostEditLiveEntries`/
+`buildLiveEntries`/`live` machinery (an id-keyed map built fresh from the CURRENT draft each render)
+has been removed entirely — no command kind resolves bubbles that way any more, every one carries
+what it needs on itself.
 
-A two-bubble `isLink` row (an edge/teleport command; a vertical passage/elevator instead renders as
-a *single* combined bubble — see below) additionally renders its own "bubble `<arrow>` bubble" pair
-(`postEditRowHighlight` for the hover target, `label.arrow` for the glyph) — hovering the row (not
-one specific bubble) sets `postEditHoveredEntity` to the `link`-kind entity connecting both bubbles'
-points; `null` if either bubble's own `highlight` isn't `point`-kind and resolved.
-`arrow` is `"<->"` for a wall/passage face (undirected — the same kind applies in both directions)
-or a two-way teleport, `"->"`/`"<-"` for a one-way one (telling which of the two FIXED bubble
-positions traffic flows FROM and TO) — same convention `SplitNodesDialogView`'s own link arrows use.
-`bubbles`' own order never changes with direction (GitHub issue #546 follow-up: flipping a one-way
-face's/passage's direction used to swap which bubble showed first, reading as "the points swapped
-places" instead of "the arrow flipped" — `setEdgePair`'s bubble pair is always `a, b`, never
-reordered by `aToB`) — only the glyph does. An id-only command (`removeTeleport`, ...) reads its
-entity's current `direction` from `live` for this, since the command itself carries no direction.
-`postEditCommandFloors(label)`
-collects every bubble's own resolved floor(s) — a `point` bubble's `level`, or a `points` bubble's
-every point's `level` — into the distinct, ascending 0-based floor list a `FloorBadgeRow` below the
-row needs (same "which floor(s)" convention `IssueBubble`/`DebugRefBubble`/export warnings already
-use) — hidden on a single-floor maze.
+This fix only covers entities that were created/edited through post-edit's own draft in the first
+place. A generation-baked vertical passage/elevator has no removable draft entry at all — removing
+one is modeled as N separate `suppressGenerationPair` commands, one per underlying edge in the
+mesh — so today it still renders as a flood of "Suppressed generated connection" rows instead of one
+coherent "removed" row with a location, unlike a post-edit-created entity. See GitHub issue #564
+(stable ids for post-edit entities) for the planned fix: once a generation-baked vertical
+passage/elevator gets a stable id at generation time, its removal can be expressed as one
+id-addressed remove-shaped command instead of N raw edge-pair suppressions.
 
-**Elevator/vertical-passage bubbles** (GitHub issue #546 follow-up) are a single combined bubble,
-not an edge-style pair — both entities connect several floors at the *same* `(x, y)` (an elevator's
-`floors`, a vertical passage's `from`/`to`; see `PostEditVerticalPassageEntry`'s/
-`startPostEditElevatorPlacement`'s doc comments), so a from/to or one-bubble-per-floor pairing would
-either repeat that shared coordinate for no reason or lose it. `elevatorBubble` renders
-`x:y [L1,L2,L3]` (every floor it spans); `verticalPassageBubble` renders `x:y [L1->L2]` for
-`direction: "forward"` (traffic flows FROM's floor to TO's floor), `x:y [L1<-L2]` for `"backward"`
-(traffic flows TO's floor to FROM's), or `x:y [L1<->L2]` two-way — `from`/`to`'s own display order
-is always fixed regardless of `direction`, same fixed-order rule the `arrow` glyph above follows.
-Both are `isLink: false` (a single bubble, no row-level arrow) with a `points`-kind `highlight`
-covering every floor involved, so hovering the one bubble still highlights the entity on every floor
-it touches — gated to the active floor only, see below.
+Each `PostEditEntityBubble` (`{ text, highlight }`) names exactly one point and renders as a
+hoverable chip — same monospace bubble style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles
+use — instead of a plain text string. `text` matches the debug event tree's own bubble convention
+exactly (`bubbleLabel`, `debugRowText.ts`): `x:y` on a single-floor maze, `Lf:x:y` (1-based floor) on
+a multi-floor one — no words, no parens; never a raw `NodeId`/entity id. A point that sits on a
+split tile's non-original node also gets the debug tree's own `" (N{n})"` parenthetical suffix
+(GitHub issue #546 fourth follow-up, `splitNodeLabelShort` — shared with the debug event tree and
+"Manage split nodes"' link bubbles, same `1` = original / `slotId + 2` = extra-slot numbering): a
+`node`-kind endpoint resolving to a `NodeDto` with `i > 0` (`endpointBubble`), or a `split`-kind
+endpoint (naming its own `slotId` directly, no `nodeById` lookup needed since it isn't resolved to a
+real node yet), or a command that addresses one specific slot by its own `slotId`
+(`addSplitNode`/`removeSplitNode`/`updateSplitNodeFaces`, `splitSlotBubble`) all show it; a command
+that instead rotates/rebuilds the WHOLE split tile at once (`rotateSplitPoint`/`applySplitBlueprint`,
+`splitPointBubble`) never does, since naming one slot would misrepresent what the command changed.
+
+The suffix is only ever as good as the `PostEditEndpoint`/`NodeId` a command actually carries for
+each of its points, so it depends on every action correctly resolving a split point's clicked slot
+in the first place, not silently defaulting to the original node — GitHub issue #546 fifth follow-up
+fixed two placement paths that did exactly that: `confirmPostEditElevatorPlacement` (each selected
+floor) and `commitPostEditVerticalPassage` (the destination end of a fresh one-click placement) both
+used to resolve their point by plain `(x, y, level)` coordinate lookup, which always returns a
+split point's ORIGINAL node (index 0, snapshot order) — only a placement's own FIRST/origin point
+ever went through `PostEditSplitTargetDialog` (the "which node?" picker for an ambiguous click,
+GitHub issue #474), so every other point of that same placement ignored whatever slot the user had
+actually picked there. Both now read `postEditActiveSplitNode` (`resolveActiveNodeIdAt`,
+`postEditSliceHelpers.ts`) — the same per-point "last picked slot" map
+`PostEditController.resolveActiveEndpointAt` already uses for edge-tool clicks — falling back to the
+original node only when nothing's been picked at that point yet. `setMeta` (start/finish) was never
+affected — it addresses exactly one point, always through the split-target picker directly, with no
+second endpoint to default incorrectly.
+
+GitHub issue #546 seventh follow-up fixed a third, UI-layer occurrence of the same anti-pattern:
+`PostEditController`'s `onPointerMove` vertical-passage-drag branch called `resolveActiveEndpointAt`
+with a bare `{}` in place of `state.postEditActiveSplitNode`, so dragging a passage endpoint onto a
+split point always resolved to that point's original node regardless of which slot was actually
+active there, both for the live drag-override preview and the endpoint the eventual
+`moveVerticalPassageEndpoint` command carries. The marker-drag and teleport-drag branches right above
+it already passed the real map; the vertical-passage-drag branch now does too.
+
+GitHub issue #546 eighth follow-up fixed the suffix's OWN gating condition, a second and unrelated
+bug that survived every fix above: `endpointBubble` decided whether to show a suffix from
+`NodeDto.i > 0` — "is this a non-original node" — instead of "is this point a split tile at all".
+A split tile's ORIGINAL node (`i === 0`) is just as much one of that tile's nodes as any extra slot;
+there is no such thing as "the first node of a split point isn't split", yet `i > 0` silently
+excluded it from every bubble, which is why the suffix only ever seemed to appear for a passage's
+non-origin endpoint (whichever end happened to resolve to a non-zero `i`) and never for start/finish,
+an elevator's own placement point, or a one-way vertical passage's origin — every one of those
+addresses a point through its ORIGINAL node far more often than not. The same follow-up also made the
+suffix ITSELF match `ManageSplitNodesDialog`'s own link bubbles exactly, including their semantic
+short names (e.g. "Кор"/"Мост" for a recognized "bridge" topology, `splitNodeNames.ts`) instead of
+always falling back to the bare numeric `N{n}` — previously the two panels disagreed on how the same
+split node reads. Both fixes live in a new shared module, `postEditSplitLabels.ts`:
+`resolveSplitNodeShortLabel(ctx, point, level, endpoint)` — `ctx: SplitLabelContext | null` bundles
+every primitive the resolution needs (`allNodes`, `splitPoints`, `activeSplitNode`, `draftEdges`,
+`cfg`, and a per-floor `inFieldCellsAt`), mirroring `ManageSplitNodesDialog`'s own `facesOf`/
+`describeEndpoint`/`semanticNames` almost verbatim (deliberately duplicated rather than importing the
+dialog's component-local closures, since those close over React state this pure module has no
+business depending on). Returns `undefined` — no suffix at all — when `ctx` is `null` (a caller with
+no field/edges context to resolve against, e.g. some direct test calls) or when `point`/`level` has
+no entry in `splitPoints` (genuinely not a split tile); otherwise the recognized topology's semantic
+short name, falling back to `splitNodeLabelShort` when the topology isn't a named one. Every bubble
+builder in `postEditCommandLabels.ts` (`endpointBubble`, `splitSlotBubble`) now takes a
+`splitCtx: SplitLabelContext | null` parameter (threaded from `postEditCommandLabel`'s own new,
+defaulted-to-`null` parameter) instead of computing the suffix from `NodeDto.i`/a bare `slotId`
+directly. `PostEditChangesPanel.tsx` builds the real context once per render from the store's own
+`nodes`/`postEditDraftSplitPoints`/`postEditActiveSplitNode`/`postEditDraftEdges`/
+`activeTessellationConfig`/`floorFields`, with `inFieldCellsAt` computing (and caching) each floor's
+in-field cell set from `buildActiveCells`/`buildCellSet` lazily per level, since a single row's
+bubbles can span several floors (an elevator/vertical passage) each potentially needing a different
+floor's own field shape.
+
+GitHub issue #546 ninth follow-up fixed a regression the eighth follow-up itself introduced:
+`resolveSplitNodeShortLabel` built its `"x,y"`/`"x,y@level"` lookup key straight from whatever
+`level` its caller passed, but `endpointBubble`'s caller (`resolveEndpointToHoverPoint`) reads that
+level off `NodeDto.level` verbatim — which is a real `0` for floor 0 straight off the wasm snapshot
+(`maze-wasm/src/dto.rs`'s `pub level: u32`, never `Option`), not `undefined`. `postEditDraftSplitPoints`
+itself always keys floor 0 bare (`"x,y"`, no `"@0"` — `buildMultiFloorPostEditDraft`'s own
+`levelKey = level === 0 ? undefined : level`), so an un-normalized `"x,y@0"` lookup missed every
+floor-0 split point's entry entirely, which silently deleted the suffix from almost every point on a
+single-floor maze — the exact "suffixes disappeared everywhere, even where they used to work"
+regression. Fixed by normalizing `rawLevel === 0 ? undefined : rawLevel` at the top of
+`resolveSplitNodeShortLabel` itself, mirroring the same normalization every other point-keyed lookup
+in post-edit already does at its own call site (`postEditSliceHelpers.ts`'s `levelKey`,
+`postEditSlice.ts`'s `resolveActiveNodeIdAt` call, `presetConnectionsSlice.ts`'s `presetEndpoint`
+construction) — centralized here since `resolveSplitNodeShortLabel` is the one place actually
+building this specific key from a raw `NodeDto.level`.
+
+`highlight` is a
+`PostEditHoveredEntity` (always `point`-kind — GitHub issue #546 second follow-up dropped the earlier
+combined `points`-kind bubble an elevator/vertical passage used to render, see below; `null` for a
+bubble naming an entity nothing's left in the log to resolve a point from); hovering a bubble passes
+its `highlight` straight through to `postEditHoveredEntity`.
+
+**Elevator/vertical-passage bubbles are now one bubble per floor**, not a single combined bubble
+(GitHub issue #546 second follow-up reversed the original #546 follow-up's design) — an elevator's
+`addElevator`/`updateElevatorFloors` command renders `L1:x:y`, `L2:x:y`, `L3:x:y`, ... (one bubble per
+`floors` entry, via `elevatorBubbles`); a vertical passage's `addVerticalPassage` renders its `from`/
+`to` as two separate per-floor bubbles (`verticalPassageBubbles`), same fixed order every other
+edge-shaped bubble pair already has (`from`/`to`'s own display order never changes with `direction` —
+only `arrow`, below, does). Hovering ONE such bubble highlights only that one floor's own point —
+never every floor the entity touches at once, which is what the single combined bubble used to do
+(and which read as "highlighted on every floor" once GitHub issue #546's first follow-up fixed the
+underlying floor-scoping bug but before this design change removed the combined bubble that was
+still drawing every floor's point together).
+
+`showArrow` draws a plain text arrow glyph between exactly two bubbles — purely cosmetic, independent
+of `rowHighlight` below; `true` for an edge/teleport/vertical-passage row (they always resolve to
+exactly two bubbles), always `false` for an elevator regardless of its own floor count (GitHub issue
+#546 third follow-up: an elevator's `floors` is an unordered set of stops, not a directed pair, so it
+never has a single "from -> to" direction of its own to show an arrow for — not even when it happens
+to span exactly two floors). `arrow` is `"<->"` for a wall/passage face (undirected — the same kind
+applies in both directions) or a two-way teleport/vertical passage, `"->"`/`"<-"` for a one-way one
+(telling which of the two FIXED bubble positions traffic flows FROM and TO) — same convention
+`SplitNodesDialogView`'s own link arrows use, computed by `teleportArrow`/`verticalPassageArrow` (both
+map `"forward"`/`"backward"`/`"two_way"` to `"->"`/`"<-"`/`"<->"` — GitHub issue #546 third follow-up
+fixed a bug where every non-`"two_way"` direction fell back to `"->"`, so a teleport/vertical passage
+whose direction was flipped to `"backward"` via `setTeleportDirection`/`setVerticalPassageDirection`/
+`moveTeleportEndpoint`/`moveVerticalPassageEndpoint` never showed the flipped glyph).
+
+`setVerticalPassageDirection` is the one direction-bearing command whose own `command.direction` is
+the entry's direction BEFORE the click, not after — `cyclePostEditVerticalPassageDirection`
+(`postEditSlice.ts`) logs the *live* entry's current (pre-toggle) direction, and the replay reducer
+(`postEditReplay.ts`) ignores `command.direction` entirely, always flipping whatever the entry's
+direction already is at replay time (contrast `setTeleportDirection`, whose own `command.direction`
+IS the target/post-click value the replay reducer compares against). Feeding that stale pre-click
+value straight into `verticalPassageArrow` (GitHub issue #546 fourth follow-up) showed the arrow one
+click behind reality — a `forward -> backward` flip displayed the pre-click `"forward"` arrow, and
+the row after it (another flip, or `moveVerticalPassageEndpoint`/`removeVerticalPassage`, each
+denormalizing their own `direction`, GitHub issue #564 follow-up) then showed what THIS row should
+have. `flippedVerticalPassageArrow` fixes this — same `"forward"`<->`"backward"` toggle
+`cyclePostEditVerticalPassageDirection` itself applies, reconstructing the actual post-click
+direction from the logged pre-click one before mapping it to a glyph — and is used ONLY for
+`setVerticalPassageDirection`'s own row; every other vertical-passage/teleport case carries a
+genuinely-current `direction` on the command itself and stays on `verticalPassageArrow`/
+`teleportArrow` unchanged. `bubbles`' own order never changes with direction (GitHub issue #546
+follow-up: flipping a one-way face's/passage's direction used to swap which bubble showed first,
+reading as "the points swapped places" instead of "the arrow flipped" — `setEdgePair`'s bubble pair
+is always `a, b`, never reordered by `aToB`) — only the glyph does.
+
+`rowHighlight` is what hovering the row's own action text (not one of its bubbles) sets
+`postEditHoveredEntity` to (GitHub issue #546 second follow-up moved the row-hover target off the
+bubble row itself, since bubbles no longer merge into one "bubble `<arrow>` bubble" span the way the
+old combined-bubble/`isLink` design did) — `null` for a row with no natural whole-row target (a
+single-bubble point/split-structure row, whose one bubble already covers it). For a same-floor
+edge/wall/passage row (`setEdge`/`setEdgePair`/`suppressGenerationPair`, `linkRowHighlight`), it's the
+`link`-kind entity connecting both bubbles' points — the connecting line itself reads naturally as
+"this row", since that's exactly the straight face/passage segment drawn on the canvas. A teleport row
+(GitHub issue #546 third follow-up) uses `pointsRowHighlight` instead, even when both its endpoints
+share one floor — `TeleportRenderer`'s own connector is routed (possibly non-straight, grouped,
+gap-avoiding) rather than a plain cell-to-cell line, so a straight-line `link` highlight drawn over it
+reads as a second, wrong connector; highlighting just the two endpoint points avoids implying a
+connector shape the row-hover code doesn't actually know how to draw. A vertical passage/elevator row
+(also `pointsRowHighlight`) gathers every bubble's own resolved point into one `points`-kind entity —
+deliberately never a `link` (same reasoning `linkRowHighlight`'s restriction to same-floor edges
+already has: a straight line needs both ends on one floor, which these entities' own points never
+share); `buildHoveredEntityHighlight`'s `activeLevel` gate (below) then collapses this to just the
+point(s) actually on the floor being viewed, so the row reads as "highlight whichever of my points is
+visible right now" rather than lighting up every floor at once.
+
+Clicking a bubble (GitHub issue #546 second follow-up) calls `navigateToFloor` with that bubble's own
+resolved point's `level` (`?? 0`) — no separate `FloorBadgeRow` under the row any more (removed along
+with the old `postEditCommandFloors` helper): every bubble already names one specific floor's own
+point, so it doubles as that floor's own jump target, the same way the graph overlays' cross-floor
+badges (`attachFloorBadgeNavigation`) double as their own navigation target.
 
 `PostEditRenderer.redrawHoveredEntity` matches `state.postEditHoveredEntity` against the *unscoped*
 `state.nodes`, not `floorScoped(state).nodes` — a cross-floor entity (a vertical passage/elevator/
@@ -437,6 +628,21 @@ The slot-list bookkeeping below (minting/removing/cycling/setting the active slo
 The "active node" concept exists only for the "Manage split nodes" editing context and its edge-tool clicks — it must **not** decide which of a split point's nodes a connection attaches to. Placing any vertex-tool element (`set_start`/`set_finish` marker, a vertical passage, an elevator stop, a teleport endpoint) on a **split point** (a point with more than one confirmed node) does not use `resolveActiveEndpointAt` at all: `PostEditController` defers the placement and calls `requestPostEditSplitTarget({ point, level, nodeIds, action })`, opening `PostEditSplitTargetDialog` (`components/dialogs/`). `nodeIds` are the point's confirmed nodes in snapshot order — index 0 the point's original node, the rest its slots, same order/palette as `ManageSplitNodesDialog`. `PostEditSplitTargetDialog`'s rows are titled `Node {n}` with `n` 1-based in row order (the original node is `Node 1`); no row carries a special "original node" label (GitHub issue #468). When the point's face configuration matches a recognized special-split topology, each row instead shows its semantic name (`splitNodeSemanticNamesFromKinds`, GitHub issue #487 — "Corridor" / "Bridge" / etc.; see `Specs/split-blueprints.md`). An unconfirmed split slot has no real id and is not offered (same no-op as before for an unconfirmed active split node).
 
 A small non-interactive Pixi preview on the right of the picker (`SplitPointPixiPreview`) renders **just the split's own geometry** — `buildSplitPassages` + `SplitJunctionRenderer`, plus the special-shape bridge/diagonal paths via `collectSplitWallPaths` + a bare `WallRenderer` (fed an empty edge list, so no `buildMazeWalls` / neighbouring-cell walls) — in a tiny throwaway `Application` scaled to fit, oriented the same way as on the field but with no adjacent cells drawn. It reuses the main canvas's own pipeline so a recognized special shape (bridge/diagonal, `detectSplitSpecialShapeKind`) draws with its real geometry, not an SVG hub-diagram approximation. On a special shape each node additionally gets a marker dot at the exact node-anchor position a marker/teleport endpoint would be drawn there (`buildNodePositions`), in the same color its picker row uses (`splitSlotColor` — fixed palette for the first slots, generated overflow colors past that), so the user can tell the nodes apart by position. The dot radius/stroke are authored in grid units but divided by the preview's `world.scale` before drawing, so the dot renders at a constant on-screen size (~7 px radius) across every tessellation — a hex cell spans more grid units than a square one, so a fixed grid-unit radius would render far smaller on hex. On a plain (non-special) split the per-node line colors alone disambiguate, so no dots are drawn. The dialog computes special-or-not from the point's own draft edges/teleports and passes it as `showMarkers`.
+
+GitHub issue #546 tenth follow-up fixed the preview rendering only the point's original node (no
+second node's geometry, no marker dot) on any floor above the first, while the row list above it
+stayed fully functional. The dialog resolved each draft edge's/teleport's `split`-kind endpoints
+through a `resolveSplit` built from `buildSplitNodeResolver(bareNodeMap, ...)`, but `bareNodeMap`
+was built maze-wide from every floor's nodes under bare `"x,y"` keys, while `resolveEndpoint` was
+called with the endpoint's own real (non-`undefined`) `level` for a floor above the first —
+`buildSplitNodeResolver` deliberately refuses to fall back from an `"x,y@level"` lookup to the bare
+key (the GitHub issue #425 fix, to avoid resolving a floor-2 slot against floor 0's own node when
+the two share a coordinate), so every such lookup returned `undefined` and its edge was silently
+dropped — leaving the slot node with only wall faces (no proper split junction geometry) and no
+resolved position for its marker dot. Fixed by scoping `bareNodeMap` to `floorNodes` (already
+filtered to the active level) and running each endpoint through `floorScopedEndpoint` (strips the
+endpoint's own `level` after confirming it belongs to the active floor) before resolving — the same
+bare-keyed, level-stripped pattern `PostEditController`/`ManageSplitNodesDialog` already use.
 
 Picking a node calls `applyPostEditSplitTargetPick(nodeId)`, which clears the prompt and dispatches the deferred `action`'s tool to `nodeEndpoint(nodeId)` via the ordinary store actions (`setPostEditEndpoint`, `startPostEditVerticalPassagePlacement`, `startPostEditElevatorPlacement`, and the teleport two-click machine — first pick sets `postEditTeleportPendingFrom`, a second pick on a different node completes the link). `cancelPostEditSplitTarget` dismisses it (Escape key, dialog Cancel, or leaving the post-edit card). On a non-split point the placement path is unchanged. The prompt is reset by `generate()`/`resetPostEdit()`/`reset()` and is never persisted.
 

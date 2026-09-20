@@ -58,10 +58,25 @@ export type PostEditCommand =
   // `undefined` for every other pair outcome (wall/passage/new-one-way).
   | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind; directionFlip?: boolean }
   | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
-  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
-  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "removeTeleport"; id: number }
-  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null }
+  // `from`/`to` (GitHub issue #564 follow-up) are this teleport's own endpoints, denormalized onto
+  // the command at construction time — same fix already applied to every vertical-passage command;
+  // an id-only lookup into `live` (the CURRENT draft) is correct only for the newest row about this
+  // id, and shows a stale (or, once the entity is removed, unresolved) location for every OLDER row
+  // about the same teleport.
+  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint }
+  // `from`/`to`/`direction` (same follow-up) are this teleport's own RESULTING pair/direction after
+  // this move — same denormalization reasoning as `setTeleportDirection` above.
+  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  // `from`/`to`/`direction` (same follow-up) are the removed teleport's own endpoints/direction,
+  // denormalized onto the command at construction time — without them the "Changes" panel has
+  // nothing left to resolve a location from once the entry is gone from `postEditDraftTeleports`.
+  | { kind: "removeTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  // `previousEndpoint` (GitHub issue #564 follow-up) is the slot's own endpoint right before this
+  // command, denormalized at construction time — only meaningful (and only ever set) when
+  // `endpoint` is `null` (a clear); without it, the "Changes" panel had no coordinates left to show
+  // for a "start/finish cleared" row once the slot itself is empty. `undefined` when setting rather
+  // than clearing (`endpoint` is non-null then, so the row already has its own location to show).
+  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null; previousEndpoint?: PostEditEndpoint }
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
   // A split slot's face wiring, resolved atomically (GitHub issue #545) — every edge-tool click on
@@ -95,9 +110,35 @@ export type PostEditCommand =
   // previously-confirmed draft) mesh edge into the SAME command, rather than a trailing separate
   // `suppressGenerationPair` command — one click is one logical edit, mirrors `addElevator`'s
   // `suppressPairs`. `undefined` when nothing needs suppressing.
-  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
-  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "removeVerticalPassage"; id: number }
+  // `from`/`to` (GitHub issue #564 follow-up) are this passage's own endpoints AT THE TIME of this
+  // command, denormalized the same way `removeVerticalPassage` below is — the "Changes" panel's
+  // bubbles must not resolve through `live` (the CURRENT draft) for an id-only command, since an
+  // older row's own id can outlive the entity (removed, or churned) by the time that row renders;
+  // reading the live entry then produces stale coordinates for a still-existing entity, or a bare
+  // unresolved "?" bubble for a removed one, for every row about it, not just the removal row
+  // itself.
+  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
+  // `suppressPairs` (GitHub issue #546 sixth follow-up): the drag's own two stale-mesh pairs (the
+  // passage's pre-move endpoints, and its new endpoint against the unmoved other end), folded into
+  // this SAME command instead of two trailing `suppressGenerationPair` commands — one drag gesture
+  // is one log entry, mirrors `addElevator`'s/`updateElevatorFloors`' own `suppressPairs`.
+  // `from`/`to` (GitHub issue #564 follow-up) are this passage's own RESULTING endpoints after this
+  // move (i.e. `end`'s side already replaced by `endpoint`) — same denormalization reasoning as
+  // `setVerticalPassageDirection`'s own `from`/`to` above. `direction` (same follow-up, second pass)
+  // is the passage's own CURRENT direction (unaffected by a plain endpoint move) — without it the
+  // "Changes" panel's arrow fell back to `live.verticalPassages.get(id)?.direction`, which reads
+  // `undefined` once a later command removes the entity, defaulting the arrow to a plain "->" even
+  // for a two-way passage; an id-only lookup breaks for an old row exactly like the bubbles did
+  // before this same denormalization fix was applied to them.
+  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  // `from`/`to` (GitHub issue #564 partial) are the removed passage's own endpoints, denormalized
+  // onto the command at construction time — mirrors every other pre-resolved field in this file
+  // (`ResolvedRotateMove`, `addElevator`'s `suppressPairs`, ...). Without them, the "Changes" panel
+  // has nothing left to resolve a location from once the entry is gone from
+  // `postEditDraftVerticalPassages` — `live` (built from the CURRENT draft) can only answer for
+  // entities that still exist, so a `removeVerticalPassage` row rendered as a bare "Vertical
+  // passage removed" with no coordinates at all.
+  | { kind: "removeVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   // `suppressPairs` (GitHub issue #545) folds the generation-time mesh pairs this elevator edit
   // replaces into the SAME command, rather than one separate `suppressGenerationPair` command per
   // pair — a lifts's floor edit is one logical action, and splitting it into N+1 log entries
@@ -106,7 +147,10 @@ export type PostEditCommand =
   // elevator with no prior confirmed state.
   | { kind: "addElevator"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
   | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
-  | { kind: "removeElevator"; id: number }
+  // `floors` (GitHub issue #564 partial) is the removed elevator's own floor list, denormalized
+  // onto the command at construction time — same reasoning as `removeVerticalPassage`'s `from`/`to`
+  // above; `live` can't answer for an entity no longer in `postEditDraftElevators`.
+  | { kind: "removeElevator"; id: number; floors: PostEditEndpoint[] }
   // A generation-time vertical-passage/elevator mesh edge has been edited via a *seed* draft
   // entry derived from it (`startPostEditVerticalPassagePlacement`'s guard-1 branch, or the
   // equivalent elevator seed) — `confirmPostEdit` must stop re-emitting the original generation

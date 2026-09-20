@@ -241,18 +241,30 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         direction: validateTeleportDirection(obj.direction, `${path}.direction`),
       };
     case "setTeleportDirection":
-      return { kind, id: assertNumber(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`) };
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+      };
     case "moveTeleportEndpoint":
       return {
         kind, id: assertNumber(obj.id, `${path}.id`),
         end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
         endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateTeleportDirection(obj.direction, `${path}.direction`),
       };
     case "removeTeleport":
-      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateTeleportDirection(obj.direction, `${path}.direction`),
+      };
     case "setMeta":
       if (obj.slot !== "start" && obj.slot !== "finish") throw new Error(`Invalid slot at ${path}.slot`);
-      return { kind, slot: obj.slot, endpoint: obj.endpoint === null ? null : validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`) };
+      return {
+        kind, slot: obj.slot, endpoint: obj.endpoint === null ? null : validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+        previousEndpoint: obj.previousEndpoint === undefined ? undefined : validatePostEditEndpoint(obj.previousEndpoint, `${path}.previousEndpoint`),
+      };
     case "addSplitNode":
     case "removeSplitNode":
       return {
@@ -286,6 +298,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
     case "setVerticalPassageDirection":
       return {
         kind, id: assertNumber(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         suppressPair: validateOptionalSuppressPair(obj.suppressPair, `${path}.suppressPair`),
       };
     case "moveVerticalPassageEndpoint":
@@ -293,9 +306,16 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         kind, id: assertNumber(obj.id, `${path}.id`),
         end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
         endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "removeVerticalPassage":
-      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+      };
     case "addElevator":
       return {
         kind, id: assertNumber(obj.id, `${path}.id`),
@@ -309,7 +329,10 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "removeElevator":
-      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+      };
     case "suppressGenerationPair":
       if (obj.entity !== "verticalPassage" && obj.entity !== "elevator") throw new Error(`Invalid entity at ${path}.entity`);
       return {
