@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { MazeState } from "../store/mazeStore";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import { selectActiveProfileColors, PC } from "../pixi/selectors/projectColorsSelector";
+import { overrideActiveProfileColor, selectActiveProfileColors, PC } from "../pixi/selectors/projectColorsSelector";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -288,5 +288,30 @@ describe("selectActiveProfileColors", () => {
       },
     });
     expect(selectActiveProfileColors(state).map((c) => c.name)).not.toContain(PC.markerIndexBorder.name());
+  });
+});
+
+describe("overrideActiveProfileColor", () => {
+  it("clones the active profile and changes only the requested field", () => {
+    const state = makeState({ openRenderModeSettings: "vector_by_walls" });
+    const original = state.vectorByWallsSettings;
+    const overridden = overrideActiveProfileColor(state, PC.bgFill.name(), 0x123456);
+    expect(overridden).not.toBeNull();
+    expect(overridden?.background).toBe(0x123456);
+    expect(overridden?.gridColor).toBe(original.gridColor);
+    expect(state.vectorByWallsSettings).toBe(original);
+    expect(original.background).not.toBe(0x123456);
+  });
+
+  it("overrides the active decorative field when its name overlaps the abstract field", () => {
+    const state = makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, verticalStyle: "decorative" },
+    });
+    const original = state.vectorByWallsSettings;
+    const overridden = overrideActiveProfileColor(state, PC.decorArrowTwoWay.name(), 0x123456);
+    expect(overridden).not.toBeNull();
+    expect(overridden?.decorativeStairsArrowColor).toBe(0x123456);
+    expect(overridden?.twoWayArrowColor).toBe(original.twoWayArrowColor);
   });
 });

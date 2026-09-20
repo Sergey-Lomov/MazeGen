@@ -4,6 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ColorSwatch } from "../components/ColorSwatch";
 import { setColorSampler } from "../pixi/colorSampleBridge";
 import { colorAtCenter } from "../components/ColorEyedropperOverlay";
+import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 
 // `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to
@@ -42,6 +43,29 @@ describe("ColorSwatch", () => {
     const hex = screen.getByLabelText(hexLabel()) as HTMLInputElement;
     expect(hex.value).toBe("#336699");
     expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(51, 102, 153)");
+  });
+
+  it("shows the collapsible empty export-warnings section only when color warnings are enabled", () => {
+    const previous = useMazeStore.getState().showColorWarnings;
+    const previousOpenMode = useMazeStore.getState().openRenderModeSettings;
+    useMazeStore.setState({ showColorWarnings: true, openRenderModeSettings: null });
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    const title = m["image_export.vector_by_walls.section_warnings"]({ count: "0" });
+    expect(screen.getByText(title)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(title));
+    expect(screen.getByText(m["color_picker.no_export_warnings"]())).toBeInTheDocument();
+    useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode });
+  });
+
+  it("hides the export-warnings section when color warnings are disabled", () => {
+    const previous = useMazeStore.getState().showColorWarnings;
+    const previousOpenMode = useMazeStore.getState().openRenderModeSettings;
+    useMazeStore.setState({ showColorWarnings: false, openRenderModeSettings: null });
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    expect(screen.queryByTestId("color-picker-export-warnings")).toBeNull();
+    useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode });
   });
 
   it("Enter on a focused swatch opens the picker (keyboard accessible)", () => {

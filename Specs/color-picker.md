@@ -272,6 +272,21 @@ row's `label`). It is used two ways:
   suffix arm covers the rows whose `ColorRow` `label` differs from the list name. Self-exclusion
   runs before the "Default" row is prepended and before between-group de-dup.
 
+**Export color warnings.** When `showColorWarnings` is enabled, the picker also shows warnings for
+the edited field's current working color. The active export renderer (`Vector by walls` or `Vector
+by corridors`) is evaluated with the working value applied to a cloned settings object, so changing
+either color updates the warning immediately without changing the store before Apply. Warnings use
+the renderer's existing applicable rules and only retains a warning when the warning's semantic color
+role is the field currently being edited. The entries reuse the export settings panel's warning
+bubble appearance, but omit the info button and are not clickable (there is no details modal). This
+block is separate from the export settings panel's Problems section; its visibility follows
+`showColorWarnings` and it supports both vector renderers.
+
+When enabled, the picker renders this content in its own collapsible "Warnings (N)" section. The
+section remains visible with `N = 0`, uses the warning attention color when `N > 0`, starts collapsed,
+and indents its bubbles like other section content. When `showColorWarnings` is disabled, the whole
+section is hidden.
+
 If the active profile has no color fields (`openRenderModeSettings` null, or an empty list) and
 `priorityColors` is empty, the section is omitted.
 

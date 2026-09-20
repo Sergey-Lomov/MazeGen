@@ -17,6 +17,7 @@
   "color_picker.hex_invalid": "Введите 6-значный hex-цвет",
   "color_picker.eyedropper": "Взять цвет с холста",
   "color_picker.recent_colors": "Недавно использованные",
+  "color_picker.no_export_warnings": "Предупреждений нет",
   "color_picker.model.rgb": "RGB",
   "color_picker.model.hsl": "HSL",
   "color_picker.model.oklch": "OKLCH",
