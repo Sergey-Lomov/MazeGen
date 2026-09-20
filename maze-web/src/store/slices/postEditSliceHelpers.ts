@@ -53,6 +53,32 @@ export function buildPointNodeMap(nodes: { id: number; x: number; y: number }[])
   return m;
 }
 
+/** Resolves which of a point's confirmed nodes a placement targets — `activeSplitNode`'s own entry
+ * for that point/level if one is a `node`-kind endpoint present in `nodeIds`, else the point's
+ * first (original) node. Mirrors `PostEditController.resolveActiveEndpointAt`'s own fallback logic,
+ * but for store-slice code that needs a plain `NodeId` rather than a `PostEditEndpoint` — used by
+ * `commitPostEditVerticalPassage`'s `to` and `confirmPostEditElevatorPlacement`'s per-floor node
+ * (GitHub issue #546 fifth follow-up: both previously always took `nodeIds[0]` outright, silently
+ * collapsing every OTHER floor/endpoint of a split point down to its original node regardless of
+ * which slot the user actually meant — only the FIRST endpoint of a placement ever went through the
+ * split-target picker (`PostEditSplitTargetDialog`), which is the only thing that ever sets
+ * `activeSplitNode` for a point in the first place; every subsequent point resolved by plain
+ * coordinate lookup silently ignored it). A `split`-kind active entry (an unconfirmed slot) is not
+ * resolved here — `nodeIds` is the CONFIRMED node list, so a still-unconfirmed active slot has no
+ * matching id yet and falls back to the same "first node" default as no active entry at all. */
+export function resolveActiveNodeIdAt(
+  point: [number, number],
+  nodeIds: number[],
+  activeSplitNode: Record<string, PostEditEndpoint>,
+  level?: number,
+): number | undefined {
+  if (nodeIds.length === 0) return undefined;
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const active = activeSplitNode[key];
+  if (active?.kind === "node" && nodeIds.includes(active.id)) return active.id;
+  return nodeIds[0];
+}
+
 /** Builds the same `(x,y) -> NodeId[]` map as `buildPointNodeMap`, but for a `nodes` list that can
  * span every floor at once (GitHub issue #358) — keyed `"x,y"` for floor 0, `"x,y@level"`
  * otherwise, matching `postEditDraftSplitPoints`'s own key convention so `buildSplitNodeResolver`'s
@@ -272,11 +298,18 @@ export function commitPostEditVerticalPassage(
   if (!originNode) return;
   const originLevel = originNode.level ?? 0;
   const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-  const toNode = state.nodes.find((n) => n.x === originNode.x && n.y === originNode.y && (n.level ?? 0) === toLevel);
-  if (!toNode) return;
+  const point: [number, number] = [originNode.x, originNode.y];
+  // A split `to` point resolves to whichever node the user last picked there (GitHub issue #546
+  // fifth follow-up), not always its original node — same `postEditActiveSplitNode` map the edge
+  // tools already read (`PostEditController.resolveActiveEndpointAt`), so a placement whose
+  // destination cell was already disambiguated (by an earlier edge/teleport click, or a previous
+  // placement into the same split point) lands on the correct node instead of silently defaulting.
+  const toNodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel).map((n) => n.id);
+  const toNodeId = resolveActiveNodeIdAt(point, toNodeIds, state.postEditActiveSplitNode, toLevel === 0 ? undefined : toLevel);
+  if (toNodeId === undefined) return;
   const id = state._nextPostEditVerticalPassageId;
   const applied = appendPostEditCommand(get, set, {
-    kind: "addVerticalPassage", id, from: origin, to: nodeEndpoint(toNode.id),
+    kind: "addVerticalPassage", id, from: origin, to: nodeEndpoint(toNodeId),
     direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",
   });
   if (applied) {

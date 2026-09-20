@@ -99,7 +99,7 @@ export class DebugRefHighlightOverlay {
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
-      this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+      this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
       return;
     }
 
@@ -130,20 +130,20 @@ export class DebugRefHighlightOverlay {
         const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, [ref.bidirectional]);
         this.edgeRenderer.render(highlights);
         renderCrossFloorRef(ref, canvas.debug.refHighlight);
-        this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         break;
       }
       case "cycle": {
         const highlights = this.edgeHighlightsFor(ref.edges, posOf);
         this.edgeRenderer.render(highlights);
         renderCrossFloorRef(ref, canvas.debug.refHighlight);
-        this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         break;
       }
       case "region": {
         this.edgeRenderer.render([]);
         const regionNodeIds = ref.nodes.map((id) => Number(id));
-        this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         break;
       }
       case "node": {
@@ -160,7 +160,7 @@ export class DebugRefHighlightOverlay {
         // node's tile, since it's absent from both `nodes` (removed) and `allNodes` (never minted
         // mid-run) individually (GitHub issue #279).
         const lookupNodes = nodes.some((n) => n.id === nodeId) ? nodes : [...nodes, ...allNodes];
-        this.regionRenderer.render({ nodes: lookupNodes, regionGroups: [[nodeId]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        this.regionRenderer.render({ nodes: lookupNodes, regionGroups: [[nodeId]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         break;
       }
       case "issue": {
@@ -168,7 +168,7 @@ export class DebugRefHighlightOverlay {
         // highlight, same as the no-`ref` branch above.
         if (!ref.target) {
           this.edgeRenderer.render([]);
-          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
           break;
         }
         if (ref.target.kind === "cycle") {
@@ -197,11 +197,11 @@ export class DebugRefHighlightOverlay {
           const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render(highlights);
           renderCrossFloorRef(ref, canvas.debug.issueHighlight);
-          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         } else {
           this.edgeRenderer.render([]);
           const regionNodeIds = ref.target.nodes.map((id) => Number(id));
-          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         }
         break;
       }

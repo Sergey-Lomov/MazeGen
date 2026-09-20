@@ -34,6 +34,50 @@ export type PostEditEndpoint =
   | { kind: "node"; id: number }
   | ({ kind: "split"; level?: number } & SplitRef);
 
+/** A single maze cell address for a `PostEditHoveredEntity` (below) — `level` `undefined` means
+ * floor 0, same convention `PostEditEndpoint`'s own `level` field uses. */
+export interface PostEditHoverPoint {
+  point: [number, number];
+  level?: number;
+}
+
+/** A canvas highlight target for a hovered "Changes" panel bubble (GitHub issue #546) or a
+ * "Manage split nodes" link bubble (GitHub issue #237, which this supersedes as
+ * `postEditHoveredLink`'s replacement) — mirrors `HoveredDebugRef`'s node/edge/region split
+ * (`debugArenaTypes.ts`) since every `PostEditCommand` entity reduces to one of these three
+ * shapes: a single point (`setMeta`, `addSplitNode`, `rotateSplitPoint`, ...), a from/to pair (an
+ * edge, teleport, or vertical passage), or several points with no pairwise structure (an
+ * elevator's floor list). Every variant addresses a maze cell directly by `PostEditHoverPoint`
+ * (`[x, y]` + `level`) rather than through a `PostEditEndpoint` — both callers (the "Changes"
+ * panel, "Manage split nodes"' link bubbles) already have a specific resolved node in hand by the
+ * time they set this, and a cell address is all `PostEditRenderer` needs to draw either primitive:
+ * a split point's every node (original plus every slot) shares one cell, so "highlight this point"
+ * never needs to pick a specific node/slot, and a `link`'s two cells need no slot precision either
+ * once the caller has already resolved which node it means. `PostEditRenderer` draws `point`/
+ * `points` via the shared `RegionHighlightRenderer` (single-cell fill, same primitive
+ * `DebugRefHighlightOverlay` uses for a `node` ref) and `link` via `NodeEdgeHighlightRenderer`
+ * (line + end markers, unchanged from the old `postEditHoveredLink`). */
+export type PostEditHoveredEntity =
+  | ({ kind: "point" } & PostEditHoverPoint)
+  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint }
+  | { kind: "points"; points: PostEditHoverPoint[] };
+
+/** Resolves a `PostEditEndpoint` to the `PostEditHoverPoint` `PostEditHoveredEntity` needs — a
+ * `split` endpoint already carries its own `point`/`level` directly; a `node` endpoint is looked up
+ * in `nodeById` (the confirmed snapshot). `undefined` if a `node` endpoint's id isn't in `nodeById`
+ * yet (not yet confirmed, or a stale command after a point-reset pruned the node it referenced) —
+ * same "nothing to resolve yet" tolerance `resolveEndpoint` itself has. Shared by
+ * `ManageSplitNodesDialog` (resolving a link bubble's hover target) and `postEditCommandLabels.ts`
+ * (resolving a "Changes" panel bubble's), so the two panels' hover targets are computed identically. */
+export function resolveEndpointToHoverPoint(
+  ep: PostEditEndpoint,
+  nodeById: ReadonlyMap<number, { x: number; y: number; level?: number }>,
+): PostEditHoverPoint | undefined {
+  if (ep.kind === "split") return { point: ep.point, level: ep.level };
+  const node = nodeById.get(ep.id);
+  return node ? { point: [node.x, node.y], level: node.level } : undefined;
+}
+
 export function nodeEndpoint(id: number): PostEditEndpoint {
   return { kind: "node", id };
 }

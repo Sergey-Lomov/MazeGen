@@ -760,7 +760,7 @@ describe("mazeStore post-edit actions", () => {
     seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 5, y: 5, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" }, { from: 0, to: 5, kind: "teleport" }],
-      commands: [{ kind: "removeTeleport", id: 1 }],
+      commands: [{ kind: "removeTeleport", id: 1, from: n(0), to: n(5), direction: "two_way" }],
     }, { _nextPostEditTeleportId: 2 });
     expect(useMazeStore.getState().postEditDraftTeleports).toHaveLength(0);
 
@@ -1026,6 +1026,39 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditDraftVerticalPassages[1]).toMatchObject({ from: n(0), to: n(2), direction: "two_way" });
   });
 
+  it("startPostEditVerticalPassagePlacement's fresh-placement commit resolves a split destination to its active node, not always the original (GitHub issue #546 fifth follow-up)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 1, level: 1 }, // level 1's split slot — the one actually picked
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, { ...floorsExtra(3, 0), postEditActiveSplitNode: { "0,0@1": n(2) } });
+    // Origin is level 0 — only "up" (level 1) is available (`originLevel > 0` gates "down"), so
+    // this commits directly instead of opening the direction dialog.
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(1);
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(2), direction: "forward" });
+  });
+
+  it("startPostEditVerticalPassagePlacement's fresh-placement commit falls back to the original node when nothing's been picked at a split destination", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 1, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, floorsExtra(3, 0));
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(1), direction: "forward" });
+  });
+
   it("startPostEditVerticalPassagePlacement cycles a within-session draft entry's direction instead of minting a duplicate when the cell is re-clicked outside the marker radius (GitHub issue #491)", () => {
     seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 1 }, { id: 1, x: 0, y: 0, i: 0, level: 0 }],
@@ -1077,6 +1110,28 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditDraftVerticalPassages).toHaveLength(2);
     expect(s.postEditDraftVerticalPassages.map((p) => p.direction)).toEqual(["forward", "forward"]);
     expect(s.postEditVerticalPassagePending).toBeNull();
+  });
+
+  it("movePostEditVerticalPassageEndpoint appends exactly one command, its suppress pairs folded in (GitHub issue #546 sixth follow-up)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 1, y: 0, i: 0, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" }],
+    }, { _nextPostEditVerticalPassageId: 2 });
+    useMazeStore.getState().movePostEditVerticalPassageEndpoint(1, "to", n(2));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(2);
+    expect(s.postEditCommands[1]).toMatchObject({
+      kind: "moveVerticalPassageEndpoint", id: 1, end: "to", endpoint: n(2),
+      suppressPairs: expect.arrayContaining([[n(0), n(1)], [n(2), n(0)]]),
+    });
+    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set([vpPair(0, 1), vpPair(2, 0)]));
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(2) });
   });
 
   it("startPostEditVerticalPassagePlacement leaves a two_way within-session draft entry unchanged when its cell is re-clicked with only one direction available (GitHub issue #491)", () => {
@@ -1218,6 +1273,41 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", suppressPairs: expect.arrayContaining([
       [n(0), n(1)], [n(0), n(2)], [n(1), n(2)],
     ]) });
+  });
+
+  it("confirmPostEditElevatorPlacement resolves a split floor to its active node, not always the original (GitHub issue #546 fifth follow-up)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 1, level: 1 }, // level 1's split slot — the one actually picked
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, {
+      postEditElevatorPending: { origin: n(0), floors: new Set([0, 1]) },
+      postEditActiveSplitNode: { "0,0@1": n(2) },
+    });
+    useMazeStore.getState().confirmPostEditElevatorPlacement();
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", floors: [n(0), n(2)] });
+  });
+
+  it("confirmPostEditElevatorPlacement falls back to the original node when nothing's been picked at a split floor", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 1, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, {
+      postEditElevatorPending: { origin: n(0), floors: new Set([0, 1]) },
+    });
+    useMazeStore.getState().confirmPostEditElevatorPlacement();
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", floors: [n(0), n(1)] });
   });
 
   it("confirmPostEditElevatorPlacement with fewer than 2 selected floors is a no-op", () => {

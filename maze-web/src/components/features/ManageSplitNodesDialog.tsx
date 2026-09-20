@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey,
-  resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint,
+  resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, resolveEndpointToHoverPoint,
 } from "../../pixi/postEditEndpoint";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -55,7 +55,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const setPostEditEndpoint = useMazeStore((s) => s.setPostEditEndpoint);
   const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);
   const rotateSplitPoint = useMazeStore((s) => s.rotateSplitPoint);
-  const setPostEditHoveredLink = useMazeStore((s) => s.setPostEditHoveredLink);
+  const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
   const applySplitBlueprint = useMazeStore((s) => s.applySplitBlueprint);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
@@ -280,7 +280,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onKindChange={setActiveKind}
       onFaceClick={handleFaceClick}
       onFaceRightClick={handleFaceRightClick}
-      onClose={() => { setPostEditHoveredLink(null); onClose(); }}
+      onClose={() => { setPostEditHoveredEntity(null); onClose(); }}
       onSetActive={(ep) => setActiveSplitNode(point, ep)}
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
@@ -293,8 +293,12 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
         isFinish(activeEndpoint) ? clearPostEditEndpoint("finish") : setPostEditEndpoint("finish", activeEndpoint);
       }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
-      onHoverLink={(row, link) => setPostEditHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
-      onUnhoverLink={() => setPostEditHoveredLink(null)}
+      onHoverLink={(row, link) => {
+        const from = resolveEndpointToHoverPoint(row.endpoint, nodeById);
+        const to = resolveEndpointToHoverPoint(link.otherEndpoint, nodeById);
+        if (from && to) setPostEditHoveredEntity({ kind: "link", from, to });
+      }}
+      onUnhoverLink={() => setPostEditHoveredEntity(null)}
       blueprints={blueprints}
       onApplyBlueprint={(blueprint) => applySplitBlueprint(point, blueprint)}
     />

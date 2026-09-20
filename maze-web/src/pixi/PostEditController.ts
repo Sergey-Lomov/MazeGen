@@ -179,7 +179,7 @@ export class PostEditController extends BaseController {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
-      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, {}, level);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
       if (endpoint === null || endpoint.kind !== "node") return;
       const hit = this.draggingVerticalPassageEndpoint;
       const { current, other } = this.verticalPassageDragOrigin;

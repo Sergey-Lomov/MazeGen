@@ -53,7 +53,7 @@ describe("applyPostEditCommand — exact sequence", () => {
     state = r.state;
     expect(state.meta).toEqual({ start: n(0), finish: null });
 
-    r = applyPostEditCommand(context, state, { kind: "removeTeleport", id: 1 });
+    r = applyPostEditCommand(context, state, { kind: "removeTeleport", id: 1, from: n(0), to: n(1), direction: "two_way" });
     expect(r.applied).toBe(true);
     state = r.state;
     expect(state.teleports).toEqual([]);
@@ -75,7 +75,7 @@ describe("applyPostEditCommand — immutability", () => {
     };
     const snapshot = JSON.parse(JSON.stringify({ ...before, suppressedVerticalPassagePairs: [], suppressedElevatorPairs: [] }));
     applyPostEditCommand(context, before, { kind: "setEdge", from: n(1), to: n(0), edgeKind: "basic" });
-    applyPostEditCommand(context, before, { kind: "removeTeleport", id: 1 });
+    applyPostEditCommand(context, before, { kind: "removeTeleport", id: 1, from: n(0), to: n(1), direction: "forward" });
     applyPostEditCommand(context, before, { kind: "setMeta", slot: "start", endpoint: n(0) });
     const after = JSON.parse(JSON.stringify({ ...before, suppressedVerticalPassagePairs: [], suppressedElevatorPairs: [] }));
     expect(after).toEqual(snapshot);
@@ -89,7 +89,7 @@ describe("replayPostEditCommands — parity with incremental append", () => {
       { kind: "setEdge", from: n(0), to: n(1), edgeKind: "basic" },
       { kind: "addTeleport", id: 1, from: n(0), to: n(1), direction: "forward" },
       { kind: "setMeta", slot: "start", endpoint: n(0) },
-      { kind: "setTeleportDirection", id: 1, direction: "two_way" },
+      { kind: "setTeleportDirection", id: 1, direction: "two_way", from: n(0), to: n(1) },
       { kind: "setEdge", from: n(0), to: n(1), edgeKind: "wall" },
     ];
 
@@ -124,7 +124,7 @@ describe("filterCommandsForPoint — fixed-point pruning", () => {
       { kind: "addSplitNode", point: pointA, slotId: 0 },
       { kind: "setEdge", from: slotAEndpoint, to: n(5), edgeKind: "basic" },
       { kind: "addTeleport", id: 9, from: n(5), to: n(5), direction: "forward" },
-      { kind: "moveTeleportEndpoint", id: 9, end: "to", endpoint: slotAEndpoint },
+      { kind: "moveTeleportEndpoint", id: 9, end: "to", endpoint: slotAEndpoint, from: n(5), to: slotAEndpoint, direction: "forward" },
     ];
 
     const filtered = filterCommandsForPoint(baseline, commands, pointA);
@@ -228,6 +228,41 @@ describe("updateSplitNodeFaces (GitHub issue #545)", () => {
   });
 });
 
+describe("filterCommandsForPoint — cascades through a removed/edited entity's own denormalized from/to (GitHub issue #564 follow-up)", () => {
+  // `endpointsReferencedBy` (postEditReplay.ts) drives this cascade — a lifeline whose only mention
+  // of a reset split slot is through a denormalized field (not `commandTouchesPoint`'s own live-state
+  // check) must still be found, or resetting that slot leaves a dangling reference in the log.
+  it("cascades a removeTeleport referencing a reset slot only through its own denormalized from/to", () => {
+    const pointA: [number, number] = [0, 0];
+    const pointB: [number, number] = [2, 0];
+    const slotB = splitEndpoint(pointB, 0);
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "addSplitNode", point: pointB, slotId: 0 },
+      { kind: "removeTeleport", id: 1, from: n(0), to: slotB, direction: "forward" },
+    ];
+    const filtered = filterCommandsForPoint(baseline, commands, pointB);
+    expect(filtered).toEqual([]);
+  });
+
+  it("cascades a setVerticalPassageDirection/removeVerticalPassage/removeElevator referencing a reset slot only through their own denormalized fields", () => {
+    const point: [number, number] = [2, 0];
+    const slot = splitEndpoint(point, 0);
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }]);
+    for (const command of [
+      { kind: "setVerticalPassageDirection", id: 1, direction: "two_way", from: n(0), to: slot } as const,
+      { kind: "removeVerticalPassage", id: 1, from: n(0), to: slot, direction: "forward" } as const,
+      { kind: "removeElevator", id: 1, floors: [n(0), slot] } as const,
+    ]) {
+      const baseline = makeBaseline({ context });
+      const commands: PostEditCommand[] = [{ kind: "addSplitNode", point, slotId: 0 }, command];
+      const filtered = filterCommandsForPoint(baseline, commands, point);
+      expect(filtered).toEqual([]);
+    }
+  });
+});
+
 describe("filterCommandsForPoint — cross-point lifeline", () => {
   it("removes a whole entity lifeline when reset at its origin point, including edits made at the other end", () => {
     // Generation-time teleport A<->B (A = node 0, B = node 1); user moves B's end to node 2 (point
@@ -246,8 +281,8 @@ describe("filterCommandsForPoint — cross-point lifeline", () => {
       },
     });
     const commands: PostEditCommand[] = [
-      { kind: "moveTeleportEndpoint", id: 1, end: "to", endpoint: n(2) },
-      { kind: "setTeleportDirection", id: 1, direction: "two_way" },
+      { kind: "moveTeleportEndpoint", id: 1, end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "setTeleportDirection", id: 1, direction: "two_way", from: n(0), to: n(2) },
     ];
     const filtered = filterCommandsForPoint(baseline, commands, [0, 0]);
     expect(filtered).toEqual([]);
@@ -264,7 +299,7 @@ describe("filterCommandsForPoint — vertical passage / elevator lifelines", () 
     const baseline = makeBaseline({ context });
     const commands: PostEditCommand[] = [
       { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
-      { kind: "moveVerticalPassageEndpoint", id: 1, end: "to", endpoint: n(2) },
+      { kind: "moveVerticalPassageEndpoint", id: 1, end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
     ];
     const filtered = filterCommandsForPoint(baseline, commands, [0, 0]);
     expect(filtered).toEqual([]);
@@ -343,7 +378,7 @@ describe("filterCommandsForPoint — vertical passage / elevator lifelines", () 
     const baseline = makeBaseline({ context });
     const commands: PostEditCommand[] = [
       { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
-      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", suppressPair: [n(0), n(1)] },
+      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", from: n(0), to: n(1), suppressPair: [n(0), n(1)] },
     ];
     const filtered = filterCommandsForPoint(baseline, commands, [0, 0], 1);
     expect(filtered).toEqual([]);
@@ -359,7 +394,7 @@ describe("setVerticalPassageDirection suppressPair (GitHub issue #545)", () => {
     const baseline = makeBaseline({ context });
     const commands: PostEditCommand[] = [
       { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
-      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", suppressPair: [n(0), n(1)] },
+      { kind: "setVerticalPassageDirection", id: 1, direction: "forward", from: n(0), to: n(1), suppressPair: [n(0), n(1)] },
     ];
     const result = replayPostEditCommandsFailClosed(baseline, commands);
     expect(result?.verticalPassages[0].direction).toBe("backward");
@@ -381,7 +416,7 @@ describe("delete -> point reset restores", () => {
     const commands: PostEditCommand[] = [
       { kind: "setMeta", slot: "start", endpoint: n(3) },
       { kind: "addTeleport", id: 1, from: n(3), to: n(5), direction: "forward" },
-      { kind: "removeTeleport", id: 1 },
+      { kind: "removeTeleport", id: 1, from: n(3), to: n(5), direction: "forward" },
     ];
     const filtered = filterCommandsForPoint(baseline, commands, point);
     expect(filtered).toEqual([]);
@@ -416,7 +451,7 @@ describe("load — fail-closed", () => {
     const baseline = makeBaseline();
     const commands: PostEditCommand[] = [
       { kind: "setEdge", from: n(0), to: n(1), edgeKind: "basic" },
-      { kind: "removeTeleport", id: 999 }, // no such teleport — invalid reference
+      { kind: "removeTeleport", id: 999, from: n(0), to: n(1), direction: "forward" }, // no such teleport — invalid reference
       { kind: "setMeta", slot: "start", endpoint: n(0) },
     ];
     const result = replayPostEditCommandsFailClosed(baseline, commands);
