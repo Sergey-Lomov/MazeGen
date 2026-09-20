@@ -10,7 +10,7 @@ import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
-import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
+import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
@@ -1209,6 +1209,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  `VectorByWallsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey } = state;
+    if (!hoveredExportWarningKey) {
+      this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByCorridorsSettings, null, null);
+      return;
+    }
     const rawEndpoints = resolveEffectiveEndpoints(state);
     // Same floor-scoping as `renderAll` (GitHub issue #348) — the warning computation must see
     // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
@@ -1216,7 +1220,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const { nodes, edges, start, finish } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish);
+    const warnings = computeVectorByCorridorsWarningsAcrossFloors(
+      state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+      rawEndpoints.start, rawEndpoints.finish,
+    );
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings);
   }
 
   destroy(): void {

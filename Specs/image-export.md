@@ -540,7 +540,13 @@ antialiased hairline of background visible along a marker edge. The `padding` is
 marker-widen expansion and is included in this layer ordering. Any future marker type sharing this
 canvas (or a different renderer altogether) can call it the same way.
 
-### Corridors-specific export warnings (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
+### Export warnings
+
+The complete warning contract for `VectorByWallsRenderer` and `VectorByCorridorsRenderer` is
+specified in [`Specs/export-warnings.md`](export-warnings.md). The sections below retain the
+renderer-specific geometry notes and historical rationale for individual warnings.
+
+#### Corridors-specific export warnings (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
 
 GitHub issue #311's own check, plus the three teleport checks added as a #313 follow-up bugfix:
 

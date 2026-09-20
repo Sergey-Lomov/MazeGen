@@ -38,7 +38,7 @@ beforeEach(() => {
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
-      gridColor: 0x333333,
+      gridColor: 0xffffff,
       floorColor: 0x2a2a2a,
       wallColor: 0x0a0a0a,
       randomWallColorMode: "off",
@@ -81,6 +81,18 @@ beforeEach(() => {
 });
 
 describe("VectorByWallsSettingsPanel", () => {
+  it("toggles persisted color-warning visibility from the Problems section", () => {
+    useMazeStore.setState({ vectorByWallsSectionsExpanded: { warnings: true }, showColorWarnings: true });
+    render(<VectorByWallsSettingsPanel />);
+
+    const label = screen.getByText(m["image_export.warning.show_color_warnings"]());
+    const checkbox = label.parentElement!.parentElement!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    fireEvent.click(checkbox);
+    expect(useMazeStore.getState().showColorWarnings).toBe(false);
+    expect(useMazeStore.getState().hoveredExportWarningKey).toBeNull();
+  });
+
   it("renders elevator simplification under the vertical style setting", () => {
     useMazeStore.setState({
       floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
@@ -958,12 +970,14 @@ describe("VectorByWallsSettingsPanel", () => {
         vectorByWallsSettings: {
           ...useMazeStore.getState().vectorByWallsSettings,
           teleportEdgeBorderWidth: 0,
+          teleportEdgeColor: 0xffffff,
+          teleportConnectorColor: 0xffffff,
         },
       });
 
-    it("hides the section entirely when there are no warnings", () => {
+    it("shows the section with a zero count when there are no warnings", () => {
       render(<VectorByWallsSettingsPanel />);
-      expect(screen.queryByText(/Warnings/)).not.toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "0" }))).toBeInTheDocument();
     });
 
     it("shows the section header with a warning count, collapsed by default", () => {

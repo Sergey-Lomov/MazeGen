@@ -56,6 +56,7 @@ export interface ProjectFileImageExport {
   /** Expanded/collapsed state per "Vector by walls" settings section, keyed by section id —
    * mirrors `analytics.sectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
+  showColorWarnings: boolean;
   vectorByCorridorsSettings: VectorByCorridorsSettings;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */

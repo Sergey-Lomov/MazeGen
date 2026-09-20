@@ -695,6 +695,8 @@ export interface ImageExportState {
   /** Expanded/collapsed state per "Vector by walls" settings section, keyed by section id —
    * mirrors `AnalyticsOverlayState.analyticsSectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
+  /** Whether color-contrast warnings are included in the export problems list. */
+  showColorWarnings: boolean;
   vectorByWallsSettings: VectorByWallsSettings;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
@@ -745,6 +747,7 @@ export interface ImageExportActions {
   setPrintCustomPlacement: (scale: number, offsetXMm: number, offsetYMm: number) => void;
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
+  setShowColorWarnings: (show: boolean) => void;
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;

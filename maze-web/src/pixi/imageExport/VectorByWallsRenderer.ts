@@ -10,7 +10,7 @@ import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
-import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker } from "../renderers/types";
@@ -85,13 +85,16 @@ export class ExportWarningHighlight<TSettings> {
     start: number | null,
     finish: number | null,
     unscopedNodes: NodeDto[] = nodes,
+    warningsOverride?: ExportWarning[],
   ): void {
     if (!hoveredKey) {
       this.highlight.clear();
       return;
     }
     let warnings: ExportWarning[];
-    if (
+    if (warningsOverride) {
+      warnings = warningsOverride;
+    } else if (
       this.cache &&
       this.cache.nodes === nodes &&
       this.cache.edges === edges &&
@@ -107,14 +110,28 @@ export class ExportWarningHighlight<TSettings> {
       this.cache = { nodes, edges, cfg, settings, start, finish, unscopedNodes, warnings };
     }
     const warning = warnings.find((w) => w.key === hoveredKey);
-    if (!warning || warning.nodes.length === 0) {
+    if (!warning || (warning.nodes.length === 0 && (!warning.cells || warning.cells.length === 0))) {
       this.highlight.clear();
       return;
     }
 
+    // Several split nodes can occupy one tile. Keep one highlight region per tile, otherwise the
+    // same warning paints the tile repeatedly once for every node/layer belonging to that split.
+    const nodesByTile = new Map<string, number[]>();
+    for (const id of warning.nodes) {
+      const node = nodes.find((candidate) => candidate.id === id);
+      if (!node) continue;
+      const key = `${node.x},${node.y}`;
+      const group = nodesByTile.get(key) ?? [];
+      group.push(id);
+      nodesByTile.set(key, group);
+    }
     this.highlight.render({
       nodes,
-      regionGroups: warning.nodes.map((id) => [id]),
+      regionGroups: Array.from(nodesByTile.values()),
+      cells: (warning.cells ?? [])
+        .filter((cell) => (nodes[0]?.level ?? 0) === cell.floorIndex)
+        .map((cell) => [cell.x, cell.y]),
       color: WARNING_HIGHLIGHT_COLOR,
       width: 0,
       alpha: 0,
@@ -563,6 +580,10 @@ export class VectorByWallsRenderer {
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey } = state;
+    if (!hoveredExportWarningKey) {
+      this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByWallsSettings, null, null);
+      return;
+    }
     const rawEndpoints = resolveEffectiveEndpoints(state);
     // Same floor-scoping as `renderAll` (GitHub issue #347) — the warning computation must see
     // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
@@ -570,7 +591,11 @@ export class VectorByWallsRenderer {
     const { nodes, edges, start, finish } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes);
+    const warnings = computeVectorByWallsWarningsAcrossFloors(
+      state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByWallsSettings,
+      rawEndpoints.start, rawEndpoints.finish,
+    );
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings);
   }
 
   destroy(): void {
