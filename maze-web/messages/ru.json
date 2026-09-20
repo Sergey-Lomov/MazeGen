@@ -1779,7 +1779,6 @@
   "post_edit.changes_action_add_elevator": "Добавлен лифт",
   "post_edit.changes_action_update_elevator_floors": "Изменены этажи лифта",
   "post_edit.changes_action_remove_elevator": "Удалён лифт",
-  "post_edit.changes_action_suppress_generation_pair": "Подавлена сгенерированная связь",
   "status.post_edit_unavailable": "Сначала сгенерируйте лабиринт",
   "status.post_edit_ready": "Готово к редактированию",
   "status.post_edit_has_issues": "Обнаружены проблемы",

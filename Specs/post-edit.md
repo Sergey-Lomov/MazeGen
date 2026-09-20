@@ -33,9 +33,33 @@ semantics for free.
 
 ### `PostEditCommand` (`store/postEditCommandTypes.ts`)
 
+Every stable post-edit entity id (one-way edge, split point, teleport, vertical passage, elevator —
+GitHub issue #564) is a type-prefixed **string**, not a bare number — `"t3"`/`"o5"`/`"s1"`/`"v2"`/
+`"e7"` for teleport/one-way/splitPoint/verticalPassage/elevator respectively
+(`formatPostEditId`/`parsePostEditIdNumber`/`PREFIX`, `pixi/postEditIdFormat.ts`), so an id string
+alone already says what kind of entity it names — useful in the "Changes" panel, exported project
+files, and logs. Each category has its own fully independent counter/namespace (`_nextPostEdit*Id`,
+still a plain `number` — only the *minted*/formatted id is a string) — a one-way edge and a split
+point can both be "id 3" without colliding, since `"o3"` and `"s3"` never compare equal.
+`assignSequentialIds(items: { key: string }[]): Map<string, number>` (`pixi/postEditUtils.ts`) is the
+shared deterministic-numbering primitive every category's baseline extraction uses: sort candidate
+entities by their own canonical key (an endpoint/edge key, never array/iteration order, which isn't
+guaranteed stable across a reload/re-serialization of the same generation snapshot), then number
+1..N — so the same generation snapshot always produces the same `canonicalKey → id` mapping
+regardless of `edges`/`nodes` input order.
+
 ```typescript
+// PostEditEdge/PostEditEdgeState (GitHub issue #564) — a discriminated union, not a bare
+// PostEditEdgeKind field: `id` is required exactly when `kind` is a one_way_* variant, and
+// impossible to attach to a wall/basic edge. Reused for both the derived-state Record entry
+// (PostEditEdge) and a command's own resulting-state payload (PostEditEdgeState) — same shape,
+// different role.
+type PostEditEdgeState =
+  | { kind: "wall" | "basic"; from: PostEditEndpoint; to: PostEditEndpoint }
+  | { kind: "one_way_forward" | "one_way_backward"; from: PostEditEndpoint; to: PostEditEndpoint; id: string };
+
 type PostEditCommand =
-  | { kind: "setEdge"; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdgeKind }
+  | { kind: "setEdge"; edge: PostEditEdgeState }
   // wall/passage/one_way/reset edge tools always set both directed edges of a face pair at once -
   // one click on a face is one logical action, not two. `aToB`/`bToA` carry both outcomes
   // atomically instead of two separate `setEdge` commands. `directionFlip` is true when the
@@ -44,113 +68,116 @@ type PostEditCommand =
   // ("changed direction" vs "set one-way passage"), mirroring `setVerticalPassageDirection` vs
   // `addVerticalPassage`. `undefined` for every other pair outcome. `setEdge` (above) stays for the
   // rare single-direction case (`applySplitBlueprint`'s per-face wiring).
-  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind; directionFlip?: boolean }
-  | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  // `replacedOneWayIds` (GitHub issue #564) records the one-way id(s), if any, THIS command
+  // destroys on each side — per side (`aToB`/`bToA`), not a flat array, since each side's old
+  // one-way (if any) is independent of the other's. Resolved at command-construction time (pre-state
+  // is still available then); a post-state-only payload can't tell what a side USED to be.
+  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeState; bToA: PostEditEdgeState; directionFlip?: boolean; replacedOneWayIds?: { aToB?: string; bToA?: string } }
+  | { kind: "addTeleport"; id: string; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   // `from`/`to` (GitHub issue #564 follow-up) are this teleport's own endpoints, denormalized onto
   // the command at construction time - same fix already applied to every vertical-passage command;
   // an id-only lookup into the CURRENT draft is correct only for the newest row about this id, and
   // shows a stale (or, once removed, unresolved) location for every OLDER row about it.
-  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint }
+  | { kind: "setTeleportDirection"; id: string; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint }
   // `from`/`to`/`direction` (same follow-up) are this teleport's own RESULTING pair/direction after
   // this move - same denormalization reasoning as `setTeleportDirection` above.
-  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  | { kind: "moveTeleportEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   // `from`/`to`/`direction` (same follow-up) are the removed teleport's own endpoints/direction,
   // denormalized at construction time - without them the row has nothing left to resolve a
   // location from once the entry is gone from `postEditDraftTeleports`.
-  | { kind: "removeTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  | { kind: "removeTeleport"; id: string; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   // `previousEndpoint` (GitHub issue #564 follow-up) is the slot's own endpoint right before this
   // command, denormalized at construction time - only meaningful (and only ever set) when
   // `endpoint` is `null` (a clear); without it, a "start/finish cleared" row had no coordinates left
   // to show once the slot itself was empty.
   | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null; previousEndpoint?: PostEditEndpoint }
-  | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
-  | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
-  // A split slot's face wiring, resolved atomically - every edge-tool click on one of a split
-  // node's faces appends one of these carrying the FULL current face list for that slot (like
-  // `updateElevatorFloors` carries the full floor list), never a `setEdgePair`/`setEdge` for that
-  // face alone. Shares its lifeline with the slot's own `addSplitNode`/`removeSplitNode`.
-  | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId: number; faces: ResolvedSplitEdgeFace[] }
+  // `pointId` (GitHub issue #564) is the split TILE's own stable id (distinct from `slotId`, which
+  // addresses one node within the tile) — resolved at command-construction time: the point's
+  // current id if it already exists (baseline or created earlier in this same log), else a freshly
+  // minted one. Replay checks it against the CURRENT derived state (not baseline) and fails the
+  // command on a mismatch, never silently overwriting an existing point's identity.
+  | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
+  | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
+  // A split node's face wiring, resolved atomically - every edge-tool click on one of a split
+  // point's nodes' faces appends one of these carrying the FULL current face list for that node
+  // (like `updateElevatorFloors` carries the full floor list), never a `setEdgePair`/`setEdge` for
+  // that face alone. `slotId: undefined` addresses the point's ORIGINAL node (GitHub issue #564
+  // follow-up: every node of a split point, the original included, is equally addressable) — same
+  // "no entry/id means the original node" convention `postEditActiveSplitNode` uses elsewhere.
+  // Shares its lifeline with the slot's own `addSplitNode`/`removeSplitNode` when `slotId` is set,
+  // or its own point-scoped key when it's the original node (which has no add/remove command of its
+  // own to share a lifeline with).
+  | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId?: number; faces: ResolvedSplitEdgeFace[]; pointId: string }
   | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
   // `originalFaces` carries the pre-existing node's own faces in the SAME command as the blueprint
   // application, instead of a trailing `setEdge`/`updateSplitNodeFaces` per face - applying a
   // blueprint is one logical action. `blueprintTitleKey` carries the blueprint's own `titleKey`
   // straight onto the command for the Changes panel label; `undefined` for an unnamed blueprint.
+  // `pointId` — same resolution/replay-check rule as `addSplitNode`'s own field.
   | {
       kind: "applySplitBlueprint"; point: [number, number]; level?: number;
       resolvedSlots: ResolvedSplitSlot[]; originalFaces?: ResolvedSplitFace[]; blueprintTitleKey?: string;
+      pointId: string;
     }
-  | { kind: "addVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
-  // `suppressPair` folds this direction-cycle's own generation-time (or previously-confirmed
-  // draft) mesh edge into the SAME command rather than a trailing separate
-  // `suppressGenerationPair` command - one click is one logical edit, mirrors `addElevator`'s
-  // `suppressPairs`. Always the passage's own `[from, to]` when present; `undefined` when nothing
-  // needs suppressing. `direction` here is always `"forward"`/`"backward"` - this command only
-  // exists when leaving `two_way` (the store action no-ops on an already-`two_way` passage), so the
-  // resulting passage is always one-way.
+  | { kind: "addVerticalPassage"; id: string; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   // `from`/`to` (GitHub issue #564 follow-up) are this passage's own endpoints at the time of this
   // command, denormalized the same way `removeVerticalPassage` below is - an id-only lookup into
   // `live` (the CURRENT draft) breaks for any OLD row once the referenced entity has since been
   // removed or moved on by a later command, not just for the removal row itself; this used to show
   // as a correct removal row (coordinates present) sitting above stale "?" move/direction rows for
-  // the SAME entity.
-  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint; suppressPair?: [PostEditEndpoint, PostEditEndpoint] }
-  // `suppressPairs` folds the drag's own two stale-mesh pairs (the passage's pre-move endpoints,
-  // and its new endpoint against the unmoved other end) into the SAME command, rather than two
-  // trailing `suppressGenerationPair` commands - one drag gesture is one logical edit, mirrors
-  // `addElevator`'s `suppressPairs`. `undefined`/`[]` when nothing needs suppressing.
+  // the SAME entity. A generation-baked vertical passage is a full baseline draft entry with its own
+  // stable id (GitHub issue #564) — editing one is an ordinary edit of an existing draft entry, like
+  // any other; there is no separate generation-mesh suppression concept any more.
+  | { kind: "setVerticalPassageDirection"; id: string; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint }
   // `from`/`to` (GitHub issue #564 follow-up) are this passage's own RESULTING endpoints after this
   // move (the moved `end` already replaced by `endpoint`) - same denormalization reasoning as
   // `setVerticalPassageDirection`'s own `from`/`to` above. `direction` (same follow-up, second pass)
   // is this passage's own CURRENT direction, unaffected by a plain endpoint move - without it the
   // "Changes" panel's arrow fell back to a `live` id lookup, defaulting a since-removed two-way
   // passage's old move row to a plain one-way "->" arrow.
-  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  | { kind: "moveVerticalPassageEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   // `from`/`to`/`direction` are the removed passage's own endpoints, denormalized onto the command
   // at construction time (GitHub issue #564 partial) - without them the "Changes" panel has nothing
   // left to resolve a location from once the entry is gone from `postEditDraftVerticalPassages`
   // (the panel's `live` map is built from the CURRENT draft, which by definition no longer has this
   // id), so a `removeVerticalPassage` row used to render as a bare "Vertical passage removed" with
-  // no coordinates at all.
-  | { kind: "removeVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
-  // `suppressPairs` folds the generation-time mesh pairs this elevator edit replaces into the SAME
-  // command, rather than one separate `suppressGenerationPair` command per pair - a lift's floor
-  // edit is one logical action. `undefined`/`[]` when nothing needs suppressing.
-  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
-  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  // no coordinates at all. Covers a generation-baked passage's removal too (GitHub issue #564
+  // follow-up) — since it's a full baseline draft entry with its own id, removing it is this
+  // ordinary command, not N raw edge-pair suppressions (see "Changes Panel" below).
+  | { kind: "removeVerticalPassage"; id: string; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
+  | { kind: "addElevator"; id: string; floors: PostEditEndpoint[] }
+  | { kind: "updateElevatorFloors"; id: string; floors: PostEditEndpoint[] }
   // `floors` is the removed elevator's own floor list, denormalized onto the command at
   // construction time (GitHub issue #564 partial) - same reasoning as `removeVerticalPassage`'s
-  // `from`/`to` above.
-  | { kind: "removeElevator"; id: number; floors: PostEditEndpoint[] }
-  // A generation-time vertical-passage/elevator mesh edge has been edited via a *seed* draft entry
-  // derived from it - `confirmPostEdit` must stop re-emitting the original generation pair once a
-  // draft entry exists for it. The pair (`a`/`b`, node endpoints, order-independent) is recorded on
-  // the baseline's derived state, so it survives point-reset/replay like any other log fact.
-  | { kind: "suppressGenerationPair"; entity: "verticalPassage" | "elevator"; a: PostEditEndpoint; b: PostEditEndpoint };
+  // `from`/`to` above. Covers a generation-baked elevator's removal too (same follow-up) — same
+  // "full baseline draft entry with its own id" reasoning as `removeVerticalPassage`.
+  | { kind: "removeElevator"; id: string; floors: PostEditEndpoint[] };
 ```
 
 There is no `deletePoint` command kind - the Delete tool appends ordinary per-entity commands
-(`setMeta`/`removeTeleport`/etc.), each with its own lifeline, so a point-reset undoes them through
-the same per-lifeline cascade as any other edit, with no dedicated delete lifeline involved.
+(`setMeta`/`removeTeleport`/`removeVerticalPassage`/`removeElevator`/etc.), each with its own
+lifeline, so a point-reset undoes them through the same per-lifeline cascade as any other edit, with
+no dedicated delete lifeline involved.
 
-Every command addresses entities exclusively through the three stable identity kinds already used
-elsewhere in post-edit — `PostEditEndpoint` (node/split), and the monotonic
-teleport/vertical-passage/elevator ids — no new identity concept. All conditional decisions
-(wall/passage/one-way toggle outcome, vertical-passage/elevator seed detection, split-node id/face
-assignment) are resolved **once, at command-construction time**, reading live confirmed state, same
-as before this refactor — replay itself never reads outside its own `PostEditReplayContext`/fold
-state:
+Every command addresses entities exclusively through the stable identity kinds already used
+elsewhere in post-edit — `PostEditEndpoint` (node/split) and each category's own monotonic,
+type-prefixed string id (teleport/one-way/splitPoint/vertical-passage/elevator) — no new identity
+concept beyond the id-string format itself. All conditional decisions (wall/passage/one-way toggle
+outcome, one-way id mint-vs-reuse, split-point id resolution, split-node face assignment) are
+resolved **once, at command-construction time**, reading live confirmed/derived state — replay
+itself never reads outside its own `PostEditReplayContext`/fold state:
 
 - `rotateSplitPoint.moves`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
   edge re-keys/face assignments (`rotateSplitPointMoves`/split-blueprint resolution in
   `pixi/postEditUtils.ts`) — replay has no tessellation/field access, so a rotation's or blueprint's
   geometric outcome is computed once by the store action, not re-derived during replay.
 - `addSplitNode.slotId` is the already-resolved next id (from `_nextSplitSlotId`'s high-water mark
-  for that point, not recomputed at replay time).
-- `suppressGenerationPair` — a generation-time vertical-passage/elevator mesh edge has been edited
-  via a *seed* draft entry derived from it; the pair (`a`/`b`, node endpoints, order-independent,
-  via `suppressionPairKey`) is recorded so `confirmPostEdit` stops re-emitting the original
-  generation-time pair once a draft entry exists for it. Recorded on the log/derived state, not a
-  separate suppression-set store field, so it survives point-reset/replay like any other log fact.
+  for that point, not recomputed at replay time); `addSplitNode.pointId`/`applySplitBlueprint.pointId`
+  are resolved the same way from `_nextPostEditSplitPointId`, or reused from the point's existing id.
+- A fresh one-way (`setEdgePair`/`setEdge` with an `id`-bearing resulting side) mints its id from
+  `_nextPostEditOneWayId` at construction time; flipping an already-one-way face's direction reuses
+  the existing side's id (same entity, new direction); a face reset to a baseline one-way restores
+  that baseline entity's own original id, never mints a new one.
 
 ### Replay (`pixi/postEditReplay.ts`)
 
@@ -195,9 +222,19 @@ equivalent to but cheaper than a full replay (covered by a parity test).
 
 `filterCommandsForPoint(baseline, commands, point, level)` implements the cell branch of the Reset
 tool and `deletePostEditPoint`'s undo path. A **lifeline** is the logical entity a command belongs
-to (`lifelineKeyOf`) — `` `${kind}:${id}` `` for teleport/vertical-passage/elevator,
-`` `slot:${point}:${level}:${slotId}` `` for a split slot, `` `edge:${edgeKey(from,to)}` `` for an
-edge, and `` `meta:${slot}` `` for start/finish.
+to. `lifelineKeysOf(command): string[]` (plural — GitHub issue #564: a single `setEdgePair` can
+atomically touch up to two independent one-way lifelines at once, one per side, both the side's own
+new one-way (if any) and the one it just destroyed via `replacedOneWayIds`) returns every lifeline
+key a command is relevant to: `` `${kind}:${id}` `` for teleport/vertical-passage/elevator,
+`` `oneWay:${id}` `` for a one-way edge (identity is the id, not the face — a face reset from
+one-way back to wall/basic ends that lifeline; a later click turning the same face one-way again
+starts a new one with a new id), `` `slot:${point}:${level}:${slotId}` `` for a split node addressed
+by `slotId`, `` `point:${point}:${level}:${pointId}` `` for the split point's own identity (its
+`addSplitNode`/`removeSplitNode`/`applySplitBlueprint`, and `updateSplitNodeFaces` on the original
+node where `slotId` is `undefined`), and `` `meta:${slot}` `` for start/finish. A `setEdgePair` that
+mints or destroys a one-way on the `a→b` side and/or the `b→a` side returns one `oneWay:${id}` entry
+per id involved, from `aToB.id`/`bToA.id` (new) and `replacedOneWayIds.aToB`/`.bToA` (destroyed) —
+never inferred by scanning neighboring log entries.
 `collectAffectedLifelines` walks the command list once, computing (against the state *before* each
 command in sequence) whether that command's entity currently touches `point`/`level` — including
 split-structure commands addressing that point directly, move-commands whose old *or* new endpoint
@@ -242,9 +279,9 @@ directly.
 | `postEditCommands` | `PostEditCommand[]` | The command log — single source of truth for every manual post-edit change. |
 | `postEditBaseline` | `PostEditBaseline \| null` | Generation-time snapshot (`context`) + revision + pristine (empty-log) derived state. `derived` here is never overwritten after construction. `null` before the first generation. |
 | `postEditDerived` | `PostEditDerivedState \| null` | Current derived state — `postEditBaseline.derived` with `postEditCommands` replayed on top; kept in sync by `appendPostEditCommand`/`replacePostEditCommands`. `null` before the first generation. |
-| `postEditDraftEdges` / `postEditDraftTeleports` / `postEditDraftMeta` / `postEditDraftSplitPoints` / `postEditDraftVerticalPassages` / `postEditDraftElevators` / `postEditSuppressedVerticalPassagePairs` / `postEditSuppressedElevatorPairs` | (unchanged shapes) | **Derived, not independently mutated.** Mirrored 1:1 from `postEditDerived` via `derivedStateToLegacyFields` on every log mutation, kept as plain fields (not lazy getters) since most of the ~40 read sites subscribe to them individually via zustand selectors. Treat as read-only outside `postEditSlice.ts`/`postEditSliceHelpers.ts` — the log is what gets mutated, these fields just reflect it. |
+| `postEditDraftEdges` / `postEditDraftTeleports` / `postEditDraftMeta` / `postEditDraftSplitPoints` / `postEditDraftSplitPointIds` / `postEditDraftVerticalPassages` / `postEditDraftElevators` | (unchanged shapes, `postEditDraftSplitPointIds` new) | **Derived, not independently mutated.** Mirrored 1:1 from `postEditDerived` via `derivedStateToLegacyFields` on every log mutation, kept as plain fields (not lazy getters) since most of the ~40 read sites subscribe to them individually via zustand selectors. Treat as read-only outside `postEditSlice.ts`/`postEditSliceHelpers.ts` — the log is what gets mutated, these fields just reflect it. `postEditDraftSplitPointIds: Record<string, string>` (GitHub issue #564) mirrors `derived.splitPointIds`, keyed the same as `postEditDraftSplitPoints` — each split point's own stable id. There is no separate suppressed-pairs field any more (GitHub issue #564 removed the suppression mechanism entirely — see "Changes Panel" below); generation-baked vertical passages/elevators are ordinary entries in `postEditDraftVerticalPassages`/`postEditDraftElevators` from the start. |
 | `postEditTeleportPendingFrom` | `number \| null` | Node id of the pending teleport's fixed origin during two-click placement, or `null`. |
-| `_nextPostEditTeleportId` / `_nextPostEditVerticalPassageId` / `_nextPostEditElevatorId` | `number` | High-water marks for new entity ids — never regress/reuse, persisted separately from the log (see "Persistence"). |
+| `_nextPostEditTeleportId` / `_nextPostEditOneWayId` / `_nextPostEditSplitPointId` / `_nextPostEditVerticalPassageId` / `_nextPostEditElevatorId` | `number` | High-water marks for new entity ids (GitHub issue #564 added the one-way/split-point counters) — never regress/reuse, persisted separately from the log (see "Persistence"). Each category is its own independent namespace/counter — a one-way and a split point can both be "id 3" without colliding, since the minted id string carries its category prefix (`"o3"` vs `"s3"`). Seeded from `nextPostEditIdCounters(derived)` (`postEditSliceHelpers.ts`), shared by `generate()`/`resetPostEdit` (seeding from a fresh baseline's own `derived`) and `loadProject` (seeding from the post-replay derived state, normalized as a floor against the file's own saved counters — see "Persistence"). |
 | `_nextSplitSlotId` | `Record<string, number>` | Per-point high-water mark for split slot ids, keyed `"x,y"`/`"x,y@level"` — same never-reuse reasoning as the id counters above, needed because a point-reset can prune a high-id slot command out of the log while the mark stays put. |
 | `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. Ephemeral UI state, not in the log. |
 | `postEditFocusedPoint` | `[number, number] \| null` | The point currently selected for the "Manage split nodes" panel. |
@@ -294,14 +331,14 @@ across every teleport command and the `setMeta` clear case in one pass. The old 
 has been removed entirely — no command kind resolves bubbles that way any more, every one carries
 what it needs on itself.
 
-This fix only covers entities that were created/edited through post-edit's own draft in the first
-place. A generation-baked vertical passage/elevator has no removable draft entry at all — removing
-one is modeled as N separate `suppressGenerationPair` commands, one per underlying edge in the
-mesh — so today it still renders as a flood of "Suppressed generated connection" rows instead of one
-coherent "removed" row with a location, unlike a post-edit-created entity. See GitHub issue #564
-(stable ids for post-edit entities) for the planned fix: once a generation-baked vertical
-passage/elevator gets a stable id at generation time, its removal can be expressed as one
-id-addressed remove-shaped command instead of N raw edge-pair suppressions.
+This fix now covers generation-baked entities too (GitHub issue #564): a generation-baked vertical
+passage/elevator is a full baseline draft entry with its own stable id from the moment `generate()`
+builds the baseline, same as a post-edit-created one — there is no separate generation-mesh concept
+any more. Removing one is therefore the same single `removeVerticalPassage`/`removeElevator` command
+as removing a post-edit-created entity, denormalized `from`/`to`/`direction`/`floors` and all — never
+a per-underlying-edge suppression flood. The old `suppressGenerationPair` command kind, the
+`postEditSuppressedVerticalPassagePairs`/`postEditSuppressedElevatorPairs` store fields, and the
+`PostEditLiveEntries`-adjacent suppression-set bookkeeping have all been removed.
 
 Each `PostEditEntityBubble` (`{ text, highlight }`) names exactly one point and renders as a
 hoverable chip — same monospace bubble style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles
@@ -447,7 +484,7 @@ is always `a, b`, never reordered by `aToB`) — only the glyph does.
 bubble row itself, since bubbles no longer merge into one "bubble `<arrow>` bubble" span the way the
 old combined-bubble/`isLink` design did) — `null` for a row with no natural whole-row target (a
 single-bubble point/split-structure row, whose one bubble already covers it). For a same-floor
-edge/wall/passage row (`setEdge`/`setEdgePair`/`suppressGenerationPair`, `linkRowHighlight`), it's the
+edge/wall/passage row (`setEdge`/`setEdgePair`, `linkRowHighlight`), it's the
 `link`-kind entity connecting both bubbles' points — the connecting line itself reads naturally as
 "this row", since that's exactly the straight face/passage segment drawn on the canvas. A teleport row
 (GitHub issue #546 third follow-up) uses `pointsRowHighlight` instead, even when both its endpoints
@@ -514,17 +551,26 @@ against a previous command, since a command must format purely from its own fiel
 {
   commands: PostEditCommand[];
   nextTeleportId: number;
+  nextOneWayId: number;
+  nextSplitPointId: number;
   nextVerticalPassageId: number;
   nextElevatorId: number;
   nextSplitSlotId: Record<string, number>;
 }
 ```
-`CURRENT_VERSION` bumped 3→4 for this shape (breaking change, no migration from the old
-per-entity-draft-field project format).
+`CURRENT_VERSION` bumped 4→5 for this shape (GitHub issue #564: added `nextOneWayId`/
+`nextSplitPointId`; breaking change, no migration — same as the earlier 3→4 bump).
 
-High-water marks are persisted **separately** from the log, not restored as `max(id in log)+1` — a
-point-reset can prune high-id commands out of the log while entities elsewhere in the file (or in
-an export) may still reference those ids, so the marks must never regress.
+High-water marks are persisted **separately** from the log, not read directly off `max(id in
+log)+1` — a point-reset can prune high-id commands out of the log while entities elsewhere in the
+file (or in an export) may still reference those ids, so a saved mark must never regress on its own.
+That said, a saved mark is trusted only as a **floor**, not verbatim (GitHub issue #564 second
+follow-up): on load, `mazeStore.ts` recomputes each category's own minimum-safe next id from the
+just-replayed baseline+log state itself via `nextPostEditIdCounters(derived)` — a baseline can carry
+ids past whatever a stale/hand-edited file's counter says (the counter is a separate, independently
+stored value, never cross-checked by replay) — and takes `Math.max(fileValue, recomputed)` per
+category. `_nextSplitSlotId` (a per-point `Record`, not a single counter) is restored as-is,
+unnormalized — separate reasoning, see its own store-field entry above.
 
 Load is **fail-closed**: `mazeStore.ts` calls `replayPostEditCommandsFailClosed` against the
 freshly-rebuilt baseline (generation is re-run deterministically from the persisted seed/config
@@ -553,14 +599,16 @@ Provided by `pixi/postEditEndpoint.ts`: `nodeEndpoint`/`splitEndpoint` (construc
 ### PostEditEdge
 
 ```typescript
-interface PostEditEdge {
-  from: PostEditEndpoint;
-  to: PostEditEndpoint;
-  kind: "wall" | "basic" | "one_way_forward" | "one_way_backward";
-}
+// Discriminated union (GitHub issue #564) — a one-way `id` is required exactly when `kind` is a
+// one_way_* variant, and impossible to attach to a wall/basic edge. Same shape as
+// PostEditEdgeState (see the PostEditCommand block above); PostEditEdge is the derived-state
+// Record entry, PostEditEdgeState is a command's own resulting-state payload.
+type PostEditEdge =
+  | { kind: "wall" | "basic"; from: PostEditEndpoint; to: PostEditEndpoint }
+  | { kind: "one_way_forward" | "one_way_backward"; from: PostEditEndpoint; to: PostEditEndpoint; id: string };
 ```
 
-`wall` is never stored as an explicit record — `applyPostEditCommand`'s `setEdge`/`setEdgePair` cases always `delete` the record when the resulting kind is `"wall"`, so "no record for this directed edge" and "explicit wall" are the same state on the wire; any reader comparing a face's current kind must fall back to `"wall"` when the lookup misses (`currentEdges[key]?.kind ?? "wall"`), not treat a miss as "unknown"/"unedited". `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above). Keyed in its `Record` by `edgeKey(from, to)`, not a hand-built `${from}-${to}` template literal.
+`wall` is never stored as an explicit record — `applyPostEditCommand`'s `setEdge`/`setEdgePair` cases always `delete` the record when the resulting kind is `"wall"`, so "no record for this directed edge" and "explicit wall" are the same state on the wire; any reader comparing a face's current kind must fall back to `"wall"` when the lookup misses (`currentEdges[key]?.kind ?? "wall"`), not treat a miss as "unknown"/"unedited". `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction, plus the one-way's own stable `id` (type-prefixed string, `"o5"`) — minted fresh when a face first turns one-way, reused across a plain direction flip on the same face (same entity), and never reused once the face reverts to wall/basic (that lifeline ends; a later re-creation on the same face mints a new id). There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above). Keyed in its `Record` by `edgeKey(from, to)`, not a hand-built `${from}-${to}` template literal — spatial addressing (what stands on this face right now), not identity; identity is `` `oneWay:${id}` `` (see the lifeline section above).
 
 ### PostEditTeleportEntry
 
@@ -568,14 +616,28 @@ interface PostEditEdge {
 type PostEditTeleportDirection = "forward" | "backward" | "two_way";
 
 interface PostEditTeleportEntry {
-  id: number;
+  id: string;
   from: PostEditEndpoint;
   to: PostEditEndpoint;
   direction: PostEditTeleportDirection;
 }
 ```
 
-Edits teleport links by node/split endpoint (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is assigned by `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
+Edits teleport links by node/split endpoint (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is a type-prefixed string (`"t3"`, GitHub issue #564 — `formatPostEditId`/`parsePostEditIdNumber`, `pixi/postEditIdFormat.ts`) assigned from `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
+
+`PostEditVerticalPassageEntry`/`PostEditElevatorEntry` (`postEditTypes.ts`) follow the identical
+shape/id convention — `id: string` (`"v2"`/`"e7"`), assigned from `_nextPostEditVerticalPassageId`/
+`_nextPostEditElevatorId`. Since GitHub issue #564, both are full baseline draft entries from the
+moment `generate()` builds the baseline — `extractPostEditVerticalPassages`/`extractPostEditElevators`
+(`pixi/postEditVerticalUtils.ts`) extract every generation-time vertical passage/elevator into
+id-less entities plus their own canonical key (elevator: sorted joined endpoint keys of its
+connected component, mirroring `elevatorComponent`'s existing node-partitioning logic used elsewhere
+for image-export marker numbering), and `assignSequentialIds` (`pixi/postEditUtils.ts`, shared with
+the one-way/split-point categories) numbers each category by sorting its own canonical keys — never
+by input array/iteration order, so the same generation snapshot always produces the same
+`canonicalKey → id` mapping regardless of `edges`/`nodes` order. There is no longer a separate
+"generation-mesh vs draft" distinction: editing or removing a generation-baked entity is an ordinary
+edit of an existing draft entry, like any other.
 
 ### PostEditMeta
 
@@ -831,7 +893,7 @@ dispatch).
 
 A left click on any in-field cell calls `deletePostEditPoint(point)`, which appends one ordinary
 per-entity command for each piece of content it removes (`setMeta`/`removeTeleport`/
-`removeVerticalPassage`/`removeElevator`/`suppressGenerationPair`) — not a single bundled command.
+`removeVerticalPassage`/`removeElevator`) — not a single bundled command.
 Each of these has its own lifeline (same as if the user had removed that entity directly), so
 there's no dedicated "delete" lifeline to track. Covers **every** node currently at the point
 (original plus every declared split slot — not just the active one). Drag-capable (GitHub issue
@@ -842,14 +904,14 @@ per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed p
   `clearPostEditEndpoint`, applied to both markers uniformly) — via an implicit `setMeta` outcome
   within the same command's replay.
 - Every teleport with an endpoint on one of the point's nodes.
-- Every vertical passage/elevator with an endpoint on one of the point's nodes.
-- Any generation-time vertical passage/elevator pair touching one of the point's nodes is covered by
-  a `suppressGenerationPair` entry recorded on the derived state (same mechanism an edit uses,
-  `Specs/floors.md`'s "Post-edit vertical-passage/elevator editing") — without this the old
-  generation-time edge would keep being resent from the baseline on every confirm, silently undoing
-  the deletion. An elevator's suppression covers its *entire* generation-time connected component
-  (BFS over the baseline's own `elevator` edges) — a multi-floor elevator's mesh can include pairs
-  that never name this point's own node directly.
+- Every vertical passage/elevator with an endpoint on one of the point's nodes — generation-baked
+  ones included (GitHub issue #564): since these are full baseline draft entries with their own
+  stable id from the start, removing one is this same single `removeVerticalPassage`/
+  `removeElevator` command, not a per-underlying-edge suppression. An elevator's removal command
+  denormalizes its *entire* connected component's `floors` (from `extractPostEditElevators`'s own
+  BFS at baseline-extraction time, not re-walked here) — a multi-floor elevator's mesh can include
+  nodes that never name this point's own node directly, and the single command still covers all of
+  them.
 
 Basic edges and split-node structure (`setEdge`/`addSplitNode`/etc.) are never touched by delete —
 a point's walls/passages/one-ways and its split-node structure survive a delete untouched; only

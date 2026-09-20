@@ -1767,7 +1767,6 @@
   "post_edit.changes_action_add_elevator": "Add elevator",
   "post_edit.changes_action_update_elevator_floors": "Update elevator floors",
   "post_edit.changes_action_remove_elevator": "Remove elevator",
-  "post_edit.changes_action_suppress_generation_pair": "Suppress generated connection",
   "status.post_edit_unavailable": "Generate maze first",
   "status.post_edit_ready": "Ready to edit",
   "status.post_edit_has_issues": "Issues detected",

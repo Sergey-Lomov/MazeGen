@@ -26,8 +26,8 @@ beforeEach(() => {
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }],
       edges: [],
       commands: [
-        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
-        { kind: "addSplitNode", point: [2, 2], slotId: 1 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 0, pointId: "s1" },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1, pointId: "s1" },
       ],
       nextSplitSlotId: { "2,2": 2 },
     }),

@@ -6,6 +6,7 @@ import type { QcRuleState, CheckInstance, FloorFieldConfig, MazeStore } from "..
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { replayPostEditCommands } from "../pixi/postEditReplay";
 import { buildPostEditBaseline, derivedStateToLegacyFields } from "../store/slices/postEditSliceHelpers";
+import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 
 export { emptyFreePoints };
 
@@ -297,6 +298,13 @@ export function postEditStatePatch(seed: PostEditSeed): Partial<MazeStore> {
   const baseline = buildPostEditBaseline(seed.nodes, seed.edges, seed.revision ?? 0, start, finish);
   const commands = seed.commands ?? [];
   const derived = replayPostEditCommands(baseline, commands);
+  // High-water marks for ids minted post-baseline (GitHub issue #564) — mirrors what the real
+  // `generate()` store action seeds after building a baseline, so a scenario's own counters start
+  // clean instead of inheriting whatever a previous test/seed left in the (shared, singleton) store.
+  const oneWayIds = Object.values(baseline.derived.edges)
+    .filter((e): e is Extract<typeof e, { id: string }> => e.kind === "one_way_forward" || e.kind === "one_way_backward")
+    .map((e) => parsePostEditIdNumber("oneWay", e.id));
+  const splitPointIdValues = Object.values(baseline.derived.splitPointIds).map((id) => parsePostEditIdNumber("splitPoint", id));
   return {
     _generatedNodes: seed.nodes,
     _generatedEdges: seed.edges,
@@ -311,6 +319,8 @@ export function postEditStatePatch(seed: PostEditSeed): Partial<MazeStore> {
     postEditCommands: commands,
     ...derivedStateToLegacyFields(derived),
     _nextSplitSlotId: seed.nextSplitSlotId ?? {},
+    _nextPostEditOneWayId: oneWayIds.length > 0 ? Math.max(...oneWayIds) + 1 : 1,
+    _nextPostEditSplitPointId: splitPointIdValues.length > 0 ? Math.max(...splitPointIdValues) + 1 : 1,
   } as Partial<MazeStore>;
 }
 

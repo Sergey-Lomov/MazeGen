@@ -3,9 +3,16 @@ import {
   buildNodeByIdMap, postEditCommandLabel,
 } from "../pixi/postEditCommandLabels";
 import type { SplitLabelContext } from "../pixi/postEditSplitLabels";
-import { nodeEndpoint, splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
+import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { NodeDto } from "../wasm/types";
+
+/** Builds a `PostEditEdgeState` (GitHub issue #564) — `id` is required exactly when `kind` is a
+ *  one-way variant, defaulting to "o1" when omitted since most label-formatting tests don't care
+ *  about the actual id value. */
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
+  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
 
 const n = (id: number, x: number, y: number, level?: number, i = 0): NodeDto =>
   (level === undefined ? { id, x, y, i } : { id, x, y, i, level }) as NodeDto;
@@ -26,7 +33,7 @@ const splitCtxFor = (allNodes: NodeDto[], splitPoints: Record<string, number[]>)
 describe("postEditCommandLabel", () => {
   it("formats a setEdge wall as an undirected bubble pair", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
-    const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "wall" };
+    const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "wall") };
     const label = postEditCommandLabel(command, nodeById, false);
     expect(label.showArrow).toBe(true);
     expect(label.arrow).toBe("<->");
@@ -35,21 +42,21 @@ describe("postEditCommandLabel", () => {
 
   it("formats a one-way setEdge with a directed arrow", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
-    const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "one_way_forward" };
+    const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward") };
     const label = postEditCommandLabel(command, nodeById, false);
     expect(label.arrow).toBe("->");
   });
 
   it("uses Lf:x:y coordinates once multiFloor is true", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0, 1), n(1, 1, 0, 1)]);
-    const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "basic" };
+    const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "basic") };
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L2:0:0", "L2:1:0"]);
   });
 
   it("setEdge/setEdgePair row hover highlights the connecting line (same-floor link)", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
-    const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "basic" };
+    const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "basic") };
     const label = postEditCommandLabel(command, nodeById, false);
     expect(label.rowHighlight).toEqual({
       kind: "link",
@@ -61,10 +68,12 @@ describe("postEditCommandLabel", () => {
   it("setEdgePair keeps bubble order fixed as a,b regardless of which direction is one-way", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
     const forward: PostEditCommand = {
-      kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1), aToB: "one_way_forward", bToA: "wall",
+      kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
+      aToB: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
     };
     const backward: PostEditCommand = {
-      kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1), aToB: "wall", bToA: "one_way_forward",
+      kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
+      aToB: es(nodeEndpoint(0), nodeEndpoint(1), "wall"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "one_way_forward"),
     };
     const forwardLabel = postEditCommandLabel(forward, nodeById, false);
     const backwardLabel = postEditCommandLabel(backward, nodeById, false);
@@ -77,7 +86,7 @@ describe("postEditCommandLabel", () => {
   it("removeVerticalPassage shows its own denormalized from/to, not a live-entry lookup (GitHub issue #564 partial)", () => {
     const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
     const command: PostEditCommand = {
-      kind: "removeVerticalPassage", id: 99, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
+      kind: "removeVerticalPassage", id: "v99", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
     };
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
@@ -87,7 +96,7 @@ describe("postEditCommandLabel", () => {
   it("removeElevator shows its own denormalized floors, not a live-entry lookup (GitHub issue #564 partial)", () => {
     const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1), n(2, 3, 5, 2)]);
     const command: PostEditCommand = {
-      kind: "removeElevator", id: 99, floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
+      kind: "removeElevator", id: "e99", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
     };
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5", "L3:3:5"]);
@@ -98,7 +107,7 @@ describe("postEditCommandLabel", () => {
 
     it("one-way forward: two per-floor bubbles, arrow points FROM's floor -> TO's floor", () => {
       const command: PostEditCommand = {
-        kind: "addVerticalPassage", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
+        kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
@@ -108,7 +117,7 @@ describe("postEditCommandLabel", () => {
 
     it("one-way backward: fixed FROM/TO bubble order, arrow glyph flips instead", () => {
       const command: PostEditCommand = {
-        kind: "addVerticalPassage", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
+        kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
@@ -117,7 +126,7 @@ describe("postEditCommandLabel", () => {
 
     it("two-way: bidirectional arrow", () => {
       const command: PostEditCommand = {
-        kind: "addVerticalPassage", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
+        kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.arrow).toBe("<->");
@@ -125,7 +134,7 @@ describe("postEditCommandLabel", () => {
 
     it("row hover highlights both floors' points, not a connecting line", () => {
       const command: PostEditCommand = {
-        kind: "addVerticalPassage", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
+        kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.rowHighlight).toEqual({
@@ -139,7 +148,7 @@ describe("postEditCommandLabel", () => {
 
     it("each bubble highlights only its own floor's point", () => {
       const command: PostEditCommand = {
-        kind: "addVerticalPassage", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
+        kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles[0].highlight).toEqual({ kind: "point", point: [3, 5], level: 0 });
@@ -151,7 +160,7 @@ describe("postEditCommandLabel", () => {
     it("addTeleport backward: arrow is <-, not -> (GitHub issue #546 third follow-up)", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
       const command: PostEditCommand = {
-        kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
+        kind: "addTeleport", id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
       };
       const label = postEditCommandLabel(command, nodeById, false);
       expect(label.arrow).toBe("<-");
@@ -159,7 +168,7 @@ describe("postEditCommandLabel", () => {
 
     it("setTeleportDirection backward: arrow is <-, not ->", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
-      const command: PostEditCommand = { kind: "setTeleportDirection", id: 1, direction: "backward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
+      const command: PostEditCommand = { kind: "setTeleportDirection", id: "t1", direction: "backward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const label = postEditCommandLabel(command, nodeById, false);
       expect(label.arrow).toBe("<-");
     });
@@ -167,7 +176,7 @@ describe("postEditCommandLabel", () => {
     it("moveTeleportEndpoint reads its own denormalized backward direction, not ->", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
       const command: PostEditCommand = {
-        kind: "moveTeleportEndpoint", id: 1, end: "from", endpoint: nodeEndpoint(0),
+        kind: "moveTeleportEndpoint", id: "t1", end: "from", endpoint: nodeEndpoint(0),
         from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
       };
       const label = postEditCommandLabel(command, nodeById, false);
@@ -176,12 +185,12 @@ describe("postEditCommandLabel", () => {
 
     it("setTeleportDirection/moveTeleportEndpoint/removeTeleport show their own denormalized from/to, not a live-entry lookup (GitHub issue #564 follow-up)", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
-      const setDirCommand: PostEditCommand = { kind: "setTeleportDirection", id: 99, direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
+      const setDirCommand: PostEditCommand = { kind: "setTeleportDirection", id: "t99", direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const moveCommand: PostEditCommand = {
-        kind: "moveTeleportEndpoint", id: 99, end: "to", endpoint: nodeEndpoint(1),
+        kind: "moveTeleportEndpoint", id: "t99", end: "to", endpoint: nodeEndpoint(1),
         from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
       };
-      const removeCommand: PostEditCommand = { kind: "removeTeleport", id: 99, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" };
+      const removeCommand: PostEditCommand = { kind: "removeTeleport", id: "t99", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" };
       for (const command of [setDirCommand, moveCommand, removeCommand]) {
         const label = postEditCommandLabel(command, nodeById, false);
         expect(label.bubbles.map((b) => b.text)).toEqual(["0:0", "1:0"]);
@@ -191,7 +200,7 @@ describe("postEditCommandLabel", () => {
     it("row hover highlights both endpoint points, never a connecting line", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
       const command: PostEditCommand = {
-        kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
+        kind: "addTeleport", id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, false);
       expect(label.rowHighlight).toEqual({
@@ -210,14 +219,14 @@ describe("postEditCommandLabel", () => {
     // OLD "forward" must show the flipped, actually-resulting "<-" arrow, not "->".
     it("setVerticalPassageDirection: arrow reflects the flipped (post-click) direction, not the logged pre-click one", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
-      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: 1, direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
+      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: "v1", direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.arrow).toBe("<-");
     });
 
     it("setVerticalPassageDirection: pre-click backward flips to a post-click -> arrow", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
-      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: 1, direction: "backward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
+      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: "v1", direction: "backward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.arrow).toBe("->");
     });
@@ -225,7 +234,7 @@ describe("postEditCommandLabel", () => {
     it("moveVerticalPassageEndpoint reads its own denormalized backward direction, not ->", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
       const command: PostEditCommand = {
-        kind: "moveVerticalPassageEndpoint", id: 1, end: "from", endpoint: nodeEndpoint(0),
+        kind: "moveVerticalPassageEndpoint", id: "v1", end: "from", endpoint: nodeEndpoint(0),
         from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
       };
       const label = postEditCommandLabel(command, nodeById, true);
@@ -234,7 +243,7 @@ describe("postEditCommandLabel", () => {
 
     it("setVerticalPassageDirection shows its own denormalized from/to, not a live-entry lookup (GitHub issue #564 follow-up)", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
-      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: 99, direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
+      const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: "v99", direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
     });
@@ -242,7 +251,7 @@ describe("postEditCommandLabel", () => {
     it("moveVerticalPassageEndpoint shows its own denormalized from/to/direction, not a live-entry lookup (GitHub issue #564 follow-up)", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
       const command: PostEditCommand = {
-        kind: "moveVerticalPassageEndpoint", id: 99, end: "to", endpoint: nodeEndpoint(1),
+        kind: "moveVerticalPassageEndpoint", id: "v99", end: "to", endpoint: nodeEndpoint(1),
         from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, true);
@@ -260,7 +269,7 @@ describe("postEditCommandLabel", () => {
       const nodes = [n(0, 3, 5, undefined, 0), n(1, 3, 5, undefined, 1)];
       const nodeById = buildNodeByIdMap(nodes);
       const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
-      const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(1), to: nodeEndpoint(0), edgeKind: "basic" };
+      const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(1), nodeEndpoint(0), "basic") };
       const label = postEditCommandLabel(command, nodeById, false, splitCtx);
       expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N2)", "3:5 (N1)"]);
     });
@@ -302,7 +311,7 @@ describe("postEditCommandLabel", () => {
         cfg: { type: "square", width: 10, height: 10 },
         inFieldCellsAt: () => new Set(["5,5", "6,5", "4,5", "5,6", "5,4"]),
       };
-      const command: PostEditCommand = { kind: "setEdge", from: originalEp, to: slotEp, edgeKind: "wall" };
+      const command: PostEditCommand = { kind: "setEdge", edge: es(originalEp, slotEp, "wall") };
       const label = postEditCommandLabel(command, buildNodeByIdMap(allNodes), false, splitCtx);
       expect(label.bubbles.map((b) => b.text)).toEqual(["5:5 (Cor)", "5:5 (Brg)"]);
     });
@@ -317,7 +326,7 @@ describe("postEditCommandLabel", () => {
       const nodes = [n(0, 3, 5, 0, 0), n(1, 3, 5, 0, 1)];
       const nodeById = buildNodeByIdMap(nodes);
       const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
-      const command: PostEditCommand = { kind: "setEdge", from: nodeEndpoint(1), to: nodeEndpoint(0), edgeKind: "basic" };
+      const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(1), nodeEndpoint(0), "basic") };
       const label = postEditCommandLabel(command, nodeById, false, splitCtx);
       expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N2)", "3:5 (N1)"]);
     });
@@ -334,13 +343,13 @@ describe("postEditCommandLabel", () => {
     it("a split endpoint (not yet confirmed to a real node) gets the suffix from its own slotId", () => {
       const nodes = [n(0, 3, 5, undefined, 0)];
       const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
-      const command: PostEditCommand = { kind: "setEdge", from: splitEndpoint([3, 5], 0), to: nodeEndpoint(0), edgeKind: "basic" };
+      const command: PostEditCommand = { kind: "setEdge", edge: es(splitEndpoint([3, 5], 0), nodeEndpoint(0), "basic") };
       const label = postEditCommandLabel(command, buildNodeByIdMap(nodes), false, splitCtx);
       expect(label.bubbles[0].text).toBe("3:5 (N2)");
     });
 
     it("addSplitNode names the new slot's own number", () => {
-      const command: PostEditCommand = { kind: "addSplitNode", point: [3, 5], slotId: 2 };
+      const command: PostEditCommand = { kind: "addSplitNode", point: [3, 5], slotId: 2, pointId: "s1" };
       const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
       expect(label.bubbles[0].text).toBe("3:5 (N4)");
     });
@@ -352,11 +361,50 @@ describe("postEditCommandLabel", () => {
     });
   });
 
+  describe("updateSplitNodeFaces (GitHub issue #564 follow-up)", () => {
+    it("a numbered slot's face edit shows that slot's own (N{n}) bubble and id", () => {
+      const nodes = [n(0, 3, 5, undefined, 0), n(1, 3, 5, undefined, 1)];
+      const nodeById = buildNodeByIdMap(nodes);
+      const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
+      const command: PostEditCommand = {
+        kind: "updateSplitNodeFaces", point: [3, 5], slotId: 0, pointId: "s1",
+        faces: [{ neighbor: nodeEndpoint(2), toNeighbor: es(splitEndpoint([3, 5], 0), nodeEndpoint(2), "basic"), fromNeighbor: es(nodeEndpoint(2), splitEndpoint([3, 5], 0), "basic") }],
+      };
+      const label = postEditCommandLabel(command, nodeById, false, splitCtx);
+      expect(label.action).toBe("Update split tile settings (#s1)");
+      expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N2)"]);
+    });
+
+    it("the point's ORIGINAL node's face edit (slotId: undefined) resolves via its own node, not a split-endpoint suffix lookup", () => {
+      // `slotId: undefined` addresses the point's original node (GitHub issue #564 follow-up) —
+      // it has no `split`-kind endpoint of its own, so the label must resolve it by coordinates
+      // through `nodeById` (`splitOriginalNodeBubble`) instead of `splitSlotBubble`'s slotId path.
+      const nodes = [n(0, 3, 5, undefined, 0), n(1, 3, 5, undefined, 1)];
+      const nodeById = buildNodeByIdMap(nodes);
+      const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
+      const command: PostEditCommand = {
+        kind: "updateSplitNodeFaces", point: [3, 5], slotId: undefined, pointId: "s1",
+        faces: [{ neighbor: nodeEndpoint(2), toNeighbor: es(nodeEndpoint(0), nodeEndpoint(2), "basic"), fromNeighbor: es(nodeEndpoint(2), nodeEndpoint(0), "basic") }],
+      };
+      const label = postEditCommandLabel(command, nodeById, false, splitCtx);
+      expect(label.action).toBe("Update split tile settings (#s1)");
+      expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N1)"]);
+    });
+
+    it("the original node's face edit falls back to a bare point bubble when the node isn't in nodeById yet", () => {
+      const command: PostEditCommand = {
+        kind: "updateSplitNodeFaces", point: [3, 5], slotId: undefined, pointId: "s1", faces: [],
+      };
+      const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["3:5"]);
+    });
+  });
+
   describe("elevator bubbles", () => {
     it("one bubble per floor instead of one combined bubble", () => {
       const nodeById = buildNodeByIdMap([n(0, 2, 2, 0), n(1, 2, 2, 1), n(2, 2, 2, 2)]);
       const command: PostEditCommand = {
-        kind: "addElevator", id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
+        kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "L2:2:2", "L3:2:2"]);
@@ -365,7 +413,7 @@ describe("postEditCommandLabel", () => {
     it("no arrow glyph for a 3+ floor elevator", () => {
       const nodeById = buildNodeByIdMap([n(0, 2, 2, 0), n(1, 2, 2, 1), n(2, 2, 2, 2)]);
       const command: PostEditCommand = {
-        kind: "addElevator", id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
+        kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.showArrow).toBe(false);
@@ -373,7 +421,7 @@ describe("postEditCommandLabel", () => {
 
     it("no arrow glyph for a 2-floor elevator either — an elevator never has a single direction", () => {
       const nodeById = buildNodeByIdMap([n(0, 2, 2, 0), n(1, 2, 2, 1)]);
-      const command: PostEditCommand = { kind: "addElevator", id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] };
+      const command: PostEditCommand = { kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles).toHaveLength(2);
       expect(label.showArrow).toBe(false);
@@ -382,7 +430,7 @@ describe("postEditCommandLabel", () => {
     it("falls back to ? for a floor endpoint that hasn't resolved yet", () => {
       const nodeById = buildNodeByIdMap([n(0, 2, 2, 0)]);
       const command: PostEditCommand = {
-        kind: "addElevator", id: 1, floors: [nodeEndpoint(0), nodeEndpoint(999)],
+        kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(999)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "?"]);
@@ -390,7 +438,7 @@ describe("postEditCommandLabel", () => {
 
     it("row hover highlights every floor's own point", () => {
       const nodeById = buildNodeByIdMap([n(0, 2, 2, 0), n(1, 2, 2, 1)]);
-      const command: PostEditCommand = { kind: "addElevator", id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] };
+      const command: PostEditCommand = { kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] };
       const label = postEditCommandLabel(command, nodeById, true);
       expect(label.rowHighlight).toEqual({
         kind: "points",

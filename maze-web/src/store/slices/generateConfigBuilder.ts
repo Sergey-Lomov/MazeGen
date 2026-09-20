@@ -5,7 +5,7 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, c
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor } from "./postEditSliceHelpers";
+import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters } from "./postEditSliceHelpers";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
@@ -319,7 +319,6 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     // this path's own copy used a single global, level-unaware node/point grouping across every
     // floor combined, silently breaking every split point on any floor above the first).
     const { draftTeleports: generatedTeleports } = buildMultiFloorPostEditDraft(snapshot.nodes, snapshot.edges);
-    const nextTeleportId = generatedTeleports.length + 1;
     // Fresh baseline at a bumped revision (GitHub issue #543 plan section 4) — a new generation is
     // the one case that changes the revision; every other post-edit mutation replays on top of the
     // same one. Command log resets to empty (no draft edits survive a fresh generate()).
@@ -353,8 +352,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       postEditDerived: baseline.derived,
       postEditCommands: [],
       ...legacyFieldsFor(baseline.derived),
+      ...nextPostEditIdCounters(baseline.derived),
       postEditActiveSplitNode: {},
-      _nextPostEditTeleportId: nextTeleportId,
       _nextSplitSlotId: {},
       postEditTeleportPendingFrom: null,
       // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead
@@ -381,14 +380,13 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       _generatedFinish: snapshot.finish,
       _generatedNodes: snapshot.nodes,
       _generatedEdges: snapshot.edges,
-      // User-placed vertical passages/elevators (GitHub issue #341) have no generation-time
-      // counterpart to seed from — a fresh generate() clears any leftover draft from the previous
-      // maze, same as it clears every other post-edit draft collection above (already covered by
-      // the fresh, empty-log `baseline` spread via `legacyFieldsFor`).
+      // Pending placement UI state (GitHub issue #341) has no generation-time counterpart to seed
+      // from — a fresh generate() clears it, same as it clears every other post-edit draft
+      // collection above. The vertical-passage/elevator id counters themselves are seeded by
+      // `nextPostEditIdCounters` above, past whatever generation-baked entries the baseline just
+      // extracted (GitHub issue #564) — no longer hardcoded back to `1`.
       postEditVerticalPassagePending: null,
-      _nextPostEditVerticalPassageId: 1,
       postEditElevatorPending: null,
-      _nextPostEditElevatorId: 1,
       postEditSplitTargetPrompt: null,
     });
   } catch (err) {

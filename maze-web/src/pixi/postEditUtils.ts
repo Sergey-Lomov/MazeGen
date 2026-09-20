@@ -3,6 +3,7 @@ import type { PostEditEdge } from "../store/mazeStore";
 import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual } from "./postEditEndpoint";
+import { formatPostEditId } from "./postEditIdFormat";
 
 export {
   extractPostEditTeleports,
@@ -21,31 +22,58 @@ export {
   movePostEditVerticalPassageEndpoint,
   removePostEditElevator,
   elevatorComponent,
+  extractPostEditVerticalPassages,
+  extractPostEditElevators,
   postEditVerticalPassageDirectionToDto,
   postEditVerticalToDto,
 } from "./postEditVerticalUtils";
+
+/** Assigns stable, deterministic ids to a batch of logical entities (GitHub issue #564) — sorts by
+ * `key` (a canonical, order-of-extraction-independent string, never a raw array/iteration index —
+ * see `extractPostEditVerticalPassages`/`extractPostEditElevators`/one-way baseline extraction
+ * below) and numbers from 1. Two calls with the same `key` set, regardless of input order, always
+ * produce the same `key -> id` mapping — the property the "shuffled input" determinism tests check.
+ * Called separately per entity category (one-way, split point, vertical passage, elevator) — each
+ * has its own independent id namespace/counter, never shared across categories. */
+export function assignSequentialIds(items: { key: string }[]): Map<string, number> {
+  const sortedKeys = items.map((i) => i.key).sort();
+  const result = new Map<string, number>();
+  let nextId = 1;
+  for (const key of sortedKeys) result.set(key, nextId++);
+  return result;
+}
 
 /** Built from a freshly confirmed WASM snapshot. `endpointFor` (see `resolverForNodeId`) resolves
  * each raw id to a `split` endpoint when it's one of a point's automatically-split extra nodes
  * (GitHub issue #222), or a plain `node` endpoint otherwise — never a not-yet-confirmed split
  * node, since every id here already exists in the snapshot. Defaults to `nodeEndpoint` for callers
- * that predate auto-split (no split points possible, so it's always the identity resolution). */
+ * that predate auto-split (no split points possible, so it's always the identity resolution).
+ *
+ * One-way edges get a stable id (GitHub issue #564), assigned deterministically by
+ * `assignSequentialIds` over each one-way edge's own canonical `edgeKey(from, to)` — already
+ * directional (forward/backward on the same face sort to different keys), so no extra direction
+ * component is needed in the key. */
 export function buildPostEditDraftEdgesFromGenerated(
   edges: EdgeDto[],
   endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
 ): Record<string, PostEditEdge> {
   const basicEdges = edges.filter(e => e.kind !== "teleport" && e.kind !== "vertical_passage" && e.kind !== "elevator");
   const edgeSet = new Set(basicEdges.map(e => `${e.from}-${e.to}`));
-  const result: Record<string, PostEditEdge> = {};
+  const entries: { key: string; from: PostEditEndpoint; to: PostEditEndpoint; oneWay: boolean }[] = [];
   for (const e of basicEdges) {
     const hasReverse = edgeSet.has(`${e.to}-${e.from}`);
     const from = endpointFor(e.from);
     const to = endpointFor(e.to);
-    result[edgeKey(from, to)] = {
-      from,
-      to,
-      kind: hasReverse ? "basic" : "one_way_forward",
-    };
+    entries.push({ key: edgeKey(from, to), from, to, oneWay: !hasReverse });
+  }
+  const oneWayIds = assignSequentialIds(entries.filter((e) => e.oneWay).map((e) => ({ key: e.key })));
+  const result: Record<string, PostEditEdge> = {};
+  for (const e of entries) {
+    // Provisional id, same as `extractPostEditTeleports`' own — `buildMultiFloorPostEditDraft`
+    // renumbers every one-way edge globally after merging all per-level batches.
+    result[e.key] = e.oneWay
+      ? { from: e.from, to: e.to, kind: "one_way_forward", id: formatPostEditId("oneWay", oneWayIds.get(e.key)!) }
+      : { from: e.from, to: e.to, kind: "basic" };
   }
   return result;
 }
@@ -88,7 +116,7 @@ export function pruneRemovedSplitNodes<T extends { x: number; y: number; i: numb
  * `level` is the 0-based floor index `point` addresses (`undefined` = floor 0, GitHub issue #358)
  * — `nodes` is expected already scoped to that floor by the caller (a same-(x,y) node on another
  * floor must not be picked up as this point's original/neighbor node). */
-type RotateMove = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; kind: PostEditEdge["kind"] };
+type RotateMove = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; edge: PostEditEdge };
 
 function collectRotateMoves(
   edges: Record<string, PostEditEdge>,
@@ -137,7 +165,7 @@ function collectRotateMoves(
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
       if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return undefined; // boundary — refuse entirely
 
-      moves.push({ oldKey: key, ep, otherIsFrom: epIsTo, newNeighbor, kind: edge.kind });
+      moves.push({ oldKey: key, ep, otherIsFrom: epIsTo, newNeighbor, edge });
     }
   }
   return moves;
@@ -158,7 +186,7 @@ export function rotateSplitPointMoves(
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
   level?: number,
-): { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdge["kind"] }[] {
+): { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edge: PostEditEdge }[] {
   const moves = collectRotateMoves(edges, point, slotIds, direction, cfg, cellSet, nodes, level);
   if (moves === undefined) return [];
 
@@ -171,13 +199,22 @@ export function rotateSplitPointMoves(
     return activeEntry ?? nodeEndpoint(ids[0]);
   };
 
-  const resolved: { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdge["kind"] }[] = [];
-  for (const { oldKey, ep, otherIsFrom, newNeighbor, kind } of moves) {
+  // `edge` (GitHub issue #564) carries the moved edge's own kind AND id (when one-way) — a rotation
+  // re-keys an edge to a new spatial neighbor, it doesn't destroy/recreate the entity, so a rotated
+  // one-way keeps its original id.
+  const resolved: { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edge: PostEditEdge }[] = [];
+  for (const { oldKey, ep, otherIsFrom, newNeighbor, edge } of moves) {
     const newOther = resolveActiveAt(newNeighbor);
     if (!newOther) continue;
     const from = otherIsFrom ? newOther : ep;
     const to = otherIsFrom ? ep : newOther;
-    resolved.push({ oldKey, from, to, edgeKind: kind });
+    // `edge.kind === "wall" || edge.kind === "basic"` would not narrow here — TS doesn't narrow a
+    // discriminated union via `===` against an already-union-typed discriminant field, only via
+    // exact single-literal checks — so branch on the one-way member instead.
+    const movedEdge: PostEditEdge = edge.kind === "one_way_forward" || edge.kind === "one_way_backward"
+      ? { kind: edge.kind, from, to, id: edge.id }
+      : { kind: edge.kind, from, to };
+    resolved.push({ oldKey, from, to, edge: movedEdge });
   }
   return resolved;
 }

@@ -13,7 +13,7 @@ import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFr
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
-import { derivedStateToLegacyFields as legacyFieldsFor } from "./slices/postEditSliceHelpers";
+import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters } from "./slices/postEditSliceHelpers";
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
@@ -234,6 +234,15 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       const baseline = get().postEditBaseline;
       const derived = baseline !== null ? replayPostEditCommandsFailClosed(baseline, file.postEdit.commands) : undefined;
       if (baseline !== null && derived !== undefined) {
+        // Load-time high-water-mark normalization (GitHub issue #564 second follow-up): a saved
+        // counter is trusted only as a FLOOR, never verbatim — `nextPostEditIdCounters(derived)`
+        // recomputes each category's minimum-safe next id from the just-replayed baseline+log state
+        // itself (an id can be minted by the log past whatever the baseline alone occupied), and the
+        // higher of the two wins. Guards against a hand-edited or stale file whose counter is lower
+        // than an id the (successfully replayed) log already uses — replay only checks a command's
+        // own resolvability, never cross-checks it against the file's separately-stored counters, so
+        // a too-low saved counter would otherwise mint a colliding id on the very next edit.
+        const minCounters = nextPostEditIdCounters(derived);
         set({
           postEditCommands: file.postEdit.commands,
           postEditDerived: derived,
@@ -243,10 +252,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
           postEditEdges: null,
           postEditMeta: null,
           postEditAnalytics: null,
-          _nextPostEditTeleportId: file.postEdit.nextTeleportId,
-          _nextPostEditVerticalPassageId: file.postEdit.nextVerticalPassageId,
-          _nextPostEditElevatorId: file.postEdit.nextElevatorId,
+          _nextPostEditTeleportId: Math.max(file.postEdit.nextTeleportId, minCounters._nextPostEditTeleportId),
+          _nextPostEditVerticalPassageId: Math.max(file.postEdit.nextVerticalPassageId, minCounters._nextPostEditVerticalPassageId),
+          _nextPostEditElevatorId: Math.max(file.postEdit.nextElevatorId, minCounters._nextPostEditElevatorId),
           _nextSplitSlotId: file.postEdit.nextSplitSlotId,
+          _nextPostEditOneWayId: Math.max(file.postEdit.nextOneWayId, minCounters._nextPostEditOneWayId),
+          _nextPostEditSplitPointId: Math.max(file.postEdit.nextSplitPointId, minCounters._nextPostEditSplitPointId),
         });
       } else {
         console.error("Post-edit section rejected: command log doesn't resolve against the regenerated maze; discarding saved post-edit state.");

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { buildPostEditMazeSource, resolveCellInspection } from "../pixi/cellInspectionResolver";
 import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
-import { suppressionPairKey } from "../pixi/postEditReplay";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
 import { useMazeStore } from "../store/mazeStore";
@@ -32,8 +31,6 @@ function state(over: Partial<MazeState>): MazeState {
     postEditMeta: null,
     postEditDraftVerticalPassages: [],
     postEditDraftElevators: [],
-    postEditSuppressedElevatorPairs: new Set<string>(),
-    postEditSuppressedVerticalPassagePairs: new Set<string>(),
     ...over,
   } as MazeState;
 }
@@ -67,7 +64,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
     const nodes = [node(1, 0, 0), node(2, 3, 2)];
     const st = state({
       nodes,
-      postEditDraftTeleports: [{ id: 1, from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
+      postEditDraftTeleports: [{ id: "t1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
     });
     expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Teleport <-> (3,2)");
     expect(inspect(st, 3, 2)).toBe("x:3, y:2 | Teleport <-> (0,0)");
@@ -84,50 +81,31 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftSplitPoints: { "0,0": [0] },
       postEditDraftTeleports: [
-        { id: 1, from: splitEndpoint([0, 0], 0), to: nodeEndpoint(3), direction: "forward" },
+        { id: "t1", from: splitEndpoint([0, 0], 0), to: nodeEndpoint(3), direction: "forward" },
       ],
     });
     // The teleport departs the split slot (Node 2), not the original node (Node 1).
     expect(inspect(st, 0, 0)).toBe("x:0, y:0 | [Node 1: empty] | [Node 2: Teleport -> (3,2)]");
   });
 
-  it("generation-time vertical passage still shown, unless its pair was edited (suppressed)", () => {
+  it("generation-time vertical passage is shown — a full baseline draft entry (GitHub issue #564)", () => {
     const nodes = [node(1, 0, 0, { level: 0 }), node(2, 0, 0, { level: 1 })];
-    const generatedVP: EdgeDto[] = [
-      { from: 1, to: 2, kind: "vertical_passage" },
-      { from: 2, to: 1, kind: "vertical_passage" },
-    ];
-    const shown = state({ nodes, _generatedEdges: generatedVP });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2)");
-
-    const suppressed = state({
+    const shown = state({
       nodes,
-      _generatedEdges: generatedVP,
-      postEditSuppressedVerticalPassagePairs: new Set([suppressionPairKey(nodeEndpoint(1), nodeEndpoint(2))]),
+      postEditDraftVerticalPassages: [{ id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
     });
-    expect(inspect(suppressed, 0, 0)).toBe("x:0, y:0");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2)");
   });
 
-  it("generation-time elevator shown, unless its pair was edited (suppressed)", () => {
+  it("generation-time elevator is shown — a full baseline draft entry (GitHub issue #564)", () => {
     const nodes = [
       node(1, 0, 0, { level: 0 }), node(2, 0, 0, { level: 1 }), node(3, 0, 0, { level: 2 }),
     ];
-    const generatedElev: EdgeDto[] = [
-      { from: 1, to: 2, kind: "elevator" }, { from: 2, to: 1, kind: "elevator" },
-      { from: 1, to: 3, kind: "elevator" }, { from: 3, to: 1, kind: "elevator" },
-    ];
-    const shown = state({ nodes, _generatedEdges: generatedElev });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2, L3)");
-
-    const suppressed = state({
+    const shown = state({
       nodes,
-      _generatedEdges: generatedElev,
-      postEditSuppressedElevatorPairs: new Set([
-        suppressionPairKey(nodeEndpoint(1), nodeEndpoint(2)),
-        suppressionPairKey(nodeEndpoint(1), nodeEndpoint(3)),
-      ]),
+      postEditDraftElevators: [{ id: "e1", floors: [nodeEndpoint(1), nodeEndpoint(2), nodeEndpoint(3)] }],
     });
-    expect(inspect(suppressed, 0, 0)).toBe("x:0, y:0");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2, L3)");
   });
 
   it("a user-placed draft vertical passage (not yet confirmed) is reported", () => {
@@ -135,7 +113,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
     const st = state({
       nodes,
       postEditDraftVerticalPassages: [
-        { id: 1, from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "forward" },
+        { id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "forward" },
       ],
     });
     expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Vertical passage -> (L2)");

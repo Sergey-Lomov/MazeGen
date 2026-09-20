@@ -1,7 +1,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
-import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint, resolveEndpointToHoverPoint } from "./postEditEndpoint";
+import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint, resolveEndpointToHoverPoint, nodeEndpoint } from "./postEditEndpoint";
 import { messageForTitleKey } from "./splitPatternTitles";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
 import { resolveSplitNodeShortLabel, type SplitLabelContext } from "./postEditSplitLabels";
@@ -100,6 +100,18 @@ function splitSlotBubble(point: [number, number], level: number | undefined, slo
   return { text: formatPoint({ point, level }, multiFloor, suffix), highlight: { kind: "point", point, level } };
 }
 
+/** Same as `splitSlotBubble`, for `updateSplitNodeFaces` with `slotId: undefined` — the point's
+ *  original node (GitHub issue #564 follow-up: editing the original node's faces is editing the
+ *  split, same as any numbered slot). The original has no `split`-kind endpoint to build (structurally
+ *  addressed only as `{kind:"node", id}`, never `{kind:"split", ...}` — see `postEditCommandTypes.ts`),
+ *  so resolve its `NodeId` from `nodeById` by coordinates and delegate to `endpointBubble`, which
+ *  already resolves `node`-kind endpoints (and their short-label suffix) correctly. */
+function splitOriginalNodeBubble(point: [number, number], level: number | undefined, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
+  const original = [...nodeById.values()].find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0) && n.i === 0);
+  if (original === undefined) return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level } };
+  return endpointBubble(nodeEndpoint(original.id), nodeById, multiFloor, splitCtx);
+}
+
 /** Two bubbles for a same-floor edge/teleport-shaped entity — rendered "from -> to" by the panel
  *  (GitHub issue #546), same pairing `SplitNodesDialogView`'s link bubbles use. Each bubble
  *  highlights its own endpoint on hover; the pair together also drives the `link`-kind highlight
@@ -194,6 +206,17 @@ export function buildNodeByIdMap(nodes: readonly NodeDto[]): Map<number, NodeDto
   return new Map(nodes.map((n) => [n.id, n]));
 }
 
+/** Appends the entity's own stable id (GitHub issue #564) to an action string, `"Action (#N)"` —
+ *  every category minted at baseline-construction or command-construction time now carries one
+ *  (one-way edge, split point, teleport, vertical passage, elevator), so every row that names a
+ *  single entity can show it next to the action instead of only via coordinate bubbles, which don't
+ *  distinguish a churned entity (removed then recreated at the same point) from the original. `id`
+ *  is a type-prefixed string (`"t3"`, `"s1"`, ... — GitHub issue #564 second follow-up,
+ *  `postEditIdFormat.ts`), not a bare number — the prefix already says the entity kind. */
+function withId(action: string, id: string): string {
+  return `${action} (#${id})`;
+}
+
 /** Formats one `PostEditCommand` for the "Changes" panel. `nodeById` must be built from the
  *  confirmed node snapshot (`buildNodeByIdMap`) — an endpoint that doesn't resolve yet (a
  *  not-yet-confirmed split node) falls back to `"?"` rather than throwing, same "nothing to
@@ -232,42 +255,53 @@ export function postEditCommandLabel(
 
   switch (command.kind) {
     case "setEdge": {
-      const actionKey = command.edgeKind === "wall"
+      const kind = command.edge.kind;
+      const actionKey = kind === "wall"
         ? "post_edit.changes_action_set_edge_wall"
-        : command.edgeKind === "basic"
+        : kind === "basic"
         ? "post_edit.changes_action_set_edge_passage"
         : "post_edit.changes_action_set_edge_one_way";
-      const arrow = command.edgeKind === "wall" || command.edgeKind === "basic" ? "<->" : "->";
-      return link(m[actionKey](), edge(command.from, command.to), arrow);
+      const arrow = kind === "wall" || kind === "basic" ? "<->" : "->";
+      // One-way's own id (GitHub issue #564) — wall/basic have no id, nothing to append.
+      const action = command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward"
+        ? withId(m[actionKey](), command.edge.id)
+        : m[actionKey]();
+      return link(action, edge(command.edge.from, command.edge.to), arrow);
     }
     case "setEdgePair": {
-      if (command.aToB === "wall" && command.bToA === "wall") {
+      if (command.aToB.kind === "wall" && command.bToA.kind === "wall") {
         return link(m["post_edit.changes_action_set_edge_wall"](), edge(command.a, command.b), "<->");
       }
-      if (command.aToB === "basic" && command.bToA === "basic") {
+      if (command.aToB.kind === "basic" && command.bToA.kind === "basic") {
         return link(m["post_edit.changes_action_set_edge_passage"](), edge(command.a, command.b), "<->");
       }
       // `directionFlip` (GitHub issue #545): this click changed an already-one-way face's
       // direction rather than creating a fresh one-way passage — labeled distinctly, mirrors
       // `setVerticalPassageDirection` vs. `addVerticalPassage`.
-      const action = command.directionFlip
+      const baseAction = command.directionFlip
         ? m["post_edit.changes_action_flip_edge_one_way"]()
         : m["post_edit.changes_action_set_edge_one_way"]();
+      // The resulting one-way side's own id (GitHub issue #564) — whichever of `aToB`/`bToA` is the
+      // one-way side (`setEdgePair` never makes both sides one-way at once).
+      const oneWaySide = command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward" ? command.aToB : command.bToA;
+      const action = oneWaySide.kind === "one_way_forward" || oneWaySide.kind === "one_way_backward"
+        ? withId(baseAction, oneWaySide.id)
+        : baseAction;
       // Bubble order is always `a, b` (GitHub issue #546 follow-up: fixed point order, direction
       // shown by the arrow glyph alone, not by swapping which bubble comes first) — `aToB` says
       // whether traffic actually flows a->b or b->a.
-      return link(action, edge(command.a, command.b), command.aToB === "one_way_forward" ? "->" : "<-");
+      return link(action, edge(command.a, command.b), command.aToB.kind === "one_way_forward" ? "->" : "<-");
     }
     case "addTeleport":
-      return teleportRow(m["post_edit.changes_action_add_teleport"](), edge(command.from, command.to), teleportArrow(command.direction));
+      return teleportRow(withId(m["post_edit.changes_action_add_teleport"](), command.id), edge(command.from, command.to), teleportArrow(command.direction));
     case "setTeleportDirection":
       // `from`/`to` are this command's own denormalized fields (GitHub issue #564 follow-up) —
       // same reasoning as every vertical-passage command's fix.
-      return teleportRow(m["post_edit.changes_action_set_teleport_direction"](), edge(command.from, command.to), teleportArrow(command.direction));
+      return teleportRow(withId(m["post_edit.changes_action_set_teleport_direction"](), command.id), edge(command.from, command.to), teleportArrow(command.direction));
     case "moveTeleportEndpoint":
-      return teleportRow(m["post_edit.changes_action_move_teleport_endpoint"](), edge(command.from, command.to), teleportArrow(command.direction));
+      return teleportRow(withId(m["post_edit.changes_action_move_teleport_endpoint"](), command.id), edge(command.from, command.to), teleportArrow(command.direction));
     case "removeTeleport":
-      return teleportRow(m["post_edit.changes_action_remove_teleport"](), edge(command.from, command.to), teleportArrow(command.direction));
+      return teleportRow(withId(m["post_edit.changes_action_remove_teleport"](), command.id), edge(command.from, command.to), teleportArrow(command.direction));
     case "setMeta": {
       const set = command.endpoint !== null;
       const action = command.slot === "start"
@@ -279,27 +313,32 @@ export function postEditCommandLabel(
       return plain(action, bubbleEndpoint ? [endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx)] : []);
     }
     case "addSplitNode":
-      return plain(m["post_edit.changes_action_add_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]);
+      return plain(withId(m["post_edit.changes_action_add_split_node"](), command.pointId), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]);
     case "removeSplitNode":
-      return plain(m["post_edit.changes_action_remove_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]);
+      return plain(withId(m["post_edit.changes_action_remove_split_node"](), command.pointId), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]);
     case "rotateSplitPoint":
       return plain(m["post_edit.changes_action_rotate_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]);
     case "applySplitBlueprint": {
       const action = command.blueprintTitleKey
         ? m["post_edit.changes_action_apply_split_blueprint_named"]({ name: messageForTitleKey(command.blueprintTitleKey) })
         : m["post_edit.changes_action_apply_split_blueprint"]();
-      return plain(action, [splitPointBubble(command.point, command.level, multiFloor)]);
+      return plain(withId(action, command.pointId), [splitPointBubble(command.point, command.level, multiFloor)]);
     }
     case "updateSplitNodeFaces":
-      return plain(m["post_edit.changes_action_update_split_node_faces"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]);
+      return plain(
+        withId(m["post_edit.changes_action_update_split_node_faces"](), command.pointId),
+        [command.slotId === undefined
+          ? splitOriginalNodeBubble(command.point, command.level, nodeById, multiFloor, splitCtx)
+          : splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)],
+      );
     case "addVerticalPassage":
-      return verticalPassageRow(m["post_edit.changes_action_add_vertical_passage"](), verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx), verticalPassageArrow(command.direction));
+      return verticalPassageRow(withId(m["post_edit.changes_action_add_vertical_passage"](), command.id), verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx), verticalPassageArrow(command.direction));
     case "setVerticalPassageDirection":
       // `from`/`to` are this command's own denormalized fields (GitHub issue #564 follow-up) —
       // an id-based lookup into the CURRENT draft would show a stale or unresolved bubble for an
       // old row, since this id may have since moved on or been removed by a later command.
       return verticalPassageRow(
-        m["post_edit.changes_action_set_vertical_passage_direction"](),
+        withId(m["post_edit.changes_action_set_vertical_passage_direction"](), command.id),
         verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
         flippedVerticalPassageArrow(command.direction),
       );
@@ -309,7 +348,7 @@ export function postEditCommandLabel(
       // since-removed two-way passage's old move row to a plain "->", same class of bug the
       // bubbles had before.
       return verticalPassageRow(
-        m["post_edit.changes_action_move_vertical_passage_endpoint"](),
+        withId(m["post_edit.changes_action_move_vertical_passage_endpoint"](), command.id),
         verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
         verticalPassageArrow(command.direction),
       );
@@ -318,20 +357,18 @@ export function postEditCommandLabel(
       // #564 partial) — the entity is gone from the CURRENT draft by the time this row renders,
       // so an id-based lookup would otherwise always miss.
       return verticalPassageRow(
-        m["post_edit.changes_action_remove_vertical_passage"](),
+        withId(m["post_edit.changes_action_remove_vertical_passage"](), command.id),
         verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
         verticalPassageArrow(command.direction),
       );
     case "addElevator":
-      return elevatorRow(m["post_edit.changes_action_add_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
+      return elevatorRow(withId(m["post_edit.changes_action_add_elevator"](), command.id), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
     case "updateElevatorFloors":
-      return elevatorRow(m["post_edit.changes_action_update_elevator_floors"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
+      return elevatorRow(withId(m["post_edit.changes_action_update_elevator_floors"](), command.id), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
     case "removeElevator":
       // `floors` is the removed elevator's own denormalized field (GitHub issue #564 partial) —
       // same reasoning as `removeVerticalPassage` above.
-      return elevatorRow(m["post_edit.changes_action_remove_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
-    case "suppressGenerationPair":
-      return link(m["post_edit.changes_action_suppress_generation_pair"](), edge(command.a, command.b), "<->");
+      return elevatorRow(withId(m["post_edit.changes_action_remove_elevator"](), command.id), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
   }
 }
 

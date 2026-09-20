@@ -7,9 +7,8 @@ import { buildActiveCells } from "./selectors/fieldSelectors";
 import { buildCellSet } from "./selectors/sharedSelectors";
 import { pruneRemovedSplitNodes, postEditVerticalToDto } from "./postEditUtils";
 import { postEditTeleportsToDto } from "./postEditTeleportUtils";
-import { buildSplitNodeResolver, resolveEndpoint, nodeEndpoint } from "./postEditEndpoint";
+import { buildSplitNodeResolver, resolveEndpoint } from "./postEditEndpoint";
 import { buildMultiFloorPointNodeMap } from "../store/slices/postEditSliceHelpers";
-import { suppressionPairKey } from "./postEditReplay";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FeatureId } from "../store/tessellationTypes";
 
@@ -63,8 +62,9 @@ function resolveConfirmedEndpoints(st: MazeState): { start: number | null; finis
  *  Draft basic/wall edges are folded in for completeness but don't affect the inspector's output
  *  (it only reads nodes + start/finish + teleport/vertical/elevator markers). Draft split slots
  *  added but never confirmed aren't in `state.nodes` yet and so don't resolve — same limitation the
- *  renderer has. Generation-time vertical passages / elevators are resent from `_generatedEdges`
- *  minus any pair the user has since edited (`postEditSuppressed*Pairs`), mirroring `confirmPostEdit`. */
+ *  renderer has. Generation-time vertical passages / elevators are full baseline draft entries
+ *  (GitHub issue #564) — `postEditDraftVerticalPassages`/`postEditDraftElevators` already cover
+ *  them, no separate `_generatedEdges` resend needed. */
 export function buildPostEditMazeSource(st: MazeState): MazeGraph {
   const prunedNodes = pruneRemovedSplitNodes(st.nodes, st.postEditDraftSplitPoints, (n) => {
     const level = n.level ?? 0;
@@ -73,22 +73,11 @@ export function buildPostEditMazeSource(st: MazeState): MazeGraph {
   const resolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(prunedNodes), st.postEditDraftSplitPoints);
 
   const draftVerticalEdges = postEditVerticalToDto(st.postEditDraftVerticalPassages, st.postEditDraftElevators, resolveSplit);
-  const generatedVerticalEdges: EdgeDto[] = st._generatedEdges
-    .filter((e): e is EdgeDto & { kind: "vertical_passage" | "elevator" } =>
-      e.kind === "vertical_passage" || e.kind === "elevator")
-    .filter((e) => {
-      const key = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
-      return e.kind === "elevator"
-        ? !st.postEditSuppressedElevatorPairs.has(key)
-        : !st.postEditSuppressedVerticalPassagePairs.has(key);
-    })
-    .map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
 
   const edges: EdgeDto[] = [
     ...postEditEdgesToDto(st.postEditDraftEdges, resolveSplit),
     ...postEditTeleportsToDto(st.postEditDraftTeleports, resolveSplit),
     ...draftVerticalEdges,
-    ...generatedVerticalEdges,
   ];
 
   // Draft start/finish overrides (`postEditDraftMeta`); when no draft meta exists yet, fall back

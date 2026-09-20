@@ -20,6 +20,10 @@ export interface ProjectFilePostEdit {
   nextElevatorId: number;
   /** Per point key ("x,y" or "x,y@level") high-water mark for that point's split slot ids. */
   nextSplitSlotId: Record<string, number>;
+  /** High-water mark for one-way edge ids (GitHub issue #564). */
+  nextOneWayId: number;
+  /** High-water mark for split point (whole-tile) ids (GitHub issue #564). */
+  nextSplitPointId: number;
 }
 
 export interface ProjectFileAnalytics {
@@ -199,4 +203,7 @@ export interface ProjectFile {
   floors: ProjectFileFloors;
 }
 
-export const CURRENT_VERSION = 4;
+// v4 -> v5 (GitHub issue #564): stable ids for one-way edges/split points; `suppressGenerationPair`
+// and the `suppressPair(s)` fields removed; generation-baked vertical passages/elevators are now
+// full baseline draft entries. Breaking, no migration — same policy as v3 -> v4.
+export const CURRENT_VERSION = 5;

@@ -1,11 +1,11 @@
-import type { NodeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto } from "../wasm/types";
 import type {
   PostEditVerticalPassageEntry, PostEditVerticalPassageDirection, PostEditVerticalPassageEndpointHit,
   PostEditElevatorEntry,
 } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { type PostEditEndpoint, resolveEndpoint } from "./postEditEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey } from "./postEditEndpoint";
 import { TELEPORT_ENDPOINT_HIT_RADIUS } from "./postEditTeleportUtils";
 
 /** Same hit-test as `pickPostEditTeleportEndpointAt`, for post-edit vertical passages (GitHub issue
@@ -64,7 +64,7 @@ export function findPostEditVerticalPassageForPair(
 /** Only meaningful for the `vertical_passage_one_way` tool — mirrors `cycleVerticalPassageDirection`. */
 export function cyclePostEditVerticalPassageDirection(
   passages: PostEditVerticalPassageEntry[],
-  id: number,
+  id: string,
 ): PostEditVerticalPassageEntry[] {
   return passages.map(p => {
     if (p.id !== id || p.direction === "two_way") return p;
@@ -72,7 +72,7 @@ export function cyclePostEditVerticalPassageDirection(
   });
 }
 
-export function removePostEditVerticalPassage(passages: PostEditVerticalPassageEntry[], id: number): PostEditVerticalPassageEntry[] {
+export function removePostEditVerticalPassage(passages: PostEditVerticalPassageEntry[], id: string): PostEditVerticalPassageEntry[] {
   return passages.filter(p => p.id !== id);
 }
 
@@ -87,7 +87,7 @@ export function movePostEditVerticalPassageEndpoint(
   });
 }
 
-export function removePostEditElevator(elevators: PostEditElevatorEntry[], id: number): PostEditElevatorEntry[] {
+export function removePostEditElevator(elevators: PostEditElevatorEntry[], id: string): PostEditElevatorEntry[] {
   return elevators.filter(e => e.id !== id);
 }
 
@@ -125,6 +125,73 @@ export function elevatorComponent(edges: { from: number; to: number; kind: strin
     }
   }
   return component;
+}
+
+/** Rebuilds editable vertical-passage entries from generation's `EdgeDto[]` (GitHub issue #564) —
+ * mirrors `extractPostEditTeleports`'s collapse-forward+backward-into-one-entry pattern, but keyed
+ * by a canonical **endpoint** pair (`endpointKey(endpointFor(nodeId))`), not a raw node-id pair —
+ * a raw `NodeId` is not guaranteed stable across regenerate/reload the way a resolved
+ * `PostEditEndpoint` key is (see `resolverForNodeId`'s doc comment). Returns id-less entities plus
+ * their own canonical key, entity/key assignment deliberately split (see `assignSequentialIds`) so
+ * extraction stays a pure function of `edges`, with no id-allocation policy baked in. */
+export function extractPostEditVerticalPassages(
+  edges: EdgeDto[],
+  endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
+): { entity: Omit<PostEditVerticalPassageEntry, "id">; key: string }[] {
+  const vpEdges = edges.filter(e => e.kind === "vertical_passage");
+  const byPair = new Set(vpEdges.map(e => `${e.from}->${e.to}`));
+  const seenPairKey = new Set<string>();
+  const result: { entity: Omit<PostEditVerticalPassageEntry, "id">; key: string }[] = [];
+
+  for (const e of vpEdges) {
+    const from = endpointFor(e.from);
+    const to = endpointFor(e.to);
+    const fromKey = endpointKey(from);
+    const toKey = endpointKey(to);
+    const pairKey = fromKey < toKey ? `${fromKey},${toKey}` : `${toKey},${fromKey}`;
+    if (seenPairKey.has(pairKey)) continue;
+    seenPairKey.add(pairKey);
+
+    const reverseExists = byPair.has(`${e.to}->${e.from}`);
+    result.push({
+      entity: { from, to, direction: reverseExists ? "two_way" : "forward" },
+      key: pairKey,
+    });
+  }
+
+  return result;
+}
+
+/** Rebuilds editable elevator entries from generation's `EdgeDto[]` (GitHub issue #564) —
+ * partitions every `elevator`-kind edge into connected components via `elevatorComponent` (one
+ * `visited`-set pass so each component is emitted exactly once), each component being one logical
+ * elevator — the same connected-component identity `markerIndex.ts`'s own `elevatorComponent` call
+ * already relies on for image-export marker numbering, not a new invariant. Canonical key is the
+ * sorted, joined list of the component's own `endpointKey(endpointFor(nodeId))` values — stable
+ * under raw `NodeId` reshuffling the same way `extractPostEditVerticalPassages`'s pair key is. */
+export function extractPostEditElevators(
+  edges: EdgeDto[],
+  endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
+): { entity: Omit<PostEditElevatorEntry, "id">; key: string }[] {
+  const elevatorEdges = edges.filter(e => e.kind === "elevator");
+  const nodeIds = new Set<number>();
+  for (const e of elevatorEdges) {
+    nodeIds.add(e.from);
+    nodeIds.add(e.to);
+  }
+  const visited = new Set<number>();
+  const result: { entity: Omit<PostEditElevatorEntry, "id">; key: string }[] = [];
+
+  for (const nodeId of nodeIds) {
+    if (visited.has(nodeId)) continue;
+    const component = elevatorComponent(elevatorEdges, [nodeId]);
+    for (const id of component) visited.add(id);
+    const floors = [...component].map((id) => endpointFor(id));
+    const key = floors.map((f) => endpointKey(f)).sort().join("|");
+    result.push({ entity: { floors }, key });
+  }
+
+  return result;
 }
 
 /** `PostEditVerticalPassageEntry.direction` → the wire `VerticalPassageDirectionDto` — mirrors

@@ -22,8 +22,7 @@ import { WALL_THICKNESS } from "./renderConstants";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, nodeEndpoint } from "./postEditEndpoint";
-import { suppressionPairKey } from "./postEditReplay";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 
@@ -365,7 +364,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, edges, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
+    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
     const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages } = this.dragOverrideFields(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
@@ -459,65 +458,24 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg, teleportFloorContext, teleportBadgeSpread);
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
 
-    // Vertical passages/elevators — generation-time ones are read from the confirmed
-    // `state.nodes`/`state.edges` graph directly, not from `activeEdges` (post-edit's own draft
-    // edges/teleports); user-placed ones (GitHub issue #341) come from
-    // `postEditDraftVerticalPassages`/`postEditDraftElevators` instead, converted the same way
-    // `activeEdges` converts draft teleports. `edges`/`nodeById` here are already floor-scoped
-    // (`floorScoped`'s `selectFloorScopedMaze`, which keeps a vertical/elevator edge whenever its
-    // `from` is on the active floor); `resolveNodeLevel`/`verticalPairs` must come from the
-    // *unscoped* `state.nodes`/(`state.edges` + draft) instead, same reason
-    // `selectVerticalPassagePairSet`'s own doc comment gives (a floor-scoped edge list is missing
-    // the reverse-direction edge of a bidirectional passage, whose own `from` lives on the other
-    // floor).
+    // Vertical passages/elevators — generation-time and user-placed ones are both full baseline
+    // draft entries now (GitHub issue #564), so `postEditDraftVerticalPassages`/
+    // `postEditDraftElevators` is the single source of truth; `state.edges`'s own
+    // `vertical_passage`/`elevator` entries are stale mirrors and excluded entirely (no suppression
+    // bookkeeping needed — a draft entity always wins). `resolveNodeLevel`/`verticalPairs` still
+    // need the *unscoped* node/edge set, same reason `selectVerticalPassagePairSet`'s own doc
+    // comment gives (a floor-scoped edge list is missing the reverse-direction edge of a
+    // bidirectional passage, whose own `from` lives on the other floor).
     const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, state.postEditDraftElevators, resolveSplit);
-    // A draft vertical passage's own already-confirmed mirror in `state.edges` (folded back by
-    // every `confirmPostEdit`, per `cyclePostEditVerticalPassageDirection`'s own doc comment) is
-    // only added to `postEditSuppressedVerticalPassagePairs` on the NEXT edit's own command
-    // (`moveVerticalPassageEndpoint`'s `suppressPairs`, `setVerticalPassageDirection`'s
-    // `suppressPair`) — a log-derived fact, updated on release/confirm, not on every render frame.
-    // While a drag is in progress but not yet released, the confirmed mirror is thus still
-    // unsuppressed at its OLD position, and `draftVerticalEdges` above already draws the SAME
-    // entity at its live drag-override position — both rendered at once, reading as "duplicated"
-    // (GitHub issue #564 follow-up: only the very first drag right after creating/confirming a
-    // passage showed this, since every subsequent drag's own release had already added the
-    // suppress pair for the entity's current position by the time the next drag started). Fixed by
-    // always suppressing a draft entity's own current confirmed mirror here, unconditionally —
-    // computed fresh every render from `state.postEditDraftVerticalPassages`'s un-overridden from/to
-    // (the entity's own identity, not wherever the in-progress drag currently points it), not read
-    // from the log-derived set at all.
-    const ownDraftVerticalPairKeys = new Set(
-      state.postEditDraftVerticalPassages
-        .map((p) => {
-          const from = resolveEndpoint(p.from, resolveSplit);
-          const to = resolveEndpoint(p.to, resolveSplit);
-          return from !== undefined && to !== undefined ? suppressionPairKey(nodeEndpoint(from), nodeEndpoint(to)) : null;
-        })
-        .filter((k): k is string => k !== null),
-    );
-    // Drop a generation-time `elevator`/`vertical_passage` edge once the user has edited that
-    // connection (see `postEditSuppressedElevatorPairs`'s/`postEditSuppressedVerticalPassagePairs`'s
-    // own doc comments) — draws the same "draft is now authoritative" state confirmPostEdit will
-    // send, without waiting for the next confirm.
-    const isSuppressedEdge = (e: { from: number; to: number; kind: string }) => {
-      if (e.kind !== "elevator" && e.kind !== "vertical_passage") return false;
-      const key = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
-      if (e.kind === "vertical_passage" && ownDraftVerticalPairKeys.has(key)) return true;
-      return e.kind === "elevator"
-        ? state.postEditSuppressedElevatorPairs.has(key)
-        : state.postEditSuppressedVerticalPassagePairs.has(key);
-    };
-    const stateEdgesUnsuppressed = state.edges.filter((e) => !isSuppressedEdge(e));
-    const edgesUnsuppressed = edges.filter((e) => !isSuppressedEdge(e));
-    const allVerticalEdges = [...stateEdgesUnsuppressed, ...draftVerticalEdges];
+    const allVerticalEdges = draftVerticalEdges;
     // Positioning split-node vertical markers also needs the ordinary directed graph edges so
     // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate
     // for pair/arrival semantics, while feeding the full confirmed + draft graph to the selector.
     const allMarkerEdges = [...allVerticalEdges, ...unscopedActiveEdges];
-    const floorScopedVerticalEdges = [...edgesUnsuppressed, ...draftVerticalEdges.filter((e) => {
+    const floorScopedVerticalEdges = draftVerticalEdges.filter((e) => {
       const fromNode = nodeById.get(e.from);
       return fromNode !== undefined;
-    })];
+    });
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
       nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
       selectVerticalPassagePairSet(allVerticalEdges), allMarkerEdges,

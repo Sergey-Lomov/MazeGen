@@ -4,6 +4,7 @@ import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint } from "./postEditEndpoint";
+import { formatPostEditId } from "./postEditIdFormat";
 
 /** Rebuilds editable teleport entries from generation's EdgeDto[]. Kept as their own list rather
  * than folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` (keyed by `from-to`), since a
@@ -29,7 +30,11 @@ export function extractPostEditTeleports(
 
     const reverseExists = byPair.has(`${e.to}->${e.from}`);
     teleports.push({
-      id: nextId,
+      // Provisional — `buildMultiFloorPostEditDraft` renumbers every teleport globally after
+      // merging all batches (see its own doc comment), so this id is never the final one for a
+      // multi-floor draft; formatted here only so a caller using a single batch directly (e.g. a
+      // unit test) sees the right string shape.
+      id: formatPostEditId("teleport", nextId),
       from: endpointFor(e.from),
       to: endpointFor(e.to),
       direction: reverseExists ? "two_way" : "forward",
@@ -72,7 +77,7 @@ export function postEditTeleportsToDto(
 
 export function cyclePostEditTeleportDirection(
   teleports: PostEditTeleportEntry[],
-  id: number,
+  id: string,
 ): PostEditTeleportEntry[] {
   return teleports.map(t => {
     if (t.id !== id || t.direction === "two_way") return t;
@@ -80,7 +85,7 @@ export function cyclePostEditTeleportDirection(
   });
 }
 
-export function removePostEditTeleport(teleports: PostEditTeleportEntry[], id: number): PostEditTeleportEntry[] {
+export function removePostEditTeleport(teleports: PostEditTeleportEntry[], id: string): PostEditTeleportEntry[] {
   return teleports.filter(t => t.id !== id);
 }
 
