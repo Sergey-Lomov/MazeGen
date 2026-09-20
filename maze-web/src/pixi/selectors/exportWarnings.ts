@@ -10,12 +10,17 @@ import {
   selectNodeLevelResolver,
   selectVerticalPassagePairSet,
   buildVerticalConnectionMarkers,
+  selectFloorScopedMaze,
 } from "./mazeSelectors";
+import type { TeleportFloorContext } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
 import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../constants";
+import { hasLowContrast } from "../colorContrast";
+import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilders";
+import { nearestCellCoord } from "../tessellationGeometry";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
  *  render mode still can't depict some case correctly (GitHub issue #298), e.g. a teleport whose
@@ -74,7 +79,77 @@ export type ExportWarningId =
    *  floor, so the player has no way to tell the two apart. One warning total, covering every such
    *  cell (one elevator shaft has at most one node per floor, so two elevator nodes in one cell are
    *  always distinct shafts). */
-  | "elevator_indistinguishable";
+  | "elevator_indistinguishable"
+  | "one_way_low_contrast_corridor"
+  | "corridor_low_contrast_background"
+  | "teleport_connector_low_contrast_corridor"
+  | "teleport_connector_low_contrast_background"
+  | "split_low_contrast_corridor"
+  | "teleport_connector_low_contrast_floor"
+  | "teleport_connector_low_contrast_wall"
+  | "split_low_contrast_floor"
+  | "grid_low_contrast_background"
+  | "marker_fill_low_contrast"
+  | "marker_border_low_contrast"
+  | "marker_fill_low_contrast_corridor"
+  | "marker_fill_low_contrast_floor"
+  | "marker_border_low_contrast_corridor"
+  | "marker_border_low_contrast_floor"
+  | "label_low_contrast"
+  | "teleport_badge_text_low_contrast"
+  | "vertical_arrow_low_contrast"
+  | "vertical_one_way_arrow_low_contrast_fill"
+  | "vertical_two_way_fill_low_contrast_one_way_accent"
+  | "vertical_two_way_border_low_contrast_one_way_accent"
+  | "elevator_arrow_low_contrast"
+  | "vertical_one_way_accent_low_contrast_fill"
+  | "vertical_one_way_accent_low_contrast_arrow"
+  | "elevator_badge_fill_low_contrast"
+  | "elevator_badge_fill_low_contrast_corridor"
+  | "elevator_badge_fill_low_contrast_floor"
+  | "teleport_badge_border_low_contrast"
+  | "teleport_badge_border_low_contrast_corridor"
+  | "teleport_badge_border_low_contrast_floor"
+  | "split_low_contrast_background"
+  | "split_colors_low_contrast_each_other"
+  | "wall_low_contrast_floor"
+  | "vertical_two_way_line_low_contrast_floor"
+  | "vertical_two_way_arrow_low_contrast_floor"
+  | "vertical_one_way_line_low_contrast_floor"
+  | "vertical_one_way_accent_low_contrast_floor"
+  | "elevator_line_low_contrast_floor";
+
+export type ExportWarningColorRole =
+  | "background" | "grid" | "corridor" | "floor" | "wall"
+  | "one_way" | "split" | "marker_fill" | "marker_border" | "label_text" | "label_background"
+  | "teleport_connector" | "teleport_badge_border" | "teleport_badge_fill" | "teleport_badge_text"
+  | "vertical_two_way_fill" | "vertical_two_way_border" | "vertical_two_way_arrow"
+  | "vertical_two_way_line" | "vertical_one_way_fill" | "vertical_one_way_accent" | "vertical_one_way_arrow" | "vertical_one_way_line"
+  | "elevator_fill" | "elevator_border" | "elevator_arrow" | "elevator_line"
+  | "elevator_badge_fill";
+
+const COLOR_ROLES_BY_WARNING_ID: Partial<Record<ExportWarningId, [ExportWarningColorRole, ExportWarningColorRole]>> = {
+  one_way_low_contrast_corridor: ["one_way", "corridor"], corridor_low_contrast_background: ["corridor", "background"],
+  teleport_connector_low_contrast_corridor: ["teleport_connector", "corridor"], teleport_connector_low_contrast_background: ["teleport_connector", "background"],
+  split_low_contrast_corridor: ["split", "corridor"], teleport_connector_low_contrast_floor: ["teleport_connector", "floor"],
+  teleport_connector_low_contrast_wall: ["teleport_connector", "wall"], split_low_contrast_floor: ["split", "floor"],
+  split_low_contrast_background: ["split", "background"], grid_low_contrast_background: ["grid", "background"],
+  marker_fill_low_contrast: ["marker_fill", "floor"], marker_border_low_contrast: ["marker_border", "floor"],
+  marker_fill_low_contrast_corridor: ["marker_fill", "corridor"], marker_fill_low_contrast_floor: ["marker_fill", "floor"],
+  marker_border_low_contrast_corridor: ["marker_border", "corridor"], marker_border_low_contrast_floor: ["marker_border", "floor"],
+  label_low_contrast: ["label_text", "label_background"], teleport_badge_text_low_contrast: ["teleport_badge_text", "teleport_badge_fill"],
+  vertical_arrow_low_contrast: ["vertical_two_way_arrow", "vertical_two_way_fill"], vertical_one_way_arrow_low_contrast_fill: ["vertical_one_way_arrow", "vertical_one_way_fill"],
+  vertical_two_way_fill_low_contrast_one_way_accent: ["vertical_two_way_fill", "vertical_one_way_accent"], vertical_two_way_border_low_contrast_one_way_accent: ["vertical_two_way_border", "vertical_one_way_accent"],
+  elevator_arrow_low_contrast: ["elevator_arrow", "elevator_fill"], vertical_one_way_accent_low_contrast_fill: ["vertical_one_way_accent", "vertical_one_way_fill"],
+  vertical_one_way_accent_low_contrast_arrow: ["vertical_one_way_accent", "vertical_one_way_arrow"], elevator_badge_fill_low_contrast: ["elevator_badge_fill", "floor"],
+  elevator_badge_fill_low_contrast_corridor: ["elevator_badge_fill", "corridor"], elevator_badge_fill_low_contrast_floor: ["elevator_badge_fill", "floor"],
+  teleport_badge_border_low_contrast: ["teleport_badge_border", "floor"], teleport_badge_border_low_contrast_corridor: ["teleport_badge_border", "corridor"],
+  teleport_badge_border_low_contrast_floor: ["teleport_badge_border", "floor"], split_colors_low_contrast_each_other: ["split", "split"],
+  wall_low_contrast_floor: ["wall", "floor"], vertical_two_way_line_low_contrast_floor: ["vertical_two_way_line", "floor"],
+  vertical_two_way_arrow_low_contrast_floor: ["vertical_two_way_arrow", "floor"],
+  vertical_one_way_accent_low_contrast_floor: ["vertical_one_way_accent", "floor"], elevator_line_low_contrast_floor: ["elevator_line", "floor"],
+  vertical_one_way_line_low_contrast_floor: ["vertical_one_way_line", "floor"],
+};
 
 export type ExportWarning = {
   id: ExportWarningId;
@@ -91,6 +166,13 @@ export type ExportWarning = {
   /** [from, to] node-id pairs whose connecting line should be highlighted on hover, in addition to
    *  `nodes`. */
   edges: [number, number][];
+  /** Semantic color roles used to render the detailed contrast explanation. */
+  colorRoles?: [ExportWarningColorRole, ExportWarningColorRole];
+  /** Actual foreground/background values used by the contrast check, in RGB integer form. */
+  colorValues?: [number, number];
+  /** Explicit rendered cells for warnings whose visual target is not a node (e.g. a cross-floor
+   *  teleport badge at the snapped midpoint). */
+  cells?: { x: number; y: number; floorIndex: number }[];
   /** `(onFloorNode, targetFloorIndex)` pairs for a floor-crossing warning whose flagged entity has
    *  no real off-floor node of its own to point `edges` at (GitHub issue #430's
    *  `elevator_badges_overlap`: the elevator's own badge ring reaches several floors, each a plain
@@ -314,6 +396,425 @@ function computeElevatorIndistinguishableWarning(
   };
 }
 
+type WarningEdge = [number, number];
+
+type ContrastEntry = {
+  foreground: number;
+  background: number;
+  nodes?: Iterable<number>;
+  edges?: readonly WarningEdge[];
+  cells?: readonly { x: number; y: number; floorIndex: number }[];
+};
+
+type WarningFloor = { id: string };
+
+function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: NodeDto[]): ExportWarning[] {
+  const byKey = new Map<string, ExportWarning>();
+  const nodeById = new Map(allNodes.map((node) => [node.id, node]));
+  for (const warnings of warningLists) {
+    for (const warning of warnings) {
+      const existing = byKey.get(warning.key);
+      if (!existing) {
+        byKey.set(warning.key, {
+          ...warning,
+          nodes: Array.from(new Set(warning.nodes)),
+          edges: Array.from(new Set(warning.edges.map(([from, to]) => `${from}:${to}`))).map((key) => key.split(":").map(Number) as [number, number]),
+          cells: warning.cells ? [...warning.cells] : undefined,
+          crossFloorTargets: warning.crossFloorTargets ? [...warning.crossFloorTargets] : undefined,
+        });
+        continue;
+      }
+      existing.nodes = Array.from(new Set([...existing.nodes, ...warning.nodes]));
+      const edgeKeys = new Set(existing.edges.map(([from, to]) => `${from}:${to}`));
+      for (const edge of warning.edges) {
+        const key = `${edge[0]}:${edge[1]}`;
+        if (!edgeKeys.has(key)) { existing.edges.push(edge); edgeKeys.add(key); }
+      }
+      existing.crossFloorTargets = [...(existing.crossFloorTargets ?? []), ...(warning.crossFloorTargets ?? [])];
+      existing.cells = [...(existing.cells ?? []), ...(warning.cells ?? [])];
+    }
+  }
+  for (const warning of byKey.values()) {
+    const targets = new Map<string, { nodeId: number; targetFloorIndex: number }>();
+    for (const target of warning.crossFloorTargets ?? []) targets.set(`${target.nodeId}:${target.targetFloorIndex}`, target);
+    for (const nodeId of warning.nodes) {
+      const node = nodeById.get(nodeId);
+      if (node) targets.set(`${nodeId}:${node.level ?? 0}`, { nodeId, targetFloorIndex: node.level ?? 0 });
+    }
+    warning.crossFloorTargets = Array.from(targets.values());
+    if (warning.cells) {
+      const cellKeys = new Set<string>();
+      warning.cells = warning.cells.filter((cell) => {
+        const key = `${cell.x}:${cell.y}:${cell.floorIndex}`;
+        if (cellKeys.has(key)) return false;
+        cellKeys.add(key);
+        return true;
+      });
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+export function computeVectorByWallsWarningsAcrossFloors(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  settings: VectorByWallsSettings, start: number | null, finish: number | null,
+): ExportWarning[] {
+  const warningLists = floors.map((floor) => {
+    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
+    const floorContext: TeleportFloorContext = {
+      resolveNodeLevel: selectNodeLevelResolver(nodes),
+      unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
+      unscopedEdges: edges,
+      activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+    };
+    return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext);
+  });
+  return mergeWarningsAcrossFloors(warningLists, nodes);
+}
+
+export function computeVectorByCorridorsWarningsAcrossFloors(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
+): ExportWarning[] {
+  const warningLists = floors.map((floor) => {
+    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
+    const floorContext: TeleportFloorContext = {
+      resolveNodeLevel: selectNodeLevelResolver(nodes),
+      unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
+      unscopedEdges: edges,
+      activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+    };
+    return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes);
+  });
+  return mergeWarningsAcrossFloors(warningLists, nodes);
+}
+
+function pushContrastWarningEntries(
+  warnings: ExportWarning[],
+  id: ExportWarningId,
+  entries: readonly ContrastEntry[],
+): void {
+  const grouped = new Map<string, { nodes: Set<number>; edges: WarningEdge[]; cells: { x: number; y: number; floorIndex: number }[]; colorValues: [number, number] }>();
+  for (const entry of entries) {
+    if (!hasLowContrast(entry.foreground, entry.background)) continue;
+    const colorValues: [number, number] = [entry.foreground, entry.background];
+    const key = `${id}:${entry.foreground.toString(16)}:${entry.background.toString(16)}`;
+    const group = grouped.get(key) ?? { nodes: new Set<number>(), edges: [], cells: [], colorValues };
+    for (const node of entry.nodes ?? []) group.nodes.add(node);
+    group.edges.push(...(entry.edges ?? []));
+    group.cells.push(...(entry.cells ?? []));
+    grouped.set(key, group);
+  }
+  for (const [key, group] of grouped) {
+    warnings.push({
+      id,
+      key,
+      nodes: Array.from(group.nodes),
+      edges: group.edges,
+      cells: group.cells.length > 0 ? group.cells : undefined,
+      colorRoles: COLOR_ROLES_BY_WARNING_ID[id],
+      colorValues: group.colorValues,
+    });
+  }
+}
+
+function pushContrastWarning(
+  warnings: ExportWarning[],
+  id: ExportWarningId,
+  pairs: readonly (readonly [number, number])[],
+  nodes: Iterable<number> = [],
+  edges: readonly WarningEdge[] = [],
+): void {
+  pushContrastWarningEntries(warnings, id, pairs.map(([foreground, background]) => ({ foreground, background, nodes, edges })));
+}
+
+function edgeNodeIds(edges: EdgeDto[], nodeById: Map<number, NodeDto>): number[] {
+  const ids = new Set<number>();
+  for (const edge of edges) {
+    if (nodeById.has(edge.from)) ids.add(edge.from);
+    if (nodeById.has(edge.to)) ids.add(edge.to);
+  }
+  return Array.from(ids);
+}
+
+function edgePairs(edges: EdgeDto[]): WarningEdge[] {
+  return edges.map((edge) => [edge.from, edge.to]);
+}
+
+function teleportConnectorEntries(
+  teleportEdges: TeleportEdge[],
+  settings: TeleportSettingsFields,
+  background: number,
+): ContrastEntry[] {
+  const baseNodes = teleportEdges.flatMap((edge) => [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined));
+  if (!settings.teleportGroupCustomization) {
+    return [{ foreground: settings.teleportConnectorColor, background, nodes: baseNodes }];
+  }
+  const groups = buildTeleportGroups(teleportEdges);
+  const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
+  const entries: ContrastEntry[] = [];
+  for (const group of groups) {
+    const override = settings.teleportGroupOverrides[group.key];
+    const groupEdges = group.edgeKeys.map((key) => edgesByKey.get(key)).filter((edge): edge is TeleportEdge => edge !== undefined);
+    entries.push({
+      foreground: override?.borderColor ?? settings.teleportConnectorColor,
+      background,
+      nodes: groupEdges.flatMap((edge) => [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined)),
+    });
+  }
+  return entries;
+}
+
+function teleportBadgeBorderEntries(
+  teleportEdges: TeleportEdge[],
+  settings: TeleportSettingsFields,
+  background: number,
+  displayFloorIndex: number,
+  cfg: TessellationConfig,
+): ContrastEntry[] {
+  const crossFloorEdges = teleportEdges.filter((edge) => edge.toFloor !== undefined || edge.fromFloor !== undefined);
+  if (!settings.teleportGroupCustomization) {
+    return [{ foreground: settings.teleportFloorBadge.borderColor, background, cells: teleportBadgeCells(crossFloorEdges, displayFloorIndex, cfg) }];
+  }
+  const groups = buildTeleportGroups(teleportEdges);
+  const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
+  return groups.map((group) => {
+    const override = settings.teleportGroupOverrides[group.key];
+    const groupEdges = group.edgeKeys.map((key) => edgesByKey.get(key)).filter((edge): edge is TeleportEdge => edge !== undefined && (edge.toFloor !== undefined || edge.fromFloor !== undefined));
+    return {
+      foreground: override?.borderColor ?? settings.teleportFloorBadge.borderColor,
+      background,
+      cells: teleportBadgeCells(groupEdges, displayFloorIndex, cfg),
+    };
+  });
+}
+
+function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cfg: TessellationConfig): { x: number; y: number; floorIndex: number }[] {
+  const cells: { x: number; y: number; floorIndex: number }[] = [];
+  for (const edge of edges) {
+    if (edge.toFloor !== undefined) {
+      const [x, y] = nearestCellCoord(edge.to[0], edge.to[1], cfg);
+      cells.push({ x, y, floorIndex: displayFloorIndex });
+    }
+    if (edge.fromFloor !== undefined) {
+      const [x, y] = nearestCellCoord(edge.from[0], edge.from[1], cfg);
+      cells.push({ x, y, floorIndex: displayFloorIndex });
+    }
+  }
+  return cells;
+}
+
+function verticalPassageEdges(edges: EdgeDto[]): EdgeDto[] {
+  return edges.filter((edge) => edge.kind === "vertical_passage");
+}
+
+function oneWayVerticalPassageEdges(edges: EdgeDto[], allEdges: EdgeDto[] = edges): EdgeDto[] {
+  const vertical = verticalPassageEdges(edges);
+  const pairs = new Set(allEdges.filter((edge) => edge.kind === "vertical_passage").map((edge) => `${edge.from}->${edge.to}`));
+  return vertical.filter((edge) => !pairs.has(`${edge.to}->${edge.from}`));
+}
+
+function splitContrastData(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  splitNodeColors: readonly number[],
+): { colors: number[]; keys: string[]; nodes: number[] } {
+  if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [] };
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const effectiveColors = buildEffectiveSplitNodeColors(splitNodeColors, maxSplitNodeCount(nodes));
+  const { passages } = buildSplitPassages(nodes, edges, cfg, new Set(), {}, {}, effectiveColors);
+  const colors: number[] = [];
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const ids = new Set<number>();
+  for (const [passageIndex, passage] of passages.entries()) {
+    const key = `${passage.pointKey}:${passageIndex}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      colors.push(passage.color);
+      keys.push(key);
+    }
+    for (const node of nodeById.values()) {
+      if (`${node.x},${node.y}` === passage.pointKey) ids.add(node.id);
+    }
+  }
+  return { colors, keys, nodes: Array.from(ids) };
+}
+
+function pushSplitPairwiseWarning(warnings: ExportWarning[], colors: readonly number[], keys: readonly string[], nodes: readonly number[]): void {
+  const entries: ContrastEntry[] = [];
+  for (let i = 0; i < colors.length; i++) {
+    for (let j = i + 1; j < colors.length; j++) {
+      if (keys[i] === keys[j]) continue;
+      entries.push({ foreground: colors[i], background: colors[j], nodes });
+    }
+  }
+  pushContrastWarningEntries(warnings, "split_colors_low_contrast_each_other", entries);
+}
+
+function addCommonContrastWarnings(
+  warnings: ExportWarning[],
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  baseColor: number,
+  background: number,
+  showGrid: boolean,
+  settings: VectorByWallsSettings | VectorByCorridorsSettings,
+  teleportEdges: TeleportEdge[],
+  allNodesForWarnings: NodeDto[],
+  allEdgesForWarnings: EdgeDto[],
+  start: number | null,
+  finish: number | null,
+  verticalStyle: "abstract" | "decorative",
+  displayFloorIndex: number,
+  cfg: TessellationConfig,
+): void {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const warningNodeById = new Map(allNodesForWarnings.map((node) => [node.id, node]));
+  const surfaceKind = "floorColor" in settings ? "floor" : "corridor";
+  const markerFillWarningId = surfaceKind === "floor" ? "marker_fill_low_contrast_floor" : "marker_fill_low_contrast_corridor";
+  const markerBorderWarningId = surfaceKind === "floor" ? "marker_border_low_contrast_floor" : "marker_border_low_contrast_corridor";
+  const elevatorBadgeFillWarningId = surfaceKind === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor";
+  const teleportBadgeBorderWarningId = surfaceKind === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
+  const vertical = verticalPassageEdges(edges);
+  const oneWayVertical = oneWayVerticalPassageEdges(edges, allEdgesForWarnings);
+  const elevator = edges.filter((edge) => edge.kind === "elevator");
+  const teleport = edges.filter((edge) => edge.kind === "teleport");
+  if (showGrid) pushContrastWarning(warnings, "grid_low_contrast_background", [[settings.gridColor, background]]);
+
+  const fillEntries: ContrastEntry[] = [];
+  const borderEntries: ContrastEntry[] = [];
+  const addMarker = (marker: { fillColor: number; borderColor: number; borderWidth: number }, markerNodes: Iterable<number>) => {
+    const entry = { nodes: markerNodes };
+    if (marker.borderWidth === 0) fillEntries.push({ foreground: marker.fillColor, background: baseColor, ...entry });
+    else borderEntries.push({ foreground: marker.borderColor, background: baseColor, ...entry });
+  };
+  if (start !== null && nodeById.has(start)) addMarker(settings.startMarker, [start]);
+  if (finish !== null && nodeById.has(finish)) addMarker(settings.finishMarker, [finish]);
+  if (teleport.length > 0) {
+    const groups = settings.teleportGroupCustomization ? buildTeleportGroups(teleportEdges) : [];
+    const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
+    if (groups.length === 0) {
+      addMarker({ fillColor: settings.teleportEdgeColor, borderColor: settings.teleportEdgeBorderColor, borderWidth: settings.teleportEdgeBorderWidth }, teleportEdges.flatMap((edge) => [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined)));
+    } else {
+      for (const group of groups) {
+        const override = settings.teleportGroupOverrides[group.key];
+        const groupNodeIds = group.edgeKeys.flatMap((key) => {
+          const edge = edgesByKey.get(key);
+          return edge ? [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined) : [];
+        });
+        addMarker({
+          fillColor: override?.fillColor ?? settings.teleportEdgeColor,
+          borderColor: override?.borderColor ?? settings.teleportEdgeBorderColor,
+          borderWidth: settings.teleportEdgeBorderWidth,
+        }, groupNodeIds);
+      }
+    }
+  }
+  for (const edge of vertical) {
+    if (!oneWayVertical.includes(edge)) addMarker(settings.twoWayPassageMarker, [edge.from, edge.to]);
+  }
+  for (const edge of oneWayVertical) {
+    addMarker({ ...settings.oneWayPassageMarker, borderColor: settings.oneWayAccentColor }, [edge.from, edge.to]);
+  }
+  for (const edge of elevator) addMarker(settings.elevatorMarker, [edge.from, edge.to]);
+  pushContrastWarningEntries(warnings, markerFillWarningId, fillEntries);
+  pushContrastWarningEntries(warnings, markerBorderWarningId, borderEntries);
+
+  const labelEntries: ContrastEntry[] = [];
+  const crossFloorTeleportEdges = teleport.filter((edge) => (warningNodeById.get(edge.from)?.level ?? 0) !== (warningNodeById.get(edge.to)?.level ?? 0));
+  if (crossFloorTeleportEdges.length > 0) {
+    pushContrastWarningEntries(warnings, "teleport_badge_text_low_contrast", [{
+      foreground: settings.teleportFloorBadge.textColor,
+      background: settings.teleportFloorBadge.fillColor,
+      cells: teleportBadgeCells(teleportEdges, displayFloorIndex, cfg),
+    }]);
+  }
+  if (settings.elevatorBadges.enabled && elevator.length > 0) {
+    labelEntries.push({ foreground: settings.elevatorBadges.textColor, background: settings.elevatorBadges.fillColor, nodes: elevator.flatMap((edge) => [edge.from, edge.to]) });
+  }
+  const indexedEdges = edges.filter((edge) => {
+    if (edge.kind === "elevator") return settings.markerIndex.coverage.elevator;
+    if (edge.kind === "vertical_passage") return settings.markerIndex.coverage.verticalPassage;
+    if (edge.kind !== "teleport") return false;
+    const fromLevel = warningNodeById.get(edge.from)?.level ?? 0;
+    const toLevel = warningNodeById.get(edge.to)?.level ?? 0;
+    return fromLevel === toLevel ? settings.markerIndex.coverage.singleFloorTeleport : settings.markerIndex.coverage.crossFloorTeleport;
+  });
+  if (settings.markerIndex.enabled && indexedEdges.length > 0) {
+    labelEntries.push({ foreground: settings.markerIndex.textColor, background: settings.markerIndex.fillColor, nodes: edgeNodeIds(indexedEdges, warningNodeById), edges: edgePairs(indexedEdges) });
+  }
+  pushContrastWarningEntries(warnings, "label_low_contrast", labelEntries);
+
+  const twoWay = vertical.filter((edge) => !oneWayVertical.includes(edge));
+  if (verticalStyle === "abstract") {
+    pushContrastWarningEntries(warnings, "vertical_arrow_low_contrast", twoWay.length > 0 ? [{ foreground: settings.twoWayArrowColor, background: settings.twoWayPassageMarker.fillColor, nodes: edgeNodeIds(twoWay, warningNodeById), edges: edgePairs(twoWay) }] : []);
+    if (oneWayVertical.length > 0 && settings.oneWayArrowColor !== settings.oneWayAccentColor) {
+      pushContrastWarningEntries(warnings, "vertical_one_way_arrow_low_contrast_fill", [{ foreground: settings.oneWayArrowColor, background: settings.oneWayPassageMarker.fillColor, nodes: edgeNodeIds(oneWayVertical, warningNodeById), edges: edgePairs(oneWayVertical) }]);
+    }
+    pushContrastWarningEntries(warnings, "elevator_arrow_low_contrast", elevator.length > 0 ? [{ foreground: settings.elevatorArrowColor, background: settings.elevatorMarker.fillColor, nodes: edgeNodeIds(elevator, warningNodeById), edges: edgePairs(elevator) }] : []);
+    const twoWayAccentEntries = twoWay.flatMap((edge) => [
+      { foreground: settings.twoWayPassageMarker.fillColor, background: settings.oneWayAccentColor, nodes: [edge.from, edge.to], edges: edgePairs([edge]) },
+      { foreground: settings.twoWayPassageMarker.borderColor, background: settings.oneWayAccentColor, nodes: [edge.from, edge.to], edges: edgePairs([edge]) },
+    ]);
+    pushContrastWarningEntries(warnings, "vertical_two_way_fill_low_contrast_one_way_accent", twoWayAccentEntries.filter((_, index) => index % 2 === 0));
+    pushContrastWarningEntries(warnings, "vertical_two_way_border_low_contrast_one_way_accent", twoWayAccentEntries.filter((_, index) => index % 2 === 1));
+  }
+  if (surfaceKind === "floor") {
+    const wallsSettings = settings as VectorByWallsSettings;
+    pushContrastWarning(warnings, "wall_low_contrast_floor", [[wallsSettings.wallColor, baseColor]]);
+  }
+  if (surfaceKind === "floor" && verticalStyle === "decorative") {
+    const wallsSettings = settings as VectorByWallsSettings;
+    pushContrastWarningEntries(warnings, "vertical_two_way_line_low_contrast_floor", twoWay.length > 0 ? [{
+      foreground: wallsSettings.decorativeStairsTwoWay.lineColor,
+      background: baseColor,
+      nodes: edgeNodeIds(twoWay, warningNodeById),
+      edges: edgePairs(twoWay),
+    }] : []);
+    pushContrastWarningEntries(warnings, "vertical_two_way_arrow_low_contrast_floor", twoWay.length > 0 ? [{
+      foreground: wallsSettings.decorativeStairsArrowColor,
+      background: baseColor,
+      nodes: edgeNodeIds(twoWay, warningNodeById),
+      edges: edgePairs(twoWay),
+    }] : []);
+    pushContrastWarningEntries(warnings, "vertical_one_way_line_low_contrast_floor", oneWayVertical.length > 0 ? [{
+      foreground: wallsSettings.decorativeStairsOneWay.lineColor,
+      background: baseColor,
+      nodes: edgeNodeIds(oneWayVertical, warningNodeById),
+      edges: edgePairs(oneWayVertical),
+    }] : []);
+    pushContrastWarningEntries(warnings, "vertical_one_way_accent_low_contrast_floor", oneWayVertical.length > 0 ? [{
+      foreground: wallsSettings.decorativeStairsAccentColor,
+      background: baseColor,
+      nodes: edgeNodeIds(oneWayVertical, warningNodeById),
+      edges: edgePairs(oneWayVertical),
+    }] : []);
+    pushContrastWarningEntries(warnings, "elevator_line_low_contrast_floor", elevator.length > 0 ? [{
+      foreground: wallsSettings.decorativeElevator.lineColor,
+      background: baseColor,
+      nodes: edgeNodeIds(elevator, warningNodeById),
+      edges: edgePairs(elevator),
+    }] : []);
+  }
+  if (oneWayVertical.length > 0) {
+    pushContrastWarning(warnings, "vertical_one_way_accent_low_contrast_fill", [[settings.oneWayAccentColor, settings.oneWayPassageMarker.fillColor]], edgeNodeIds(oneWayVertical, warningNodeById), edgePairs(oneWayVertical));
+    if (verticalStyle === "abstract") {
+      pushContrastWarning(warnings, "vertical_one_way_accent_low_contrast_arrow", [[settings.oneWayAccentColor, settings.oneWayArrowColor]], edgeNodeIds(oneWayVertical, warningNodeById), edgePairs(oneWayVertical));
+    }
+  }
+  if (settings.elevatorBadges.enabled && elevator.length > 0) {
+    pushContrastWarning(warnings, elevatorBadgeFillWarningId, [[settings.elevatorBadges.fillColor, baseColor]], edgeNodeIds(elevator, warningNodeById), edgePairs(elevator));
+  }
+  const crossFloorTeleports = teleportEdges.filter((edge) => (warningNodeById.get(edge.fromNode ?? -1)?.level ?? 0) !== (warningNodeById.get(edge.toNode ?? -1)?.level ?? 0));
+  if (crossFloorTeleports.length > 0) {
+    // Group overrides replace the badge border as well as the connector border. Without group
+    // customization the badge has its own dedicated border color.
+    pushContrastWarningEntries(warnings, teleportBadgeBorderWarningId, teleportBadgeBorderEntries(teleportEdges, settings, baseColor, displayFloorIndex, cfg));
+  }
+}
+
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -322,9 +823,10 @@ export function computeVectorByWallsWarnings(
   start: number | null,
   finish: number | null,
   unscopedNodes: NodeDto[] = nodes,
+  teleportFloorContext?: TeleportFloorContext,
 ): ExportWarning[] {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
+  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
   const allNodes = Array.from(nodeById.values());
   const resolveNodeLevel = selectNodeLevelResolver(unscopedNodes);
 
@@ -337,6 +839,23 @@ export function computeVectorByWallsWarnings(
     cfg,
     edges,
   );
+
+  addCommonContrastWarnings(
+    warnings, nodes, edges, settings.floorColor, settings.background, settings.showGrid,
+    settings, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish, settings.verticalStyle,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
+  );
+
+  if (teleportEdges.length > 0 && settings.teleportConnectorStyle !== "none") {
+    const connectorEntries = teleportConnectorEntries(teleportEdges, settings, settings.floorColor);
+    pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_floor", connectorEntries);
+    if (settings.teleportConnectorGapWidth === 0) {
+      pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_wall", teleportConnectorEntries(teleportEdges, settings, settings.wallColor));
+    }
+  }
+  const splitFloor = splitContrastData(nodes, edges, cfg, settings.splitNodeColors);
+  pushContrastWarning(warnings, "split_low_contrast_floor", splitFloor.colors.map((color) => [color, settings.floorColor] as [number, number]), splitFloor.nodes);
+  pushSplitPairwiseWarning(warnings, splitFloor.colors, splitFloor.keys, splitFloor.nodes);
 
   // Split points recognized as a dedicated "special shape" (bridge/diagonal, `SplitSpecialShapeKind`)
   // — only these draw noticeably different geometry from a generic split point, and only when
@@ -488,9 +1007,12 @@ export function computeVectorByCorridorsWarnings(
   settings: VectorByCorridorsSettings,
   start: number | null,
   finish: number | null,
+  unscopedNodesOrContext?: NodeDto[] | TeleportFloorContext,
+  allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
 ): ExportWarning[] {
+  const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
+  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
   const allNodes = Array.from(nodeById.values());
 
   const warnings: ExportWarning[] = computeTeleportWarnings(
@@ -502,6 +1024,36 @@ export function computeVectorByCorridorsWarnings(
     cfg,
     edges,
   );
+
+  addCommonContrastWarnings(
+    warnings, nodes, edges, settings.color, settings.background, settings.showGrid,
+    settings, teleportEdges, allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, start, finish, "abstract",
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
+  );
+
+  const corridorSegments = buildCorridorSegments(nodes, edges, cfg);
+  if (corridorSegments.length > 0) {
+    pushContrastWarning(warnings, "corridor_low_contrast_background", [[settings.color, settings.background]]);
+  }
+  if (corridorSegments.some((segment) => segment.oneWayDir)) {
+    pushContrastWarning(
+      warnings,
+      "one_way_low_contrast_corridor",
+      [[settings.oneWayColor, settings.color]],
+      corridorSegments.filter((segment) => segment.oneWayDir).flatMap((segment) => [segment.fromNode, segment.toNode]),
+      corridorSegments.filter((segment) => segment.oneWayDir).map((segment) => [segment.fromNode, segment.toNode]),
+    );
+  }
+  if (teleportEdges.length > 0 && settings.teleportConnectorStyle !== "none") {
+    pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_corridor", teleportConnectorEntries(teleportEdges, settings, settings.color));
+    if (settings.teleportConnectorGapWidth === 0) {
+      pushContrastWarningEntries(warnings, "teleport_connector_low_contrast_background", teleportConnectorEntries(teleportEdges, settings, settings.background));
+    }
+  }
+  const splitCorridor = splitContrastData(nodes, edges, cfg, settings.splitNodeColors);
+  pushContrastWarning(warnings, "split_low_contrast_corridor", splitCorridor.colors.map((color) => [color, settings.color] as [number, number]), splitCorridor.nodes);
+  pushContrastWarning(warnings, "split_low_contrast_background", splitCorridor.colors.map((color) => [color, settings.background] as [number, number]), splitCorridor.nodes);
+  pushSplitPairwiseWarning(warnings, splitCorridor.colors, splitCorridor.keys, splitCorridor.nodes);
 
   if (settings.thickness + 2 * settings.splitGapWidth > 40) {
     warnings.push({

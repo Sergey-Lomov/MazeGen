@@ -203,6 +203,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       openRenderModeSettings: file.imageExport.openRenderModeSettings,
       vectorByWallsSettings: file.imageExport.vectorByWallsSettings,
       vectorByWallsSectionsExpanded: file.imageExport.vectorByWallsSectionsExpanded,
+      showColorWarnings: file.imageExport.showColorWarnings,
       vectorByCorridorsSettings: file.imageExport.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,

@@ -943,6 +943,25 @@ Builds the candidate pool the same way `MissingLoopsRandomStrategy` does (`apply
 
 Returns `Failed` if no connection could be added at all (e.g. a single-level field); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
 
+### MissingLoopsTeleportStrategy
+
+Handles `MISSING_LOOPS` by seeding a candidate connection as a `Teleport` edge (GitHub issue
+#530). It follows the same "seed and let QC re-check" contract as the other missing-loop
+strategies: it does not verify that the new teleport actually closes a valid cycle; the next
+quality-control pass decides whether the seed is retained.
+
+The `entry_pick` and `exit_pick` parameters independently choose a random node or prefer dead-end
+nodes, with dead-end preference as the default for both. The source pool is restricted by the
+reported `RepairArea`; the exit is selected only from nodes forward-reachable from that entry.
+`desired_length` filters those reachable exits by tile-hop distance, and
+`allow_out_of_interval` permits a reachable out-of-range fallback when the interval has no
+candidates. Existing connections in either direction, duplicate pairs proposed earlier in the
+same `apply` call, and preset-blocked candidates are skipped. The strategy uses `reserve_percent`
+and `attempts_limit` from the standard element-adding parameter set.
+`teleport_loop_one_way_chance` (default `50.0`, rendered as a percent) controls whether a
+candidate is a one-way entry-to-exit teleport or a bidirectional teleport. It returns `Failed` only
+when no teleport can be proposed.
+
 ### vertical_target (shared, not a strategy)
 
 `maze-core/src/repair/strategies/vertical_target.rs` — `resolve_vertical_target`/`DirectionConstraint`, extracted (GitHub issue #393) from `AddVerticalPassageStrategy` once `MissingLoopsVerticalStrategy` needed the same floor-adjacency resolution. Not itself a `RepairStrategy` — just a module both strategies import from.

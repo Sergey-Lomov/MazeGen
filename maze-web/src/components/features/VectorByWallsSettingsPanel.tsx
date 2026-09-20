@@ -7,10 +7,10 @@ import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { maxSplitNodeCount, selectFloorScopedMaze, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
@@ -48,6 +48,8 @@ import * as m from "~/paraglide/messages";
  * between sections) mirrors `AnalyticsFeature`'s collapsible sections. */
 export function VectorByWallsSettingsPanel() {
   const settings = useMazeStore((s) => s.vectorByWallsSettings);
+  const showColorWarnings = useMazeStore((s) => s.showColorWarnings);
+  const setShowColorWarnings = useMazeStore((s) => s.setShowColorWarnings);
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
@@ -134,7 +136,6 @@ export function VectorByWallsSettingsPanel() {
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const floors = useMazeStore((s) => s.floors);
-  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
   // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
@@ -146,17 +147,12 @@ export function VectorByWallsSettingsPanel() {
 
   // Scoped to `activeFloorId` (GitHub issue #347) — mirrors `VectorByWallsRenderer.renderAll`'s own
   // scoping, so this panel's warnings/section-visibility checks see exactly what's drawn.
-  const { nodes, edges, start, finish } = useMemo(
-    () => selectFloorScopedMaze(rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
-    [rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints],
-  );
-
   // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
   // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list
   // (Analytics feature) — see `exportWarnings.ts`'s doc comment.
   const exportWarnings = useMemo(
-    () => computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish, rawNodes),
-    [nodes, edges, cfg, settings, start, finish, rawNodes],
+    () => computeVectorByWallsWarningsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
+    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
@@ -269,6 +265,14 @@ export function VectorByWallsSettingsPanel() {
 
   return (
     <div style={styles.root}>
+      <ExportWarningsSection
+        warnings={exportWarnings}
+        expanded={isExpanded("warnings")}
+        onToggle={() => toggleSection("warnings")}
+        showColorWarnings={showColorWarnings}
+        onShowColorWarningsChange={setShowColorWarnings}
+      />
+
       <SectionHeader
         label={m["image_export.vector_by_walls.section_shared_style"]()}
         expanded={isExpanded("shared_style")}
@@ -1028,11 +1032,6 @@ export function VectorByWallsSettingsPanel() {
         />
       )}
 
-      <ExportWarningsSection
-        warnings={exportWarnings}
-        expanded={isExpanded("warnings")}
-        onToggle={() => toggleSection("warnings")}
-      />
     </div>
   );
 }

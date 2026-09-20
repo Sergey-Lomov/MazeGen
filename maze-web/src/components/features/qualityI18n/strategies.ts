@@ -45,6 +45,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_split.label"] as MessageFn,
     description: m["strategy.missing_loops_split.description"] as MessageFn,
   },
+  missing_loops_teleport: {
+    label: m["strategy.missing_loops_teleport.label"] as MessageFn,
+    description: m["strategy.missing_loops_teleport.description"] as MessageFn,
+  },
   priority_missing_loops: {
     label: m["strategy.priority_missing_loops.label"] as MessageFn,
     description: m["strategy.priority_missing_loops.description"] as MessageFn,
@@ -243,4 +247,3 @@ export function resolveNestedStrategyLabel(kind: string, slotId?: string): strin
 export function resolveStrategyDescription(id: string): string {
   return strategyI18n[id]?.description() ?? "";
 }
-

@@ -96,6 +96,7 @@ export const STRATEGY_IDS = [
   "invalid_loop_scored",
   "missing_loops_random",
   "missing_loops_split",
+  "missing_loops_teleport",
   "missing_loops_vertical",
   "missing_one_ways_from_passage",
   "missing_one_ways_from_wall",
@@ -305,6 +306,7 @@ export const PARAM_IDS = [
   "target_mode",
   "teleport_direction",
   "teleport_floor_kind",
+  "teleport_loop_one_way_chance",
   "teleport_weight",
   "trap_count",
   "unreachable_count",
@@ -316,4 +318,3 @@ export const PARAM_IDS = [
   "vertical_passage_priority",
   "waypoint",
 ] as const;
-

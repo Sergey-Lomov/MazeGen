@@ -97,7 +97,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditAutoConfirm: true,
     activeRenderMode: null,
     openRenderModeSettings: null,
-    vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
     vectorByWallsSectionsExpanded: {},
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
     vectorByCorridorsSectionsExpanded: {},
@@ -105,6 +105,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
+    showColorWarnings: true,
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -115,6 +116,19 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed).toEqual(serialized);
+  });
+
+  it("round-trips the export color-warning visibility setting", () => {
+    const state = makeState({ showColorWarnings: false });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.imageExport.showColorWarnings).toBe(false);
+  });
+
+  it("defaults export color-warning visibility on files saved before the setting existed", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport.showColorWarnings;
+    expect(parseAndValidate(raw).imageExport.showColorWarnings).toBe(true);
   });
 
   it("round-trips explicitly disabled repair limits (both null), not the default", () => {
@@ -610,8 +624,9 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     delete raw.imageExport;
     const reparsed = parseAndValidate(raw);
     expect(reparsed.imageExport).toEqual({
-      activeRenderMode: null,
-      openRenderModeSettings: null,
+    activeRenderMode: null,
+    openRenderModeSettings: null,
+      showColorWarnings: true,
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -702,6 +717,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     expect(reparsed.imageExport).toEqual({
       activeRenderMode: null,
       openRenderModeSettings: null,
+      showColorWarnings: true,
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,

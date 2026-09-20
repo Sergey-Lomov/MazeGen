@@ -15,10 +15,10 @@ import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
-import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
+import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { maxSplitNodeCount, selectFloorScopedMaze, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -52,6 +52,8 @@ const MAX_SPLIT_GAP_WIDTH = 10;
  * `VectorByWallsSettingsPanel`'s own layout so both panels stay visually consistent. */
 export function VectorByCorridorsSettingsPanel() {
   const settings = useMazeStore((s) => s.vectorByCorridorsSettings);
+  const showColorWarnings = useMazeStore((s) => s.showColorWarnings);
+  const setShowColorWarnings = useMazeStore((s) => s.setShowColorWarnings);
   const setBackground = useMazeStore((s) => s.setVectorByCorridorsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByCorridorsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
@@ -188,7 +190,6 @@ export function VectorByCorridorsSettingsPanel() {
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const floors = useMazeStore((s) => s.floors);
-  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   const rawEffectiveEndpoints = useMemo(
     () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
@@ -198,14 +199,9 @@ export function VectorByCorridorsSettingsPanel() {
   // Scoped to `activeFloorId` (GitHub issue #348, parity follow-up to #347) — mirrors
   // `VectorByWallsSettingsPanel`'s own scoping, so this panel's warnings/section-visibility checks
   // see exactly what's drawn.
-  const { nodes, edges, start, finish } = useMemo(
-    () => selectFloorScopedMaze(rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
-    [rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints],
-  );
-
   const exportWarnings = useMemo(
-    () => computeVectorByCorridorsWarnings(nodes, edges, cfg, settings, start, finish),
-    [nodes, edges, cfg, settings, start, finish],
+    () => computeVectorByCorridorsWarningsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
+    [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
   // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
@@ -248,6 +244,14 @@ export function VectorByCorridorsSettingsPanel() {
 
   return (
     <div style={styles.root}>
+      <ExportWarningsSection
+        warnings={exportWarnings}
+        expanded={isExpanded("warnings")}
+        onToggle={() => toggleSection("warnings")}
+        showColorWarnings={showColorWarnings}
+        onShowColorWarningsChange={setShowColorWarnings}
+      />
+
       <SectionHeader
         label={m["image_export.vector_by_walls.section_shared_style"]()}
         expanded={isExpanded("shared_style")}
@@ -920,12 +924,6 @@ export function VectorByCorridorsSettingsPanel() {
           borderColorFieldName={PC.markerIndexBorder.name()}
         />
       )}
-
-      <ExportWarningsSection
-        warnings={exportWarnings}
-        expanded={isExpanded("warnings")}
-        onToggle={() => toggleSection("warnings")}
-      />
 
       {renderStyleInfoOpen && (
         <CategoryInfoModal

@@ -557,6 +557,7 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
     vectorByWallsSectionsExpanded: obj?.vectorByWallsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
       : {},
+    showColorWarnings: optBool(obj, "showColorWarnings", true),
     vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`),
     vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)

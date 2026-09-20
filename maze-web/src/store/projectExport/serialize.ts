@@ -108,6 +108,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       openRenderModeSettings: state.openRenderModeSettings,
       vectorByWallsSettings: state.vectorByWallsSettings,
       vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
+      showColorWarnings: state.showColorWarnings,
       vectorByCorridorsSettings: state.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
       pngExportSettings: state.pngExportSettings,

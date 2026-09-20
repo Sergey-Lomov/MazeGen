@@ -4,6 +4,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
+import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
 import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -35,7 +36,7 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
+    background: 0, showGrid: true, gridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 0.3, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
@@ -54,7 +55,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0,
+    background: 0, showGrid: true, gridColor: 0x808080,
     color: 0, thickness: 4, join: "round", renderStyle: "contour",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
@@ -569,6 +570,99 @@ describe("computeVectorByCorridorsWarnings", () => {
       const settings = baseCorridorsSettings({ teleportLineSize: 0.4 });
       const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null);
       expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(1);
+    });
+  });
+
+  describe("color contrast warnings", () => {
+    it("does not flag colors with a clearly visible luminance difference", () => {
+      expect(hasLowContrast(0x666666, 0x333333)).toBe(false);
+    });
+
+    it("does not confuse different hues with near-identical colors", () => {
+      expect(perceptualColorDistance(0xff0000, 0x0000ff)).toBeGreaterThan(0.04);
+      expect(hasLowContrast(0xff0000, 0x0000ff)).toBe(false);
+    });
+
+    it("flags corridor and one-way colors only when a drawable corridor exists", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const settings = baseCorridorsSettings({ color: 0, oneWayColor: 0, background: 0 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [e(0, 1)], squareCfg, settings, null, null);
+      expect(warnings.map((w) => w.id)).toEqual(expect.arrayContaining([
+        "one_way_low_contrast_corridor", "corridor_low_contrast_background",
+      ]));
+      const corridorWarning = warnings.find((w) => w.id === "corridor_low_contrast_background");
+      expect(corridorWarning?.nodes).toEqual([]);
+      expect(corridorWarning?.edges).toEqual([]);
+    });
+
+    it("does not flag the grid when it is disabled", () => {
+      const settings = baseCorridorsSettings({ showGrid: false, background: 0, gridColor: 0 });
+      const warnings = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "grid_low_contrast_background")).toHaveLength(0);
+    });
+
+    it("flags corridor teleport connector against the background only without a connector gap", () => {
+      const nodes = [n(0, 0, 0), n(1, 2, 2)];
+      const edges = [teleport(0, 1)];
+      const settings = baseCorridorsSettings({ background: 0, color: 0, teleportConnectorColor: 0 });
+      const withGap = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(withGap.filter((w) => w.id === "teleport_connector_low_contrast_background")).toHaveLength(0);
+      const noGap = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, { ...settings, teleportConnectorGapWidth: 0 }, null, null);
+      expect(noGap.filter((w) => w.id === "teleport_connector_low_contrast_background")).toHaveLength(1);
+    });
+
+    it("flags wall-mode teleport connector against the floor and wall under the requested gap rule", () => {
+      const nodes = [n(0, 0, 0), n(1, 2, 2)];
+      const edges = [teleport(0, 1)];
+      const settings = baseSettings({ background: 0, floorColor: 0, wallColor: 0, teleportConnectorColor: 0, teleportConnectorGapWidth: 0 });
+      const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.map((w) => w.id)).toEqual(expect.arrayContaining([
+        "teleport_connector_low_contrast_floor", "teleport_connector_low_contrast_wall",
+      ]));
+    });
+
+    it("flags marker fill and label contrast using the immediate surface", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const marker = { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 };
+      const settings = baseCorridorsSettings({
+        color: 0,
+        startMarker: marker,
+        elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, enabled: true, fillColor: 0, textColor: 0 },
+      });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [elevatorEdge(0, 1)], squareCfg, settings, 0, null);
+      expect(warnings.filter((w) => w.id === "marker_fill_low_contrast_corridor")).toHaveLength(1);
+      expect(warnings.filter((w) => w.id === "label_low_contrast")).toHaveLength(1);
+      expect(warnings.filter((w) => w.id === "elevator_badge_fill_low_contrast_corridor")).toHaveLength(1);
+    });
+
+    it("keeps separate alerts for different color pairs of one warning kind", () => {
+      const settings = baseCorridorsSettings({
+        color: 0,
+        startMarker: { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 },
+        finishMarker: { ...defaultMarker, fillColor: 0x000001, borderColor: 0x000001, borderWidth: 0 },
+      });
+      const warnings = computeVectorByCorridorsWarnings([n(0, 0, 0), n(1, 1, 0)], [], squareCfg, settings, 0, 1);
+      const markerWarnings = warnings.filter((warning) => warning.id === "marker_fill_low_contrast_corridor");
+      expect(markerWarnings).toHaveLength(2);
+      expect(new Set(markerWarnings.map((warning) => warning.key)).size).toBe(2);
+      expect(markerWarnings.every((warning) => warning.colorValues)).toBe(true);
+    });
+
+    it("flags an abstract two-way vertical arrow against its marker fill", () => {
+      const nodes = [n(0, 0, 0, 0), n(1, 0, 0, 1)];
+      const settings = baseSettings({
+        twoWayArrowColor: 0,
+        twoWayPassageMarker: { ...DEFAULT_VERTICAL_SETTINGS.twoWayPassageMarker, fillColor: 0 },
+      });
+      const warnings = computeVectorByWallsWarnings(
+        nodes,
+        [{ from: 0, to: 1, kind: "vertical_passage" }, { from: 1, to: 0, kind: "vertical_passage" }],
+        squareCfg,
+        settings,
+        null,
+        null,
+      );
+      expect(warnings.filter((w) => w.id === "vertical_arrow_low_contrast")).toHaveLength(1);
     });
   });
 });

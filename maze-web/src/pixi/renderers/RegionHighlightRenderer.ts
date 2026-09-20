@@ -16,6 +16,9 @@ export interface RegionHighlightData {
   width: number;
   alpha: number;
   cfg: TessellationConfig;
+  /** Additional cells that are visual targets but do not have a node id (for example a
+   *  cross-floor teleport badge drawn at a snapped midpoint). */
+  cells?: [number, number][];
   /** Skips `perimeterSegments` stroking, drawing only the cell fill. Default `false` (draws both,
    *  the original behavior every other caller relies on). Set by `DebugValueHighlightOverlay` for
    *  `DebugValueKind.Region` debug values (GitHub issue #131's follow-up) — a one-element-per-id
@@ -40,8 +43,8 @@ export class RegionHighlightRenderer {
 
   render(data: RegionHighlightData): void {
     this.g.clear();
-    const { nodes, regionGroups, color, width, alpha, cfg, skipPerimeter = false } = data;
-    if (regionGroups.length === 0 || nodes.length === 0) return;
+    const { nodes, regionGroups, color, width, alpha, cfg, cells = [], skipPerimeter = false } = data;
+    if (regionGroups.length === 0 && cells.length === 0) return;
 
     for (const group of regionGroups) {
       const { cells, perimeterSegments } = buildRegionGeometry(group, nodes, cfg);
@@ -59,6 +62,10 @@ export class RegionHighlightRenderer {
         this.g.lineTo(seg.v1.x, seg.v1.y);
         this.g.stroke({ width, color, alpha });
       }
+    }
+    for (const [x, y] of cells) {
+      const verts = getCellVertices(x, y, cfg);
+      if (verts) this.g.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: REGION_FILL_ALPHA });
     }
   }
 
