@@ -3,6 +3,7 @@ import type { PostEditEndpoint, PostEditHoveredEntity } from "../pixi/postEditEn
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditCommand } from "./postEditCommandTypes";
 import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
+import type { PostEditPointEntityDescriptor } from "../pixi/postEditPointEntities";
 import type {
   PostEditTool,
   PostEditEdge,
@@ -222,6 +223,13 @@ export interface PostEditState {
           | { tool: "teleport_one_way" | "teleport_two_way" };
       }
     | null;
+  /** In-progress entity-delete prompt (GitHub issue #550, mirroring the preset-side dialog from
+   *  #540) — set when the `delete` tool targets a point carrying more than one removable entity.
+   *  `requestPostEditEntityDelete` is the sole entry point: it counts the live descriptors for
+   *  `point`/`level` and only opens this prompt when the count is >1 (0 is a no-op, 1 calls
+   *  `removePostEditPointEntity` directly, no dialog). The dialog rebuilds its row list from this
+   *  `point`/`level` on every render (`buildPostEditPointEntities`), never caching descriptors. */
+  postEditEntityDeletePrompt: { point: [number, number]; level?: number } | null;
   /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
    *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
    *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
@@ -274,11 +282,32 @@ export interface PostEditActions {
    * edges/teleports/split-slots/start-finish back to generation-time state. See
    * `resetPostEditPoint` (postEditUtils.ts). */
   resetPostEditPoint: (point: [number, number]) => void;
-  /** Delete tool (GitHub issue #386) — removes every generation-placed non-edge piece of content
-   * touching `point`'s nodes: start/finish marker, teleport links, vertical passages, elevators.
-   * Basic edges are untouched (see `wall`/`reset`). See `deletePostEditPoint`'s own doc comment in
-   * `postEditSlice.ts` for details. */
+  /** Delete tool (GitHub issue #386, extended by #550) — removes every generation-placed non-edge
+   * piece of content touching `point`'s nodes: start/finish marker, teleport links, vertical
+   * passages, elevators, split slots. Basic edges are untouched (see `wall`/`reset`). This is the
+   * "remove everything at once" primitive `requestPostEditEntityDelete`'s bulk (shift-held) path
+   * and "Delete all" both call — the ordinary click path goes through `requestPostEditEntityDelete`
+   * instead, which opens a picker dialog when the point carries more than one entity. See
+   * `deletePostEditPoint`'s own doc comment in `postEditSlice.ts` for details. */
   deletePostEditPoint: (point: [number, number]) => void;
+  /** Entry point from `PostEditController` for the `delete` tool (GitHub issue #550, mirroring
+   *  the preset-side `requestPresetEntityDelete` from #540). Counts the live descriptors
+   *  `buildPostEditPointEntities` returns for `point`/`level`: 0 is a no-op, exactly 1 calls
+   *  `removePostEditPointEntity` on it directly (no dialog), more than 1 opens
+   *  `postEditEntityDeletePrompt`. `bulk` (held Shift) bypasses the picker dialog entirely and
+   *  removes every entity at once via `deletePostEditPoint` (which un-splits the point as a whole,
+   *  same as the dialog's own `split_point` row). */
+  requestPostEditEntityDelete: (point: [number, number], level: number | undefined, bulk?: boolean) => void;
+  cancelPostEditEntityDelete: () => void;
+  /** Removes exactly one entity by its descriptor (`kind`+`id`) — the single code path both a
+   *  dialog row click and `requestPostEditEntityDelete`'s count===1 shortcut go through. A
+   *  `split_point` descriptor un-splits the WHOLE tile at once (GitHub issue #550 follow-up) via
+   *  `removePostEditSplitSlots`, never a single slot — per-slot removal stays "Manage split nodes"'
+   *  own job. Closes the prompt if, after removal, the prompt's own point has no descriptors left. */
+  removePostEditPointEntity: (descriptor: PostEditPointEntityDescriptor) => void;
+  /** "Delete all" — removes every descriptor currently at `postEditEntityDeletePrompt`'s point and
+   *  closes the prompt. Equivalent to `deletePostEditPoint`. */
+  removeAllPostEditPointEntities: () => void;
   /** "Reset" action on one Changes-panel row (GitHub issue #547) — truncates `postEditCommands` to
    * end right after `commandIndex` (the log's own oldest-to-newest index, not the panel's reversed
    * display order), discarding every later command regardless of lifeline. See

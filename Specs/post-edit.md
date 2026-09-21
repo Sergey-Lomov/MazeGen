@@ -98,6 +98,23 @@ type PostEditCommand =
   // command on a mismatch, never silently overwriting an existing point's identity.
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
+  // Whole-split-point removal for GENERATION-BAKED slots (GitHub issue #550 follow-up,
+  // `removePostEditSplitSlots` in `postEditSliceHelpers.ts`) — a slot with no earlier `addSplitNode`/
+  // `applySplitBlueprint` in this log can't be undone by cascading a create command away (there is
+  // none), so this is an explicit, atomic removal instead: `removedSlotIds` lists every slot this one
+  // command takes out. `restoredOriginalFaces`, when present, is the point's ORIGINAL node's own
+  // face list at GENERATION time (resolved once at construction via `currentSplitNodeFaces` against
+  // the baseline's own edges, same shape `ResolvedSplitEdgeFace[]` `updateSplitNodeFaces.faces`
+  // uses) — set only when this removal empties the point completely, so the original node's wiring
+  // reverts to exactly what generation produced, "as if never split." Omitted when other slots
+  // survive this removal (a shrink, not a full un-split) — the original node's wiring is left alone.
+  // A point mixing post-edit-created and generation-baked slots needs both this command AND a
+  // cascade over the post-edit-created ones' own lifelines to fully empty — see "delete Tool Detail"
+  // above.
+  | {
+      kind: "removeSplitPoint"; point: [number, number]; level?: number; pointId: string;
+      removedSlotIds: number[]; restoredOriginalFaces?: ResolvedSplitEdgeFace[];
+    }
   // A split node's face wiring, resolved atomically - every edge-tool click on one of a split
   // point's nodes' faces appends one of these carrying the FULL current face list for that node
   // (like `updateElevatorFloors` carries the full floor list), never a `setEdgePair`/`setEdge` for
@@ -240,7 +257,10 @@ by `slotId`, `` `point:${point}:${level}:${pointId}` `` for the split point's ow
 node where `slotId` is `undefined`), and `` `meta:${slot}` `` for start/finish. A `setEdgePair` that
 mints or destroys a one-way on the `a→b` side and/or the `b→a` side returns one `oneWay:${id}` entry
 per id involved, from `aToB.id`/`bToA.id` (new) and `replacedOneWayIds.aToB`/`.bToA` (destroyed) —
-never inferred by scanning neighboring log entries.
+never inferred by scanning neighboring log entries. `removeSplitPoint` (GitHub issue #550 follow-up)
+similarly returns one `slot:${point}:${level}:${slotId}` entry per id in its own `removedSlotIds` —
+it belongs to every removed slot's lifeline at once, the same "one command, several lifelines"
+shape `setEdgePair` already established.
 `collectAffectedLifelines` walks the command list once, computing (against the state *before* each
 command in sequence) whether that command's entity currently touches `point`/`level` — including
 split-structure commands addressing that point directly, move-commands whose old *or* new endpoint
@@ -367,7 +387,10 @@ Per-group staleness rules:
   itself a create (no baseline counterpart), the remove also supersedes *itself*: an entity created
   and destroyed entirely within the log leaves nothing to record. A remove of a *baseline* entity
   (no create command earlier in the log) keeps the remove — "this baseline entity is now gone" is
-  still an observable effect.
+  still an observable effect. `removeSplitPoint` (GitHub issue #550 follow-up) follows the same rule
+  per slot group it belongs to (`compactionGroupsOf` returns one `slot:` group per `removedSlotIds`
+  entry): it supersedes each such group's earlier `addSplitNode`/`updateSplitNodeFaces`, same as
+  `removeSplitNode` does for its own single slot.
 - **Move commands** (`moveTeleportEndpoint`/`moveVerticalPassageEndpoint`/`updateElevatorFloors`/
   `updateSplitNodeFaces`): each move supersedes only the immediately PRECEDING move of the same
   group — never the create, never a direction-flip sitting between two moves. A `P1->P2->P3` chain
@@ -606,6 +629,40 @@ in post-edit already does at its own call site (`postEditSliceHelpers.ts`'s `lev
 `postEditSlice.ts`'s `resolveActiveNodeIdAt` call, `presetConnectionsSlice.ts`'s `presetEndpoint`
 construction) — centralized here since `resolveSplitNodeShortLabel` is the one place actually
 building this specific key from a raw `NodeDto.level`.
+
+GitHub issue #550 ninth follow-up fixed the origin-side counterpart of the same bug: unlike teleport
+placement (both ends always set by an explicit click through the split-target picker), vertical-
+passage/elevator placement used a hard `origin.kind !== "node"` guard in
+`startPostEditVerticalPassagePlacement`/`startPostEditElevatorPlacement`/`commitPostEditVerticalPassage`
+— any placement STARTED from a split point's numbered slot was silently dropped rather than resolving
+the slot correctly, so these two entity kinds only ever placed onto a split tile's original node,
+never a chosen slot (teleport was unaffected — it never had this guard). `findPostEditVerticalPassageForPair`
+was extended the same way, from a node-only `(passages, aId: number, bId: number)` lookup to
+`(passages, a: PostEditEndpoint, b: PostEditEndpoint)` matched via `endpointsEqual`, since the
+confirmed-snapshot extraction path (`extractPostEditVerticalPassages`/`extractPostEditElevators`)
+already produced split endpoints for these kinds — the interactive placement code was the only piece
+still assuming node-only addressing. Fixing this also surfaced a standalone, unrelated pre-existing
+bug in `resolverForNodeId` (`postEditEndpoint.ts`): its point-key lookup did `key.split(",")`
+directly, but a key for any floor above 0 carries an `"@level"` suffix
+(`buildMultiFloorPointNodeMap`'s own convention, e.g. `"0,0@1"`), so `Number("0@1")` silently produced
+`NaN` for one coordinate on every floor above the first — fixed by stripping the suffix before
+parsing.
+
+GitHub issue #550 tenth follow-up deduplicated the "resolve a raw `NodeId` back to a `PostEditEndpoint`,
+re-stamping the correct `level`" sequence that the ninth follow-up above (and the delete-tool work
+earlier in the same issue) had left duplicated near-verbatim across four call sites:
+`applyPostEditSplitTargetPick`, `commitPostEditVerticalPassage` (`postEditSlice.ts`/
+`postEditSliceHelpers.ts`), `confirmPostEditElevatorPlacement`, and `PostEditController.tryTeleportClick`.
+Each built its own `buildMultiFloorPointNodeMap` + `resolverForNodeId` + "look up the id's own
+`level`, re-inject it onto the resolved split endpoint" chain independently — `resolveNodeIdToEndpoint(nodes,
+splitPoints, id)` (`postEditSliceHelpers.ts`) is that chain, once; all four call sites now call it
+directly. Also collapsed a matching duplication one layer up: `PostEditEntityDeleteDialog` used to
+rebuild the exact same `nodesHere`/`nodeLevel`/`nodeById`/`inFieldCellsAt`/`splitCtx` scaffolding
+`buildPostEditPointEntitiesAt` already assembles for `requestPostEditEntityDelete`/
+`removePostEditPointEntity`, just wired through its own `useMazeStore` selector hooks instead of a
+plain `MazeStore` — `buildPostEditPointEntitiesAt` now takes a narrowed `PostEditPointEntitiesSourceState`
+(a `Pick<MazeStore, ...>` of just the fields it reads) so the dialog can assemble that shape from its
+own selectors and call the shared function directly, instead of re-deriving the same rows by hand.
 
 `highlight` is a
 `PostEditHoveredEntity` (always `point`-kind — GitHub issue #546 second follow-up dropped the earlier
@@ -1112,23 +1169,77 @@ hover uses):
 
 **Danger styling:** the Reset icon button uses the `btn-tool-icon-selected-danger` class (red border + inset shadow when selected, `base.error`) instead of the accent `btn-tool-icon-selected` — `reset` is in `PostEditFeature`'s `DANGER_TOOLS` set. Its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click. (`delete` is styled the same way — also in `DANGER_TOOLS`.)
 
-### `delete` Tool Detail (GitHub issue #386)
+### `delete` Tool Detail (GitHub issue #386, multi-entity picker + split slots added by #550, whole-
+split-point removal and one-way faces by #550 follow-ups)
 
-Removes generation-placed *non-edge* content from a cell — the counterpart to `wall`/`reset` (which
-only ever touch `postEditDraftEdges`). Always cell-only (no
+Removes generation-placed content anchored to a cell — the counterpart to `wall`/`reset` (which only
+ever *edit* `postEditDraftEdges`, never remove an entity outright). Always cell-only (no
 near-edge/edge-branch distinction — clicking anywhere near a cell targets the whole point, mirroring
 the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset`'s dual-mode
-dispatch).
+dispatch). Mostly vertex-anchored (start/finish/teleport/vertical-passage/elevator/split), with one
+face-anchored exception: a one-way passage on any of the point's own faces (GitHub issue #550 eighth
+follow-up) is also removable from here, since the user reasonably expects "delete everything at this
+point" to include a one-way carved into one of its edges. Plain wall/basic edges stay untouched —
+only a face already carrying a one-way is in scope, matching `wall`/`reset`'s own edit-only
+territory for everything else on a face.
 
-A left click on any in-field cell calls `deletePostEditPoint(point)`, which appends one ordinary
-per-entity command for each piece of content it removes (`setMeta`/`removeTeleport`/
-`removeVerticalPassage`/`removeElevator`) — not a single bundled command.
-Each of these has its own lifeline (same as if the user had removed that entity directly), so
-there's no dedicated "delete" lifeline to track. Covers **every** node currently at the point
-(original plus every declared split slot — not just the active one). Drag-capable (GitHub issue
-#489): a press-drag paints a delete stroke across every in-field cell the cursor enters, deduped
-per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed per point:
+**Entry point:** a left click on any in-field cell calls `requestPostEditEntityDelete(point, level,
+bulk)`, mirroring the preset-side `requestPresetEntityDelete` from #540. It counts the live
+descriptors `buildPostEditPointEntities` (`pixi/postEditPointEntities.ts`) returns for the point: 0
+is a no-op, exactly 1 calls `removePostEditPointEntity` on it directly (no dialog), more than 1
+opens `postEditEntityDeletePrompt` — `PostEditEntityDeleteDialog` then lists each entity with a
+"Delete all" button, and clicking a row removes just that one entity (dialog stays open, rebuilding
+its row list from live state, until the point is empty). Held **Shift** (`bulk: true`, captured at
+pointerdown the same way `PresetConnectionsController.bulkDelete` is, so a drag started with Shift
+held stays bulk for its whole gesture) bypasses the picker entirely and calls
+`deletePostEditPoint(point)` directly — the old pre-#550 one-shot behavior.
 
+**Row shape** (GitHub issue #550 follow-ups): each descriptor (`PostEditPointEntityDescriptor`,
+`pixi/postEditPointEntities.ts`) carries `title` (a bare noun label — `post_edit.entity_delete_label_*`
+for teleport/vertical-passage/one-way, `status.cell_*` for start/finish/elevator/split-point;
+direction/target text is never baked into it, unlike the status-bar/cell-inspection selector's own
+use of `status.cell_teleport`/`_vertical_passage`, which still show `{arrow}`/`{target}` inline —
+this dialog shows that information via `bubbles`/`showArrow`/`arrow` instead), `entityId` (that
+entity's own stable id, `undefined` for start/finish/split-point — same convention
+`entityIdOf`/`PostEditCommandLabel.entityId` use for the Changes panel), `bubbles`
+(`PostEditEntityBubble[]`, one coordinate bubble per endpoint, `bubbles[0]` always the point
+currently being edited), and `showArrow`/`arrow` (a plain text arrow glyph between `bubbles[0]`/
+`bubbles[1]` for a teleport/vertical-passage/one-way row, `false` for every other kind) — built with
+the exact same `endpointBubble`/`splitPointBubble` helpers (`pixi/postEditCommandLabels.ts`, exported
+for this reuse) and the same `SplitLabelContext` the Changes panel builds, so a dialog row renders
+with the same title/id-bubble/coordinate-bubble/arrow vocabulary as that entity's own Changes-panel
+row, laid out as a single wrapping flex row (not the panel's own column layout) in a dialog sized via
+`dialogSize.approveWide` (`minWidth`/`maxWidth` only, no fixed `width` — grows with its content up to
+the cap, then wraps).
+
+A one-way row (`kind: "one_way"`) also carries `otherEndpoint` — the ONLY kind that needs a second
+endpoint of its own, since removing it means resetting a specific face
+(`applyPostEditToolAt("reset", "", descriptor.endpoint, descriptor.otherEndpoint)`), not clearing a
+single vertex-anchored slot the way every other kind's removal does.
+
+A split point contributes exactly **one** row for its whole tile (`kind: "split_point"`, `id:
+"split_point"`, no `entityId`), never one row per slot — per-slot removal is "Manage split nodes"'
+own job; this dialog only answers "what can I delete from this point", and the split's own on/off
+state is the one binary choice that belongs here. Clicking it removes every one of the point's slots
+at once via `removePostEditSplitSlots` (below), same as the bulk primitive's own split handling.
+
+`deletePostEditPoint(point)` (the bulk/"Delete all" primitive) removes split content **first**, via
+`removePostEditSplitSlots` (see below) if the point has any declared slots, then appends one
+ordinary per-entity command for each remaining piece of content (`setMeta`/`removeTeleport`/
+`removeVerticalPassage`/`removeElevator`) built against state *after* the split removal — ordering
+matters here: computing meta/teleport/vertical/elevator clearing before the split removal would let
+the split's own cascade (see below) sweep away commands that were only just appended, discarding
+their intended effect. Each of these commands has its own lifeline (same as if the user had removed
+that entity directly), so there's no dedicated "delete" lifeline to track. Covers **every** node
+currently at the point (original plus every declared split slot — not just the active one).
+Drag-capable (GitHub issue #489): a press-drag paints a delete stroke across every in-field cell the
+cursor enters, deduped per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`; a cell
+whose point carries more than one entity opens the picker mid-drag and ends the gesture right there
+(same `endEdgeDrag()` guard `PresetConnectionsController` uses for its own `clear`/`reset` drag
+branches), so a drag never keeps running "held" underneath an open dialog. Removed per point:
+
+- Every declared split slot (GitHub issue #550 follow-up), via `removePostEditSplitSlots` — see
+  below for the two removal strategies it picks between per slot.
 - Start/finish, if either currently addresses one of the point's nodes (same effect as
   `clearPostEditEndpoint`, applied to both markers uniformly) — via an implicit `setMeta` outcome
   within the same command's replay.
@@ -1141,17 +1252,70 @@ per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed p
   BFS at baseline-extraction time, not re-walked here) — a multi-floor elevator's mesh can include
   nodes that never name this point's own node directly, and the single command still covers all of
   them.
+- Every one-way face touching one of the point's nodes (GitHub issue #550 eighth follow-up) — the
+  face-anchored exception noted above. Each is RESET, not wiped to a plain wall
+  (`applyPostEditToolAt("reset", ...)`, the same action a right-click on the edge already runs), so a
+  one-way carved out of a generation-time passage reverts to that passage rather than a dead end.
+  Collected from a single `derived.edges` snapshot taken before any of these resets run (each face is
+  an independent one-way id, so unlike the split-slot cascade there's no cross-face ordering
+  concern).
 
-Basic edges and split-node structure (`setEdge`/`addSplitNode`/etc.) are never touched by delete —
-a point's walls/passages/one-ways and its split-node structure survive a delete untouched; only
-`wall`/`reset`/"Manage split nodes" edit those. Unlike `reset`, delete never restores anything by
-itself — it's a pure removal, so a piece of content created entirely in post-edit (no
-generation-time counterpart) is simply gone, same as one that did have one. But because every
-command delete appends is an ordinary command with its own ordinary lifeline (`teleport:${id}`,
-`vertical_passage:${id}`, `meta:${slot}`, etc. — see "Point-reset" above), a later
-`resetPostEditPoint`/`resetPostEdit` **does** undo delete, restoring whatever it removed —
-"reset undoes delete" is a direct consequence of the fixed-point lifeline cascade over those
-ordinary per-entity commands, not a special case bolted onto delete.
+**Whole-split-point removal — `removePostEditSplitSlots` (GitHub issue #550 follow-up,
+`store/slices/postEditSliceHelpers.ts`)**: `removePostEditSplitSlots(get, set, point, level,
+targetSlotIds)` is the single entry point every split-removing surface goes through — the delete
+tool's one-entity-direct case, the delete dialog's `split_point` row, the bulk/"Delete all"
+primitive, and `removeSplitNode` (the "Manage split nodes" panel's own per-slot remove action, now a
+thin wrapper calling this with a one-element `targetSlotIds`). It splits `targetSlotIds` by origin
+and applies a different strategy to each group, because "undo the slot's existence" means something
+different depending on whether post-edit created that slot or generation did:
+
+- **Post-edit-created slots** (added by `addSplitNode`/`applySplitBlueprint` earlier in *this* log —
+  no baseline counterpart) are undone by **cascading** their own lifelines away
+  (`cascadeRemoveLifelines`, seeded from each slot's `slot:point:level:slotId` key, plus
+  `originalNode:point:level` too when this removal empties the point entirely) — every command that
+  ever addressed that slot (its creation, every face rewire, every edge/teleport hung off it) is
+  pruned from the log, same fixed-point cascade shape `filterCommandsForPoint`/`deleteCommandAt`
+  already use. The net effect reads as "this slot was never created."
+- **Generation-baked slots** (already present in `postEditBaseline.derived.splitPoints`) can't be
+  cascaded away — there's no earlier "create" command to prune, the slot has existed since
+  generation. These are undone by appending one atomic `removeSplitPoint` command (see the
+  `PostEditCommand` union above) that removes the targeted slot(s)' edges/teleports and, only when
+  this removal empties the point completely, restores the point's ORIGINAL node's edges to its own
+  generation-time wiring (`restoredOriginalFaces`, built via `currentSplitNodeFaces` reading the
+  baseline's own edges around that endpoint — `postEditUtils.ts`) — as if the point had never been
+  split at all. When other slots remain after this removal (a partial multi-slot split shrinking,
+  not disappearing), `restoredOriginalFaces` is omitted; the original node's own wiring is left
+  untouched.
+
+Both branches can fire from the same call when a point mixes post-edit-created and generation-baked
+slots — `removePostEditSplitSlots` runs the cascade for the former and the explicit
+`removeSplitPoint` command for the latter, so removing "the whole split" always fully empties the
+point regardless of each slot's own origin.
+
+Basic edges (`setEdge`/etc.) are never touched by delete — a plain wall/passage face survives a
+delete untouched; only `wall`/`reset` edit those. A one-way face is the exception (GitHub issue #550
+eighth follow-up): delete resets it exactly like a `reset` right-click would
+(`applyPostEditToolAt("reset", ...)`), reverting it to whatever wall/passage/one-way generation
+produced there. Unlike every other kind here, this branch is not "delete appends a removal command
+with its own lifeline" — `applyPostEditToolAt("reset", ...)` either restores generation state
+directly or strips the log of whatever commands already touched that face, appending nothing new.
+So the general rule below ("reset undoes delete") does not apply to a one-way removed via delete: a
+later `resetPostEditPoint`/`resetPostEdit` has nothing left to find for it — the face is already at
+its generation-time state (or at whatever a later edit set it to) — there's no removal command
+sitting in the log to be un-done.
+
+For every other kind, delete never restores anything by itself for a post-edit-created entity — it's
+a pure removal, so a piece of content created entirely in post-edit (no generation-time counterpart)
+is simply gone. A generation-baked split's removal is the one exception (see `restoredOriginalFaces`
+above): the point doesn't just lose its slots, it reverts to the exact wiring generation produced,
+since "delete the split" for a generation-time split means "un-split it," not "leave a node with
+arbitrary leftover faces." Because every command delete appends for these kinds (the split-slot
+cascade included, since cascading only prunes what's already in the log) is an ordinary command with
+its own ordinary lifeline (`teleport:${id}`, `vertical_passage:${id}`, `meta:${slot}`,
+`slot:point:slotId`, etc. — see "Point-reset" above), a later `resetPostEditPoint`/`resetPostEdit`
+**does** undo delete for them, restoring whatever it removed — "reset undoes delete" is a direct
+consequence of the fixed-point lifeline cascade over those ordinary per-entity commands, not a
+special case bolted onto delete. The one-way branch above is the deliberate exception to this rule.
 
 Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`, red cell hover via
 `updateCellHover`'s `danger` flag).

@@ -217,6 +217,12 @@ export const dialogSpacing = {
 // Semantic dialog widths
 export const dialogSize = {
   approve: { minWidth: 260, maxWidth: 360 },
+  // Same shrink-to-fit/no-fixed-`width` shape as `approve` (grows with its content, capped at
+  // `maxWidth`) but a taller ceiling — for a list dialog whose rows can carry several coordinate
+  // bubbles (`PostEditEntityDeleteDialog`, GitHub issue #550 seventh follow-up) and would otherwise
+  // wrap constantly at `approve`'s narrow 360px cap. A row still wraps onto a second line past
+  // `maxWidth` (the row's own `flexWrap`) — this only raises the point where that kicks in.
+  approveWide: { minWidth: 260, maxWidth: 640 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
   // The pattern editor (`AbstractPatternEditorDialog`) — its tile diagram and node-card list stack

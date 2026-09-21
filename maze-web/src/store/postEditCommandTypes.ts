@@ -105,6 +105,26 @@ export type PostEditCommand =
   // type-letter-prefixed string id every OTHER entity category has.
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number; pointId: string }
+  // Removes an ENTIRE split point at once — every generation-baked slot the point still carries
+  // (GitHub issue #550 follow-up: "delete split" must leave the maze exactly as if the split had
+  // never happened, not a pile of disconnected removal commands). Unlike `removeSplitNode` (one
+  // slot among several, the point stays split), this is the "un-split back to one node" action —
+  // the whole-point removal path (`deletePostEditPoint`, "Delete all", a bare split point's own
+  // delete-tool click) always ends the point's split state entirely, never leaves some slots behind.
+  // `removedSlotIds` are the generation-baked slots this command removes — a post-edit-created slot
+  // (minted by `addSplitNode`/`applySplitBlueprint` within this very log) is instead cascade-deleted
+  // out of the log directly (its own creation command, and everything that came to depend on it,
+  // simply never happened) by the SAME store action that builds this command, so `removedSlotIds`
+  // only ever lists slots this command itself is responsible for un-baking — never a slot whose
+  // creation was already cascaded away. `restoredOriginalFaces` is the original node's own
+  // generation-time (baseline) face list, `undefined` when the point had no generation-baked slot to
+  // begin with (a purely post-edit-created split collapses via cascade alone, nothing to restore).
+  // Both fields are `undefined`/`[]` together exactly when this command has nothing left to do —
+  // callers only emit it when at least one of them is non-empty.
+  | {
+      kind: "removeSplitPoint"; point: [number, number]; level?: number; pointId: string;
+      removedSlotIds: number[]; restoredOriginalFaces?: ResolvedSplitEdgeFace[];
+    }
   // A split node's face wiring, resolved atomically (GitHub issue #545) — every edge-tool click on
   // one of a split point's nodes' faces (`ManageSplitNodesDialog`'s per-face controls, or a general
   // edge click that happens to land on any node of an already-split point) appends one of these

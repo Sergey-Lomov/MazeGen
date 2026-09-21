@@ -1164,7 +1164,11 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(1);
-    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(2), direction: "forward" });
+    // `to` resolves to `splitEndpoint([0, 0], 0, 1)`, not `n(2)` (GitHub issue #550 ninth follow-up)
+    // — node 2 IS level 1's split slot, so the destination must round-trip as a proper split
+    // endpoint, matching what a confirmed extraction already produces
+    // (`extractPostEditVerticalPassages`), not the resolved node id it happens to carry today.
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: splitEndpoint([0, 0], 0, 1), direction: "forward" });
   });
 
   it("startPostEditVerticalPassagePlacement's fresh-placement commit falls back to the original node when nothing's been picked at a split destination", () => {
@@ -1406,7 +1410,11 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     });
     useMazeStore.getState().confirmPostEditElevatorPlacement();
     const s = useMazeStore.getState();
-    expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", floors: [n(0), n(2)] });
+    // `floors[1]` resolves to `splitEndpoint([0, 0], 0, 1)`, not `n(2)` (GitHub issue #550 ninth
+    // follow-up) — node 2 IS level 1's split slot, so the resolved floor must round-trip as a
+    // proper split endpoint, matching what a confirmed extraction already produces
+    // (`extractPostEditElevators`), not the resolved node id it happens to carry today.
+    expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", floors: [n(0), splitEndpoint([0, 0], 0, 1)] });
   });
 
   it("confirmPostEditElevatorPlacement falls back to the original node when nothing's been picked at a split floor", () => {
@@ -1495,12 +1503,12 @@ describe("mazeStore applyPostEditSplitTargetPick (GitHub issue #474)", () => {
   it("vertical passage dispatches startPostEditVerticalPassagePlacement to the picked node", () => {
     // Seed a generation-time vertical passage from node 1 (a split slot) — a full baseline draft
     // entry from the start (GitHub issue #564), addressed via its split endpoint since that's what
-    // `endpointFor` resolves a non-zero-`i` node to. The dispatched `origin` is always node-kind
-    // (`applyPostEditSplitTargetPick` builds a plain `nodeEndpoint`), and
-    // `findPostEditVerticalPassageForPair` only ever matches node-kind entries, so this baseline
-    // (split-addressed) entry isn't found as "already drafted" here; with no active split node
-    // picked for the destination floor, the placement's own node resolution comes up empty and the
-    // click is a no-op — the baseline entry is left exactly as extracted.
+    // `endpointFor` resolves a non-zero-`i` node to. `applyPostEditSplitTargetPick` correctly
+    // resolves the dispatched `origin` to that same split endpoint too (GitHub issue #550 ninth
+    // follow-up), and `findPostEditVerticalPassageForPair` matches split-addressed entries as well
+    // — but this test's minimal seed never sets up `state.floors`/multi-floor field config, so
+    // `cellExistsAt` finds no up/down direction available regardless, and the click is a no-op for
+    // that unrelated reason — the baseline entry is left exactly as extracted.
     seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
@@ -1516,6 +1524,27 @@ describe("mazeStore applyPostEditSplitTargetPick (GitHub issue #474)", () => {
     const s = useMazeStore.getState();
     expect(s.postEditSplitTargetPrompt).toBeNull();
     expect(s.postEditDraftVerticalPassages).toEqual(before);
+  });
+
+  it("vertical passage placed on a split slot records a splitEndpoint origin, not the resolved node id (GitHub issue #550 ninth follow-up)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 1, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, {
+      activeFloorId: "f0",
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
+      floorFields: { f0: baseFloorFieldConfig(), f1: baseFloorFieldConfig() },
+    });
+    openPrompt({ tool: "vertical_passage_one_way" });
+    useMazeStore.getState().applyPostEditSplitTargetPick(1);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(1);
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: splitEndpoint([0, 0], 0), to: n(2), direction: "forward" });
   });
 
   it("is a no-op when no prompt is open", () => {

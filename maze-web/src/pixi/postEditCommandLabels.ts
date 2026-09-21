@@ -81,7 +81,7 @@ function formatPoint(p: PostEditHoverPoint | undefined, multiFloor: boolean, slo
  *  ORIGINAL node (`i === 0`) is just as much a split tile's node as any extra slot and must get the
  *  same suffix. `splitCtx` is `null` where the caller has no field/edges context to resolve against
  *  (falls back to no suffix at all, same as an unsplit point). */
-function endpointBubble(ep: PostEditEndpoint, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
+export function endpointBubble(ep: PostEditEndpoint, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
   const p = resolveEndpointToHoverPoint(ep, nodeById);
   const suffix = p ? resolveSplitNodeShortLabel(splitCtx, p.point, p.level, ep) : undefined;
   return { text: formatPoint(p, multiFloor, suffix), highlight: p ? { kind: "point", ...p } : null };
@@ -92,7 +92,7 @@ function endpointBubble(ep: PostEditEndpoint, nodeById: ReadonlyMap<number, Node
  *  `applySplitBlueprint`). No slot suffix here — deliberately, unlike `endpointBubble`/the
  *  `slotId`-bearing overload below: these commands rotate/reset the WHOLE tile, not one node of
  *  it, so naming a single slot would misrepresent what changed. */
-function splitPointBubble(point: [number, number], level: number | undefined, multiFloor: boolean): PostEditEntityBubble {
+export function splitPointBubble(point: [number, number], level: number | undefined, multiFloor: boolean): PostEditEntityBubble {
   return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level } };
 }
 
@@ -249,7 +249,7 @@ export function entityIdOf(command: PostEditCommand): string | undefined {
       return command.id;
     case "addElevator": case "updateElevatorFloors": case "removeElevator":
       return command.id;
-    case "addSplitNode": case "removeSplitNode": case "applySplitBlueprint": case "updateSplitNodeFaces":
+    case "addSplitNode": case "removeSplitNode": case "removeSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
       return command.pointId;
     case "setMeta": case "rotateSplitPoint":
       return undefined;
@@ -352,6 +352,11 @@ export function postEditCommandLabel(
       return withEntityId(plain(m["post_edit.changes_action_add_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));
     case "removeSplitNode":
       return withEntityId(plain(m["post_edit.changes_action_remove_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));
+    case "removeSplitPoint":
+      // Un-splitting the whole tile (GitHub issue #550 follow-up feedback point 1) — no slot suffix,
+      // unlike `removeSplitNode`'s single-slot bubble: naming one particular node would misrepresent
+      // an action that also folds in the original node's own generation-edge restore.
+      return withEntityId(plain(m["post_edit.changes_action_remove_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]));
     case "rotateSplitPoint":
       return plain(m["post_edit.changes_action_rotate_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]);
     case "applySplitBlueprint": {

@@ -318,7 +318,11 @@ export function resolverForNodeId(
     const sortedSlots = slots ? [...slots].sort((a, b) => a - b) : [];
     const slotId = sortedSlots[index - 1];
     if (slotId === undefined) return nodeEndpoint(id);
-    const [xStr, yStr] = key.split(",");
+    // `key` carries an `"@level"` suffix for any floor above 0 (`buildMultiFloorPointNodeMap`'s own
+    // convention) — stripped before parsing coordinates, or `Number("0@1")` (GitHub issue #550 ninth
+    // follow-up) silently produced `NaN` for the y (or x) coordinate on every floor above the first.
+    const bareKey = key.split("@")[0];
+    const [xStr, yStr] = bareKey.split(",");
     return splitEndpoint([Number(xStr), Number(yStr)], slotId);
   };
 }

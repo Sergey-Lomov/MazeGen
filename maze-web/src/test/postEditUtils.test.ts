@@ -302,23 +302,24 @@ describe("findPostEditVerticalPassageForPair", () => {
   ];
 
   it("matches a pair in either argument order", () => {
-    expect(findPostEditVerticalPassageForPair(passages, 0, 1)?.id).toBe("v1");
-    expect(findPostEditVerticalPassageForPair(passages, 1, 0)?.id).toBe("v1");
+    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(1))?.id).toBe("v1");
+    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(0))?.id).toBe("v1");
   });
 
   it("matches regardless of which end of the entry each id sits on", () => {
-    expect(findPostEditVerticalPassageForPair(passages, 0, 5)?.id).toBe("v2");
+    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(5))?.id).toBe("v2");
   });
 
   it("returns undefined when no entry connects the pair", () => {
-    expect(findPostEditVerticalPassageForPair(passages, 1, 5)).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair(passages, 0, 9)).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair([], 0, 1)).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(5))).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(9))).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair([], nodeEndpoint(0), nodeEndpoint(1))).toBeUndefined();
   });
 
-  it("never matches a split-addressed endpoint (vertical passages are node-addressed)", () => {
+  it("matches a split-addressed endpoint too (GitHub issue #550 ninth follow-up)", () => {
     const withSplit = [{ id: "v3", from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(findPostEditVerticalPassageForPair(withSplit, 0, 1)).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair(withSplit, splitEndpoint([0, 0], 0), nodeEndpoint(1))?.id).toBe("v3");
+    expect(findPostEditVerticalPassageForPair(withSplit, nodeEndpoint(1), splitEndpoint([0, 0], 0))?.id).toBe("v3");
   });
 });
 
