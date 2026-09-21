@@ -90,6 +90,8 @@ export function PostEditFeature() {
   const setTool             = useMazeStore((s) => s.setPostEditTool);
   const autoConfirm         = useMazeStore((s) => s.postEditAutoConfirm);
   const setAutoConfirm      = useMazeStore((s) => s.setPostEditAutoConfirm);
+  const autoCompact         = useMazeStore((s) => s.postEditAutoCompact);
+  const setAutoCompact      = useMazeStore((s) => s.setPostEditAutoCompact);
   const postEditDraftEdges       = useMazeStore((s) => s.postEditDraftEdges);
   const confirmPostEdit     = useMazeStore((s) => s.confirmPostEdit);
   const resetPostEdit       = useMazeStore((s) => s.resetPostEdit);
@@ -200,7 +202,11 @@ export function PostEditFeature() {
             <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>
             <Switch checked={autoConfirm} onChange={setAutoConfirm} />
           </Inline>
-          <span style={styles.hint}>{m["post_edit.auto_confirm_hint"]()}</span>
+
+          <Inline gap="groupGap" justify="space-between">
+            <span style={styles.autoConfirmLabel}>{m["post_edit.auto_compact"]()}</span>
+            <Switch checked={autoCompact} onChange={setAutoCompact} />
+          </Inline>
         </Stack>
       </div>
 
@@ -243,9 +249,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   autoConfirmLabel: {
     ...muted(typography.body),
-  },
-  hint: {
-    ...typography.caption,
-    marginTop: -4,
   },
 };

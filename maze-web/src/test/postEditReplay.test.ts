@@ -556,7 +556,7 @@ describe("isCreateCommand (GitHub issue #547)", () => {
     expect(isCreateCommand({ kind: "setTeleportDirection", id: "t1", direction: "two_way", from: n(0), to: n(1) })).toBe(false);
     expect(isCreateCommand({ kind: "removeTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" })).toBe(false);
     expect(isCreateCommand({ kind: "setMeta", slot: "start", endpoint: n(0) })).toBe(false);
-    expect(isCreateCommand({ kind: "rotateSplitPoint", point: [0, 0], moves: [] })).toBe(false);
+    expect(isCreateCommand({ kind: "rotateSplitPoint", point: [0, 0], nodes: [] })).toBe(false);
   });
 });
 

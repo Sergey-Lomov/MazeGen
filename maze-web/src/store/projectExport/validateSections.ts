@@ -2,7 +2,7 @@ import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { PostEditCommand, ResolvedRotateMove, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
+import type { PostEditCommand, ResolvedRotateNode, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdgeState } from "../postEditTypes";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type {
@@ -183,13 +183,11 @@ function validateOptionalBlueprintTitleKey(obj: Record<string, unknown>, path: s
   return assertString(obj.blueprintTitleKey, `${path}.blueprintTitleKey`);
 }
 
-function validateResolvedRotateMove(v: unknown, path: string): ResolvedRotateMove {
+function validateResolvedRotateNode(v: unknown, path: string): ResolvedRotateNode {
   const obj = assertObject(v, path);
   return {
-    oldKey: assertString(obj.oldKey, `${path}.oldKey`),
-    from: validatePostEditEndpoint(obj.from, `${path}.from`),
-    to: validatePostEditEndpoint(obj.to, `${path}.to`),
-    edge: validatePostEditEdgeState(obj.edge, `${path}.edge`),
+    slotId: obj.slotId === undefined ? undefined : assertNumber(obj.slotId, `${path}.slotId`),
+    faces: validateResolvedSplitEdgeFaces(obj.faces, `${path}.faces`),
   };
 }
 
@@ -260,7 +258,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
     case "rotateSplitPoint":
       return {
         kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
-        moves: assertArray(obj.moves, `${path}.moves`).map((m, i) => validateResolvedRotateMove(m, `${path}.moves[${i}]`)),
+        nodes: assertArray(obj.nodes, `${path}.nodes`).map((n, i) => validateResolvedRotateNode(n, `${path}.nodes[${i}]`)),
       };
     case "updateSplitNodeFaces":
       return {

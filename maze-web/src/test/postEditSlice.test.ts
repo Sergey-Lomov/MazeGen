@@ -10,6 +10,7 @@ import { configAllCells } from "../pixi/tessellationCells";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
+import { compactPostEditCommands } from "../pixi/postEditCompaction";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -67,6 +68,7 @@ beforeEach(() => {
   useMazeStore.setState({
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
     postEditAutoConfirm: false,
+    postEditAutoCompact: false,
     _nextPostEditTeleportId: 1,
     _nextPostEditVerticalPassageId: 1,
     _nextPostEditElevatorId: 1,
@@ -97,6 +99,70 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(s.postEditAutoConfirm).toBe(true);
     expect(s.postEditTool).toBe("passage");
+  });
+
+  it("setPostEditAutoCompact updates its field, off by default", () => {
+    expect(useMazeStore.getState().postEditAutoCompact).toBe(false);
+    useMazeStore.getState().setPostEditAutoCompact(true);
+    expect(useMazeStore.getState().postEditAutoCompact).toBe(true);
+  });
+
+  it("setPostEditAutoCompact(true) compacts the log immediately, not just after the next command", () => {
+    useMazeStore.setState({ postEditAutoCompact: false, postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    useMazeStore.setState({ postEditTool: "one_way" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // create
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // flip 1
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // flip 2 (cancels flip 1)
+    const beforeToggle = useMazeStore.getState().postEditCommands;
+    const baseline = useMazeStore.getState().postEditBaseline;
+    if (baseline === null) throw new Error("expected a baseline");
+    const compactedNow = compactPostEditCommands(baseline, beforeToggle);
+
+    useMazeStore.getState().setPostEditAutoCompact(true);
+    // The toggle itself runs the same compaction pass right away — matches what manually compacting
+    // the pre-toggle log would produce, no further command needed to trigger it.
+    expect(useMazeStore.getState().postEditCommands).toEqual(compactedNow);
+    expect(useMazeStore.getState().postEditCommands.length).toBeLessThan(beforeToggle.length);
+  });
+
+  it("postEditAutoCompact off: two direction-cancelling one-way flips stay in the log uncompacted", () => {
+    useMazeStore.setState({ postEditAutoCompact: false, postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    const afterWall = useMazeStore.getState().postEditCommands.length;
+
+    useMazeStore.setState({ postEditTool: "one_way" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // create
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // flip 1
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1)); // flip 2 (would cancel flip 1)
+    // With auto-compact off, all three one_way clicks stay in the log uncompacted — the two
+    // cancelling flips are NOT dropped just because compaction (GitHub issue #548) could drop them.
+    expect(useMazeStore.getState().postEditCommands.length).toBe(afterWall + 3);
+  });
+
+  it("postEditAutoCompact on: appending a command auto-compacts the log right away (GitHub issue #548 follow-up)", () => {
+    // Start from a plain wall (not the seeded two-way passage) so `one_way` clicks are: 1) create a
+    // fresh one-way, 2) flip it, 3) flip it back — the second and third clicks form a cancelling
+    // pair (GitHub issue #548), while the creation itself always survives (GitHub issue #548
+    // follow-up: creation is only dropped if the entity is later actually destroyed). Auto-compact
+    // is on from the very first click, so every intermediate count below is already compacted.
+    useMazeStore.setState({ postEditAutoCompact: true, postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    const afterWall = useMazeStore.getState().postEditCommands.length;
+
+    useMazeStore.setState({ postEditTool: "one_way" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    const afterCreate = useMazeStore.getState().postEditCommands.length;
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    const afterFirstFlip = useMazeStore.getState().postEditCommands.length;
+    // Second flip cancels the first — auto-compact drops both right after this append, leaving only
+    // the original creation on top of the wall command.
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    const afterSecondFlip = useMazeStore.getState().postEditCommands.length;
+
+    expect(afterCreate).toBeGreaterThan(afterWall);
+    expect(afterFirstFlip).toBeGreaterThan(afterCreate);
+    expect(afterSecondFlip).toBe(afterCreate);
   });
 
   it("applyPostEditTool('wall') deletes the draft edge entry and marks postEditDirty", () => {
@@ -1607,6 +1673,35 @@ describe("mazeStore split-node actions", () => {
     expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
     useMazeStore.getState().setPostEditFocusedPoint(null);
     expect(useMazeStore.getState().postEditFocusedPoint).toBeNull();
+  });
+
+  // Reproduces the reported flow (GitHub issue #548 rotate/compaction follow-up): create a split
+  // node, rotate it, then compact — the slot's `addSplitNode` must survive compaction, since
+  // `rotateSplitPoint`'s replay case only re-wires edges, it never re-registers `splitPoints`/
+  // `splitPointIds` (only `applySplitBlueprint` recreates a point's slot list from scratch).
+  it("addSplitNode -> rotateSplitPoint -> compactPostEditLog keeps the slot registered", () => {
+    const gridNodes = [];
+    for (let x = 0; x <= 4; x++) for (let y = 0; y <= 4; y++) gridNodes.push({ id: (x + 1) * 100 + y, x, y, i: 0 });
+    seedPostEdit({
+      nodes: gridNodes,
+      edges: [],
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0, pointId: "s1" },
+        {
+          kind: "setEdgePair", a: n(301), b: splitEndpoint([2, 2], 0),
+          aToB: es(n(301), splitEndpoint([2, 2], 0), "basic"),
+          bToA: es(splitEndpoint([2, 2], 0), n(301), "basic"),
+        },
+      ],
+    }, { activeTessellationConfig: { type: "square", width: 5, height: 5 } });
+
+    useMazeStore.getState().rotateSplitPoint([2, 2], 1);
+    expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0]);
+
+    useMazeStore.getState().compactPostEditLog();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["2,2"]).toEqual([0]);
+    expect(s.postEditDraftSplitPointIds["2,2"]).toBe("s1");
   });
 });
 

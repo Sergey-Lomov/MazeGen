@@ -108,7 +108,7 @@ type PostEditCommand =
   // or its own point-scoped key when it's the original node (which has no add/remove command of its
   // own to share a lifeline with).
   | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId?: number; faces: ResolvedSplitEdgeFace[]; pointId: string }
-  | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
+  | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; nodes: ResolvedRotateNode[] }
   // `originalFaces` carries the pre-existing node's own faces in the SAME command as the blueprint
   // application, instead of a trailing `setEdge`/`updateSplitNodeFaces` per face - applying a
   // blueprint is one logical action. `blueprintTitleKey` carries the blueprint's own `titleKey`
@@ -167,10 +167,16 @@ outcome, one-way id mint-vs-reuse, split-point id resolution, split-node face as
 resolved **once, at command-construction time**, reading live confirmed/derived state — replay
 itself never reads outside its own `PostEditReplayContext`/fold state:
 
-- `rotateSplitPoint.moves`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
-  edge re-keys/face assignments (`rotateSplitPointMoves`/split-blueprint resolution in
-  `pixi/postEditUtils.ts`) — replay has no tessellation/field access, so a rotation's or blueprint's
-  geometric outcome is computed once by the store action, not re-derived during replay.
+- `rotateSplitPoint.nodes`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
+  face assignments (`rotateSplitPointNodes`/split-blueprint resolution in `pixi/postEditUtils.ts`)
+  — replay has no tessellation/field access, so a rotation's or blueprint's geometric outcome is
+  computed once by the store action, not re-derived during replay. `rotateSplitPoint.nodes` is a
+  COMPLETE snapshot of every affected node's own face list (`ResolvedRotateNode`, the same shape
+  `updateSplitNodeFaces.faces` uses), not a diff of moved edges — every split command that can recur
+  against the same node is uniformly a full snapshot, which is what lets compaction
+  (`Specs/post-edit.md`'s "Log compaction" section) safely drop an earlier command from the same
+  point's log without leaving a later command's own re-keys resolved against a state that no longer
+  exists.
 - `addSplitNode.slotId` is the already-resolved next id (from `_nextSplitSlotId`'s high-water mark
   for that point, not recomputed at replay time); `addSplitNode.pointId`/`applySplitBlueprint.pointId`
   are resolved the same way from `_nextPostEditSplitPointId`, or reused from the point's existing id.
@@ -315,6 +321,96 @@ authored intent (`endpoint` on a move, the `direction`/`floors` being set) is le
 authored, since re-deriving it from `before` would silently change what the user asked for rather
 than just refresh a stale snapshot.
 
+### Log compaction (GitHub issue #548, `pixi/postEditCompaction.ts`)
+
+`compactPostEditCommands(baseline, commands)` drops every command whose effect is no longer
+observable in the log's own final state — a stale command superseded by a later one of the same
+face/entity/point — then `renormalizeCommand`-s every survivor the same way `deleteCommandAt` does,
+so a collapse never leaves a denormalized from/to/direction/floors field describing a
+pre-compaction snapshot. Triggered either manually (a "Compact" button pinned below the Changes
+panel's row list, sticky to the panel's own bottom edge the same way the entity-id filter is sticky
+to its top — opens a `ConfirmModal`, then calls `compactPostEditLog()`) or automatically after every
+command/batch when `postEditAutoCompact` (a `Switch` next to the auto-confirm one in the post-edit
+panel, default off) is on — `finalizeAutoCompact` in `postEditSliceHelpers.ts` runs the same
+`compactPostEditCommands` call inside `appendPostEditCommand`/`replacePostEditCommands`'s own `set`,
+right after the command list would otherwise be committed as-is.
+
+Compaction groups commands more coarsely than `lifelineKeysOf` (`compactionGroupsOf`), but keeps a
+one-way passage's own creation separate from plain wall/passage toggling: a `setEdge`/`setEdgePair`
+whose resulting side is plain wall/basic (never one-way) joins one `edge:` group keyed by the face's
+own undirected endpoint-pair key — a wall<->passage toggle sequence on one face is what repeated
+clicks there produce, and only the last such toggle is ever observable. A side that IS one-way keys
+by that side's own `oneWay:${id}` instead, the same per-id lifeline `lifelineKeysOf` already uses —
+creating a one-way passage is a visible action the user expects to survive compaction even though a
+later direction flip is technically equivalent to having created it facing the other way
+("compaction drops an entity's creation only if the entity is later actually deleted", not merely
+superseded by an equivalent-effect command). A `setEdgePair` can therefore belong to up to two
+`oneWay:` groups at once (one per side) via `replacedOneWayIds`, in addition to or instead of the
+plain `edge:` group. Every other command kind keeps its own `lifelineKeysOf` grouping (teleport/
+vertical passage/elevator by id, a split slot by `slot:point:slotId`/`originalNode:point`, a whole
+split point rebuild by `point:point`, start/finish by `meta:slot`).
+
+Per-group staleness rules:
+
+- **Edge group** (plain wall/basic only): each `setEdge`/`setEdgePair` is superseded by the NEXT one
+  on the same face — only the group's last command survives.
+- **One-way groups** (`oneWay:${id}`): mirrors the create/flip-pair/remove shape of a teleport/
+  vertical-passage lifeline below, but the id's own creation is superseded ONLY by an actual destroy
+  of that id (the face reverting to wall/basic, or a fresh one-way minted on the same face replacing
+  it, per `replacedOneWayIds`) — never by a plain later direction flip. When one physical command
+  simultaneously destroys one id and mints a different id on the same face (a same-click "replace"),
+  that command is never dropped on account of the old id's own "created-and-destroyed-within-this-
+  log" collapse if it is also required to record the new id's still-alive creation.
+- **Create/remove groups** (teleport/vertical passage/elevator/split-slot): a `remove*` command
+  supersedes every earlier command of its own group (the create and every move/flip in between) —
+  none of their effects are observable once the entity is gone. If the group's own first command is
+  itself a create (no baseline counterpart), the remove also supersedes *itself*: an entity created
+  and destroyed entirely within the log leaves nothing to record. A remove of a *baseline* entity
+  (no create command earlier in the log) keeps the remove — "this baseline entity is now gone" is
+  still an observable effect.
+- **Move commands** (`moveTeleportEndpoint`/`moveVerticalPassageEndpoint`/`updateElevatorFloors`/
+  `updateSplitNodeFaces`): each move supersedes only the immediately PRECEDING move of the same
+  group — never the create, never a direction-flip sitting between two moves. A `P1->P2->P3` chain
+  collapses to a single effective `P1->P3`, the same collapse `deleteCommandAt` already performs for
+  a single deleted move.
+- **Direction-flip pairs** (`setTeleportDirection`/`setVerticalPassageDirection`, or a
+  `setEdgePair`/`setEdge` one-way `directionFlip`): a flip toggles the entity's CURRENT direction
+  regardless of its own denormalized `direction` field, so two consecutive flips of one group (with
+  only non-direction commands of the same group, if any, between them) cancel out — both superseded.
+  Pairing runs from the START of the group's own flip-only subsequence: flip 1+2 cancel, flip 3+4
+  cancel, and so on; an odd trailing flip survives alone. This is why a *second* direction change
+  can make the *first* one stale purely by existing (an even flip count nets to "as if neither
+  happened"), and why removing one flip of a cancelling pair (e.g. via the per-row Delete action)
+  makes the other flip relevant again — compaction and `deleteCommandAt`'s own flip-pair cascade are
+  two sides of the same "an even number of flips is a no-op" fact.
+- **`rotateSplitPoint`/`applySplitBlueprint`**: `applySplitBlueprint` rebuilds a split point's entire
+  slot list AND node/face structure from scratch (its replay case writes `splitPoints`/
+  `splitPointIds`, same as `addSplitNode`/`removeSplitNode`), so a later one supersedes every earlier
+  `slot:`/`originalNode:`/`point:` command of the SAME point — across every one of that point's slot
+  groups at once, not just the group the rebuild command itself would key under alone.
+  `rotateSplitPoint` only re-wires the slots it was given — its replay case never touches
+  `splitPoints`/`splitPointIds` at all — so it supersedes an earlier `rotateSplitPoint`/
+  `updateSplitNodeFaces` the same way (both pure wiring rebuilds), but never any command that
+  registers a slot's existence (`addSplitNode`, `removeSplitNode`, or `applySplitBlueprint`):
+  dropping one of those would leave that slot's rotated wiring snapshot with nothing left to attach
+  to — the point silently loses that node after compacting (GitHub issue #548 follow-up fix; the
+  `applySplitBlueprint` case was the one that actually surfaced in practice, since a split tile is
+  normally created via a blueprint, not `addSplitNode` directly).
+- **`setMeta`**: a later `setMeta` for the same slot supersedes the earlier one outright — only the
+  slot's current value is ever observable.
+
+Runs to a fixed point, re-scanning after every removal pass: dropping a superseded command can
+expose a newly-superseded one that wasn't stale while the dropped command still sat between it and
+whatever superseded it (an even-numbered flip run becoming odd again once one flip of a pair is
+otherwise removed, mirroring the same "deleting a flip un-cancels its old partner" dynamic manual
+per-row deletion already has). Terminates because each iteration strictly shrinks the log or leaves
+it unchanged. Returns the input array unchanged (by reference) when nothing is superseded.
+
+Split-node commands (`addSplitNode`/`removeSplitNode`/`updateSplitNodeFaces`/`rotateSplitPoint`/
+`applySplitBlueprint`) are compacted by the same pass as every other category, not deferred — a
+`removeSplitNode` supersedes its own slot's earlier `addSplitNode`/`updateSplitNodeFaces` (or itself
+too, if the slot never existed in the baseline) the same way `removeTeleport` does for a teleport.
+
 ### Changes-panel row actions (GitHub issue #547)
 
 Each row shows two icon buttons (`RotateCcw`/`Trash2`) inline in the same flex row as that row's
@@ -399,7 +495,7 @@ Every teleport/vertical-passage command (`setTeleportDirection`/`moveTeleportEnd
 from/to/direction/floors denormalized onto the command at construction time, rather than resolving
 through an id-keyed lookup into the CURRENT draft — mirroring every other pre-resolved field in
 `PostEditCommand` (the module doc comment in `postEditCommandTypes.ts` calls out
-`ResolvedRotateMove`/`applySplitBlueprint`'s `resolvedSlots` as the same pattern). An id-only lookup
+`ResolvedRotateNode`/`applySplitBlueprint`'s `resolvedSlots` as the same pattern). An id-only lookup
 into the current draft is correct only for the newest/still-live row about an entity; any OLDER row
 about the same id breaks once a later command has moved or removed that entity — this was first
 found on `removeVerticalPassage`/`removeElevator` (GitHub issue #564 partial: those two rows
