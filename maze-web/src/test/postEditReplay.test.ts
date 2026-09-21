@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   applyPostEditCommand, replayPostEditCommands, replayPostEditCommandsFailClosed,
-  filterCommandsForPoint,
+  filterCommandsForPoint, isCreateCommand, resetCommandsAt, deleteCommandAt,
+  affectedIndicesForReset, affectedIndicesForDelete,
 } from "../pixi/postEditReplay";
 import type { PostEditBaseline, PostEditDerivedState, PostEditReplayContext } from "../pixi/postEditReplay";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
@@ -523,5 +524,377 @@ describe("setEdgePair one-way lifelines (GitHub issue #564)", () => {
     ];
     // Any point on the a/b face touches both the destroyed and the created lifeline.
     expect(filterCommandsForPoint(baseline, commands, [0, 0])).toEqual([]);
+  });
+});
+
+describe("isCreateCommand (GitHub issue #547)", () => {
+  it("every add*/applySplitBlueprint is a create", () => {
+    expect(isCreateCommand({ kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" })).toBe(true);
+    expect(isCreateCommand({ kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" })).toBe(true);
+    expect(isCreateCommand({ kind: "addElevator", id: "e1", floors: [n(0)] })).toBe(true);
+    expect(isCreateCommand({ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" })).toBe(true);
+    expect(isCreateCommand({ kind: "applySplitBlueprint", point: [0, 0], resolvedSlots: [], pointId: "s1" })).toBe(true);
+  });
+
+  it("a fresh one-way mint (setEdge/setEdgePair) is a create; a flip or wall/basic toggle isn't", () => {
+    expect(isCreateCommand({ kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") })).toBe(true);
+    expect(isCreateCommand({ kind: "setEdge", edge: es(n(0), n(1), "basic") })).toBe(false);
+    expect(isCreateCommand({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"),
+    })).toBe(true);
+    expect(isCreateCommand({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "wall"),
+    })).toBe(false);
+    // Flipping an already-one-way face reuses its id — same entity, new direction, not a create.
+    expect(isCreateCommand({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"),
+      directionFlip: true,
+    })).toBe(false);
+  });
+
+  it("every non-create/non-mint command kind is not a create", () => {
+    expect(isCreateCommand({ kind: "setTeleportDirection", id: "t1", direction: "two_way", from: n(0), to: n(1) })).toBe(false);
+    expect(isCreateCommand({ kind: "removeTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" })).toBe(false);
+    expect(isCreateCommand({ kind: "setMeta", slot: "start", endpoint: n(0) })).toBe(false);
+    expect(isCreateCommand({ kind: "rotateSplitPoint", point: [0, 0], moves: [] })).toBe(false);
+  });
+});
+
+describe("resetCommandsAt (GitHub issue #547)", () => {
+  it("truncates the log to keep the target command and drop everything after it", () => {
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "start", endpoint: n(0) },
+      { kind: "setMeta", slot: "finish", endpoint: n(1) },
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+    ];
+    expect(resetCommandsAt(commands, 1)).toEqual(commands.slice(0, 2));
+    expect(resetCommandsAt(commands, 0)).toEqual(commands.slice(0, 1));
+  });
+
+  it("is a no-op on the last index and returns the input unchanged (by reference) for an out-of-range index", () => {
+    const commands: PostEditCommand[] = [{ kind: "setMeta", slot: "start", endpoint: n(0) }];
+    expect(resetCommandsAt(commands, 0)).toEqual(commands);
+    expect(resetCommandsAt(commands, 5)).toBe(commands);
+    expect(resetCommandsAt(commands, -1)).toBe(commands);
+  });
+});
+
+describe("deleteCommandAt — collapse (GitHub issue #547)", () => {
+  it("deleting an intermediate teleport move collapses the chain (P1->P2, P2->P3 becomes just P1->P3)", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(3), from: n(2), to: n(3), direction: "forward" },
+    ];
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      // Denormalized from/to re-resolved against the post-deletion state: this move now starts
+      // from the teleport's ACTUAL prior endpoint (n(0), the add's own `to`), not the deleted
+      // step's n(2) — the resulting derived state (t1: n(0) -> n(3)) is preserved either way.
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(3), from: n(0), to: n(3), direction: "forward" },
+    ]);
+    const derived = replayPostEditCommands(baseline, next);
+    expect(derived.teleports).toEqual([{ id: "t1", from: n(0), to: n(3), direction: "forward" }]);
+  });
+
+  it("deleting a removeTeleport command restores the teleport (a deletion command is itself undoable)", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "removeTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+    ];
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([{ kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" }]);
+    const derived = replayPostEditCommands(baseline, next);
+    expect(derived.teleports).toEqual([{ id: "t1", from: n(0), to: n(1), direction: "forward" }]);
+  });
+
+  it("re-resolves setMeta's denormalized previousEndpoint after deleting an earlier setMeta on the same slot", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "start", endpoint: n(0) },
+      { kind: "setMeta", slot: "start", endpoint: n(1) },
+      { kind: "setMeta", slot: "start", endpoint: null, previousEndpoint: n(1) },
+    ];
+    // Deleting the middle setMeta (n(0) -> n(1)) leaves the clear's own previousEndpoint stale
+    // (still n(1)) unless re-resolved against the new preceding state (n(0), from the first command).
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([
+      { kind: "setMeta", slot: "start", endpoint: n(0) },
+      { kind: "setMeta", slot: "start", endpoint: null, previousEndpoint: n(0) },
+    ]);
+  });
+
+  it("re-resolves a surviving removeTeleport's denormalized from/to/direction after deleting an earlier move of the same teleport", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "removeTeleport", id: "t1", from: n(0), to: n(2), direction: "forward" },
+    ];
+    // Deleting the move leaves the removeTeleport's own denormalized from/to stale (still n(2))
+    // unless re-resolved against the new preceding state (the teleport's original n(0)->n(1)).
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "removeTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+    ]);
+  });
+
+  it("collapses a vertical-passage move chain and re-resolves a surviving removeVerticalPassage's denormalized fields", () => {
+    const baseline = makeBaseline();
+    const collapseCommands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(3), from: n(2), to: n(3), direction: "forward" },
+    ];
+    expect(deleteCommandAt(baseline, collapseCommands, 1)).toEqual([
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(3), from: n(0), to: n(3), direction: "forward" },
+    ]);
+
+    // A non-direction move collapsed ahead of a surviving setVerticalPassageDirection re-resolves
+    // that flip's own denormalized from/to too (renormalizeCommand's setVerticalPassageDirection
+    // branch, distinct from the direction-pair-cascade tests above, which never collapse — they
+    // always delete a flip itself, not a move preceding one).
+    const directionCommands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "backward", from: n(0), to: n(2) },
+    ];
+    expect(deleteCommandAt(baseline, directionCommands, 1)).toEqual([
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "backward", from: n(0), to: n(1) },
+    ]);
+
+    const removeCommands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+      { kind: "removeVerticalPassage", id: "v1", from: n(0), to: n(2), direction: "forward" },
+    ];
+    expect(deleteCommandAt(baseline, removeCommands, 1)).toEqual([
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "removeVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+    ]);
+  });
+
+  it("re-resolves a surviving removeElevator's denormalized floors after deleting an earlier updateElevatorFloors", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addElevator", id: "e1", floors: [n(0), n(1)] },
+      { kind: "updateElevatorFloors", id: "e1", floors: [n(0), n(1), n(2)] },
+      { kind: "removeElevator", id: "e1", floors: [n(0), n(1), n(2)] },
+    ];
+    // Deleting the floors update leaves the removeElevator's own denormalized floors stale (still
+    // includes n(2)) unless re-resolved against the new preceding state (the elevator's original
+    // two floors).
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([
+      { kind: "addElevator", id: "e1", floors: [n(0), n(1)] },
+      { kind: "removeElevator", id: "e1", floors: [n(0), n(1)] },
+    ]);
+  });
+});
+
+describe("deleteCommandAt — create cascade (GitHub issue #547)", () => {
+  it("deleting an addSplitNode cascades every command that added to or moved within that slot's node", () => {
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+      { kind: "setEdge", edge: es(splitEndpoint([0, 0], 0), n(5), "basic") },
+      { kind: "setMeta", slot: "start", endpoint: n(9) },
+      { kind: "setMeta", slot: "finish", endpoint: splitEndpoint([0, 0], 0) },
+    ];
+    const next = deleteCommandAt(baseline, commands, 0);
+    // The slot itself, the edge hung off it, and the later command referencing it are all gone —
+    // only the unrelated setMeta survives, same cascade shape filterCommandsForPoint gives.
+    expect(next).toEqual([{ kind: "setMeta", slot: "start", endpoint: n(9) }]);
+  });
+
+  it("cascades within a single entity's own lifeline too: a moveTeleportEndpoint onto a removed slot takes the WHOLE teleport lifeline with it (same lifeline-granularity rule filterCommandsForPoint already applies)", () => {
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+      { kind: "addTeleport", id: "t1", from: n(9), to: n(9), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: splitEndpoint([0, 0], 0), from: n(9), to: splitEndpoint([0, 0], 0), direction: "forward" },
+    ];
+    expect(deleteCommandAt(baseline, commands, 0)).toEqual([]);
+  });
+
+  it("deleting a fresh one-way mint (setEdgePair) removes only that lifeline, leaving an unrelated later edit", () => {
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
+      { kind: "setMeta", slot: "start", endpoint: n(0) },
+    ];
+    const next = deleteCommandAt(baseline, commands, 0);
+    expect(next).toEqual([{ kind: "setMeta", slot: "start", endpoint: n(0) }]);
+  });
+});
+
+describe("deleteCommandAt — direction-flip pair cascade (GitHub issue #547 second follow-up)", () => {
+  it("deleting the middle flip of ->,<-,-> also drops the very next flip, leaving a single -> instead of two consecutive ones", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "setTeleportDirection", id: "t1", direction: "forward", from: n(0), to: n(1) },
+    ];
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([{ kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" }]);
+    expect(replayPostEditCommands(baseline, next).teleports).toEqual([{ id: "t1", from: n(0), to: n(1), direction: "forward" }]);
+  });
+
+  it("deleting a flip with no later flip in the same lifeline is a plain single-entry collapse", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "backward" },
+    ];
+    const next = deleteCommandAt(baseline, commands, 1);
+    expect(next).toEqual([
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+    ]);
+  });
+
+  it("a non-direction command of the same lifeline in between doesn't break the pairing (next flip still found)", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "backward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "forward", from: n(0), to: n(2) },
+    ];
+    const next = deleteCommandAt(baseline, commands, 1);
+    // The next flip search skips over the non-direction moveTeleportEndpoint (same lifeline, not a
+    // flip) and finds the later setTeleportDirection (index 3) as the deleted flip's own pair —
+    // that one is cascaded too, leaving just the create and the move.
+    expect(next).toEqual([
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+    ]);
+  });
+
+  it("a direction flip of a DIFFERENT lifeline in between is ignored — only the same lifeline's own next flip counts", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "addTeleport", id: "t2", from: n(2), to: n(3), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "setTeleportDirection", id: "t2", direction: "backward", from: n(2), to: n(3) },
+      { kind: "setTeleportDirection", id: "t1", direction: "forward", from: n(0), to: n(1) },
+    ];
+    const next = deleteCommandAt(baseline, commands, 2);
+    expect(next).toEqual([
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "addTeleport", id: "t2", from: n(2), to: n(3), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t2", direction: "backward", from: n(2), to: n(3) },
+    ]);
+  });
+
+  it("applies to vertical-passage direction cycles and one-way directionFlip too", () => {
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const vpCommands: PostEditCommand[] = [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "forward", from: n(0), to: n(1) },
+    ];
+    expect(deleteCommandAt(baseline, vpCommands, 1)).toEqual([
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+    ]);
+
+    const oneWayCommands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
+      {
+        kind: "setEdgePair", a: n(0), b: n(1),
+        aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
+      },
+      {
+        kind: "setEdgePair", a: n(0), b: n(1),
+        aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
+      },
+    ];
+    expect(deleteCommandAt(baseline, oneWayCommands, 1)).toEqual([oneWayCommands[0]]);
+  });
+
+  it("a bare setEdge one-way is itself a create (never a flip, since setEdge has no directionFlip field) — deleting a middle mint cascades the whole lifeline, not a direction-pair collapse", () => {
+    const baseline = makeBaseline();
+    const cascadeCommands: PostEditCommand[] = [
+      { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
+      { kind: "setEdge", edge: es(n(0), n(1), "one_way_backward", "o1") },
+      { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
+    ];
+    expect(deleteCommandAt(baseline, cascadeCommands, 1)).toEqual([]);
+  });
+
+  it("isDirectionCommand's setEdge branch: a setEdgePair flip's pair search recognizes a same-id bare setEdge one-way candidate in between as a direction command and cascades it", () => {
+    // `nextDirectionCommandIndex`'s search loop classifies every intervening command via
+    // `isDirectionCommand`, including a plain `setEdge` candidate (not just the delete target) —
+    // this is the only way `isDirectionCommand`'s own `setEdge` branch is reachable, since a
+    // `setEdge` one-way is always a create when it's the delete TARGET (see the test above).
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
+      {
+        kind: "setEdgePair", a: n(0), b: n(1),
+        aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
+      },
+      { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
+    ];
+    expect(deleteCommandAt(baseline, commands, 1)).toEqual([commands[0]]);
+  });
+});
+
+describe("affectedIndicesForReset / affectedIndicesForDelete — blast-radius preview (GitHub issue #547 second follow-up)", () => {
+  it("affectedIndicesForReset returns every index strictly after the target", () => {
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "start", endpoint: n(0) },
+      { kind: "setMeta", slot: "finish", endpoint: n(1) },
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+    ];
+    expect(affectedIndicesForReset(commands, 0)).toEqual(new Set([1, 2]));
+    expect(affectedIndicesForReset(commands, 2)).toEqual(new Set());
+    expect(affectedIndicesForReset(commands, 5)).toBeUndefined();
+  });
+
+  it("affectedIndicesForDelete matches deleteCommandAt exactly for a collapse, a create cascade, and a direction-flip pair", () => {
+    const collapseCommands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "forward" },
+    ];
+    expect(affectedIndicesForDelete(collapseCommands, 1)).toEqual(new Set([1]));
+
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }]);
+    const baseline = makeBaseline({ context });
+    const cascadeCommands: PostEditCommand[] = [
+      { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+      { kind: "setEdge", edge: es(splitEndpoint([0, 0], 0), n(5), "basic") },
+      { kind: "setMeta", slot: "start", endpoint: n(9) },
+    ];
+    expect(affectedIndicesForDelete(cascadeCommands, 0)).toEqual(new Set([0, 1]));
+    expect(deleteCommandAt(baseline, cascadeCommands, 0)).toEqual(
+      cascadeCommands.filter((_, i) => !affectedIndicesForDelete(cascadeCommands, 0)!.has(i)),
+    );
+
+    const flipPairCommands: PostEditCommand[] = [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1) },
+      { kind: "setTeleportDirection", id: "t1", direction: "forward", from: n(0), to: n(1) },
+    ];
+    expect(affectedIndicesForDelete(flipPairCommands, 1)).toEqual(new Set([1, 2]));
+  });
+
+  it("both return undefined for an out-of-range index", () => {
+    const commands: PostEditCommand[] = [{ kind: "setMeta", slot: "start", endpoint: n(0) }];
+    expect(affectedIndicesForReset(commands, -1)).toBeUndefined();
+    expect(affectedIndicesForDelete(commands, 5)).toBeUndefined();
   });
 });

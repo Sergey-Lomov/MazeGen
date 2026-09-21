@@ -272,6 +272,16 @@ export interface PostEditActions {
    * Basic edges are untouched (see `wall`/`reset`). See `deletePostEditPoint`'s own doc comment in
    * `postEditSlice.ts` for details. */
   deletePostEditPoint: (point: [number, number]) => void;
+  /** "Reset" action on one Changes-panel row (GitHub issue #547) — truncates `postEditCommands` to
+   * end right after `commandIndex` (the log's own oldest-to-newest index, not the panel's reversed
+   * display order), discarding every later command regardless of lifeline. See
+   * `resetCommandsAt` (`pixi/postEditReplay.ts`). */
+  resetPostEditCommand: (commandIndex: number) => void;
+  /** "Delete" action on one Changes-panel row (GitHub issue #547) — removes exactly the command at
+   * `commandIndex` and resolves what that leaves behind: cascades the whole lifeline for a command
+   * that mints a fresh entity, or collapses a single entry (re-resolving later commands' own
+   * denormalized fields) for any other kind. See `deleteCommandAt` (`pixi/postEditReplay.ts`). */
+  deletePostEditCommand: (commandIndex: number) => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;
   cycleActiveSplitNode: (point: [number, number]) => void;

@@ -255,6 +255,90 @@ entity ever touched"), not an implementation accident.
 commands, point, level), /* dirty */ true)`. `resetPostEdit()` (whole graph) is the trivial case:
 `replacePostEditCommands(get, set, [], /* dirty */ false)`.
 
+### Per-command Reset/Delete (GitHub issue #547, `pixi/postEditReplay.ts`)
+
+Each Changes-panel row (below) carries two actions, both confirmed via `ConfirmModal` before
+running: **Reset** truncates the log to end right after that row's own command
+(`resetCommandsAt(commands, index)` = `commands.slice(0, index + 1)`, a plain prefix cut — the
+target command survives, every later command of any lifeline is discarded); **Delete** removes
+exactly that one command (`deleteCommandAt(baseline, commands, index)`) and resolves what that
+leaves behind, which differs by whether the command *mints* a lifeline or just edits one
+(`isCreateCommand`, below):
+
+- **Create command** (`addTeleport`/`addVerticalPassage`/`addElevator`/`addSplitNode`/
+  `applySplitBlueprint`, or a `setEdge`/`setEdgePair` side that mints a fresh one-way id — not a
+  `directionFlip`, which reuses an existing id rather than starting a new lifeline) — Delete
+  cascades the whole lifeline it started, same fixed-point/slot-reference-cascade shape
+  `filterCommandsForPoint` already uses for a point-reset (`cascadeLifelineKeys`, seeded directly
+  from `lifelineKeysOf(target)` instead of "whatever touches this point", then run to a fixed point
+  through the same `expandSlotReferenceCascade` point-reset shares): there's no entity left for any
+  dependent command to describe once its creation is undone.
+- **Any other command** (a move/direction-change/removal/face-rewire) — Delete is a single-entry
+  collapse by default: only that one entry disappears, every other command (including later ones in
+  the *same* lifeline) stays and gets replayed on top of the shorter log. A move chain collapses
+  accordingly — `P1→P2` then `P2→P3`, with the `P1→P2` step deleted, replays down to a single
+  effective `P1→P3` (`applyPostEditCommand`'s move cases always read the *live* entry from the
+  folded state, never a command's own denormalized `from`, so this falls out of the fold for free).
+  Deleting a `remove*` command is therefore itself undoable — the entity it removed reappears.
+  - **Direction-flip pair cascade (second follow-up)**: if the deleted command is itself a
+    direction flip (`isDirectionCommand` — `setTeleportDirection`/`setVerticalPassageDirection`, or
+    a `setEdge`/`setEdgePair` one-way whose `directionFlip` is true), deleting it also deletes the
+    *next* direction-flip command of that **same lifeline** (`nextDirectionCommandIndex`), if one
+    exists later in the log. Rationale: `->` then `<-` then `->` with the middle flip deleted would
+    otherwise replay down to two consecutive same-direction flips (`-> ->`), which is meaningless —
+    cascading the following flip collapses it back to a single `->`. Any non-direction command of
+    the same lifeline in between (e.g. a move) is skipped over, not treated as breaking the pair; a
+    direction flip belonging to a *different* lifeline in between is ignored entirely (only that
+    lifeline's own next flip counts). Only the immediate next flip is taken — this doesn't chain
+    further (deleting a flip never cascades a third or later flip beyond the immediate pair).
+
+`isCreateCommand(command): boolean` and `isDirectionCommand(command): boolean` are pure
+classifications over `PostEditCommand.kind` (plus the one-way-mint/`directionFlip` checks above for
+`setEdge`/`setEdgePair`) — neither inspects surrounding log entries; pairing up the *next* flip is
+`nextDirectionCommandIndex`'s own job, called only when `isDirectionCommand(target)` holds.
+
+`affectedIndicesForReset(commands, index)` / `affectedIndicesForDelete(commands, index)` expose the
+exact index sets `resetCommandsAt`/`deleteCommandAt` would remove (`undefined` for an out-of-range
+index), without mutating anything — the Changes panel's hover preview (below) calls these same two
+functions, so the red preview can never drift from what a click actually does.
+
+**Denormalization after a collapse**: a command's own denormalized from/to/direction/floors/
+`previousEndpoint` fields (see the `PostEditCommand` union's own doc comments above) were resolved
+once, at ORIGINAL construction time, against whatever the state was back then — deleting an earlier
+command in the same lifeline would otherwise leave every later survivor's own denormalized fields
+describing a pre-deletion location/direction, even though the derived state itself replays
+correctly (the fold reads live state, not the stale fields). `deleteCommandAt` fixes this by
+`renormalizeCommand`-ing every surviving command against the state immediately preceding it in the
+NEW (post-deletion) sequence, while it re-folds that sequence to compute each `before` state — only
+fields a command denormalizes FROM prior state are touched; a field that IS the command's own
+authored intent (`endpoint` on a move, the `direction`/`floors` being set) is left exactly as
+authored, since re-deriving it from `before` would silently change what the user asked for rather
+than just refresh a stale snapshot.
+
+### Changes-panel row actions (GitHub issue #547)
+
+Each row shows two icon buttons (`RotateCcw`/`Trash2`) inline in the same flex row as that row's
+own coordinate bubbles (`styles.bubblesRow`: bubbles on the left, buttons pushed to the right edge
+via `marginLeft: auto`) — not a separate absolutely-positioned corner overlay. Reset uses a neutral
+tint; Delete is red (`ui.text.error` — it can cascade a whole entity away). Both open a
+`ConfirmModal` first (`post_edit.confirm_changes_reset` / `..._delete` / `..._delete_cascade`, the
+last one for a create command's own cascade, computed via `isCreateCommand`) before calling
+`resetPostEditCommand(commandIndex)` / `deletePostEditCommand(commandIndex)` — store actions that
+thin-wrap `resetCommandsAt`/`deleteCommandAt` through `replacePostEditCommands` (`dirty: true`),
+same as `resetPostEditPoint`. `commandIndex` is the log's own oldest-to-newest index, stamped onto
+each command BEFORE the entity-id filter/reverse the panel applies for display, and carried
+alongside its row from there on — never the reversed display position, since the row actions must
+resolve the correct command regardless of the entity-id filter or the newest-first display order.
+
+**Hover preview (second follow-up)**: hovering either button sets a local `hoveredPreview: {kind,
+commandIndex}` state; a `useMemo` resolves it to the exact index set via
+`affectedIndicesForReset`/`affectedIndicesForDelete` (the same functions the click handlers'
+underlying store actions use), and every row whose `commandIndex` is in that set — including the
+hovered row itself — gets the `rowDeletePreview` style (`background: ui.bg.error`) instead of its
+normal/entity-highlight background. Leaving the button clears `hoveredPreview` and the highlight.
+Because preview and action share the same index-computing functions, the highlighted set is always
+exactly what a click would remove.
+
 ### Log-mutation entry points (`store/slices/postEditSliceHelpers.ts`)
 
 `appendPostEditCommand(get, set, command): boolean` and `replacePostEditCommands(get, set,

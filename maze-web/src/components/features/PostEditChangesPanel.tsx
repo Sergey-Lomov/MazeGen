@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { X, RotateCcw, Trash2 } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
+import { ConfirmModal } from "../ConfirmModal";
 import { buildNodeByIdMap, entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditReplay";
 import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -12,11 +14,26 @@ import { typography, muted, spacing, ui, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
+/** Which row-level confirm dialog is pending (GitHub issue #547) — `commandIndex` is the log's own
+ *  oldest-to-newest index (not the panel's reversed display order); `cascade` (only meaningful for
+ *  `"delete"`) picks the stronger confirm wording for a create command's own lifeline cascade. */
+type PendingRowAction = { kind: "reset"; commandIndex: number } | { kind: "delete"; commandIndex: number; cascade: boolean };
+
+/** Which row's Reset/Delete button is currently hovered (GitHub issue #547 second follow-up) —
+ *  drives the red preview highlight over every OTHER row `affectedIndicesFor{Reset,Delete}` says
+ *  that action would also touch, so the user sees the blast radius before clicking. `cascade` isn't
+ *  needed here (unlike `PendingRowAction`) — the preview set itself already tells the whole story. */
+type HoveredRowPreview = { kind: "reset" | "delete"; commandIndex: number };
+
 /** Size of the clear (×) button's own `X` icon, and its horizontal inset (matching
  *  `sharedStyles.closeBtn`'s own `padding: "0 2px"`) — both feed `filterInput`'s right padding so
  *  typed text can never run under the button regardless of either value changing later. */
 const CLEAR_ICON_SIZE = 16;
 const CLEAR_ICON_INSET = 2;
+
+/** Size of each row's own Reset/Delete icon buttons (GitHub issue #547), inline with that row's own
+ *  bubbles — same icon size as the filter's own clear button. */
+const ROW_ACTION_ICON_SIZE = 16;
 
 /** "Changes" panel (GitHub issue #545) — lists every entry of the post-edit command log
  *  (`Specs/post-edit.md`'s "Command Log" section), one row per `PostEditCommand`, as an action plus
@@ -48,7 +65,11 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   // store state: no other component needs to know, and it must never survive a re-render for a
   // different filter/log.
   const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
+  const [pendingRowAction, setPendingRowAction] = useState<PendingRowAction | null>(null);
+  const [hoveredPreview, setHoveredPreview] = useState<HoveredRowPreview | null>(null);
   const commands = useMazeStore((s) => s.postEditCommands);
+  const resetPostEditCommand = useMazeStore((s) => s.resetPostEditCommand);
+  const deletePostEditCommand = useMazeStore((s) => s.deletePostEditCommand);
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
   const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
@@ -88,11 +109,26 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   // hidden whenever a filter is active.
   const rows = useMemo(
     () => commands
-      .filter((c) => entityFilter === null || entityIdOf(c) === entityFilter)
-      .map((c) => postEditCommandLabel(c, nodeById, multiFloor, splitCtx))
+      .map((c, commandIndex) => ({ c, commandIndex }))
+      .filter(({ c }) => entityFilter === null || entityIdOf(c) === entityFilter)
+      .map(({ c, commandIndex }) => ({ ...postEditCommandLabel(c, nodeById, multiFloor, splitCtx), commandIndex, cascade: isCreateCommand(c) }))
       .reverse(),
     [commands, nodeById, multiFloor, splitCtx, entityFilter],
   );
+
+  // Blast-radius preview (GitHub issue #547 second follow-up) — every command index the currently
+  // hovered Reset/Delete button would also remove, computed through the exact same functions the
+  // click itself uses (`affectedIndicesForReset`/`affectedIndicesForDelete`), so the preview can
+  // never show a different set than what actually happens. `null` (not an empty set) when nothing's
+  // hovered, so a hovered row with zero OTHER affected rows still renders (it stays red on its own
+  // via `commandIndex === hoveredPreview.commandIndex`, handled separately below).
+  const previewIndices = useMemo(() => {
+    if (hoveredPreview === null) return null;
+    const indices = hoveredPreview.kind === "reset"
+      ? affectedIndicesForReset(commands, hoveredPreview.commandIndex)
+      : affectedIndicesForDelete(commands, hoveredPreview.commandIndex);
+    return indices ?? null;
+  }, [commands, hoveredPreview]);
 
   const hoverBubble = (bubble: PostEditEntityBubble) => {
     if (bubble.highlight) setPostEditHoveredEntity(bubble.highlight);
@@ -131,44 +167,96 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
         <div style={styles.empty}>{m["post_edit.changes_filter_empty"]()}</div>
       ) : (
         <div style={styles.list}>
-          {rows.map((row, i) => (
-            <div
-              key={i}
-              style={row.entityId !== undefined && row.entityId === hoveredEntityId ? { ...styles.row, ...styles.rowEntityHighlight } : styles.row}
-              onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
-              onMouseLeave={clearHover}
-            >
-              {row.entityId !== undefined && (
-                <span
-                  className="hoverable"
-                  style={styles.idBubble}
-                  title={m["post_edit.changes_id_bubble_title"]()}
-                  onMouseEnter={() => setHoveredEntityId(row.entityId!)}
-                  onMouseLeave={() => setHoveredEntityId(null)}
-                  onClick={() => setEntityFilter(row.entityId!)}
-                >
-                  id: {row.entityId}
-                </span>
-              )}
-              <span style={styles.action}>{row.action}</span>
-              <div style={styles.bubbles}>
-                {row.bubbles.map((bubble, j) => (
-                  <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: spacing.itemGap }}>
-                    {j > 0 && row.showArrow && <span style={styles.arrow}>{row.arrow}</span>}
-                    <span
-                      style={bubble.highlight?.kind === "point" ? { ...styles.bubble, cursor: "pointer" } : styles.bubble}
-                      onMouseEnter={bubble.highlight ? () => hoverBubble(bubble) : undefined}
-                      onMouseLeave={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : clearHover}
-                      onClick={() => clickBubble(bubble)}
-                    >
-                      {bubble.text}
-                    </span>
+          {rows.map((row) => {
+            const isDeletePreviewed = previewIndices !== null
+              && (row.commandIndex === hoveredPreview!.commandIndex || previewIndices.has(row.commandIndex));
+            const rowStyle = isDeletePreviewed
+              ? { ...styles.row, ...styles.rowDeletePreview }
+              : row.entityId !== undefined && row.entityId === hoveredEntityId
+                ? { ...styles.row, ...styles.rowEntityHighlight }
+                : styles.row;
+            return (
+              <div
+                key={row.commandIndex}
+                style={rowStyle}
+                onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
+                onMouseLeave={clearHover}
+              >
+                {row.entityId !== undefined && (
+                  <span
+                    className="hoverable"
+                    style={styles.idBubble}
+                    title={m["post_edit.changes_id_bubble_title"]()}
+                    onMouseEnter={() => setHoveredEntityId(row.entityId!)}
+                    onMouseLeave={() => setHoveredEntityId(null)}
+                    onClick={() => setEntityFilter(row.entityId!)}
+                  >
+                    id: {row.entityId}
                   </span>
-                ))}
+                )}
+                <span style={styles.action}>{row.action}</span>
+                <div style={styles.bubblesRow}>
+                  <div style={styles.bubbles}>
+                    {row.bubbles.map((bubble, j) => (
+                      <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: spacing.itemGap }}>
+                        {j > 0 && row.showArrow && <span style={styles.arrow}>{row.arrow}</span>}
+                        <span
+                          style={bubble.highlight?.kind === "point" ? { ...styles.bubble, cursor: "pointer" } : styles.bubble}
+                          onMouseEnter={bubble.highlight ? () => hoverBubble(bubble) : undefined}
+                          onMouseLeave={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : clearHover}
+                          onClick={() => clickBubble(bubble)}
+                        >
+                          {bubble.text}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={styles.rowActions}>
+                    <button
+                      type="button"
+                      className="hoverable"
+                      onClick={() => setPendingRowAction({ kind: "reset", commandIndex: row.commandIndex })}
+                      onMouseEnter={() => setHoveredPreview({ kind: "reset", commandIndex: row.commandIndex })}
+                      onMouseLeave={() => setHoveredPreview(null)}
+                      title={m["post_edit.changes_reset_title"]()}
+                      aria-label={m["post_edit.changes_reset_title"]()}
+                      style={sharedStyles.closeBtn}
+                    >
+                      <RotateCcw size={ROW_ACTION_ICON_SIZE} />
+                    </button>
+                    <button
+                      type="button"
+                      className="hoverable"
+                      onClick={() => setPendingRowAction({ kind: "delete", commandIndex: row.commandIndex, cascade: row.cascade })}
+                      onMouseEnter={() => setHoveredPreview({ kind: "delete", commandIndex: row.commandIndex })}
+                      onMouseLeave={() => setHoveredPreview(null)}
+                      title={m["post_edit.changes_delete_title"]()}
+                      aria-label={m["post_edit.changes_delete_title"]()}
+                      style={{ ...sharedStyles.closeBtn, color: ui.text.error }}
+                    >
+                      <Trash2 size={ROW_ACTION_ICON_SIZE} />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+      )}
+      {pendingRowAction && (
+        <ConfirmModal
+          message={pendingRowAction.kind === "reset"
+            ? m["post_edit.confirm_changes_reset"]()
+            : pendingRowAction.cascade
+              ? m["post_edit.confirm_changes_delete_cascade"]()
+              : m["post_edit.confirm_changes_delete"]()}
+          onConfirm={() => {
+            if (pendingRowAction.kind === "reset") resetPostEditCommand(pendingRowAction.commandIndex);
+            else deletePostEditCommand(pendingRowAction.commandIndex);
+            setPendingRowAction(null);
+          }}
+          onCancel={() => setPendingRowAction(null)}
+        />
       )}
     </SidePanel>
   );
@@ -213,11 +301,37 @@ const styles: Record<string, React.CSSProperties> = {
     padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
     borderBottom: `1px solid ${ui.border.default}`,
   },
+  // Bubbles + Reset/Delete buttons share one flex row (GitHub issue #547 follow-up: buttons moved
+  // off the row's own pinned bottom-right corner into this same line) — `bubbles` wraps and grows,
+  // `rowActions` stays pinned to the line's own right edge via `marginLeft: auto`.
+  bubblesRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+  },
+  // Reset ("undo everything after this point")/Delete ("remove just this change") buttons (GitHub
+  // issue #547). Delete is tinted red (`ui.text.error`) since it can cascade an entire entity's
+  // lifeline away; Reset keeps the neutral `closeBtn` color since it only ever affects commands
+  // strictly after this row. `flexShrink: 0` keeps both icons from squeezing when `bubbles` wraps
+  // to more than one line.
+  rowActions: {
+    display: "flex",
+    gap: spacing.itemGap,
+    marginLeft: "auto",
+    flexShrink: 0,
+  },
   // GitHub issue #573: every OTHER row sharing the currently-hovered id bubble's entity id — same
   // generic hover background other panels use (`NestedStrategyPanel`/quality canvas), not a
   // dedicated hue, since this is "related row" not a semantic (error/warning/info) state.
   rowEntityHighlight: {
     background: ui.bg.hover,
+  },
+  // GitHub issue #547 second follow-up: every row a hovered Reset/Delete button would remove (the
+  // hovered row itself included) — same semantic-error red pairing `ui.bg.error`/`ui.text.error`
+  // other panels use for a destructive-outcome preview, distinct from both `rowEntityHighlight`'s
+  // neutral tint and the point bubbles' own cyan.
+  rowDeletePreview: {
+    background: ui.bg.error,
   },
   // Reserves room on the right so a wrapped/long action text never runs under the pinned `idBubble`.
   action: {

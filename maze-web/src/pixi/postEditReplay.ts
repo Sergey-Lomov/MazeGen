@@ -482,6 +482,25 @@ function isSlotLifeline(key: string): { point: [number, number]; level: number |
   return { point: [Number(m[1]), Number(m[2])], level: m[3] === undefined ? undefined : Number(m[3]), slotId: Number(m[4]) };
 }
 
+/** Expands an already-collected `toRemove` lifeline-key set with every OTHER command that
+ * references one of the removed set's own slot lifelines (plan section 9 step 4's "cascade in one
+ * pass" rule) — shared by `collectAffectedLifelines` (point-reset) and `collectLifelinesFor`
+ * (single-command delete/reset, GitHub issue #547), both of which only differ in how `toRemove` is
+ * first seeded. Mutates `toRemove` in place. */
+function expandSlotReferenceCascade(commands: PostEditCommand[], toRemove: Set<string>): void {
+  const removedSlotKeys = new Set([...toRemove].map(isSlotLifeline).filter((s): s is NonNullable<typeof s> => s !== undefined)
+    .map((s) => endpointKey(splitEndpoint(s.point, s.slotId, s.level))));
+  if (removedSlotKeys.size === 0) return;
+  for (const command of commands) {
+    const keys = lifelineKeysOf(command);
+    if (keys.some((k) => toRemove.has(k))) continue;
+    const refs = endpointsReferencedBy(command);
+    if (refs.some((ep) => ep.kind === "split" && removedSlotKeys.has(endpointKey(ep)))) {
+      for (const key of keys) toRemove.add(key);
+    }
+  }
+}
+
 /** One iteration of affected-lifeline collection (plan section 9 step 1-4) — the caller
  * (`filterCommandsForPoint`) repeats this to a fixed point. Replays `commands` once, snapshotting
  * state before each command applies, to evaluate whether that command's entity currently touches
@@ -509,19 +528,7 @@ function collectAffectedLifelines(
     }
   }
 
-  const removedSlotKeys = new Set([...toRemove].map(isSlotLifeline).filter((s): s is NonNullable<typeof s> => s !== undefined)
-    .map((s) => endpointKey(splitEndpoint(s.point, s.slotId, s.level))));
-  if (removedSlotKeys.size > 0) {
-    for (const command of commands) {
-      const keys = lifelineKeysOf(command);
-      if (keys.some((k) => toRemove.has(k))) continue;
-      const refs = endpointsReferencedBy(command);
-      if (refs.some((ep) => ep.kind === "split" && removedSlotKeys.has(endpointKey(ep)))) {
-        for (const key of keys) toRemove.add(key);
-      }
-    }
-  }
-
+  expandSlotReferenceCascade(commands, toRemove);
   return toRemove;
 }
 
@@ -543,6 +550,220 @@ export function filterCommandsForPoint(
     if (toRemove.size === 0) return current;
     current = current.filter((cmd) => !lifelineKeysOf(cmd).some((k) => toRemove.has(k)));
   }
+}
+
+/** True when `command` mints a fresh entity lifeline rather than editing/moving/removing an
+ * existing one (GitHub issue #547's "Delete" action on the Changes panel, `deleteCommandAt` below,
+ * distinguishes the two: deleting a create command cascades its whole lifeline + dependents, same
+ * as a point-reset; deleting any other command kind is a plain single-entry collapse). Every
+ * `add*`/`applySplitBlueprint` is unconditionally a create. A `setEdge`/`setEdgePair` side counts
+ * as a create only when it MINTS a fresh one-way id — i.e. the resulting side is one-way and that
+ * side isn't a `directionFlip` (a flip reuses the existing id, same entity, new direction, not a
+ * new lifeline); a face reset back to wall/basic, or a plain wall/passage toggle, has no lifeline
+ * of its own to begin with and is never a create. */
+export function isCreateCommand(command: PostEditCommand): boolean {
+  switch (command.kind) {
+    case "addTeleport": case "addVerticalPassage": case "addElevator":
+    case "addSplitNode": case "applySplitBlueprint":
+      return true;
+    case "setEdge":
+      return command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward";
+    case "setEdgePair": {
+      if (command.directionFlip) return false;
+      return command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward"
+        || command.bToA.kind === "one_way_forward" || command.bToA.kind === "one_way_backward";
+    }
+    default:
+      return false;
+  }
+}
+
+/** Re-derives every denormalized from/to/direction/floors/previousEndpoint field `command` carries
+ * (GitHub issue #547) against `before` — the derived state immediately preceding `command` in the
+ * (already pruned) command list — so a "Delete" collapse (below) never leaves a later command in
+ * the same lifeline pointing at a location/direction that predates the deletion. Only the fields a
+ * command denormalizes FROM prior state are touched; a field that IS the command's own authored
+ * intent (`endpoint` on a move, `direction` being set, `floors` being set) is left exactly as
+ * authored — re-deriving it from `before` would silently change what the user asked for, not just
+ * refresh a stale snapshot. A command with no denormalized fields (or whose referenced entity no
+ * longer exists in `before` — nothing left to re-derive from) is returned unchanged. */
+function renormalizeCommand(before: PostEditDerivedState, command: PostEditCommand): PostEditCommand {
+  switch (command.kind) {
+    case "setTeleportDirection": {
+      const t = before.teleports.find((x) => x.id === command.id);
+      return t ? { ...command, from: t.from, to: t.to } : command;
+    }
+    case "moveTeleportEndpoint": {
+      const t = before.teleports.find((x) => x.id === command.id);
+      if (!t) return command;
+      const from = command.end === "from" ? command.endpoint : t.from;
+      const to = command.end === "to" ? command.endpoint : t.to;
+      return { ...command, from, to, direction: t.direction };
+    }
+    case "removeTeleport": {
+      const t = before.teleports.find((x) => x.id === command.id);
+      return t ? { ...command, from: t.from, to: t.to, direction: t.direction } : command;
+    }
+    case "setMeta": {
+      if (command.endpoint !== null) return command;
+      const previousEndpoint = before.meta[command.slot] ?? undefined;
+      return { ...command, previousEndpoint };
+    }
+    case "setVerticalPassageDirection": {
+      const p = before.verticalPassages.find((x) => x.id === command.id);
+      return p ? { ...command, from: p.from, to: p.to } : command;
+    }
+    case "moveVerticalPassageEndpoint": {
+      const p = before.verticalPassages.find((x) => x.id === command.id);
+      if (!p) return command;
+      const from = command.end === "from" ? command.endpoint : p.from;
+      const to = command.end === "to" ? command.endpoint : p.to;
+      return { ...command, from, to, direction: p.direction };
+    }
+    case "removeVerticalPassage": {
+      const p = before.verticalPassages.find((x) => x.id === command.id);
+      return p ? { ...command, from: p.from, to: p.to, direction: p.direction } : command;
+    }
+    case "removeElevator": {
+      const e = before.elevators.find((x) => x.id === command.id);
+      return e ? { ...command, floors: e.floors } : command;
+    }
+    default:
+      return command;
+  }
+}
+
+/** Expands `seedKeys` to a fixed point through `expandSlotReferenceCascade` (GitHub issue #547) —
+ * same fixed-point/cascade shape as `filterCommandsForPoint`'s own loop, but seeded directly from a
+ * set of lifeline keys instead of "whatever touches this point". Shared by `affectedIndicesForDelete`
+ * (create-command cascade) and, through it, `deleteCommandAt`. */
+function cascadeLifelineKeys(commands: PostEditCommand[], seedKeys: Set<string>): Set<string> {
+  let toRemove = new Set(seedKeys);
+  for (;;) {
+    const next = new Set(toRemove);
+    expandSlotReferenceCascade(commands, next);
+    if (next.size === toRemove.size) return toRemove;
+    toRemove = next;
+  }
+}
+
+/** True for a command whose entire job is flipping an EXISTING entity's direction back and forth
+ * (GitHub issue #547 second follow-up) — `setTeleportDirection`/`setVerticalPassageDirection`, or a
+ * `setEdgePair`/`setEdge` one-way `directionFlip` (never a fresh one-way mint, which is a create,
+ * not a flip). Used by `nextDirectionCommandIndex` to find the deleted flip's own "undo" pair. */
+function isDirectionCommand(command: PostEditCommand): boolean {
+  switch (command.kind) {
+    case "setTeleportDirection": case "setVerticalPassageDirection":
+      return true;
+    case "setEdge":
+      return (command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward");
+    case "setEdgePair":
+      return command.directionFlip === true;
+    default:
+      return false;
+  }
+}
+
+/** Finds the index (in `commands`, searching strictly after `fromIndex`) of the next direction
+ * command sharing a lifeline with `commands[fromIndex]` — GitHub issue #547 second follow-up:
+ * deleting one direction flip in a `->`, `<-`, `->` sequence must also drop the very next flip
+ * (`<-`), or the pair collapses to two consecutive `->`s that read as two pointless toggles in a
+ * row. Any non-direction command in between — same lifeline (e.g. a move) or a different one
+ * entirely — is skipped over, never treated as breaking the search: only the NEAREST direction
+ * command in the SAME lifeline counts, and direction commands of other lifelines are ignored
+ * outright. `undefined` if `fromIndex` doesn't name a direction command, or none follows in its
+ * lifeline. */
+function nextDirectionCommandIndex(commands: PostEditCommand[], fromIndex: number): number | undefined {
+  const target = commands[fromIndex];
+  if (!isDirectionCommand(target)) return undefined;
+  const targetKeys = new Set(lifelineKeysOf(target));
+  for (let i = fromIndex + 1; i < commands.length; i++) {
+    const candidate = commands[i];
+    if (!isDirectionCommand(candidate)) continue;
+    if (lifelineKeysOf(candidate).some((k) => targetKeys.has(k))) return i;
+  }
+  return undefined;
+}
+
+/** Every index `deleteCommandAt`/the Changes panel's own delete-hover preview would remove for
+ * deleting `commands[index]` (GitHub issue #547) — the single source of truth both share, so the
+ * hover preview can never disagree with what the click actually does. See `deleteCommandAt`'s own
+ * doc comment for the create-vs-collapse distinction; `nextDirectionCommandIndex` additionally pulls
+ * in one more index for a direction-flip delete (second follow-up). `undefined` for an out-of-range
+ * `index`. */
+export function affectedIndicesForDelete(commands: PostEditCommand[], index: number): Set<number> | undefined {
+  if (index < 0 || index >= commands.length) return undefined;
+  const target = commands[index];
+  if (isCreateCommand(target)) {
+    const toRemove = cascadeLifelineKeys(commands, new Set(lifelineKeysOf(target)));
+    const indices = new Set<number>();
+    commands.forEach((cmd, i) => { if (lifelineKeysOf(cmd).some((k) => toRemove.has(k))) indices.add(i); });
+    return indices;
+  }
+  const indices = new Set<number>([index]);
+  const pairIndex = nextDirectionCommandIndex(commands, index);
+  if (pairIndex !== undefined) indices.add(pairIndex);
+  return indices;
+}
+
+/** "Delete" action on one Changes-panel row (GitHub issue #547) — removes exactly the command(s)
+ * `affectedIndicesForDelete` names for `index` (in the log's own oldest-to-newest order, not the
+ * panel's reversed display order) and resolves what that leaves behind, rather than either leaving
+ * the rest of the log untouched or wiping the whole lifeline unconditionally:
+ *
+ * - Deleting a command that MINTS a fresh entity (`isCreateCommand`) cascades — the whole lifeline
+ *   it started, plus anything that came to depend on it (a split slot's own faces/teleports/edges,
+ *   cascaded the same way a point-reset's `filterCommandsForPoint` already does) is removed too,
+ *   since there's no entity left for those dependents to describe once its creation is undone.
+ * - Deleting any other command (a move/direction-change/removal) is a plain single-entry collapse —
+ *   only that one entry disappears; every other command, including later ones in the SAME lifeline,
+ *   stays and gets replayed on top of the now-shorter log (a `P1->P2` then `P2->P3` teleport move
+ *   chain collapses to a single effective `P1->P3` once the `P1->P2` step is deleted, matching the
+ *   issue's own example). The one exception (second follow-up): deleting a direction-flip command
+ *   also drops the NEXT direction-flip of the same lifeline, if any — otherwise a `->, <-, ->`
+ *   sequence collapses to two consecutive, pointless `->`s once the middle `<-` is deleted alone.
+ *   Every surviving command is then `renormalizeCommand`-ed against the state immediately preceding
+ *   it in the NEW sequence, so denormalized from/to/direction/floors fields never describe a
+ *   pre-deletion location once rendered in the Changes panel.
+ *
+ * Returns `commands` unchanged if `index` is out of range. */
+export function deleteCommandAt(
+  baseline: PostEditBaseline,
+  commands: PostEditCommand[],
+  index: number,
+): PostEditCommand[] {
+  const affected = affectedIndicesForDelete(commands, index);
+  if (affected === undefined) return commands;
+  const withoutTarget = commands.filter((_, i) => !affected.has(i));
+
+  const renormalized: PostEditCommand[] = [];
+  let state = baseline.derived;
+  for (const command of withoutTarget) {
+    renormalized.push(renormalizeCommand(state, command));
+    const result = applyPostEditCommand(baseline.context, state, renormalized[renormalized.length - 1]);
+    if (result.applied) state = result.state;
+  }
+  return renormalized;
+}
+
+/** Every index `resetCommandsAt` would discard for resetting to `commands[index]` (GitHub issue
+ * #547) — everything strictly after it, regardless of lifeline. Shared by `resetCommandsAt` and the
+ * Changes panel's own reset-hover preview. `undefined` for an out-of-range `index`. */
+export function affectedIndicesForReset(commands: PostEditCommand[], index: number): Set<number> | undefined {
+  if (index < 0 || index >= commands.length) return undefined;
+  const indices = new Set<number>();
+  for (let i = index + 1; i < commands.length; i++) indices.add(i);
+  return indices;
+}
+
+/** "Reset" action on one Changes-panel row (GitHub issue #547) — truncates the log to end right
+ * after `index` (inclusive), discarding every later command regardless of lifeline; the command at
+ * `index` itself is kept. Simple prefix cut, no cascade/renormalization needed — everything
+ * dropped is strictly later than everything kept, so nothing kept can denormalize from a dropped
+ * command. Returns `commands` unchanged if `index` is out of range. */
+export function resetCommandsAt(commands: PostEditCommand[], index: number): PostEditCommand[] {
+  if (index < 0 || index >= commands.length) return commands;
+  return commands.slice(0, index + 1);
 }
 
 export { endpointResolves };

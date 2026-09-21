@@ -23,7 +23,7 @@ import type {
 } from "../storeTypes";
 import type { PostEditCommand, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
-import { filterCommandsForPoint } from "../../pixi/postEditReplay";
+import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt } from "../../pixi/postEditReplay";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
@@ -606,6 +606,28 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (e.floors.some(endpointRefsTarget)) appendPostEditCommand(get, set, { kind: "removeElevator", id: e.id, floors: e.floors });
     }
 
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  resetPostEditCommand: (commandIndex) => {
+    const state = get();
+    if (state.postEditBaseline === null) return;
+    const truncated = resetCommandsAt(state.postEditCommands, commandIndex);
+    if (truncated === state.postEditCommands) return;
+    replacePostEditCommands(get, set, truncated, true);
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  deletePostEditCommand: (commandIndex) => {
+    const state = get();
+    if (state.postEditBaseline === null) return;
+    const next = deleteCommandAt(state.postEditBaseline, state.postEditCommands, commandIndex);
+    if (next === state.postEditCommands) return;
+    replacePostEditCommands(get, set, next, true);
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
