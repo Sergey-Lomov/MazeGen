@@ -205,14 +205,16 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const loopEdges = loopGroups != null
     ? asHighlightEdges(loopGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
     : null;
-  // Teleport edges don't connect tessellation-adjacent cells -- no shared wall to draw, stays a
-  // line.
-  const teleportEdges = teleportGroups != null
-    ? asHighlightEdges(teleportGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
+  // A teleport warning describes the two endpoint cells, not a traversable on-field segment.
+  // Highlight both ends as one region group and never draw the geometric line between them.
+  // Keeping one deduplicated group also prevents a shared endpoint from being filled/stroked
+  // several times when a warning contains multiple teleport pairs.
+  const teleportCellNodes = teleportGroups != null
+    ? (() => {
+        const nodes = Array.from(new Set(teleportGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())));
+        return nodes.map((id) => [id]);
+      })()
     : null;
-  // Each flagged one-way is an independent single-edge problem between two adjacent cells (GitHub
-  // issue #377) -- highlighted as the wall between them instead of a line, which reads ambiguous
-  // between two adjacent node dots.
   const oneWayEdges = oneWayGroups != null
     ? asHighlightEdges(oneWayGroups.filter(visibleGroup).flatMap((g) => g.edges), true)
     : null;
@@ -223,10 +225,10 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // independently, so a node shared by two flagged edges (e.g. two proximity pairs through the
   // same passage) would otherwise get double-filled/double-stroked.
   const verticalPassageCellNodes = verticalPassageGroups != null
-    ? [Array.from(new Set(verticalPassageGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
+    ? Array.from(new Set(verticalPassageGroups.filter(visibleGroup).flatMap((g) => g.edges).flat())).map((id) => [id])
     : null;
   const elevatorCellNodes = elevatorGroups != null
-    ? [Array.from(new Set(elevatorGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
+    ? Array.from(new Set(elevatorGroups.filter(visibleGroup).flatMap((g) => g.edges).flat())).map((id) => [id])
     : null;
   // One region-highlight group per flagged stop (not one merged group) -- mirrors
   // `visibleRegionGroups` below but keeps each stop independently toggleable/highlightable, since
@@ -250,18 +252,18 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const crossElementOneWayEdges = crossElementOneWayEntries != null && crossElementOneWayEntries.length > 0
     ? asHighlightEdges(crossElementOneWayEntries.flatMap((e) => e.edges), true)
     : null;
-  // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
-  // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
-  // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
-  // group-level for everything else), so a locked tile within an otherwise-visible proximity pair
-  // still hides only when the *whole pair* is locked, while a locked tile in a max_split_count
-  // bundle hides on its own.
+  // The visible tiles keep their own lock/filtering granularity, but are sent as one region
+  // group so adjacent tiles can share a contour and merge exactly like ordinary regions.
   const splitTileNodes = splitGroups != null
-    ? splitGroups.flatMap((g) =>
-        TILE_GRANULARITY_CHECKS.has(typeId)
-          ? g.tiles.filter(visibleGroup).map((t) => t.nodes)
-          : visibleGroup(g) ? g.tiles.map((t) => t.nodes) : []
-      )
+    ? (() => {
+        const tiles = splitGroups.flatMap((g) =>
+          TILE_GRANULARITY_CHECKS.has(typeId)
+            ? g.tiles.filter(visibleGroup)
+            : visibleGroup(g) ? g.tiles : []
+        );
+        const nodes = Array.from(new Set(tiles.flatMap((tile) => tile.nodes)));
+        return nodes.length > 0 ? [nodes] : [];
+      })()
     : null;
   const splitRouteEdges = splitRoutePayload != null
     ? [splitRoutePayload.filter(visibleGroup).flatMap((r) => r.edges).map((e) => [e.from, e.to] as [number, number])]
@@ -286,8 +288,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // populates one of the two families, but `invalid_cross_element_group` can populate both at once
   // (a one-way member drawn as a wall alongside other members drawn as region squares), so both are
   // set together rather than picking just the first match.
-  const highlightEdges = loopEdges ?? teleportEdges ?? oneWayEdges ?? splitRouteHighlightEdges ?? crossElementOneWayEdges;
-  const highlightRegionGroups = visibleRegionGroups ?? splitTileNodes ?? verticalPassageCellNodes ?? elevatorCellNodes
+  const highlightEdges = loopEdges ?? oneWayEdges ?? splitRouteHighlightEdges ?? crossElementOneWayEdges;
+  const highlightRegionGroups = visibleRegionGroups ?? splitTileNodes ?? teleportCellNodes ?? verticalPassageCellNodes ?? elevatorCellNodes
     ?? elevatorStopCellNodes ?? (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0 ? areaDeficitCellNodes : null)
     ?? missingStopCellNodes ?? crossElementCellNodes;
   const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
@@ -328,10 +330,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // hover highlight is unaffected by this.
   const touchedNodeIds = [
     ...(loopEdges ?? []),
-    ...(teleportEdges ?? []),
-    ...(oneWayEdges ?? []),
     ...(crossElementOneWayEdges ?? []),
-  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flat());
+  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (teleportCellNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flat());
 
   return (
     <>

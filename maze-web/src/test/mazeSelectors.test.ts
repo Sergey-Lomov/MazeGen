@@ -1426,12 +1426,12 @@ describe("buildHoveredEntityHighlight", () => {
     expect(result.regionGroups).toEqual([[nodes[1].id]]);
   });
 
-  it("resolves a points entity to a single multi-node region group", () => {
+  it("resolves a points entity to independent cell groups, keeping split nodes together", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 1), n(2, 0, 0)];
     const entity: PostEditHoveredEntity = { kind: "points", points: [{ point: [0, 0] }, { point: [1, 1] }] };
     const result = buildHoveredEntityHighlight(entity, nodes, 0, squareCfg);
     expect(result.link).toEqual([]);
-    expect(result.regionGroups).toEqual([[nodes[0].id, nodes[1].id]]);
+    expect(result.regionGroups).toEqual([[nodes[0].id, nodes[2].id], [nodes[1].id]]);
   });
 
   it("returns no region group when no point in a points entity is on this floor", () => {

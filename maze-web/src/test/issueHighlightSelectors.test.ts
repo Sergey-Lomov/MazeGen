@@ -3,13 +3,21 @@ import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 // getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
-// in this unit-test environment -- mock with the canonical square formula (see
-// `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
+// in this unit-test environment -- mock with the canonical projections used by the three
+// tessellation families.
 vi.mock("../wasm/mazeService", () => ({
-  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+  getCartesianCoords: (cfg: { tessellation_type: "square" | "hex" | "tri"; points: [number, number][] }) => cfg.points.map(([x, y]) => {
+    if (cfg.tessellation_type === "hex") return [x * 1.5, -(y * Math.sqrt(3) + x * Math.sqrt(3) / 2)];
+    if (cfg.tessellation_type === "tri") {
+      const h = Math.sqrt(3);
+      return [x + 0.5, -((x + y) % 2 === 0 ? y * h + h / 3 : y * h + 2 * h / 3)];
+    }
+    return [x, y];
+  }),
 }));
 
 const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSelectors");
+const { buildRegionContours } = await import("../pixi/renderers/RegionHighlightRenderer");
 
 const cfg: TessellationConfig = { type: "square", width: 4, height: 1 };
 
@@ -32,6 +40,21 @@ describe("buildRegionGeometry", () => {
     const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, cfg);
     // 4 sides each, minus the 2 shared sides (one per cell) that face each other inside the region.
     expect(perimeterSegments).toHaveLength(6);
+    expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
+  });
+
+  it("merges adjacent hexagonal cells into one contour", () => {
+    const hexCfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3 } as TessellationConfig;
+    const nodes = [node(0, 0, 0), node(1, 1, 0)];
+    const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, hexCfg);
+    expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
+  });
+
+  it("merges adjacent triangular cells into one contour", () => {
+    const triangleCfg: TessellationConfig = { type: "triangle_rect", cols: 3, rows: 3 };
+    const nodes = [node(0, 0, 0), node(1, 1, 0)];
+    const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, triangleCfg);
+    expect(buildRegionContours(perimeterSegments)).toHaveLength(1);
   });
 
   it("keeps two disjoint regions' geometry independent when computed separately", () => {

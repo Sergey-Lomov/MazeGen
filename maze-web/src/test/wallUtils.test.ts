@@ -16,11 +16,13 @@ vi.mock("pixi.js", () => {
     roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
+    arcTo(...args: unknown[]) { this.calls.push({ fn: "arcTo", args }); return this; }
+    closePath(...args: unknown[]) { this.calls.push({ fn: "closePath", args }); return this; }
   }
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, drawCellBoundaryHighlight, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -282,5 +284,28 @@ describe("drawOneWayWallHighlight", () => {
 
     expect(drew).toBe(false);
     expect(g.calls).toHaveLength(0);
+  });
+});
+
+describe("drawCellBoundaryHighlight", () => {
+  it("uses one key for both directions of the same boundary", () => {
+    expect(cellBoundaryKey([1, 2], [3, 4])).toBe(cellBoundaryKey([3, 4], [1, 2]));
+  });
+
+  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+
+  it("draws a rounded, stroked quad spanning the shared edge and both cell halves", () => {
+    const g = newG();
+    expect(drawCellBoundaryHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 1, 2)).toBe(true);
+    expect(g.calls.filter((call) => call.fn === "arcTo").length).toBeGreaterThan(0);
+    expect(g.calls.find((call) => call.fn === "stroke")!.args[0]).toMatchObject({ width: 2, color: 0xff0000, alpha: 1 });
+    expect(g.calls.find((call) => call.fn === "fill")!.args[0]).toEqual({ color: 0xff0000, alpha: 1 });
+  });
+
+  it("keeps the fill when the border is disabled", () => {
+    const g = newG();
+    expect(drawCellBoundaryHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 0.4, 0)).toBe(true);
+    expect(g.calls.find((call) => call.fn === "fill")!.args[0]).toEqual({ color: 0xff0000, alpha: 0.4 });
+    expect(g.calls.find((call) => call.fn === "stroke")).toBeUndefined();
   });
 });

@@ -4,6 +4,8 @@ import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidV
 import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
+import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { LockRenderer } from "./renderers/LockRenderer";
@@ -84,7 +86,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidMarkerHL: CellFillRenderer;
   private readonly genSource: GenSourceRenderer;
   private readonly isolatedHL: CellFillRenderer;
-  private readonly orphanHL: CellFillRenderer;
+  private readonly orphanHL: RegionHighlightRenderer;
   private readonly invalidHL: EdgeHighlightRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
@@ -155,7 +157,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidMarkerHL = new CellFillRenderer(this.invalidMarkerHLContainer);
     this.genSource      = new GenSourceRenderer(this.genSourceContainer);
     this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
-    this.orphanHL       = new CellFillRenderer(this.orphanHLContainer);
+    this.orphanHL       = new RegionHighlightRenderer(this.orphanHLContainer);
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
@@ -431,7 +433,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private redrawIsolatedHL(state: MazeState): void {
     if (!this.cfg) return;
     if (!state.highlightIsolatedNodes) {
-      this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
       return;
     }
     const level = activeFloorLevel(state);
@@ -440,13 +442,13 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       setOnLevel(state.autoLockedNodes, level),
       presetConnectionsOnLevel(state.presetConnections, level),
     );
-    this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+    this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
   }
 
   private redrawOrphanHL(state: MazeState): void {
     if (!this.cfg) return;
     if (!state.highlightOrphanSplitNodes) {
-      this.orphanHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      this.orphanHL.render({ nodes: [], regionGroups: [], color: canvas.preset.invalid, width: 0, alpha: 0, cfg: this.cfg, skipPerimeter: true, insetMode: "outset" });
       return;
     }
     const level = activeFloorLevel(state);
@@ -454,14 +456,24 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetSplitPoints, state.presetConnections, state.presetTeleports, state.presetStart, state.presetFinish, state.presetGenSource,
     );
     const cells = buildOrphanSplitCellHighlights(orphanPoints, level);
-    this.orphanHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+    const nodes = cells.map(([x, y], id) => ({ id, x, y, i: id }));
+    this.orphanHL.render({
+      nodes,
+      regionGroups: nodes.length > 0 ? [nodes.map((node) => node.id)] : [],
+      color: canvas.preset.invalid,
+      width: 0,
+      alpha: ISOLATED_HL_ALPHA,
+      cfg: this.cfg,
+      skipPerimeter: true,
+      insetMode: "outset",
+    });
   }
 
   private redrawInvalidHL(state: MazeState): void {
     if (!this.cfg) return;
     if (!state.highlightInvalidPresets) {
       this.invalidHL.render({ highlights: [] });
-      this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA, inset: getCellHighlightInset() }, this.cfg);
       return;
     }
     const presetConnections = presetConnectionsOnLevel(state.presetConnections, activeFloorLevel(state));
@@ -546,6 +558,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       ],
       color: canvas.preset.invalid,
       alpha: ISOLATED_HL_ALPHA,
+      inset: getCellHighlightInset(),
     }, this.cfg);
   }
 

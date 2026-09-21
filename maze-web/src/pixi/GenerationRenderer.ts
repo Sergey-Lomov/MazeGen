@@ -98,8 +98,10 @@ export class GenerationRenderer {
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.verticalContainer);
     viewport.addChild(this.markersContainer);
-    viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.debugValueHighlightContainer);
+    // Hovered debug refs (including cell/region highlights) must stay above persistent debug-value
+    // layers so the active event remains readable while frontier/reserve/visited are toggled on.
+    viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.kruskalDsuHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
@@ -340,6 +342,19 @@ export class GenerationRenderer {
         };
       }
       const { colorByName, kindByName } = this.debugValuePaletteCache;
+      // Debug values are qualified when the arena contains several sources (for example
+      // `generation:frontier`). Match the semantic name after the scope prefix so the custom
+      // vertex-based algorithm keeps frontier/reserve as independent cells in both layouts.
+      const singleCellRegionNames = state.debugArena?.algorithmKind === "vertex_based"
+        ? new Set(
+          descriptors
+            .map(({ name }) => name)
+            .filter((name) => {
+              const baseName = name.slice(name.lastIndexOf(":") + 1);
+              return baseName === "frontier" || baseName === "reserve";
+            }),
+        )
+        : undefined;
       this.debugValueHighlight.render({
         nodes: view.nodes,
         debugValues: debugMazeView?.debugValues ?? new Map(),
@@ -348,6 +363,7 @@ export class GenerationRenderer {
         toggles: state.debugValueToggles,
         kindFor: (name) => kindByName.get(name) ?? "region",
         colorFor: (name) => colorByName.get(name) ?? canvas.debug.refHighlight,
+        singleCellRegionNames,
         cfg,
       });
     } else {

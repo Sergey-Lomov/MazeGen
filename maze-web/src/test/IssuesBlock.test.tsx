@@ -38,9 +38,7 @@ describe("IssuesBlock", () => {
     fireEvent.mouseLeave(bubbles[1]);
   });
 
-  it("highlights a hovered invalid_one_way bubble's edges as walls (asWall: true), not lines", () => {
-    // GitHub issue #377: a single-edge one-way problem is drawn as the wall between its two
-    // cells, unlike a loop/teleport/split-route's connected-line edges.
+  it("highlights both cells of a hovered invalid_one_way bubble as one region", () => {
     const issue: IssueDto = {
       kind: "invalid_one_way",
       payload: { kind: "invalid_one_way", groups: { one_way_group_super_hub: [{ edges: [[5, 6]], preset_locked: false }] } },
@@ -53,6 +51,7 @@ describe("IssuesBlock", () => {
     const bubble = screen.getByText("One-way validation");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 5, to: 6, asWall: true }]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
     fireEvent.mouseLeave(bubble);
   });
 

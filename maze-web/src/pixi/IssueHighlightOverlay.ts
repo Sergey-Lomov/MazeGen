@@ -4,7 +4,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
-import { drawOneWayWallHighlight, drawDirectionArrow } from "./renderers/wallUtils";
+import { cellBoundaryKey, drawCellBoundaryHighlight, drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
@@ -19,9 +19,9 @@ const HIGHLIGHT_ALPHA = 1;
 
 export interface IssueHighlightData {
   nodes: NodeDto[];
-  /** Base-graph edges to highlight — typically the loops of a hovered issue, or (GitHub issue
-   * #195) a hovered invalid-teleport/teleport-group issue's flagged teleport edge(s). Each edge's
-   * own `asWall` (GitHub issue #377) picks line-vs-wall drawing — see `IssueHighlightEdge`. */
+  /** Base-graph edges to highlight — typically issue loops or boundary-style entities. Each edge's
+   * own `asWall` (GitHub issue #377) picks line-vs-wall drawing — see `IssueHighlightEdge`.
+   * Teleport issue endpoints are supplied through `regionGroups`, not as rendered edge lines. */
   edges: IssueHighlightEdge[] | null;
   /** The maze's full edge list (`state.edges`, not the highlighted subset above) — drives
    *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
@@ -51,6 +51,9 @@ export interface IssueHighlightData {
    *  edge lives on the other floor and is always missing from any floor-scoped list (GitHub issue
    *  #337/#347). */
   crossFloorEdgeKeys?: ReadonlySet<string>;
+  /** Width of the studio renderer's wall one-way marker. When omitted, a boundary highlight uses
+   *  the full cell-to-cell distance for generic wall entities. */
+  oneWayBoundaryWidth?: number;
 }
 
 export class IssueHighlightOverlay extends BaseGraphRenderer {
@@ -66,12 +69,29 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
 
   render(data: IssueHighlightData): void {
     this.resetContainers();
-    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys } = data;
+    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth } = data;
     const hasEdges = edges != null && edges.length > 0;
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
     if (hasRegions) {
-      this.regionRenderer.render({ nodes, regionGroups, color: HIGHLIGHT_COLOR, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
+      const hasSplitGroup = regionGroups.some((group) => {
+        const cells = new Set(group.map((id) => {
+          const node = nodeById.get(id);
+          return node ? `${node.x},${node.y}` : "";
+        }));
+        return cells.size < group.length;
+      });
+      this.regionRenderer.render({
+        nodes,
+        regionGroups,
+        color: HIGHLIGHT_COLOR,
+        width: HIGHLIGHT_WIDTH,
+        alpha: HIGHLIGHT_ALPHA,
+        cfg,
+        skipPerimeter: true,
+        insetMode: hasSplitGroup ? "outset" : "inset",
+      });
     } else {
       this.regionRenderer.clear();
     }
@@ -88,6 +108,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
 
     const wallG = new Graphics();
     const lineEdges: IssueHighlightEdge[] = [];
+    const drawnBoundaryEdges = new Set<string>();
     for (const edge of edges) {
       if (!edge.asWall) {
         lineEdges.push(edge);
@@ -99,7 +120,12 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
         lineEdges.push(edge);
         continue;
       }
-      const drew = drawOneWayWallHighlight(wallG, [from.x, from.y], [to.x, to.y], cfg, HIGHLIGHT_COLOR, HIGHLIGHT_WIDTH, HIGHLIGHT_ALPHA);
+      const fromCell: [number, number] = [from.x, from.y];
+      const toCell: [number, number] = [to.x, to.y];
+      const key = cellBoundaryKey(fromCell, toCell);
+      if (drawnBoundaryEdges.has(key)) continue;
+      const drew = drawCellBoundaryHighlight(wallG, fromCell, toCell, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth);
+      if (drew) drawnBoundaryEdges.add(key);
       if (!drew) lineEdges.push(edge);
     }
     this.edgesContainer.addChild(wallG);

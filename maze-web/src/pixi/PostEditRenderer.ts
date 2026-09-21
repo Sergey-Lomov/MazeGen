@@ -26,6 +26,8 @@ import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorSc
 import { suppressionPairKey } from "./postEditReplay";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
+import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -69,6 +71,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
    *  `node` ref, treating a single point as a one-element region). Exactly one of the two ever has
    *  content at a time. */
   private readonly linkHover: NodeEdgeHighlightRenderer;
+  private readonly boundaryHover: Graphics;
   private readonly entityHighlight: RegionHighlightRenderer;
   /** Highlights a hovered `IssueBubble`'s flagged cells/edges/regions in the post-edit canvas —
    *  own instance, not shared with `AnalyticsRenderer`'s (feature-renderer ownership rule,
@@ -124,6 +127,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover   = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
+    this.boundaryHover = new Graphics();
+    this.linkHoverContainer.addChild(this.boundaryHover);
     this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
     this.issueHighlight = new IssueHighlightOverlay(this.issueHighlightContainer);
 
@@ -334,6 +339,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       resolveNodeCell,
       activeFloorIndex,
       crossFloorEdgeKeys,
+      oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay),
     });
   }
 
@@ -341,7 +347,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
    *  link/points entity (a vertical passage/elevator/teleport, GitHub issue #546 follow-up) has
    *  endpoints on different floors, and a floor-scoped list only ever contains the active floor's
    *  own nodes, so the other endpoint could never be found there regardless of the fallback
-   *  `buildLinkHoverHighlight`/`resolvePointGroup` provide for "this endpoint isn't on this floor".
+   *  `buildLinkHoverHighlight`/`resolvePointGroups` provide for "this endpoint isn't on this floor".
    *  Safe to match unscoped: `pointMatchesNode` already checks each point's own `level` against the
    *  candidate node's `level` explicitly, so a match is never on the wrong floor even though the
    *  candidate list itself now spans every floor. `activeFloorLevel(state) ?? 0` (0-based, matching
@@ -352,10 +358,27 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private redrawHoveredEntity(state: MazeState): void {
     if (!this.cfg) return;
     const activeLevel = activeFloorLevel(state) ?? 0;
-    const { link, regionGroups } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg);
+    const { link, regionGroups, boundaryLinks } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg);
+    const nodeById = new Map(state.nodes.map((node) => [node.id, node]));
+    const hasSplitGroup = regionGroups.some((group) => {
+      const cells = new Set(group.map((id) => {
+        const node = nodeById.get(id);
+        return node ? `${node.x},${node.y}` : "";
+      }));
+      return cells.size < group.length;
+    });
     this.linkHover.render(link);
+    this.boundaryHover.clear();
+    for (const boundary of boundaryLinks ?? []) {
+      const color = boundary.style === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
+      const span = boundary.style === "one_way"
+        ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
+        : WALL_HIGHLIGHT_SPAN;
+      drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span);
+    }
     this.entityHighlight.render({
       nodes: state.nodes, regionGroups, color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
+      insetMode: hasSplitGroup ? "outset" : "inset",
     });
   }
 
@@ -586,6 +609,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.destroy();
     this.cellHover.destroy();
     this.linkHover.destroy();
+    this.boundaryHover.destroy();
     this.entityHighlight.destroy();
     this.issueHighlight.destroy();
     this.teleportPreview.destroy();

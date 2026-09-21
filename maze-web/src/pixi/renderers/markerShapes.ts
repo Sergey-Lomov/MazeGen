@@ -243,7 +243,7 @@ export function cornerTangentPoint(
  *  the same short edge produces two arcs that overshoot and cross, leaving a visible spike instead
  *  of a rounded corner. `roundCorner` (optional, only passed for `star`) additionally gates which
  *  vertex indices round at all — its reflex corners stay perfectly sharp regardless of radius. */
-function drawRoundedPolygon(g: Graphics, points: number[], radius: number, roundCorner?: (i: number) => boolean): void {
+export function drawRoundedPolygon(g: Graphics, points: number[], radius: number, roundCorner?: (i: number) => boolean): void {
   const n = points.length / 2;
   const at = (i: number): [number, number] => {
     const idx = ((i % n) + n) % n;

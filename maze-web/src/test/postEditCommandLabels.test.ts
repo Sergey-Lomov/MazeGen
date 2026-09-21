@@ -55,6 +55,7 @@ describe("postEditCommandLabel", () => {
       kind: "link",
       from: { kind: "point", point: [0, 0], level: undefined },
       to: { kind: "point", point: [1, 0], level: undefined },
+      highlightStyle: "boundary",
     });
   });
 

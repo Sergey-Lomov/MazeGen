@@ -82,9 +82,9 @@ export class FieldEditorOverlay {
 
   updateHover(cell: [number, number] | null, cfg: TessellationConfig): void {
     if (!cell) {
-      this.hover.render({ cells: [], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
+      this.hover.render({ cells: [], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
     } else {
-      this.hover.render({ cells: [cell], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
+      this.hover.render({ cells: [cell], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
     }
   }
 

@@ -17,6 +17,8 @@ import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { EdgeDto } from "../wasm/types";
+import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
@@ -389,7 +391,7 @@ export class AnalyticsRenderer {
       const crossFloorEdgeKeys = new Set(
         state.edges.filter((e) => e.kind !== "basic").map((e) => `${e.from}->${e.to}`),
       );
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, crossFloorEdgeKeys });
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, crossFloorEdgeKeys, oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay) });
     } else {
       this.issueHighlightRenderer.clear();
     }

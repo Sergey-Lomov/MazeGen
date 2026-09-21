@@ -59,7 +59,7 @@ export interface PostEditHoverPoint {
  * (line + end markers, unchanged from the old `postEditHoveredLink`). */
 export type PostEditHoveredEntity =
   | ({ kind: "point" } & PostEditHoverPoint)
-  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint }
+  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint; highlightStyle?: "line" | "one_way" | "boundary" }
   | { kind: "points"; points: PostEditHoverPoint[] };
 
 /** Resolves a `PostEditEndpoint` to the `PostEditHoverPoint` `PostEditHoveredEntity` needs — a

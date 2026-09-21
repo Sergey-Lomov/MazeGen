@@ -1,8 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { CellFillRenderer } from "./CellFillRenderer";
-import type { CellFillGroup } from "./CellFillRenderer";
+import { RegionHighlightRenderer } from "./RegionHighlightRenderer";
 import { NODE_RADIUS } from "../renderConstants";
 import { attachFloorBadgeNavigation, computeRegionBadgeRingPos, drawFloorBadge } from "./floorBadge";
 import { getCellCenter } from "../tessellationGeometry";
@@ -131,7 +130,7 @@ export function buildRegionTeleportMarkers(
 }
 
 export class RegionOverlayRenderer {
-  private readonly cells: CellFillRenderer;
+  private readonly cells: RegionHighlightRenderer;
   private readonly badgesParent: Container;
   private badgesContainer: Container;
 
@@ -141,7 +140,7 @@ export class RegionOverlayRenderer {
    *  occluded by them; the caller wires `badgesContainer` to a layer higher up its own z-order
    *  (`AnalyticsRenderer`'s container tree) while this class still owns everything drawn into it. */
   constructor(cellsContainer: Container, badgesContainer: Container) {
-    this.cells = new CellFillRenderer(cellsContainer);
+    this.cells = new RegionHighlightRenderer(cellsContainer);
     this.badgesParent = badgesContainer;
     this.badgesContainer = new Container();
     badgesContainer.addChild(this.badgesContainer);
@@ -153,23 +152,26 @@ export class RegionOverlayRenderer {
     this.badgesContainer = new Container();
     this.badgesParent.addChild(this.badgesContainer);
     if (nodes.length === 0 || components.length === 0) {
-      this.cells.render([], cfg);
+      this.cells.render({ nodes: [], regionGroups: [], groups: [], color: 0, width: 0, alpha: 0, cfg });
       return;
     }
 
     const nodeById = new Map<number, NodeDto>();
     for (const n of nodes) nodeById.set(n.id, n);
 
-    const groups: CellFillGroup[] = components.map((comp, i) => {
-      const cells: [number, number][] = [];
-      for (const nodeId of comp) {
-        const node = nodeById.get(nodeId);
-        if (node) cells.push([node.x, node.y]);
-      }
-      return { cells, color: componentColors[i], alpha };
+    this.cells.render({
+      nodes,
+      cfg,
+      groups: components.map((component, i) => ({
+        regionGroups: [component], color: componentColors[i], fillAlpha: alpha,
+      })),
+      regionGroups: [],
+      color: 0,
+      width: 0,
+      alpha: 0,
+      skipPerimeter: true,
+      borderWidth: 2,
     });
-
-    this.cells.render(groups, cfg);
 
     const drawBadge = (pos: { x: number; y: number }, color: number, targetFloorIndex: number) => {
       const g = new Graphics();

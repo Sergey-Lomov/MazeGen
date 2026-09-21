@@ -1,7 +1,7 @@
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { Pos } from "../tessellationGeometry";
-import { getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 
 export interface RegionGeometry {
@@ -49,7 +49,13 @@ export function buildRegionGeometry(
       const ny = y + dy;
       if (cellSet.has(`${nx},${ny}`)) continue;
       const seg = getSharedEdgeSegment([x, y], [nx, ny], cfg);
-      if (seg) perimeterSegments.push(seg);
+      if (seg) {
+        // Orient every exposed side consistently with the region on its left. This makes contour
+        // tracing deterministic at pinch points where an inner opening touches the outer boundary.
+        const center = getCellCenter(x, y, cfg);
+        const cross = (seg.v1.x - seg.v0.x) * (center.y - seg.v0.y) - (seg.v1.y - seg.v0.y) * (center.x - seg.v0.x);
+        perimeterSegments.push(cross >= 0 ? seg : { v0: seg.v1, v1: seg.v0 });
+      }
     }
   }
 
