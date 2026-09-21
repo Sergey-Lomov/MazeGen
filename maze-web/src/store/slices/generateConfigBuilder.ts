@@ -356,6 +356,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       postEditActiveSplitNode: {},
       _nextSplitSlotId: {},
       postEditTeleportPendingFrom: null,
+      postEditChangesEntityFilter: null,
       // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead
       // of re-running `confirmPostEdit`'s own `computeAnalytics` wasm call, which would recompute
       // an identical result from scratch (see GitHub issue #138 profiling).

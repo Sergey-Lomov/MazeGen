@@ -230,6 +230,20 @@ describe("mazeStore post-edit actions", () => {
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"), directionFlip: true,
       replacedOneWayIds: undefined,
     });
+
+    // Third click flips it again. The flip branch always normalizes its result to `bToA:
+    // one_way_forward` regardless of which side was one-way going in - the old `curAToB ===
+    // "one_way_forward" || curBToA === "one_way_backward"` check never recognized "already one-way
+    // via bToA: one_way_forward" (only via `aToB: forward` or `bToA: backward`), so this third click
+    // fell through to the "fresh" branch and minted a brand-new id instead of reusing "o1",
+    // duplicating the entity. Must still be the SAME id, still flagged `directionFlip: true`, never
+    // a fresh mint.
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands[2]).toEqual({
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"), directionFlip: true,
+      replacedOneWayIds: undefined,
+    });
+    expect(useMazeStore.getState()._nextPostEditOneWayId).toBe(2);
   });
 
   it("applyPostEditTool('one_way') on an already-two-way passage creates a fresh forward one-way instead of flipping (GitHub issue #545)", () => {
@@ -589,6 +603,25 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints).toEqual({});
     expect(s.postEditActiveSplitNode).toEqual({});
+  });
+
+  it("setPostEditChangesEntityFilter sets/clears the Changes panel's entity-id filter (GitHub issue #574)", () => {
+    useMazeStore.getState().setPostEditChangesEntityFilter("o5");
+    expect(useMazeStore.getState().postEditChangesEntityFilter).toBe("o5");
+    useMazeStore.getState().setPostEditChangesEntityFilter(null);
+    expect(useMazeStore.getState().postEditChangesEntityFilter).toBeNull();
+  });
+
+  it("resetPostEdit clears a stale entity-id filter (GitHub issue #574)", () => {
+    useMazeStore.setState({ postEditChangesEntityFilter: "o5" });
+    useMazeStore.getState().resetPostEdit();
+    expect(useMazeStore.getState().postEditChangesEntityFilter).toBeNull();
+  });
+
+  it("reset() clears a stale entity-id filter (GitHub issue #574)", () => {
+    useMazeStore.setState({ postEditChangesEntityFilter: "o5" });
+    useMazeStore.getState().reset();
+    expect(useMazeStore.getState().postEditChangesEntityFilter).toBeNull();
   });
 
   it("confirmPostEdit excludes rules belonging to a disabled stage from checks", async () => {

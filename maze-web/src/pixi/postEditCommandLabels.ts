@@ -1,6 +1,6 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import type { PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
+import type { PostEditEdgeState, PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
 import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint, resolveEndpointToHoverPoint, nodeEndpoint } from "./postEditEndpoint";
 import { messageForTitleKey } from "./splitPatternTitles";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
@@ -206,6 +206,44 @@ export function buildNodeByIdMap(nodes: readonly NodeDto[]): Map<number, NodeDto
   return new Map(nodes.map((n) => [n.id, n]));
 }
 
+/** Picks whichever of a `setEdgePair`'s two sides is the one-way one, or `undefined` if neither is
+ *  (a wall/basic pair) — `setEdgePair` never makes both sides one-way at once (see
+ *  `PostEditCommand`'s own doc comment in `postEditCommandTypes.ts`), so "the resulting one-way
+ *  side" is always at most one of `aToB`/`bToA`. Shared by `entityIdOf` and `postEditCommandLabel`'s
+ *  own `setEdgePair` case so the two never resolve a command's one-way side differently. */
+function oneWaySideOf(aToB: PostEditEdgeState, bToA: PostEditEdgeState): (PostEditEdgeState & { kind: "one_way_forward" | "one_way_backward" }) | undefined {
+  const side = aToB.kind === "one_way_forward" || aToB.kind === "one_way_backward" ? aToB : bToA;
+  return side.kind === "one_way_forward" || side.kind === "one_way_backward" ? side : undefined;
+}
+
+/** The stable entity id a command is associated with (GitHub issue #574), or `undefined` for a
+ *  command kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
+ *  `rotateSplitPoint` — a face toggle/meta slot/whole-tile rotation isn't a stably-identified
+ *  entity). Mirrors exactly what `withId` below prints as `"(#id)"` — the same id, not a lifeline
+ *  key (`lifelineKeysOf` in `postEditSliceHelpers.ts` serves a different, broader purpose: point-reset
+ *  pruning, which also covers wall/basic edges and start/finish via synthetic `edge:`/`meta:` keys
+ *  that are never shown to the user). Used by the "Changes" panel's entity-id filter (GitHub issue
+ *  #574) to decide which rows a given id filters in — matches the associated id itself, never a
+ *  text search over the row's own label. */
+export function entityIdOf(command: PostEditCommand): string | undefined {
+  switch (command.kind) {
+    case "setEdge":
+      return command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward" ? command.edge.id : undefined;
+    case "setEdgePair":
+      return oneWaySideOf(command.aToB, command.bToA)?.id;
+    case "addTeleport": case "setTeleportDirection": case "moveTeleportEndpoint": case "removeTeleport":
+      return command.id;
+    case "addVerticalPassage": case "setVerticalPassageDirection": case "moveVerticalPassageEndpoint": case "removeVerticalPassage":
+      return command.id;
+    case "addElevator": case "updateElevatorFloors": case "removeElevator":
+      return command.id;
+    case "addSplitNode": case "removeSplitNode": case "applySplitBlueprint": case "updateSplitNodeFaces":
+      return command.pointId;
+    case "setMeta": case "rotateSplitPoint":
+      return undefined;
+  }
+}
+
 /** Appends the entity's own stable id (GitHub issue #564) to an action string, `"Action (#N)"` —
  *  every category minted at baseline-construction or command-construction time now carries one
  *  (one-way edge, split point, teleport, vertical passage, elevator), so every row that names a
@@ -282,11 +320,9 @@ export function postEditCommandLabel(
         ? m["post_edit.changes_action_flip_edge_one_way"]()
         : m["post_edit.changes_action_set_edge_one_way"]();
       // The resulting one-way side's own id (GitHub issue #564) — whichever of `aToB`/`bToA` is the
-      // one-way side (`setEdgePair` never makes both sides one-way at once).
-      const oneWaySide = command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward" ? command.aToB : command.bToA;
-      const action = oneWaySide.kind === "one_way_forward" || oneWaySide.kind === "one_way_backward"
-        ? withId(baseAction, oneWaySide.id)
-        : baseAction;
+      // one-way side (`oneWaySideOf`, shared with `entityIdOf` so the two never disagree).
+      const oneWaySide = oneWaySideOf(command.aToB, command.bToA);
+      const action = oneWaySide ? withId(baseAction, oneWaySide.id) : baseAction;
       // Bubble order is always `a, b` (GitHub issue #546 follow-up: fixed point order, direction
       // shown by the arrow glyph alone, not by swapping which bubble comes first) — `aToB` says
       // whether traffic actually flows a->b or b->a.

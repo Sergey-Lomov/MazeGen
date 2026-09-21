@@ -97,6 +97,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _nextPostEditElevatorId: 1,
   postEditSplitTargetPrompt: null,
   postEditChangesOpen: true,
+  postEditChangesEntityFilter: null,
   postEditDragOverride: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
@@ -175,7 +176,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // Flip only when THIS face is already the one-way side - not just "some record exists" (a
       // `basic` two-way passage also has a record on both sides, and clicking `one_way` on it must
       // create a fresh forward one-way, not silently flip to backward-only and drop the passage).
-      if (curAToB === "one_way_forward" || curBToA === "one_way_backward") {
+      // `wasOneWay` (either side, either direction) is the right check here — the old
+      // `curAToB === "one_way_forward" || curBToA === "one_way_backward"` only recognized ONE of
+      // the two possible one-way layouts: after an odd number of flips the one-way side is `bToA:
+      // one_way_forward` (this branch's own result below always normalizes the flipped side back to
+      // `forward`, never `backward`), which that check's `curBToA === "one_way_backward"` half never
+      // matches — every second flip fell through to the "fresh" branch below and minted a brand-new
+      // id instead of reusing the existing one, duplicating the entity on every other click.
+      if (wasOneWay) {
         // Flip: reuses the existing side's id — same entity, new direction.
         const id = oldAToBId ?? oldBToAId ?? mintOneWayId();
         aToB = { kind: "wall", from: from_, to: to_ };
@@ -508,6 +516,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditVerticalPassagePending: null,
         postEditElevatorPending: null,
         postEditSplitTargetPrompt: null,
+        postEditChangesEntityFilter: null,
       };
     });
     void get().confirmPostEdit();
@@ -1120,6 +1129,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   setPostEditChangesOpen: (open) => set({ postEditChangesOpen: open, postEditFocusedPoint: open ? null : get().postEditFocusedPoint }),
+
+  setPostEditChangesEntityFilter: (id) => set({ postEditChangesEntityFilter: id }),
 
   setPostEditDragOverride: (override) => set({ postEditDragOverride: override }),
 });

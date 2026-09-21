@@ -534,6 +534,30 @@ one-way branch distinguishes "set one-way passage" from "changed one-way passage
 command's own `directionFlip` field (see `PostEditCommand` above) — never re-derived by comparing
 against a previous command, since a command must format purely from its own fields.
 
+#### Entity id filter (GitHub issue #574)
+
+A text input at the top of the panel (sticky within the scrollable log, so it never scrolls out of
+view with the rows) narrows `postEditCommands` down to the rows belonging to one entity id, with a
+clear (×) button inside the field, on its right edge, that resets back to the full log. `entityIdOf
+(command)` (`pixi/postEditCommandLabels.ts`) returns the id a command is associated with — the same
+id `withId` prints as `"(#id)"` in the row's action text (`"o5"`, `"t3"`, ... — not a lifeline key:
+`lifelineKeysOf` in `postEditSliceHelpers.ts` serves point-reset pruning, a different and broader
+purpose that also covers wall/basic edges and start/finish via synthetic keys never shown to the
+user) — or `undefined` for a command kind with no id of its own (`setEdge`/`setEdgePair` on a
+wall/basic face, `setMeta`, `rotateSplitPoint`). The filter matches a command's `entityIdOf` result
+exactly, never a text search over the row's rendered label; a command with no id never matches any
+filter value and is hidden whenever a filter is active. A `setEdgePair`'s one-way side (resolved by
+both `entityIdOf` and `postEditCommandLabel`'s own `setEdgePair` case) is picked by the shared
+`oneWaySideOf(aToB, bToA)` helper, not two independent copies of the same "whichever side is
+one-way" check, so the filter and the row's own displayed id can never disagree.
+
+State lives in `postEditChangesEntityFilter: string | null` (`null` = no filter, the default) and
+`setPostEditChangesEntityFilter` (`postEditFullTypes.ts`/`postEditSlice.ts`) — ephemeral UI state, not
+persisted, reset to `null` on `generate()`/`resetPostEdit()`/the whole-app `reset()` so a stale filter
+never silently hides an unrelated new log. This is the filtering mechanism GitHub issue #573's id
+bubble click-to-filter action depends on — a future click handler just calls
+`setPostEditChangesEntityFilter(id)` with the clicked bubble's own entity id.
+
 ### Dirty semantics
 
 | Operation | `postEditDirty` |

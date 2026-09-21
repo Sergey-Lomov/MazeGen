@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildNodeByIdMap, postEditCommandLabel,
+  buildNodeByIdMap, entityIdOf, postEditCommandLabel,
 } from "../pixi/postEditCommandLabels";
 import type { SplitLabelContext } from "../pixi/postEditSplitLabels";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
@@ -447,6 +447,70 @@ describe("postEditCommandLabel", () => {
           { kind: "point", point: [2, 2], level: 1 },
         ],
       });
+    });
+  });
+
+  describe("entityIdOf (GitHub issue #574)", () => {
+    it("returns undefined for a wall/basic setEdge and setEdgePair", () => {
+      expect(entityIdOf({ kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "wall") })).toBeUndefined();
+      expect(entityIdOf({ kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "basic") })).toBeUndefined();
+      expect(entityIdOf({
+        kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
+        aToB: es(nodeEndpoint(0), nodeEndpoint(1), "wall"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
+      })).toBeUndefined();
+    });
+
+    it("returns the one-way id for setEdge/setEdgePair one-way variants", () => {
+      expect(entityIdOf({ kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") })).toBe("o7");
+      expect(entityIdOf({
+        kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
+        aToB: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o8"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
+      })).toBe("o8");
+    });
+
+    it("returns the entity's own id for teleport/vertical-passage/elevator commands", () => {
+      expect(entityIdOf({ kind: "addTeleport", id: "t3", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" })).toBe("t3");
+      expect(entityIdOf({ kind: "addVerticalPassage", id: "v2", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" })).toBe("v2");
+      expect(entityIdOf({ kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] })).toBe("e1");
+    });
+
+    it("returns the split point's own pointId for split-structure commands", () => {
+      expect(entityIdOf({ kind: "addSplitNode", point: [1, 1], slotId: 2, pointId: "s5" })).toBe("s5");
+      expect(entityIdOf({
+        kind: "updateSplitNodeFaces", point: [1, 1], slotId: 2, faces: [], pointId: "s5",
+      })).toBe("s5");
+    });
+
+    it("returns undefined for setMeta and rotateSplitPoint", () => {
+      expect(entityIdOf({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) })).toBeUndefined();
+      expect(entityIdOf({ kind: "rotateSplitPoint", point: [1, 1], moves: [] })).toBeUndefined();
+    });
+
+    it("agrees with postEditCommandLabel's own \"(#id)\" text for every command kind that has an id", () => {
+      // Pins the invariant the entity-id filter (GitHub issue #574) depends on: whatever id
+      // `entityIdOf` reports for a command must be the exact same id the row itself displays via
+      // `withId`'s "(#id)" suffix — otherwise the filter and the visible row would silently disagree
+      // about which id an entity has. Covers every id-bearing command kind, including `setEdgePair`
+      // (whose id resolution — `oneWaySideOf` — is shared code, not just parallel logic, but this
+      // still pins the observable agreement rather than the sharing itself).
+      const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
+      const idBearingCommands: PostEditCommand[] = [
+        { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") },
+        {
+          kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
+          aToB: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o8"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
+        },
+        { kind: "addTeleport", id: "t3", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
+        { kind: "addVerticalPassage", id: "v2", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
+        { kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] },
+        { kind: "addSplitNode", point: [1, 1], slotId: 2, pointId: "s5" },
+      ];
+      for (const command of idBearingCommands) {
+        const id = entityIdOf(command);
+        expect(id).toBeDefined();
+        const label = postEditCommandLabel(command, nodeById, false);
+        expect(label.action).toContain(`(#${id})`);
+      }
     });
   });
 });

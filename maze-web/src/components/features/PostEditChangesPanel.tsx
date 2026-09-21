@@ -1,14 +1,22 @@
 import { useMemo } from "react";
+import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
-import { buildNodeByIdMap, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import { buildNodeByIdMap, entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { sharedStyles } from "../../styles/shared";
 import { typography, muted, spacing, ui, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+
+/** Size of the clear (×) button's own `X` icon, and its horizontal inset (matching
+ *  `sharedStyles.closeBtn`'s own `padding: "0 2px"`) — both feed `filterInput`'s right padding so
+ *  typed text can never run under the button regardless of either value changing later. */
+const CLEAR_ICON_SIZE = 16;
+const CLEAR_ICON_INSET = 2;
 
 /** "Changes" panel (GitHub issue #545) — lists every entry of the post-edit command log
  *  (`Specs/post-edit.md`'s "Command Log" section), one row per `PostEditCommand`, as an action plus
@@ -32,6 +40,8 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
   const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
+  const entityFilter = useMazeStore((s) => s.postEditChangesEntityFilter);
+  const setEntityFilter = useMazeStore((s) => s.setPostEditChangesEntityFilter);
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const activeSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
@@ -60,9 +70,16 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
     [nodes, splitPoints, activeSplitNode, draftEdges, cfg, inFieldCellsByLevel],
   );
   // Newest first — the log itself is append-only oldest-to-newest, reversed only for display.
+  // The entity-id filter (GitHub issue #574) matches a command's own associated id (`entityIdOf`)
+  // exactly, never a text search over the row's rendered label — a command kind with no id of its
+  // own (wall/basic `setEdge`/`setEdgePair`, `setMeta`, `rotateSplitPoint`) never matches and is
+  // hidden whenever a filter is active.
   const rows = useMemo(
-    () => commands.map((c) => postEditCommandLabel(c, nodeById, multiFloor, splitCtx)).reverse(),
-    [commands, nodeById, multiFloor, splitCtx],
+    () => commands
+      .filter((c) => entityFilter === null || entityIdOf(c) === entityFilter)
+      .map((c) => postEditCommandLabel(c, nodeById, multiFloor, splitCtx))
+      .reverse(),
+    [commands, nodeById, multiFloor, splitCtx, entityFilter],
   );
 
   const hoverBubble = (bubble: PostEditEntityBubble) => {
@@ -75,8 +92,31 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <SidePanel title={m["post_edit.changes_title"]()} onClose={onClose}>
-      {rows.length === 0 ? (
+      <div style={styles.filterRow}>
+        <input
+          type="text"
+          value={entityFilter ?? ""}
+          onChange={(e) => setEntityFilter(e.target.value.trim() === "" ? null : e.target.value.trim())}
+          placeholder={m["post_edit.changes_filter_placeholder"]()}
+          style={styles.filterInput}
+        />
+        {entityFilter !== null && (
+          <button
+            type="button"
+            className="hoverable"
+            onClick={() => setEntityFilter(null)}
+            title={m["post_edit.changes_filter_clear"]()}
+            aria-label={m["post_edit.changes_filter_clear"]()}
+            style={{ ...sharedStyles.closeBtn, ...styles.filterClear }}
+          >
+            <X size={CLEAR_ICON_SIZE} />
+          </button>
+        )}
+      </div>
+      {commands.length === 0 ? (
         <div style={styles.empty}>{m["post_edit.changes_empty"]()}</div>
+      ) : rows.length === 0 ? (
+        <div style={styles.empty}>{m["post_edit.changes_filter_empty"]()}</div>
       ) : (
         <div style={styles.list}>
           {rows.map((row, i) => (
@@ -111,6 +151,32 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  filterRow: {
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+    display: "flex",
+    alignItems: "center",
+    padding: `6px ${spacing.rowGap}px`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    background: ui.bg.panel,
+    flexShrink: 0,
+  },
+  filterInput: {
+    ...typography.field,
+    width: "100%",
+    minWidth: 0,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: radius.sm,
+    // Right padding reserves room for `filterClear`'s icon (`CLEAR_ICON_SIZE`) plus its own inset
+    // on both sides, so typed text never runs under the button regardless of where it sits.
+    padding: `2px ${spacing.rowGap + CLEAR_ICON_SIZE + 2 * CLEAR_ICON_INSET}px 2px 6px`,
+  },
+  filterClear: {
+    position: "absolute",
+    right: spacing.rowGap + 2,
+  },
   list: {
     display: "flex",
     flexDirection: "column",

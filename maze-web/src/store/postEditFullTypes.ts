@@ -221,6 +221,13 @@ export interface PostEditState {
    *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
    *  node panel and vice versa, since both dock to the same `SidePanel` slot). Not persisted. */
   postEditChangesOpen: boolean;
+  /** Entity id the "Changes" panel's log is narrowed to (GitHub issue #574), or `null` for no
+   *  filter (every row shown). Matches a command's own `entityIdOf` result exactly (`"o5"`, `"t3"`,
+   *  ... — `postEditCommandLabels.ts`), never a text search over a row's rendered label; a command
+   *  kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
+   *  `rotateSplitPoint`) never matches any filter value. Ephemeral UI state, not persisted; reset to
+   *  `null` on generate/reset so a stale filter doesn't silently hide an unrelated new log. */
+  postEditChangesEntityFilter: string | null;
   /** Live drag preview for the start/finish marker, a teleport endpoint, or a vertical-passage
    *  endpoint (GitHub issue #545) — set by `PostEditController` on every pointermove while a drag
    *  is armed, cleared on pointerup. Purely visual: `PostEditRenderer` overlays it on top of
@@ -306,6 +313,9 @@ export interface PostEditActions {
   /** Opens/closes the "Changes" panel (GitHub issue #545). Opening it closes the "Manage split
    *  nodes" panel (`postEditFocusedPoint`), since both dock to the same `SidePanel` slot. */
   setPostEditChangesOpen: (open: boolean) => void;
+  /** Sets/clears the "Changes" panel's entity-id filter (GitHub issue #574). `null` clears it back
+   *  to the full log — same effect as the panel's own clear (×) button. */
+  setPostEditChangesEntityFilter: (id: string | null) => void;
   /** Sets/clears the live drag preview (GitHub issue #545) — see `postEditDragOverride`'s doc
    *  comment. Pure visual state, never touches the command log. */
   setPostEditDragOverride: (override: PostEditDragOverride | null) => void;
