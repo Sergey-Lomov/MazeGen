@@ -1758,6 +1758,7 @@
   "post_edit.changes_filter_placeholder": "Фильтр по id",
   "post_edit.changes_filter_clear": "Сбросить фильтр",
   "post_edit.changes_filter_empty": "Нет изменений с таким id",
+  "post_edit.changes_id_bubble_title": "Наведите для подсветки, нажмите для фильтра по этому id",
   "post_edit.changes_action_set_edge_wall": "Установлена стена",
   "post_edit.changes_action_set_edge_passage": "Установлен проход",
   "post_edit.changes_action_set_edge_one_way": "Установлен односторонний проход",

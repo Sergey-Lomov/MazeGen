@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
@@ -32,10 +32,22 @@ const CLEAR_ICON_INSET = 2;
  *  connecting line for a same-floor edge/teleport, or every point the entity actually has drawn on
  *  some floor for a vertical passage/elevator/cross-floor teleport (collapses to the active floor's
  *  own point via `buildHoveredEntityHighlight`'s `activeLevel` gate) — through `PostEditRenderer`'s
- *  `postEditHoveredEntity`. Read-only listing otherwise: reverting/selecting individual entries is
- *  out of scope for this ticket. Docks via the shared `SidePanel`, same as "Manage split nodes" — the
- *  two never show at once (`setPostEditChangesOpen`/`setPostEditFocusedPoint` close each other). */
+ *  `postEditHoveredEntity`. A row that names a stable entity (`row.entityId`, GitHub issue #574's
+ *  `entityIdOf`) also gets its own id bubble pinned to the row's top-right corner (GitHub issue
+ *  #573) - hovering it highlights every OTHER row sharing that id within this list
+ *  (`hoveredEntityId`, local state, unrelated to the canvas highlight above); clicking it narrows
+ *  the log to that entity via the same entity-id filter GitHub issue #574 already introduced
+ *  (`setPostEditChangesEntityFilter`). Read-only listing otherwise: reverting/selecting individual
+ *  entries is out of scope for this ticket. Docks via the shared `SidePanel`, same as "Manage split
+ *  nodes" — the two never show at once (`setPostEditChangesOpen`/`setPostEditFocusedPoint` close each
+ *  other). */
 export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
+  // Which entity id bubble is currently hovered (GitHub issue #573) — highlights every OTHER row
+  // referencing the same entity id, purely within this panel's own list (never the canvas — that's
+  // `postEditHoveredEntity`'s job, still driven by the row/bubble hover handlers below). Local, not
+  // store state: no other component needs to know, and it must never survive a re-render for a
+  // different filter/log.
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
   const commands = useMazeStore((s) => s.postEditCommands);
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
@@ -122,10 +134,22 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
           {rows.map((row, i) => (
             <div
               key={i}
-              style={styles.row}
+              style={row.entityId !== undefined && row.entityId === hoveredEntityId ? { ...styles.row, ...styles.rowEntityHighlight } : styles.row}
               onMouseEnter={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : undefined}
               onMouseLeave={clearHover}
             >
+              {row.entityId !== undefined && (
+                <span
+                  className="hoverable"
+                  style={styles.idBubble}
+                  title={m["post_edit.changes_id_bubble_title"]()}
+                  onMouseEnter={() => setHoveredEntityId(row.entityId!)}
+                  onMouseLeave={() => setHoveredEntityId(null)}
+                  onClick={() => setEntityFilter(row.entityId!)}
+                >
+                  id: {row.entityId}
+                </span>
+              )}
               <span style={styles.action}>{row.action}</span>
               <div style={styles.bubbles}>
                 {row.bubbles.map((bubble, j) => (
@@ -182,14 +206,51 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
   },
   row: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     gap: spacing.itemGap / 2,
     padding: `${spacing.itemGap}px ${spacing.groupGap}px`,
     borderBottom: `1px solid ${ui.border.default}`,
   },
+  // GitHub issue #573: every OTHER row sharing the currently-hovered id bubble's entity id — same
+  // generic hover background other panels use (`NestedStrategyPanel`/quality canvas), not a
+  // dedicated hue, since this is "related row" not a semantic (error/warning/info) state.
+  rowEntityHighlight: {
+    background: ui.bg.hover,
+  },
+  // Reserves room on the right so a wrapped/long action text never runs under the pinned `idBubble`.
   action: {
     ...typography.body,
+    paddingRight: 56,
+  },
+  // The entity id bubble (GitHub issue #573) — split out of `action`'s own text (previously
+  // `"Action (#id)"`) into its own hoverable/clickable chip, pinned to the row's own top-right
+  // corner (`position: absolute` against `row`'s `position: relative`) rather than flowing inline
+  // with the action text, so it reads as a row-level tag rather than part of the action's own
+  // sentence. Green (`ui.bg.success`/`ui.text.success` — same pairing convention
+  // `debug.refHighlight`/`debug.issueHighlight` use, a dedicated bg+text pair rather than a computed
+  // alpha) rather than the point bubbles' cyan (`debug.refHighlight`) so it reads as a distinct kind
+  // of reference at a glance. Hovering highlights every other row sharing this id (`hoveredEntityId`,
+  // local panel state — never the canvas); clicking sets the entity-id filter (GitHub issue #574's
+  // `setPostEditChangesEntityFilter`) to narrow the log down to just this entity.
+  idBubble: {
+    ...typography.caption,
+    position: "absolute",
+    top: spacing.itemGap,
+    right: spacing.groupGap,
+    fontFamily: "Consolas, Menlo, Monaco, monospace",
+    display: "inline-flex",
+    alignItems: "center",
+    borderStyle: "solid",
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: `0 ${spacing.itemGap}px`,
+    background: ui.bg.success,
+    borderColor: ui.text.success,
+    color: ui.text.success,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
   },
   bubbles: {
     display: "flex",

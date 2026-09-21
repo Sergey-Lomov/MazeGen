@@ -124,6 +124,7 @@ export const base = {
   warning: "#ffaa44",
   warningBg: "#2a2010",
   success: "#6dbf7e",
+  successBg: "#1a2a1c",
   info: "#7ab3e0",
   infoBg: "#16232e",
 

@@ -354,10 +354,34 @@ describe("postEditCommandLabel", () => {
       expect(label.bubbles[0].text).toBe("3:5 (N4)");
     });
 
+    it("removeSplitNode names the removed slot's own number and carries its own entityId", () => {
+      const command: PostEditCommand = { kind: "removeSplitNode", point: [3, 5], slotId: 2, pointId: "s1" };
+      const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
+      expect(label.bubbles[0].text).toBe("3:5 (N4)");
+      expect(label.entityId).toBe("s1");
+    });
+
     it("rotateSplitPoint/applySplitBlueprint address the whole tile — no per-slot suffix", () => {
       const command: PostEditCommand = { kind: "rotateSplitPoint", point: [3, 5], moves: [] };
       const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
       expect(label.bubbles[0].text).toBe("3:5");
+    });
+
+    it("applySplitBlueprint uses the plain action text and carries its own entityId when unnamed", () => {
+      const command: PostEditCommand = { kind: "applySplitBlueprint", point: [3, 5], pointId: "s1", resolvedSlots: [] };
+      const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
+      expect(label.action).toBe("Add split-tile");
+      expect(label.entityId).toBe("s1");
+      expect(label.bubbles[0].text).toBe("3:5");
+    });
+
+    it("applySplitBlueprint interpolates the blueprint's own title when named", () => {
+      const command: PostEditCommand = {
+        kind: "applySplitBlueprint", point: [3, 5], pointId: "s1", resolvedSlots: [], blueprintTitleKey: "split_pattern_title.bridge",
+      };
+      const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
+      expect(label.action).toContain("Add");
+      expect(label.entityId).toBe("s1");
     });
   });
 
@@ -371,7 +395,8 @@ describe("postEditCommandLabel", () => {
         faces: [{ neighbor: nodeEndpoint(2), toNeighbor: es(splitEndpoint([3, 5], 0), nodeEndpoint(2), "basic"), fromNeighbor: es(nodeEndpoint(2), splitEndpoint([3, 5], 0), "basic") }],
       };
       const label = postEditCommandLabel(command, nodeById, false, splitCtx);
-      expect(label.action).toBe("Update split tile settings (#s1)");
+      expect(label.action).toBe("Update split tile settings");
+      expect(label.entityId).toBe("s1");
       expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N2)"]);
     });
 
@@ -387,7 +412,8 @@ describe("postEditCommandLabel", () => {
         faces: [{ neighbor: nodeEndpoint(2), toNeighbor: es(nodeEndpoint(0), nodeEndpoint(2), "basic"), fromNeighbor: es(nodeEndpoint(2), nodeEndpoint(0), "basic") }],
       };
       const label = postEditCommandLabel(command, nodeById, false, splitCtx);
-      expect(label.action).toBe("Update split tile settings (#s1)");
+      expect(label.action).toBe("Update split tile settings");
+      expect(label.entityId).toBe("s1");
       expect(label.bubbles.map((b) => b.text)).toEqual(["3:5 (N1)"]);
     });
 
@@ -448,6 +474,17 @@ describe("postEditCommandLabel", () => {
         ],
       });
     });
+
+    it("updateElevatorFloors shows its own floor list and entityId, distinct from add/remove", () => {
+      const nodeById = buildNodeByIdMap([n(0, 2, 2, 0), n(1, 2, 2, 1), n(2, 2, 2, 2)]);
+      const command: PostEditCommand = {
+        kind: "updateElevatorFloors", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
+      };
+      const label = postEditCommandLabel(command, nodeById, true);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "L2:2:2", "L3:2:2"]);
+      expect(label.entityId).toBe("e1");
+      expect(label.showArrow).toBe(false);
+    });
   });
 
   describe("entityIdOf (GitHub issue #574)", () => {
@@ -486,13 +523,14 @@ describe("postEditCommandLabel", () => {
       expect(entityIdOf({ kind: "rotateSplitPoint", point: [1, 1], moves: [] })).toBeUndefined();
     });
 
-    it("agrees with postEditCommandLabel's own \"(#id)\" text for every command kind that has an id", () => {
-      // Pins the invariant the entity-id filter (GitHub issue #574) depends on: whatever id
-      // `entityIdOf` reports for a command must be the exact same id the row itself displays via
-      // `withId`'s "(#id)" suffix — otherwise the filter and the visible row would silently disagree
-      // about which id an entity has. Covers every id-bearing command kind, including `setEdgePair`
-      // (whose id resolution — `oneWaySideOf` — is shared code, not just parallel logic, but this
-      // still pins the observable agreement rather than the sharing itself).
+    it("agrees with postEditCommandLabel's own entityId field for every command kind that has an id (GitHub issue #573)", () => {
+      // Pins the invariant the entity-id filter (GitHub issue #574) and the Changes panel's own id
+      // bubble (GitHub issue #573) both depend on: whatever id `entityIdOf` reports for a command
+      // must be the exact same id the row itself exposes via `label.entityId` — otherwise the filter,
+      // the id bubble, and the row-hover cross-highlight would silently disagree about which id an
+      // entity has. Covers every id-bearing command kind, including `setEdgePair` (whose id
+      // resolution — `oneWaySideOf` — is shared code, not just parallel logic, but this still pins
+      // the observable agreement rather than the sharing itself).
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
       const idBearingCommands: PostEditCommand[] = [
         { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") },
@@ -509,8 +547,16 @@ describe("postEditCommandLabel", () => {
         const id = entityIdOf(command);
         expect(id).toBeDefined();
         const label = postEditCommandLabel(command, nodeById, false);
-        expect(label.action).toContain(`(#${id})`);
+        expect(label.entityId).toBe(id);
       }
+    });
+
+    it("setMeta/rotateSplitPoint labels carry no entityId, matching entityIdOf's own undefined", () => {
+      const nodeById = buildNodeByIdMap([n(0, 0, 0)]);
+      const metaLabel = postEditCommandLabel({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) }, nodeById, false);
+      const rotateLabel = postEditCommandLabel({ kind: "rotateSplitPoint", point: [1, 1], moves: [] }, nodeById, false);
+      expect(metaLabel.entityId).toBeUndefined();
+      expect(rotateLabel.entityId).toBeUndefined();
     });
   });
 });

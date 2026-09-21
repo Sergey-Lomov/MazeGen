@@ -2,7 +2,8 @@
  *  entity id (one-way edge, split point, teleport, vertical passage, elevator) is a type-prefixed
  *  string (`"t3"`, `"s1"`, `"o5"`, `"v2"`, `"e7"`), not a bare number, so an id string alone
  *  already says what kind of entity it names — useful in logs, exported files, and the "Changes"
- *  panel's own `withId()` suffix. The underlying counter (`_nextPostEdit*Id`) stays a plain
+ *  panel's own id bubble (GitHub issue #573, `PostEditCommandLabel.entityId`). The underlying
+ *  counter (`_nextPostEdit*Id`) stays a plain
  *  `number` — only the MINTED id is formatted to a string, at the point each category's counter is
  *  read (`nextPostEditIdCounters`, `assignSequentialIds` call sites, and every store action that
  *  mints a fresh id off a `_nextPostEdit*Id` field). Category namespaces stay fully independent, as

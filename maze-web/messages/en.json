@@ -1746,6 +1746,7 @@
   "post_edit.changes_filter_placeholder": "Filter by id",
   "post_edit.changes_filter_clear": "Clear filter",
   "post_edit.changes_filter_empty": "No changes match this entity id",
+  "post_edit.changes_id_bubble_title": "Hover to highlight, click to filter by this id",
   "post_edit.changes_action_set_edge_wall": "Set wall",
   "post_edit.changes_action_set_edge_passage": "Set passage",
   "post_edit.changes_action_set_edge_one_way": "Set one-way passage",

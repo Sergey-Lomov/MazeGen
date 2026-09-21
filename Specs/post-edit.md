@@ -540,8 +540,9 @@ A text input at the top of the panel (sticky within the scrollable log, so it ne
 view with the rows) narrows `postEditCommands` down to the rows belonging to one entity id, with a
 clear (×) button inside the field, on its right edge, that resets back to the full log. `entityIdOf
 (command)` (`pixi/postEditCommandLabels.ts`) returns the id a command is associated with — the same
-id `withId` prints as `"(#id)"` in the row's action text (`"o5"`, `"t3"`, ... — not a lifeline key:
-`lifelineKeysOf` in `postEditSliceHelpers.ts` serves point-reset pruning, a different and broader
+id exposed as `PostEditCommandLabel.entityId` and rendered as the row's own id bubble (`"o5"`, `"t3"`,
+... — not a lifeline key: `lifelineKeysOf` in `postEditSliceHelpers.ts` serves point-reset pruning, a
+different and broader
 purpose that also covers wall/basic edges and start/finish via synthetic keys never shown to the
 user) — or `undefined` for a command kind with no id of its own (`setEdge`/`setEdgePair` on a
 wall/basic face, `setMeta`, `rotateSplitPoint`). The filter matches a command's `entityIdOf` result
@@ -555,8 +556,32 @@ State lives in `postEditChangesEntityFilter: string | null` (`null` = no filter,
 `setPostEditChangesEntityFilter` (`postEditFullTypes.ts`/`postEditSlice.ts`) — ephemeral UI state, not
 persisted, reset to `null` on `generate()`/`resetPostEdit()`/the whole-app `reset()` so a stale filter
 never silently hides an unrelated new log. This is the filtering mechanism GitHub issue #573's id
-bubble click-to-filter action depends on — a future click handler just calls
+bubble click-to-filter action depends on — the click handler just calls
 `setPostEditChangesEntityFilter(id)` with the clicked bubble's own entity id.
+
+#### Entity id bubble (GitHub issue #573)
+
+A row that names a stable entity (any row `entityIdOf` resolves an id for) shows that id as its own
+bubble, `id: {id}`, pinned to the row's own top-right corner (`position: absolute` against the row's
+`position: relative`, `action`'s own `paddingRight` reserving room so wrapped/long action text never
+runs under it) rather than flowing inline with the action text or baked into the action string as
+`"Action (#id)"` (`withId`, now removed) — `PostEditCommandLabel.entityId: string | undefined`,
+stamped onto every branch's label by `postEditCommandLabel`'s own `withEntityId` wrapper so no
+per-kind branch has to thread it through its own action-string construction; `undefined` for the same
+command kinds `entityIdOf` returns `undefined` for. Styled distinctly from the point/coordinate
+bubbles (green `ui.bg.success`/`ui.text.success`, vs. the point bubbles' cyan
+`ui.debug.refHighlight`) so the two kinds of chip read as different things at a glance.
+
+Hovering the id bubble highlights every OTHER row in the log sharing that same entity id — tracked as
+`hoveredEntityId`, state local to `PostEditChangesPanel` (not the store): this is a within-panel
+list highlight, unrelated to `postEditHoveredEntity`'s canvas highlight that point/row hovers already
+drive. A highlighted row gets a plain background tint (`ui.bg.hover`, the same generic hover fill
+other panels use), independent of and stacked orthogonally to the row's own `rowHighlight`/bubble
+canvas-highlight behavior. The bubble's own `title` tooltip (`post_edit.changes_id_bubble_title`) is a
+dedicated i18n key describing this hover/click behavior, distinct from the filter input's own
+`changes_filter_placeholder`. Clicking the id bubble calls `setPostEditChangesEntityFilter(entityId)`
+directly — the minimal ad-hoc use of the #574 filter the issue described, rather than waiting on a
+separate generic event-filter ticket.
 
 ### Dirty semantics
 
