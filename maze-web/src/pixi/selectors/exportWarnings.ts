@@ -628,12 +628,12 @@ function splitContrastData(
   const keys: string[] = [];
   const seen = new Set<string>();
   const ids = new Set<number>();
-  for (const [passageIndex, passage] of passages.entries()) {
-    const key = `${passage.pointKey}:${passageIndex}`;
+  for (const passage of passages) {
+    const key = passage.nodeIndex === undefined ? `color:${passage.color}` : `slot:${passage.nodeIndex}`;
     if (!seen.has(key)) {
       seen.add(key);
       colors.push(passage.color);
-      keys.push(key);
+      keys.push(String(key));
     }
     for (const node of nodeById.values()) {
       if (`${node.x},${node.y}` === passage.pointKey) ids.add(node.id);
@@ -650,7 +650,13 @@ function pushSplitPairwiseWarning(warnings: ExportWarning[], colors: readonly nu
       entries.push({ foreground: colors[i], background: colors[j], nodes });
     }
   }
-  pushContrastWarningEntries(warnings, "split_colors_low_contrast_each_other", entries);
+  // This is one visual problem — split colors are not distinguishable from each other — even
+  // when several slot pairs happen to trip the same contrast check. Keep one warning for the
+  // whole split palette, just as the non-pairwise split warnings do. The first offending pair is
+  // retained for the detailed color description; all affected nodes are already shared by the
+  // split data passed here.
+  const first = entries.find((entry) => hasLowContrast(entry.foreground, entry.background));
+  if (first) pushContrastWarningEntries(warnings, "split_colors_low_contrast_each_other", [first]);
 }
 
 function addCommonContrastWarnings(

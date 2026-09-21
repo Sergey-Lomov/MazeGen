@@ -445,7 +445,14 @@ export function overrideActiveProfileColor(
       marker(PC.elevatorFill, PC.elevatorBorder, settings.elevatorMarker) || set(PC.elevatorArrow, (v) => { settings.elevatorArrowColor = v; }) ||
       set(PC.elevatorBadgeFill, (v) => { settings.elevatorBadges.fillColor = v; }) || set(PC.elevatorBadgeText, (v) => { settings.elevatorBadges.textColor = v; }) ||
       set(PC.markerIndexFill, (v) => { settings.markerIndex.fillColor = v; }) || set(PC.markerIndexText, (v) => { settings.markerIndex.textColor = v; }) || set(PC.markerIndexBorder, (v) => { settings.markerIndex.borderColor = v; })) return settings;
-  for (let i = 0; i < settings.splitNodeColors.length; i++) if (set(PC.splitNode(i), (v) => { settings.splitNodeColors[i] = v; })) return settings;
+  // Split colors are sparse overrides: an untouched profile keeps `splitNodeColors` empty and
+  // falls back to the live canvas palette. The color picker still exposes every slot present in
+  // the maze, so resolve those dynamic fields against the maze's split count rather than the
+  // override array's current length (otherwise picker previews for default split colors never
+  // reach the warning computation).
+  for (let i = 0; i < maxSplitNodeCount(state.nodes); i++) {
+    if (set(PC.splitNode(i), (v) => { settings.splitNodeColors[i] = v; })) return settings;
+  }
   if ("verticalStyle" in settings) {
     if (set(PC.decorLineTwoWay, (v) => { settings.decorativeStairsTwoWay.lineColor = v; }) || set(PC.decorLineOneWay, (v) => { settings.decorativeStairsOneWay.lineColor = v; }) || set(PC.decorLineElevator, (v) => { settings.decorativeElevator.lineColor = v; }) || set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) || set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
   }

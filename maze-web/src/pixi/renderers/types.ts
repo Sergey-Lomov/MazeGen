@@ -71,6 +71,9 @@ export type WallEdge = {
  *  tile diagram (`TileFaceEditor`) via the shared algorithm in `splitFaceLayout.ts`. */
 export type SplitPassage = {
   color: number;
+  /** Zero-based node/slot index within the split point. Used by warning analysis to distinguish
+   *  the same palette slot reused at different points from two different split colors. */
+  nodeIndex?: number;
   /** The split point's own `"${x},${y}"` key (GitHub issue #294) — lets `SplitJunctionRenderer`
    *  skip a point's ordinary passages when it's drawn via `SplitSpecialShape` instead. */
   pointKey: string;

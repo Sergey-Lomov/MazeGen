@@ -47,7 +47,7 @@ function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
   ];
   const direct = roles.find(([, name]) => name === fieldName);
   if (direct) return direct[0];
-  if (fieldName.startsWith(`${m["image_export.vector_by_walls.section_splits"]}:`)) return "split";
+  if (fieldName.startsWith(`${m["image_export.vector_by_walls.section_splits"]()}:`)) return "split";
   return null;
 }
 

@@ -315,4 +315,15 @@ describe("overrideActiveProfileColor", () => {
     expect(overridden?.decorativeStairsArrowColor).toBe(0x123456);
     expect(overridden?.twoWayArrowColor).toBe(original.twoWayArrowColor);
   });
+
+  it("overrides a split color even when the profile still uses the default palette", () => {
+    const state = makeState({
+      openRenderModeSettings: "vector_by_corridors",
+      nodes: [node(1, 0, 0), node(2, 0, 0)],
+    });
+    const overridden = overrideActiveProfileColor(state, PC.splitNode(1).name(), 0x123456);
+
+    expect(overridden).not.toBeNull();
+    expect(overridden?.splitNodeColors[1]).toBe(0x123456);
+  });
 });
