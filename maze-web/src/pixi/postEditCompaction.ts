@@ -49,6 +49,14 @@ function compactionGroupsOf(command: PostEditCommand): string[] {
   if (command.kind === "addSplitNode" || command.kind === "removeSplitNode") {
     return [`slot:${pointKeyOf(command.point, command.level)}:${command.slotId}`];
   }
+  if (command.kind === "removeSplitPoint") {
+    // Belongs to every removed slot's own group at once (mirrors `lifelineKeysOf`'s own reasoning
+    // for this command) — so each slot's group sees this as its own terminating "remove" step,
+    // exactly like `collapseEntityGroup`'s ordinary remove-supersedes-everything-before rule already
+    // gives `removeSplitNode` (GitHub issue #550 follow-up, feedback point 4).
+    const key = pointKeyOf(command.point, command.level);
+    return command.removedSlotIds.map((slotId) => `slot:${key}:${slotId}`);
+  }
   if (command.kind === "rotateSplitPoint" || command.kind === "applySplitBlueprint") {
     return [`point:${pointKeyOf(command.point, command.level)}`];
   }
@@ -81,7 +89,7 @@ function undirectedEdgeKey(a: PostEditEndpoint, b: PostEditEndpoint): string {
  * `edge:`/`point:`-level commands, which have their own dedicated collapsing rules below). */
 function isRemoveCommand(command: PostEditCommand): boolean {
   return command.kind === "removeTeleport" || command.kind === "removeVerticalPassage"
-    || command.kind === "removeElevator" || command.kind === "removeSplitNode";
+    || command.kind === "removeElevator" || command.kind === "removeSplitNode" || command.kind === "removeSplitPoint";
 }
 
 function isMoveCommand(command: PostEditCommand): boolean {
@@ -210,7 +218,7 @@ function collectSuperseded(commands: PostEditCommand[]): Set<number> {
   for (let i = 0; i < commands.length; i++) {
     const c = commands[i];
     if (c.kind === "rotateSplitPoint" || c.kind === "applySplitBlueprint"
-      || c.kind === "addSplitNode" || c.kind === "removeSplitNode" || c.kind === "updateSplitNodeFaces") {
+      || c.kind === "addSplitNode" || c.kind === "removeSplitNode" || c.kind === "removeSplitPoint" || c.kind === "updateSplitNodeFaces") {
       const key = pointKeyOf(c.point, c.level);
       const list = pointGroups.get(key);
       if (list) list.push(i);
@@ -233,7 +241,7 @@ function collectSuperseded(commands: PostEditCommand[]): Set<number> {
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
       const isSlotExistenceCommand = commands[i].kind === "addSplitNode" || commands[i].kind === "removeSplitNode"
-        || commands[i].kind === "applySplitBlueprint";
+        || commands[i].kind === "removeSplitPoint" || commands[i].kind === "applySplitBlueprint";
       const laterRebuild = indices.slice(k + 1).some((j) => {
         const c = commands[j];
         if (c.kind === "applySplitBlueprint") return true;

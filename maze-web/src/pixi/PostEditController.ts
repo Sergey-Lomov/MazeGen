@@ -13,6 +13,7 @@ import {
 import { selectFloorScopedMaze, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
+import { resolveNodeIdToEndpoint } from "../store/slices/postEditSliceHelpers";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -25,6 +26,14 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 function isSplitCell(point: [number, number], nodeMap: Map<string, number[]>): boolean {
   const ids = nodeMap.get(`${point[0]},${point[1]}`);
   return ids !== undefined && ids.length > 1;
+}
+
+/** True while the entity-delete picker (GitHub issue #550) is open — pointer input must not keep
+ *  driving canvas tools underneath it, mirroring `isPresetModalOpen`'s own guard for the preset
+ *  side (GitHub issue #540 follow-up bug report: without this, an in-flight cell drag gesture that
+ *  opened the dialog on its first cell kept running as the cursor moved to further cells). */
+function isPostEditModalOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
+  return state.postEditEntityDeletePrompt !== null;
 }
 
 
@@ -54,12 +63,19 @@ export class PostEditController extends BaseController {
   private teleportDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
   private verticalPassageDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
 
+  // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
+  // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
+  // not whatever it happens to be on a later pointermove (mirrors `PresetConnectionsController`'s
+  // own `bulkDelete` field, GitHub issue #550).
+  private bulkDelete = false;
+
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === "Escape") {
       this.cancelPendingTeleport();
       useMazeStore.getState().cancelPostEditVerticalPassagePlacement();
       useMazeStore.getState().cancelPostEditElevatorPlacement();
       useMazeStore.getState().cancelPostEditSplitTarget();
+      useMazeStore.getState().cancelPostEditEntityDelete();
     }
   };
 
@@ -117,6 +133,11 @@ export class PostEditController extends BaseController {
 
     const state = useMazeStore.getState();
     if (state.openCard !== "post_edit") return;
+    if (isPostEditModalOpen(state)) {
+      this.renderer.updateHover(null);
+      this.renderer.updateCellHover(null);
+      return;
+    }
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     this.lastViewportPos = { x: vpX, y: vpY };
@@ -230,8 +251,14 @@ export class PostEditController extends BaseController {
       this.renderer.updateHover(null);
       if (state.postEditTool === "delete") {
         this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
-          useMazeStore.getState().deletePostEditPoint(p);
+          useMazeStore.getState().requestPostEditEntityDelete(p, level, this.bulkDelete);
           this.dragDidApply = true;
+          // A count>1 request opens `postEditEntityDeletePrompt` synchronously — the drag gesture
+          // must end right here, or it silently keeps running (as "button still held") once the
+          // dialog closes, since no further pointerdown/pointerup pair will come to end it
+          // normally (mirrors `PresetConnectionsController`'s own `reset`-tool guard, GitHub issue
+          // #540 follow-up bug report).
+          if (useMazeStore.getState().postEditEntityDeletePrompt) this.endEdgeDrag();
         });
       }
       return;
@@ -286,11 +313,16 @@ export class PostEditController extends BaseController {
     });
   }
 
-  onPointerDown(canvasX: number, canvasY: number, button: number): void {
+  onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean): void {
     const state = useMazeStore.getState();
     if (state.openCard !== "post_edit") return;
+    if (isPostEditModalOpen(state)) return;
 
     if (this.tryStartPan(canvasX, canvasY, button)) return;
+    // Held shift bypasses the entity picker dialog for this gesture — captured here (not read
+    // fresh at request time) so a drag started with shift held stays bulk-delete for every cell
+    // it visits, even if shift happens to be released mid-drag.
+    this.bulkDelete = shiftKey === true;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.postEditTool;
@@ -313,9 +345,15 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
-        useMazeStore.getState().deletePostEditPoint([cell.x, cell.y]);
-        this.beginCellDrag([cell.x, cell.y]);
-        this.dragDidApply = true;
+        useMazeStore.getState().requestPostEditEntityDelete([cell.x, cell.y], level, this.bulkDelete);
+        // A count>1 request opens `postEditEntityDeletePrompt` synchronously — don't arm a drag
+        // gesture in that case, or it's stuck "held" once the dialog closes (no further
+        // pointerdown/pointerup pair reaches the canvas to end it normally; mirrors
+        // `PresetConnectionsController`'s own `clear`-tool guard, GitHub issue #540 follow-up).
+        if (!useMazeStore.getState().postEditEntityDeletePrompt) {
+          this.beginCellDrag([cell.x, cell.y]);
+          this.dragDidApply = true;
+        }
       }
       return;
     }
@@ -575,17 +613,24 @@ export class PostEditController extends BaseController {
   /** Starts or completes a two-click teleport placement at the given node. No-op on completion
    * if the node equals the pending origin node. `nodeId` is always an already-resolved real
    * node — a split node not yet confirmed can't be teleport-clicked yet (see the VERTEX_TOOLS
-   * no-op guard in `onPointerDown`). */
+   * no-op guard in `onPointerDown`). Both `nodeId` and the stored `postEditTeleportPendingFrom`
+   * are bare resolved ids (not `PostEditEndpoint`s), so completion re-resolves each one through
+   * `resolveNodeIdToEndpoint` before recording the teleport — a bare `nodeEndpoint(id)` here silently
+   * dropped every teleport anchored on a split point's numbered slot (id belongs to a slot, not
+   * the point's original node), since `buildPostEditPointEntities` never matches a `node`-kind
+   * endpoint against `nodesHere`'s own `splitEndpoint(...)` entry for that slot. */
   private tryTeleportClick(nodeId: number, tool: string): void {
-    const store = useMazeStore.getState();
-    const pendingFrom = store.postEditTeleportPendingFrom;
+    const state = useMazeStore.getState();
+    const pendingFrom = state.postEditTeleportPendingFrom;
     if (pendingFrom !== null) {
       if (pendingFrom === nodeId) return;
       const direction = tool === "teleport_two_way" ? "two_way" : "forward";
-      store.addPostEditTeleport(nodeEndpoint(pendingFrom), nodeEndpoint(nodeId), direction);
+      const from = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, pendingFrom);
+      const to = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, nodeId);
+      state.addPostEditTeleport(from, to, direction);
       this.renderer.updateTeleportPreview(null, 0, 0);
     } else {
-      store.setPostEditTeleportPendingFrom(nodeId);
+      state.setPostEditTeleportPendingFrom(nodeId);
     }
   }
 

@@ -15,6 +15,7 @@ import { PostEditChangesPanel } from "./PostEditChangesPanel";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
+import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -106,6 +107,8 @@ export function PostEditFeature() {
   const cancelPostEditElevatorPlacement = useMazeStore((s) => s.cancelPostEditElevatorPlacement);
   const postEditSplitTargetPrompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
   const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
+  const postEditEntityDeletePrompt = useMazeStore((s) => s.postEditEntityDeletePrompt);
+  const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
@@ -124,6 +127,14 @@ export function PostEditFeature() {
       cancelPostEditSplitTarget();
     }
   }, [openCard, postEditSplitTargetPrompt, cancelPostEditSplitTarget]);
+
+  // Same reasoning as the split-target prompt above — the entity-delete picker (GitHub issue #550)
+  // has no meaning once the user leaves the post-edit card.
+  useEffect(() => {
+    if (openCard !== "post_edit" && postEditEntityDeletePrompt !== null) {
+      cancelPostEditEntityDelete();
+    }
+  }, [openCard, postEditEntityDeletePrompt, cancelPostEditEntityDelete]);
 
   // The "Changes" panel closes when leaving the post-edit card, same as the other post-edit
   // panels above — it has no meaning once the user is looking at a different feature.
@@ -168,6 +179,10 @@ export function PostEditFeature() {
 
       {postEditSplitTargetPrompt && (
         <PostEditSplitTargetDialog onClose={cancelPostEditSplitTarget} />
+      )}
+
+      {postEditEntityDeletePrompt && (
+        <PostEditEntityDeleteDialog onClose={cancelPostEditEntityDelete} />
       )}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>

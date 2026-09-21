@@ -163,6 +163,45 @@ export function applyPostEditCommand(
       }
       return ok({ ...state, edges, teleports, splitPoints, splitPointIds });
     }
+    case "removeSplitPoint": {
+      const key = pointKeyOf(command.point, command.level);
+      const currentPointId = state.splitPointIds[key];
+      if (currentPointId !== undefined && currentPointId !== command.pointId) return fail(state);
+      const existing = state.splitPoints[key] ?? [];
+      if (!command.removedSlotIds.every((id) => existing.includes(id))) return fail(state);
+      const removedTargets = command.removedSlotIds.map((slotId) => splitEndpoint(command.point, slotId, command.level));
+      const refsRemoved = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+        removedTargets.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
+      let edges = Object.fromEntries(Object.entries(state.edges).filter(([, e]) => !refsRemoved(e)));
+      const teleports = state.teleports.filter((t) => !refsRemoved(t));
+
+      const originalNode = nodeAt(context.nodes, command.point, command.level, 0);
+      if (originalNode !== undefined && command.restoredOriginalFaces) {
+        const originalEndpoint = nodeEndpoint(originalNode.id);
+        const refsOriginal = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+          endpointsEqual(e.from, originalEndpoint) || endpointsEqual(e.to, originalEndpoint);
+        edges = Object.fromEntries(Object.entries(edges).filter(([, e]) => !refsOriginal(e)));
+        for (const face of command.restoredOriginalFaces) {
+          const toKey = edgeKey(originalEndpoint, face.neighbor);
+          const fromKey = edgeKey(face.neighbor, originalEndpoint);
+          if (face.toNeighbor.kind === "wall") delete edges[toKey];
+          else edges[toKey] = face.toNeighbor;
+          if (face.fromNeighbor.kind === "wall") delete edges[fromKey];
+          else edges[fromKey] = face.fromNeighbor;
+        }
+      }
+
+      const remainingSlots = existing.filter((id) => !command.removedSlotIds.includes(id));
+      const splitPoints = { ...state.splitPoints };
+      if (remainingSlots.length === 0) delete splitPoints[key];
+      else splitPoints[key] = remainingSlots;
+      let splitPointIds = state.splitPointIds;
+      if (remainingSlots.length === 0 && splitPointIds[key] !== undefined) {
+        splitPointIds = { ...splitPointIds };
+        delete splitPointIds[key];
+      }
+      return ok({ ...state, edges, teleports, splitPoints, splitPointIds });
+    }
     case "updateSplitNodeFaces": {
       const key = pointKeyOf(command.point, command.level);
       // `slotId: undefined` addresses the point's original node — same standing as any other slot,
@@ -380,6 +419,15 @@ export function lifelineKeysOf(command: PostEditCommand): string[] {
       return [`elevator:${command.id}`];
     case "addSplitNode": case "removeSplitNode":
       return [`slot:${pointKeyOf(command.point, command.level)}:${command.slotId}`];
+    case "removeSplitPoint": {
+      // Belongs to every removed slot's own lifeline AT ONCE (same "one command, several lifelines"
+      // shape `setEdgePair` already uses for its two independent one-way sides) — this is what makes
+      // a point-reset (`filterCommandsForPoint`) and a Changes-panel cascade delete of some earlier
+      // command about one of these slots (GitHub issue #550 follow-up, point 5 of the feedback)
+      // reach this command without any bespoke bridging logic: it just shares the same `slot:` key.
+      const key = pointKeyOf(command.point, command.level);
+      return command.removedSlotIds.map((slotId) => `slot:${key}:${slotId}`);
+    }
     case "updateSplitNodeFaces":
       // `slotId: undefined` addresses the point's original node (GitHub issue #564 follow-up) —
       // same standing as a numbered slot, just no slot-removal command of its own to share a
@@ -443,7 +491,7 @@ function commandTouchesPoint(
     }
     case "setMeta":
       return command.endpoint !== null && epTouches(command.endpoint);
-    case "addSplitNode": case "removeSplitNode": case "rotateSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
+    case "addSplitNode": case "removeSplitNode": case "removeSplitPoint": case "rotateSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
       return command.point[0] === point[0] && command.point[1] === point[1] && (command.level ?? 0) === (level ?? 0);
     case "addVerticalPassage":
       return epTouches(command.from) || epTouches(command.to);
@@ -668,6 +716,35 @@ function cascadeLifelineKeys(commands: PostEditCommand[], seedKeys: Set<string>)
     if (next.size === toRemove.size) return toRemove;
     toRemove = next;
   }
+}
+
+/** Removes every command belonging to `seedKeys`' own lifelines, cascaded to a fixed point through
+ * `cascadeLifelineKeys` (GitHub issue #550 follow-up) — the same "undo exactly what created this and
+ * nothing else" shape `deleteCommandAt` already gives a single create-command's own lifeline, but
+ * seeded directly from a caller-picked lifeline set instead of one command's own `lifelineKeysOf`.
+ * Used by whole-split-point removal to collapse a POST-EDIT-CREATED slot/original-node lifeline back
+ * out of the log entirely (as if it had never been created) rather than appending a `removeSplitPoint`
+ * for it — only a GENERATION-baked slot (no creation command in the log to begin with) needs an
+ * explicit `removeSplitPoint` restore command instead. Renormalizes every surviving command the same
+ * way `deleteCommandAt` does. Returns `commands` unchanged if nothing in `seedKeys` matched. */
+export function cascadeRemoveLifelines(
+  baseline: PostEditBaseline,
+  commands: PostEditCommand[],
+  seedKeys: Set<string>,
+): PostEditCommand[] {
+  if (seedKeys.size === 0) return commands;
+  const toRemove = cascadeLifelineKeys(commands, seedKeys);
+  const withoutTarget = commands.filter((cmd) => !lifelineKeysOf(cmd).some((k) => toRemove.has(k)));
+  if (withoutTarget.length === commands.length) return commands;
+
+  const renormalized: PostEditCommand[] = [];
+  let state = baseline.derived;
+  for (const command of withoutTarget) {
+    renormalized.push(renormalizeCommand(state, command));
+    const result = applyPostEditCommand(baseline.context, state, renormalized[renormalized.length - 1]);
+    if (result.applied) state = result.state;
+  }
+  return renormalized;
 }
 
 /** True for a command whose entire job is flipping an EXISTING entity's direction back and forth

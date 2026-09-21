@@ -4,17 +4,22 @@ import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver 
 import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds,
-  extractPostEditVerticalPassages, extractPostEditElevators,
+  extractPostEditVerticalPassages, extractPostEditElevators, currentSplitNodeFaces,
 } from "../../pixi/postEditUtils";
 import type {
   PostEditBaseline, PostEditDerivedState, PostEditReplayContext,
 } from "../../pixi/postEditReplay";
-import { applyPostEditCommand, replayPostEditCommands } from "../../pixi/postEditReplay";
+import { applyPostEditCommand, replayPostEditCommands, cascadeRemoveLifelines } from "../../pixi/postEditReplay";
 import { compactPostEditCommands } from "../../pixi/postEditCompaction";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from "../postEditTypes";
 import { formatPostEditId, parsePostEditIdNumber } from "../../pixi/postEditIdFormat";
+import { buildPostEditPointEntities, type PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
+import { buildNodeByIdMap } from "../../pixi/postEditCommandLabels";
+import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
+import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
+import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
@@ -98,6 +103,27 @@ export function buildMultiFloorPointNodeMap(nodes: { id: number; x: number; y: n
     else m.set(key, [n.id]);
   }
   return m;
+}
+
+/** Resolves a raw confirmed `NodeId` back to a `PostEditEndpoint` that carries the CORRECT `level`
+ * (GitHub issue #550 tenth follow-up) — `resolverForNodeId`'s own return value never sets `level`
+ * (it only ever has `pointNodeMap`/`splitPoints` to work from, not `nodes` itself), so every caller
+ * that needs a multi-floor-correct split endpoint had to re-inject `level` from `nodes` by hand:
+ * `applyPostEditSplitTargetPick`, `commitPostEditVerticalPassage`, `confirmPostEditElevatorPlacement`
+ * (this file/`postEditSlice.ts`), `tryTeleportClick` (`PostEditController.ts`) all built the exact
+ * same `buildMultiFloorPointNodeMap` + `resolverForNodeId` + "look up `id`'s own level, re-stamp it
+ * onto the split endpoint" sequence independently. This is that sequence, once. `nodes` is scanned
+ * once per call, same cost the duplicated call sites already paid individually. */
+export function resolveNodeIdToEndpoint(
+  nodes: { id: number; x: number; y: number; level?: number }[],
+  splitPoints: Readonly<Record<string, number[]>>,
+  id: number,
+): PostEditEndpoint {
+  const pointNodeMap = buildMultiFloorPointNodeMap(nodes);
+  const ep = resolverForNodeId(pointNodeMap, splitPoints)(id);
+  if (ep.kind !== "split") return ep;
+  const level = nodes.find((n) => n.id === id)?.level;
+  return splitEndpoint(ep.point, ep.slotId, level === 0 ? undefined : level);
 }
 
 /** Builds a fresh multi-floor post-edit draft (`postEditDraftEdges`/`postEditDraftTeleports`/
@@ -381,6 +407,171 @@ function finalizeAutoCompact(
   return { finalCommands: compacted, finalDerived: replayPostEditCommands(baseline, compacted) };
 }
 
+/** The slice of `MazeStore` `buildPostEditPointEntitiesAt` actually reads — narrowed out so a
+ * caller that only has these fields (not a full `MazeStore`) can still share the exact same
+ * resolution logic instead of reimplementing it. `PostEditEntityDeleteDialog` is the motivating
+ * case (GitHub issue #550 tenth follow-up): it subscribes to each field individually via
+ * `useMazeStore` selectors for render reactivity (a single `getState()` snapshot wouldn't
+ * re-render on store changes), so it can't just pass a `MazeStore` through — but it needs the
+ * exact same `nodesHere`/`nodeLevel`/`nodeById`/`inFieldCellsAt`/`splitCtx` assembly this function
+ * already does, previously duplicated near-verbatim in the dialog component itself. */
+export type PostEditPointEntitiesSourceState = Pick<
+  MazeStore,
+  | "nodes" | "postEditDraftSplitPoints" | "postEditDraftMeta" | "postEditDraftTeleports"
+  | "postEditDraftVerticalPassages" | "postEditDraftElevators" | "postEditDraftEdges"
+  | "floors" | "floorFields" | "activeTessellationConfig" | "postEditActiveSplitNode"
+>;
+
+/** Builds the removable-entity list for the post-edit delete-tool picker dialog (GitHub issue
+ * #550) at one point/level — resolves `point`'s nodes (original node's confirmed id plus every
+ * declared split slot) from `state.nodes`/`postEditDraftSplitPoints`, then defers to
+ * `buildPostEditPointEntities` for the actual per-entity scan. Returns `[]` when the point has no
+ * confirmed original node yet (nothing to target). Shared by `requestPostEditEntityDelete` and
+ * `removePostEditPointEntity` (re-checking whether the prompt's scope emptied out), and by
+ * `PostEditEntityDeleteDialog` itself, so all three read live state through the exact same
+ * resolution. */
+export function buildPostEditPointEntitiesAt(
+  state: PostEditPointEntitiesSourceState,
+  point: [number, number],
+  level: number | undefined,
+): PostEditPointEntityDescriptor[] {
+  const originalNode = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0));
+  if (!originalNode) return [];
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const slotIds = [...(state.postEditDraftSplitPoints[key] ?? [])].sort((a, b) => a - b);
+  const nodesHere: PostEditEndpoint[] = [nodeEndpoint(originalNode.id), ...slotIds.map((slotId) => splitEndpoint(point, slotId, level))];
+  const nodeLevel = (ep: PostEditEndpoint): number => {
+    if (ep.kind === "split") return ep.level ?? 0;
+    return state.nodes.find((n) => n.id === ep.id)?.level ?? 0;
+  };
+  const nodeById = buildNodeByIdMap(state.nodes);
+  const multiFloor = state.floors.length > 1;
+  // Same `SplitLabelContext` shape `PostEditChangesPanel`/`PostEditEntityDeleteDialog` build for
+  // their own rows — needed here too since `buildPostEditPointEntities` now stamps every row with
+  // the exact same coordinate bubbles the changes log shows (GitHub issue #550 fourth follow-up).
+  const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig)) : new Set<string>();
+  };
+  const splitCtx: SplitLabelContext = {
+    allNodes: state.nodes,
+    splitPoints: state.postEditDraftSplitPoints,
+    activeSplitNode: state.postEditActiveSplitNode,
+    draftEdges: state.postEditDraftEdges,
+    cfg: state.activeTessellationConfig,
+    inFieldCellsAt,
+  };
+  return buildPostEditPointEntities(nodesHere, slotIds, {
+    postEditDraftSplitPoints: state.postEditDraftSplitPoints,
+    postEditDraftMeta: state.postEditDraftMeta,
+    postEditDraftTeleports: state.postEditDraftTeleports,
+    postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+    postEditDraftElevators: state.postEditDraftElevators,
+    postEditDraftEdges: state.postEditDraftEdges ?? {},
+    nodeLevel,
+    nodeById, multiFloor, splitCtx,
+  });
+}
+
+/** Removes `targetSlotIds` from `point` (GitHub issue #550 follow-up feedback points 2-3) — the
+ * single action every split-slot removal path (`removeSplitNode`'s own callers, `deletePostEditPoint`,
+ * "Delete all") funnels through, replacing the old "one `removeSplitNode` command per slot" loop.
+ * `targetSlotIds` is normally either one slot (a single "Manage split nodes" removal, or one
+ * dialog-picker row) or every slot the point currently has ("Delete all"/`deletePostEditPoint`) — the
+ * two cases need no separate code path, since whether the point ends up split or fully un-split after
+ * this call falls out of the SAME logic either way. Leaves the maze in exactly the state it would be
+ * in had `targetSlotIds` never been created, split into two cases by where each targeted slot came
+ * from:
+ *
+ * - A **post-edit-created** slot (minted by `addSplitNode`/`applySplitBlueprint` within THIS log —
+ *   not present in `postEditBaseline.derived.splitPoints`) never existed as far as the baseline is
+ *   concerned, so it's cascade-deleted straight out of the log via `cascadeRemoveLifelines`, seeded
+ *   from that slot's own `slot:point:slotId` lifeline — its creation, and everything that came to
+ *   depend on it, simply never happened. If `targetSlotIds` empties the point out entirely, the
+ *   point's `originalNode:point` lifeline (any face wiring the split's own creation put on the
+ *   original node) is seeded too. Nothing about a later, independent edit of the original node's
+ *   OTHER faces is touched — the cascade only pulls in what actually references a removed slot
+ *   (`expandSlotReferenceCascade`), not everything at the point.
+ * - A **generation-baked** slot (already in the baseline) has no creation command to cascade away —
+ *   removing it needs an explicit `removeSplitPoint` command instead. When it's the point's LAST
+ *   remaining slot afterward, that command also restores the original node's own generation-time face
+ *   list (`currentSplitNodeFaces` read against `baseline.derived.edges`), so the point ends up wired
+ *   exactly as generation left it, not merged from whichever slot happened to carry which face most
+ *   recently; removing a generation-baked slot while OTHER slots remain leaves the original node's
+ *   wiring alone (nothing to "un-split" back to yet).
+ *
+ * A call spanning both kinds of slot runs both steps — cascade first (so the `removeSplitPoint`
+ * command built afterward only has to look at what's LEFT: post-edit-created slots have already
+ * vanished from the log and derived state by the time it's constructed). No-op if none of
+ * `targetSlotIds` are currently declared at `point`. */
+export function removePostEditSplitSlots(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  point: [number, number],
+  level: number | undefined,
+  targetSlotIds: number[],
+): void {
+  const state = get();
+  const { postEditBaseline, postEditCommands, postEditDerived } = state;
+  if (postEditBaseline === null || postEditDerived === null) return;
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const currentSlotIds = postEditDerived.splitPoints[key] ?? [];
+  const targeted = targetSlotIds.filter((id) => currentSlotIds.includes(id));
+  if (targeted.length === 0) return;
+
+  const baselineSlotIds = new Set(postEditBaseline.derived.splitPoints[key] ?? []);
+  const postEditCreatedTargets = targeted.filter((id) => !baselineSlotIds.has(id));
+  const emptiesPoint = targeted.length === currentSlotIds.length;
+
+  // Step 1: cascade away every targeted post-edit-created slot's own creation lifeline. Only seed the
+  // original node's own split-related wiring lifeline (`originalNode:point` — touched exclusively by
+  // `updateSplitNodeFaces`/`applySplitBlueprint`'s `originalFaces`, both cascade-eligible; a plain
+  // `setEdge`/`setEdgePair` there has its own `edge:`/`oneWay:` lifeline, untouched either way) when
+  // this call empties the point out entirely — removing one slot among several leaves the original
+  // node's own wiring exactly as it was, nothing to un-split back to yet.
+  const seedKeys = new Set<string>(postEditCreatedTargets.map((slotId) => `slot:${key}:${slotId}`));
+  if (emptiesPoint) seedKeys.add(`originalNode:${key}`);
+  const afterCascade = seedKeys.size > 0 ? cascadeRemoveLifelines(postEditBaseline, postEditCommands, seedKeys) : postEditCommands;
+  const derivedAfterCascade = afterCascade === postEditCommands ? postEditDerived : replayPostEditCommands(postEditBaseline, afterCascade);
+
+  // Step 2: whichever targeted slots the cascade didn't remove are generation-baked (no creation
+  // command to cascade away) — drop them explicitly. `pointId` is read back from the post-cascade
+  // derived state (unaffected by the cascade, since a generation-baked point's id is a baseline value
+  // no command in this log ever cascades away).
+  const remainingTargets = (derivedAfterCascade.splitPoints[key] ?? []).filter((id) => targeted.includes(id));
+  let finalCommands = afterCascade;
+  if (remainingTargets.length > 0) {
+    const pointId = derivedAfterCascade.splitPointIds[key];
+    if (pointId !== undefined) {
+      const stillEmptiesPoint = (derivedAfterCascade.splitPoints[key] ?? []).length === remainingTargets.length;
+      const originalNode = postEditBaseline.context.nodes.find(
+        (n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0),
+      );
+      const restoredOriginalFaces = stillEmptiesPoint && originalNode
+        ? currentSplitNodeFaces(postEditBaseline.derived.edges, nodeEndpoint(originalNode.id))
+        : undefined;
+      const command: PostEditCommand = {
+        kind: "removeSplitPoint", point, level, pointId, removedSlotIds: remainingTargets, restoredOriginalFaces,
+      };
+      const result = applyPostEditCommand(postEditBaseline.context, derivedAfterCascade, command);
+      if (result.applied) finalCommands = [...afterCascade, command];
+    }
+  }
+
+  if (finalCommands !== postEditCommands) replacePostEditCommands(get, set, finalCommands, true);
+  if (emptiesPoint) {
+    const nextActive = { ...state.postEditActiveSplitNode };
+    if (nextActive[key] !== undefined) {
+      delete nextActive[key];
+      set({ postEditActiveSplitNode: nextActive });
+    }
+  }
+  if (get().postEditAutoConfirm) {
+    void get().confirmPostEdit();
+  }
+}
+
 /** Builds the new `PostEditVerticalPassageEntry` for a single-click placement (GitHub issue #341,
  * mirrors `commitPresetVerticalPassage` in `presetConnectionsSlice.ts`) — `origin` is always
  * `from`; `direction` ("up"/"down", already resolved as available by
@@ -393,24 +584,33 @@ export function commitPostEditVerticalPassage(
   tool: "vertical_passage_one_way" | "vertical_passage_two_way",
   direction: "up" | "down",
 ): void {
-  if (origin.kind !== "node") return;
+  // `origin` can be a `split`-kind endpoint (GitHub issue #550 ninth follow-up) — a plain
+  // `origin.kind !== "node"` guard here used to silently drop every placement started from a split
+  // point's numbered slot. `point`/`originLevel` resolve from either kind: a `node` endpoint via its
+  // confirmed coordinates, a `split` endpoint directly from its own `point`/`level` fields.
   const state = get();
-  const originNode = state.nodes.find((n) => n.id === origin.id);
-  if (!originNode) return;
-  const originLevel = originNode.level ?? 0;
+  const originNode = origin.kind === "node" ? state.nodes.find((n) => n.id === origin.id) : undefined;
+  if (origin.kind === "node" && !originNode) return;
+  const point: [number, number] = origin.kind === "node" ? [originNode!.x, originNode!.y] : origin.point;
+  const originLevel = origin.kind === "node" ? (originNode!.level ?? 0) : (origin.level ?? 0);
   const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-  const point: [number, number] = [originNode.x, originNode.y];
   // A split `to` point resolves to whichever node the user last picked there (GitHub issue #546
   // fifth follow-up), not always its original node — same `postEditActiveSplitNode` map the edge
   // tools already read (`PostEditController.resolveActiveEndpointAt`), so a placement whose
   // destination cell was already disambiguated (by an earlier edge/teleport click, or a previous
   // placement into the same split point) lands on the correct node instead of silently defaulting.
+  // The RESULT is resolved through `resolveNodeIdToEndpoint` (GitHub issue #550 ninth/tenth
+  // follow-up), not a bare `nodeEndpoint(toNodeId)` — a destination that's actually a split point's
+  // numbered slot must be recorded as `splitEndpoint(...)`, matching what a confirmed round-trip
+  // already produces (`extractPostEditVerticalPassages`), or the entity silently drops out of the
+  // delete dialog's slot rows the same way GitHub issue #550's teleport bug did.
   const toNodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel).map((n) => n.id);
   const toNodeId = resolveActiveNodeIdAt(point, toNodeIds, state.postEditActiveSplitNode, toLevel === 0 ? undefined : toLevel);
   if (toNodeId === undefined) return;
+  const to = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, toNodeId);
   const id = formatPostEditId("verticalPassage", state._nextPostEditVerticalPassageId);
   const applied = appendPostEditCommand(get, set, {
-    kind: "addVerticalPassage", id, from: origin, to: nodeEndpoint(toNodeId),
+    kind: "addVerticalPassage", id, from: origin, to,
     direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",
   });
   if (applied) {
