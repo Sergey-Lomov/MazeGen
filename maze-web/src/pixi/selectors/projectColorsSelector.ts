@@ -427,7 +427,7 @@ export function overrideActiveProfileColor(
   // Decorative and abstract vertical arrows/accent share the same localized field names. Resolve
   // the active style before the abstract fields below, otherwise a decorative edit would update a
   // hidden abstract setting and export warnings would evaluate the wrong color.
-  if ("verticalStyle" in settings && settings.verticalStyle === "decorative") {
+  if ("decorativeStairsArrowColor" in settings && settings.verticalStyle === "decorative") {
     if (set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) ||
         set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
   }

@@ -311,6 +311,7 @@ describe("overrideActiveProfileColor", () => {
     const original = state.vectorByWallsSettings;
     const overridden = overrideActiveProfileColor(state, PC.decorArrowTwoWay.name(), 0x123456);
     expect(overridden).not.toBeNull();
+    if (!overridden || !("decorativeStairsArrowColor" in overridden)) throw new Error("Expected vector-by-walls settings");
     expect(overridden?.decorativeStairsArrowColor).toBe(0x123456);
     expect(overridden?.twoWayArrowColor).toBe(original.twoWayArrowColor);
   });
