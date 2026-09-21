@@ -171,14 +171,14 @@ describe("validateTeleportFloorBadgeSettings", () => {
   const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
 
   it("reads a valid object's fields as-is", () => {
-    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, textColor: 0xabcdef, textPadding: 4 }, "path", fallback))
-      .toEqual({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, textColor: 0xabcdef, textPadding: 4 });
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textPadding: 4 }, "path", fallback))
+      .toEqual({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textPadding: 4 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, textColor: fallback.textColor, textPadding: fallback.textPadding });
+      .toEqual({ shape: fallback.shape, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textPadding: fallback.textPadding });
   });
 
   it("a project file predating the field recovers to the default badge", () => {

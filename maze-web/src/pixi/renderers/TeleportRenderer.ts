@@ -192,7 +192,7 @@ export class TeleportRenderer {
         badgeLabels,
         style.floorBadge.size * TILE_SIZE,
         style.floorBadge.textPadding,
-        style.borderWidth,
+        style.floorBadge.borderWidth ?? style.borderWidth,
       );
     }
     this.selectionInteractive = groupCustomization && interactive;
@@ -298,7 +298,7 @@ export class TeleportRenderer {
         // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
         // `drawGroupPoints` below), not a forced circle.
         const badgeR = style.floorBadge.size * TILE_SIZE;
-        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, style.borderWidth + Math.max(style.edgeGapWidth, 1), style.floorColor);
+        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, (style.floorBadge.borderWidth ?? style.borderWidth) + Math.max(style.edgeGapWidth, 1), style.floorColor);
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
@@ -347,10 +347,10 @@ export class TeleportRenderer {
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
           fontSize: this.selectionFloorBadgeFontSize || undefined,
-          borderWidth: style.borderWidth,
+          borderWidth: style.floorBadge.borderWidth ?? style.borderWidth,
         });
         if (this.selectionFloorNavigable) {
-          attachFloorBadgeNavigation(overlay, px, py, badgeR, floorNumber - 1, style.borderWidth);
+          attachFloorBadgeNavigation(overlay, px, py, badgeR, floorNumber - 1, style.floorBadge.borderWidth ?? style.borderWidth);
         }
         continue;
       }

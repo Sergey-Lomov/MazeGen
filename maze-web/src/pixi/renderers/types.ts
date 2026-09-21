@@ -388,10 +388,9 @@ export type TeleportLineStyle = {
    *  hardcoded circle + Arabic digit it used before. `fillColor`/`borderColor` are the badge body's
    *  own colours (GitHub issue #503 follow-up — previously locked to the connector colour); a group
    *  override does not affect them. `textColor` colours the label independently of `floorColor`;
-   *  `textPadding` (px) only feeds the
-   *  shared label-font fit — see `TeleportFloorBadgeSettings`. The badge's border width follows the
-   *  edge marker's own `borderWidth` above, not a fixed constant. */
-  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; fillColor: number; borderColor: number; textColor: number; textPadding: number };
+   *  `textPadding` (px) only feeds the shared label-font fit — see `TeleportFloorBadgeSettings`.
+   *  The badge has its own independent border width, defaulting to the edge marker width. */
+  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; fillColor: number; borderColor: number; borderWidth?: number; textColor: number; textPadding: number };
 };
 
 /** "Group customization" (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`

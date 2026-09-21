@@ -244,6 +244,13 @@ actually rendered.
 `elevator_badges_overlap` and `elevator_badges_too_many` remain Vector-by-walls-only because the
 corridor renderer does not use the corresponding elevator badge layout warning path today.
 
+### Teleport floor-badge contrast
+
+Cross-floor teleport badges use their configured border color for contrast warnings only when
+their effective border width is greater than zero. When the border width is zero, the warning
+checks the badge fill color against the active surface instead. Group customization uses the
+group's secondary color for the visible badge fill/border in both cases.
+
 ## Explicitly out of scope
 
 The following are not part of this warning set:
