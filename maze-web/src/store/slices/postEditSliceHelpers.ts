@@ -2,14 +2,18 @@ import type { NodeDto, EdgeDto, PostEditEndpointWasmDto } from "../../wasm/types
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
 import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes } from "../../pixi/postEditUtils";
+import {
+  buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds,
+  extractPostEditVerticalPassages, extractPostEditElevators,
+} from "../../pixi/postEditUtils";
 import type {
   PostEditBaseline, PostEditDerivedState, PostEditReplayContext,
 } from "../../pixi/postEditReplay";
 import { applyPostEditCommand, replayPostEditCommands } from "../../pixi/postEditReplay";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
-import type { PostEditEdge, PostEditTeleportEntry } from "../postEditTypes";
+import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from "../postEditTypes";
+import { formatPostEditId, parsePostEditIdNumber } from "../../pixi/postEditIdFormat";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
@@ -117,6 +121,9 @@ export function buildMultiFloorPostEditDraft(
   draftEdges: Record<string, PostEditEdge>;
   draftTeleports: PostEditTeleportEntry[];
   splitPoints: Record<string, number[]>;
+  splitPointIds: Record<string, string>;
+  draftVerticalPassages: PostEditVerticalPassageEntry[];
+  draftElevators: PostEditElevatorEntry[];
   endpointFor: (id: number) => PostEditEndpoint;
 } {
   const nodesByLevel = groupNodesByLevel(nodes);
@@ -161,9 +168,38 @@ export function buildMultiFloorPostEditDraft(
 
   // Renumbered once, after every batch (per-level + cross-floor) is merged, so ids stay unique
   // across the whole draft — each `extractPostEditTeleports` call numbers its own batch from 1.
-  draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: i + 1 }));
+  draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: formatPostEditId("teleport", i + 1) }));
 
-  return { draftEdges, draftTeleports, splitPoints, endpointFor };
+  // One-way edge ids (GitHub issue #564) — same problem as teleports above: each per-level
+  // `buildPostEditDraftEdgesFromGenerated` call numbers its own batch from 1, so a multi-floor
+  // draft would otherwise collide (floor 0's id=1 and floor 1's id=1 both existing). Renumber once
+  // globally, sorted by each edge's own canonical `edgeKey`, after every level is merged.
+  const oneWayEntries = Object.entries(draftEdges).filter(
+    (entry): entry is [string, Extract<PostEditEdge, { id: string }>] =>
+      entry[1].kind === "one_way_forward" || entry[1].kind === "one_way_backward",
+  );
+  const oneWayIdMap = assignSequentialIds(oneWayEntries.map(([key]) => ({ key })));
+  for (const [key, edge] of oneWayEntries) draftEdges[key] = { ...edge, id: formatPostEditId("oneWay", oneWayIdMap.get(key)!) };
+
+  // Split-tile id (GitHub issue #564) — one id per point key, assigned deterministically from the
+  // sorted canonical point keys (`assignSequentialIds`), independent of node/edge iteration order.
+  const splitPointIdMap = assignSequentialIds(Object.keys(splitPoints).map((key) => ({ key })));
+  const splitPointIds: Record<string, string> = {};
+  for (const [key, id] of splitPointIdMap) splitPointIds[key] = formatPostEditId("splitPoint", id);
+
+  // Generation-baked vertical passages/elevators (GitHub issue #564) — extracted from the FULL,
+  // unfiltered `edges` (both entities are cross-floor-native, no per-level/cross-floor double pass
+  // needed the way teleport extraction needs). Each category gets its own `assignSequentialIds`
+  // call — separate id namespace, never shared with one-way/split-point/the other vertical kind.
+  const vpExtracted = extractPostEditVerticalPassages(edges, endpointFor);
+  const vpIds = assignSequentialIds(vpExtracted.map((e) => ({ key: e.key })));
+  const draftVerticalPassages: PostEditVerticalPassageEntry[] = vpExtracted.map((e) => ({ ...e.entity, id: formatPostEditId("verticalPassage", vpIds.get(e.key)!) }));
+
+  const elevatorExtracted = extractPostEditElevators(edges, endpointFor);
+  const elevatorIds = assignSequentialIds(elevatorExtracted.map((e) => ({ key: e.key })));
+  const draftElevators: PostEditElevatorEntry[] = elevatorExtracted.map((e) => ({ ...e.entity, id: formatPostEditId("elevator", elevatorIds.get(e.key)!) }));
+
+  return { draftEdges, draftTeleports, splitPoints, splitPointIds, draftVerticalPassages, draftElevators, endpointFor };
 }
 
 /** Builds a fresh `PostEditBaseline` from a generation snapshot (GitHub issue #543) — the
@@ -177,7 +213,8 @@ export function buildPostEditBaseline(
   generatedStart: number | null,
   generatedFinish: number | null,
 ): PostEditBaseline {
-  const { draftEdges, draftTeleports, splitPoints, endpointFor } = buildMultiFloorPostEditDraft(nodes, edges);
+  const { draftEdges, draftTeleports, splitPoints, splitPointIds, draftVerticalPassages, draftElevators, endpointFor } =
+    buildMultiFloorPostEditDraft(nodes, edges);
   const derived: PostEditDerivedState = {
     edges: draftEdges,
     teleports: draftTeleports,
@@ -186,10 +223,9 @@ export function buildPostEditBaseline(
       finish: generatedFinish !== null ? endpointFor(generatedFinish) : null,
     },
     splitPoints,
-    verticalPassages: [],
-    elevators: [],
-    suppressedVerticalPassagePairs: new Set(),
-    suppressedElevatorPairs: new Set(),
+    splitPointIds,
+    verticalPassages: draftVerticalPassages,
+    elevators: draftElevators,
   };
   const prunedNodes = pruneRemovedSplitNodes(nodes, splitPoints, (n) => {
     const level = n.level ?? 0;
@@ -202,31 +238,62 @@ export function buildPostEditBaseline(
 }
 
 /** Mirrors a `PostEditDerivedState` into the legacy field names every non-mutating consumer still
- * reads (`postEditDraftEdges`/`Teleports`/`Meta`/`SplitPoints`/`VerticalPassages`/`Elevators`/
- * `Suppressed*Pairs`, GitHub issue #543) — the suppression sets are now log-derived facts
- * (`suppressGenerationPair` command) rather than an independently-mutated store field, but the
- * field names stay since ~40 read sites still destructure them. Called by
- * `appendPostEditCommand`/`replacePostEditCommands`, the sole log-mutation points, so these fields
- * are always in sync with `postEditCommands`/`postEditBaseline`. */
+ * reads (`postEditDraftEdges`/`Teleports`/`Meta`/`SplitPoints`/`SplitPointIds`/`VerticalPassages`/
+ * `Elevators`, GitHub issue #543) — field names stay since ~40 read sites still destructure them.
+ * Called by `appendPostEditCommand`/`replacePostEditCommands`, the sole log-mutation points, so
+ * these fields are always in sync with `postEditCommands`/`postEditBaseline`. */
 export function derivedStateToLegacyFields(derived: PostEditDerivedState): {
   postEditDraftEdges: Record<string, PostEditEdge>;
   postEditDraftTeleports: PostEditTeleportEntry[];
   postEditDraftMeta: { start: PostEditEndpoint | null; finish: PostEditEndpoint | null };
   postEditDraftSplitPoints: Record<string, number[]>;
+  postEditDraftSplitPointIds: Record<string, string>;
   postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
   postEditDraftElevators: import("../postEditTypes").PostEditElevatorEntry[];
-  postEditSuppressedElevatorPairs: ReadonlySet<string>;
-  postEditSuppressedVerticalPassagePairs: ReadonlySet<string>;
 } {
   return {
     postEditDraftEdges: derived.edges,
     postEditDraftTeleports: derived.teleports,
     postEditDraftMeta: derived.meta,
     postEditDraftSplitPoints: derived.splitPoints,
+    postEditDraftSplitPointIds: derived.splitPointIds,
     postEditDraftVerticalPassages: derived.verticalPassages,
     postEditDraftElevators: derived.elevators,
-    postEditSuppressedElevatorPairs: derived.suppressedElevatorPairs,
-    postEditSuppressedVerticalPassagePairs: derived.suppressedVerticalPassagePairs,
+  };
+}
+
+/** Every "next id" counter that must start past whatever `derived` already occupies (GitHub issue
+ *  #564) — teleport/one-way/split-point/vertical-passage/elevator each have their own namespace,
+ *  id'd 1..N within their own category by `assignSequentialIds`. Takes a `PostEditDerivedState`,
+ *  not a `PostEditBaseline`, so the same computation covers both a fresh empty-log baseline
+ *  (`generate()`/`resetPostEdit`, passing `baseline.derived`) and a project file's replayed
+ *  baseline+log state (`loadProject`, GitHub issue #564 second follow-up) — a command log can mint
+ *  ids past whatever the baseline alone occupied, so seeding only from the baseline after a load
+ *  would under-count and risk a fresh id colliding with one the log already used. Shared by
+ *  `generate()` (`generateConfigBuilder.ts`) and `resetPostEdit` (`postEditSlice.ts`) — both build a
+ *  fresh baseline and must seed these identically; the two used to duplicate this computation, and
+ *  `generate()`'s own copy drifted out of sync (one-way/split-point never seeded at all,
+ *  vertical-passage/elevator hardcoded back to `1` instead of reading the baseline), silently
+ *  colliding a freshly baseline-seeded id with the next user-created entity's id. */
+export function nextPostEditIdCounters(derived: PostEditDerivedState): {
+  _nextPostEditTeleportId: number;
+  _nextPostEditOneWayId: number;
+  _nextPostEditSplitPointId: number;
+  _nextPostEditVerticalPassageId: number;
+  _nextPostEditElevatorId: number;
+} {
+  const oneWayIds = Object.values(derived.edges)
+    .filter((e): e is Extract<PostEditEdge, { id: string }> => e.kind === "one_way_forward" || e.kind === "one_way_backward")
+    .map((e) => parsePostEditIdNumber("oneWay", e.id));
+  const splitPointIdValues = Object.values(derived.splitPointIds).map((id) => parsePostEditIdNumber("splitPoint", id));
+  const verticalPassageIds = derived.verticalPassages.map((p) => parsePostEditIdNumber("verticalPassage", p.id));
+  const elevatorIds = derived.elevators.map((e) => parsePostEditIdNumber("elevator", e.id));
+  return {
+    _nextPostEditTeleportId: derived.teleports.length + 1,
+    _nextPostEditOneWayId: oneWayIds.length > 0 ? Math.max(...oneWayIds) + 1 : 1,
+    _nextPostEditSplitPointId: splitPointIdValues.length > 0 ? Math.max(...splitPointIdValues) + 1 : 1,
+    _nextPostEditVerticalPassageId: verticalPassageIds.length > 0 ? Math.max(...verticalPassageIds) + 1 : 1,
+    _nextPostEditElevatorId: elevatorIds.length > 0 ? Math.max(...elevatorIds) + 1 : 1,
   };
 }
 
@@ -307,7 +374,7 @@ export function commitPostEditVerticalPassage(
   const toNodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel).map((n) => n.id);
   const toNodeId = resolveActiveNodeIdAt(point, toNodeIds, state.postEditActiveSplitNode, toLevel === 0 ? undefined : toLevel);
   if (toNodeId === undefined) return;
-  const id = state._nextPostEditVerticalPassageId;
+  const id = formatPostEditId("verticalPassage", state._nextPostEditVerticalPassageId);
   const applied = appendPostEditCommand(get, set, {
     kind: "addVerticalPassage", id, from: origin, to: nodeEndpoint(toNodeId),
     direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",

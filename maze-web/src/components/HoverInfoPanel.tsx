@@ -70,8 +70,6 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   useMazeStore((s) => s.postEditMeta);
   useMazeStore((s) => s.postEditDraftVerticalPassages);
   useMazeStore((s) => s.postEditDraftElevators);
-  useMazeStore((s) => s.postEditSuppressedElevatorPairs);
-  useMazeStore((s) => s.postEditSuppressedVerticalPassagePairs);
   const hoverText = hover ? resolveCellInspection(useMazeStore.getState(), hover.x, hover.y) : "";
 
   const resetZoom = () => scene?.resetZoomToOne();

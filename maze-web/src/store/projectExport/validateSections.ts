@@ -3,6 +3,7 @@ import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageE
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditCommand, ResolvedRotateMove, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
+import type { PostEditEdgeState } from "../postEditTypes";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type {
   ProjectFilePostEdit,
@@ -125,40 +126,18 @@ function validateOptionalLevel(obj: Record<string, unknown>, path: string): numb
   return level;
 }
 
-/** `addElevator`/`updateElevatorFloors`'s optional `suppressPairs` (GitHub issue #545) — an array
- * of `[PostEditEndpoint, PostEditEndpoint]` pairs, each validated the same way `suppressGenerationPair`'s
- * own `a`/`b` are. `undefined` passes through (a fresh elevator with no generation-time mesh to
- * suppress never carries this field). */
-function validateOptionalSuppressPairs(v: unknown, path: string): [PostEditEndpoint, PostEditEndpoint][] | undefined {
-  if (v === undefined) return undefined;
-  return assertArray(v, path).map((pair, i) => {
-    const pairArr = assertArray(pair, `${path}[${i}]`);
-    if (pairArr.length !== 2) throw new Error(`Expected a 2-element pair at ${path}[${i}]`);
-    return [
-      validatePostEditEndpoint(pairArr[0], `${path}[${i}][0]`),
-      validatePostEditEndpoint(pairArr[1], `${path}[${i}][1]`),
-    ];
-  });
-}
-
-/** `setVerticalPassageDirection`'s optional `suppressPair` (GitHub issue #545) — a single
- * `[PostEditEndpoint, PostEditEndpoint]` pair, same element validation as `validateOptionalSuppressPairs`.
- * `undefined` passes through (no generation-time mesh to suppress). */
-function validateOptionalSuppressPair(v: unknown, path: string): [PostEditEndpoint, PostEditEndpoint] | undefined {
-  if (v === undefined) return undefined;
-  const pairArr = assertArray(v, path);
-  if (pairArr.length !== 2) throw new Error(`Expected a 2-element pair at ${path}`);
-  return [
-    validatePostEditEndpoint(pairArr[0], `${path}[0]`),
-    validatePostEditEndpoint(pairArr[1], `${path}[1]`),
-  ];
-}
-
-function validatePostEditEdgeKind(v: unknown, path: string): "wall" | "basic" | "one_way_forward" | "one_way_backward" {
-  const kind = assertString(v, path);
-  if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
-    throw new Error(`Invalid PostEditEdgeKind at ${path}: ${kind}`);
-  return kind;
+/** Validates a `PostEditEdgeState`/`PostEditEdge` discriminated union (GitHub issue #564) — `id` is
+ * required exactly when `kind` is one of the `one_way_*` variants, mirroring the type itself. */
+function validatePostEditEdgeState(v: unknown, path: string): PostEditEdgeState {
+  const obj = assertObject(v, path);
+  const kind = assertString(obj.kind, `${path}.kind`);
+  const from = validatePostEditEndpoint(obj.from, `${path}.from`);
+  const to = validatePostEditEndpoint(obj.to, `${path}.to`);
+  if (kind === "wall" || kind === "basic") return { kind, from, to };
+  if (kind === "one_way_forward" || kind === "one_way_backward") {
+    return { kind, from, to, id: assertString(obj.id, `${path}.id`) };
+  }
+  throw new Error(`Invalid PostEditEdge kind at ${path}.kind: ${kind}`);
 }
 
 function validateResolvedSplitFaces(v: unknown, path: string): ResolvedSplitFace[] {
@@ -184,8 +163,8 @@ function validateResolvedSplitEdgeFaces(v: unknown, path: string): ResolvedSplit
     const faceObj = assertObject(f, `${path}[${i}]`);
     return {
       neighbor: validatePostEditEndpoint(faceObj.neighbor, `${path}[${i}].neighbor`),
-      toNeighbor: validatePostEditEdgeKind(faceObj.toNeighbor, `${path}[${i}].toNeighbor`),
-      fromNeighbor: validatePostEditEdgeKind(faceObj.fromNeighbor, `${path}[${i}].fromNeighbor`),
+      toNeighbor: validatePostEditEdgeState(faceObj.toNeighbor, `${path}[${i}].toNeighbor`),
+      fromNeighbor: validatePostEditEdgeState(faceObj.fromNeighbor, `${path}[${i}].fromNeighbor`),
     };
   });
 }
@@ -210,7 +189,7 @@ function validateResolvedRotateMove(v: unknown, path: string): ResolvedRotateMov
     oldKey: assertString(obj.oldKey, `${path}.oldKey`),
     from: validatePostEditEndpoint(obj.from, `${path}.from`),
     to: validatePostEditEndpoint(obj.to, `${path}.to`),
-    edgeKind: validatePostEditEdgeKind(obj.edgeKind, `${path}.edgeKind`),
+    edge: validatePostEditEdgeState(obj.edge, `${path}.edge`),
   };
 }
 
@@ -224,30 +203,36 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
   const kind = assertString(obj.kind, `${path}.kind`);
   switch (kind) {
     case "setEdge":
-      return {
-        kind, from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
-        edgeKind: validatePostEditEdgeKind(obj.edgeKind, `${path}.edgeKind`),
-      };
-    case "setEdgePair":
+      return { kind, edge: validatePostEditEdgeState(obj.edge, `${path}.edge`) };
+    case "setEdgePair": {
+      const replacedOneWayIdsObj = obj.replacedOneWayIds !== undefined ? assertObject(obj.replacedOneWayIds, `${path}.replacedOneWayIds`) : undefined;
+      const replacedOneWayIds = replacedOneWayIdsObj !== undefined
+        ? {
+            aToB: replacedOneWayIdsObj.aToB !== undefined ? assertString(replacedOneWayIdsObj.aToB, `${path}.replacedOneWayIds.aToB`) : undefined,
+            bToA: replacedOneWayIdsObj.bToA !== undefined ? assertString(replacedOneWayIdsObj.bToA, `${path}.replacedOneWayIds.bToA`) : undefined,
+          }
+        : undefined;
       return {
         kind, a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
-        aToB: validatePostEditEdgeKind(obj.aToB, `${path}.aToB`), bToA: validatePostEditEdgeKind(obj.bToA, `${path}.bToA`),
+        aToB: validatePostEditEdgeState(obj.aToB, `${path}.aToB`), bToA: validatePostEditEdgeState(obj.bToA, `${path}.bToA`),
         directionFlip: typeof obj.directionFlip === "boolean" ? obj.directionFlip : undefined,
+        replacedOneWayIds,
       };
+    }
     case "addTeleport":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateTeleportDirection(obj.direction, `${path}.direction`),
       };
     case "setTeleportDirection":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`),
+        kind, id: assertString(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
       };
     case "moveTeleportEndpoint":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
         endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
@@ -255,7 +240,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       };
     case "removeTeleport":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateTeleportDirection(obj.direction, `${path}.direction`),
       };
@@ -270,6 +255,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
         slotId: assertNumber(obj.slotId, `${path}.slotId`),
+        pointId: assertString(obj.pointId, `${path}.pointId`),
       };
     case "rotateSplitPoint":
       return {
@@ -279,8 +265,11 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
     case "updateSplitNodeFaces":
       return {
         kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
-        slotId: assertNumber(obj.slotId, `${path}.slotId`),
+        // `undefined` addresses the point's original node (GitHub issue #564 follow-up) — same
+        // "no entry/id means the original node" convention as `previousEndpoint` above.
+        slotId: obj.slotId === undefined ? undefined : assertNumber(obj.slotId, `${path}.slotId`),
         faces: validateResolvedSplitEdgeFaces(obj.faces, `${path}.faces`),
+        pointId: assertString(obj.pointId, `${path}.pointId`),
       };
     case "applySplitBlueprint":
       return {
@@ -288,56 +277,47 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         resolvedSlots: assertArray(obj.resolvedSlots, `${path}.resolvedSlots`).map((s, i) => validateResolvedSplitSlot(s, `${path}.resolvedSlots[${i}]`)),
         originalFaces: validateOptionalResolvedSplitFaces(obj, path),
         blueprintTitleKey: validateOptionalBlueprintTitleKey(obj, path),
+        pointId: assertString(obj.pointId, `${path}.pointId`),
       };
     case "addVerticalPassage":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
       };
     case "setVerticalPassageDirection":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+        kind, id: assertString(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
-        suppressPair: validateOptionalSuppressPair(obj.suppressPair, `${path}.suppressPair`),
       };
     case "moveVerticalPassageEndpoint":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
         endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
-        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "removeVerticalPassage":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
       };
     case "addElevator":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
-        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "updateElevatorFloors":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
-        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "removeElevator":
       return {
-        kind, id: assertNumber(obj.id, `${path}.id`),
+        kind, id: assertString(obj.id, `${path}.id`),
         floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
-      };
-    case "suppressGenerationPair":
-      if (obj.entity !== "verticalPassage" && obj.entity !== "elevator") throw new Error(`Invalid entity at ${path}.entity`);
-      return {
-        kind, entity: obj.entity,
-        a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
       };
     default:
       throw new Error(`Invalid PostEditCommand kind at ${path}.kind: ${kind}`);
@@ -390,6 +370,8 @@ export function validatePostEdit(v: unknown): ProjectFilePostEdit {
     nextVerticalPassageId: assertNumber(obj.nextVerticalPassageId, "postEdit.nextVerticalPassageId"),
     nextElevatorId: assertNumber(obj.nextElevatorId, "postEdit.nextElevatorId"),
     nextSplitSlotId: validateSplitSlotIdMarks(obj.nextSplitSlotId, "postEdit.nextSplitSlotId"),
+    nextOneWayId: assertNumber(obj.nextOneWayId, "postEdit.nextOneWayId"),
+    nextSplitPointId: assertNumber(obj.nextSplitPointId, "postEdit.nextSplitPointId"),
   };
 }
 

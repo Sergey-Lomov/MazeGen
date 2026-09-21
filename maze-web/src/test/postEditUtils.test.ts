@@ -94,7 +94,7 @@ describe("extractPostEditTeleports", () => {
       { from: 2, to: 3, kind: "teleport" },
     ];
     expect(extractPostEditTeleports(edges).teleports).toEqual([
-      { id: 1, from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" },
+      { id: "t1", from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" },
     ]);
   });
 
@@ -105,8 +105,8 @@ describe("extractPostEditTeleports", () => {
       { from: 2, to: 3, kind: "teleport" },
     ];
     expect(extractPostEditTeleports(edges).teleports).toEqual([
-      { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
-      { id: 2, from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" },
+      { id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
+      { id: "t2", from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" },
     ]);
   });
 
@@ -124,27 +124,27 @@ describe("extractPostEditTeleports", () => {
 
 describe("postEditTeleportsToDto", () => {
   it("forward entry produces one edge in the stored direction", () => {
-    expect(postEditTeleportsToDto([{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" }], noSplits))
+    expect(postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" }], noSplits))
       .toEqual([{ from: 0, to: 1, kind: "teleport" }]);
   });
 
   it("backward entry produces one edge reversed", () => {
-    expect(postEditTeleportsToDto([{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" }], noSplits))
+    expect(postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" }], noSplits))
       .toEqual([{ from: 1, to: 0, kind: "teleport" }]);
   });
 
   it("two_way entry produces both directions", () => {
-    expect(postEditTeleportsToDto([{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" }], noSplits))
+    expect(postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" }], noSplits))
       .toEqual([{ from: 0, to: 1, kind: "teleport" }, { from: 1, to: 0, kind: "teleport" }]);
   });
 
   it("drops an entry whose split endpoint doesn't resolve yet", () => {
-    const teleports = [{ id: 1, from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const teleports = [{ id: "t1", from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(postEditTeleportsToDto(teleports, noSplits)).toEqual([]);
   });
 
   it("resolves a split endpoint via resolveSplit", () => {
-    const teleports = [{ id: 1, from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const teleports = [{ id: "t1", from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(postEditTeleportsToDto(teleports, () => 42)).toEqual([{ from: 42, to: 1, kind: "teleport" }]);
   });
 });
@@ -168,11 +168,11 @@ describe("rotateSplitPointMoves", () => {
     const from = nodeEndpoint(idOf(0, 0));
     const to = nodeEndpoint(idOf(1, 0));
     const oldKey = edgeKey(from, to);
-    edges[oldKey] = { from, to, kind: "one_way_forward" };
+    edges[oldKey] = { from, to, kind: "one_way_forward", id: "o1" };
 
     const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const newTo = nodeEndpoint(idOf(0, 1));
-    expect(result).toEqual([{ oldKey, from, to: newTo, edgeKind: "one_way_forward" }]);
+    expect(result).toEqual([{ oldKey, from, to: newTo, edge: { kind: "one_way_forward", from, to: newTo, id: "o1" } }]);
   });
 
   it("preserves role (from vs to) — an edge pointing into the point keeps pointing in after rotation", () => {
@@ -180,11 +180,11 @@ describe("rotateSplitPointMoves", () => {
     const outer = nodeEndpoint(idOf(1, 0)); // E neighbor
     const center = nodeEndpoint(idOf(0, 0));
     const oldKey = edgeKey(outer, center);
-    edges[oldKey] = { from: outer, to: center, kind: "one_way_forward" };
+    edges[oldKey] = { from: outer, to: center, kind: "one_way_forward", id: "o1" };
 
     const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const newOuter = nodeEndpoint(idOf(0, 1)); // N neighbor
-    expect(result).toEqual([{ oldKey, from: newOuter, to: center, edgeKind: "one_way_forward" }]);
+    expect(result).toEqual([{ oldKey, from: newOuter, to: center, edge: { kind: "one_way_forward", from: newOuter, to: center, id: "o1" } }]);
   });
 
   it("bidirectional passage (both directed Record entries) rotates as one unit", () => {
@@ -199,8 +199,8 @@ describe("rotateSplitPointMoves", () => {
     const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const north = nodeEndpoint(idOf(0, 1));
     expect(result).toEqual(expect.arrayContaining([
-      { oldKey: fwdKey, from: center, to: north, edgeKind: "basic" },
-      { oldKey: bwdKey, from: north, to: center, edgeKind: "basic" },
+      { oldKey: fwdKey, from: center, to: north, edge: { kind: "basic", from: center, to: north } },
+      { oldKey: bwdKey, from: north, to: center, edge: { kind: "basic", from: north, to: center } },
     ]));
     expect(result).toHaveLength(2);
   });
@@ -213,15 +213,15 @@ describe("rotateSplitPointMoves", () => {
     const west = nodeEndpoint(idOf(-1, 0));
     const slotKey = edgeKey(slot, east);
     const centerKey = edgeKey(center, west);
-    edges[slotKey] = { from: slot, to: east, kind: "one_way_forward" };
-    edges[centerKey] = { from: center, to: west, kind: "one_way_forward" };
+    edges[slotKey] = { from: slot, to: east, kind: "one_way_forward", id: "o1" };
+    edges[centerKey] = { from: center, to: west, kind: "one_way_forward", id: "o2" };
 
     const result = rotateSplitPointMoves(edges, [0, 0], [0], 1, squareCfg, centerCellSet, gridNodes, {});
     const north = nodeEndpoint(idOf(0, 1));
     const south = nodeEndpoint(idOf(0, -1));
     expect(result).toEqual(expect.arrayContaining([
-      { oldKey: slotKey, from: slot, to: north, edgeKind: "one_way_forward" },
-      { oldKey: centerKey, from: center, to: south, edgeKind: "one_way_forward" },
+      { oldKey: slotKey, from: slot, to: north, edge: { kind: "one_way_forward", from: slot, to: north, id: "o1" } },
+      { oldKey: centerKey, from: center, to: south, edge: { kind: "one_way_forward", from: center, to: south, id: "o2" } },
     ]));
   });
 
@@ -247,14 +247,14 @@ describe("rotateSplitPointMoves", () => {
     const center = nodeEndpoint(idOf(0, 0));
     const east = nodeEndpoint(idOf(1, 0));
     const oldKey = edgeKey(center, east);
-    edges[oldKey] = { from: center, to: east, kind: "one_way_forward" };
+    edges[oldKey] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
 
     // North neighbor (0,1) has an active split node instead of its original node.
     const northSlot = splitEndpoint([0, 1], 0);
     const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": northSlot };
 
     const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode);
-    expect(result).toEqual([{ oldKey, from: center, to: northSlot, edgeKind: "one_way_forward" }]);
+    expect(result).toEqual([{ oldKey, from: center, to: northSlot, edge: { kind: "one_way_forward", from: center, to: northSlot, id: "o1" } }]);
   });
 });
 
@@ -275,17 +275,17 @@ describe("postEditVerticalPassageDirectionToDto", () => {
 
 describe("findPostEditVerticalPassageForPair", () => {
   const passages = [
-    { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
-    { id: 2, from: nodeEndpoint(5), to: nodeEndpoint(0), direction: "two_way" as const },
+    { id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
+    { id: "v2", from: nodeEndpoint(5), to: nodeEndpoint(0), direction: "two_way" as const },
   ];
 
   it("matches a pair in either argument order", () => {
-    expect(findPostEditVerticalPassageForPair(passages, 0, 1)?.id).toBe(1);
-    expect(findPostEditVerticalPassageForPair(passages, 1, 0)?.id).toBe(1);
+    expect(findPostEditVerticalPassageForPair(passages, 0, 1)?.id).toBe("v1");
+    expect(findPostEditVerticalPassageForPair(passages, 1, 0)?.id).toBe("v1");
   });
 
   it("matches regardless of which end of the entry each id sits on", () => {
-    expect(findPostEditVerticalPassageForPair(passages, 0, 5)?.id).toBe(2);
+    expect(findPostEditVerticalPassageForPair(passages, 0, 5)?.id).toBe("v2");
   });
 
   it("returns undefined when no entry connects the pair", () => {
@@ -295,7 +295,7 @@ describe("findPostEditVerticalPassageForPair", () => {
   });
 
   it("never matches a split-addressed endpoint (vertical passages are node-addressed)", () => {
-    const withSplit = [{ id: 3, from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const withSplit = [{ id: "v3", from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(findPostEditVerticalPassageForPair(withSplit, 0, 1)).toBeUndefined();
   });
 });
@@ -304,23 +304,23 @@ describe("findPostEditVerticalPassageForPair", () => {
 
 describe("cyclePostEditVerticalPassageDirection", () => {
   it("forward becomes backward", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("backward");
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, "v1")[0].direction).toBe("backward");
   });
 
   it("backward becomes forward", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
-    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("forward");
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, "v1")[0].direction).toBe("forward");
   });
 
   it("two_way is left unchanged (only meaningful for the one-way tool)", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
-    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("two_way");
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, "v1")[0].direction).toBe("two_way");
   });
 
   it("leaves passages with a different id untouched", () => {
-    const passages = [{ id: 2, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(cyclePostEditVerticalPassageDirection(passages, 1)).toEqual(passages);
+    const passages = [{ id: "v2", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, "v1")).toEqual(passages);
   });
 });
 
@@ -329,20 +329,20 @@ describe("cyclePostEditVerticalPassageDirection", () => {
 describe("removePostEditVerticalPassage", () => {
   it("removes the entry with the given id, keeps the rest", () => {
     const passages = [
-      { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
-      { id: 2, from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" as const },
+      { id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
+      { id: "v2", from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" as const },
     ];
-    expect(removePostEditVerticalPassage(passages, 1)).toEqual([passages[1]]);
+    expect(removePostEditVerticalPassage(passages, "v1")).toEqual([passages[1]]);
   });
 });
 
 describe("removePostEditElevator", () => {
   it("removes the entry with the given id, keeps the rest", () => {
     const elevators = [
-      { id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] },
-      { id: 2, floors: [nodeEndpoint(2), nodeEndpoint(3)] },
+      { id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] },
+      { id: "e2", floors: [nodeEndpoint(2), nodeEndpoint(3)] },
     ];
-    expect(removePostEditElevator(elevators, 1)).toEqual([elevators[1]]);
+    expect(removePostEditElevator(elevators, "e1")).toEqual([elevators[1]]);
   });
 });
 
@@ -392,14 +392,14 @@ describe("elevatorComponent", () => {
 
 describe("movePostEditVerticalPassageEndpoint", () => {
   it("replaces only the given end of the matching entry", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
-    const result = movePostEditVerticalPassageEndpoint(passages, { id: 1, end: "to" }, nodeEndpoint(5));
-    expect(result[0]).toEqual({ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(5), direction: "forward" });
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const result = movePostEditVerticalPassageEndpoint(passages, { id: "v1", end: "to" }, nodeEndpoint(5));
+    expect(result[0]).toEqual({ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(5), direction: "forward" });
   });
 
   it("leaves entries with a different id untouched", () => {
-    const passages = [{ id: 2, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(movePostEditVerticalPassageEndpoint(passages, { id: 1, end: "to" }, nodeEndpoint(5))).toEqual(passages);
+    const passages = [{ id: "v2", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(movePostEditVerticalPassageEndpoint(passages, { id: "v1", end: "to" }, nodeEndpoint(5))).toEqual(passages);
   });
 });
 
@@ -407,17 +407,17 @@ describe("movePostEditVerticalPassageEndpoint", () => {
 
 describe("postEditVerticalToDto", () => {
   it("forward vertical passage produces one from->to edge", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([{ from: 0, to: 1, kind: "vertical_passage" }]);
   });
 
   it("backward vertical passage produces one to->from edge", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
     expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([{ from: 1, to: 0, kind: "vertical_passage" }]);
   });
 
   it("two_way vertical passage produces both directions", () => {
-    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
+    const passages = [{ id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
     expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([
       { from: 0, to: 1, kind: "vertical_passage" },
       { from: 1, to: 0, kind: "vertical_passage" },
@@ -425,12 +425,12 @@ describe("postEditVerticalToDto", () => {
   });
 
   it("drops a vertical passage whose endpoint doesn't resolve", () => {
-    const passages = [{ id: 1, from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const passages = [{ id: "v1", from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([]);
   });
 
   it("elevator with 2 floors produces a bidirectional pair", () => {
-    const elevators = [{ id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] }];
+    const elevators = [{ id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] }];
     const result = postEditVerticalToDto([], elevators, noSplits);
     expect(result).toHaveLength(2);
     expect(result).toEqual(expect.arrayContaining([
@@ -440,7 +440,7 @@ describe("postEditVerticalToDto", () => {
   });
 
   it("elevator with 3 floors produces a full 6-edge mesh (every ordered pair)", () => {
-    const elevators = [{ id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)] }];
+    const elevators = [{ id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)] }];
     const result = postEditVerticalToDto([], elevators, noSplits);
     expect(result).toHaveLength(6);
     const pairs = new Set(result.map((e) => `${e.from}->${e.to}`));
@@ -448,7 +448,7 @@ describe("postEditVerticalToDto", () => {
   });
 
   it("elevator floor that doesn't resolve is excluded from the mesh, not dropped entirely", () => {
-    const elevators = [{ id: 1, floors: [nodeEndpoint(0), splitEndpoint([1, 2], 0), nodeEndpoint(1)] }];
+    const elevators = [{ id: "e1", floors: [nodeEndpoint(0), splitEndpoint([1, 2], 0), nodeEndpoint(1)] }];
     const result = postEditVerticalToDto([], elevators, noSplits);
     expect(result).toEqual(expect.arrayContaining([
       { from: 0, to: 1, kind: "elevator" },

@@ -332,6 +332,31 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().activeFloorId).toBe(secondFloorId);
   });
 
+  it("loadProject normalizes a stale/too-low saved id counter up to the replayed log's own high-water mark (GitHub issue #564 second follow-up)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().generate();
+    useMazeStore.getState().addPostEditTeleport(
+      { kind: "node", id: 0 }, { kind: "node", id: 1 }, "forward",
+    );
+    const mintedId = useMazeStore.getState().postEditDraftTeleports[0].id;
+    expect(mintedId).toBe("t1");
+
+    const file = serializeProject(useMazeStore.getState());
+    expect(file.postEdit).not.toBeNull();
+    // Corrupt the saved counter to a value lower than what the command log actually already used —
+    // simulates a hand-edited or stale file (the file's own counter is not the log's source of
+    // truth, the log's own minted ids are).
+    file.postEdit = { ...file.postEdit!, nextTeleportId: 1 };
+
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().postEditDraftTeleports.map((t) => t.id)).toEqual(["t1"]);
+    // Normalized past the log's own high-water mark (id 1 already minted), not left at the file's
+    // stale value of 1 — the next teleport must not collide with the one the log already created.
+    expect(useMazeStore.getState()._nextPostEditTeleportId).toBe(2);
+  });
+
   it("setError sets and clears the error message", () => {
     useMazeStore.getState().setError("boom");
     expect(useMazeStore.getState().error).toBe("boom");

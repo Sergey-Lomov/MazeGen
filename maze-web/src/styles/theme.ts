@@ -9,6 +9,7 @@ export const ui = {
     input: base.bgSurfaceRaised,
     error: base.errorBg,
     warning: base.warningBg,
+    success: base.successBg,
     info: base.infoBg,
   },
 

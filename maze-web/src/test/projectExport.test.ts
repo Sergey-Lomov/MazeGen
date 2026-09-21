@@ -5,7 +5,12 @@ import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { buildPostEditBaseline } from "../store/slices/postEditSliceHelpers";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
+import type { PostEditEdgeState } from "../store/postEditTypes";
+import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
+
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
+  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -75,8 +80,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditElevatorPending: null,
     _nextPostEditElevatorId: 1,
     _nextSplitSlotId: {},
-    postEditSuppressedElevatorPairs: new Set<string>(),
-    postEditSuppressedVerticalPassagePairs: new Set<string>(),
+    _nextPostEditOneWayId: 1,
+    postEditDraftSplitPointIds: {},
+    _nextPostEditSplitPointId: 1,
     fieldDirty: false,
     presetsDirty: false,
     mazeDirty: false,
@@ -253,8 +259,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
 
   it("round-trips dirty post-edit command log", () => {
     const commands: PostEditCommand[] = [
-      { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "basic" },
-      { kind: "setEdge", from: nodeEndpoint(1), to: nodeEndpoint(2), edgeKind: "one_way_forward" },
+      { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "basic") },
+      { kind: "setEdge", edge: es(nodeEndpoint(1), nodeEndpoint(2), "one_way_forward") },
       { kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) },
       { kind: "setMeta", slot: "finish", endpoint: nodeEndpoint(2) },
     ];
@@ -270,21 +276,21 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   // floor 0 after a save/load round-trip even though `level` was correctly serialized.
   it("round-trips a split post-edit endpoint's non-zero level (GitHub issue #425)", () => {
     const commands: PostEditCommand[] = [
-      { kind: "setEdge", from: splitEndpoint([0, 0], 0, 1), to: nodeEndpoint(12), edgeKind: "basic" },
+      { kind: "setEdge", edge: es(splitEndpoint([0, 0], 0, 1), nodeEndpoint(12), "basic") },
       { kind: "setMeta", slot: "start", endpoint: splitEndpoint([0, 0], 0, 1) },
     ];
     const state = makeState({ postEditDirty: true, postEditCommands: commands });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.postEdit).toEqual(serialized.postEdit);
-    const reparsedFrom = reparsed.postEdit?.commands[0].kind === "setEdge" ? reparsed.postEdit.commands[0].from : undefined;
+    const reparsedFrom = reparsed.postEdit?.commands[0].kind === "setEdge" ? reparsed.postEdit.commands[0].edge.from : undefined;
     expect(reparsedFrom).toEqual(splitEndpoint([0, 0], 0, 1));
   });
 
   it("round-trips dirty post-edit teleports", () => {
     const commands: PostEditCommand[] = [
-      { kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
-      { kind: "addTeleport", id: 2, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
+      { kind: "addTeleport", id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
+      { kind: "addTeleport", id: "t2", from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
     ];
     const state = makeState({ postEditDirty: true, postEditCommands: commands, _nextPostEditTeleportId: 3 });
     const serialized = serializeProject(state);
@@ -295,8 +301,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
 
   it("round-trips split points", () => {
     const commands: PostEditCommand[] = [
-      { kind: "addSplitNode", point: [3, 4], slotId: 0 },
-      { kind: "addSplitNode", point: [3, 4], slotId: 1 },
+      { kind: "addSplitNode", point: [3, 4], slotId: 0, pointId: "s1" },
+      { kind: "addSplitNode", point: [3, 4], slotId: 1, pointId: "s1" },
     ];
     const state = makeState({ postEditDirty: true, postEditCommands: commands, _nextSplitSlotId: { "3,4": 2 } });
     const serialized = serializeProject(state);
@@ -399,10 +405,11 @@ describe("parseAndValidate — malformed input", () => {
   it("throws on invalid postEditEdge kind", () => {
     const data = valid();
     data.postEdit = {
-      commands: [{ kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "bogus" }],
+      commands: [{ kind: "setEdge", edge: { kind: "bogus", from: nodeEndpoint(0), to: nodeEndpoint(1) } }],
       nextTeleportId: 1, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
+      nextOneWayId: 1, nextSplitPointId: 1,
     };
-    expect(() => parseAndValidate(data)).toThrow(/Invalid PostEditEdgeKind/);
+    expect(() => parseAndValidate(data)).toThrow(/Invalid PostEditEdge kind/);
   });
 
   it("throws on invalid defaultEdgeState", () => {
@@ -423,8 +430,9 @@ describe("parseAndValidate — malformed input", () => {
   it("throws on invalid post-edit teleport direction", () => {
     const data = valid();
     data.postEdit = {
-      commands: [{ kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "bogus" }],
+      commands: [{ kind: "addTeleport", id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "bogus" }],
       nextTeleportId: 2, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
+      nextOneWayId: 1, nextSplitPointId: 1,
     };
     expect(() => parseAndValidate(data)).toThrow(/Invalid.*[Dd]irection/);
   });

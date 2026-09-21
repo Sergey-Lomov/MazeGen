@@ -12,6 +12,8 @@ export function serializeProject(state: MazeState): ProjectFile {
         nextVerticalPassageId: state._nextPostEditVerticalPassageId,
         nextElevatorId: state._nextPostEditElevatorId,
         nextSplitSlotId: state._nextSplitSlotId,
+        nextOneWayId: state._nextPostEditOneWayId,
+        nextSplitPointId: state._nextPostEditSplitPointId,
       }
     : null;
 

@@ -74,13 +74,13 @@ export interface PostEditState {
   postEditAutoConfirm: boolean;
   postEditTool: PostEditTool;
   /** Ordered, replayable command log (GitHub issue #543) — the single source of truth for every
-   * manual post-edit change. `postEditDraft*`/`postEditSuppressed*` fields below are derived from
-   * this log + `postEditBaseline` by `applyPostEditCommand`/`replayPostEditCommands`
-   * (`pixi/postEditReplay.ts`) and re-mirrored into those fields on every log mutation
-   * (`appendPostEditCommand`/`replacePostEditCommands`, `postEditSliceHelpers.ts`) — kept as plain
-   * state fields (not lazy getters) since most of the ~40 read sites across the codebase subscribe
-   * to them individually via zustand selectors. Treat `postEditDraft*`/`postEditSuppressed*` as
-   * read-only outside `postEditSlice.ts`/`postEditSliceHelpers.ts` — the log is what gets mutated. */
+   * manual post-edit change. `postEditDraft*` fields below are derived from this log +
+   * `postEditBaseline` by `applyPostEditCommand`/`replayPostEditCommands` (`pixi/postEditReplay.ts`)
+   * and re-mirrored into those fields on every log mutation (`appendPostEditCommand`/
+   * `replacePostEditCommands`, `postEditSliceHelpers.ts`) — kept as plain state fields (not lazy
+   * getters) since most of the ~40 read sites across the codebase subscribe to them individually via
+   * zustand selectors. Treat `postEditDraft*` as read-only outside `postEditSlice.ts`/
+   * `postEditSliceHelpers.ts` — the log is what gets mutated. */
   postEditCommands: PostEditCommand[];
   /** Generation-time snapshot (`context`) + revision + pristine (empty-log) derived state — see
    * `PostEditBaseline`'s own doc comment. `derived` here is NEVER overwritten after construction
@@ -106,6 +106,12 @@ export interface PostEditState {
   postEditTeleportPendingFrom: number | null;
   /** Monotonic id source for postEditDraftTeleports entries. */
   _nextPostEditTeleportId: number;
+  /** Monotonic id source for one-way edges (GitHub issue #564) — see `PostEditEdge`'s
+   * discriminated union. Seeded from `max(baseline one-way ids) + 1` on generate. A fresh one-way
+   * created via wall/passage → one-way mints from here; flipping direction on the same face reuses
+   * the existing side's id (same entity); returning to wall/passage and back to one-way mints a new
+   * id (a new entity on the same face). */
+  _nextPostEditOneWayId: number;
   /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
   postEditDraftMeta: PostEditMeta | null;
   /** slotIds of a split point's extra nodes (beyond the point's original node), keyed by "x,y".
@@ -120,11 +126,21 @@ export interface PostEditState {
    * instead of a global one. Re-applied via `Maze::add_node_at` (one call per slotId, in a deterministic order)
    * on every confirmPostEdit. */
   postEditDraftSplitPoints: Record<string, number[]>;
+  /** Stable id of each split point (the whole point, not a slot — GitHub issue #564), keyed the
+   * same way as `postEditDraftSplitPoints` (`"x,y"`/`"x,y@level"`). Present only for points that
+   * currently have at least one extra slot (mirrors `postEditDraftSplitPoints`' own absent-key
+   * convention). Minted from `_nextPostEditSplitPointId` on first split; a baseline (generation-time)
+   * split point instead carries its id from `postEditBaseline.derived.splitPointIds`. A string
+   * (`"s{n}"`, GitHub issue #564 second follow-up — see `postEditIdFormat.ts`). */
+  postEditDraftSplitPointIds: Record<string, string>;
   /** High-water mark for `postEditDraftSplitPoints`' per-point slotId minting — see that field's
    * doc comment. Keyed the same way (`"x,y"`/`"x,y@level"`). Persisted separately from the command
    * log (plan section 7) so a point-reset that prunes high-id slot commands out of the log can't
    * cause a later `addSplitNode` at that point to reissue a pruned id. */
   _nextSplitSlotId: Record<string, number>;
+  /** Monotonic id source for split points as a whole (GitHub issue #564) — see
+   * `postEditDraftSplitPointIds`. Seeded from `max(baseline split point ids) + 1` on generate. */
+  _nextPostEditSplitPointId: number;
   /** Which of a point's nodes is currently "active" for edge-tool clicks on its faces, keyed by
    * "x,y". No entry means the point's original node. */
   postEditActiveSplitNode: Record<string, PostEditEndpoint>;
@@ -174,30 +190,11 @@ export interface PostEditState {
   _nextPostEditVerticalPassageId: number;
   /** User-editable elevators (GitHub issue #341) — mirrors `presetElevators`. */
   postEditDraftElevators: PostEditElevatorEntry[];
-  /** In-progress elevator placement — mirrors `presetElevatorPending`. `sourceNodeIds` (set only
-   * when editing a *generation-time* elevator, i.e. no `editingId`) is the node ids the original
-   * generation-time elevator connected, captured at edit-open time — `confirmPostEdit` uses it to
-   * suppress just those generation-time `elevator` edges once the edit is confirmed, so the new
-   * draft entry is the sole source of truth for this elevator going forward instead of the old
-   * generation-time mesh continuing to coexist with (and outlive) the edit. */
-  postEditElevatorPending: { origin: PostEditEndpoint; floors: Set<number>; editingId?: number; sourceNodeIds?: number[] } | null;
+  /** In-progress elevator placement — mirrors `presetElevatorPending`. `editingId` is set when
+   * editing an existing draft entry (generation-baked or user-created — both are full draft
+   * entries with a stable id since GitHub issue #564) and unset when placing a fresh one. */
+  postEditElevatorPending: { origin: PostEditEndpoint; floors: Set<number>; editingId?: string } | null;
   _nextPostEditElevatorId: number;
-  /** Node-id pairs of generation-time `elevator` edges to suppress on every future confirm (GitHub
-   * issue #341 follow-up) — populated by `confirmPostEditElevatorPlacement` when the just-confirmed
-   * edit replaced a generation-time elevator (`pending.sourceNodeIds` set, no `editingId`). Keyed
-   * by the unordered node-id pair (`"min,max"`) so both directions of the old mesh are suppressed
-   * with one entry. Persists across confirms (unlike the pending state itself) since the
-   * generation-time edges themselves are resent from `state.edges` on every confirm and must be
-   * filtered out every time, not just the first. */
-  postEditSuppressedElevatorPairs: ReadonlySet<string>;
-  /** Node-id pairs (`"min,max"`) of generation-time `vertical_passage` edges to suppress on every
-   * future confirm (GitHub issue #341 follow-up) — mirrors `postEditSuppressedElevatorPairs`,
-   * populated whenever a `postEditDraftVerticalPassages` entry addressing this pair is created or
-   * edited (including a plain direction cycle), since even a same-session re-edit's own previous
-   * confirm already folded that entry's edges back into `state.edges`. Suppresses *both*
-   * directions between the pair regardless of the new entry's own direction — the draft entry is
-   * the sole source of truth for the pair once it exists. */
-  postEditSuppressedVerticalPassagePairs: ReadonlySet<string>;
   /** In-progress "which split node?" prompt (GitHub issue #474) — set whenever a vertex tool
    * (`set_start`/`set_finish`, a vertical-passage tool, `elevator`, a teleport tool) is used on a
    * split point. The active-node concept must not leak into connection placement, so instead of
@@ -224,6 +221,13 @@ export interface PostEditState {
    *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
    *  node panel and vice versa, since both dock to the same `SidePanel` slot). Not persisted. */
   postEditChangesOpen: boolean;
+  /** Entity id the "Changes" panel's log is narrowed to (GitHub issue #574), or `null` for no
+   *  filter (every row shown). Matches a command's own `entityIdOf` result exactly (`"o5"`, `"t3"`,
+   *  ... — `postEditCommandLabels.ts`), never a text search over a row's rendered label; a command
+   *  kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
+   *  `rotateSplitPoint`) never matches any filter value. Ephemeral UI state, not persisted; reset to
+   *  `null` on generate/reset so a stale filter doesn't silently hide an unrelated new log. */
+  postEditChangesEntityFilter: string | null;
   /** Live drag preview for the start/finish marker, a teleport endpoint, or a vertical-passage
    *  endpoint (GitHub issue #545) — set by `PostEditController` on every pointermove while a drag
    *  is armed, cleared on pointerup. Purely visual: `PostEditRenderer` overlays it on top of
@@ -239,8 +243,8 @@ export interface PostEditState {
  *  the entity's real endpoint while the drag is live. */
 export type PostEditDragOverride =
   | { kind: "marker"; marker: "start" | "finish"; endpoint: PostEditEndpoint }
-  | { kind: "teleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "verticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint };
+  | { kind: "teleportEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint }
+  | { kind: "verticalPassageEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint };
 
 export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
@@ -254,9 +258,9 @@ export interface PostEditActions {
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
   setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
   addPostEditTeleport: (from: PostEditEndpoint, to: PostEditEndpoint, direction: PostEditTeleportDirection) => void;
-  cyclePostEditTeleportDirection: (id: number) => void;
-  removePostEditTeleport: (id: number) => void;
-  movePostEditTeleportEndpoint: (id: number, end: "from" | "to", endpoint: PostEditEndpoint) => void;
+  cyclePostEditTeleportDirection: (id: string) => void;
+  removePostEditTeleport: (id: string) => void;
+  movePostEditTeleportEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   confirmPostEdit: () => Promise<void>;
   resetPostEdit: () => void;
   /** Cell branch of the unified Reset tool (GitHub issue #327) — resets one point's
@@ -266,8 +270,18 @@ export interface PostEditActions {
   /** Delete tool (GitHub issue #386) — removes every generation-placed non-edge piece of content
    * touching `point`'s nodes: start/finish marker, teleport links, vertical passages, elevators.
    * Basic edges are untouched (see `wall`/`reset`). See `deletePostEditPoint`'s own doc comment in
-   * `postEditSlice.ts` for the suppression details. */
+   * `postEditSlice.ts` for details. */
   deletePostEditPoint: (point: [number, number]) => void;
+  /** "Reset" action on one Changes-panel row (GitHub issue #547) — truncates `postEditCommands` to
+   * end right after `commandIndex` (the log's own oldest-to-newest index, not the panel's reversed
+   * display order), discarding every later command regardless of lifeline. See
+   * `resetCommandsAt` (`pixi/postEditReplay.ts`). */
+  resetPostEditCommand: (commandIndex: number) => void;
+  /** "Delete" action on one Changes-panel row (GitHub issue #547) — removes exactly the command at
+   * `commandIndex` and resolves what that leaves behind: cascades the whole lifeline for a command
+   * that mints a fresh entity, or collapses a single entry (re-resolving later commands' own
+   * denormalized fields) for any other kind. See `deleteCommandAt` (`pixi/postEditReplay.ts`). */
+  deletePostEditCommand: (commandIndex: number) => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;
   cycleActiveSplitNode: (point: [number, number]) => void;
@@ -289,14 +303,14 @@ export interface PostEditActions {
   startPostEditVerticalPassagePlacement: (origin: PostEditEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
   choosePostEditVerticalPassageDirection: (direction: "up" | "down") => void;
   cancelPostEditVerticalPassagePlacement: () => void;
-  cyclePostEditVerticalPassageDirection: (id: number) => void;
-  removePostEditVerticalPassage: (id: number) => void;
-  movePostEditVerticalPassageEndpoint: (id: number, end: "from" | "to", endpoint: PostEditEndpoint) => void;
+  cyclePostEditVerticalPassageDirection: (id: string) => void;
+  removePostEditVerticalPassage: (id: string) => void;
+  movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
   togglePostEditElevatorFloor: (floorIndex: number) => void;
   confirmPostEditElevatorPlacement: () => void;
   cancelPostEditElevatorPlacement: () => void;
-  removePostEditElevator: (id: number) => void;
+  removePostEditElevator: (id: string) => void;
   /** Opens the "which split node?" prompt (GitHub issue #474). Called by `PostEditController` when
    * a vertex tool is used on a split point instead of dispatching the tool directly. */
   requestPostEditSplitTarget: (prompt: NonNullable<PostEditState["postEditSplitTargetPrompt"]>) => void;
@@ -309,6 +323,9 @@ export interface PostEditActions {
   /** Opens/closes the "Changes" panel (GitHub issue #545). Opening it closes the "Manage split
    *  nodes" panel (`postEditFocusedPoint`), since both dock to the same `SidePanel` slot. */
   setPostEditChangesOpen: (open: boolean) => void;
+  /** Sets/clears the "Changes" panel's entity-id filter (GitHub issue #574). `null` clears it back
+   *  to the full log — same effect as the panel's own clear (×) button. */
+  setPostEditChangesEntityFilter: (id: string | null) => void;
   /** Sets/clears the live drag preview (GitHub issue #545) — see `postEditDragOverride`'s doc
    *  comment. Pure visual state, never touches the command log. */
   setPostEditDragOverride: (override: PostEditDragOverride | null) => void;

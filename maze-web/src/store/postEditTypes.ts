@@ -5,11 +5,23 @@ export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_b
 
 export type PostEditTool = "wall" | "passage" | "reset" | "delete" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
 
-export interface PostEditEdge {
-  from: PostEditEndpoint;
-  to: PostEditEndpoint;
-  kind: PostEditEdgeKind;
-}
+/** A directed post-edit edge — discriminated by `kind` (GitHub issue #564) so a one-way edge's
+ * stable `id` is required exactly when `kind` is one of the `one_way_*` variants, and impossible
+ * to attach to a `wall`/`basic` edge. `id` is assigned by `_nextPostEditOneWayId`, minted at
+ * baseline-construction time for a generation-baked one-way (keyed by canonical `edgeKey(from,to)`,
+ * see `assignSequentialIds`) or on fresh creation/flip via the `one_way` tool — see
+ * `applyPostEditToolAt`. Reused as `PostEditEdgeState` for `setEdgePair`'s `aToB`/`bToA` payload.
+ * `id` is a stable string (GitHub issue #564 second follow-up, `"ow{n}"`) — see
+ * `postEditIdFormat.ts`'s doc comment for the per-category prefix convention shared by every
+ * post-edit entity id (one-way, split point, teleport, vertical passage, elevator). */
+export type PostEditEdge =
+  | { kind: "wall" | "basic"; from: PostEditEndpoint; to: PostEditEndpoint }
+  | { kind: "one_way_forward" | "one_way_backward"; from: PostEditEndpoint; to: PostEditEndpoint; id: string };
+
+/** Same shape as `PostEditEdge` — used for `setEdgePair`'s `aToB`/`bToA` command fields, which
+ * describe a directed edge's RESULTING state after the command, not a `Record`-stored entry. Kept
+ * as a separate type alias for readability at command-construction/consumption call sites. */
+export type PostEditEdgeState = PostEditEdge;
 
 /** `start`/`finish` are `PostEditEndpoint`, not a bare `number` — see `postEditEndpoint.ts`'s doc
  * comment for why a split node's raw `NodeId` isn't safe to keep across confirms. */
@@ -24,7 +36,7 @@ export type PostEditTeleportDirection = "forward" | "backward" | "two_way";
  * edits by cell coordinates on the pre-generation field). Converted to EdgeDto[] at the
  * WASM-call/render boundary via `postEditTeleportsToDto`. */
 export interface PostEditTeleportEntry {
-  id: number;
+  id: string;
   from: PostEditEndpoint;
   to: PostEditEndpoint;
   direction: PostEditTeleportDirection;
@@ -32,7 +44,7 @@ export interface PostEditTeleportEntry {
 
 /** Endpoint of a post-edit teleport, identified for hit-testing/drag by the owning entry's id and which end it is. */
 export interface PostEditTeleportEndpointHit {
-  id: number;
+  id: string;
   end: "from" | "to";
 }
 
@@ -45,7 +57,7 @@ export type PostEditVerticalPassageDirection = "forward" | "backward" | "two_way
  * passage always connects two points' *original* nodes, same as the preset-stage entry it mirrors.
  * `from`/`to` are the two click points in placement order; `"backward"` runs `to -> from`. */
 export interface PostEditVerticalPassageEntry {
-  id: number;
+  id: string;
   from: PostEditEndpoint;
   to: PostEditEndpoint;
   direction: PostEditVerticalPassageDirection;
@@ -54,13 +66,13 @@ export interface PostEditVerticalPassageEntry {
 /** A user-placed `Elevator` link, editable in Post-Edit (GitHub issue #341) — mirrors
  * `PresetElevatorEntry`. Two-way by construction, no direction concept. */
 export interface PostEditElevatorEntry {
-  id: number;
+  id: string;
   floors: PostEditEndpoint[];
 }
 
 /** Endpoint of a post-edit vertical passage — mirrors `PostEditTeleportEndpointHit`. */
 export interface PostEditVerticalPassageEndpointHit {
-  id: number;
+  id: string;
   end: "from" | "to";
 }
 

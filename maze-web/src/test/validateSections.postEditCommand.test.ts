@@ -12,22 +12,24 @@ const n = nodeEndpoint;
  *  object at all), which this round-trip style would have caught immediately. */
 describe("validatePostEditCommand — post-edit command round-trip (GitHub issue #564 follow-up)", () => {
   const cases: PostEditCommand[] = [
-    { kind: "addTeleport", id: 1, from: n(0), to: n(1), direction: "forward" },
-    { kind: "setTeleportDirection", id: 1, direction: "two_way", from: n(0), to: n(1) },
-    { kind: "moveTeleportEndpoint", id: 1, end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "backward" },
-    { kind: "removeTeleport", id: 1, from: n(0), to: n(1), direction: "two_way" },
+    { kind: "setEdge", edge: { kind: "one_way_forward", from: n(0), to: n(1), id: "o1" } },
+    { kind: "setEdgePair", a: n(0), b: n(1), aToB: { kind: "one_way_forward", from: n(0), to: n(1), id: "o1" }, bToA: { kind: "wall", from: n(1), to: n(0) }, directionFlip: false, replacedOneWayIds: { aToB: "o2" } },
+    { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+    { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+    { kind: "setTeleportDirection", id: "t1", direction: "two_way", from: n(0), to: n(1) },
+    { kind: "moveTeleportEndpoint", id: "t1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "backward" },
+    { kind: "removeTeleport", id: "t1", from: n(0), to: n(1), direction: "two_way" },
     { kind: "setMeta", slot: "start", endpoint: n(0) },
     { kind: "setMeta", slot: "finish", endpoint: null, previousEndpoint: n(1) },
-    { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
-    { kind: "setVerticalPassageDirection", id: 1, direction: "two_way", from: n(0), to: n(1), suppressPair: [n(0), n(1)] },
+    { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+    { kind: "setVerticalPassageDirection", id: "v1", direction: "two_way", from: n(0), to: n(1) },
     {
-      kind: "moveVerticalPassageEndpoint", id: 1, end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "two_way",
-      suppressPairs: [[n(0), n(1)], [n(2), n(0)]],
+      kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2), from: n(0), to: n(2), direction: "two_way",
     },
-    { kind: "removeVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
-    { kind: "addElevator", id: 1, floors: [n(0), n(1)], suppressPairs: [[n(0), n(1)]] },
-    { kind: "updateElevatorFloors", id: 1, floors: [n(0), n(1), n(2)] },
-    { kind: "removeElevator", id: 1, floors: [n(0), n(1), n(2)] },
+    { kind: "removeVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+    { kind: "addElevator", id: "e1", floors: [n(0), n(1)] },
+    { kind: "updateElevatorFloors", id: "e1", floors: [n(0), n(1), n(2)] },
+    { kind: "removeElevator", id: "e1", floors: [n(0), n(1), n(2)] },
   ];
 
   for (const command of cases) {
