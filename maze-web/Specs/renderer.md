@@ -83,6 +83,14 @@ Draws a split point's independent passages — wired into `PostEditRenderer` (it
 ### WaypointsRenderer
 Draws filled circles at given positions (start/finish markers). Positions are in screen coordinates (pre-computed by selector). A split-point marker's own position comes from `buildNodePositions`/`getSplitAwareNodePosition` (`tessellationGeometry.ts`/`mazeSelectors.ts`) — the generic hub-circle slot, or `specialSplitNodePoint`'s dedicated bridge/diagonal point when the point is recognized as one (GitHub issue #318, independent of this renderer's own `specialShapes` drawing toggle above) — see `Specs/post-edit.md`'s "Marker/teleport anchoring"/"Shape-aware node point" notes.
 
+**Rounded marker geometry (GitHub issue #577).** Filled marker silhouettes, floor badges, vertical
+badges, and marker-index plates use closed polygon/arc paths from `renderers/markerShapes.ts`.
+The marker bodies and plates must not use Pixi's fan-based `circle()` or `roundRect()` primitives:
+their antialiased tessellation can expose zoom-dependent hairlines against a gap ring or frame.
+`drawRoundedRect()` is the shared path primitive for rounded plates. Marker frames and gap
+underlays use a geometric offset contour (miter-limited, with bevel/round joins as appropriate),
+then fill the inner contour; they must not use GPU strokes or uniform scaling for the outer shape.
+
 ## Graph Renderers
 
 `MazeGraphRenderer` (`MazeGraphRenderer.ts`, extends `BaseGraphRenderer`) and `NavGraphRenderer` render directed graph overlays with nodes (circles) and edges (lines with arrowheads). `MazeGraphRenderer` is owned by `AnalyticsRenderer` (the analysis feature); it is not part of `GenerationRenderer`'s layer stack.

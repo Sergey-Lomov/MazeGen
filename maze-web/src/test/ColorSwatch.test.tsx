@@ -5,7 +5,13 @@ import { ColorSwatch } from "../components/ColorSwatch";
 import { setColorSampler } from "../pixi/colorSampleBridge";
 import { colorAtCenter } from "../components/ColorEyedropperOverlay";
 import { useMazeStore } from "../store/mazeStore";
+import { PC } from "../pixi/selectors/projectColorsSelector";
+import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
+
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+}));
 
 // `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to
 // run synchronously so tests don't need to await a real animation frame.
@@ -66,6 +72,31 @@ describe("ColorSwatch", () => {
     openPicker();
     expect(screen.queryByTestId("color-picker-export-warnings")).toBeNull();
     useMazeStore.setState({ showColorWarnings: previous, openRenderModeSettings: previousOpenMode });
+  });
+
+  it("shows split-color warnings for the color currently edited in the picker", () => {
+    const previous = useMazeStore.getState();
+    useMazeStore.setState({
+      showColorWarnings: true,
+      openRenderModeSettings: "vector_by_corridors",
+      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      floors: [{ id: "floor_1", title: "Floor 1" }],
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 1 },
+        { id: 2, x: 1, y: 0, i: 2 }, { id: 3, x: -1, y: 0, i: 3 },
+      ],
+      edges: [
+        { from: 0, to: 2, kind: "basic" }, { from: 2, to: 0, kind: "basic" },
+        { from: 1, to: 3, kind: "basic" }, { from: 3, to: 1, kind: "basic" },
+      ],
+      vectorByCorridorsSettings: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, splitNodeColors: [0x101010, 0x111111] },
+    });
+    render(<ColorSwatch color={0x101010} onChange={() => {}} fieldName={PC.splitNode(0).name()} />);
+    openPicker();
+    expect(screen.getByTestId("color-picker-export-warnings")).toBeInTheDocument();
+    const title = m["image_export.vector_by_walls.section_warnings"]({ count: "2" });
+    expect(screen.getByText(title)).toBeInTheDocument();
+    useMazeStore.setState(previous);
   });
 
   it("Enter on a focused swatch opens the picker (keyboard accessible)", () => {

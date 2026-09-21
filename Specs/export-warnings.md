@@ -24,7 +24,9 @@ settings panel.
 - Occurrences of one warning kind with the same actual color pair are collapsed into one warning
   entry. The entry carries all affected node ids and edge pairs for hover highlighting.
 - If one warning kind is emitted for different actual color pairs, each pair gets its own warning
-  entry. The detailed description names both semantic color roles and their actual `#RRGGBB` values.
+  entry, except for split colors compared with each other: all indistinguishable split-color pairs
+  are one visual problem and are reported as one warning. The detailed description names one
+  offending pair's semantic color roles and actual `#RRGGBB` values.
 - A color warning means that the foreground and the surface directly beneath it are equal or too
   visually close according to the shared OKLab perceptual color distance. The current warning
   threshold is a distance below `0.04`, shared by all color warnings; it is not configured

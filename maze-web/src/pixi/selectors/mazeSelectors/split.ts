@@ -557,7 +557,7 @@ export function buildSplitPassagesCore<Id>(
         });
       const connectors = lines.map((line) => ({ from: line.from, to: line.to, oneWayOut: line.oneWayOut, isUndefined: line.isUndefined }));
 
-      result.push({ color, pointKey, center, wallSegments, connectors });
+      result.push({ color, nodeIndex, pointKey, center, wallSegments, connectors });
     }
   }
 

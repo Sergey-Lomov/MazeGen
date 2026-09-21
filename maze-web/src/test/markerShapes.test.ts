@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { circlePolygonPoints, markerPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
+import { circlePolygonPoints, markerPolygonPoints, offsetPolygonPath, offsetPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
 
 /** Shoelace formula for a closed polygon's area from its flat point list. */
 function polygonArea(points: number[]): number {
@@ -92,6 +92,42 @@ describe("circlePolygonPoints", () => {
 
   it("keeps a minimum tessellation for zero-radius markers", () => {
     expect(circlePolygonPoints(0, 0, 0)).toHaveLength(32);
+  });
+});
+
+describe("offsetPolygonPoints", () => {
+  it("keeps every offset edge parallel to the source edge at the requested distance", () => {
+    const source = markerPolygonPoints("square", 0, 0, 10);
+    const offset = offsetPolygonPoints(source, 3);
+    for (let i = 0; i < source.length / 2; i++) {
+      const j = (i + 1) % (source.length / 2);
+      const ax = source[j * 2] - source[i * 2];
+      const ay = source[j * 2 + 1] - source[i * 2 + 1];
+      const length = Math.hypot(ax, ay);
+      const nx = ay / length;
+      const ny = -ax / length;
+      const distance = Math.abs((offset[i * 2] - source[i * 2]) * nx + (offset[i * 2 + 1] - source[i * 2 + 1]) * ny);
+      expect(distance).toBeCloseTo(3, 8);
+    }
+  });
+
+  it("uses a bounded join at sharp concave corners instead of a clipped vertex spike", () => {
+    const source = markerPolygonPoints("star", 0, 0, 20);
+    const offset = offsetPolygonPath(source, 5);
+    expect(offset.length).toBeGreaterThanOrEqual(source.length);
+    expect(offset.every(Number.isFinite)).toBe(true);
+    expect(Math.max(...Array.from({ length: offset.length / 2 }, (_, i) =>
+      Math.hypot(offset[i * 2], offset[i * 2 + 1]),
+    ))).toBeLessThan(50);
+  });
+
+  it("round join remains at the requested distance from the source corner", () => {
+    const source = markerPolygonPoints("square", 0, 0, 10);
+    const offset = offsetPolygonPath(source, 3, 4, "round");
+    expect(offset.length).toBeGreaterThan(source.length);
+    for (let i = 0; i < offset.length; i += 2) {
+      expect(Math.hypot(offset[i], offset[i + 1])).toBeGreaterThan(10);
+    }
   });
 });
 

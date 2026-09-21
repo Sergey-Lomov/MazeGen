@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerData } from "./types";
-import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 
 export class WaypointsRenderer {
   private readonly g: Graphics;
@@ -24,11 +24,7 @@ export class WaypointsRenderer {
       if (gapWidth > 0) {
         drawMarkerUnderlay(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, borderWidth + gapWidth, m.gapColor ?? m.color);
       }
-      drawMarkerShape(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded);
-      this.g.fill(m.color);
-      if (borderWidth > 0) {
-        this.g.stroke({ color: m.borderColor ?? m.color, width: borderWidth, alignment: 0 });
-      }
+      drawMarkerWithBorder(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, m.color, m.borderColor ?? m.color, borderWidth);
     }
   }
 

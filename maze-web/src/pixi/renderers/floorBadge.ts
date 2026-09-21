@@ -3,7 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../tessellationGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
-import { drawMarkerShape } from "./markerShapes";
+import { drawMarkerWithBorder } from "./markerShapes";
 import type { MarkerShape } from "./types";
 import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
@@ -103,10 +103,8 @@ export function drawFloorBadge(
   floorNumber: number,
   opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontSize?: number; borderWidth?: number },
 ): void {
-  drawMarkerShape(g, opts?.shape ?? "circle", cx, cy, r, true);
-  g.fill(color);
   const borderWidth = opts?.borderWidth ?? FLOOR_BADGE_STROKE_WIDTH;
-  if (borderWidth > 0) g.stroke({ width: borderWidth, color: borderColor, alignment: 0 });
+  drawMarkerWithBorder(g, opts?.shape ?? "circle", cx, cy, r, true, color, borderColor, borderWidth);
   const label = makeCenteredLabel(
     opts?.labelText ?? `${floorNumber}`,
     msdfFontFamily("bold"),

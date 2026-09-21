@@ -2,6 +2,10 @@ import type { Graphics } from "pixi.js";
 import type { MarkerShape } from "./types";
 
 type RegularShape = "triangle" | "square" | "diamond" | "pentagon" | "hexagon";
+type Point = [number, number];
+type MarkerColor = number | { color: number; alpha?: number };
+
+const offsetPolygonCache = new Map<string, number[]>();
 
 /** `sides`/`rotation` for `roundPoly` and `markerPolygonPoints`, shared so a rounded and sharp
  *  draw of the same shape share the exact same vertex layout. */
@@ -74,6 +78,93 @@ export function markerPolygonPoints(shape: Exclude<MarkerShape, "circle">, cx: n
   return points;
 }
 
+function polygonSignedArea(points: number[]): number {
+  let area = 0;
+  const n = points.length / 2;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += points[i * 2] * points[j * 2 + 1] - points[j * 2] * points[i * 2 + 1];
+  }
+  return area / 2;
+}
+
+function lineIntersection(a: Point, b: Point, c: Point, d: Point): Point | null {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const cdx = d[0] - c[0];
+  const cdy = d[1] - c[1];
+  const denominator = abx * cdy - aby * cdx;
+  if (Math.abs(denominator) < 1e-8) return null;
+  const t = ((c[0] - a[0]) * cdy - (c[1] - a[1]) * cdx) / denominator;
+  return [a[0] + abx * t, a[1] + aby * t];
+}
+
+type OffsetJoin = "miter" | "bevel" | "round";
+
+/** Returns a closed offset path. Straight output edges are parallel to their source edges and
+ * exactly `distance` away. A limited miter becomes a real bevel/round join rather than a clipped
+ * vertex, which would make adjacent edges leave the requested offset. */
+export function offsetPolygonPath(
+  points: number[], distance: number, miterLimit = 4, join: OffsetJoin = "miter",
+  roundCorner?: (index: number) => boolean,
+): number[] {
+  if (distance <= 0 || points.length < 6) return [...points];
+  const n = points.length / 2;
+  const outwardSign = polygonSignedArea(points) >= 0 ? 1 : -1;
+  const at = (i: number): Point => {
+    const index = ((i % n) + n) % n;
+    return [points[index * 2], points[index * 2 + 1]];
+  };
+  const offsetLine = (from: Point, to: Point): [Point, Point] => {
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = outwardSign * dy / length * distance;
+    const ny = outwardSign * -dx / length * distance;
+    return [[from[0] + nx, from[1] + ny], [to[0] + nx, to[1] + ny]];
+  };
+
+  const result: number[] = [];
+  const push = (point: Point): void => { result.push(point[0], point[1]); };
+  const appendRoundJoin = (vertex: Point, from: Point, to: Point): void => {
+    const fromAngle = Math.atan2(from[1] - vertex[1], from[0] - vertex[0]);
+    const toAngle = Math.atan2(to[1] - vertex[1], to[0] - vertex[0]);
+    let delta = ((toAngle - fromAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
+    const outwardX = from[0] + to[0] - 2 * vertex[0];
+    const outwardY = from[1] + to[1] - 2 * vertex[1];
+    const midpoint = fromAngle + delta / 2;
+    if (Math.cos(midpoint) * outwardX + Math.sin(midpoint) * outwardY < 0) delta += delta >= 0 ? -2 * Math.PI : 2 * Math.PI;
+    const steps = Math.max(1, Math.ceil(Math.abs(delta) * distance / 2));
+    for (let step = 0; step <= steps; step++) {
+      const angle = fromAngle + delta * step / steps;
+      push([vertex[0] + Math.cos(angle) * distance, vertex[1] + Math.sin(angle) * distance]);
+    }
+  };
+  for (let i = 0; i < n; i++) {
+    const prev = at(i - 1);
+    const vertex = at(i);
+    const next = at(i + 1);
+    const previousLine = offsetLine(prev, vertex);
+    const nextLine = offsetLine(vertex, next);
+    const intersection = lineIntersection(previousLine[0], previousLine[1], nextLine[0], nextLine[1]);
+    const point = intersection ?? nextLine[0];
+    const dx = point[0] - vertex[0];
+    const dy = point[1] - vertex[1];
+    const maxMiter = Math.max(distance * miterLimit, distance);
+    const length = Math.hypot(dx, dy);
+    const useRound = join === "round" && (!roundCorner || roundCorner(i));
+    if (useRound) appendRoundJoin(vertex, previousLine[1], nextLine[0]);
+    else if (intersection && length <= maxMiter) push(point);
+    else { push(previousLine[1]); push(nextLine[0]); }
+  }
+  return result;
+}
+
+/** Compatibility helper for callers/tests that need the ordinary miter/bevel path. */
+export function offsetPolygonPoints(points: number[], distance: number, miterLimit = 4): number[] {
+  return offsetPolygonPath(points, distance, miterLimit, "miter");
+}
+
 /** Circle outline used for filled markers. PixiJS `Graphics.circle()` triangulates a circle as a
  *  centre fan; with antialiasing, a fan edge can become a zoom-dependent radial seam when another
  *  Graphics is visible underneath it. A closed polygon avoids that centre-to-edge seam while
@@ -126,7 +217,52 @@ export function drawMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy:
   g.poly(points);
 }
 
-/** Draws an underlay (gap ring / widen patch / floor-badge ring) that reads as the marker's own
+function drawOffsetMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy: number, r: number, distance: number, rounded: boolean): void {
+  if (shape === "circle") {
+    g.poly(circlePolygonPoints(cx, cy, r + distance), true);
+    return;
+  }
+  // Rounded and sharp contours have different joins; keeping that in the key avoids a sharp
+  // contour cached by a gap pass being reused for a rounded border (or vice versa).
+  const cacheKey = `${shape}:${r}:${distance}:${rounded ? "round" : "miter"}`;
+  let normalized = offsetPolygonCache.get(cacheKey);
+  if (!normalized) {
+    normalized = offsetPolygonPath(
+      markerPolygonPoints(shape, 0, 0, r), distance, 4,
+      rounded ? "round" : "miter",
+      shape === "star" ? (i) => i % 2 === 0 : undefined,
+    );
+    if (offsetPolygonCache.size >= 512) offsetPolygonCache.delete(offsetPolygonCache.keys().next().value!);
+    offsetPolygonCache.set(cacheKey, normalized);
+  }
+  const points = normalized.map((value, i) => value + (i % 2 === 0 ? cx : cy));
+  g.poly(points, true);
+}
+
+/** Draws a framed marker without Pixi's GPU stroke tessellation. The outer contour is a geometric
+ * offset of the inner contour, then the inner fill is placed on top; this avoids both Pixi stroke
+ * seams (PixiJS v8 issue #9831) and scale-based corner thickening. */
+export function drawMarkerWithBorder(
+  g: Graphics,
+  shape: MarkerShape,
+  cx: number,
+  cy: number,
+  r: number,
+  rounded: boolean,
+  fillColor: MarkerColor,
+  borderColor: MarkerColor,
+  borderWidth: number,
+): void {
+  if (borderWidth > 0) {
+    drawOffsetMarkerShape(g, shape, cx, cy, r, borderWidth, rounded);
+    g.fill(borderColor);
+  }
+  drawMarkerShape(g, shape, cx, cy, r, rounded);
+  g.fill(fillColor);
+}
+
+/* Historical rationale for the underlay offset (the implementation below no longer uses the
+ * old stroke-based approach):
  *  silhouette pushed outward by `outset` pixels — a true outward offset, not a uniform rescale
  *  (GitHub issue #552 second follow-up). Recomputing the polygon at `baseRadius + outset` and
  *  scaling the corner-rounding radius by the same additive amount (tried first, reverted) still
@@ -153,18 +289,16 @@ export function drawMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy:
  *  `rounded` — a sharp underlay's own corners still need a rounded *offset* arc to stay a true
  *  outward offset; the marker's own sharp corners are unaffected since this only affects the
  *  underlay path. */
+/** Draws an underlay as a filled geometric offset. Straight edges stay parallel; joins are
+ * miter-limited and rounded where the marker uses rounded corners, avoiding Pixi stroke seams. */
 export function drawMarkerUnderlay(g: Graphics, shape: MarkerShape, cx: number, cy: number, baseRadius: number, rounded: boolean, outset: number, color: number | { color: number; alpha?: number }): void {
   // `{ color, alpha: undefined }` is NOT the same as omitting `alpha` — pixi's `fill`/`stroke`
   // resolve it to `NaN`, not their own `1` default, silently making the whole draw invisible
   // (GitHub issue #552 fourth follow-up). Only include `alpha` in the style object when the caller
   // actually passed one.
   const fillStyle = typeof color === "number" ? { color } : color.alpha === undefined ? { color: color.color } : { color: color.color, alpha: color.alpha };
-  drawMarkerShape(g, shape, cx, cy, baseRadius, rounded);
+  drawOffsetMarkerShape(g, shape, cx, cy, baseRadius, Math.max(outset, 0), rounded);
   g.fill(fillStyle);
-  if (outset > 0) {
-    drawMarkerShape(g, shape, cx, cy, baseRadius, rounded);
-    g.stroke({ ...fillStyle, width: outset, alignment: 0, join: "round" });
-  }
 }
 
 /** Rounds every corner of a closed polygon (flat `[x0, y0, x1, y1, ...]` vertex list) via
@@ -261,4 +395,30 @@ export function drawRoundedPolygon(g: Graphics, points: number[], radius: number
     g.arcTo(cx, cy, nx, ny, polygonCornerRadius(points, i, radius, roundCorner));
   }
   g.closePath();
+}
+
+/** Draws a rounded rectangle as one closed path. PixiJS `roundRect()` uses the same
+ * fan-based rounded-shape tessellation as `roundPoly()`; at some zooms its antialiased
+ * joins can expose a hairline against an underlay. Keeping this path-based also makes
+ * framed badges use the same seam-free geometry as the other marker shapes. */
+export function drawRoundedRect(g: Graphics, x: number, y: number, width: number, height: number, radius: number): void {
+  const r = Math.min(Math.max(radius, 0), Math.min(Math.abs(width), Math.abs(height)) / 2);
+  if (width < 0 || height < 0) {
+    g.rect(x, y, width, height);
+    return;
+  }
+  if (r === 0) {
+    g.rect(x, y, width, height);
+    return;
+  }
+  g.moveTo(x + r, y)
+    .lineTo(x + width - r, y)
+    .arcTo(x + width, y, x + width, y + r, r)
+    .lineTo(x + width, y + height - r)
+    .arcTo(x + width, y + height, x + width - r, y + height, r)
+    .lineTo(x + r, y + height)
+    .arcTo(x, y + height, x, y + height - r, r)
+    .lineTo(x, y + r)
+    .arcTo(x, y, x + r, y, r)
+    .closePath();
 }

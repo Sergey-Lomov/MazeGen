@@ -1,7 +1,7 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { clipDistance } from "./teleportGeometry";
 
 /** Dimmed while-placing look for a teleport whose first endpoint is fixed: the endpoint marker at
@@ -49,10 +49,15 @@ export function drawTeleportPreview(
   if (style.edgeGapWidth > 0) {
     drawMarkerUnderlay(g, style.shape, originX, originY, r, rounded, style.borderWidth + style.edgeGapWidth, { color: style.floorColor, alpha: 0.5 });
   }
-  drawMarkerShape(g, style.shape, originX, originY, r, rounded);
-  g.fill({ color: style.edgeColor, alpha: 0.5 });
-  if (style.borderWidth > 0) {
-    drawMarkerShape(g, style.shape, originX, originY, r, rounded);
-    g.stroke({ width: style.borderWidth, color: style.edgeBorderColor, alpha: 0.5, alignment: 0 });
-  }
+  drawMarkerWithBorder(
+    g,
+    style.shape,
+    originX,
+    originY,
+    r,
+    rounded,
+    { color: style.edgeColor, alpha: 0.5 },
+    { color: style.edgeBorderColor, alpha: 0.5 },
+    style.borderWidth,
+  );
 }

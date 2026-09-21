@@ -583,6 +583,32 @@ describe("computeVectorByCorridorsWarnings", () => {
       expect(hasLowContrast(0xff0000, 0x0000ff)).toBe(false);
     });
 
+    it("collapses multiple close split-color pairs into one warning", () => {
+      const nodes = [
+        n(0, 0, 0), n(1, 0, 0), n(2, 0, 0),
+        n(3, 1, 0), n(4, -1, 0), n(5, 0, 1),
+      ];
+      const edges = [e(0, 3), e(3, 0), e(1, 4), e(4, 1), e(2, 5), e(5, 2)];
+      const settings = baseCorridorsSettings({ splitNodeColors: [0x101010, 0x111111, 0x121212] });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+
+      expect(warnings.filter((w) => w.id === "split_colors_low_contrast_each_other")).toHaveLength(1);
+    });
+
+    it("does not compare the same default slot color across split points", () => {
+      const nodes = [
+        n(0, 0, 0), n(1, 0, 0), n(2, 1, 0), n(3, -1, 0),
+        n(4, 5, 5), n(5, 5, 5), n(6, 6, 5), n(7, 4, 5),
+      ];
+      const edges = [
+        e(0, 2), e(2, 0), e(1, 3), e(3, 1),
+        e(4, 6), e(6, 4), e(5, 7), e(7, 5),
+      ];
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, baseCorridorsSettings(), null, null);
+
+      expect(warnings.filter((w) => w.id === "split_colors_low_contrast_each_other")).toHaveLength(0);
+    });
+
     it("flags corridor and one-way colors only when a drawable corridor exists", () => {
       const nodes = [n(0, 0, 0), n(1, 1, 0)];
       const settings = baseCorridorsSettings({ color: 0, oneWayColor: 0, background: 0 });
