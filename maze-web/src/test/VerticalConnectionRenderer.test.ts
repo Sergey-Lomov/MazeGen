@@ -199,15 +199,14 @@ describe("VerticalConnectionRenderer", () => {
     });
 
     const polyCalls = g.calls.filter((c) => c.method === "poly");
-    // Gap ring draws its own path twice (`drawMarkerUnderlay`'s fill + outward stroke), then the
-    // marker's own shape is drawn again separately for its fill and its border stroke — 4 total.
-    expect(polyCalls).toHaveLength(4);
+    // Gap ring, outer border silhouette, and marker fill — 3 total; no GPU strokes are used.
+    expect(polyCalls).toHaveLength(3);
     const gapBaseRadius = polygonRadius(polyCalls[0].args, 0, 0);
     const markerRadius = polygonRadius(polyCalls[2].args, 0, 0);
     // The marker's own fill radius, not `radius + borderWidth` — a single true outward offset from
     // here, not a shape redrawn at a bigger radius first.
-    expect(gapBaseRadius).toBe(markerRadius);
-    expect(g.strokeCalls[0]).toMatchObject({ width: 4 + 3, alignment: 0 });
+    expect(gapBaseRadius).toBeCloseTo(markerRadius + 4 + 3);
+    expect(g.strokeCalls).toHaveLength(0);
     expect(g.fillCalls[0]).toMatchObject({ color: 0x999999 });
   });
 
@@ -791,7 +790,7 @@ describe("VerticalConnectionRenderer", () => {
 
     const departure = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: true });
     render(renderer, { markers: [departure], style });
-    expect(g.strokeCalls.at(-1)?.color).toBe(0x2a2a2a);
+    expect(g.fillCalls[0]).toBe(0x2a2a2a);
     expect(g.fillCalls.at(-1)).toBe(0x555555);
 
     g.calls.length = 0;
@@ -799,7 +798,7 @@ describe("VerticalConnectionRenderer", () => {
     g.fillCalls.length = 0;
     const arrival = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: false });
     render(renderer, { markers: [arrival], style });
-    expect(g.strokeCalls.at(-1)?.color).toBe(0x2a2a2a);
+    expect(g.fillCalls[0]).toBe(0x2a2a2a);
     expect(g.fillCalls.at(-1)).toBe(0x2a2a2a);
   });
 

@@ -315,20 +315,17 @@ describe("TeleportRenderer.render draw order", () => {
     renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
-    // `drawGroupGaps` draws both points' gap rings first, then `drawGroupPoints` draws both points'
-    // fill pass and border pass. `drawMarkerUnderlay` and `drawMarker` each draw their shape twice
-    // (once for fill, once for the outward stroke): 2 gap points x 2 + 2 marker points x 2 = 8.
+    // `drawGroupGaps` draws both points' gap rings first, then `drawGroupPoints` draws each point's
+    // outer border silhouette and inner fill: 2 gap points + 2 marker points x 2 = 6.
     const polyCalls = g.calls.filter((c) => c.fn === "poly");
     const fillCalls = g.calls.filter((c) => c.fn === "fill");
-    expect(polyCalls).toHaveLength(8);
-    // The gap underlay and marker use the same base path; the gap's extra size is in its outward
-    // stroke, not in a second polygon drawn at a larger radius.
+    expect(polyCalls).toHaveLength(6);
     const polygonRadius = (call: { args: unknown[] }, cx: number, cy: number): number => {
       const points = call.args[0] as number[];
       return Math.max(...Array.from({ length: points.length / 2 }, (_, i) =>
         Math.hypot(points[i * 2] - cx, points[i * 2 + 1] - cy)));
     };
-    expect(polygonRadius(polyCalls[0], 0, 0)).toBeCloseTo(polygonRadius(polyCalls[4], 0, 0));
+    expect(polygonRadius(polyCalls[0], 0, 0)).toBeGreaterThan(polygonRadius(polyCalls[2], 0, 0));
     // First fill call is the gap ring's own floor-colored fill, before any marker fill.
     expect((fillCalls[0].args[0] as { color: number }).color).toBe(0x444);
   });
@@ -356,7 +353,7 @@ describe("TeleportRenderer.render draw order", () => {
     // polygon calls; two independent groups (no shared points) = 16 total, in two contiguous
     // group-sized blocks.
     const polyCalls = g.calls.filter((c) => c.fn === "poly");
-    expect(polyCalls).toHaveLength(16);
+    expect(polyCalls).toHaveLength(12);
     const centerX = (call: { args: unknown[] }): number => {
       const points = call.args[0] as number[];
       let sum = 0;
@@ -587,20 +584,14 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     thin.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1 }) });
     const thick = new TeleportRenderer(new Container());
     thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 8 }) });
-    // `connectorStyle: "straight"` (needed so the cross-floor badge draws at all, GitHub issue
-    // #519) also strokes the connector line itself at `connectorWidth` (3), and the badge's own gap
-    // ring always draws an outward-offset stroke of width `borderWidth + max(edgeGapWidth, 1)`
-    // (`drawMarkerUnderlay`, GitHub issue #552 second, eighth and ninth follow-up) — both excluded
-    // here (by their own known widths, `borderWidth + 1`) since this test only cares about the
-    // marker/badge border strokes, which are the only strokes left at exactly `borderWidth`.
+    // `connectorStyle: "straight"` still strokes the connector line itself; marker and badge
+    // borders are filled silhouettes and therefore do not add GPU strokes.
     const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>, borderWidth: number) => {
       const g = (r as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
       return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3 && w !== borderWidth + 1);
     };
-    // Both the origin marker and the badge stroke at the edge marker's own borderWidth.
-    expect(strokeWidthsOf(thin, 1).every((w) => w === 1)).toBe(true);
-    expect(strokeWidthsOf(thick, 8).every((w) => w === 8)).toBe(true);
-    expect(strokeWidthsOf(thick, 8).length).toBeGreaterThanOrEqual(1);
+    expect(strokeWidthsOf(thin, 1)).toHaveLength(0);
+    expect(strokeWidthsOf(thick, 8)).toHaveLength(0);
   });
 
   // GitHub issue #485 follow-up item 3: textPadding 0 fits the label to the whole badge including
@@ -638,10 +629,10 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // No round badge/ring at the badge point — it's a square now.
     expect(g.calls.some((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10)).toBe(false);
-    // Rounded-polygon path (moveTo + arcTo per corner + closePath) ran for both the gap ring and
-    // the body — a 4-gon is 4 arcTo each, so >= 8 total, and >= 2 closePath.
-    expect(g.calls.filter((c) => c.fn === "arcTo").length).toBeGreaterThanOrEqual(8);
-    expect(g.calls.filter((c) => c.fn === "closePath").length).toBeGreaterThanOrEqual(2);
+    // The inner body keeps its rounded path; the outer gap is now an explicit offset polygon, so
+    // it intentionally uses `poly` instead of a GPU stroke/arc path.
+    expect(g.calls.filter((c) => c.fn === "arcTo").length).toBeGreaterThanOrEqual(4);
+    expect(g.calls.filter((c) => c.fn === "poly").length).toBeGreaterThanOrEqual(1);
   });
 });
 

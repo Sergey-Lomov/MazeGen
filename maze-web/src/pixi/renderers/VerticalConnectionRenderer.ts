@@ -1,7 +1,7 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
-import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
@@ -557,10 +557,6 @@ export class VerticalConnectionRenderer {
       const borderWidth = settings.borderWidth ?? 0;
       const gapWidth = settings.gapWidth ?? 0;
 
-      const drawShape = (r: number) => {
-        drawMarkerShape(this.g, settings.shape, cx, cy, r, rounded);
-      };
-
       // A one-way `VerticalPassage`'s two ends (`filled: false`, GitHub issue #337/#347/fourth-fifth
       // follow-up redesign, sixth follow-up swapped which end gets which treatment — see below) now
       // read as a *tinted* variant of the two-way/elevator look instead of an empty outline-only
@@ -585,12 +581,7 @@ export class VerticalConnectionRenderer {
       if (gapWidth > 0) {
         drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor);
       }
-      drawShape(radius);
-      this.g.fill(fillColor);
-      if (borderWidth > 0) {
-        drawShape(radius);
-        this.g.stroke({ color: borderColor, width: borderWidth, alignment: 0 });
-      }
+      drawMarkerWithBorder(this.g, settings.shape, cx, cy, radius, rounded, fillColor, borderColor, borderWidth);
 
       if (marker.direction) {
         // `"both"` (Elevator fan reaching floors on both sides of the active one, GitHub issue

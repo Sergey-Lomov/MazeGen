@@ -3,7 +3,7 @@ import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./t
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerShape, drawMarkerUnderlay, markerBoundingHalfExtent } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
@@ -472,30 +472,19 @@ export class TeleportRenderer {
   ): void {
     const rounded = cornerStyle === "round";
     if (mixed) {
-      drawMarkerShape(g, shape, cx, cy, r, rounded);
-      g.fill(floorColor);
-      drawMarkerShape(g, shape, cx, cy, r, rounded);
-      g.stroke({ width: borderWidth, color: borderColor, alignment: 0 });
+      drawMarkerWithBorder(g, shape, cx, cy, r, rounded, floorColor, borderColor, borderWidth);
 
-      // The filled half is drawn at a slightly larger size than the outline (`r` grown by half the
-      // border width) so it reaches under the border stroke all the way around instead of butting
-      // exactly against its inner edge — same shape, same diagonal cut, just scaled up as a whole.
-      // The mask is built from the *same* corner-to-corner formula at the *enlarged* half-extent,
-      // not the outline's own `half` — that keeps the cut exactly on the enlarged shape's own true
-      // diagonal, at the same relative position a same-size mask would put it on a same-size shape,
-      // instead of cutting a bigger shape with a smaller shape's diagonal (which either skews the
-      // cut or leaves the enlarged shape poking out past the border, depending on which corners get
-      // moved — both tried and rejected in earlier versions).
-      const bleed = borderWidth / 2;
-      const bigHalf = markerBoundingHalfExtent(shape, r + bleed);
+      // Keep the half-fill at the marker's actual contour. Growing it by scale made the diagonal
+      // half inherit the same non-uniform corner thickness as the old frame implementation.
+      const half = markerBoundingHalfExtent(shape, r);
       const mask = new Graphics()
-        .moveTo(cx - bigHalf, cy - bigHalf)
-        .lineTo(cx + bigHalf, cy - bigHalf)
-        .lineTo(cx - bigHalf, cy + bigHalf)
+        .moveTo(cx - half, cy - half)
+        .lineTo(cx + half, cy - half)
+        .lineTo(cx - half, cy + half)
         .closePath()
         .fill(0xffffff);
       const halfFillView = new Graphics();
-      drawMarkerShape(halfFillView, shape, cx, cy, r + bleed, rounded);
+      drawMarkerShape(halfFillView, shape, cx, cy, r, rounded);
       halfFillView.fill(color);
       halfFillView.mask = mask;
       overlay.addChild(mask);
@@ -506,13 +495,7 @@ export class TeleportRenderer {
     // Fill color depends on `filled` (own color) vs. empty (floor color, so it occludes whatever
     // sits under it — GitHub issue #293 follow-up) — the border is always drawn in `borderColor` on
     // top, regardless of fill state.
-    drawMarkerShape(g, shape, cx, cy, r, rounded);
-    g.fill(filled ? color : floorColor);
-    // `alignment: 0` is pixi's outer alignment — the border grows entirely outward from `r`, so
-    // both an empty and a filled marker share the same `r` fill/inner-border edge; the border
-    // itself extends the marker's true visual footprint to `r + borderWidth` either way.
-    drawMarkerShape(g, shape, cx, cy, r, rounded);
-    g.stroke({ width: borderWidth, color: borderColor, alignment: 0 });
+    drawMarkerWithBorder(g, shape, cx, cy, r, rounded, filled ? color : floorColor, borderColor, borderWidth);
   }
 
   /** Wires click-to-select (`pointertap`) on `view` as a whole, resolving which group a click

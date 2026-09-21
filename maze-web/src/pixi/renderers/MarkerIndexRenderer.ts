@@ -3,6 +3,7 @@ import type { MarkerIndexSettings } from "../../store/imageExportTypes";
 import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
 import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
+import { drawRoundedRect } from "./markerShapes";
 
 /** Fraction of the plate's height the label text occupies (the rest is vertical padding). Chosen
  *  so the tallest glyphs ("VIII", "W") clear the plate edges with a small margin. */
@@ -111,8 +112,8 @@ export class MarkerIndexRenderer {
       const outset = gap + (borderWidth > 0 ? borderWidth / 2 : 0);
       for (const b of boxes) {
         const g = new Graphics();
-        g.roundRect(b.x - outset, b.y - outset, b.w + 2 * outset, b.h + 2 * outset, b.cornerRadius + outset)
-          .fill(floorColor);
+        drawRoundedRect(g, b.x - outset, b.y - outset, b.w + 2 * outset, b.h + 2 * outset, b.cornerRadius + outset);
+        g.fill(floorColor);
         this.gapLayer.addChild(g);
       }
     }
@@ -121,8 +122,12 @@ export class MarkerIndexRenderer {
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
       const g = new Graphics();
-      g.roundRect(b.x, b.y, b.w, b.h, b.cornerRadius).fill(style.fillColor);
-      if (borderWidth > 0) g.stroke({ color: b.borderColor, width: borderWidth });
+      if (borderWidth > 0) {
+        drawRoundedRect(g, b.x - borderWidth / 2, b.y - borderWidth / 2, b.w + borderWidth, b.h + borderWidth, b.cornerRadius + borderWidth / 2);
+        g.fill(b.borderColor);
+      }
+      drawRoundedRect(g, b.x, b.y, b.w, b.h, b.cornerRadius);
+      g.fill(style.fillColor);
       this.bodyLayer.addChild(g);
 
       const text = makeCenteredLabel(labels[i].label, fontFamily, fontSize, style.textColor);

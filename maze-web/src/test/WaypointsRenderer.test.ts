@@ -39,12 +39,14 @@ describe("WaypointsRenderer.render", () => {
     expect(calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
   });
 
-  it("a border draws with alignment: 0 (pixi's outer alignment), so the marker's own radius never shrinks", () => {
+  it("a border is rendered as an outer silhouette plus the marker fill, without a GPU stroke", () => {
     const renderer = new WaypointsRenderer(new Container());
     const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, borderColor: 0x222, borderWidth: 4 };
     renderer.render({ markers: [marker] });
-    const [strokeCall] = g(renderer).calls.filter((c) => c.fn === "stroke");
-    expect(strokeCall.args[0]).toMatchObject({ color: 0x222, width: 4, alignment: 0 });
+    const calls = g(renderer).calls;
+    expect(calls.filter((c) => c.fn === "poly")).toHaveLength(2);
+    expect(calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
+    expect(calls.filter((c) => c.fn === "fill").map((c) => c.args[0])).toEqual([0x222, 0x111]);
   });
 
   it("gapWidth > 0 draws a floor-colored gap ring first, as the marker's own outline pushed outward by borderWidth + gapWidth (GitHub issue #302, geometry corrected by #552 second and ninth follow-up)", () => {
@@ -63,12 +65,12 @@ describe("WaypointsRenderer.render", () => {
       Math.hypot(gapPoints[i * 2] - 5, gapPoints[i * 2 + 1] - 5)));
     // The gap is an outward stroke from the marker's fill path, not a polygon redrawn at a larger
     // radius; its visible extra width is checked through the stroke call below.
-    expect(gapBaseRadius).toBeCloseTo(10);
+    expect(gapBaseRadius).toBeCloseTo(17);
     const strokeCalls = calls.filter((c) => c.fn === "stroke");
     // Gap ring's outward-offset stroke (width = borderWidth + gapWidth = 7) drawn before the
     // marker's own border stroke — the marker's own border (width 4) then covers the ring's inner
     // 4px band, leaving only the outer 3px (gapWidth) band visible.
-    expect(strokeCalls[0].args[0]).toMatchObject({ width: 7, alignment: 0 });
+    expect(strokeCalls).toHaveLength(0);
     const fillCalls = calls.filter((c) => c.fn === "fill");
     expect((fillCalls[0].args[0] as { color: number }).color).toBe(0x333);
   });
