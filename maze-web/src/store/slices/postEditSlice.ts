@@ -184,10 +184,19 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // matches — every second flip fell through to the "fresh" branch below and minted a brand-new
       // id instead of reusing the existing one, duplicating the entity on every other click.
       if (wasOneWay) {
-        // Flip: reuses the existing side's id — same entity, new direction.
+        // Flip: reuses the existing side's id — same entity, new direction. Swap which side is
+        // `one_way_forward`/`wall` relative to whichever side CURRENTLY carries it, not always
+        // toward `bToA` — otherwise every flip after the first re-set the same `bToA` side and
+        // never actually toggled the direction (GitHub issue #575).
+        const aToBIsOneWay = curAToB === "one_way_forward" || curAToB === "one_way_backward";
         const id = oldAToBId ?? oldBToAId ?? mintOneWayId();
-        aToB = { kind: "wall", from: from_, to: to_ };
-        bToA = { kind: "one_way_forward", from: to_, to: from_, id };
+        if (aToBIsOneWay) {
+          aToB = { kind: "wall", from: from_, to: to_ };
+          bToA = { kind: "one_way_forward", from: to_, to: from_, id };
+        } else {
+          aToB = { kind: "one_way_forward", from: from_, to: to_, id };
+          bToA = { kind: "wall", from: to_, to: from_ };
+        }
       } else {
         // Fresh one-way from wall/passage: mints a new id, destroys whatever one-way (if any) used
         // to occupy either side (a `basic` two-way passage has no one-way id to destroy on either

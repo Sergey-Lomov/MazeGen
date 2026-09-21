@@ -231,16 +231,15 @@ describe("mazeStore post-edit actions", () => {
       replacedOneWayIds: undefined,
     });
 
-    // Third click flips it again. The flip branch always normalizes its result to `bToA:
-    // one_way_forward` regardless of which side was one-way going in - the old `curAToB ===
-    // "one_way_forward" || curBToA === "one_way_backward"` check never recognized "already one-way
-    // via bToA: one_way_forward" (only via `aToB: forward` or `bToA: backward`), so this third click
-    // fell through to the "fresh" branch and minted a brand-new id instead of reusing "o1",
-    // duplicating the entity. Must still be the SAME id, still flagged `directionFlip: true`, never
-    // a fresh mint.
+    // Third click flips it again - must swap back to `aToB: one_way_forward`, not re-emit the same
+    // `bToA: one_way_forward` the second click already produced (GitHub issue #575: the flip branch
+    // used to always normalize its result to `bToA: one_way_forward` regardless of which side was
+    // one-way going in, so every flip after the first was a no-op on the actual edge state while
+    // still appending a new command). Must still be the SAME id, still flagged `directionFlip: true`,
+    // never a fresh mint.
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands[2]).toEqual({
-      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"), directionFlip: true,
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
       replacedOneWayIds: undefined,
     });
     expect(useMazeStore.getState()._nextPostEditOneWayId).toBe(2);
