@@ -7,7 +7,7 @@ import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
 import { HoverIconButton } from "./HoverIconButton";
 import { colorToHex, colorToOklch, oklchToColor, oklchMaxChroma, OKLCH_MAX_CHROMA, type Oklch } from "./colorFormat";
-import { ui, spacing, font } from "../styles/theme";
+import { ui, spacing, font, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
 type ToolType = "complementary" | "triadic" | "split_complementary" | "tetradic" | "divergence" | "range_split";
@@ -421,7 +421,7 @@ export function ToolsSection({ seedColor, workingColor, onPick }: {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  body: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  body: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   rebuildButton: { width: "100%", boxSizing: "border-box" as const, marginTop: spacing.itemGap },
   swatchRow: { display: "flex", gap: spacing.itemGap, flexWrap: "wrap" },
   analogousRows: { display: "flex", flexDirection: "column", gap: spacing.itemGap },

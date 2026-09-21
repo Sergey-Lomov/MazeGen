@@ -5,7 +5,7 @@ import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { SectionHeader } from "./SectionHeader";
 import { ColorEyedropperOverlay } from "./ColorEyedropperOverlay";
-import { ui, radius, typography, spacing, font, controlRowHeight } from "../styles/theme";
+import { ui, radius, typography, spacing, font, controlRowHeight, indent } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
@@ -13,7 +13,11 @@ import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
-import { selectActiveProfileColors, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
+import { overrideActiveProfileColor, selectActiveProfileColors, PC, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
+import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
+import type { ExportWarningColorRole } from "../pixi/selectors/exportWarnings";
+import { ExportWarningBubble } from "./features/ExportWarningBubble";
+import { resolveExportWarningsSectionTitle } from "./features/exportWarningsI18n";
 import type { MazeState } from "../store/storeTypes";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -21,6 +25,31 @@ import type React from "react";
 /** Color models the picker can drive. `rgb` ships in #500, `hsl` in #501, `oklch` in #502; later
  *  sub-issues add more. */
 type ColorModel = "rgb" | "hsl" | "oklch";
+
+function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
+  const roles: [ExportWarningColorRole, string][] = [
+    ["background", PC.bgFill.name()], ["grid", PC.bgGrid.name()], ["corridor", PC.corridorFill.name()],
+    ["floor", PC.tilesFloor.name()], ["wall", PC.tilesWall.name()], ["one_way", PC.oneWaysMarker.name()],
+    ["marker_fill", PC.startFill.name()], ["marker_fill", PC.finishFill.name()],
+    ["marker_border", PC.startBorder.name()], ["marker_border", PC.finishBorder.name()],
+    ["teleport_connector", PC.teleportConnector.name()],
+    ["teleport_badge_fill", PC.teleportBadgeFill.name()], ["teleport_badge_border", PC.teleportBadgeBorder.name()],
+    ["teleport_badge_text", PC.teleportBadgeText.name()], ["vertical_two_way_fill", PC.twoWayFill.name()],
+    ["vertical_two_way_border", PC.twoWayBorder.name()], ["vertical_two_way_arrow", PC.twoWayArrow.name()],
+    ["vertical_one_way_fill", PC.oneWayFill.name()], ["vertical_one_way_accent", PC.oneWayAccent.name()],
+    ["vertical_one_way_arrow", PC.oneWayArrow.name()], ["elevator_fill", PC.elevatorFill.name()],
+    ["elevator_border", PC.elevatorBorder.name()], ["elevator_arrow", PC.elevatorArrow.name()],
+    ["elevator_badge_fill", PC.elevatorBadgeFill.name()], ["label_text", PC.markerIndexText.name()],
+    ["label_background", PC.markerIndexFill.name()],
+    ["vertical_two_way_line", PC.decorLineTwoWay.name()], ["vertical_one_way_line", PC.decorLineOneWay.name()],
+    ["elevator_line", PC.decorLineElevator.name()], ["vertical_two_way_arrow", PC.decorArrowTwoWay.name()],
+    ["vertical_one_way_accent", PC.decorAccentOneWay.name()],
+  ];
+  const direct = roles.find(([, name]) => name === fieldName);
+  if (direct) return direct[0];
+  if (fieldName.startsWith(`${m["image_export.vector_by_walls.section_splits"]}:`)) return "split";
+  return null;
+}
 
 const MODELS: { key: ColorModel; label: () => string }[] = [
   { key: "rgb", label: () => m["color_picker.model.rgb"]() },
@@ -73,6 +102,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
   const [showAllProjectColors, setShowAllProjectColors] = useState(false);
+  const [colorWarningsExpanded, setColorWarningsExpanded] = useState(false);
   // Canvas eyedropper (GitHub issue #507) — sampling mode is purely local UI state; the actual
   // pixel read goes through `colorSampleBridge.ts` (the panel has no scene access of its own).
   const [sampling, setSampling] = useState(false);
@@ -87,6 +117,10 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
   const nodes = useMazeStore((s: MazeState) => s.nodes);
   const edges = useMazeStore((s: MazeState) => s.edges);
   const floors = useMazeStore((s: MazeState) => s.floors);
+  const showColorWarnings = useMazeStore((s: MazeState) => s.showColorWarnings);
+  const cfg = useMazeStore((s: MazeState) => s.activeTessellationConfig);
+  const start = useMazeStore((s: MazeState) => s.start);
+  const finish = useMazeStore((s: MazeState) => s.finish);
   const projectColorGroups = useMemo(() => {
     const all = selectActiveProfileColors({
       openRenderModeSettings: openMode,
@@ -113,6 +147,22 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
       : priority;
     return buildProjectColorGroups(withDefault, all.filter((e) => !isSelf(e.name)));
   }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, priorityColors, defaultColor, fieldName]);
+
+  const colorWarnings = useMemo(() => {
+    if (!showColorWarnings || !fieldName || !openMode) return [];
+    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeTessellationConfig: cfg, start, finish } as MazeState;
+    const overridden = overrideActiveProfileColor(snapshot, fieldName, working);
+    if (!overridden || !cfg) return [];
+    const warnings = openMode === "vector_by_walls"
+      ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish)
+      : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish);
+    const role = colorRoleForField(fieldName);
+    return warnings.filter((warning) => {
+      if (!role || !warning.colorRoles || !warning.colorValues) return false;
+      return warning.colorRoles.some((candidate, index) => candidate === role && warning.colorValues?.[index] === working);
+    });
+  }, [showColorWarnings, fieldName, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
+
   /** The color in effect when the picker opened. Captured once — with live preview (#513) the
    *  `color` prop tracks each previewed change (the call site's `onChange` also writes the store),
    *  so it can't be used to restore on Cancel. */
@@ -280,6 +330,20 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
             </>
           )}
           <div style={styles.projectColorsDivider} />
+          {showColorWarnings && <div data-testid="color-picker-export-warnings">
+            <SectionHeader
+              label={<span className={colorWarnings.length > 0 ? "problem-section-attention" : undefined}>
+                {resolveExportWarningsSectionTitle(colorWarnings.length)}
+              </span>}
+              expanded={colorWarningsExpanded}
+              onToggle={() => setColorWarningsExpanded((expanded) => !expanded)}
+            />
+            {colorWarningsExpanded && <div style={styles.colorWarningsBlock}>
+              {colorWarnings.length === 0
+                ? <span style={styles.colorWarningsEmpty}>{m["color_picker.no_export_warnings"]()}</span>
+                : colorWarnings.map((warning) => <ExportWarningBubble key={warning.key} warning={warning} interactive={false} />)}
+            </div>}
+          </div>}
           <ToolsSection seedColor={originalColor} workingColor={working} onPick={pickProjectColor} />
           {projectColorGroups.total > 0 && (
             <div style={styles.projectColors}>
@@ -396,6 +460,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.state.selected}`,
   },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
+  colorWarningsBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree, marginTop: spacing.itemGap },
+  colorWarningsEmpty: { ...typography.body, color: ui.text.secondary },
   recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   recentColorsLabel: { fontSize: font.lg, color: ui.text.primary },
   swatchRow: { display: "flex", gap: spacing.itemGap, flexWrap: "wrap" },
@@ -404,7 +470,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `2px solid ${ui.border.strong}`, boxSizing: "border-box",
   },
   projectColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  projectColorsBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  projectColorsBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   projectColorsDivider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   showAllButton: { width: "100%", boxSizing: "border-box" as const, marginTop: spacing.itemGap },
   projectColorRow: {

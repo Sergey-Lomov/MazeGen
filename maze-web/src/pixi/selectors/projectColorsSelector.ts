@@ -404,3 +404,56 @@ export function selectActiveProfileColors(state: MazeState): ProjectColorEntry[]
   }
   return [];
 }
+
+/** Apply a picker's uncommitted color to the active export profile. This deliberately returns a
+ * cloned settings object: the color editor uses it to run export-warning rules while the user is
+ * still dragging, without changing the store until Apply. */
+export function overrideActiveProfileColor(
+  state: MazeState,
+  fieldName: string | undefined,
+  color: number,
+): VectorByWallsSettings | VectorByCorridorsSettings | null {
+  if (!fieldName) return null;
+  const source = state.openRenderModeSettings === "vector_by_walls" ? state.vectorByWallsSettings
+    : state.openRenderModeSettings === "vector_by_corridors" ? state.vectorByCorridorsSettings : null;
+  if (!source) return null;
+  const settings = structuredClone(source) as VectorByWallsSettings | VectorByCorridorsSettings;
+  const set = (field: ColorField, write: (value: number) => void) => {
+    if (field.name() === fieldName) { write(color); return true; }
+    return false;
+  };
+  const marker = (fill: ColorField, border: ColorField, value: MarkerSettings): boolean =>
+    set(fill, (v) => { value.fillColor = v; }) || set(border, (v) => { value.borderColor = v; });
+  // Decorative and abstract vertical arrows/accent share the same localized field names. Resolve
+  // the active style before the abstract fields below, otherwise a decorative edit would update a
+  // hidden abstract setting and export warnings would evaluate the wrong color.
+  if ("verticalStyle" in settings && settings.verticalStyle === "decorative") {
+    if (set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) ||
+        set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
+  }
+  if (set(PC.bgFill, (v) => { settings.background = v; }) || set(PC.bgGrid, (v) => { settings.gridColor = v; }) ||
+      set(PC.corridorFill, (v) => { if ("color" in settings) settings.color = v; }) ||
+      set(PC.tilesFloor, (v) => { if ("floorColor" in settings) settings.floorColor = v; }) ||
+      set(PC.tilesWall, (v) => { if ("wallColor" in settings) settings.wallColor = v; }) ||
+      set(PC.oneWaysMarker, (v) => { settings.oneWayColor = v; }) ||
+      marker(PC.startFill, PC.startBorder, settings.startMarker) || marker(PC.finishFill, PC.finishBorder, settings.finishMarker) ||
+      set(PC.teleportEdge, (v) => { settings.teleportEdgeColor = v; }) || set(PC.teleportEdgeBorder, (v) => { settings.teleportEdgeBorderColor = v; }) ||
+      set(PC.teleportConnector, (v) => { settings.teleportConnectorColor = v; }) ||
+      set(PC.teleportBadgeFill, (v) => { settings.teleportFloorBadge.fillColor = v; }) || set(PC.teleportBadgeBorder, (v) => { settings.teleportFloorBadge.borderColor = v; }) || set(PC.teleportBadgeText, (v) => { settings.teleportFloorBadge.textColor = v; }) ||
+      marker(PC.twoWayFill, PC.twoWayBorder, settings.twoWayPassageMarker) || set(PC.twoWayArrow, (v) => { settings.twoWayArrowColor = v; }) ||
+      marker(PC.oneWayFill, PC.oneWayFill, settings.oneWayPassageMarker) || set(PC.oneWayAccent, (v) => { settings.oneWayAccentColor = v; }) || set(PC.oneWayArrow, (v) => { settings.oneWayArrowColor = v; }) ||
+      marker(PC.elevatorFill, PC.elevatorBorder, settings.elevatorMarker) || set(PC.elevatorArrow, (v) => { settings.elevatorArrowColor = v; }) ||
+      set(PC.elevatorBadgeFill, (v) => { settings.elevatorBadges.fillColor = v; }) || set(PC.elevatorBadgeText, (v) => { settings.elevatorBadges.textColor = v; }) ||
+      set(PC.markerIndexFill, (v) => { settings.markerIndex.fillColor = v; }) || set(PC.markerIndexText, (v) => { settings.markerIndex.textColor = v; }) || set(PC.markerIndexBorder, (v) => { settings.markerIndex.borderColor = v; })) return settings;
+  for (let i = 0; i < settings.splitNodeColors.length; i++) if (set(PC.splitNode(i), (v) => { settings.splitNodeColors[i] = v; })) return settings;
+  if ("verticalStyle" in settings) {
+    if (set(PC.decorLineTwoWay, (v) => { settings.decorativeStairsTwoWay.lineColor = v; }) || set(PC.decorLineOneWay, (v) => { settings.decorativeStairsOneWay.lineColor = v; }) || set(PC.decorLineElevator, (v) => { settings.decorativeElevator.lineColor = v; }) || set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) || set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
+  }
+  const groupKeys = Object.keys(settings.teleportGroupOverrides).sort((a, b) => a.localeCompare(b));
+  for (let i = 0; i < groupKeys.length; i++) {
+    const override = settings.teleportGroupOverrides[groupKeys[i]];
+    if (override.fillColor !== undefined && set(PC.teleportGroup(i, "fill"), (v) => { override.fillColor = v; })) return settings;
+    if (override.borderColor !== undefined && set(PC.teleportGroup(i, "border"), (v) => { override.borderColor = v; })) return settings;
+  }
+  return settings;
+}

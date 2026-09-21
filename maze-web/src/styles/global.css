@@ -472,3 +472,6 @@ input[type="number"]::-webkit-inner-spin-button {
   border-color: #888;
   background: #2d2d2d;
 }
+.color-warning-no-info > div:first-child > span:last-child {
+  display: none;
+}

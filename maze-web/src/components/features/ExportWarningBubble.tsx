@@ -19,7 +19,7 @@ import { FloorBadgeRow } from "../FloorBadgeRow";
  *  component (not folded into `IssueBubble`) since `ExportWarning` is a distinct type from
  *  `IssueDto` — see `exportWarnings.ts`'s doc comment on why these are a separate concern from QC
  *  issues. */
-export function ExportWarningBubble({ warning }: { warning: ExportWarning }) {
+export function ExportWarningBubble({ warning, interactive = true }: { warning: ExportWarning; interactive?: boolean }) {
   const [open, setOpen] = useState(false);
   const setHoveredExportWarningKey = useMazeStore((s) => s.setHoveredExportWarningKey);
   const message = resolveExportWarningMessage(warning.id);
@@ -30,13 +30,13 @@ export function ExportWarningBubble({ warning }: { warning: ExportWarning }) {
   return (
     <>
       <div
-        className="hoverable-tint"
+        className={`hoverable-tint${interactive ? "" : " color-warning-no-info"}`}
         style={{
           ...styles.bubble,
           background: palette.bg,
           borderColor: palette.text,
         }}
-        onClick={() => setOpen(true)}
+        onClick={interactive ? () => setOpen(true) : undefined}
         onMouseEnter={() => setHoveredExportWarningKey(warning.key)}
         onMouseLeave={() => setHoveredExportWarningKey(null)}
       >
@@ -49,7 +49,7 @@ export function ExportWarningBubble({ warning }: { warning: ExportWarning }) {
           * back out, same convention `IssueBubble` uses for its own `IssueFloorBadges`. */}
         <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} className="hoverable-tint-counter" />
       </div>
-      {open && (
+      {interactive && open && (
         <Modal title={message} onClose={() => setOpen(false)}>
           <p style={styles.description}>{description}</p>
         </Modal>
