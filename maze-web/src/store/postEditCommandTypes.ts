@@ -26,16 +26,16 @@ export interface ResolvedSplitEdgeFace {
   fromNeighbor: PostEditEdgeState;
 }
 
-/** One edge re-key resulting from a `rotateSplitPoint` command, pre-computed at construction time
- * from live tessellation geometry (`rotateSplitPointMoves`'s own move-list, `postEditUtils.ts`)
- * — replay has no tessellation/field access (`PostEditReplayContext` is identity-only, plan
- * section 1/4), so the rotation's resulting edge moves are resolved once by the store action and
- * carried on the command itself, exactly like `applySplitBlueprint`'s `resolvedSlots`. */
-export interface ResolvedRotateMove {
-  oldKey: string;
-  from: PostEditEndpoint;
-  to: PostEditEndpoint;
-  edge: PostEditEdgeState;
+/** One rotated node's FULL post-rotation face list, as carried on a `rotateSplitPoint` command —
+ * same shape/reasoning as `updateSplitNodeFaces`'s own `faces` (a complete snapshot of that node's
+ * wiring, not a diff), so every split command that can appear more than once against the same node
+ * is uniformly a snapshot (GitHub issue #548 compaction follow-up: a diff-shaped command can't be
+ * safely superseded by dropping an earlier command in the same log, since a later diff was resolved
+ * relative to a state that intermediate command helped produce). `slotId: undefined` addresses the
+ * point's original node, same convention `updateSplitNodeFaces`/`postEditActiveSplitNode` use. */
+export interface ResolvedRotateNode {
+  slotId?: number;
+  faces: ResolvedSplitEdgeFace[];
 }
 
 /** Ordered, replayable command log entry for post-edit (GitHub issue #543) — replaces the old
@@ -122,7 +122,7 @@ export type PostEditCommand =
   // command kind touching it" convention `addElevator`/`updateElevatorFloors`/`removeElevator`
   // already established.
   | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId?: number; faces: ResolvedSplitEdgeFace[]; pointId: string }
-  | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
+  | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; nodes: ResolvedRotateNode[] }
   // `originalFaces` (GitHub issue #545) carries the pre-existing node's own blueprint faces in the
   // SAME command, instead of a `setEdge` pair per face appended right after — applying a blueprint
   // is one logical action (one click, one shape), and splitting the original node's wiring into N
@@ -162,7 +162,7 @@ export type PostEditCommand =
   | { kind: "moveVerticalPassageEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   // `from`/`to` (GitHub issue #564 partial) are the removed passage's own endpoints, denormalized
   // onto the command at construction time — mirrors every other pre-resolved field in this file
-  // (`ResolvedRotateMove`, ...). Without them, the "Changes" panel has nothing left to resolve a
+  // (`ResolvedRotateNode`, ...). Without them, the "Changes" panel has nothing left to resolve a
   // location from once the entry is gone from `postEditDraftVerticalPassages` — `live` (built from
   // the CURRENT draft) can only answer for entities that still exist, so a `removeVerticalPassage`
   // row rendered as a bare "Vertical passage removed" with no coordinates at all. Covers a

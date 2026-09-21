@@ -72,6 +72,12 @@ export interface AnalyticsOverlayActions {
 
 export interface PostEditState {
   postEditAutoConfirm: boolean;
+  /** When true, `compactPostEditLog` (GitHub issue #548) runs automatically after every command/
+   * batch appended to `postEditCommands` — same "opt-in convenience toggle next to a manual
+   * button" shape as `postEditAutoConfirm`. `false` by default: compaction rewrites/drops log
+   * entries, which a user reviewing the Changes panel may not want happening behind their back
+   * unless they've asked for it. */
+  postEditAutoCompact: boolean;
   postEditTool: PostEditTool;
   /** Ordered, replayable command log (GitHub issue #543) — the single source of truth for every
    * manual post-edit change. `postEditDraft*` fields below are derived from this log +
@@ -248,6 +254,7 @@ export type PostEditDragOverride =
 
 export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
+  setPostEditAutoCompact: (v: boolean) => void;
   setPostEditTool: (tool: PostEditTool) => void;
   applyPostEditTool: (edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
   /** Same as `applyPostEditTool`, but takes `tool` explicitly instead of reading
@@ -282,6 +289,11 @@ export interface PostEditActions {
    * that mints a fresh entity, or collapses a single entry (re-resolving later commands' own
    * denormalized fields) for any other kind. See `deleteCommandAt` (`pixi/postEditReplay.ts`). */
   deletePostEditCommand: (commandIndex: number) => void;
+  /** Manual "Compact" action (GitHub issue #548) — drops every command in `postEditCommands` whose
+   * effect is no longer observable in the log's own final state (superseded by a later command of
+   * the same entity/face/point), then renormalizes every survivor's own denormalized fields. See
+   * `compactPostEditCommands` (`pixi/postEditCompaction.ts`). */
+  compactPostEditLog: () => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;
   cycleActiveSplitNode: (point: [number, number]) => void;
@@ -289,7 +301,7 @@ export interface PostEditActions {
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
   setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
-   * by one offset index — see `rotateSplitPointMoves` (postEditUtils.ts). No-op if it would
+   * by one offset index — see `rotateSplitPointNodes` (postEditUtils.ts). No-op if it would
    * push any connection outside the field. */
   rotateSplitPoint: (point: [number, number], direction: 1 | -1) => void;
   /** Applies a built-in split-node blueprint (GitHub issue #235) to `point` — a full replace:

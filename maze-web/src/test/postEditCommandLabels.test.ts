@@ -363,7 +363,7 @@ describe("postEditCommandLabel", () => {
     });
 
     it("rotateSplitPoint/applySplitBlueprint address the whole tile — no per-slot suffix", () => {
-      const command: PostEditCommand = { kind: "rotateSplitPoint", point: [3, 5], moves: [] };
+      const command: PostEditCommand = { kind: "rotateSplitPoint", point: [3, 5], nodes: [] };
       const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
       expect(label.bubbles[0].text).toBe("3:5");
     });
@@ -521,7 +521,7 @@ describe("postEditCommandLabel", () => {
 
     it("returns undefined for setMeta and rotateSplitPoint", () => {
       expect(entityIdOf({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) })).toBeUndefined();
-      expect(entityIdOf({ kind: "rotateSplitPoint", point: [1, 1], moves: [] })).toBeUndefined();
+      expect(entityIdOf({ kind: "rotateSplitPoint", point: [1, 1], nodes: [] })).toBeUndefined();
     });
 
     it("agrees with postEditCommandLabel's own entityId field for every command kind that has an id (GitHub issue #573)", () => {
@@ -555,7 +555,7 @@ describe("postEditCommandLabel", () => {
     it("setMeta/rotateSplitPoint labels carry no entityId, matching entityIdOf's own undefined", () => {
       const nodeById = buildNodeByIdMap([n(0, 0, 0)]);
       const metaLabel = postEditCommandLabel({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) }, nodeById, false);
-      const rotateLabel = postEditCommandLabel({ kind: "rotateSplitPoint", point: [1, 1], moves: [] }, nodeById, false);
+      const rotateLabel = postEditCommandLabel({ kind: "rotateSplitPoint", point: [1, 1], nodes: [] }, nodeById, false);
       expect(metaLabel.entityId).toBeUndefined();
       expect(rotateLabel.entityId).toBeUndefined();
     });

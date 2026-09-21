@@ -196,13 +196,36 @@ export function applyPostEditCommand(
       return ok({ ...state, edges });
     }
     case "rotateSplitPoint": {
-      // Pre-resolved at construction time (see `ResolvedRotateMove`'s doc comment) — replay just
-      // re-keys the named edges, no tessellation/field access needed here.
-      if (command.moves.length === 0) return ok(state);
-      const edges = { ...state.edges };
-      for (const move of command.moves) delete edges[move.oldKey];
-      for (const move of command.moves) {
-        edges[edgeKey(move.from, move.to)] = move.edge;
+      // Pre-resolved at construction time (see `ResolvedRotateNode`'s doc comment) — each entry is
+      // one of the point's own nodes' COMPLETE post-rotation face list, applied the same way
+      // `updateSplitNodeFaces` applies a single node's snapshot (GitHub issue #548 compaction
+      // follow-up: a full snapshot, unlike the old diff-shaped `moves`, is safe to have an EARLIER
+      // command in its own lifeline dropped by compaction without leaving a dangling re-key).
+      if (command.nodes.length === 0) return ok(state);
+      const targets: PostEditEndpoint[] = [];
+      for (const rotatedNode of command.nodes) {
+        if (rotatedNode.slotId === undefined) {
+          const node = nodeAt(context.nodes, command.point, command.level, 0);
+          if (node === undefined) return fail(state);
+          targets.push(nodeEndpoint(node.id));
+        } else {
+          targets.push(splitEndpoint(command.point, rotatedNode.slotId, command.level));
+        }
+      }
+      const refsAnyTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+        targets.some((target) => endpointsEqual(e.from, target) || endpointsEqual(e.to, target));
+      let edges = Object.fromEntries(Object.entries(state.edges).filter(([, e]) => !refsAnyTarget(e)));
+      for (let i = 0; i < command.nodes.length; i++) {
+        const rotatedNode = command.nodes[i];
+        const target = targets[i];
+        for (const face of rotatedNode.faces) {
+          const toKey = edgeKey(target, face.neighbor);
+          const fromKey = edgeKey(face.neighbor, target);
+          if (face.toNeighbor.kind === "wall") delete edges[toKey];
+          else edges[toKey] = face.toNeighbor;
+          if (face.fromNeighbor.kind === "wall") delete edges[fromKey];
+          else edges[fromKey] = face.fromNeighbor;
+        }
       }
       return ok({ ...state, edges });
     }
@@ -470,7 +493,7 @@ function endpointsReferencedBy(command: PostEditCommand): PostEditEndpoint[] {
     case "addElevator": return command.floors;
     case "updateElevatorFloors": return command.floors;
     case "removeElevator": return command.floors;
-    case "rotateSplitPoint": return command.moves.flatMap((m) => [m.from, m.to]);
+    case "rotateSplitPoint": return command.nodes.flatMap((n) => n.faces.map((f) => f.neighbor));
     case "updateSplitNodeFaces": return command.faces.map((f) => f.neighbor);
     default: return [];
   }
@@ -587,7 +610,7 @@ export function isCreateCommand(command: PostEditCommand): boolean {
  * authored — re-deriving it from `before` would silently change what the user asked for, not just
  * refresh a stale snapshot. A command with no denormalized fields (or whose referenced entity no
  * longer exists in `before` — nothing left to re-derive from) is returned unchanged. */
-function renormalizeCommand(before: PostEditDerivedState, command: PostEditCommand): PostEditCommand {
+export function renormalizeCommand(before: PostEditDerivedState, command: PostEditCommand): PostEditCommand {
   switch (command.kind) {
     case "setTeleportDirection": {
       const t = before.teleports.find((x) => x.id === command.id);
@@ -651,7 +674,7 @@ function cascadeLifelineKeys(commands: PostEditCommand[], seedKeys: Set<string>)
  * (GitHub issue #547 second follow-up) — `setTeleportDirection`/`setVerticalPassageDirection`, or a
  * `setEdgePair`/`setEdge` one-way `directionFlip` (never a fresh one-way mint, which is a create,
  * not a flip). Used by `nextDirectionCommandIndex` to find the deleted flip's own "undo" pair. */
-function isDirectionCommand(command: PostEditCommand): boolean {
+export function isDirectionCommand(command: PostEditCommand): boolean {
   switch (command.kind) {
     case "setTeleportDirection": case "setVerticalPassageDirection":
       return true;

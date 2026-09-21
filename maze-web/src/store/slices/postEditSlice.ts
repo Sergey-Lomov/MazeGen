@@ -3,7 +3,8 @@ import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
 import {
   postEditTeleportsToDto,
-  rotateSplitPointMoves,
+  rotateSplitPointNodes,
+  currentSplitNodeFaces,
   findPostEditVerticalPassageForPair,
   postEditVerticalToDto, pruneRemovedSplitNodes,
 } from "../../pixi/postEditUtils";
@@ -21,9 +22,10 @@ import type {
   MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
 } from "../storeTypes";
-import type { PostEditCommand, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
+import type { PostEditCommand, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
 import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt } from "../../pixi/postEditReplay";
+import { compactPostEditCommands } from "../../pixi/postEditCompaction";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
@@ -35,33 +37,9 @@ import {
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
 
-/** Every face currently wired on `target` (a split node's own endpoint), read from live
- * `postEditDraftEdges` and grouped one entry per distinct neighbor — the starting point
- * `applyPostEditToolAt` upserts a single clicked face into before re-emitting the slot's full
- * `updateSplitNodeFaces` list (GitHub issue #545). A neighbor with no edge at all in either
- * direction never appears here (both directions read back as `"wall"`, so there is nothing to
- * record) — same "absence is wall" convention every other post-edit edge lookup uses. */
-function currentSplitNodeFaces(edges: Record<string, PostEditEdge>, target: PostEditEndpoint): ResolvedSplitEdgeFace[] {
-  const byNeighbor = new Map<string, ResolvedSplitEdgeFace>();
-  for (const e of Object.values(edges)) {
-    const isFrom = endpointsEqual(e.from, target);
-    const isTo = endpointsEqual(e.to, target);
-    if (!isFrom && !isTo) continue;
-    const neighbor = isFrom ? e.to : e.from;
-    const nKey = edgeKey(neighbor, target);
-    const face = byNeighbor.get(nKey) ?? {
-      neighbor,
-      toNeighbor: { kind: "wall" as const, from: target, to: neighbor },
-      fromNeighbor: { kind: "wall" as const, from: neighbor, to: target },
-    };
-    if (isFrom) face.toNeighbor = e; else face.fromNeighbor = e;
-    byNeighbor.set(nKey, face);
-  }
-  return [...byNeighbor.values()];
-}
-
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
   postEditAutoConfirm: true,
+  postEditAutoCompact: false,
   postEditTool: "wall" as PostEditTool,
   postEditCommands: [] as PostEditCommand[],
   postEditBaseline: null,
@@ -101,6 +79,13 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditDragOverride: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
+  // Turning auto-compact ON compacts the log immediately (GitHub issue #548 follow-up) — otherwise
+  // any staleness already sitting in the log (from before the toggle was on) would only disappear
+  // after the NEXT command, which reads as the toggle doing nothing right away.
+  setPostEditAutoCompact: (v) => {
+    set({ postEditAutoCompact: v });
+    if (v) get().compactPostEditLog();
+  },
   setPostEditTool: (tool) => set({ postEditTool: tool }),
 
   applyPostEditTool: (edgeKey, from_, to_) => {
@@ -633,6 +618,17 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
+  compactPostEditLog: () => {
+    const state = get();
+    if (state.postEditBaseline === null) return;
+    const next = compactPostEditCommands(state.postEditBaseline, state.postEditCommands);
+    if (next === state.postEditCommands) return;
+    replacePostEditCommands(get, set, next, true);
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
   setPostEditEndpoint: (kind, endpoint) => {
     appendPostEditCommand(get, set, { kind: "setMeta", slot: kind, endpoint });
     if (get().postEditAutoConfirm) {
@@ -777,12 +773,12 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const cellSet = buildCellSet(cells);
     const floorNodes = state.nodes.filter((n) => (n.level ?? 0) === (level ?? 0));
     const before = state.postEditDraftEdges;
-    const moves = rotateSplitPointMoves(
+    const rotatedNodes = rotateSplitPointNodes(
       before, point, slotIds, direction, state.activeTessellationConfig,
       cellSet, floorNodes, state.postEditActiveSplitNode, level,
     );
-    if (moves.length === 0) return;
-    appendPostEditCommand(get, set, { kind: "rotateSplitPoint", point, level, moves });
+    if (rotatedNodes.length === 0) return;
+    appendPostEditCommand(get, set, { kind: "rotateSplitPoint", point, level, nodes: rotatedNodes });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }

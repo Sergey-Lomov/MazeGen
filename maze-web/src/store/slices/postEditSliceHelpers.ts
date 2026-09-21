@@ -10,6 +10,7 @@ import type {
   PostEditBaseline, PostEditDerivedState, PostEditReplayContext,
 } from "../../pixi/postEditReplay";
 import { applyPostEditCommand, replayPostEditCommands } from "../../pixi/postEditReplay";
+import { compactPostEditCommands } from "../../pixi/postEditCompaction";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from "../postEditTypes";
@@ -315,10 +316,19 @@ export function appendPostEditCommand(
   if (postEditBaseline === null || postEditDerived === null) return false;
   const result = applyPostEditCommand(postEditBaseline.context, postEditDerived, command);
   if (!result.applied) return false;
+  const appended = [...postEditCommands, command];
+  // `postEditAutoCompact` (GitHub issue #548 follow-up): compact right here, in the same `set`, so
+  // an appended command that immediately becomes stale (e.g. a second direction flip cancelling the
+  // first) never renders even for one frame. `compactPostEditCommands` re-derives its own state from
+  // `postEditBaseline`, independent of `result.state` above, so a compaction pass is used verbatim
+  // when it changes anything, rather than trying to patch `result.state` incrementally.
+  const { finalCommands, finalDerived } = state.postEditAutoCompact
+    ? finalizeAutoCompact(postEditBaseline, appended, result.state)
+    : { finalCommands: appended, finalDerived: result.state };
   set((state) => ({
-    postEditCommands: [...postEditCommands, command],
-    postEditDerived: result.state,
-    ...derivedStateToLegacyFields(result.state),
+    postEditCommands: finalCommands,
+    postEditDerived: finalDerived,
+    ...derivedStateToLegacyFields(finalDerived),
     postEditDirty: true,
     _postEditRequestId: state._postEditRequestId + 1,
   }));
@@ -335,16 +345,40 @@ export function replacePostEditCommands(
   commands: PostEditCommand[],
   dirty: boolean,
 ): void {
-  const { postEditBaseline } = get();
+  const state = get();
+  const { postEditBaseline } = state;
   if (postEditBaseline === null) return;
   const derived = replayPostEditCommands(postEditBaseline, commands);
+  // `postEditAutoCompact` (GitHub issue #548 follow-up) — same as `appendPostEditCommand` above.
+  // Compacting an already-compacted log is a no-op (`compactPostEditCommands` returns the same
+  // array reference), so this is safe even when `replacePostEditCommands` is itself called FROM
+  // `compactPostEditLog`'s own manual-compaction action — no infinite recursion, just one redundant
+  // (cheap) pass that immediately bails out.
+  const { finalCommands, finalDerived } = state.postEditAutoCompact
+    ? finalizeAutoCompact(postEditBaseline, commands, derived)
+    : { finalCommands: commands, finalDerived: derived };
   set((state) => ({
-    postEditCommands: commands,
-    postEditDerived: derived,
-    ...derivedStateToLegacyFields(derived),
+    postEditCommands: finalCommands,
+    postEditDerived: finalDerived,
+    ...derivedStateToLegacyFields(finalDerived),
     postEditDirty: dirty,
     _postEditRequestId: state._postEditRequestId + 1,
   }));
+}
+
+/** Shared `postEditAutoCompact` step for `appendPostEditCommand`/`replacePostEditCommands` (GitHub
+ * issue #548 follow-up) — compacts `commands` against `baseline` and, only if compaction actually
+ * dropped/rewrote anything, re-derives state from the compacted log; otherwise reuses `fallbackDerived`
+ * (the caller's own already-computed derived state) unchanged, avoiding a redundant replay pass on
+ * the (overwhelmingly common) case where nothing was stale yet. */
+function finalizeAutoCompact(
+  baseline: PostEditBaseline,
+  commands: PostEditCommand[],
+  fallbackDerived: PostEditDerivedState,
+): { finalCommands: PostEditCommand[]; finalDerived: PostEditDerivedState } {
+  const compacted = compactPostEditCommands(baseline, commands);
+  if (compacted === commands) return { finalCommands: commands, finalDerived: fallbackDerived };
+  return { finalCommands: compacted, finalDerived: replayPostEditCommands(baseline, compacted) };
 }
 
 /** Builds the new `PostEditVerticalPassageEntry` for a single-click placement (GitHub issue #341,

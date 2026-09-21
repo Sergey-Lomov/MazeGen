@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto,
-  rotateSplitPointMoves, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
+  rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
   findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes,
@@ -149,7 +149,7 @@ describe("postEditTeleportsToDto", () => {
   });
 });
 
-// --- rotateSplitPointMoves ---
+// --- rotateSplitPointNodes ---
 
 const squareCfg = { type: "square" as const, width: 3, height: 3 };
 // SQUARE_NEIGHBOR_OFFSETS order: [0]=E(1,0), [1]=N(0,1), [2]=W(-1,0), [3]=S(0,-1) — direction 1
@@ -162,47 +162,55 @@ const idOf = (x: number, y: number) => (x + 10) * 100 + (y + 10);
 const gridNodes: NodeDto[] = [];
 for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) gridNodes.push({ id: idOf(x, y), x, y, i: 0 });
 
-describe("rotateSplitPointMoves", () => {
+/** Builds the `originalNode:`-equivalent entry `rotateSplitPointNodes` returns for the point's own
+ * (non-split) node — `slotId: undefined`, one face per neighbor carrying a connection either way. */
+function faceOf(neighbor: PostEditEndpoint, toNeighbor: PostEditEdge, fromNeighbor: PostEditEdge) {
+  return { neighbor, toNeighbor, fromNeighbor };
+}
+const wallTo = (from: PostEditEndpoint, to: PostEditEndpoint): PostEditEdge => ({ kind: "wall", from, to });
+
+describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 compaction follow-up)", () => {
   it("no split slots — a one-way edge from the point moves from its E neighbor to its N neighbor (direction 1)", () => {
     const edges: Record<string, PostEditEdge> = {};
     const from = nodeEndpoint(idOf(0, 0));
     const to = nodeEndpoint(idOf(1, 0));
-    const oldKey = edgeKey(from, to);
-    edges[oldKey] = { from, to, kind: "one_way_forward", id: "o1" };
+    edges[edgeKey(from, to)] = { from, to, kind: "one_way_forward", id: "o1" };
 
-    const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const newTo = nodeEndpoint(idOf(0, 1));
-    expect(result).toEqual([{ oldKey, from, to: newTo, edge: { kind: "one_way_forward", from, to: newTo, id: "o1" } }]);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(newTo, { kind: "one_way_forward", from, to: newTo, id: "o1" }, wallTo(newTo, from))],
+    }]);
   });
 
   it("preserves role (from vs to) — an edge pointing into the point keeps pointing in after rotation", () => {
     const edges: Record<string, PostEditEdge> = {};
     const outer = nodeEndpoint(idOf(1, 0)); // E neighbor
     const center = nodeEndpoint(idOf(0, 0));
-    const oldKey = edgeKey(outer, center);
-    edges[oldKey] = { from: outer, to: center, kind: "one_way_forward", id: "o1" };
+    edges[edgeKey(outer, center)] = { from: outer, to: center, kind: "one_way_forward", id: "o1" };
 
-    const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const newOuter = nodeEndpoint(idOf(0, 1)); // N neighbor
-    expect(result).toEqual([{ oldKey, from: newOuter, to: center, edge: { kind: "one_way_forward", from: newOuter, to: center, id: "o1" } }]);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(newOuter, wallTo(center, newOuter), { kind: "one_way_forward", from: newOuter, to: center, id: "o1" })],
+    }]);
   });
 
   it("bidirectional passage (both directed Record entries) rotates as one unit", () => {
     const edges: Record<string, PostEditEdge> = {};
     const center = nodeEndpoint(idOf(0, 0));
     const east = nodeEndpoint(idOf(1, 0));
-    const fwdKey = edgeKey(center, east);
-    const bwdKey = edgeKey(east, center);
-    edges[fwdKey] = { from: center, to: east, kind: "basic" };
-    edges[bwdKey] = { from: east, to: center, kind: "basic" };
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "basic" };
+    edges[edgeKey(east, center)] = { from: east, to: center, kind: "basic" };
 
-    const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
     const north = nodeEndpoint(idOf(0, 1));
-    expect(result).toEqual(expect.arrayContaining([
-      { oldKey: fwdKey, from: center, to: north, edge: { kind: "basic", from: center, to: north } },
-      { oldKey: bwdKey, from: north, to: center, edge: { kind: "basic", from: north, to: center } },
-    ]));
-    expect(result).toHaveLength(2);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(north, { kind: "basic", from: center, to: north }, { kind: "basic", from: north, to: center })],
+    }]);
   });
 
   it("split node's own connection rotates independently of the original node's", () => {
@@ -211,21 +219,20 @@ describe("rotateSplitPointMoves", () => {
     const slot = splitEndpoint([0, 0], 0);
     const east = nodeEndpoint(idOf(1, 0));
     const west = nodeEndpoint(idOf(-1, 0));
-    const slotKey = edgeKey(slot, east);
-    const centerKey = edgeKey(center, west);
-    edges[slotKey] = { from: slot, to: east, kind: "one_way_forward", id: "o1" };
-    edges[centerKey] = { from: center, to: west, kind: "one_way_forward", id: "o2" };
+    edges[edgeKey(slot, east)] = { from: slot, to: east, kind: "one_way_forward", id: "o1" };
+    edges[edgeKey(center, west)] = { from: center, to: west, kind: "one_way_forward", id: "o2" };
 
-    const result = rotateSplitPointMoves(edges, [0, 0], [0], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [0], 1, squareCfg, centerCellSet, gridNodes, {});
     const north = nodeEndpoint(idOf(0, 1));
     const south = nodeEndpoint(idOf(0, -1));
     expect(result).toEqual(expect.arrayContaining([
-      { oldKey: slotKey, from: slot, to: north, edge: { kind: "one_way_forward", from: slot, to: north, id: "o1" } },
-      { oldKey: centerKey, from: center, to: south, edge: { kind: "one_way_forward", from: center, to: south, id: "o2" } },
+      { slotId: undefined, faces: [faceOf(south, { kind: "one_way_forward", from: center, to: south, id: "o2" }, wallTo(south, center))] },
+      { slotId: 0, faces: [faceOf(north, { kind: "one_way_forward", from: slot, to: north, id: "o1" }, wallTo(north, slot))] },
     ]));
+    expect(result).toHaveLength(2);
   });
 
-  it("rotation onto a field boundary is refused entirely — empty move list", () => {
+  it("rotation onto a field boundary is refused entirely — empty node list", () => {
     // Corner (-1,-1): only E(0,-1) and N(-1,0) are in-field; W(-2,-1) and S(-1,-2) are boundary.
     const cornerNodes: NodeDto[] = [
       { id: 1, x: -1, y: -1, i: 0 },
@@ -238,7 +245,20 @@ describe("rotateSplitPointMoves", () => {
     edges[edgeKey(corner, northNeighbor)] = { from: corner, to: northNeighbor, kind: "basic" };
 
     // Rotating by +1 moves the N-face connection to W, which is outside the field.
-    const result = rotateSplitPointMoves(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {});
+    const result = rotateSplitPointNodes(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {});
+    expect(result).toEqual([]);
+  });
+
+  it("rotation onto a field cell with no node there is refused entirely — sparse field, not a boundary", () => {
+    // (0,1) is in cellSet (in-field) but has no NodeDto — a sparse/partially-populated field.
+    const sparseNodes: NodeDto[] = gridNodes.filter((n) => !(n.x === 0 && n.y === 1));
+    const edges: Record<string, PostEditEdge> = {};
+    const from = nodeEndpoint(idOf(0, 0));
+    const to = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(from, to)] = { from, to, kind: "one_way_forward", id: "o1" };
+
+    // Rotating by +1 moves the E-face connection to N (0,1), which is in-field but nodeless.
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, sparseNodes, {});
     expect(result).toEqual([]);
   });
 
@@ -246,15 +266,17 @@ describe("rotateSplitPointMoves", () => {
     const edges: Record<string, PostEditEdge> = {};
     const center = nodeEndpoint(idOf(0, 0));
     const east = nodeEndpoint(idOf(1, 0));
-    const oldKey = edgeKey(center, east);
-    edges[oldKey] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
 
     // North neighbor (0,1) has an active split node instead of its original node.
     const northSlot = splitEndpoint([0, 1], 0);
     const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": northSlot };
 
-    const result = rotateSplitPointMoves(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode);
-    expect(result).toEqual([{ oldKey, from: center, to: northSlot, edge: { kind: "one_way_forward", from: center, to: northSlot, id: "o1" } }]);
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(northSlot, { kind: "one_way_forward", from: center, to: northSlot, id: "o1" }, wallTo(northSlot, center))],
+    }]);
   });
 });
 

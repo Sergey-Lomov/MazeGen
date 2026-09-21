@@ -4,6 +4,7 @@ import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual } from "./postEditEndpoint";
 import { formatPostEditId } from "./postEditIdFormat";
+import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 
 export {
   extractPostEditTeleports,
@@ -110,7 +111,7 @@ export function pruneRemovedSplitNodes<T extends { x: number; y: number; i: numb
  * unchanged.
  *
  * Returns `undefined` if any face that currently carries a connection would land on a neighbor
- * outside the field (rotation must be refused entirely) — the sole caller, `rotateSplitPointMoves`,
+ * outside the field (rotation must be refused entirely) — the sole caller, `rotateSplitPointNodes`,
  * treats this as "nothing to do".
  *
  * `level` is the 0-based floor index `point` addresses (`undefined` = floor 0, GitHub issue #358)
@@ -163,7 +164,15 @@ function collectRotateMoves(
 
       const j = (i + direction + n) % n;
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
+      // Refuse entirely — not just for a neighbor outside the field, but also for one inside it
+      // with no node at all yet (a sparse/partially-populated field can have an empty cell in
+      // `cellSet`). `rotateSplitPointNodes`' own `resolveActiveAt` requires a node to exist at the
+      // target coordinate before it can resolve WHICH node the moved edge should now point at — if
+      // this refusal didn't also check that, the move would still get queued here, its `oldKey`
+      // deleted from the scratch copy, and then silently dropped there when `resolveActiveAt`
+      // returns `null`, losing the connection instead of refusing the whole rotation.
       if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return undefined; // boundary — refuse entirely
+      if (!nodes.some((n) => n.x === newNeighbor[0] && n.y === newNeighbor[1])) return undefined;
 
       moves.push({ oldKey: key, ep, otherIsFrom: epIsTo, newNeighbor, edge });
     }
@@ -171,12 +180,46 @@ function collectRotateMoves(
   return moves;
 }
 
-/** Resolves `collectRotateMoves`'s raw move list into `ResolvedRotateMove[]` — used to build a
- * `rotateSplitPoint` command (GitHub issue #543), whose replay has no tessellation/field access and
- * needs each move's resulting endpoints/kind pre-computed (see `ResolvedRotateMove`'s doc comment,
- * `postEditCommandTypes.ts`). Returns `[]` if the rotation must be refused (a moved connection
- * would land outside the field) — the caller treats an empty move list as "nothing to do". */
-export function rotateSplitPointMoves(
+/** Every face currently wired on `target` (a split node's own endpoint), read from live
+ * `postEditDraftEdges` and grouped one entry per distinct neighbor — the starting point
+ * `applyPostEditToolAt` upserts a single clicked face into before re-emitting the slot's full
+ * `updateSplitNodeFaces` list (GitHub issue #545), and `rotateSplitPointNodes` below reads back
+ * after applying a rotation's moves to build `rotateSplitPoint`'s own full-node snapshot (GitHub
+ * issue #548 compaction follow-up). A neighbor with no edge at all in either direction never
+ * appears here (both directions read back as `"wall"`, so there is nothing to record) — same
+ * "absence is wall" convention every other post-edit edge lookup uses. */
+export function currentSplitNodeFaces(edges: Record<string, PostEditEdge>, target: PostEditEndpoint): ResolvedSplitEdgeFace[] {
+  const byNeighbor = new Map<string, ResolvedSplitEdgeFace>();
+  for (const e of Object.values(edges)) {
+    const isFrom = endpointsEqual(e.from, target);
+    const isTo = endpointsEqual(e.to, target);
+    if (!isFrom && !isTo) continue;
+    const neighbor = isFrom ? e.to : e.from;
+    const nKey = edgeKey(neighbor, target);
+    const face = byNeighbor.get(nKey) ?? {
+      neighbor,
+      toNeighbor: { kind: "wall" as const, from: target, to: neighbor },
+      fromNeighbor: { kind: "wall" as const, from: neighbor, to: target },
+    };
+    if (isFrom) face.toNeighbor = e; else face.fromNeighbor = e;
+    byNeighbor.set(nKey, face);
+  }
+  return [...byNeighbor.values()];
+}
+
+/** Resolves a `rotateSplitPoint` command's `nodes` — every one of `point`'s own nodes' (original
+ * plus each numbered slot) COMPLETE post-rotation face list, not a diff (GitHub issue #548
+ * compaction follow-up: `updateSplitNodeFaces`/`applySplitBlueprint` already carry a full snapshot,
+ * so every split command that can recur against the same node is now uniformly a snapshot — a
+ * diff-shaped command can't be safely dropped by compaction when an earlier command in the same log
+ * is superseded, since the diff was resolved relative to a state that earlier command helped
+ * produce). Computed by applying `collectRotateMoves`' raw re-key list to a scratch copy of `edges`,
+ * then reading each node's resulting wiring back via `currentSplitNodeFaces` — replay has no
+ * tessellation/field access (`PostEditReplayContext` is identity-only), so this resolution only
+ * happens once, here, at construction time. Returns `[]` if the rotation must be refused (a moved
+ * connection would land outside the field) — the caller treats an empty node list as "nothing to
+ * do", same as the old diff-shaped `moves` convention. */
+export function rotateSplitPointNodes(
   edges: Record<string, PostEditEdge>,
   point: [number, number],
   slotIds: number[],
@@ -186,9 +229,9 @@ export function rotateSplitPointMoves(
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
   level?: number,
-): { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edge: PostEditEdge }[] {
+): ResolvedRotateNode[] {
   const moves = collectRotateMoves(edges, point, slotIds, direction, cfg, cellSet, nodes, level);
-  if (moves === undefined) return [];
+  if (moves === undefined || moves.length === 0) return [];
 
   const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
   const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
@@ -199,11 +242,11 @@ export function rotateSplitPointMoves(
     return activeEntry ?? nodeEndpoint(ids[0]);
   };
 
-  // `edge` (GitHub issue #564) carries the moved edge's own kind AND id (when one-way) — a rotation
-  // re-keys an edge to a new spatial neighbor, it doesn't destroy/recreate the entity, so a rotated
-  // one-way keeps its original id.
-  const resolved: { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edge: PostEditEdge }[] = [];
-  for (const { oldKey, ep, otherIsFrom, newNeighbor, edge } of moves) {
+  // Apply every move to a scratch copy of `edges` first — same re-keying replay itself performs —
+  // so the node-face snapshots read back below reflect the ROTATED wiring, not the pre-rotation one.
+  const rotated = { ...edges };
+  for (const { oldKey } of moves) delete rotated[oldKey];
+  for (const { ep, otherIsFrom, newNeighbor, edge } of moves) {
     const newOther = resolveActiveAt(newNeighbor);
     if (!newOther) continue;
     const from = otherIsFrom ? newOther : ep;
@@ -214,7 +257,14 @@ export function rotateSplitPointMoves(
     const movedEdge: PostEditEdge = edge.kind === "one_way_forward" || edge.kind === "one_way_backward"
       ? { kind: edge.kind, from, to, id: edge.id }
       : { kind: edge.kind, from, to };
-    resolved.push({ oldKey, from, to, edge: movedEdge });
+    rotated[edgeKey(from, to)] = movedEdge;
   }
-  return resolved;
+
+  const original = nodes.find((n) => n.x === point[0] && n.y === point[1]);
+  const result: ResolvedRotateNode[] = [];
+  if (original) result.push({ slotId: undefined, faces: currentSplitNodeFaces(rotated, nodeEndpoint(original.id)) });
+  for (const slotId of slotIds) {
+    result.push({ slotId, faces: currentSplitNodeFaces(rotated, splitEndpoint(point, slotId, level)) });
+  }
+  return result;
 }

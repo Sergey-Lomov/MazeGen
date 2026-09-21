@@ -3,6 +3,7 @@ import { X, RotateCcw, Trash2 } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
+import { Button } from "../Button";
 import { buildNodeByIdMap, entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditReplay";
 import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
@@ -16,8 +17,12 @@ import type React from "react";
 
 /** Which row-level confirm dialog is pending (GitHub issue #547) — `commandIndex` is the log's own
  *  oldest-to-newest index (not the panel's reversed display order); `cascade` (only meaningful for
- *  `"delete"`) picks the stronger confirm wording for a create command's own lifeline cascade. */
-type PendingRowAction = { kind: "reset"; commandIndex: number } | { kind: "delete"; commandIndex: number; cascade: boolean };
+ *  `"delete"`) picks the stronger confirm wording for a create command's own lifeline cascade.
+ *  `"compact"` (GitHub issue #548) has no `commandIndex` — it acts on the whole log at once. */
+type PendingRowAction =
+  | { kind: "reset"; commandIndex: number }
+  | { kind: "delete"; commandIndex: number; cascade: boolean }
+  | { kind: "compact" };
 
 /** Which row's Reset/Delete button is currently hovered (GitHub issue #547 second follow-up) —
  *  drives the red preview highlight over every OTHER row `affectedIndicesFor{Reset,Delete}` says
@@ -70,6 +75,7 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   const commands = useMazeStore((s) => s.postEditCommands);
   const resetPostEditCommand = useMazeStore((s) => s.resetPostEditCommand);
   const deletePostEditCommand = useMazeStore((s) => s.deletePostEditCommand);
+  const compactPostEditLog = useMazeStore((s) => s.compactPostEditLog);
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
   const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
@@ -243,16 +249,31 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
           })}
         </div>
       )}
+      {commands.length > 0 && (
+        <div style={styles.footer}>
+          <Button
+            variant="secondary"
+            layoutStyle={{ width: "100%" }}
+            title={m["post_edit.changes_compact_title"]()}
+            onClick={() => setPendingRowAction({ kind: "compact" })}
+          >
+            {m["post_edit.changes_compact_button"]()}
+          </Button>
+        </div>
+      )}
       {pendingRowAction && (
         <ConfirmModal
           message={pendingRowAction.kind === "reset"
             ? m["post_edit.confirm_changes_reset"]()
-            : pendingRowAction.cascade
-              ? m["post_edit.confirm_changes_delete_cascade"]()
-              : m["post_edit.confirm_changes_delete"]()}
+            : pendingRowAction.kind === "compact"
+              ? m["post_edit.confirm_changes_compact"]()
+              : pendingRowAction.cascade
+                ? m["post_edit.confirm_changes_delete_cascade"]()
+                : m["post_edit.confirm_changes_delete"]()}
           onConfirm={() => {
             if (pendingRowAction.kind === "reset") resetPostEditCommand(pendingRowAction.commandIndex);
-            else deletePostEditCommand(pendingRowAction.commandIndex);
+            else if (pendingRowAction.kind === "delete") deletePostEditCommand(pendingRowAction.commandIndex);
+            else compactPostEditLog();
             setPendingRowAction(null);
           }}
           onCancel={() => setPendingRowAction(null)}
@@ -292,6 +313,17 @@ const styles: Record<string, React.CSSProperties> = {
   list: {
     display: "flex",
     flexDirection: "column",
+  },
+  // Manual "Compact log" action (GitHub issue #548) — pinned below the scrollable row list, sticky
+  // to the panel's own bottom edge like `filterRow` is sticky to its top, so it stays reachable
+  // regardless of how long the log is.
+  footer: {
+    position: "sticky",
+    bottom: 0,
+    padding: `${spacing.itemGap}px ${spacing.rowGap}px`,
+    borderTop: `1px solid ${ui.border.default}`,
+    background: ui.bg.panel,
+    flexShrink: 0,
   },
   row: {
     position: "relative",
