@@ -68,7 +68,7 @@ function buildLinkHoverHighlight(
   nodes: NodeDto[],
   activeLevel: number,
   cfg: TessellationConfig,
-): { line: NodeEdgeHighlight[]; soloPoints: number[] } {
+): { line: NodeEdgeHighlight[]; soloPoints: number[][] } {
   const fromNode = nodes.find((n) => pointMatchesNode(link.from, n));
   const toNode = nodes.find((n) => pointMatchesNode(link.to, n));
   if (fromNode && toNode && (fromNode.level ?? 0) === activeLevel && (toNode.level ?? 0) === activeLevel) {
@@ -84,10 +84,16 @@ function buildLinkHoverHighlight(
       soloPoints: [],
     };
   }
-  const soloPoints: number[] = [];
-  if (fromNode && (fromNode.level ?? 0) === activeLevel) soloPoints.push(fromNode.id);
-  if (toNode && (toNode.level ?? 0) === activeLevel) soloPoints.push(toNode.id);
+  const soloPoints: number[][] = [];
+  if (fromNode && (fromNode.level ?? 0) === activeLevel) soloPoints.push([fromNode.id]);
+  if (toNode && (toNode.level ?? 0) === activeLevel && !soloPoints.some(([id]) => id === toNode.id)) soloPoints.push([toNode.id]);
   return { line: [], soloPoints };
+}
+
+export interface PostEditBoundaryLink {
+  from: PostEditHoverPoint;
+  to: PostEditHoverPoint;
+  style: "one_way" | "boundary";
 }
 
 /** Resolves a `point`/`points`-kind `PostEditHoveredEntity` to the maze node ids
@@ -102,17 +108,20 @@ function buildLinkHoverHighlight(
  *  own doc comment gives): an elevator's `points` all share one `(x, y)` across every floor it
  *  spans, so without this filter every one of those floors' matched nodes would be included in the
  *  same group and drawn on top of each other regardless of which floor is actually active. */
-function resolvePointGroup(
+function resolvePointGroups(
   points: readonly PostEditHoverPoint[],
   nodes: NodeDto[],
   activeLevel: number,
-): number[] {
-  const group: number[] = [];
+): number[][] {
+  const groups: number[][] = [];
   for (const p of points) {
-    const node = nodes.find((n) => pointMatchesNode(p, n));
-    if (node && (node.level ?? 0) === activeLevel) group.push(node.id);
+    const group: number[] = [];
+    for (const node of nodes) {
+      if (pointMatchesNode(p, node) && (node.level ?? 0) === activeLevel) group.push(node.id);
+    }
+    if (group.length > 0 && !groups.some((existing) => existing.some((id) => group.includes(id)))) groups.push(group);
   }
-  return group;
+  return groups;
 }
 
 /** Splits a `PostEditHoveredEntity` (GitHub issue #546) into the two highlight-primitive inputs
@@ -132,13 +141,19 @@ export function buildHoveredEntityHighlight(
   nodes: NodeDto[],
   activeLevel: number,
   cfg: TessellationConfig,
-): { link: NodeEdgeHighlight[]; regionGroups: number[][] } {
+): { link: NodeEdgeHighlight[]; regionGroups: number[][]; boundaryLinks?: PostEditBoundaryLink[] } {
   if (!entity) return { link: [], regionGroups: [] };
   if (entity.kind === "link") {
+    if (entity.highlightStyle === "one_way" || entity.highlightStyle === "boundary") {
+      const fromNode = nodes.find((n) => pointMatchesNode(entity.from, n));
+      const toNode = nodes.find((n) => pointMatchesNode(entity.to, n));
+      if (fromNode && toNode && (fromNode.level ?? 0) === activeLevel && (toNode.level ?? 0) === activeLevel) {
+        return { link: [], regionGroups: [], boundaryLinks: [{ from: entity.from, to: entity.to, style: entity.highlightStyle }] };
+      }
+    }
     const { line, soloPoints } = buildLinkHoverHighlight(entity, nodes, activeLevel, cfg);
-    return { link: line, regionGroups: soloPoints.length > 0 ? [soloPoints] : [] };
+    return { link: line, regionGroups: soloPoints };
   }
   const points = entity.kind === "point" ? [entity] : entity.points;
-  const group = resolvePointGroup(points, nodes, activeLevel);
-  return { link: [], regionGroups: group.length > 0 ? [group] : [] };
+  return { link: [], regionGroups: resolvePointGroups(points, nodes, activeLevel) };
 }

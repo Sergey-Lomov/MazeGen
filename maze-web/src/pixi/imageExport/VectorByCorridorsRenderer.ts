@@ -1224,7 +1224,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish,
     );
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings);
+    const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }
 
   destroy(): void {

@@ -17,6 +17,7 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape,
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { exactCellBounds } from "../tessellationGeometry";
+import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
   buildTeleportLineStyle, buildVerticalConnectionStyle, buildMarkerStyle, resolveEffectiveEndpoints,
@@ -86,6 +87,11 @@ export class ExportWarningHighlight<TSettings> {
     finish: number | null,
     unscopedNodes: NodeDto[] = nodes,
     warningsOverride?: ExportWarning[],
+    inset = 2,
+    boundaryWidth?: number,
+    /** Vector-by-corridors draws one-way warning endpoints as inset regions instead of a shared
+     * boundary; vector-by-walls keeps the boundary treatment. */
+    boundaryWarningsAsRegions = false,
   ): void {
     if (!hoveredKey) {
       this.highlight.clear();
@@ -115,8 +121,10 @@ export class ExportWarningHighlight<TSettings> {
       return;
     }
 
-    // Several split nodes can occupy one tile. Keep one highlight region per tile, otherwise the
-    // same warning paints the tile repeatedly once for every node/layer belonging to that split.
+    const isSplitWarning = warning.id.includes("split") || warning.id === "waypoint_on_split" || warning.id === "teleport_on_special_split" || warning.id === "vertical_on_special_split";
+
+    // Several split nodes can occupy one tile. Split warnings use one region group for all their
+    // affected tiles, so adjacent tiles can merge into one contour just like ordinary regions.
     const nodesByTile = new Map<string, number[]>();
     for (const id of warning.nodes) {
       const node = nodes.find((candidate) => candidate.id === id);
@@ -126,9 +134,17 @@ export class ExportWarningHighlight<TSettings> {
       group.push(id);
       nodesByTile.set(key, group);
     }
+    const tileGroups = Array.from(nodesByTile.values());
+    const isBoundaryWarning = warning.id === "one_way_low_contrast_corridor" || warning.id === "one_way_arrows_overflow_corridor";
+    const renderBoundaryAsRegion = isBoundaryWarning && boundaryWarningsAsRegions;
+    const boundaryRegionGroups = renderBoundaryAsRegion
+      ? warning.edges.map(([from, to]) => [from, to])
+      : undefined;
     this.highlight.render({
       nodes,
-      regionGroups: Array.from(nodesByTile.values()),
+      regionGroups: isBoundaryWarning && !renderBoundaryAsRegion ? [] : isSplitWarning
+        ? [Array.from(new Set(tileGroups.flat()))]
+        : boundaryRegionGroups ?? tileGroups,
       cells: (warning.cells ?? [])
         .filter((cell) => (nodes[0]?.level ?? 0) === cell.floorIndex)
         .map((cell) => [cell.x, cell.y]),
@@ -137,6 +153,12 @@ export class ExportWarningHighlight<TSettings> {
       alpha: 0,
       cfg,
       skipPerimeter: true,
+      inset,
+      insetMode: isSplitWarning ? "outset" : "inset",
+      cornerStyle: ((settings as unknown as Record<string, unknown>).join ??
+        (settings as unknown as Record<string, unknown>).wallJoin) === "round" ? "round" : "sharp",
+      boundaryEdges: isBoundaryWarning && !renderBoundaryAsRegion ? warning.edges : undefined,
+      boundaryWidth,
     });
   }
 
@@ -595,7 +617,8 @@ export class VectorByWallsRenderer {
       state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByWallsSettings,
       rawEndpoints.start, rawEndpoints.finish,
     );
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings);
+    const wallInset = getCellHighlightInset(state.vectorByWallsSettings.wallThickness);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes, warnings, wallInset);
   }
 
   destroy(): void {

@@ -1,8 +1,9 @@
 import { Container, Graphics } from "pixi.js";
 import { getCellVertices } from "../tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { drawCellHighlight, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
 
-export type CellFillGroup = { cells: [number, number][]; color: number; alpha: number };
+export type CellFillGroup = { cells: [number, number][]; color: number; alpha: number; inset?: number; cornerStyle?: CellHighlightCornerStyle; borderWidth?: number };
 
 export class CellFillRenderer {
   private readonly g: Graphics;
@@ -20,7 +21,7 @@ export class CellFillRenderer {
       for (const [x, y] of group.cells) {
         const verts = getCellVertices(x, y, cfg);
         if (!verts) continue;
-        this.g.poly(verts.flatMap(v => [v.x, v.y])).fill({ color: group.color, alpha: group.alpha });
+        drawCellHighlight(this.g, verts, group.color, group.alpha, group.inset ?? 0, group.cornerStyle ?? "round", group.borderWidth);
       }
     }
   }

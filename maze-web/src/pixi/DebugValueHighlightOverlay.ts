@@ -38,6 +38,9 @@ export interface DebugValueHighlightData {
    *  algorithm, falling back to a stable slot in the non-toxic random-looking palette
    *  (`colorUtils.ts`'s `buildPalette`) for undeclared names. */
   colorFor: (name: string) => number;
+  /** Region-valued names that must remain one independent cell per value item instead of being
+   *  merged into connected contours. Used by CustomVertexBased's frontier/reserve sets. */
+  singleCellRegionNames?: ReadonlySet<string>;
   cfg: TessellationConfig;
 }
 
@@ -116,7 +119,7 @@ export class DebugValueHighlightOverlay {
   }
 
   render(data: DebugValueHighlightData): void {
-    const { nodes, debugValues, debugMaps, debugVertices, toggles, kindFor, colorFor, cfg } = data;
+    const { nodes, debugValues, debugMaps, debugVertices, toggles, kindFor, colorFor, singleCellRegionNames, cfg } = data;
 
     for (const [name, entry] of this.renderersByName) {
       if (!toggles.has(name)) entry.renderer.clear();
@@ -149,7 +152,12 @@ export class DebugValueHighlightOverlay {
         }
         case "region": {
           const ids = debugValues.get(name) ?? [];
-          const regionGroups = ids.map((id) => [id]);
+          // Most region values are one connected region and should merge adjacent cells into one
+          // contour. Frontier/reserve in CustomVertexBased are working sets, where each cell is a
+          // separate item even when adjacent, so keep those as independent one-cell groups.
+          const regionGroups = singleCellRegionNames?.has(name)
+            ? ids.map((id) => [id])
+            : ids.length > 0 ? [ids] : [];
           entry.renderer.render({ nodes, regionGroups, color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
           break;
         }

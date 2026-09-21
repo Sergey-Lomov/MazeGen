@@ -3,6 +3,8 @@ import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { getSharedEdgeSegment, getCellCenter } from "../tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { drawRoundedPolygon } from "./markerShapes";
+import { WALL_THICKNESS } from "../renderConstants";
 
 /** Shared style knobs for every one-way indicator pattern (`drawOneWayTriangle`/`Chevron`/`Arrow`)
  *  — GitHub issue #292 (renamed border->gap in #302 follow-up, consistent with the marker/connector
@@ -14,6 +16,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
  *  stroke options applied to the pattern's own strokes (never to a filled triangle's fill, only its
  *  gap stroke). */
 export type OneWayDrawStyle = {
+  pattern?: "triangle" | "chevron" | "arrow";
   color?: number;
   gapColor?: number;
   gapWidth?: number;
@@ -36,6 +39,18 @@ export type OneWayDrawStyle = {
 // so any caller wanting to visually match the map's marker (e.g. the wall-highlight overlays)
 // reads the same constant instead of re-hardcoding `TILE_SIZE * 0.3`.
 export const MAP_ONE_WAY_SIZE = TILE_SIZE * 0.3;
+/** Extra room around a boundary highlight, per side. Shared by one-way, wall and passage
+ * highlights so their transverse span uses the same visual clearance. */
+export const BOUNDARY_HIGHLIGHT_PADDING = 5;
+/** Span for post-edit wall/passage highlights: the actual wall plus the same per-side padding. */
+export const WALL_HIGHLIGHT_SPAN = WALL_THICKNESS + BOUNDARY_HIGHLIGHT_PADDING * 2;
+
+/** Stable, direction-independent key for one shared cell boundary. */
+export function cellBoundaryKey(a: [number, number], b: [number, number]): string {
+  const first = `${a[0]},${a[1]}`;
+  const second = `${b[0]},${b[1]}`;
+  return first < second ? `${first}|${second}` : `${second}|${first}`;
+}
 
 function resolvedSize(style?: OneWayDrawStyle): number {
   return style?.size ?? TILE_SIZE * 0.18;
@@ -43,6 +58,25 @@ function resolvedSize(style?: OneWayDrawStyle): number {
 
 function resolvedThickness(style?: OneWayDrawStyle): number {
   return style?.thickness ?? 4;
+}
+
+/** Full transverse span occupied by one wall one-way indicator, including its gap. Keep this
+ * geometry-derived so overlays can follow the live renderer style instead of using a cell-sized
+ * fallback or a viewport-specific constant. */
+export function oneWayIndicatorSpan(style?: OneWayDrawStyle): number {
+  const size = resolvedSize(style);
+  const gap = style?.gapWidth ?? 0;
+  switch (style?.pattern ?? "triangle") {
+    case "triangle":
+      // drawOneWayTriangle uses an equilateral triangle with R = 2/3 * size.
+      return Math.sqrt(3) * (2 / 3) * size + gap + BOUNDARY_HIGHLIGHT_PADDING * 2;
+    case "chevron":
+      return 2 * (style?.width ?? size * 1.4) + resolvedThickness(style) + gap * 2 + BOUNDARY_HIGHLIGHT_PADDING * 2;
+    case "arrow":
+      return size + resolvedThickness(style) + gap * 2 + BOUNDARY_HIGHLIGHT_PADDING * 2;
+    default:
+      return 0;
+  }
 }
 
 // Draws a direction arrow triangle centered at (cx, cy), pointing in (dx, dy) direction.
@@ -141,6 +175,56 @@ export function drawOneWayWallHighlight(
     const cx = (seg.v0.x + seg.v1.x) / 2;
     const cy = (seg.v0.y + seg.v1.y) / 2;
     drawOneWayTriangle(g, cx, cy, tdx / len, tdy / len, { color, size: MAP_ONE_WAY_SIZE });
+  }
+  return true;
+}
+
+/** Draws a filled quad centred on a shared cell boundary. Its span can follow the rendered marker,
+ * while the same construction still works for square, hexagonal and triangular tiles. */
+export function drawCellBoundaryHighlight(
+  g: Graphics,
+  from: [number, number],
+  to: [number, number],
+  cfg: TessellationConfig,
+  color: number,
+  fillAlpha = 0.25,
+  borderWidth = 3,
+  spanWidth?: number,
+): boolean {
+  const seg = getSharedEdgeSegment(from, to, cfg);
+  if (!seg) return false;
+  const fromCenter = getCellCenter(from[0], from[1], cfg);
+  const toCenter = getCellCenter(to[0], to[1], cfg);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const centerDistance = Math.hypot(dx, dy);
+  const edgeLength = Math.hypot(seg.v1.x - seg.v0.x, seg.v1.y - seg.v0.y);
+  if (centerDistance === 0 || edgeLength === 0) return false;
+
+  // Derive the normal from the shared edge itself. The centre-to-centre vector is only used to
+  // choose the normal's sign; for triangular/hexagonal coordinates it is not guaranteed to be
+  // exactly perpendicular to the edge after the tessellation transform.
+  const tx = (seg.v1.x - seg.v0.x) / edgeLength;
+  const ty = (seg.v1.y - seg.v0.y) / edgeLength;
+  let nx = -ty;
+  let ny = tx;
+  if (nx * dx + ny * dy < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const halfWidth = (spanWidth ?? centerDistance) / 2;
+  const points = [
+    seg.v0.x + nx * halfWidth, seg.v0.y + ny * halfWidth,
+    seg.v1.x + nx * halfWidth, seg.v1.y + ny * halfWidth,
+    seg.v1.x - nx * halfWidth, seg.v1.y - ny * halfWidth,
+    seg.v0.x - nx * halfWidth, seg.v0.y - ny * halfWidth,
+  ];
+  const cornerRadius = Math.min(edgeLength, centerDistance) * 0.18;
+  drawRoundedPolygon(g, points, cornerRadius);
+  g.fill({ color, alpha: fillAlpha });
+  if (borderWidth > 0) {
+    drawRoundedPolygon(g, points, cornerRadius);
+    g.stroke({ color, alpha: 1, width: borderWidth, join: "round" });
   }
   return true;
 }

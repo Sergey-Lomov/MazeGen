@@ -38,7 +38,7 @@ vi.mock("../pixi/renderers/NodeEdgeHighlightRenderer", () => ({
 vi.mock("../pixi/renderers/RegionHighlightRenderer", () => ({
   RegionHighlightRenderer: class { render() {} clear() {} destroy() {} },
 }));
-vi.mock("../pixi/renderers/wallUtils", () => ({ drawOneWayWallHighlight: vi.fn(() => false) }));
+vi.mock("../pixi/renderers/wallUtils", () => ({ drawCellBoundaryHighlight: vi.fn(() => false) }));
 
 import { Container, Graphics } from "pixi.js";
 import { DebugRefHighlightOverlay } from "../pixi/DebugRefHighlightOverlay";
@@ -71,11 +71,11 @@ describe("DebugRefHighlightOverlay cross-floor refs (GitHub issue #449)", () => 
       0, expect.objectContaining({ type: "square" }), NODE_RADIUS,
     );
     expect(graphSpies.drawCrossFloorMarkers).toHaveBeenCalledWith(
-      root.children[3], root.children[4], expect.any(Array), NODE_RADIUS,
+      root.children[2], root.children[3], expect.any(Array), NODE_RADIUS,
       canvas.debug.refHighlight, canvas.debug.refHighlight, canvas.debug.refHighlight, 3, 1,
     );
 
-    const nodeLayer = root.children[4] as FakeContainer;
+    const nodeLayer = root.children[3] as FakeContainer;
     const nodeMarker = nodeLayer.children[0] as FakeGraphics;
     expect(nodeMarker.calls).toContainEqual({ fn: "circle", args: [10, 20, NODE_RADIUS] });
     expect(nodeMarker.calls).toContainEqual({

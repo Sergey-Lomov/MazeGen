@@ -198,11 +198,16 @@ function pointsRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditH
 /** Row-hover highlight for a same-floor edge/teleport row (GitHub issue #546 second follow-up) — the
  *  connecting line itself, mirroring the old `postEditRowHighlight`. `null` when either bubble's own
  *  highlight didn't resolve to a plain point. */
-function linkRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null {
+function linkRowHighlight(bubbles: readonly PostEditEntityBubble[], highlightStyle: "line" | "one_way" | "boundary" = "line"): PostEditHoveredEntity | null {
   if (bubbles.length !== 2) return null;
   const [from, to] = bubbles;
   if (from.highlight?.kind !== "point" || to.highlight?.kind !== "point") return null;
-  return { kind: "link", from: from.highlight, to: to.highlight };
+  return {
+    kind: "link",
+    from: from.highlight,
+    to: to.highlight,
+    ...(highlightStyle !== "line" ? { highlightStyle } : {}),
+  };
 }
 
 /** Builds the `nodeById` map `postEditCommandLabel` needs, from the confirmed node snapshot
@@ -267,8 +272,8 @@ export function postEditCommandLabel(
   splitCtx: SplitLabelContext | null = null,
 ): PostEditCommandLabel {
   const edge = (from: PostEditEndpoint, to: PostEditEndpoint) => edgeBubbles(from, to, nodeById, multiFloor, splitCtx);
-  const link = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->"): PostEditCommandLabel =>
-    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: linkRowHighlight(bubbles), entityId: undefined });
+  const link = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", highlightStyle: "line" | "one_way" | "boundary" = "line"): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: linkRowHighlight(bubbles, highlightStyle), entityId: undefined });
   // A teleport's own connector is drawn by `TeleportRenderer` (routed, possibly non-straight, GitHub
   // issue #546 — see `Specs/post-edit.md`'s own note on why the row-hover link highlight was never
   // extended to follow that routing) — a straight-line `link` row-highlight over it reads as a second,
@@ -303,14 +308,14 @@ export function postEditCommandLabel(
         ? "post_edit.changes_action_set_edge_passage"
         : "post_edit.changes_action_set_edge_one_way";
       const arrow = kind === "wall" || kind === "basic" ? "<->" : "->";
-      return withEntityId(link(m[actionKey](), edge(command.edge.from, command.edge.to), arrow));
+      return withEntityId(link(m[actionKey](), edge(command.edge.from, command.edge.to), arrow, kind === "wall" || kind === "basic" ? "boundary" : "one_way"));
     }
     case "setEdgePair": {
       if (command.aToB.kind === "wall" && command.bToA.kind === "wall") {
-        return withEntityId(link(m["post_edit.changes_action_set_edge_wall"](), edge(command.a, command.b), "<->"));
+        return withEntityId(link(m["post_edit.changes_action_set_edge_wall"](), edge(command.a, command.b), "<->", "boundary"));
       }
       if (command.aToB.kind === "basic" && command.bToA.kind === "basic") {
-        return withEntityId(link(m["post_edit.changes_action_set_edge_passage"](), edge(command.a, command.b), "<->"));
+        return withEntityId(link(m["post_edit.changes_action_set_edge_passage"](), edge(command.a, command.b), "<->", "boundary"));
       }
       // `directionFlip` (GitHub issue #545): this click changed an already-one-way face's
       // direction rather than creating a fresh one-way passage — labeled distinctly, mirrors
@@ -321,7 +326,7 @@ export function postEditCommandLabel(
       // Bubble order is always `a, b` (GitHub issue #546 follow-up: fixed point order, direction
       // shown by the arrow glyph alone, not by swapping which bubble comes first) — `aToB` says
       // whether traffic actually flows a->b or b->a.
-      return withEntityId(link(action, edge(command.a, command.b), command.aToB.kind === "one_way_forward" ? "->" : "<-"));
+      return withEntityId(link(action, edge(command.a, command.b), command.aToB.kind === "one_way_forward" ? "->" : "<-", "one_way"));
     }
     case "addTeleport":
       return withEntityId(teleportRow(m["post_edit.changes_action_add_teleport"](), edge(command.from, command.to), teleportArrow(command.direction)));
@@ -402,4 +407,3 @@ export function postEditCommandLabel(
       return withEntityId(elevatorRow(m["post_edit.changes_action_remove_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx)));
   }
 }
-

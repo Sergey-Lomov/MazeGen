@@ -105,18 +105,20 @@ describe("IssueBubble", () => {
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
   });
 
-  it("hovering an invalid_teleport bubble sets hoveredIssueLoopEdges (shared edge-highlight path) to this check's flattened groups; leaving clears it", () => {
+  it("hovering an invalid_teleport bubble highlights both endpoint cells; leaving clears it", () => {
     const issue = invalidTeleportIssue("teleport_duplicates_connection");
     render(<IssueBubble issue={issue} sourceCheck="teleport_duplicates_connection" />);
 
     const bubble = screen.getByText("Teleport validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
-  it("hovering an invalid_one_way bubble sets hoveredIssueLoopEdges (shared edge-highlight path, drawn as a wall — GitHub issue #377) to this check's flattened groups; leaving clears it", () => {
+  it("hovering an invalid_one_way bubble highlights both linked cells as a region; leaving clears it", () => {
     const issue = invalidOneWayIssue("one_way_waypoint_distance");
     render(<IssueBubble issue={issue} sourceCheck="one_way_waypoint_distance" />);
 
@@ -133,7 +135,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Vertical passage validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
@@ -150,7 +152,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Vertical passage validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3, 4, 5]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4], [5]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
