@@ -309,7 +309,7 @@ describe("compactPostEditCommands — split point rebuild", () => {
   it("a later rotateSplitPoint DOES supersede an earlier rotateSplitPoint — both are pure wiring rebuilds, neither registers slot existence, so the earlier one is redundant once the later snapshot covers the same slot", () => {
     const baseline = makeBaseline();
     const commands: PostEditCommand[] = [
-      { kind: "addSplitNode", point: [0, 0], slotId: 0, faces: [] },
+      { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
       { kind: "rotateSplitPoint", point: [0, 0], nodes: [{ slotId: 0, faces: [] }] },
       { kind: "rotateSplitPoint", point: [0, 0], nodes: [{ slotId: 0, faces: [] }] },
     ];
