@@ -357,6 +357,33 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState()._nextPostEditTeleportId).toBe(2);
   });
 
+  it("loadProject floors a stale/missing saved `nextSplitSlotId` entry up to the GENERATION-BAKED split point's own slot count (GitHub issue #569)", () => {
+    // The generation snapshot itself carries a split point (node `i: 1` at the same coordinates as
+    // node 0) — no `addSplitNode` command in the log, mirroring a real generator-produced split
+    // tile. Before this fix, `mazeStore.ts` restored `file.postEdit.nextSplitSlotId` verbatim, so a
+    // file saved before the point was ever opened in the dialog (an empty map) would leave the
+    // in-memory counter unable to see the baseline's own slot 0 — the next `addSplitNode` would mint
+    // slot 0 again and collide.
+    const snapshotWithSplit = { ...mockSnapshot, nodes: [...mockSnapshot.nodes, { id: 2, x: 0, y: 0, i: 1 }] };
+    vi.mocked(generateMaze).mockReturnValue({ ...mockGenerateMazeResult, snapshot: snapshotWithSplit });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().generate();
+    // Dirty the post-edit section (any change) so `serializeProject` actually emits a `postEdit`
+    // section — an unedited generation result serializes `postEdit: null`.
+    useMazeStore.getState().setPostEditEndpoint("start", { kind: "node", id: 1 });
+
+    const file = serializeProject(useMazeStore.getState());
+    expect(file.postEdit).not.toBeNull();
+    // Simulate a file saved before this fix: no entry at all for the split point's own key.
+    file.postEdit = { ...file.postEdit!, nextSplitSlotId: {} };
+
+    vi.mocked(generateMaze).mockReturnValue({ ...mockGenerateMazeResult, snapshot: snapshotWithSplit });
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState()._nextSplitSlotId["0,0"]).toBe(1);
+    useMazeStore.getState().addSplitNode([0, 0]);
+    expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0, 1]);
+  });
+
   it("setError sets and clears the error message", () => {
     useMazeStore.getState().setError("boom");
     expect(useMazeStore.getState().error).toBe("boom");

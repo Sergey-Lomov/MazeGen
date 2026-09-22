@@ -859,8 +859,14 @@ follow-up): on load, `mazeStore.ts` recomputes each category's own minimum-safe 
 just-replayed baseline+log state itself via `nextPostEditIdCounters(derived)` — a baseline can carry
 ids past whatever a stale/hand-edited file's counter says (the counter is a separate, independently
 stored value, never cross-checked by replay) — and takes `Math.max(fileValue, recomputed)` per
-category. `_nextSplitSlotId` (a per-point `Record`, not a single counter) is restored as-is,
-unnormalized — separate reasoning, see its own store-field entry above.
+category. `_nextSplitSlotId` (a per-point `Record`, not a single counter, GitHub issue #569) gets
+the same floor treatment per point: `nextSplitSlotIdCounters(derived.splitPoints)`
+(`postEditSliceHelpers.ts`) recomputes each split point's own minimum-safe next slot id from the
+just-replayed state, and the file's own per-key value (if any) is raised to at least that floor —
+a saved file predating this normalization (or one whose point was never opened in the split-node
+dialog before saving) can carry an empty or incomplete map for a point the baseline itself already
+gave slots, which would otherwise let a fresh `addSplitNode` mint an id that collides with one the
+baseline already occupies.
 
 Load is **fail-closed**: `mazeStore.ts` calls `replayPostEditCommandsFailClosed` against the
 freshly-rebuilt baseline (generation is re-run deterministically from the persisted seed/config

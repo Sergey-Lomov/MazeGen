@@ -13,7 +13,7 @@ import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFr
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
-import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters } from "./slices/postEditSliceHelpers";
+import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./slices/postEditSliceHelpers";
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
@@ -243,6 +243,17 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         // own resolvability, never cross-checks it against the file's separately-stored counters, so
         // a too-low saved counter would otherwise mint a colliding id on the very next edit.
         const minCounters = nextPostEditIdCounters(derived);
+        // `_nextSplitSlotId` (GitHub issue #569, same floor reasoning as `minCounters` above): a
+        // saved file predating this fix can carry an empty/incomplete `nextSplitSlotId` map for a
+        // generation-baked split point that was never opened in the dialog before saving — merged
+        // per-key against `nextSplitSlotIdCounters(derived.splitPoints)` so the floor always covers
+        // every slot the replayed derived state actually has, not just what the file happened to
+        // record.
+        const minSplitSlotIds = nextSplitSlotIdCounters(derived.splitPoints);
+        const nextSplitSlotId: Record<string, number> = { ...file.postEdit.nextSplitSlotId };
+        for (const [key, minValue] of Object.entries(minSplitSlotIds)) {
+          nextSplitSlotId[key] = Math.max(nextSplitSlotId[key] ?? 0, minValue);
+        }
         set({
           postEditCommands: file.postEdit.commands,
           postEditDerived: derived,
@@ -255,7 +266,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
           _nextPostEditTeleportId: Math.max(file.postEdit.nextTeleportId, minCounters._nextPostEditTeleportId),
           _nextPostEditVerticalPassageId: Math.max(file.postEdit.nextVerticalPassageId, minCounters._nextPostEditVerticalPassageId),
           _nextPostEditElevatorId: Math.max(file.postEdit.nextElevatorId, minCounters._nextPostEditElevatorId),
-          _nextSplitSlotId: file.postEdit.nextSplitSlotId,
+          _nextSplitSlotId: nextSplitSlotId,
           _nextPostEditOneWayId: Math.max(file.postEdit.nextOneWayId, minCounters._nextPostEditOneWayId),
           _nextPostEditSplitPointId: Math.max(file.postEdit.nextSplitPointId, minCounters._nextPostEditSplitPointId),
         });
