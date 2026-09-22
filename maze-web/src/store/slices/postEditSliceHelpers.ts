@@ -324,6 +324,25 @@ export function nextPostEditIdCounters(derived: PostEditDerivedState): {
   };
 }
 
+/** Per-point high-water mark for split slot ids (GitHub issue #569), seeded from
+ *  `derived.splitPoints` the same way `nextPostEditIdCounters` seeds the global id counters from
+ *  the rest of `derived` — every generation-baked split point already occupies slot ids `0..N-1`
+ *  (see `deriveSplitPointsFromNodes`), but `_nextSplitSlotId` used to start empty regardless,
+ *  seeded only incrementally by `addSplitNode`/`applySplitBlueprint` as the user created slots
+ *  in THIS session. A generation-origin split tile's first `addSplitNode` therefore computed
+ *  `slotId = 0` (the `?? 0` fallback), colliding with the tile's own already-existing slot 0 and
+ *  making `applyPostEditCommand`'s `addSplitNode` case fail closed (`existing.includes(slotId)`)
+ *  — the "Add node" button silently did nothing. Called wherever `_nextSplitSlotId` is (re)seeded
+ *  from a baseline: `generate()`, `resetPostEdit`, and as a load-time floor alongside
+ *  `nextPostEditIdCounters`, same reasoning as that function's own load-time floor use. */
+export function nextSplitSlotIdCounters(splitPoints: Record<string, number[]>): Record<string, number> {
+  const counters: Record<string, number> = {};
+  for (const [key, slots] of Object.entries(splitPoints)) {
+    if (slots.length > 0) counters[key] = Math.max(...slots) + 1;
+  }
+  return counters;
+}
+
 /** The only entry point that appends a single command to the log incrementally (GitHub issue #543
  * plan section 6) — calls `applyPostEditCommand` directly against the current derived state rather
  * than a full `replayPostEditCommands` (parity between the two is covered by

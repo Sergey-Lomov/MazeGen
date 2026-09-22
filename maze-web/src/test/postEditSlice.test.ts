@@ -1597,6 +1597,41 @@ describe("mazeStore split-node actions", () => {
     expect(useMazeStore.getState()._nextSplitSlotId["2,2"]).toBe(5);
   });
 
+  it("addSplitNode on a GENERATION-BAKED split point (GitHub issue #569) mints past the baseline's own slot, not slot 0 again", () => {
+    // No `addSplitNode` command in the log at all — the point's slot 0 came straight from
+    // generation (`i: 1` on the node, see `deriveSplitPointsFromNodes`), the same way a real
+    // generator-produced split tile arrives. Before the fix, `_nextSplitSlotId` started empty
+    // regardless, so this call minted slotId 0 again, collided with the baseline's own slot 0, and
+    // `appendPostEditCommand` silently failed (`applied: false`) — "Add node" did nothing.
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 },
+      ],
+      edges: [],
+    });
+    useMazeStore.getState().addSplitNode([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0, 1]);
+    expect(s.postEditCommands).toEqual([{ kind: "addSplitNode", point: [0, 0], level: undefined, slotId: 1, pointId: "s1" }]);
+  });
+
+  it("reconfiguring a GENERATION-BAKED split node's face logs updateSplitNodeFaces, not a plain setEdgePair (GitHub issue #569)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 },
+      ],
+      edges: [],
+    });
+    // The point's original node (slot undefined) is post-edit's default active node for an
+    // untouched split point — reconfiguring its face to neighbor n(1) must be recorded against the
+    // split node's own lifeline (`updateSplitNodeFaces`), not as an independent edge-pair command.
+    useMazeStore.getState().applyPostEditToolAt("passage", key01, n(0), n(1));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toEqual([
+      { kind: "updateSplitNodeFaces", point: [0, 0], level: undefined, slotId: undefined, pointId: "s1", faces: [{ neighbor: n(1), toNeighbor: es(n(0), n(1), "basic"), fromNeighbor: es(n(1), n(0), "basic") }] },
+    ]);
+  });
+
   it("removeSplitNode removes the slot and any edges/teleports referencing it", () => {
     const target = splitEndpoint([2, 2], 0);
     seedPostEdit({

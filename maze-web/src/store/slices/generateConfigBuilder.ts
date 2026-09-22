@@ -5,7 +5,7 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, c
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters } from "./postEditSliceHelpers";
+import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
@@ -354,7 +354,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       ...legacyFieldsFor(baseline.derived),
       ...nextPostEditIdCounters(baseline.derived),
       postEditActiveSplitNode: {},
-      _nextSplitSlotId: {},
+      _nextSplitSlotId: nextSplitSlotIdCounters(baseline.derived.splitPoints),
       postEditTeleportPendingFrom: null,
       postEditChangesEntityFilter: null,
       // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead

@@ -34,6 +34,7 @@ import {
   toWasmEndpoint, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage,
   buildPostEditBaseline, appendPostEditCommand, replacePostEditCommands,
   derivedStateToLegacyFields as legacyFieldsFor, resolveActiveNodeIdAt, nextPostEditIdCounters,
+  nextSplitSlotIdCounters,
   buildPostEditPointEntitiesAt, removePostEditSplitSlots, resolveNodeIdToEndpoint,
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
@@ -500,7 +501,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         ...legacyFieldsFor(baseline.derived),
         ...nextPostEditIdCounters(baseline.derived),
         postEditTeleportPendingFrom: null,
-        _nextSplitSlotId: {},
+        _nextSplitSlotId: nextSplitSlotIdCounters(baseline.derived.splitPoints),
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
         postEditEdges: null,

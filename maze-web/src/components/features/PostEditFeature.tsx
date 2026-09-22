@@ -5,13 +5,14 @@ import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
 import { ToolGlyph } from "./ToolGlyph";
 import type { ToolGlyphKey } from "./toolGlyphs";
-import { typography, muted, spacing, indent } from "../../styles/theme";
+import { typography, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
-import { Switch } from "../Switch";
+import { ToggleRow } from "../ToggleRow";
 import { IssuesBlock } from "../IssuesBlock";
-import { Stack, Inline } from "../Layout";
+import { Stack } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
 import { PostEditChangesPanel } from "./PostEditChangesPanel";
+import { AutoConfirmInfoModal, AutoCompactInfoModal } from "./PostEditModals";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
@@ -145,6 +146,8 @@ export function PostEditFeature() {
   }, [openCard, postEditChangesOpen, setPostEditChangesOpen]);
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const [autoConfirmInfoOpen, setAutoConfirmInfoOpen] = useState(false);
+  const [autoCompactInfoOpen, setAutoCompactInfoOpen] = useState(false);
 
   const hasEdges = postEditDraftEdges !== null;
 
@@ -213,15 +216,19 @@ export function PostEditFeature() {
             {m["post_edit.confirm"]()}
           </Button>
 
-          <Inline gap="groupGap" justify="space-between">
-            <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>
-            <Switch checked={autoConfirm} onChange={setAutoConfirm} />
-          </Inline>
+          <ToggleRow
+            label={m["post_edit.auto_confirm"]()}
+            checked={autoConfirm}
+            onChange={setAutoConfirm}
+            info={() => setAutoConfirmInfoOpen(true)}
+          />
 
-          <Inline gap="groupGap" justify="space-between">
-            <span style={styles.autoConfirmLabel}>{m["post_edit.auto_compact"]()}</span>
-            <Switch checked={autoCompact} onChange={setAutoCompact} />
-          </Inline>
+          <ToggleRow
+            label={m["post_edit.auto_compact"]()}
+            checked={autoCompact}
+            onChange={setAutoCompact}
+            info={() => setAutoCompactInfoOpen(true)}
+          />
         </Stack>
       </div>
 
@@ -232,6 +239,9 @@ export function PostEditFeature() {
           onCancel={() => setConfirmReset(false)}
         />
       )}
+
+      {autoConfirmInfoOpen && <AutoConfirmInfoModal onClose={() => setAutoConfirmInfoOpen(false)} />}
+      {autoCompactInfoOpen && <AutoCompactInfoModal onClose={() => setAutoCompactInfoOpen(false)} />}
 
       {postEditChangesOpen && (
         <PostEditChangesPanel onClose={() => setPostEditChangesOpen(false)} />
@@ -261,8 +271,5 @@ const styles: Record<string, React.CSSProperties> = {
   // One indent level for a section's own content, relative to its `sectionLabel`.
   nestedContent: {
     paddingLeft: indent.tree,
-  },
-  autoConfirmLabel: {
-    ...muted(typography.body),
   },
 };

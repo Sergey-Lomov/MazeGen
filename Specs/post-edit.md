@@ -350,10 +350,14 @@ so a collapse never leaves a denormalized from/to/direction/floors field describ
 pre-compaction snapshot. Triggered either manually (a "Compact" button pinned below the Changes
 panel's row list, sticky to the panel's own bottom edge the same way the entity-id filter is sticky
 to its top — opens a `ConfirmModal`, then calls `compactPostEditLog()`) or automatically after every
-command/batch when `postEditAutoCompact` (a `Switch` next to the auto-confirm one in the post-edit
-panel, default off) is on — `finalizeAutoCompact` in `postEditSliceHelpers.ts` runs the same
-`compactPostEditCommands` call inside `appendPostEditCommand`/`replacePostEditCommands`'s own `set`,
-right after the command list would otherwise be committed as-is.
+command/batch when `postEditAutoCompact` (a `ToggleRow` next to the auto-confirm one in the post-edit
+panel's Management section, default off) is on — `finalizeAutoCompact` in `postEditSliceHelpers.ts`
+runs the same `compactPostEditCommands` call inside `appendPostEditCommand`/`replacePostEditCommands`'s
+own `set`, right after the command list would otherwise be committed as-is. The switch's info icon
+(GitHub issue #576, `AutoCompactInfoModal`) explains, in plain language, that auto-compact shrinks the
+log by dropping superseded entries (e.g. only the start's final position survives repeated moves),
+that the exact step-by-step history is lost as a result, and that log size has no real effect on
+performance — so the toggle is purely a convenience choice, not a performance one.
 
 Compaction groups commands more coarsely than `lifelineKeysOf` (`compactionGroupsOf`), but keeps a
 one-way passage's own creation separate from plain wall/passage toggling: a `setEdge`/`setEdgePair`
@@ -855,8 +859,14 @@ follow-up): on load, `mazeStore.ts` recomputes each category's own minimum-safe 
 just-replayed baseline+log state itself via `nextPostEditIdCounters(derived)` — a baseline can carry
 ids past whatever a stale/hand-edited file's counter says (the counter is a separate, independently
 stored value, never cross-checked by replay) — and takes `Math.max(fileValue, recomputed)` per
-category. `_nextSplitSlotId` (a per-point `Record`, not a single counter) is restored as-is,
-unnormalized — separate reasoning, see its own store-field entry above.
+category. `_nextSplitSlotId` (a per-point `Record`, not a single counter, GitHub issue #569) gets
+the same floor treatment per point: `nextSplitSlotIdCounters(derived.splitPoints)`
+(`postEditSliceHelpers.ts`) recomputes each split point's own minimum-safe next slot id from the
+just-replayed state, and the file's own per-key value (if any) is raised to at least that floor —
+a saved file predating this normalization (or one whose point was never opened in the split-node
+dialog before saving) can carry an empty or incomplete map for a point the baseline itself already
+gave slots, which would otherwise let a fresh `addSplitNode` mint an id that collides with one the
+baseline already occupies.
 
 Load is **fail-closed**: `mazeStore.ts` calls `replayPostEditCommandsFailClosed` against the
 freshly-rebuilt baseline (generation is re-run deterministically from the persisted seed/config
@@ -1069,7 +1079,7 @@ All tools live in one **Tools** section of the feature card, rendered as a wrapp
 
 `DANGER_TOOLS = { reset, delete }` — these two show a `base.error`-hued selected border (`btn-tool-icon-selected-danger`) instead of the accent one. Their native tooltips: `reset` → "Reset to generated state" ("Сброс до генерации"), `delete` → "Delete an element" ("Удаление элемента").
 
-The **Management** section below the tool row keeps only the whole-graph actions: the "Reset to generated state" destructive button (`resetPostEdit`, confirmed), the "Confirm" button (manual `confirmPostEdit` when not auto-confirming), and the auto-confirm switch.
+The **Management** section below the tool row keeps only the whole-graph actions: the "Reset to generated state" destructive button (`resetPostEdit`, confirmed), the "Confirm" button (manual `confirmPostEdit` when not auto-confirming), and the auto-confirm/auto-compact switches — each a `ToggleRow` (`maze-web/src/components/ToggleRow.tsx`) with an info icon (GitHub issue #576) that opens a plain-text `Modal` (`AutoConfirmInfoModal`/`AutoCompactInfoModal`, `maze-web/src/components/features/PostEditModals.tsx`) explaining what the toggle does — same convention as `AnalyticsFeature`'s `ScoreInfoModal`/`SidesInfoModal` (`Specs/analytics-web.md`).
 
 | Tool | Action |
 |---|---|
@@ -1321,6 +1331,8 @@ Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`,
 `updateCellHover`'s `danger` flag).
 
 ## Auto-Confirm
+
+The panel's auto-confirm switch has an info icon (GitHub issue #576, `AutoConfirmInfoModal`) explaining, in plain language, that confirming is what makes post-edit changes take effect elsewhere, that auto-confirm applies each change immediately instead of requiring the manual Confirm button, that every confirm recomputes the full analytics (a potential slowdown on large mazes), and recommending auto-confirm be turned off — confirming manually once editing is done — on large mazes.
 
 When `postEditAutoConfirm = true`, `PostEditController` schedules `confirmPostEdit` with 300ms debounce after each edge tool click. For endpoint tools (`set_start`/`set_finish`) and teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`), `confirmPostEdit` is called directly by the store action (only when `autoConfirm = true`) — controller does not schedule an additional call.
 

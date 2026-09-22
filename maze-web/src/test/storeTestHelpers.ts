@@ -5,7 +5,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { QcRuleState, CheckInstance, FloorFieldConfig, MazeStore } from "../store/storeTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { replayPostEditCommands } from "../pixi/postEditReplay";
-import { buildPostEditBaseline, derivedStateToLegacyFields } from "../store/slices/postEditSliceHelpers";
+import { buildPostEditBaseline, derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 
 export { emptyFreePoints };
@@ -318,7 +318,11 @@ export function postEditStatePatch(seed: PostEditSeed): Partial<MazeStore> {
     postEditDerived: derived,
     postEditCommands: commands,
     ...derivedStateToLegacyFields(derived),
-    _nextSplitSlotId: seed.nextSplitSlotId ?? {},
+    // Defaults to the baseline's own per-point high-water marks (GitHub issue #569) — same
+    // "generation-baked slots already occupy ids" seeding `generate()`/`resetPostEdit` do, so a
+    // scenario built from a split-bearing snapshot doesn't silently collide `addSplitNode`'s next
+    // slotId with an existing generation-baked slot unless a test explicitly overrides it.
+    _nextSplitSlotId: seed.nextSplitSlotId ?? nextSplitSlotIdCounters(baseline.derived.splitPoints),
     _nextPostEditOneWayId: oneWayIds.length > 0 ? Math.max(...oneWayIds) + 1 : 1,
     _nextPostEditSplitPointId: splitPointIdValues.length > 0 ? Math.max(...splitPointIdValues) + 1 : 1,
   } as Partial<MazeStore>;
