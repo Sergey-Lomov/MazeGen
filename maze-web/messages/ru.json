@@ -163,6 +163,7 @@
   "preset.gen_source_tool": "Источник генерации",
   "preset.auto_lock": "Автоблокировка",
   "preset.show_origin": "Начало координат",
+  "preset.show_locks": "Показывать блокировки",
   "preset.clear_invalid": "Сбросить невалидные ({count})",
   "preset.nodes_locked": "{count} узел заблокирован",
   "preset.nodes_locked_plural": "{count} узла заблокировано",

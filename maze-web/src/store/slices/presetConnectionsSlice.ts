@@ -8,7 +8,7 @@ import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPoi
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
-import type { MazeState, MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
+import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnectionsState, type PresetConnectionsActions } from "../storeTypes";
 import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
 
 /** Plain 0-based active floor index (0 = floor 0), unlike `activeFloorLevel` (`undefined` = floor
@@ -48,6 +48,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   highlightIsolatedNodes: false,
   highlightOrphanSplitNodes: false,
   showPresetOrigin: false,
+  showPresetLocks: true,
+  showPresetLocksBeforeLockTool: null,
   lockedNodes: new Map<string, NodeLockKind>(),
   autoLock: true,
   autoLockedNodes: new Set<string>(),
@@ -71,13 +73,24 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetDragOverride: null,
   presetDragFailureMessage: null,
 
-  setPresetConnectionsTool: (tool) => set({
-    presetConnectionsTool: tool,
-    presetTeleportPendingFrom: null,
-    presetVerticalPassagePending: null,
-    presetElevatorPending: null,
-    presetSplitTargetPrompt: null,
-    presetEntityDeletePrompt: null,
+  setPresetConnectionsTool: (tool) => set((state) => {
+    const enteringLockTools = isPresetLockTool(tool) && !isPresetLockTool(state.presetConnectionsTool);
+    const leavingLockTools = !isPresetLockTool(tool) && isPresetLockTool(state.presetConnectionsTool);
+    return {
+      presetConnectionsTool: tool,
+      ...(enteringLockTools ? {
+        showPresetLocksBeforeLockTool: state.showPresetLocks,
+        showPresetLocks: true,
+      } : leavingLockTools ? {
+        showPresetLocks: state.showPresetLocksBeforeLockTool ?? state.showPresetLocks,
+        showPresetLocksBeforeLockTool: null,
+      } : {}),
+      presetTeleportPendingFrom: null,
+      presetVerticalPassagePending: null,
+      presetElevatorPending: null,
+      presetSplitTargetPrompt: null,
+      presetEntityDeletePrompt: null,
+    };
   }),
 
   setPresetSectionExpanded: (id, expanded) =>
@@ -179,6 +192,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
   setHighlightOrphanSplitNodes: (highlight) => set({ highlightOrphanSplitNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
+  setShowPresetLocks: (show) => set({ showPresetLocks: show }),
 
   setLockedNode: (x, y, kind, slotId) => set((state) => {
     const next = new Map(state.lockedNodes);

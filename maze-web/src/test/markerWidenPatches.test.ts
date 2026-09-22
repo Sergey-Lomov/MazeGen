@@ -27,8 +27,9 @@ describe("drawMarkerWidenPatches", () => {
     drawMarkerWidenPatches(graphics, markers, 0xabcdef, 4, 3);
     const polyCalls = graphics.calls.filter((c) => c.fn === "poly");
     const fillCalls = graphics.calls.filter((c) => c.fn === "fill");
-    // Each patch draws its own path twice (fill + outward stroke, `drawMarkerUnderlay`) — 4 total.
-    expect(polyCalls).toHaveLength(4);
+    // Each patch draws one offset contour; circles use polygon points to match the shared
+    // marker-shape path implementation.
+    expect(polyCalls).toHaveLength(2);
     expect(fillCalls).toHaveLength(2);
     expect((fillCalls[0].args[0] as { color: number }).color).toBe(0xabcdef);
     expect((fillCalls[1].args[0] as { color: number }).color).toBe(0xabcdef);
@@ -39,10 +40,9 @@ describe("drawMarkerWidenPatches", () => {
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, borderWidth: 3, gapWidth: 2 }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 1); // line half-width 2, padding 1
     const [firstPoints] = graphics.calls.find((c) => c.fn === "poly")!.args as [number[]];
-    const baseRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
-    expect(baseRadius).toBeCloseTo(10); // the marker's own fill radius, not the outer or footprint radius
-    const strokeArgs = graphics.calls.find((c) => c.fn === "stroke")!.args[0] as { width: number };
-    expect(strokeArgs.width).toBe(6); // borderWidth 3 + extra 3, extra = footprint 16 - outer radius 13
+    const patchRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
+    expect(patchRadius).toBeCloseTo(16); // radius + border + gap + padding
+    expect(graphics.calls.some((c) => c.fn === "stroke")).toBe(false);
   });
 
   it("borderWidth alone (no gapWidth, minimal padding) still draws an outward offset matching the border's own width, so the patch tracks the marker's true outer edge instead of stopping at the bare fill radius (GitHub issue #552 sixth follow-up)", () => {
@@ -50,10 +50,9 @@ describe("drawMarkerWidenPatches", () => {
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, borderWidth: 2 }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 1); // line half-width 2, footprint 13
     const [firstPoints] = graphics.calls.find((c) => c.fn === "poly")!.args as [number[]];
-    const baseRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
-    expect(baseRadius).toBeCloseTo(10); // the marker's own fill radius
-    const strokeArgs = graphics.calls.find((c) => c.fn === "stroke")!.args[0] as { width: number };
-    expect(strokeArgs.width).toBe(3); // borderWidth 2 + extra 1, extra = footprint 13 - outer radius 12
+    const patchRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
+    expect(patchRadius).toBeCloseTo(13); // radius + border + padding
+    expect(graphics.calls.some((c) => c.fn === "stroke")).toBe(false);
   });
 
   it("padding <= 0 draws no widen patch at all, regardless of borderWidth/gapWidth (GitHub issue #552 seventh follow-up: padding is this feature's own on/off switch)", () => {
@@ -68,10 +67,9 @@ describe("drawMarkerWidenPatches", () => {
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 1 }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 20, 1); // line half-width 10, marker footprint 2
     const [firstPoints] = graphics.calls.find((c) => c.fn === "poly")!.args as [number[]];
-    const baseRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
-    expect(baseRadius).toBeCloseTo(1);
-    const strokeArgs = graphics.calls.find((c) => c.fn === "stroke")!.args[0] as { width: number };
-    expect(strokeArgs.width).toBe(9); // halfWidth-floored patchRadius 10 - base radius 1
+    const patchRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
+    expect(patchRadius).toBeCloseTo(10); // line half-width floor
+    expect(graphics.calls.some((c) => c.fn === "stroke")).toBe(false);
   });
 
   it("padding is added on top of the marker's own footprint", () => {
@@ -79,18 +77,16 @@ describe("drawMarkerWidenPatches", () => {
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10 }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 5); // footprint 10, padding 5
     const [firstPoints] = graphics.calls.find((c) => c.fn === "poly")!.args as [number[]];
-    const baseRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
-    expect(baseRadius).toBeCloseTo(10);
-    const strokeArgs = graphics.calls.find((c) => c.fn === "stroke")!.args[0] as { width: number };
-    expect(strokeArgs.width).toBe(5); // padding
+    const patchRadius = Math.max(...Array.from({ length: firstPoints.length / 2 }, (_, i) => Math.hypot(firstPoints[i * 2], firstPoints[i * 2 + 1])));
+    expect(patchRadius).toBeCloseTo(15); // radius + padding
+    expect(graphics.calls.some((c) => c.fn === "stroke")).toBe(false);
   });
 
   it("draws the marker's own shape, not always a circle", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "square" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3);
-    // Path drawn twice (fill + outward stroke, `drawMarkerUnderlay`).
-    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(2);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 
@@ -98,15 +94,15 @@ describe("drawMarkerWidenPatches", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "square", cornerStyle: "round" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3);
-    expect(graphics.calls.filter((c) => c.fn === "arcTo").length).toBeGreaterThan(0);
-    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
+    expect(graphics.calls.filter((c) => c.fn === "arcTo")).toHaveLength(0);
   });
 
   it("shapeOverride 'square' forces every patch square regardless of the marker's own shape", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "circle" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "square", "sharp");
-    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(2);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 
@@ -116,7 +112,7 @@ describe("drawMarkerWidenPatches", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "circle");
-    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(2);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 
@@ -124,7 +120,7 @@ describe("drawMarkerWidenPatches", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "match_marker");
-    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(2);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 

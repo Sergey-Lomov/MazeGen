@@ -38,6 +38,7 @@ import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
+import { isPresetLockTool } from "../store/storeTypes";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -244,6 +245,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetGenSource !== prev.presetGenSource ||
       state.lockedNodes !== prev.lockedNodes ||
       state.autoLockedNodes !== prev.autoLockedNodes ||
+      state.showPresetLocks !== prev.showPresetLocks ||
       state.presetTeleports !== prev.presetTeleports ||
       state.presetVerticalPassages !== prev.presetVerticalPassages ||
       state.presetElevators !== prev.presetElevators ||
@@ -335,7 +337,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     // One node-anchor map per redraw, shared by split markers and locks.
     const nodePositions = buildPresetNodePositions(cfg, presetSplitPoints, presetConnections);
-    const lockEntries = buildLocks(lockedNodes, autoLockedNodes, nodePositions, presetSplitPoints);
+    const forceShowLocks = isPresetLockTool(state.presetConnectionsTool);
+    const lockEntries = state.showPresetLocks || forceShowLocks
+      ? buildLocks(lockedNodes, autoLockedNodes, nodePositions, presetSplitPoints)
+      : [];
     this.locks.render({ locks: lockEntries }, cfg);
 
     const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);

@@ -235,6 +235,29 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().showPresetOrigin).toBe(true);
   });
 
+  it("setShowPresetLocks toggles lock marker visibility", () => {
+    expect(useMazeStore.getState().showPresetLocks).toBe(true);
+    useMazeStore.getState().setShowPresetLocks(false);
+    expect(useMazeStore.getState().showPresetLocks).toBe(false);
+  });
+
+  it("lock tools force lock marker visibility", () => {
+    useMazeStore.getState().setShowPresetLocks(false);
+    useMazeStore.getState().setPresetConnectionsTool("full_lock");
+    expect(useMazeStore.getState().showPresetLocks).toBe(true);
+    useMazeStore.getState().setPresetConnectionsTool("wall");
+    expect(useMazeStore.getState().showPresetLocks).toBe(false);
+  });
+
+  it("restores enabled lock visibility after leaving lock tools", () => {
+    useMazeStore.getState().setShowPresetLocks(true);
+    useMazeStore.getState().setPresetConnectionsTool("lock_in");
+    useMazeStore.getState().setPresetConnectionsTool("lock_out");
+    expect(useMazeStore.getState().showPresetLocks).toBe(true);
+    useMazeStore.getState().setPresetConnectionsTool("wall");
+    expect(useMazeStore.getState().showPresetLocks).toBe(true);
+  });
+
   it("setLockedNode adds a lock entry", () => {
     useMazeStore.getState().setLockedNode(2, 3, "both");
     expect(useMazeStore.getState().lockedNodes.get("2,3")).toBe("both");

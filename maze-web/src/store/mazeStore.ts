@@ -191,6 +191,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       debugStale: false,
       // ui
       showPresetOrigin: file.ui.showPresetOrigin,
+      showPresetLocks: file.ui.showPresetLocks,
+      showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
       openCard: file.ui.openCard,
       // clear transient UI flags

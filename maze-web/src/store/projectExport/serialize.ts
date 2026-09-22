@@ -101,6 +101,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     },
     ui: {
       showPresetOrigin: state.showPresetOrigin,
+      showPresetLocks: state.showPresetLocks ?? true,
       showFieldOrigin: state.showFieldOrigin,
       openCard: state.openCard,
       postEditAutoConfirm: state.postEditAutoConfirm,

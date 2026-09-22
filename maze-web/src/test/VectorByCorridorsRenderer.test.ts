@@ -1151,9 +1151,9 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(buildTeleportEdges).mockReturnValueOnce([{ from: [7, 7], to: [9, 9], oneWay: false }]);
     currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, markerWidenShape: "square" } });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const markerWidenGraphics = (renderer as unknown as { markerWiden: { arcTo: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn> } }).markerWiden;
+    const markerWidenGraphics = (renderer as unknown as { markerWiden: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn> } }).markerWiden;
     expect(markerWidenGraphics.circle).not.toHaveBeenCalled();
-    expect(markerWidenGraphics.arcTo).toHaveBeenCalled();
+    expect(markerWidenGraphics.poly).toHaveBeenCalled();
   });
 
   it("renders teleports via its own TeleportRenderer, styled from vectorByCorridorsSettings with the corridor's own color as floorColor", () => {

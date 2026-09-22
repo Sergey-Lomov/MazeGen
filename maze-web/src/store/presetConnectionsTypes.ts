@@ -4,6 +4,10 @@ import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../pixi/pointEntities";
 
+export function isPresetLockTool(tool: PresetConnectionTool): boolean {
+  return tool === "lock_in" || tool === "lock_out" || tool === "full_lock";
+}
+
 export interface PresetConnectionsState {
   /** Every preset connection across every floor, in one flat map (GitHub issue #340) — an entry's
    * floor lives in its own `from.level`/`to.level` (`PresetEndpoint.level`, undefined = floor 0),
@@ -24,6 +28,10 @@ export interface PresetConnectionsState {
    *  split nodes instead. */
   highlightOrphanSplitNodes: boolean;
   showPresetOrigin: boolean;
+  /** Whether preset lock/blocker markers are rendered on the canvas. */
+  showPresetLocks: boolean;
+  /** Temporarily remembers the lock visibility setting while a lock tool forces it on. */
+  showPresetLocksBeforeLockTool: boolean | null;
   /** Locked nodes: key = "x,y[:level]", value = lock kind */
   lockedNodes: Map<string, NodeLockKind>;
   autoLock: boolean;
@@ -182,6 +190,7 @@ export interface PresetConnectionsActions {
   setHighlightIsolatedNodes: (highlight: boolean) => void;
   setHighlightOrphanSplitNodes: (highlight: boolean) => void;
   setShowPresetOrigin: (show: boolean) => void;
+  setShowPresetLocks: (show: boolean) => void;
   setLockedNode: (x: number, y: number, kind: NodeLockKind, slotId?: number) => void;
   removeLockedNode: (x: number, y: number, slotId?: number) => void;
   clearLockedNodes: () => void;
