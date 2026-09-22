@@ -601,13 +601,13 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     thinBorder.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 1, textColor: 0x123456, textPadding: 0 } }),
     });
     const thickBorder = new TeleportRenderer(new Container());
     thickBorder.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 10, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 10, textColor: 0x123456, textPadding: 0 } }),
     });
     const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
       (r as unknown as { overlayLayer: { children: { style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;

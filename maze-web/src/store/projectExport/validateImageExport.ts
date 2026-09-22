@@ -136,6 +136,7 @@ export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fal
     size: optNumber(obj, "size", fallback.size),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth ?? 3),
     textColor: optNumber(obj, "textColor", fallback.textColor),
     textPadding: optNumber(obj, "textPadding", fallback.textPadding),
   };

@@ -284,9 +284,10 @@ export interface TeleportFloorBadgeSettings {
   size: number;
   /** Badge body fill (GitHub issue #503 follow-up) — independent of the connector color. */
   fillColor: number;
-  /** Badge border ring (GitHub issue #503 follow-up). Border width follows the teleport edge
-   *  marker's own `teleportEdgeBorderWidth`, same as before. */
+  /** Badge border ring (GitHub issue #503 follow-up), with an independent width setting. */
   borderColor: number;
+  /** Badge border width in pixels, independent from the teleport edge marker border. */
+  borderWidth?: number;
   /** Label color — independent of the floor color (GitHub issue #485 follow-up; before it, the
    *  label always drew in `floorColor` as a knockout digit). */
   textColor: number;

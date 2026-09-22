@@ -499,6 +499,15 @@ export function TeleportSettingsSection({
               fieldName={floorBadgeTextColorFieldName}
             />
             <SliderRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_border_width"]()}
+              value={settings.teleportFloorBadge.borderWidth ?? 3}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, borderWidth: v } })}
+              min={0}
+              max={10}
+              step={1}
+              format={(v) => String(v)}
+            />
+            <SliderRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_text_padding"]()}
               value={settings.teleportFloorBadge.textPadding}
               onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textPadding: v } })}

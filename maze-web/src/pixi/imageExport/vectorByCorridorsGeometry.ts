@@ -63,7 +63,7 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
         shape: isBadge ? settings.teleportFloorBadge.shape : (override?.shape ?? settings.teleportLineShape),
         // `drawFloorBadge` always draws the badge shape rounded, so a `match_marker` patch rounds too.
         cornerStyle: isBadge ? "round" : settings.teleportLineCornerStyle,
-        borderWidth: settings.teleportEdgeBorderWidth,
+        borderWidth: isBadge ? (settings.teleportFloorBadge.borderWidth ?? settings.teleportEdgeBorderWidth) : settings.teleportEdgeBorderWidth,
         gapWidth: settings.teleportEdgeGapWidth,
       });
     }

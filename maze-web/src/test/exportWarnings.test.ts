@@ -661,6 +661,26 @@ describe("computeVectorByCorridorsWarnings", () => {
       expect(warnings.filter((w) => w.id === "elevator_badge_fill_low_contrast_corridor")).toHaveLength(1);
     });
 
+    it("flags teleport floor badge fill when its border is disabled", () => {
+      const nodes = [n(0, 0, 0, 0), n(1, 2, 2, 1)];
+      const settings = baseCorridorsSettings({
+        color: 0,
+        teleportFloorBadge: { ...baseCorridorsSettings().teleportFloorBadge, fillColor: 0, borderColor: 0xffffff, borderWidth: 0 },
+      });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [teleport(0, 1)], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "teleport_badge_fill_low_contrast_corridor")).toHaveLength(1);
+    });
+
+    it("does not flag teleport floor badge border when its border is disabled", () => {
+      const nodes = [n(0, 0, 0, 0), n(1, 2, 2, 1)];
+      const settings = baseCorridorsSettings({
+        color: 0,
+        teleportFloorBadge: { ...baseCorridorsSettings().teleportFloorBadge, fillColor: 0xffffff, borderColor: 0, borderWidth: 0 },
+      });
+      const warnings = computeVectorByCorridorsWarnings(nodes, [teleport(0, 1)], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id.startsWith("teleport_badge_border_low_contrast"))).toHaveLength(0);
+    });
+
     it("keeps separate alerts for different color pairs of one warning kind", () => {
       const settings = baseCorridorsSettings({
         color: 0,

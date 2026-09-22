@@ -110,6 +110,9 @@ export type ExportWarningId =
   | "teleport_badge_border_low_contrast"
   | "teleport_badge_border_low_contrast_corridor"
   | "teleport_badge_border_low_contrast_floor"
+  | "teleport_badge_fill_low_contrast"
+  | "teleport_badge_fill_low_contrast_corridor"
+  | "teleport_badge_fill_low_contrast_floor"
   | "split_low_contrast_background"
   | "split_colors_low_contrast_each_other"
   | "wall_low_contrast_floor"
@@ -144,7 +147,11 @@ const COLOR_ROLES_BY_WARNING_ID: Partial<Record<ExportWarningId, [ExportWarningC
   vertical_one_way_accent_low_contrast_arrow: ["vertical_one_way_accent", "vertical_one_way_arrow"], elevator_badge_fill_low_contrast: ["elevator_badge_fill", "floor"],
   elevator_badge_fill_low_contrast_corridor: ["elevator_badge_fill", "corridor"], elevator_badge_fill_low_contrast_floor: ["elevator_badge_fill", "floor"],
   teleport_badge_border_low_contrast: ["teleport_badge_border", "floor"], teleport_badge_border_low_contrast_corridor: ["teleport_badge_border", "corridor"],
-  teleport_badge_border_low_contrast_floor: ["teleport_badge_border", "floor"], split_colors_low_contrast_each_other: ["split", "split"],
+  teleport_badge_border_low_contrast_floor: ["teleport_badge_border", "floor"],
+  teleport_badge_fill_low_contrast: ["teleport_badge_fill", "floor"],
+  teleport_badge_fill_low_contrast_corridor: ["teleport_badge_fill", "corridor"],
+  teleport_badge_fill_low_contrast_floor: ["teleport_badge_fill", "floor"],
+  split_colors_low_contrast_each_other: ["split", "split"],
   wall_low_contrast_floor: ["wall", "floor"], vertical_two_way_line_low_contrast_floor: ["vertical_two_way_line", "floor"],
   vertical_two_way_arrow_low_contrast_floor: ["vertical_two_way_arrow", "floor"],
   vertical_one_way_accent_low_contrast_floor: ["vertical_one_way_accent", "floor"], elevator_line_low_contrast_floor: ["elevator_line", "floor"],
@@ -565,16 +572,19 @@ function teleportConnectorEntries(
   return entries;
 }
 
-function teleportBadgeBorderEntries(
+function teleportBadgeColorEntries(
   teleportEdges: TeleportEdge[],
   settings: TeleportSettingsFields,
   background: number,
   displayFloorIndex: number,
   cfg: TessellationConfig,
+  color: "border" | "fill",
 ): ContrastEntry[] {
   const crossFloorEdges = teleportEdges.filter((edge) => edge.toFloor !== undefined || edge.fromFloor !== undefined);
+  const badgeColor = (override: { borderColor?: number } | undefined) =>
+    override?.borderColor ?? (color === "border" ? settings.teleportFloorBadge.borderColor : settings.teleportFloorBadge.fillColor);
   if (!settings.teleportGroupCustomization) {
-    return [{ foreground: settings.teleportFloorBadge.borderColor, background, cells: teleportBadgeCells(crossFloorEdges, displayFloorIndex, cfg) }];
+    return [{ foreground: badgeColor(undefined), background, cells: teleportBadgeCells(crossFloorEdges, displayFloorIndex, cfg) }];
   }
   const groups = buildTeleportGroups(teleportEdges);
   const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
@@ -582,7 +592,7 @@ function teleportBadgeBorderEntries(
     const override = settings.teleportGroupOverrides[group.key];
     const groupEdges = group.edgeKeys.map((key) => edgesByKey.get(key)).filter((edge): edge is TeleportEdge => edge !== undefined && (edge.toFloor !== undefined || edge.fromFloor !== undefined));
     return {
-      foreground: override?.borderColor ?? settings.teleportFloorBadge.borderColor,
+      foreground: badgeColor(override),
       background,
       cells: teleportBadgeCells(groupEdges, displayFloorIndex, cfg),
     };
@@ -683,6 +693,7 @@ function addCommonContrastWarnings(
   const markerBorderWarningId = surfaceKind === "floor" ? "marker_border_low_contrast_floor" : "marker_border_low_contrast_corridor";
   const elevatorBadgeFillWarningId = surfaceKind === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor";
   const teleportBadgeBorderWarningId = surfaceKind === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
+  const teleportBadgeFillWarningId = surfaceKind === "floor" ? "teleport_badge_fill_low_contrast_floor" : "teleport_badge_fill_low_contrast_corridor";
   const vertical = verticalPassageEdges(edges);
   const oneWayVertical = oneWayVerticalPassageEdges(edges, allEdgesForWarnings);
   const elevator = edges.filter((edge) => edge.kind === "elevator");
@@ -817,7 +828,13 @@ function addCommonContrastWarnings(
   if (crossFloorTeleports.length > 0) {
     // Group overrides replace the badge border as well as the connector border. Without group
     // customization the badge has its own dedicated border color.
-    pushContrastWarningEntries(warnings, teleportBadgeBorderWarningId, teleportBadgeBorderEntries(teleportEdges, settings, baseColor, displayFloorIndex, cfg));
+    const badgeBorderWidth = settings.teleportFloorBadge.borderWidth ?? settings.teleportEdgeBorderWidth;
+    const badgeHasBorder = badgeBorderWidth > 0;
+    pushContrastWarningEntries(
+      warnings,
+      badgeHasBorder ? teleportBadgeBorderWarningId : teleportBadgeFillWarningId,
+      teleportBadgeColorEntries(teleportEdges, settings, baseColor, displayFloorIndex, cfg, badgeHasBorder ? "border" : "fill"),
+    );
   }
 }
 
