@@ -158,6 +158,7 @@
   "preset.gen_source_tool": "Generation source",
   "preset.auto_lock": "Auto-lock",
   "preset.show_origin": "Origin",
+  "preset.show_locks": "Show locks",
   "preset.clear_invalid": "Reset invalid ({count})",
   "preset.nodes_locked": "{count} node locked",
   "preset.nodes_locked_plural": "{count} nodes locked",

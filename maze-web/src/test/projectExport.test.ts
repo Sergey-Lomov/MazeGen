@@ -460,6 +460,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     });
     expect(result.ui).toEqual({
       showPresetOrigin: false,
+      showPresetLocks: true,
       showFieldOrigin: true,
       openCard: "basic_config",
       postEditAutoConfirm: true,

@@ -2,6 +2,8 @@
 
 Allows pre-configuring edge states (walls, passages, one-way links), node locks, and start/finish/gen-source markers before generation. Active only after tessellation and field are confirmed.
 
+The preset management panel's **Show locks** toggle controls only the canvas visualization of manual and auto-generated lock/blocker markers. It does not change the stored locks, generated maze behavior, or lock markers' hit-testing. The setting is persisted with the project and defaults to enabled; split-node locks follow the same toggle. While any lock tool is selected (`Lock In`, `Lock Out`, or `Full Lock`), the toggle is disabled and lock markers are forced visible.
+
 ## Edge state model
 
 Each `PresetConnectionEntry` carries a `state: PresetConnectionClientState` which extends the WASM wire type:

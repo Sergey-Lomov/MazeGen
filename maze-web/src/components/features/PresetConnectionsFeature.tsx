@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
+import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
@@ -112,6 +113,8 @@ export function PresetConnectionsFeature() {
   const setHighlightOrphanSplitNodes = useMazeStore((s) => s.setHighlightOrphanSplitNodes);
   const showPresetOrigin = useMazeStore((s) => s.showPresetOrigin);
   const setShowPresetOrigin = useMazeStore((s) => s.setShowPresetOrigin);
+  const showPresetLocks = useMazeStore((s) => s.showPresetLocks);
+  const setShowPresetLocks = useMazeStore((s) => s.setShowPresetLocks);
   const autoLock = useMazeStore((s) => s.autoLock);
   const setAutoLock = useMazeStore((s) => s.setAutoLock);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
@@ -141,6 +144,7 @@ export function PresetConnectionsFeature() {
   const triOrientation = useMazeStore((s) => s.triOrientation);
   const presetSectionsExpanded = useMazeStore((s) => s.presetSectionsExpanded);
   const setPresetSectionExpanded = useMazeStore((s) => s.setPresetSectionExpanded);
+  const lockToolActive = isPresetLockTool(tool);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -355,6 +359,10 @@ export function PresetConnectionsFeature() {
           >
             {m["common.reset_all"]()}
           </Button>
+          <div style={styles.originRow}>
+            <span style={{ ...styles.originLabel, ...(lockToolActive ? styles.disabledLabel : {}) }}>{m["preset.show_locks"]()}</span>
+            <Switch checked={showPresetLocks || lockToolActive} disabled={lockToolActive} onChange={setShowPresetLocks} />
+          </div>
           <div style={styles.autoLockRow}>
             <div style={styles.autoLockLeft}>
               <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
@@ -443,6 +451,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   originLabel: {
     ...muted(typography.body),
+  },
+  disabledLabel: {
+    opacity: 0.4,
   },
   divider: {
     borderTop: `1px solid`,

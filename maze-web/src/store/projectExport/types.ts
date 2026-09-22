@@ -45,6 +45,7 @@ export interface ProjectFileDebug {
 
 export interface ProjectFileUi {
   showPresetOrigin: boolean;
+  showPresetLocks: boolean;
   showFieldOrigin: boolean;
   openCard: FeatureId;
   postEditAutoConfirm: boolean;
