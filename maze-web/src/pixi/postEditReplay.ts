@@ -10,7 +10,7 @@ import {
   cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
 } from "./postEditTeleportUtils";
 import {
-  cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
+  cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage,
   removePostEditElevator,
 } from "./postEditVerticalUtils";
 import { removeSlot } from "./splitPointsCore";
@@ -338,8 +338,12 @@ export function applyPostEditCommand(
     }
     case "moveVerticalPassageEndpoint": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
-      const next = movePostEditVerticalPassageEndpoint(state.verticalPassages, { id: command.id, end: command.end }, command.endpoint);
-      return ok({ ...state, verticalPassages: next });
+      // Applies the command's own already-resolved `from`/`to` pair directly (GitHub issue #566) —
+      // both ends move together, not just `command.end`; the reducer stays a plain, deterministic
+      // applier (see `resolveVerticalPassageMove`'s doc comment, postEditVerticalUtils.ts).
+      const verticalPassages = state.verticalPassages.map((p) =>
+        p.id === command.id ? { ...p, from: command.from, to: command.to } : p);
+      return ok({ ...state, verticalPassages });
     }
     case "removeVerticalPassage": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
@@ -686,10 +690,13 @@ export function renormalizeCommand(before: PostEditDerivedState, command: PostEd
     }
     case "moveVerticalPassageEndpoint": {
       const p = before.verticalPassages.find((x) => x.id === command.id);
-      if (!p) return command;
-      const from = command.end === "from" ? command.endpoint : p.from;
-      const to = command.end === "to" ? command.endpoint : p.to;
-      return { ...command, from, to, direction: p.direction };
+      // `command.from`/`command.to` are already the fully-resolved BOTH-ends result computed once at
+      // dispatch time (GitHub issue #566 — `resolveVerticalPassageMove` syncs both ends to the same
+      // (x, y) before a command is ever appended), so unlike `direction` they don't need recomputing
+      // against `before` here: only `command.end`'s own dragged value could differ if this exact same
+      // physical drag were replayed from a different preceding state, and it never is (compaction only
+      // drops OTHER commands, it never invents a new drag target for a surviving one).
+      return p ? { ...command, direction: p.direction } : command;
     }
     case "removeVerticalPassage": {
       const p = before.verticalPassages.find((x) => x.id === command.id);

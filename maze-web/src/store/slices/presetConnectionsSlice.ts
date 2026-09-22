@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, moveElevatorEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
@@ -68,6 +68,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetSectionsExpanded: { problems: false },
   presetSplitTargetPrompt: null,
   presetEntityDeletePrompt: null,
+  presetDragOverride: null,
+  presetDragFailureMessage: null,
 
   setPresetConnectionsTool: (tool) => set({
     presetConnectionsTool: tool,
@@ -286,11 +288,28 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     debugStale: debugStaleOf(state),
   })),
 
-  movePresetVerticalPassageEndpoint: (id, end, endpoint) => set((state) => ({
-    presetVerticalPassages: moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, endpoint),
-    presetsDirty: true,
-    debugStale: debugStaleOf(state),
-  })),
+  movePresetVerticalPassageEndpoint: (id, end, point) => set((state) => {
+    const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, point, resolveFieldAtOf(state));
+    if (result.failure) return { presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } };
+    return {
+      presetVerticalPassages: result.passages,
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  movePresetElevatorEndpoint: (id, level, point) => set((state) => {
+    const result = moveElevatorEndpoint(state.presetElevators, { id, level }, point, resolveFieldAtOf(state));
+    if (result.failure) return { presetDragFailureMessage: { entityKind: "elevator", ...result.failure } };
+    return {
+      presetElevators: result.elevators,
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  setPresetDragOverride: (override) => set({ presetDragOverride: override }),
+  dismissPresetDragFailureMessage: () => set({ presetDragFailureMessage: null }),
 
   startPresetElevatorPlacement: (origin) => set((state) => {
     const originLevel = origin.level ?? 0;

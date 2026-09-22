@@ -1,7 +1,7 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit, type PresetVerticalPassageEndpointHit } from "./fieldEditUtils";
+import { pickEdgeAtPosition, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit, type PresetVerticalPassageEndpointHit, type PresetElevatorEndpointHit } from "./fieldEditUtils";
 import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
@@ -43,6 +43,8 @@ export class PresetConnectionsController extends BaseController {
   private teleportDragMoved = false;
   private draggingVerticalPassageEndpoint: PresetVerticalPassageEndpointHit | null = null;
   private verticalPassageDragMoved = false;
+  private draggingElevatorEndpoint: PresetElevatorEndpointHit | null = null;
+  private elevatorDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
   // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
   // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
@@ -124,10 +126,33 @@ export class PresetConnectionsController extends BaseController {
       const other = hit.end === "from" ? passage.to : passage.from;
       const movedToOther = other.point[0] === cell.x && other.point[1] === cell.y && (other.level ?? 0) === (current.level ?? 0);
       if (current.point[0] !== cell.x || current.point[1] !== cell.y) {
+        // Live preview only (GitHub issue #566) — nothing is committed to `presetVerticalPassages`
+        // until release, so an intermediate cell the cursor passes over never desyncs the passage's
+        // own coordinates even transiently. Origin comparison lives in `onPointerUp`.
         this.verticalPassageDragMoved = true;
         if (!movedToOther) {
-          useMazeStore.getState().movePresetVerticalPassageEndpoint(hit.id, hit.end, presetEndpoint([cell.x, cell.y], undefined, current.level));
+          useMazeStore.getState().setPresetDragOverride({ kind: "verticalPassageEndpoint", id: hit.id, end: hit.end, point: [cell.x, cell.y] });
         }
+      } else {
+        useMazeStore.getState().setPresetDragOverride(null);
+      }
+      return;
+    }
+
+    if (this.draggingElevatorEndpoint) {
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      const hit = this.draggingElevatorEndpoint;
+      const elevator = state.presetElevators.find(e => e.id === hit.id);
+      if (!elevator) return;
+      const own = elevator.floors.find((f) => (f.level ?? 0) === hit.level);
+      if (!own) return;
+      if (own.point[0] !== cell.x || own.point[1] !== cell.y) {
+        this.elevatorDragMoved = true;
+        useMazeStore.getState().setPresetDragOverride({ kind: "elevatorEndpoint", id: hit.id, level: hit.level, point: [cell.x, cell.y] });
+      } else {
+        useMazeStore.getState().setPresetDragOverride(null);
       }
       return;
     }
@@ -283,6 +308,7 @@ export class PresetConnectionsController extends BaseController {
         store.presetFinish !== null && (store.presetFinish.level ?? 0) === (level ?? 0) && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
       const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, teleportsOnLevel(store.presetTeleports, level));
       const verticalPassageHit = pickVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetVerticalPassages, level);
+      const elevatorMarkerHit = pickElevatorEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetElevators, level);
       const elevatorHit = store.presetElevators.find((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0) && f.point[0] === coords[0] && f.point[1] === coords[1]));
 
       if (button === 2) {
@@ -338,6 +364,11 @@ export class PresetConnectionsController extends BaseController {
       if (verticalPassageHit) {
         this.draggingVerticalPassageEndpoint = verticalPassageHit;
         this.verticalPassageDragMoved = false;
+        return;
+      }
+      if (elevatorMarkerHit) {
+        this.draggingElevatorEndpoint = elevatorMarkerHit;
+        this.elevatorDragMoved = false;
         return;
       }
 
@@ -490,14 +521,44 @@ export class PresetConnectionsController extends BaseController {
       }
 
       if (this.draggingVerticalPassageEndpoint) {
-        if (!this.verticalPassageDragMoved) {
+        if (this.verticalPassageDragMoved) {
+          // Commits the whole gesture as a single `movePresetVerticalPassageEndpoint` call (GitHub
+          // issue #566) — the override built up during the drag is exactly the final position.
+          const override = useMazeStore.getState().presetDragOverride;
+          if (override?.kind === "verticalPassageEndpoint" && override.id === this.draggingVerticalPassageEndpoint.id) {
+            useMazeStore.getState().movePresetVerticalPassageEndpoint(override.id, override.end, override.point);
+          }
+        } else {
           const state = useMazeStore.getState();
           if (VERTICAL_PASSAGE_TOOLS.has(state.presetConnectionsTool)) {
             state.cyclePresetVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
           }
         }
+        useMazeStore.getState().setPresetDragOverride(null);
         this.draggingVerticalPassageEndpoint = null;
         this.verticalPassageDragMoved = false;
+      }
+
+      if (this.draggingElevatorEndpoint) {
+        if (this.elevatorDragMoved) {
+          const override = useMazeStore.getState().presetDragOverride;
+          if (override?.kind === "elevatorEndpoint" && override.id === this.draggingElevatorEndpoint.id) {
+            useMazeStore.getState().movePresetElevatorEndpoint(override.id, override.level, override.point);
+          }
+        } else {
+          // A plain click (no drag) on an existing elevator marker re-opens the floor-picker
+          // dialog to edit that entry — mirrors the pre-drag-support click behavior.
+          const state = useMazeStore.getState();
+          if (state.presetConnectionsTool === "elevator") {
+            const hit = this.draggingElevatorEndpoint;
+            const entry = state.presetElevators.find((e) => e.id === hit.id);
+            const own = entry?.floors.find((f) => (f.level ?? 0) === hit.level);
+            if (own) state.startPresetElevatorPlacement(own);
+          }
+        }
+        useMazeStore.getState().setPresetDragOverride(null);
+        this.draggingElevatorEndpoint = null;
+        this.elevatorDragMoved = false;
       }
     }
   }

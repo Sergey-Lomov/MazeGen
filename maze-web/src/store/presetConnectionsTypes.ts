@@ -119,6 +119,33 @@ export interface PresetConnectionsState {
   presetEntityDeletePrompt:
     | { point: [number, number]; level?: number; scope: PresetPointEntityScope }
     | null;
+  /** Live drag preview for a preset vertical-passage/elevator endpoint (GitHub issue #566) — set by
+   *  `PresetConnectionsController` on every pointermove while such a drag is armed, cleared on
+   *  pointerup. Purely visual, mirrors post-edit's own `postEditDragOverride`: nothing here is
+   *  committed to `presetVerticalPassages`/`presetElevators` until release, so an intermediate cell
+   *  the cursor passes over never gets written even transiently. Not persisted. */
+  presetDragOverride: PresetDragOverride | null;
+  /** Set when a vertical-passage/elevator drag is released over a point that doesn't exist on one
+   *  of the entity's OTHER floors (GitHub issue #566) — the whole drag is reverted (see
+   *  `movePresetVerticalPassageEndpoint`/`movePresetElevatorEndpoint`'s own doc comments) and this
+   *  is populated so the `AlertModal` rendered in `PresetConnectionsFeature` can tell the user which
+   *  floor/point rejected the move. Cleared by `dismissPresetDragFailureMessage` (the dialog's own
+   *  OK button). */
+  presetDragFailureMessage: PresetDragFailure | null;
+}
+
+/** See `PresetConnectionsState.presetDragOverride`. */
+export type PresetDragOverride =
+  | { kind: "verticalPassageEndpoint"; id: number; end: "from" | "to"; point: [number, number] }
+  | { kind: "elevatorEndpoint"; id: number; level: number; point: [number, number] };
+
+/** See `PresetConnectionsState.presetDragFailureMessage`. `entityKind` picks the message wording
+ *  ("passage" vs. "stop") — `level` is 0-based, `PresetConnectionsFeature` formats it 1-based
+ *  (`level + 1`) when building the message. */
+export interface PresetDragFailure {
+  entityKind: "vertical_passage" | "elevator";
+  level: number;
+  point: [number, number];
 }
 
 export interface PresetConnectionsActions {
@@ -176,7 +203,11 @@ export interface PresetConnectionsActions {
   cancelPresetVerticalPassagePlacement: () => void;
   cyclePresetVerticalPassageDirection: (id: number) => void;
   removePresetVerticalPassage: (id: number) => void;
-  movePresetVerticalPassageEndpoint: (id: number, end: "from" | "to", endpoint: PresetEndpoint) => void;
+  /** Moves BOTH ends of the passage to `point` (GitHub issue #566) — see
+   *  `moveVerticalPassageEndpoint` (fieldValidity.ts)'s own doc comment. Sets
+   *  `presetDragFailureMessage` and leaves `presetVerticalPassages` unchanged when `point` doesn't
+   *  resolve on the other end's own floor. */
+  movePresetVerticalPassageEndpoint: (id: number, end: "from" | "to", point: [number, number]) => void;
   /** Starts a pending elevator placement at `origin` (the first click) — the active floor is
    * always included in `floors` from the start and can't be removed. If `origin`'s point already
    * has an elevator on the active floor, edits that entry instead (`floors` seeds from its current
@@ -190,6 +221,16 @@ export interface PresetConnectionsActions {
   confirmPresetElevatorPlacement: () => void;
   cancelPresetElevatorPlacement: () => void;
   removePresetElevator: (id: number) => void;
+  /** Moves EVERY floor endpoint of the elevator to `point` (GitHub issue #566) — see
+   *  `moveElevatorEndpoint` (fieldValidity.ts)'s own doc comment. `level` is the dragged marker's
+   *  own floor (the drag's "own end"). Sets `presetDragFailureMessage` and leaves `presetElevators`
+   *  unchanged when `point` doesn't resolve on one of the OTHER floors. */
+  movePresetElevatorEndpoint: (id: number, level: number, point: [number, number]) => void;
+  /** Live drag preview setter (GitHub issue #566) — mirrors post-edit's own
+   *  `setPostEditDragOverride`. */
+  setPresetDragOverride: (override: PresetDragOverride | null) => void;
+  /** Closes the drag-failure `AlertModal` rendered in `PresetConnectionsFeature` (its own OK button). */
+  dismissPresetDragFailureMessage: () => void;
   addPresetSplitNode: (point: [number, number]) => void;
   removePresetSplitNode: (point: [number, number], slotId: number) => void;
   /** Removes an entire split point (every declared slot at once) and migrates every entity

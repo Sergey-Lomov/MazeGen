@@ -76,6 +76,23 @@ export interface PostEditVerticalPassageEndpointHit {
   end: "from" | "to";
 }
 
+/** Endpoint of a post-edit elevator (GitHub issue #566) — identified by the owning entry's id and
+ * the floor level of the dragged marker, mirroring `PresetElevatorEndpointHit` (an elevator has no
+ * "from"/"to", only a set of floor endpoints). */
+export interface PostEditElevatorEndpointHit {
+  id: string;
+  level: number;
+}
+
+/** A dragged post-edit vertical-passage/elevator endpoint failed to resolve a node on one of its
+ * OTHER floors (GitHub issue #566) — mirrors `VerticalDragFailure` (fieldValidity.ts). Reported so
+ * the caller can show the user which floor/coordinate rejected the move, then discard the whole
+ * gesture (both editors revert on failure, never a partial move). */
+export interface PostEditVerticalDragFailure {
+  level: number;
+  point: [number, number];
+}
+
 export interface PostEditAnalytics {
   statistics: MazeStatisticsDto;
   routeInfo: RouteInfoDto | null;

@@ -1,8 +1,8 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { Container } from "pixi.js";
 import { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./fieldEditUtils";
-import { pickPostEditTeleportEndpointAt, pickPostEditVerticalPassageEndpointAt } from "./postEditUtils";
-import type { PostEditTeleportEndpointHit, PostEditVerticalPassageEndpointHit } from "../store/mazeStore";
+import { pickPostEditTeleportEndpointAt, pickPostEditVerticalPassageEndpointAt, pickPostEditElevatorEndpointAt } from "./postEditUtils";
+import type { PostEditTeleportEndpointHit, PostEditVerticalPassageEndpointHit, PostEditElevatorEndpointHit } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
@@ -52,6 +52,8 @@ export class PostEditController extends BaseController {
   private teleportDragMoved = false;
   private draggingVerticalPassageEndpoint: PostEditVerticalPassageEndpointHit | null = null;
   private verticalPassageDragMoved = false;
+  private draggingElevatorEndpoint: PostEditElevatorEndpointHit | null = null;
+  private elevatorDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
 
   // Origin endpoints captured at drag-arm time (GitHub issue #545) — the command log only gets one
@@ -62,6 +64,7 @@ export class PostEditController extends BaseController {
   private markerDragOrigin: PostEditEndpoint | null = null;
   private teleportDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
   private verticalPassageDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
+  private elevatorDragOrigin: PostEditEndpoint | null = null;
 
   // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
   // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
@@ -214,6 +217,25 @@ export class PostEditController extends BaseController {
             kind: "verticalPassageEndpoint", id: hit.id, end: hit.end, endpoint,
           });
         }
+      } else {
+        useMazeStore.getState().setPostEditDragOverride(null);
+      }
+      return;
+    }
+
+    if (this.draggingElevatorEndpoint && this.elevatorDragOrigin) {
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const nodeMap = this.getNodeMap(floorNodes);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      if (endpoint === null || endpoint.kind !== "node") return;
+      const hit = this.draggingElevatorEndpoint;
+      const currentId = this.elevatorDragOrigin.kind === "node" ? this.elevatorDragOrigin.id : undefined;
+      if (currentId !== endpoint.id) {
+        this.elevatorDragMoved = true;
+        useMazeStore.getState().setPostEditDragOverride({
+          kind: "elevatorEndpoint", id: hit.id, level: hit.level, endpoint,
+        });
       } else {
         useMazeStore.getState().setPostEditDragOverride(null);
       }
@@ -413,6 +435,7 @@ export class PostEditController extends BaseController {
       const allNodeById = this.getNodeById(state.nodes);
       const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
       const verticalPassageHit = pickPostEditVerticalPassageEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftVerticalPassages, allNodeById, resolveNodeLevel, level);
+      const elevatorMarkerHit = pickPostEditElevatorEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftElevators, allNodeById, resolveNodeLevel, level);
       const elevatorHit = state.postEditDraftElevators.find((e) => e.floors.some((f) => {
         if (f.kind !== "node") return false;
         if ((resolveNodeLevel(f.id) ?? 0) !== (level ?? 0)) return false;
@@ -462,6 +485,14 @@ export class PostEditController extends BaseController {
           current: verticalPassageHit.end === "from" ? originPassage.from : originPassage.to,
           other: verticalPassageHit.end === "from" ? originPassage.to : originPassage.from,
         } : null;
+        return;
+      }
+      if (elevatorMarkerHit) {
+        this.draggingElevatorEndpoint = elevatorMarkerHit;
+        this.elevatorDragMoved = false;
+        const originElevator = state.postEditDraftElevators.find((e) => e.id === elevatorMarkerHit.id);
+        const originFloor = originElevator?.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === elevatorMarkerHit.level);
+        this.elevatorDragOrigin = originFloor ?? null;
         return;
       }
 
@@ -606,6 +637,31 @@ export class PostEditController extends BaseController {
         this.draggingVerticalPassageEndpoint = null;
         this.verticalPassageDragMoved = false;
         this.verticalPassageDragOrigin = null;
+      }
+
+      if (this.draggingElevatorEndpoint) {
+        if (this.elevatorDragMoved) {
+          // Commits the whole gesture as a single `updateElevatorFloors` command (GitHub issue
+          // #566) — dragging any one floor's marker moves every other floor's own endpoint too,
+          // resolved by `movePostEditElevatorEndpoint`/`resolveElevatorMove` at dispatch time.
+          const override = useMazeStore.getState().postEditDragOverride;
+          if (override?.kind === "elevatorEndpoint" && override.id === this.draggingElevatorEndpoint.id) {
+            useMazeStore.getState().movePostEditElevatorEndpoint(override.id, override.level, override.endpoint);
+          }
+        } else {
+          // Plain click on an elevator's own marker reopens the floor-picker dialog to edit it,
+          // mirroring `startPostEditElevatorPlacement`'s existing-entry edit path.
+          const state = useMazeStore.getState();
+          const hit = this.draggingElevatorEndpoint;
+          const entry = state.postEditDraftElevators.find((e) => e.id === hit.id);
+          const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+          const own = entry?.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === hit.level);
+          if (own) state.startPostEditElevatorPlacement(own);
+        }
+        useMazeStore.getState().setPostEditDragOverride(null);
+        this.draggingElevatorEndpoint = null;
+        this.elevatorDragMoved = false;
+        this.elevatorDragOrigin = null;
       }
     }
   }

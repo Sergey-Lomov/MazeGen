@@ -13,6 +13,7 @@ import type {
   PostEditVerticalPassageEntry,
   PostEditElevatorEntry,
   PostEditAnalytics,
+  PostEditVerticalDragFailure,
 } from "./postEditTypes";
 
 /** One hovered issue's base-graph edge, plus how it should be drawn (GitHub issue #377). Loop/
@@ -250,6 +251,13 @@ export interface PostEditState {
    *  only gets a single command on release (if the drag actually moved to a different node), not
    *  one per pointermove. Not persisted. */
   postEditDragOverride: PostEditDragOverride | null;
+  /** Set when a vertical-passage/elevator drag is released over a point with no resolvable node on
+   *  one of the entity's OTHER floors (GitHub issue #566) — the whole drag is reverted (see
+   *  `movePostEditVerticalPassageEndpoint`/`movePostEditElevatorEndpoint`'s own doc comments) and
+   *  this is populated so the `AlertModal` rendered in `PostEditFeature` can tell the user which
+   *  floor/point rejected the move. Cleared by `dismissPostEditDragFailureMessage` (the dialog's
+   *  own OK button). */
+  postEditDragFailureMessage: (PostEditVerticalDragFailure & { entityKind: "vertical_passage" | "elevator" }) | null;
 }
 
 /** See `PostEditState.postEditDragOverride`. Each variant names the entity being dragged and its
@@ -258,7 +266,8 @@ export interface PostEditState {
 export type PostEditDragOverride =
   | { kind: "marker"; marker: "start" | "finish"; endpoint: PostEditEndpoint }
   | { kind: "teleportEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint }
-  | { kind: "verticalPassageEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint };
+  | { kind: "verticalPassageEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint }
+  | { kind: "elevatorEndpoint"; id: string; level: number; endpoint: PostEditEndpoint };
 
 export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
@@ -346,12 +355,23 @@ export interface PostEditActions {
   cancelPostEditVerticalPassagePlacement: () => void;
   cyclePostEditVerticalPassageDirection: (id: string) => void;
   removePostEditVerticalPassage: (id: string) => void;
+  /** Moves BOTH ends of the passage so the dragged end lands on `endpoint` (GitHub issue #566) —
+   *  see `movePostEditVerticalPassageEndpoint` (postEditVerticalUtils.ts)'s own doc comment. Sets
+   *  `postEditDragFailureMessage` and leaves `postEditDraftVerticalPassages` unchanged when the
+   *  other end's floor has no node at the dragged endpoint's new `(x, y)`. */
   movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
   togglePostEditElevatorFloor: (floorIndex: number) => void;
   confirmPostEditElevatorPlacement: () => void;
   cancelPostEditElevatorPlacement: () => void;
   removePostEditElevator: (id: string) => void;
+  /** Moves EVERY floor endpoint of the elevator so the dragged floor's endpoint lands on `endpoint`
+   *  (GitHub issue #566) — see `movePostEditElevatorEndpoint` (postEditVerticalUtils.ts)'s own doc
+   *  comment. `level` is the dragged marker's own floor. Sets `postEditDragFailureMessage` and
+   *  leaves `postEditDraftElevators` unchanged when one of the OTHER floors has no node there. */
+  movePostEditElevatorEndpoint: (id: string, level: number, endpoint: PostEditEndpoint) => void;
+  /** Closes the drag-failure `AlertModal` rendered in `PostEditFeature` (its own OK button). */
+  dismissPostEditDragFailureMessage: () => void;
   /** Opens the "which split node?" prompt (GitHub issue #474). Called by `PostEditController` when
    * a vertex tool is used on a split point instead of dispatching the tool directly. */
   requestPostEditSplitTarget: (prompt: NonNullable<PostEditState["postEditSplitTargetPrompt"]>) => void;

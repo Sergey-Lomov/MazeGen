@@ -7,7 +7,10 @@ import {
   currentSplitNodeFaces,
   findPostEditVerticalPassageForPair,
   postEditVerticalToDto, pruneRemovedSplitNodes,
+  resolveVerticalPassageMove,
+  resolveElevatorMove,
 } from "../../pixi/postEditUtils";
+import { selectNodeLevelResolver } from "../../pixi/selectors/mazeSelectors";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpointToDto } from "../../pixi/presetEndpoint";
 import {
@@ -80,6 +83,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditChangesOpen: true,
   postEditChangesEntityFilter: null,
   postEditDragOverride: null,
+  postEditDragFailureMessage: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
   // Turning auto-compact ON compacts the log immediately (GitHub issue #548 follow-up) — otherwise
@@ -1123,13 +1127,23 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   movePostEditVerticalPassageEndpoint: (id, end, endpoint) => {
-    const target = get().postEditDraftVerticalPassages.find((p) => p.id === id);
-    // `from`/`to` (GitHub issue #564 follow-up) are the RESULTING pair after this move, not the
-    // pre-move `target.from`/`target.to` — the "Changes" panel must show where the passage ended up.
-    const from = end === "from" ? endpoint : target?.from;
-    const to = end === "to" ? endpoint : target?.to;
-    if (!from || !to || !target) return;
-    appendPostEditCommand(get, set, { kind: "moveVerticalPassageEndpoint", id, end, endpoint, from, to, direction: target.direction });
+    const state = get();
+    const target = state.postEditDraftVerticalPassages.find((p) => p.id === id);
+    if (!target || endpoint.kind !== "node") return;
+    const newNode = state.nodes.find((n) => n.id === endpoint.id);
+    if (!newNode) return;
+    // GitHub issue #566: dragging one end of a vertical passage must move BOTH ends to the same
+    // (x, y) — `resolveVerticalPassageMove` resolves the OTHER end's own node on its own floor and
+    // fails (reverting the whole gesture, no command appended) if that floor has no node there.
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const resolved = resolveVerticalPassageMove(target, end, newNode, state.nodes, resolveNodeLevel);
+    if ("failure" in resolved) {
+      set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "vertical_passage" } });
+      return;
+    }
+    appendPostEditCommand(get, set, {
+      kind: "moveVerticalPassageEndpoint", id, end, endpoint, from: resolved.from, to: resolved.to, direction: target.direction,
+    });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -1231,6 +1245,40 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       void get().confirmPostEdit();
     }
   },
+
+  movePostEditElevatorEndpoint: (id, level, endpoint) => {
+    const state = get();
+    const target = state.postEditDraftElevators.find((e) => e.id === id);
+    if (!target || endpoint.kind !== "node") return;
+    const newNode = state.nodes.find((n) => n.id === endpoint.id);
+    if (!newNode) return;
+    // GitHub issue #566: dragging one floor's marker moves every OTHER floor's own endpoint to the
+    // same (x, y) too — reuses `updateElevatorFloors`, no dedicated command kind needed since it
+    // already carries the full resulting `floors` array.
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const resolved = resolveElevatorMove(target, { id, level }, newNode, state.nodes, resolveNodeLevel);
+    if ("failure" in resolved) {
+      set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "elevator" } });
+      return;
+    }
+    // Split-kind floors (an elevator floor CAN be split-addressed, see
+    // `confirmPostEditElevatorPlacement`) must keep their slot identity across the move — re-wrap
+    // through `resolveNodeIdToEndpoint` rather than the plain `nodeEndpoint` the util returns raw ids for.
+    const floors = target.floors.map((f) => {
+      const floorLevel = f.kind === "node" ? (resolveNodeLevel(f.id) ?? 0) : (f.level ?? 0);
+      const resolvedNode = floorLevel === level ? resolved.own : resolved.others.get(floorLevel);
+      if (!resolvedNode) return f;
+      return f.kind === "split"
+        ? resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, resolvedNode.id)
+        : nodeEndpoint(resolvedNode.id);
+    });
+    appendPostEditCommand(get, set, { kind: "updateElevatorFloors", id, floors });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  dismissPostEditDragFailureMessage: () => set({ postEditDragFailureMessage: null }),
 
   requestPostEditSplitTarget: (prompt) => set({ postEditSplitTargetPrompt: prompt }),
 

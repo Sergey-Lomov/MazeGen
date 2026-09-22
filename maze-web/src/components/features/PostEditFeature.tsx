@@ -17,6 +17,7 @@ import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDia
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
+import { AlertModal } from "../AlertModal";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -110,6 +111,8 @@ export function PostEditFeature() {
   const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
   const postEditEntityDeletePrompt = useMazeStore((s) => s.postEditEntityDeletePrompt);
   const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
+  const postEditDragFailureMessage = useMazeStore((s) => s.postEditDragFailureMessage);
+  const dismissPostEditDragFailureMessage = useMazeStore((s) => s.dismissPostEditDragFailureMessage);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
@@ -186,6 +189,18 @@ export function PostEditFeature() {
 
       {postEditEntityDeletePrompt && (
         <PostEditEntityDeleteDialog onClose={cancelPostEditEntityDelete} />
+      )}
+
+      {postEditDragFailureMessage && (
+        <AlertModal
+          title={m["vertical_drag.dialog_title"]()}
+          message={
+            postEditDragFailureMessage.entityKind === "elevator"
+              ? m["vertical_drag.failed_elevator"]({ level: postEditDragFailureMessage.level + 1, x: postEditDragFailureMessage.point[0], y: postEditDragFailureMessage.point[1] })
+              : m["vertical_drag.failed_passage"]({ level: postEditDragFailureMessage.level + 1, x: postEditDragFailureMessage.point[0], y: postEditDragFailureMessage.point[1] })
+          }
+          onClose={dismissPostEditDragFailureMessage}
+        />
       )}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>

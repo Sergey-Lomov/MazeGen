@@ -17,11 +17,15 @@ export {
 
 export {
   pickPostEditVerticalPassageEndpointAt,
+  pickPostEditElevatorEndpointAt,
   findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection,
   removePostEditVerticalPassage,
   movePostEditVerticalPassageEndpoint,
+  resolveVerticalPassageMove,
   removePostEditElevator,
+  movePostEditElevatorEndpoint,
+  resolveElevatorMove,
   elevatorComponent,
   extractPostEditVerticalPassages,
   extractPostEditElevators,
