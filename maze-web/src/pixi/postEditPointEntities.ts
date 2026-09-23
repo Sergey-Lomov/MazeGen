@@ -66,10 +66,6 @@ export interface PostEditPointEntityDescriptor {
   arrow: "->" | "<-" | "<->";
 }
 
-function formatFloor(level: number): string {
-  return `L${level + 1}`;
-}
-
 export interface PostEditPointEntitiesInput {
   postEditDraftSplitPoints: Record<string, number[]>;
   postEditDraftMeta: PostEditMeta | null;
@@ -163,7 +159,7 @@ export function buildPostEditPointEntities(
       if (targetLevels.length === 0) continue;
       const orderedFloors = [endpoint, ...e.floors.filter((f) => !endpointsEqual(f, endpoint))];
       const bubbles = orderedFloors.map((f) => endpointBubble(f, nodeById, multiFloor, splitCtx));
-      out.push({ kind: "elevator", id: e.id, endpoint, title: m["status.cell_elevator"]({ targets: targetLevels.map(formatFloor).join(", ") }), entityId: e.id, bubbles, showArrow: false, arrow: "->" });
+      out.push({ kind: "elevator", id: e.id, endpoint, title: m["post_edit.entity_delete_label_elevator"](), entityId: e.id, bubbles, showArrow: false, arrow: "->" });
     }
 
     // One-way faces touching this node (GitHub issue #550 eighth follow-up) — a face-anchored

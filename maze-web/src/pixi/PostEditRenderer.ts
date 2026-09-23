@@ -358,14 +358,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     const activeLevel = activeFloorLevel(state) ?? 0;
     const { link, regionGroups, boundaryLinks } = buildHoveredEntityHighlight(state.postEditHoveredEntity, state.nodes, activeLevel, this.cfg);
-    const nodeById = new Map(state.nodes.map((node) => [node.id, node]));
-    const hasSplitGroup = regionGroups.some((group) => {
-      const cells = new Set(group.map((id) => {
-        const node = nodeById.get(id);
-        return node ? `${node.x},${node.y}` : "";
-      }));
-      return cells.size < group.length;
-    });
     this.linkHover.render(link);
     this.boundaryHover.clear();
     for (const boundary of boundaryLinks ?? []) {
@@ -377,7 +369,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     }
     this.entityHighlight.render({
       nodes: state.nodes, regionGroups, color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
-      insetMode: hasSplitGroup ? "outset" : "inset",
+      insetMode: "inset",
     });
   }
 

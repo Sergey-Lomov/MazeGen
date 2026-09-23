@@ -5,13 +5,14 @@ import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { fittingRotation, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
-import { ui, typography, radius, spacing, indent } from "../../styles/theme";
+import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
+import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 
 /** 1-based node number for a split point's node, in row order (GitHub issue #468). Slot 0 is not a
  *  special node any more — every node of a split point, the point's original node included, gets the
@@ -45,6 +46,16 @@ export interface LinkInfo<E> {
    *  the bubble is hovered (GitHub issue #237), same coordinates the tile diagram/canvas renderer
    *  already resolve endpoints to. */
   otherEndpoint: E;
+}
+
+export interface ElementInfo<E = unknown> {
+  title: string;
+  entityId?: string;
+  bubbles: string[];
+  bubbleFloors?: (number | undefined)[];
+  showArrow: boolean;
+  arrow: "->" | "<-" | "<->";
+  hoverEndpoints?: E[];
 }
 
 /** Groups a node's directed passage/teleport entries by partner, collapsing a bidirectional pair
@@ -95,8 +106,7 @@ export interface SplitNodesRow<E> {
   active: boolean;
   ownLabel: string;
   links: LinkInfo<E>[];
-  isStart: boolean;
-  isFinish: boolean;
+  elements: ElementInfo<E>[];
   lockKind?: NodeLockKind;
 }
 
@@ -104,6 +114,7 @@ interface Props<E> {
   title: string;
   point: [number, number];
   cfg: TessellationConfig;
+  currentLevel: number;
   rows: SplitNodesRow<E>[];
   /** Every node's faces at once, in row order — the tile diagram draws all of them
    * simultaneously, each in its own color (GitHub issue #234). */
@@ -118,11 +129,6 @@ interface Props<E> {
   onSetActive: (endpoint: E) => void;
   onAdd: () => void;
   onRemove: (row: SplitNodesRow<E>) => void;
-  /** Assigns/clears start or finish on the currently active node (the same one tile-face clicks
-   * target) — a separate instant-action block next to the kind switcher, not a per-tool pick like
-   * `activeKind` (GitHub issue #234 follow-up). */
-  onToggleStart: () => void;
-  onToggleFinish: () => void;
   /** Rotates every node's connections by one geometric face, clockwise (`1`) or counter-clockwise
    * (`-1`) — see `rotatePostEditSplitPoint`/`rotatePresetSplitPoint`. */
   onRotate: (direction: 1 | -1) => void;
@@ -133,6 +139,9 @@ interface Props<E> {
    *  highlight anything on. */
   onHoverLink?: (row: SplitNodesRow<E>, link: LinkInfo<E>) => void;
   onUnhoverLink?: () => void;
+  onHoverElement?: (row: SplitNodesRow<E>, element: ElementInfo<E>) => void;
+  onUnhoverElement?: () => void;
+  onEntityIdClick?: (id: string) => void;
   /** Built-in split-node blueprints (GitHub issue #235) available at this point's tile degree —
    *  `[]` if none are defined. Optional: the pattern editor has no point/field concept to offer
    *  these against. */
@@ -172,9 +181,9 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * both adapters compute `rows`/`tileNodes`/labels/links from their own data, this component owns
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
-  title, point, cfg, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onToggleStart, onToggleFinish, onRotate,
-  onHoverLink, onUnhoverLink, blueprints, onApplyBlueprint,
+  title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate,
+  onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
 }: Props<E>) {
   const [pendingRemove, setPendingRemove] = useState<SplitNodesRow<E> | null>(null);
   const [pendingBlueprint, setPendingBlueprint] = useState<SplitNodeBlueprint | null>(null);
@@ -207,8 +216,6 @@ export function SplitNodesDialogView<E>({
   const handleFaceClick = markEdited(onFaceClick);
   const handleFaceRightClick = markEdited(onFaceRightClick);
   const handleRotate = markEdited(onRotate);
-  const handleToggleStart = markEdited(onToggleStart);
-  const handleToggleFinish = markEdited(onToggleFinish);
   const handleAdd = markEdited(onAdd);
   const handleRemove = markEdited(onRemove);
 
@@ -285,21 +292,17 @@ export function SplitNodesDialogView<E>({
                 <div style={styles.titleLine}>
                   <span style={{ ...styles.colorDot, background: row.color }} />
                   <span style={typography.body}>{row.title}</span>
-                  {row.isStart && <span style={{ ...styles.badge, ...styles.startBadge }}>{m["post_edit.split_start_badge"]()}</span>}
-                  {row.isFinish && <span style={{ ...styles.badge, ...styles.finishBadge }}>{m["post_edit.split_finish_badge"]()}</span>}
                   {row.lockKind && <span style={{ ...styles.badge, ...styles.lockBadge }}>{row.lockKind === "both" ? m["post_edit.split_lock_badge"]() : row.lockKind === "in" ? m["post_edit.split_lock_in_badge"]() : m["post_edit.split_lock_out_badge"]()}</span>}
                 </div>
                 <div>
                   {(["required", "undefined", "forbidden"] as const).map((category) => {
                     const links = row.links.filter((l) => l.category === category);
+                    if (links.length === 0) return null;
                     return (
                       <div key={category} style={styles.linksSection}>
                         <span style={typography.body}>{SECTION_LABEL[category]()}</span>
                         <div style={styles.linksCell}>
-                          {links.length === 0 ? (
-                            <span style={typography.caption}>{m["post_edit.split_section_empty"]()}</span>
-                          ) : (
-                            links.map((link, i) => (
+                          {links.map((link, i) => (
                               <span
                                 key={i}
                                 style={styles.bubble}
@@ -308,12 +311,52 @@ export function SplitNodesDialogView<E>({
                               >
                                 {row.ownLabel} {link.arrow} {link.otherLabel}
                               </span>
-                            ))
-                          )}
+                            ))}
                         </div>
                       </div>
                     );
                   })}
+                  {row.elements.length > 0 && (
+                    <div style={styles.elementsSection}>
+                      <span style={typography.body}>{m["post_edit.split_section_elements"]()}</span>
+                      <div style={styles.elementsCell}>
+                        {row.elements.map((element, i) => (
+                          <span key={`${element.title}:${element.entityId ?? i}`} style={styles.elementRow}
+                            onMouseEnter={onHoverElement ? () => onHoverElement(row, element) : undefined}
+                            onMouseLeave={onUnhoverElement}>
+                            <span style={styles.elementTitle}>{element.title}</span>
+                            {element.bubbles.map((bubble, j) => {
+                              const floor = element.bubbleFloors?.[j];
+                              const floorClickable = floor !== undefined && floor !== currentLevel;
+                              return (
+                              <span key={j} style={styles.bubbleGroup}>
+                                {j === 0 && element.showArrow && <span style={styles.arrow}>{element.arrow}</span>}
+                                <span
+                                  style={{ ...styles.bubble, ...(floorClickable ? styles.clickableBubble : {}) }}
+                                  onClick={floorClickable ? (event) => {
+                                    event.stopPropagation();
+                                    onUnhoverElement?.();
+                                    onUnhoverLink?.();
+                                    navigateToFloor(floor);
+                                  } : undefined}
+                                >{bubble}</span>
+                              </span>
+                              );
+                            })}
+                            {element.entityId !== undefined && (
+                              <span
+                                className={onEntityIdClick ? "hoverable" : undefined}
+                                style={{ ...styles.idBubble, ...(onEntityIdClick ? styles.clickableBubble : {}) }}
+                                onClick={onEntityIdClick ? (event) => { event.stopPropagation(); onEntityIdClick(element.entityId!); } : undefined}
+                              >
+                                id: {element.entityId}
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -338,24 +381,6 @@ export function SplitNodesDialogView<E>({
                 {m["post_edit.split_remove"]()}
               </Button>
             </Inline>
-            {activeRow && (
-              <Inline gap="itemGap">
-                <Button
-                  variant="primary"
-                  layoutStyle={{ flex: 1 }}
-                  onClick={handleToggleStart}
-                >
-                  {activeRow.isStart ? m["post_edit.split_clear_start"]() : m["post_edit.split_set_start"]()}
-                </Button>
-                <Button
-                  variant="primary"
-                  layoutStyle={{ flex: 1 }}
-                  onClick={handleToggleFinish}
-                >
-                  {activeRow.isFinish ? m["post_edit.split_clear_finish"]() : m["post_edit.split_set_finish"]()}
-                </Button>
-              </Inline>
-            )}
           </Stack>
         </div>
       </div>
@@ -527,6 +552,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: ui.debug.refHighlight.text,
     whiteSpace: "nowrap",
   },
+  clickableBubble: { cursor: "pointer" },
   badge: {
     ...typography.control,
     fontSize: 11,
@@ -541,6 +567,19 @@ const styles: Record<string, React.CSSProperties> = {
   finishBadge: {
     background: ui.text.error,
     color: ui.text.inverse,
+  },
+  elementsSection: {
+    display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap,
+  },
+  elementsCell: { display: "flex", flexDirection: "column", gap: spacing.itemGap / 2, paddingLeft: indent.tree },
+  elementRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.rowGap },
+  elementTitle: { ...muted(typography.body), whiteSpace: "nowrap" },
+  bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.rowGap },
+  idBubble: {
+    ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex",
+    alignItems: "center", borderStyle: "solid", borderWidth: 1, borderRadius: radius.lg,
+    padding: `0 ${spacing.itemGap}px`, background: ui.bg.success, borderColor: ui.text.success,
+    color: ui.text.success, whiteSpace: "nowrap",
   },
   lockBadge: {
     background: ui.text.secondary,

@@ -529,6 +529,11 @@ The shared geometric algorithm (face division among connected nodes, hub-point f
 
 ### Split-target prompt (GitHub issue #474)
 
+The split-node panel's connection sections contain only basic connections and hide empty sections. One-way connections remain basic connections. Each node card also has an Elements section for start/finish points, teleports, vertical passages, elevators, and locks, using the deletion-dialog row format without IDs in preset mode.
+
+Element rows omit the current node's own address: a directed element is rendered as its localized name, direction arrow, and target coordinate bubble. Target bubbles include `L{n}:` on another floor and hover the standard inward-inset cell highlight with an opaque border; elevator rows list every other floor bubble.
+Vertical-passage target bubbles contain only `L{n}`; any target-floor bubble is clickable and switches the active floor.
+
 `presetActiveSplitNode` decides which of a split point's nodes an *edge*-tool click targets (walls/passages/one-way — via the "Manage split nodes" panel's active-node affordance). It must **not** decide which node a *vertex*-tool placement attaches to: a start/finish marker, the generation source (`gen_source`, GitHub issue #494), a teleport endpoint, a vertical passage, or an elevator. That coupling is removed from placement entirely.
 
 Instead, when a left click with a vertex tool lands on a declared split point (`presetSplitPoints["x,y[:level]"]` non-empty), `PresetConnectionsController` does not place anything — it sets `presetSplitTargetPrompt` (`point`, `level`, the point's declared `slotIds` ascending, and the deferred `action`) and returns *before* any marker/teleport/vertical-passage hit-test (those resolve through the active node and would otherwise silently drag/cycle/complete on it). A right click still falls through: for `set_start`/`set_finish`/`gen_source` it clears the marker when it sits on the clicked point (any of its nodes); for the other tools it removes the element under the cursor.

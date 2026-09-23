@@ -97,6 +97,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
    *  `NodeEdgeHighlightRenderer` primitive `DebugRefHighlightOverlay` uses for its edge-ref
    *  highlight. */
   private readonly linkHover: NodeEdgeHighlightRenderer;
+  private readonly entityHighlightContainer: Container;
+  private readonly entityHighlight: RegionHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -122,6 +124,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHoverContainer      = new Container();
     this.teleportPreviewContainer = new Container();
     this.linkHoverContainer      = new Container();
+    this.entityHighlightContainer = new Container();
 
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
@@ -143,6 +146,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.cellHoverContainer);
     this.root.addChild(this.teleportPreviewContainer);
     this.root.addChild(this.linkHoverContainer);
+    this.root.addChild(this.entityHighlightContainer);
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
@@ -165,6 +169,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover      = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
+    this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
 
     this.root.visible = false;
 
@@ -276,6 +281,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (state.presetHoveredLink !== prev.presetHoveredLink) {
       this.redrawLinkHover(state);
     }
+    if (state.presetHoveredEntity !== prev.presetHoveredEntity) this.redrawEntityHighlight(state);
 
     if (
       state.presetConnectionsTool !== prev.presetConnectionsTool
@@ -395,6 +401,15 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.hover.render({ highlights: [] });
     this.redrawLinkHover(state);
+    this.redrawEntityHighlight(state);
+  }
+
+  private redrawEntityHighlight(state: MazeState): void {
+    if (!this.cfg) return;
+    this.entityHighlight.render({
+      nodes: [], regionGroups: [], cells: (state.presetHoveredEntity ?? []).map((endpoint) => endpoint.point),
+      color: canvas.fieldEditor.hover, width: 0, alpha: 1, cfg: this.cfg, skipPerimeter: true,
+    });
   }
 
   private redrawLinkHover(state: MazeState): void {
@@ -588,6 +603,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.linkHover.clear();
+    this.entityHighlight.clear();
     this.teleportPreview.clear();
   }
 
@@ -610,6 +626,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.hover.destroy();
     this.cellHover.destroy();
     this.linkHover.destroy();
+    this.entityHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -631,6 +648,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
+    this.entityHighlightContainer.destroy();
   }
 }
 

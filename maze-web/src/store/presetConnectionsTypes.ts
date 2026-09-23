@@ -88,6 +88,8 @@ export interface PresetConnectionsState {
    *  same way `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel
    *  instead of the cursor. */
   presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null;
+  /** Coordinate cells currently hovered in an Elements row. */
+  presetHoveredEntity: PresetEndpoint[] | null;
   /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
    *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
    *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
@@ -209,6 +211,7 @@ export interface PresetConnectionsActions {
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
   setPresetHoveredLink: (link: { from: PresetEndpoint; to: PresetEndpoint } | null) => void;
+  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */

@@ -10,7 +10,9 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
-import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
+import { resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { buildPresetPointEntities } from "../../pixi/pointEntities";
 import type { TileFace, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
 
@@ -41,19 +43,23 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const setPresetActiveSplitNode = useMazeStore((s) => s.setPresetActiveSplitNode);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
+  const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
+  const presetElevators = useMazeStore((s) => s.presetElevators);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
+  const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const floors = useMazeStore((s) => s.floors);
   const applyPresetConnectionsToolAt = useMazeStore((s) => s.applyPresetConnectionsToolAt);
   const setPresetConnectionUndefined = useMazeStore((s) => s.setPresetConnectionUndefined);
-  const setPresetStartEndpoint = useMazeStore((s) => s.setPresetStartEndpoint);
-  const setPresetFinishEndpoint = useMazeStore((s) => s.setPresetFinishEndpoint);
   const rotatePresetSplitPoint = useMazeStore((s) => s.rotatePresetSplitPoint);
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
+  const setPresetHoveredEntity = useMazeStore((s) => s.setPresetHoveredEntity);
   const applyPresetSplitBlueprint = useMazeStore((s) => s.applyPresetSplitBlueprint);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
@@ -67,8 +73,56 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     () => buildCellSet(buildActiveCells(fieldPoints, fieldEditMode, cfg)),
     [fieldPoints, fieldEditMode, cfg],
   );
+  const presetSplitLabelContext: PresetSplitLabelContext = {
+    splitPoints,
+    presetConnections,
+    activeSplitNode,
+    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+    inFieldCellsAt: (targetLevel) => {
+      const targetFloor = floorFields[floors[targetLevel]?.id ?? ""];
+      return targetFloor
+        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+        : inFieldCells;
+    },
+  };
 
   const originalEndpoint = presetEndpoint(point, undefined, level);
+  const nodeSuffixOf = (ep: PresetEndpoint): string | undefined => {
+    return resolvePresetSplitNodeShortLabel(presetSplitLabelContext, ep);
+  };
+  const floorNodeLabel = (ep: PresetEndpoint): string => `L${(ep.level ?? 0) + 1}${nodeSuffixOf(ep) ? ` (${nodeSuffixOf(ep)})` : ""}`;
+
+  const pointElements = buildPresetPointEntities(point, level, level ?? 0, { kind: "point_all" }, {
+    presetSplitPoints: splitPoints, presetStart, presetFinish, presetGenSource,
+    presetTeleports, presetVerticalPassages, presetElevators, presetConnections,
+    lockedNodes, autoLockedNodes,
+  });
+  const elementsFor = (ep: PresetEndpoint): ElementInfo<PresetEndpoint>[] => pointElements
+    .filter((e) => ["start", "finish", "teleport", "vertical_passage", "elevator", "lock"].includes(e.kind) && presetEndpointsEqual(e.endpoint, ep))
+    .map((e) => {
+      if (e.kind === "start" || e.kind === "finish") return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
+      if (e.kind === "teleport") {
+        const t = presetTeleports.find((entry) => String(entry.id) === e.id);
+        if (!t) return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
+        const currentFirst = presetEndpointsEqual(t.from, ep) ? t.from : t.to;
+        const other = currentFirst === t.from ? t.to : t.from;
+        const forward = currentFirst === t.from ? t.direction !== "backward" : t.direction === "backward";
+        return { title: m["post_edit.entity_delete_label_teleport"](), bubbles: [describeEndpoint(other)], bubbleFloors: [other.level ?? 0], showArrow: true, arrow: t.direction === "two_way" ? "<->" as const : forward ? "->" as const : "<-" as const, hoverEndpoints: [currentFirst, other] };
+      }
+      if (e.kind === "vertical_passage") {
+        const v = presetVerticalPassages.find((entry) => String(entry.id) === e.id);
+        if (!v) return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
+        const currentFirst = presetEndpointsEqual(v.from, ep) ? v.from : v.to;
+        const other = currentFirst === v.from ? v.to : v.from;
+        const forward = currentFirst === v.from ? v.direction !== "backward" : v.direction === "backward";
+        return { title: m["post_edit.entity_delete_label_vertical_passage"](), bubbles: [floorNodeLabel(other)], bubbleFloors: [other.level ?? 0], showArrow: true, arrow: v.direction === "two_way" ? "<->" as const : forward ? "->" as const : "<-" as const, hoverEndpoints: [currentFirst, other] };
+      }
+      if (e.kind === "elevator") {
+        const elevator = presetElevators.find((entry) => String(entry.id) === e.id);
+        return { title: m["post_edit.entity_delete_label_elevator"](), bubbles: elevator ? elevator.floors.filter((floor) => !presetEndpointsEqual(floor, ep)).map(floorNodeLabel) : [], bubbleFloors: elevator ? elevator.floors.filter((floor) => !presetEndpointsEqual(floor, ep)).map((floor) => floor.level ?? 0) : [], showArrow: false, arrow: "->" as const };
+      }
+      return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
+    });
 
   // Faces of one node (any row, not just the active one) — used both to build `tileNodes` (all of
   // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
@@ -101,9 +155,6 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [slots, cfg, point, inFieldCells, presetConnections],
   );
-  const semanticIndexOf = (ep: PresetEndpoint): number =>
-    nodeEndpointsInOrder.findIndex((e) => presetEndpointsEqual(e, ep));
-
   // A preset endpoint's label is its coordinates, plus a compact "(N{N})" suffix for every node of
   // a *split* point — the point's original node included (slot 0 is not a special node any more,
   // GitHub issue #468) — or the semantic tag when this point is a recognized special split (GitHub
@@ -113,15 +164,13 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const describeEndpoint = (ep: PresetEndpoint): string => {
     // `ep` may be a cross-floor partner (teleport/vertical passage), so key by its own level, not
     // the dialog's active floor.
-    const epLevel = ep.level ?? level;
+    const epLevel = ep.level ?? level ?? 0;
     const epKey = epLevel === undefined ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
     const isSplitPoint = (splitPoints[epKey]?.length ?? 0) > 0;
-    if (ep.slotId === undefined && !isSplitPoint) return `${ep.point[0]},${ep.point[1]}`;
-    const sameLevel = (ep.level ?? level) === level;
-    const semantic = sameLevel && ep.point[0] === point[0] && ep.point[1] === point[1]
-      ? semanticNames?.[semanticIndexOf(ep)]?.short
-      : undefined;
-    return `${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
+    const floorPrefix = epLevel !== (level ?? 0) ? `L${epLevel + 1}:` : "";
+    if (ep.slotId === undefined && !isSplitPoint) return `${floorPrefix}${ep.point[0]},${ep.point[1]}`;
+    const semantic = resolvePresetSplitNodeShortLabel(presetSplitLabelContext, ep);
+    return `${floorPrefix}${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
   };
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
@@ -156,16 +205,6 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       }
       decidedPartners.add(presetEndpointKey(partner));
     }
-    for (const t of presetTeleports) {
-      if (t.direction === "two_way") {
-        if (presetEndpointsEqual(t.from, ep)) { mark(t.to, "out"); mark(t.to, "in"); }
-        else if (presetEndpointsEqual(t.to, ep)) { mark(t.from, "out"); mark(t.from, "in"); }
-      } else if (presetEndpointsEqual(t.from, ep)) {
-        mark(t.to, t.direction === "backward" ? "in" : "out");
-      } else if (presetEndpointsEqual(t.to, ep)) {
-        mark(t.from, t.direction === "backward" ? "out" : "in");
-      }
-    }
     // Every in-field geometric neighbor face with no connection entry at all defaults to
     // "undefined" (GitHub issue #234 follow-up) — a face isn't invisible just because the user
     // never clicked it; it starts out optional/undecided, same as `facesOf`'s tile-diagram model.
@@ -180,9 +219,6 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     return [...finalize(), ...undecided, ...forbidden];
   };
 
-  const isStart = (ep: PresetEndpoint) => presetStart != null && presetEndpointsEqual(presetStart, ep);
-  const isFinish = (ep: PresetEndpoint) => presetFinish != null && presetEndpointsEqual(presetFinish, ep);
-
   // Node color by row order (original node first, then each slot in slotId order) — same
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).
   const colorAt = (rowIndex: number) => colorToCss(splitSlotColor(rowIndex, canvas.node.splitSlots));
@@ -191,14 +227,16 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     {
       key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
-      isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint), lockKind: lockedNodes.get(presetEndpointKey(originalEndpoint)) ?? (autoLockedNodes.has(presetEndpointKey(originalEndpoint)) ? "both" : undefined),
+      elements: elementsFor(originalEndpoint),
+      lockKind: lockedNodes.get(presetEndpointKey(originalEndpoint)) ?? (autoLockedNodes.has(presetEndpointKey(originalEndpoint)) ? "both" : undefined),
     },
     ...slots.map((slotId, i) => {
       const ep = presetEndpoint(point, slotId, level);
       return {
         key: presetEndpointKey(ep), endpoint: ep, title: semanticNames?.[1 + i]?.full ?? splitNodeLabel(slotId),
         color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
-        isStart: isStart(ep), isFinish: isFinish(ep), lockKind: lockedNodes.get(presetEndpointKey(ep)) ?? (autoLockedNodes.has(presetEndpointKey(ep)) ? "both" : undefined),
+        elements: elementsFor(ep),
+        lockKind: lockedNodes.get(presetEndpointKey(ep)) ?? (autoLockedNodes.has(presetEndpointKey(ep)) ? "both" : undefined),
       };
     }),
   ];
@@ -243,6 +281,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       title={m["post_edit.manage_split_nodes"]({ x: point[0], y: point[1] })}
       point={point}
       cfg={cfg}
+      currentLevel={level ?? 0}
       rows={rows}
       tileNodes={tileNodes}
       availableKinds={AVAILABLE_KINDS}
@@ -250,15 +289,18 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       onKindChange={setActiveKind}
       onFaceClick={handleFaceClick}
       onFaceRightClick={handleFaceRightClick}
-      onClose={() => { setPresetHoveredLink(null); onClose(); }}
+      onClose={() => { setPresetHoveredLink(null); setPresetHoveredEntity(null); onClose(); }}
       onSetActive={(ep) => setPresetActiveSplitNode(point, ep)}
       onAdd={() => addPresetSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.slotId !== undefined) removePresetSplitNode(point, row.endpoint.slotId); }}
-      onToggleStart={() => setPresetStartEndpoint(isStart(activeEndpoint) ? null : activeEndpoint)}
-      onToggleFinish={() => setPresetFinishEndpoint(isFinish(activeEndpoint) ? null : activeEndpoint)}
       onRotate={(direction) => rotatePresetSplitPoint(point, direction)}
       onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
+      onHoverElement={(_row, element) => {
+        const endpoints = element.hoverEndpoints;
+        if (endpoints && endpoints.length > 0) setPresetHoveredEntity(endpoints);
+      }}
+      onUnhoverElement={() => setPresetHoveredEntity(null)}
       blueprints={blueprints}
       onApplyBlueprint={(blueprint) => applyPresetSplitBlueprint(point, blueprint)}
     />

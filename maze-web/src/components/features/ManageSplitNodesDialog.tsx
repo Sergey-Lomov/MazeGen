@@ -11,9 +11,11 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
+import { resolveSplitNodeShortLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
 
@@ -41,6 +43,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const setActiveSplitNode = useMazeStore((s) => s.setActiveSplitNode);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
+  const draftVerticalPassages = useMazeStore((s) => s.postEditDraftVerticalPassages);
+  const draftElevators = useMazeStore((s) => s.postEditDraftElevators);
   const draftMeta = useMazeStore((s) => s.postEditDraftMeta);
   const allNodes = useMazeStore((s) => s.nodes);
   const level = useMazeStore(activeFloorLevel);
@@ -51,11 +55,13 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const floors = useMazeStore((s) => s.floors);
   const applyPostEditToolAt = useMazeStore((s) => s.applyPostEditToolAt);
-  const setPostEditEndpoint = useMazeStore((s) => s.setPostEditEndpoint);
-  const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);
   const rotateSplitPoint = useMazeStore((s) => s.rotateSplitPoint);
   const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
+  const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
+  const setPostEditChangesEntityFilter = useMazeStore((s) => s.setPostEditChangesEntityFilter);
   const applySplitBlueprint = useMazeStore((s) => s.applySplitBlueprint);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
@@ -71,8 +77,20 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     () => buildCellSet(buildActiveCells(fieldPoints, fieldEditMode, cfg)),
     [fieldPoints, fieldEditMode, cfg],
   );
+  const splitLabelContext: SplitLabelContext = {
+    allNodes,
+    splitPoints,
+    activeSplitNode,
+    draftEdges: draftEdges ?? null,
+    cfg,
+    inFieldCellsAt: (rawLevel) => {
+      const floor = floorFields[floors[rawLevel ?? 0]?.id ?? ""];
+      if (!floor) return inFieldCells;
+      return buildCellSet(buildActiveCells(floor.fieldPoints, floor.fieldEditMode, floor.tessellationConfig));
+    },
+  };
 
-  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
   const pointNodeMap = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const n of nodes) {
@@ -116,6 +134,57 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     return undefined;
   }, [nodes, point]);
   const originalEndpoint: PostEditEndpoint | null = originalNodeId !== undefined ? nodeEndpoint(originalNodeId) : null;
+  const nodeLevelOf = (ep: PostEditEndpoint): number => ep.kind === "node" ? (nodeById.get(ep.id)?.level ?? 0) : (ep.level ?? 0);
+  const nodeSuffixOf = (ep: PostEditEndpoint): string | undefined => {
+    const node = ep.kind === "node" ? nodeById.get(ep.id) : undefined;
+    const targetPoint: [number, number] = node ? [node.x, node.y] : ep.kind === "split" ? ep.point : point;
+    return resolveSplitNodeShortLabel(splitLabelContext, targetPoint, node?.level ?? (ep.kind === "split" ? ep.level : undefined), ep);
+  };
+  const floorNodeLabel = (ep: PostEditEndpoint): string => `L${nodeLevelOf(ep) + 1}${nodeSuffixOf(ep) ? ` (${nodeSuffixOf(ep)})` : ""}`;
+
+  const entityOriginal = nodes.find((n) => n.x === point[0] && n.y === point[1]);
+  const entityNodes: PostEditEndpoint[] = entityOriginal
+    ? [nodeEndpoint(entityOriginal.id), ...slots.map((slotId) => splitEndpoint(point, slotId, level))]
+    : [];
+  const pointElements = buildPostEditPointEntities(
+    entityNodes, slots,
+    {
+      postEditDraftSplitPoints: splitPoints,
+      postEditDraftMeta: draftMeta, postEditDraftTeleports: draftTeleports,
+      postEditDraftVerticalPassages: draftVerticalPassages, postEditDraftElevators: draftElevators,
+      postEditDraftEdges: draftEdges ?? {},
+      nodeLevel: (ep) => ep.kind === "node" ? (nodeById.get(ep.id)?.level ?? 0) : (ep.level ?? 0),
+      nodeById, multiFloor: new Set(nodes.map((n) => n.level ?? 0)).size > 1, splitCtx: splitLabelContext,
+    },
+  );
+  const elementsFor = (ep: PostEditEndpoint): ElementInfo<PostEditEndpoint>[] => {
+    const elements = pointElements
+    .filter((e) => ["start", "finish", "teleport", "vertical_passage", "elevator"].includes(e.kind) && endpointsMatch(e.endpoint, ep))
+    .map((e) => ({
+      title: e.title,
+      entityId: e.entityId,
+      bubbles: e.kind === "start" || e.kind === "finish" ? [] : e.kind === "vertical_passage"
+        ? (() => { const v = draftVerticalPassages.find((entry) => entry.id === e.id); const other = v ? (endpointsMatch(v.from, ep) ? v.to : v.from) : undefined; return other ? [floorNodeLabel(other)] : []; })()
+        : e.kind === "elevator"
+          ? (() => { const elevator = draftElevators.find((entry) => entry.id === e.id); return elevator ? elevator.floors.filter((floor) => !endpointsMatch(floor, ep)).map(floorNodeLabel) : []; })()
+        : e.bubbles.slice(1).map((b) => b.text),
+      bubbleFloors: e.kind === "teleport" ? (draftTeleports.find((t) => t.id === e.id) ? (() => { const t = draftTeleports.find((t) => t.id === e.id)!; const other = endpointsMatch(t.from, ep) ? t.to : t.from; return [nodeLevelOf(other)]; })() : undefined)
+        : e.kind === "vertical_passage" ? (draftVerticalPassages.find((v) => v.id === e.id) ? (() => { const v = draftVerticalPassages.find((v) => v.id === e.id)!; const other = endpointsMatch(v.from, ep) ? v.to : v.from; return [nodeLevelOf(other)]; })() : undefined)
+        : e.kind === "elevator" ? draftElevators.find((v) => v.id === e.id)?.floors.filter((floor) => !endpointsMatch(floor, ep)).map(nodeLevelOf)
+        : undefined,
+      showArrow: e.showArrow, arrow: e.arrow,
+      hoverEndpoints: e.kind === "teleport" ? (draftTeleports.find((t) => t.id === e.id) ? (() => { const t = draftTeleports.find((t) => t.id === e.id)!; return endpointsMatch(t.from, ep) ? [t.from, t.to] : [t.to, t.from]; })() : undefined)
+        : e.kind === "vertical_passage" ? (draftVerticalPassages.find((v) => v.id === e.id) ? (() => { const v = draftVerticalPassages.find((v) => v.id === e.id)!; return endpointsMatch(v.from, ep) ? [v.from, v.to] : [v.to, v.from]; })() : undefined)
+        : e.kind === "elevator" ? draftElevators.find((v) => v.id === e.id)?.floors : undefined,
+    }));
+    if (draftMeta?.start && endpointsMatch(draftMeta.start, ep) && !elements.some((e) => e.title === m["status.cell_start"]())) {
+      elements.unshift({ title: m["status.cell_start"](), entityId: undefined, bubbles: [], bubbleFloors: undefined, showArrow: false, arrow: "->", hoverEndpoints: undefined });
+    }
+    if (draftMeta?.finish && endpointsMatch(draftMeta.finish, ep) && !elements.some((e) => e.title === m["status.cell_finish"]())) {
+      elements.unshift({ title: m["status.cell_finish"](), entityId: undefined, bubbles: [], bubbleFloors: undefined, showArrow: false, arrow: "->", hoverEndpoints: undefined });
+    }
+    return elements;
+  };
 
   // Resolves which of a (possibly split) point's nodes is currently active — the point's own
   // rule for `key`'s point when it's the dialog's own point, or the point's active-map entry
@@ -163,9 +232,6 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // Semantic per-node names when this point's current face configuration matches a recognized
   // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
   const semanticNames = splitNodeSemanticNames(nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })));
-  const semanticIndexOf = (ep: PostEditEndpoint): number =>
-    nodeEndpointsInOrder.findIndex((e) => endpointsMatch(e, ep));
-
   // Formats one side of a link bubble — used for both the card's own endpoint and its partner, so
   // every node always gets an "(N{N})" suffix on whichever side it appears on, not just the
   // partner's. A `split` endpoint or this point's original node gets its compact node label
@@ -173,15 +239,10 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // `node` endpoint elsewhere on the maze (not this point's original node) has no label at all,
   // just its coordinates.
   const describeEndpoint = (ep: PostEditEndpoint): string => {
-    if (originalEndpoint && endpointsMatch(ep, originalEndpoint)) {
-      return `${point[0]},${point[1]} (${semanticNames?.[semanticIndexOf(ep)]?.short ?? splitNodeLabelShort(undefined)})`;
-    }
-    if (ep.kind === "split") {
-      const semantic = semanticNames?.[semanticIndexOf(ep)]?.short;
-      return `${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
-    }
-    const n = nodeById.get(ep.id);
-    return n ? `${n.x},${n.y}` : `#${ep.id}`;
+    const resolved = resolveEndpointToHoverPoint(ep, nodeById);
+    if (!resolved) return ep.kind === "node" ? `#${ep.id}` : `${ep.point[0]},${ep.point[1]}`;
+    const suffix = resolveSplitNodeShortLabel(splitLabelContext, resolved.point, resolved.level, ep);
+    return `${resolved.point[0]},${resolved.point[1]}${suffix ? ` (${suffix})` : ""}`;
   };
 
   // Groups a node's edges/teleports by partner, collapsing a passage's two directed `basic`
@@ -201,21 +262,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
         else if (endpointsMatch(e.to, ep)) mark(e.from, "in");
       }
     }
-    for (const t of draftTeleports) {
-      if (t.direction === "two_way") {
-        if (endpointsMatch(t.from, ep)) { mark(t.to, "out"); mark(t.to, "in"); }
-        else if (endpointsMatch(t.to, ep)) { mark(t.from, "out"); mark(t.from, "in"); }
-      } else if (endpointsMatch(t.from, ep)) {
-        mark(t.to, t.direction === "backward" ? "in" : "out");
-      } else if (endpointsMatch(t.to, ep)) {
-        mark(t.from, t.direction === "backward" ? "out" : "in");
-      }
-    }
     return [...finalize(), ...forbidden];
   };
-
-  const isStart = (ep: PostEditEndpoint) => draftMeta?.start != null && endpointsMatch(draftMeta.start, ep);
-  const isFinish = (ep: PostEditEndpoint) => draftMeta?.finish != null && endpointsMatch(draftMeta.finish, ep);
 
   // Node color by row order (original node first, then each slot in slotId order) — same
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).
@@ -225,7 +273,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     ...(originalEndpoint ? [{
       key: endpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
-      isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
+      elements: elementsFor(originalEndpoint),
     }] : []),
     ...slots.map((slotId, i) => {
       const ep = splitEndpoint(point, slotId, level);
@@ -233,7 +281,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       return {
         key: endpointKey(ep), endpoint: ep, title: semanticNames?.[rowIndex]?.full ?? splitNodeLabel(slotId),
         color: colorAt(rowIndex), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
-        isStart: isStart(ep), isFinish: isFinish(ep),
+        elements: elementsFor(ep),
       };
     }),
   ];
@@ -273,6 +321,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       title={m["post_edit.manage_split_nodes"]({ x: point[0], y: point[1] })}
       point={point}
       cfg={cfg}
+      currentLevel={level ?? 0}
       rows={rows}
       tileNodes={tileNodes}
       availableKinds={AVAILABLE_KINDS}
@@ -284,14 +333,6 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onSetActive={(ep) => setActiveSplitNode(point, ep)}
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
-      onToggleStart={() => {
-        if (!activeEndpoint) return;
-        isStart(activeEndpoint) ? clearPostEditEndpoint("start") : setPostEditEndpoint("start", activeEndpoint);
-      }}
-      onToggleFinish={() => {
-        if (!activeEndpoint) return;
-        isFinish(activeEndpoint) ? clearPostEditEndpoint("finish") : setPostEditEndpoint("finish", activeEndpoint);
-      }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
       onHoverLink={(row, link) => {
         const from = resolveEndpointToHoverPoint(row.endpoint, nodeById);
@@ -299,6 +340,16 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
         if (from && to) setPostEditHoveredEntity({ kind: "link", from, to });
       }}
       onUnhoverLink={() => setPostEditHoveredEntity(null)}
+      onHoverElement={(_row, element) => {
+        const points = element.hoverEndpoints?.map((endpoint) => resolveEndpointToHoverPoint(endpoint, nodeById)).filter((p): p is NonNullable<typeof p> => p !== undefined) ?? [];
+        if (points.length > 0) setPostEditHoveredEntity({ kind: "points", points });
+      }}
+      onUnhoverElement={() => setPostEditHoveredEntity(null)}
+      onEntityIdClick={(id) => {
+        setPostEditHoveredEntity(null);
+        setPostEditChangesEntityFilter(id);
+        setPostEditChangesOpen(true);
+      }}
       blueprints={blueprints}
       onApplyBlueprint={(blueprint) => applySplitBlueprint(point, blueprint)}
     />

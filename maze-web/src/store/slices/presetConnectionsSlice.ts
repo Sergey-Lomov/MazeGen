@@ -67,6 +67,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetActiveSplitNode: {},
   presetFocusedPoint: null,
   presetHoveredLink: null,
+  presetHoveredEntity: null,
   presetSectionsExpanded: { problems: false },
   presetSplitTargetPrompt: null,
   presetEntityDeletePrompt: null,
@@ -155,6 +156,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
     presetHoveredLink: null,
+    presetHoveredEntity: null,
     presetSplitTargetPrompt: null,
     presetEntityDeletePrompt: null,
     debugStale: debugStaleOf(state),
@@ -499,6 +501,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   setPresetFocusedPoint: (point) => set({ presetFocusedPoint: point }),
   setPresetHoveredLink: (link) => set({ presetHoveredLink: link }),
+  setPresetHoveredEntity: (endpoints) => set({ presetHoveredEntity: endpoints }),
 
   rotatePresetSplitPoint: (point, direction) => set((state) => {
     const field = activeFloorField(state);

@@ -167,10 +167,12 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
           </button>
         )}
       </div>
-      {commands.length === 0 ? (
+      {entityFilter !== null && rows.length === 0 ? (
+        <div style={styles.empty}>{m["post_edit.changes_filter_empty"]({ id: entityFilter })}</div>
+      ) : commands.length === 0 ? (
         <div style={styles.empty}>{m["post_edit.changes_empty"]()}</div>
       ) : rows.length === 0 ? (
-        <div style={styles.empty}>{m["post_edit.changes_filter_empty"]()}</div>
+        <div style={styles.empty}>{m["post_edit.changes_filter_empty"]({ id: entityFilter ?? "" })}</div>
       ) : (
         <div style={styles.list}>
           {rows.map((row) => {
