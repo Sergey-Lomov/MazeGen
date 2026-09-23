@@ -34,7 +34,7 @@ import {
   buildLinkHoverHighlight,
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
-import type { PresetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
@@ -256,7 +256,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetElevators !== prev.presetElevators ||
       state.presetSplitPoints !== prev.presetSplitPoints ||
       state.presetActiveSplitNode !== prev.presetActiveSplitNode ||
-      state.presetConnectionsTool !== prev.presetConnectionsTool
+      state.presetConnectionsTool !== prev.presetConnectionsTool ||
+      state.presetDragOverride !== prev.presetDragOverride
     ) {
       this.redrawAll(state);
       return;
@@ -306,8 +307,23 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const lockedNodes = mapOnLevel(state.lockedNodes, level);
     const autoLockedNodes = setOnLevel(state.autoLockedNodes, level);
     const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
-    const presetVerticalPassages = state.presetVerticalPassages.filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0));
-    const presetElevators = state.presetElevators.filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)));
+    // Live drag override (GitHub issue #566) — while a vertical-passage/elevator endpoint drag is
+    // live, nothing is committed to `state.presetVerticalPassages`/`presetElevators` yet (see
+    // `presetDragOverride`'s own doc comment), so the dragged marker's on-screen position is
+    // substituted here rather than read from the committed entry.
+    const override = state.presetDragOverride;
+    const presetVerticalPassages = state.presetVerticalPassages
+      .filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0))
+      .map((p) => {
+        if (override?.kind !== "verticalPassageEndpoint" || override.id !== p.id) return p;
+        return { ...p, [override.end]: presetEndpoint(override.point, undefined, p[override.end].level) };
+      });
+    const presetElevators = state.presetElevators
+      .filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)))
+      .map((e) => {
+        if (override?.kind !== "elevatorEndpoint" || override.id !== e.id) return e;
+        return { ...e, floors: e.floors.map((f) => ((f.level ?? 0) === override.level ? presetEndpoint(override.point, undefined, f.level) : f)) };
+      });
     const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
     const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
     const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;

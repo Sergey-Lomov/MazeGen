@@ -33,6 +33,7 @@ import {
   computeInvalidElevatorIds,
   cycleVerticalPassageDirection,
   moveVerticalPassageEndpoint,
+  moveElevatorEndpoint,
   presetVerticalPassageDirectionToDto,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
@@ -575,20 +576,51 @@ describe("cycleVerticalPassageDirection", () => {
 });
 
 describe("moveVerticalPassageEndpoint", () => {
-  it("moves the 'from' endpoint of the matching entry, keeping the given endpoint's own level", () => {
+  it("moves BOTH ends to the dragged point's (x, y) when it exists on the other end's floor (GitHub issue #566)", () => {
     const result = moveVerticalPassageEndpoint(
-      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "from" }, presetEndpoint([5, 5]),
+      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "from" }, [1, 1], resolveTwoFloors,
     );
-    expect(result[0].from).toEqual(presetEndpoint([5, 5]));
-    expect(result[0].to).toEqual(presetEndpoint([0, 0], undefined, 1));
+    expect(result.failure).toBeUndefined();
+    expect(result.passages[0].from).toEqual(presetEndpoint([1, 1]));
+    expect(result.passages[0].to).toEqual(presetEndpoint([1, 1], undefined, 1));
   });
 
-  it("moves the 'to' endpoint of the matching entry", () => {
+  it("moves the 'to' endpoint and syncs 'from' to the same point", () => {
     const result = moveVerticalPassageEndpoint(
-      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "to" }, presetEndpoint([5, 5], undefined, 1),
+      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "to" }, [1, 1], resolveTwoFloors,
     );
-    expect(result[0].to).toEqual(presetEndpoint([5, 5], undefined, 1));
-    expect(result[0].from).toEqual(presetEndpoint([0, 0]));
+    expect(result.failure).toBeUndefined();
+    expect(result.passages[0].to).toEqual(presetEndpoint([1, 1], undefined, 1));
+    expect(result.passages[0].from).toEqual(presetEndpoint([1, 1], undefined, 0));
+  });
+
+  it("reverts the whole move and reports a failure when the other end's floor has no cell there", () => {
+    const original = verticalPassage(1, [0, 0], [0, 0]);
+    const result = moveVerticalPassageEndpoint([original], { id: 1, end: "from" }, [50, 50], resolveTwoFloors);
+    expect(result.failure).toEqual({ level: 1, point: [50, 50] });
+    expect(result.passages[0]).toEqual(original);
+  });
+});
+
+describe("moveElevatorEndpoint", () => {
+  const elevator: PresetElevatorEntry = {
+    id: 1,
+    floors: [presetEndpoint([0, 0]), presetEndpoint([0, 0], undefined, 1)],
+  };
+
+  it("moves EVERY floor endpoint to the dragged point's (x, y) when it exists on the other floors (GitHub issue #566)", () => {
+    const result = moveElevatorEndpoint([elevator], { id: 1, level: 0 }, [1, 1], resolveTwoFloors);
+    expect(result.failure).toBeUndefined();
+    expect(result.elevators[0].floors).toEqual([
+      presetEndpoint([1, 1]),
+      presetEndpoint([1, 1], undefined, 1),
+    ]);
+  });
+
+  it("reverts the whole move and reports a failure when an OTHER floor has no cell at the dragged point", () => {
+    const result = moveElevatorEndpoint([elevator], { id: 1, level: 0 }, [50, 50], resolveTwoFloors);
+    expect(result.failure).toEqual({ level: 1, point: [50, 50] });
+    expect(result.elevators[0]).toEqual(elevator);
   });
 });
 

@@ -203,10 +203,13 @@ export const PC = {
   decorLineTwoWay: field(["tiles"], "line"),
   decorLineOneWay: field(["one_ways"], "line"),
   decorLineElevator: field(["elevator"], "line"),
-  // Decorative-style vertical connection accent / arrow (share a value with the abstract fields
-  // below only when styles switch — one vertical style is live at a time).
-  decorArrowTwoWay: field(["two_way"], "arrow"),
-  decorAccentOneWay: field(["one_way"], "accent"),
+  // Decorative-style vertical connection arrow colors — deliberately different sections than the
+  // abstract two-way/one-way arrow fields below (`twoWayArrow`/`oneWayArrow`), even though both
+  // pairs are never live at the same time (one `verticalStyle` at a time) — same section, same role
+  // would build an identical "Section: Role" name and break both the picker's field-name matching
+  // (`overrideActiveProfileColor`) and the warning-role lookup (`colorRoleForField`).
+  decorArrowTwoWay: field(["tiles"], "arrow"),
+  decorArrowOneWay: field(["one_ways"], "arrow"),
 
   twoWayFill: field(["two_way"], "fill"),
   twoWayBorder: field(["two_way"], "border"),
@@ -327,7 +330,7 @@ function verticalDecorativeColors(s: VectorByWallsSettings, vis: SectionVisibili
   }
   if (vis.oneWayPassages) {
     rows.push(PC.decorLineOneWay.at(s.decorativeStairsOneWay.lineColor));
-    rows.push(PC.decorAccentOneWay.at(s.decorativeStairsAccentColor));
+    rows.push(PC.decorArrowOneWay.at(s.decorativeStairsOneWayArrowColor));
   }
   if (vis.elevators) {
     rows.push(PC.decorLineElevator.at(s.decorativeElevator.lineColor));
@@ -429,7 +432,7 @@ export function overrideActiveProfileColor(
   // hidden abstract setting and export warnings would evaluate the wrong color.
   if ("decorativeStairsArrowColor" in settings && settings.verticalStyle === "decorative") {
     if (set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) ||
-        set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
+        set(PC.decorArrowOneWay, (v) => { settings.decorativeStairsOneWayArrowColor = v; })) return settings;
   }
   if (set(PC.bgFill, (v) => { settings.background = v; }) || set(PC.bgGrid, (v) => { settings.gridColor = v; }) ||
       set(PC.corridorFill, (v) => { if ("color" in settings) settings.color = v; }) ||
@@ -454,7 +457,9 @@ export function overrideActiveProfileColor(
     if (set(PC.splitNode(i), (v) => { settings.splitNodeColors[i] = v; })) return settings;
   }
   if ("verticalStyle" in settings) {
-    if (set(PC.decorLineTwoWay, (v) => { settings.decorativeStairsTwoWay.lineColor = v; }) || set(PC.decorLineOneWay, (v) => { settings.decorativeStairsOneWay.lineColor = v; }) || set(PC.decorLineElevator, (v) => { settings.decorativeElevator.lineColor = v; }) || set(PC.decorArrowTwoWay, (v) => { settings.decorativeStairsArrowColor = v; }) || set(PC.decorAccentOneWay, (v) => { settings.decorativeStairsAccentColor = v; })) return settings;
+    // Arrow colors are handled by the early-return block above (resolves the active style first) —
+    // only the line colors remain here, since those apply regardless of `verticalStyle`.
+    if (set(PC.decorLineTwoWay, (v) => { settings.decorativeStairsTwoWay.lineColor = v; }) || set(PC.decorLineOneWay, (v) => { settings.decorativeStairsOneWay.lineColor = v; }) || set(PC.decorLineElevator, (v) => { settings.decorativeElevator.lineColor = v; })) return settings;
   }
   const groupKeys = Object.keys(settings.teleportGroupOverrides).sort((a, b) => a.localeCompare(b));
   for (let i = 0; i < groupKeys.length; i++) {

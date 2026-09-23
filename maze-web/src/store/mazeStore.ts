@@ -19,6 +19,7 @@ export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
+  PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
   FieldPrimitive, FeatureId, RenderModeId, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,

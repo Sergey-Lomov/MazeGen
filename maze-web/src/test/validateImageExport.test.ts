@@ -123,22 +123,24 @@ describe("validateVerticalDecorativeFields", () => {
     expect(result.decorativeElevator).toEqual(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeElevator);
   });
 
-  it("reads decorativeStairsArrowColor/decorativeStairsArrowSize/decorativeStairsAccentColor as-is when present", () => {
+  it("reads decorativeStairsArrowColor/decorativeStairsArrowSize/decorativeStairsOneWayArrowColor/decorativeStairsOneWayArrowSize as-is when present", () => {
     const result = validateVerticalDecorativeFields(
-      { decorativeStairsArrowColor: 0x123123, decorativeStairsArrowSize: 0.9, decorativeStairsAccentColor: 0x321321 },
+      { decorativeStairsArrowColor: 0x123123, decorativeStairsArrowSize: 0.9, decorativeStairsOneWayArrowColor: 0x321321, decorativeStairsOneWayArrowSize: 0.8 },
       "path",
       DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     );
     expect(result.decorativeStairsArrowColor).toBe(0x123123);
     expect(result.decorativeStairsArrowSize).toBe(0.9);
-    expect(result.decorativeStairsAccentColor).toBe(0x321321);
+    expect(result.decorativeStairsOneWayArrowColor).toBe(0x321321);
+    expect(result.decorativeStairsOneWayArrowSize).toBe(0.8);
   });
 
-  it("falls back to the default arrow color/size/accent color when the fields are absent", () => {
+  it("falls back to the default arrow color/size when the fields are absent", () => {
     const result = validateVerticalDecorativeFields({}, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
     expect(result.decorativeStairsArrowColor).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowColor);
     expect(result.decorativeStairsArrowSize).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize);
-    expect(result.decorativeStairsAccentColor).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsAccentColor);
+    expect(result.decorativeStairsOneWayArrowColor).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsOneWayArrowColor);
+    expect(result.decorativeStairsOneWayArrowSize).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsOneWayArrowSize);
   });
 });
 

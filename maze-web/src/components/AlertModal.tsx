@@ -7,11 +7,12 @@ import * as m from "~/paraglide/messages";
 interface Props {
   message: string;
   onClose: () => void;
+  title?: string;
 }
 
-export function AlertModal({ message, onClose }: Props) {
+export function AlertModal({ message, onClose, title }: Props) {
   return (
-    <Modal title={m["common.notice"]()} size="approve" onClose={onClose}>
+    <Modal title={title ?? m["common.notice"]()} size="approve" onClose={onClose}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
         <Button variant="primary" layoutStyle={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</Button>

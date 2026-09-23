@@ -1,8 +1,9 @@
 import { encodePoint } from "./tessellationProjection";
-import { presetEndpointFromKey, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpointFromKey, presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import {
   resolveCells, type ResolveFieldAt,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
+  type PresetVerticalPassageEndpointHit, type PresetElevatorEndpointHit,
 } from "./fieldEditUtils";
 
 /** Builds a `level -> Set<encodePoint>` field-cell-set cache lazily, one entry per level actually
@@ -184,4 +185,67 @@ export function computeInvalidSplitPoints(
     if (!pointInField(getFieldSet, [x, y], level)) invalid.add(key);
   }
   return invalid;
+}
+
+/** A dragged vertical-passage/elevator endpoint failed to resolve on one of its OTHER floors
+ * (GitHub issue #566) — reported so the caller can show the user which floor/coordinate rejected
+ * the move, then discard the whole gesture (both editors revert on failure, never a partial move). */
+export interface VerticalDragFailure {
+  level: number;
+  point: [number, number];
+}
+
+/** Moves BOTH ends of a preset vertical passage to the dragged endpoint's new `(x, y)` (GitHub
+ * issue #566) — a vertical passage's two ends are the same (x, y) column on different floors, so
+ * moving only the dragged end (the pre-fix behavior) desyncs the passage's own coordinates. Fails
+ * (returns the original `passages` unchanged, plus the failing floor/point) when the new point
+ * doesn't exist on the OTHER end's own floor field — the caller is expected to revert the whole
+ * drag gesture on failure, never apply a partial move. */
+export function moveVerticalPassageEndpoint(
+  passages: PresetVerticalPassageEntry[],
+  hit: PresetVerticalPassageEndpointHit,
+  point: [number, number],
+  resolveFieldAt: ResolveFieldAt,
+): { passages: PresetVerticalPassageEntry[]; failure?: VerticalDragFailure } {
+  const entry = passages.find((p) => p.id === hit.id);
+  if (!entry) return { passages };
+  const otherEnd = hit.end === "from" ? entry.to : entry.from;
+  const otherLevel = otherEnd.level ?? 0;
+  if (!cellExistsAt(resolveFieldAt, point, otherLevel)) {
+    return { passages, failure: { level: otherLevel, point } };
+  }
+  const ownLevel = hit.end === "from" ? entry.from.level : entry.to.level;
+  const updated: PresetVerticalPassageEntry = {
+    ...entry,
+    [hit.end]: presetEndpoint(point, undefined, ownLevel),
+    [hit.end === "from" ? "to" : "from"]: presetEndpoint(point, undefined, otherLevel),
+  };
+  return { passages: passages.map((p) => (p.id === hit.id ? updated : p)) };
+}
+
+/** Moves EVERY floor endpoint of a preset elevator to the dragged endpoint's new `(x, y)` (GitHub
+ * issue #566) — mirrors `moveVerticalPassageEndpoint`, but an elevator's whole fan shares one
+ * column, so a drag on any one floor's marker must re-target every other floor's own endpoint to
+ * the same point too. Fails (unchanged `elevators`, plus the first floor that rejects the point, in
+ * ascending floor order) when the new point doesn't exist on any of the OTHER floors' own fields. */
+export function moveElevatorEndpoint(
+  elevators: PresetElevatorEntry[],
+  hit: PresetElevatorEndpointHit,
+  point: [number, number],
+  resolveFieldAt: ResolveFieldAt,
+): { elevators: PresetElevatorEntry[]; failure?: VerticalDragFailure } {
+  const entry = elevators.find((e) => e.id === hit.id);
+  if (!entry) return { elevators };
+  const otherFloors = entry.floors
+    .map((f) => f.level ?? 0)
+    .filter((level) => level !== hit.level)
+    .sort((a, b) => a - b);
+  for (const level of otherFloors) {
+    if (!cellExistsAt(resolveFieldAt, point, level)) return { elevators, failure: { level, point } };
+  }
+  const updated: PresetElevatorEntry = {
+    ...entry,
+    floors: entry.floors.map((f) => presetEndpoint(point, undefined, f.level)),
+  };
+  return { elevators: elevators.map((e) => (e.id === hit.id ? updated : e)) };
 }

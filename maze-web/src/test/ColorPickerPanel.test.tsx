@@ -1,0 +1,278 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { ColorPickerPanel } from "../components/ColorPickerPanel";
+import { useMazeStore } from "../store/mazeStore";
+import { baseStoreState } from "./storeTestHelpers";
+import { PC } from "../pixi/selectors/projectColorsSelector";
+import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import type { VectorByWallsSettings } from "../store/storeTypes";
+import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
+import * as m from "~/paraglide/messages";
+
+// GitHub issue #584: ColorPickerPanel had no test file at all. Covers colorRoleForField's
+// field-name-to-warning-role mapping (a name collision here silently breaks warning propagation,
+// see #583), the colorWarnings memo's full pipeline (fieldName -> overrideActiveProfileColor ->
+// filtered warnings), and buildProjectColorGroups' de-dup/priority logic.
+
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+}));
+
+beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+});
+afterEach(() => { vi.unstubAllGlobals(); });
+
+function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
+  return {
+    background: 0x000000, showGrid: true, gridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
+    randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
+    oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+    startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    teleportLineCornerStyle: "sharp", teleportLineShape: "square", teleportLineSize: 0.3,
+    teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
+    teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
+    teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
+    teleportConnectorGapWidth: 0,
+    teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+    teleportGroupCustomization: false, teleportGroupOverrides: {},
+    ...DEFAULT_VERTICAL_SETTINGS,
+    ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+    splitNodeColors: [], splitSpecialShapes: false,
+    markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    ...overrides,
+  };
+}
+
+const noop = () => {};
+
+describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      ...baseStoreState(),
+      showColorWarnings: true,
+      openRenderModeSettings: "vector_by_walls",
+      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [{ from: 0, to: 1, kind: "basic" as const }],
+      // Grid color equal to background -> zero contrast distance -> grid_low_contrast_background
+      // fires (colorRoles ["grid", "background"], see exportWarnings.ts's pushContrastWarningEntries).
+      vectorByWallsSettings: baseWallsSettings({ background: 0x000000, gridColor: 0x000000 }),
+    });
+  });
+
+  it("renders an ExportWarningBubble when the edited field's working color triggers a warning for its mapped role (colorRoleForField -> PC.bgGrid)", () => {
+    render(
+      <ColorPickerPanel
+        color={0x000000}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgGrid.name()}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+    expect(screen.getByText(m["image_export.warning.grid_low_contrast_background"]())).toBeInTheDocument();
+  });
+
+  it("shows no warning for a field whose name does not map to the fired warning's color role (colorRoleForField mismatch)", () => {
+    // Editing the floor color: the fired warning's role is "grid", not "floor" -- must not surface.
+    render(
+      <ColorPickerPanel
+        color={0x2a2a2a}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.tilesFloor.name()}
+      />,
+    );
+    expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "0" }))).toBeInTheDocument();
+  });
+
+  it("clears the warning once the working color no longer triggers it (hex edit re-runs the pipeline live)", () => {
+    render(
+      <ColorPickerPanel
+        color={0x000000}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgGrid.name()}
+      />,
+    );
+    expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" }))).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(m["color_picker.hex_label"]()), { target: { value: "#ffffff" } });
+    expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "0" }))).toBeInTheDocument();
+  });
+
+  it("shows no warnings section content when showColorWarnings is off", () => {
+    useMazeStore.setState({ showColorWarnings: false });
+    render(
+      <ColorPickerPanel
+        color={0x000000}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgGrid.name()}
+      />,
+    );
+    expect(screen.queryByTestId("color-picker-export-warnings")).toBeNull();
+  });
+
+  it("maps a split-section field name (colorRoleForField's prefix rule) to the split warning role", () => {
+    // A split point whose slot-0 color equals the floor color -> split_low_contrast_floor fires
+    // (role ["split", "floor"]); colorRoleForField must resolve "Splits: ...: <fieldName>" via the
+    // `${section_splits}:` prefix rule, not the direct PC-name lookup table.
+    // Bridge topology is required -- a plain pair of co-located nodes with no edges produces no
+    // split passages/colors at all (see splitTopologyFixtures.ts).
+    useMazeStore.setState({
+      nodes: bridgeSplitNodes,
+      edges: bridgeSplitEdges,
+      vectorByWallsSettings: baseWallsSettings({
+        background: 0xffffff, gridColor: 0xaaaaaa,
+        floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff],
+      }),
+    });
+    const splitFieldName = PC.splitNode(0).name();
+    render(
+      <ColorPickerPanel
+        color={0x123456}
+        onApply={noop}
+        onClose={noop}
+        fieldName={splitFieldName}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+    expect(screen.getByText(m["image_export.warning.split_low_contrast_floor"]())).toBeInTheDocument();
+  });
+});
+
+describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      ...baseStoreState(),
+      showColorWarnings: false,
+      openRenderModeSettings: "vector_by_walls",
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [{ from: 0, to: 1, kind: "basic" as const }],
+      vectorByWallsSettings: baseWallsSettings({ floorColor: 0x2a2a2a, wallColor: 0x0a0a0a }),
+    });
+  });
+
+  function openList() {
+    render(
+      <ColorPickerPanel
+        color={0xffffff}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgFill.name()}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: String(8) })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
+  }
+
+  it("de-dupes a priorityColors entry against the active profile's own row (same name + color)", () => {
+    // tilesFloor's own row (0x2a2a2a) also appears in priorityColors -- must render once, in the
+    // top group, not twice.
+    render(
+      <ColorPickerPanel
+        color={0xffffff}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgFill.name()}
+        priorityColors={[PC.tilesFloor.at(0x2a2a2a)]}
+      />,
+    );
+    // bgFill is self-excluded; grid/floor/wall/one-way marker/start fill+border/finish fill+border
+    // = 8 active rows. priority duplicates the floor row, so total still reflects de-dup, not a
+    // double-count.
+    const header = screen.getByText(m["color_picker.project_colors"]({ count: "8" }));
+    fireEvent.click(header);
+    expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
+  });
+
+  it("keeps a priorityColors entry with a color that differs from the profile's own row (no false de-dup by color alone)", () => {
+    render(
+      <ColorPickerPanel
+        color={0xffffff}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgFill.name()}
+        priorityColors={[PC.tilesFloor.at(0xabcdef)]}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "9" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
+    expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(2);
+  });
+
+  it("drops a priorityColors entry whose field is inactive in the current profile (not in the active-name set)", () => {
+    // Reverse the maze's own edge to a bidirectional pair -- the one-way indicator field becomes
+    // inactive (hasDirectionalBasicEdge false), so a priority entry naming it must not leak into
+    // the list even though it's explicitly passed.
+    useMazeStore.setState({ edges: [{ from: 0, to: 1, kind: "basic" }, { from: 1, to: 0, kind: "basic" }] });
+    render(
+      <ColorPickerPanel
+        color={0xffffff}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgFill.name()}
+        priorityColors={[PC.oneWaysMarker.at(0xff0000)]}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "7" })));
+    expect(screen.queryByText(PC.oneWaysMarker.name())).not.toBeInTheDocument();
+  });
+
+  it("prepends a unique 'Default' row ahead of priorityColors when defaultColor is set, even if its color matches a profile row", () => {
+    render(
+      <ColorPickerPanel
+        color={0xffffff}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.bgFill.name()}
+        defaultColor={0x2a2a2a}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "9" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
+    expect(screen.getByText(m["color_picker.project_colors_default"]())).toBeInTheDocument();
+    // The profile's own floor row survives too -- the generic "Default" label never collides with it.
+    expect(screen.getByText(PC.tilesFloor.name())).toBeInTheDocument();
+  });
+
+  it("excludes the edited field's own row from the list (self-row exclusion)", () => {
+    render(
+      <ColorPickerPanel
+        color={0x2a2a2a}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.tilesFloor.name()}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "8" })));
+    // The SidePanel header also shows fieldName verbatim as its title -- only that one occurrence
+    // may exist; the list itself must contain none.
+    expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
+    expect(document.querySelector(".project-color-row")).toBeNull();
+  });
+
+  it("clicking a project-color row sets the working color without committing", () => {
+    openList();
+    fireEvent.click(screen.getByText(PC.tilesWall.name()));
+    expect((screen.getByLabelText(m["color_picker.hex_label"]()) as HTMLInputElement).value).toBe("#0a0a0a");
+  });
+
+  it("activating a project-color row via keyboard (Enter/Space) sets the working color same as a click", () => {
+    openList();
+    fireEvent.keyDown(screen.getByText(PC.tilesWall.name()).closest('[role="button"]')!, { key: "Enter" });
+    expect((screen.getByLabelText(m["color_picker.hex_label"]()) as HTMLInputElement).value).toBe("#0a0a0a");
+  });
+
+  it("'Hide unrelated colors' collapses the bottom group back after 'Show all'", () => {
+    openList();
+    expect(screen.getByText(PC.tilesWall.name())).toBeInTheDocument();
+    fireEvent.click(screen.getByText(m["color_picker.project_colors_hide_unrelated"]()));
+    expect(screen.queryByText(PC.tilesWall.name())).not.toBeInTheDocument();
+    expect(screen.getByText(m["color_picker.project_colors_show_all"]())).toBeInTheDocument();
+  });
+});

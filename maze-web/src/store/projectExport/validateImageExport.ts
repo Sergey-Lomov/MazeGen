@@ -301,7 +301,8 @@ export function validateVerticalDecorativeFields(obj: Record<string, unknown> | 
     decorativeElevator: validateDecorativeLineStyle(obj?.decorativeElevator, `${path}.decorativeElevator`, d.decorativeElevator),
     decorativeStairsArrowColor: optNumber(obj, "decorativeStairsArrowColor", d.decorativeStairsArrowColor),
     decorativeStairsArrowSize: optNumber(obj, "decorativeStairsArrowSize", d.decorativeStairsArrowSize),
-    decorativeStairsAccentColor: optNumber(obj, "decorativeStairsAccentColor", d.decorativeStairsAccentColor),
+    decorativeStairsOneWayArrowColor: optNumber(obj, "decorativeStairsOneWayArrowColor", d.decorativeStairsOneWayArrowColor),
+    decorativeStairsOneWayArrowSize: optNumber(obj, "decorativeStairsOneWayArrowSize", d.decorativeStairsOneWayArrowSize),
   };
 }
 

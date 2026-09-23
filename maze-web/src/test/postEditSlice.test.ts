@@ -1239,7 +1239,28 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditVerticalPassagePending).toBeNull();
   });
 
-  it("movePostEditVerticalPassageEndpoint appends exactly one command (GitHub issue #546 sixth follow-up)", () => {
+  it("movePostEditVerticalPassageEndpoint appends exactly one command and syncs both ends (GitHub issue #546 sixth follow-up, GitHub issue #566)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 1, y: 0, i: 0, level: 1 },
+        { id: 3, x: 1, y: 0, i: 0, level: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" }],
+    }, { _nextPostEditVerticalPassageId: 2 });
+    useMazeStore.getState().movePostEditVerticalPassageEndpoint("v1", "to", n(2));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(2);
+    expect(s.postEditCommands[1]).toMatchObject({
+      kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2), from: n(3), to: n(2),
+    });
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(3), to: n(2) });
+  });
+
+  it("movePostEditVerticalPassageEndpoint reverts the whole move and sets a failure message when the other end's floor has no node at the target (x, y) (GitHub issue #566)", () => {
     seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
@@ -1252,11 +1273,9 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().movePostEditVerticalPassageEndpoint("v1", "to", n(2));
     const s = useMazeStore.getState();
-    expect(s.postEditCommands).toHaveLength(2);
-    expect(s.postEditCommands[1]).toMatchObject({
-      kind: "moveVerticalPassageEndpoint", id: "v1", end: "to", endpoint: n(2),
-    });
-    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(2) });
+    expect(s.postEditCommands).toHaveLength(1);
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(1) });
+    expect(s.postEditDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 0, point: [1, 0] });
   });
 
   it("startPostEditVerticalPassagePlacement leaves a two_way within-session draft entry unchanged when its cell is re-clicked with only one direction available (GitHub issue #491)", () => {
@@ -1460,6 +1479,64 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     const s = useMazeStore.getState();
     expect(s.postEditDraftElevators).toHaveLength(0);
     expect(s.postEditDirty).toBe(true);
+  });
+
+  it("movePostEditElevatorEndpoint moves EVERY floor endpoint to the dragged node's (x, y) (GitHub issue #566)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 1, y: 1, i: 0, level: 0 },
+        { id: 3, x: 1, y: 1, i: 0, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addElevator", id: "e1", floors: [n(0), n(1)] }],
+    }, { _nextPostEditElevatorId: 2 });
+    useMazeStore.getState().movePostEditElevatorEndpoint("e1", 0, n(2));
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftElevators[0].floors).toEqual([n(2), n(3)]);
+  });
+
+  it("movePostEditElevatorEndpoint reverts and reports a failure when an OTHER floor has no node at the dragged point", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 1, y: 1, i: 0, level: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addElevator", id: "e1", floors: [n(0), n(1)] }],
+    }, { _nextPostEditElevatorId: 2 });
+    useMazeStore.getState().movePostEditElevatorEndpoint("e1", 0, n(2));
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftElevators[0].floors).toEqual([n(0), n(1)]);
+    expect(s.postEditDragFailureMessage).toEqual({ level: 1, point: [1, 1], entityKind: "elevator" });
+  });
+
+  it("movePostEditElevatorEndpoint moves a split-addressed OTHER floor instead of leaving it stale (GitHub issue #566, split-floor regression)", () => {
+    // Level 1 at (0,0) is a split point (nodes 1 and 2 share that point/level) — floor 1 of the
+    // elevator is split-addressed (`splitEndpoint([0, 0], 0, 1)`, pointing at node 2, the non-original
+    // slot). Before this fix, `resolveElevatorMove` filtered out non-"node"-kind floors entirely, so
+    // this floor was never validated against the new point and never updated — desyncing the
+    // elevator exactly like the original issue #566 bug, just for the split-floor case.
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 1, level: 1 },
+        { id: 3, x: 1, y: 1, i: 0, level: 0 },
+        { id: 4, x: 1, y: 1, i: 0, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addElevator", id: "e1", floors: [n(0), splitEndpoint([0, 0], 0, 1)] }],
+    }, { _nextPostEditElevatorId: 2 });
+    useMazeStore.getState().movePostEditElevatorEndpoint("e1", 0, n(3));
+    const s = useMazeStore.getState();
+    // Floor 1 must move to (1, 1) — not stay pinned to the old (0, 0) split endpoint.
+    expect(s.postEditDraftElevators[0].floors).toEqual([n(3), n(4)]);
   });
 });
 

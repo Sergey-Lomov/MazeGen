@@ -20,7 +20,7 @@ import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
 import type { NodeDto } from "../wasm/types";
-import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/mazeStore";
+import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
@@ -189,6 +189,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftEdges !== prev.postEditDraftEdges ||
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
       state.postEditDraftVerticalPassages !== prev.postEditDraftVerticalPassages ||
+      state.postEditDraftElevators !== prev.postEditDraftElevators ||
       state.postEditDragOverride !== prev.postEditDragOverride ||
       state.nodes !== prev.nodes ||
       state.edges !== prev.edges ||
@@ -234,6 +235,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     postEditDraftMeta: PostEditMeta | null;
     postEditDraftTeleports: PostEditTeleportEntry[];
     postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
+    postEditDraftElevators: PostEditElevatorEntry[];
   } {
     const override = state.postEditDragOverride;
     if (override === null) {
@@ -241,6 +243,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
         postEditDraftMeta: state.postEditDraftMeta,
         postEditDraftTeleports: state.postEditDraftTeleports,
         postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+        postEditDraftElevators: state.postEditDraftElevators,
       };
     }
     if (override.kind === "marker") {
@@ -248,6 +251,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
         postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: null, finish: null }), [override.marker]: override.endpoint },
         postEditDraftTeleports: state.postEditDraftTeleports,
         postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+        postEditDraftElevators: state.postEditDraftElevators,
       };
     }
     if (override.kind === "teleportEndpoint") {
@@ -256,13 +260,30 @@ export class PostEditRenderer extends BaseFieldRenderer {
         postEditDraftTeleports: state.postEditDraftTeleports.map((t) =>
           t.id === override.id ? { ...t, [override.end]: override.endpoint } : t),
         postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+        postEditDraftElevators: state.postEditDraftElevators,
+      };
+    }
+    if (override.kind === "verticalPassageEndpoint") {
+      return {
+        postEditDraftMeta: state.postEditDraftMeta,
+        postEditDraftTeleports: state.postEditDraftTeleports,
+        postEditDraftVerticalPassages: state.postEditDraftVerticalPassages.map((p) =>
+          p.id === override.id ? { ...p, [override.end]: override.endpoint } : p),
+        postEditDraftElevators: state.postEditDraftElevators,
       };
     }
     return {
       postEditDraftMeta: state.postEditDraftMeta,
       postEditDraftTeleports: state.postEditDraftTeleports,
-      postEditDraftVerticalPassages: state.postEditDraftVerticalPassages.map((p) =>
-        p.id === override.id ? { ...p, [override.end]: override.endpoint } : p),
+      postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+      postEditDraftElevators: state.postEditDraftElevators.map((e) => {
+        if (e.id !== override.id) return e;
+        const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+        return {
+          ...e,
+          floors: e.floors.map((f) => (f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === override.level ? override.endpoint : f)),
+        };
+      }),
     };
   }
 
@@ -380,7 +401,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
 
     const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
-    const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages } = this.dragOverrideFields(state);
+    const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages, postEditDraftElevators: overrideElevators } = this.dragOverrideFields(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -481,7 +502,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // need the *unscoped* node/edge set, same reason `selectVerticalPassagePairSet`'s own doc
     // comment gives (a floor-scoped edge list is missing the reverse-direction edge of a
     // bidirectional passage, whose own `from` lives on the other floor).
-    const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, state.postEditDraftElevators, resolveSplit);
+    const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, overrideElevators, resolveSplit);
     const allVerticalEdges = draftVerticalEdges;
     // Positioning split-node vertical markers also needs the ordinary directed graph edges so
     // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate

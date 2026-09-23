@@ -24,6 +24,7 @@ import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog"
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import { PresetEntityDeleteDialog } from "../dialogs/PresetEntityDeleteDialog";
+import { AlertModal } from "../AlertModal";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -136,6 +137,8 @@ export function PresetConnectionsFeature() {
   const cancelPresetSplitTarget = useMazeStore((s) => s.cancelPresetSplitTarget);
   const presetEntityDeletePrompt = useMazeStore((s) => s.presetEntityDeletePrompt);
   const cancelPresetEntityDelete = useMazeStore((s) => s.cancelPresetEntityDelete);
+  const presetDragFailureMessage = useMazeStore((s) => s.presetDragFailureMessage);
+  const dismissPresetDragFailureMessage = useMazeStore((s) => s.dismissPresetDragFailureMessage);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -329,6 +332,18 @@ export function PresetConnectionsFeature() {
 
       {presetEntityDeletePrompt && (
         <PresetEntityDeleteDialog onClose={cancelPresetEntityDelete} />
+      )}
+
+      {presetDragFailureMessage && (
+        <AlertModal
+          title={m["vertical_drag.dialog_title"]()}
+          message={
+            presetDragFailureMessage.entityKind === "elevator"
+              ? m["vertical_drag.failed_elevator"]({ level: presetDragFailureMessage.level + 1, x: presetDragFailureMessage.point[0], y: presetDragFailureMessage.point[1] })
+              : m["vertical_drag.failed_passage"]({ level: presetDragFailureMessage.level + 1, x: presetDragFailureMessage.point[0], y: presetDragFailureMessage.point[1] })
+          }
+          onClose={dismissPresetDragFailureMessage}
+        />
       )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>

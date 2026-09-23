@@ -130,6 +130,7 @@ const COLOR_ROLE_LABELS: Record<ExportWarningColorRole, () => string> = {
   vertical_two_way_arrow: m["image_export.color_role.vertical_two_way_arrow"], vertical_one_way_fill: m["image_export.color_role.vertical_one_way_fill"],
   vertical_two_way_line: m["image_export.color_role.vertical_two_way_line"], vertical_one_way_line: m["image_export.color_role.vertical_one_way_line"],
   vertical_one_way_accent: m["image_export.color_role.vertical_one_way_accent"], vertical_one_way_arrow: m["image_export.color_role.vertical_one_way_arrow"],
+  vertical_one_way_decorative_arrow: m["image_export.color_role.vertical_one_way_decorative_arrow"],
   elevator_fill: m["image_export.color_role.elevator_fill"], elevator_border: m["image_export.color_role.elevator_border"],
   elevator_arrow: m["image_export.color_role.elevator_arrow"], elevator_line: m["image_export.color_role.elevator_line"], elevator_badge_fill: m["image_export.color_role.elevator_badge_fill"],
 };

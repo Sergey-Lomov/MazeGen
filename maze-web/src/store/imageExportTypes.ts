@@ -208,8 +208,9 @@ export interface ElevatorBadgeSettings {
  *  shape fields, which have no meaning for an open stroke. Only the stairs pictogram draws a
  *  direction arrow (a dedicated "line parallel to the stairs" primitive, not `OneWayPattern` — an
  *  arrowhead pattern reads as a point indicator, not a direction-of-travel-along-a-line one): a
- *  two-way `VerticalPassage` draws it in `decorativeStairsArrowColor`; a one-way `VerticalPassage`
- *  draws it in `decorativeStairsAccentColor` at both ends, crossed-out at the arrival (`to`) end
+ *  two-way `VerticalPassage` draws it in `decorativeStairsArrowColor`/`decorativeStairsArrowSize`;
+ *  a one-way `VerticalPassage` draws it in `decorativeStairsOneWayArrowColor`/
+ *  `decorativeStairsOneWayArrowSize` at both ends, crossed-out at the arrival (`to`) end
  *  (mirrors `oneWayAccentColor`'s own from/to distinction, but as one shared color instead of a
  *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
  *  of its own, decorative or not. */
@@ -265,10 +266,14 @@ export interface VerticalDecorativeFields {
   decorativeElevator: DecorativeLineStyle;
   decorativeStairsArrowColor: number;
   decorativeStairsArrowSize: number;
-  /** One-way stairs arrow color, both ends (GitHub issue #428) — mirrors `oneWayAccentColor`'s own
-   *  from/to distinction but as one shared color, not a fill/border split (there's no fill on a
-   *  line icon to split). */
-  decorativeStairsAccentColor: number;
+  /** One-way stairs arrow color, both ends (GitHub issue #428, renamed from `decorativeStairsAccentColor`
+   *  in issue #583 to match its actual role — it only ever draws the arrow, not a marker accent)
+   *  — mirrors `oneWayAccentColor`'s own from/to distinction but as one shared color, not a
+   *  fill/border split (there's no fill on a line icon to split). */
+  decorativeStairsOneWayArrowColor: number;
+  /** One-way stairs arrow size (GitHub issue #583), independent of `decorativeStairsArrowSize` —
+   *  brings the one-way passage in line with the two-way passage's own dedicated Arrow subsection. */
+  decorativeStairsOneWayArrowSize: number;
 }
 
 /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
@@ -902,7 +907,7 @@ export interface ImageExportActions {
         | "elevatorArrowStyle"
         | "elevatorArrowCornerStyle"
       > &
-        Pick<VerticalDecorativeFields, "verticalStyle" | "decorativeStairsArrowColor" | "decorativeStairsArrowSize" | "decorativeStairsAccentColor">
+        Pick<VerticalDecorativeFields, "verticalStyle" | "decorativeStairsArrowColor" | "decorativeStairsArrowSize" | "decorativeStairsOneWayArrowColor" | "decorativeStairsOneWayArrowSize">
     >,
   ) => void;
   /** Patches one `DecorativeLineStyle` sub-object (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/

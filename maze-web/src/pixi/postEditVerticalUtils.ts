@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type {
   PostEditVerticalPassageEntry, PostEditVerticalPassageDirection, PostEditVerticalPassageEndpointHit,
-  PostEditElevatorEntry,
+  PostEditElevatorEntry, PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
 } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -47,6 +47,40 @@ export function pickPostEditVerticalPassageEndpointAt(
   return best;
 }
 
+/** Same hit-test as `pickPostEditVerticalPassageEndpointAt`, for post-edit elevators (GitHub issue
+ * #566) — only ever tests the active floor's own endpoint of each elevator entry (mirrors
+ * `buildVerticalConnectionMarkers`'s own active-floor filter), so
+ * `PostEditElevatorEndpointHit.level` is always the active floor. */
+export function pickPostEditElevatorEndpointAt(
+  viewportX: number,
+  viewportY: number,
+  cfg: TessellationConfig,
+  elevators: PostEditElevatorEntry[],
+  nodeById: Map<number, NodeDto>,
+  resolveNodeLevel: (id: number) => number | undefined,
+  activeLevel: number | undefined,
+): PostEditElevatorEndpointHit | null {
+  const proj = makeProjection(cfg);
+  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  let best: PostEditElevatorEndpointHit | null = null;
+  let bestDistSq = Infinity;
+  for (const e of elevators) {
+    const own = e.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === (activeLevel ?? 0));
+    if (!own || own.kind !== "node") continue;
+    const node = nodeById.get(own.id);
+    if (!node) continue;
+    const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
+    const dx = px - viewportX;
+    const dy = py - viewportY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < thresholdSq && distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = { id: e.id, level: activeLevel ?? 0 };
+    }
+  }
+  return best;
+}
+
 /** The draft vertical-passage entry connecting endpoints `a` and `b` (either order), or `undefined`.
  *  Both `startPostEditVerticalPassagePlacement`'s generation-time seed guard (GitHub issue #385) and
  *  its direction-aware create path (GitHub issue #491) need "is this pair already drafted?" — keyed
@@ -78,6 +112,20 @@ export function removePostEditVerticalPassage(passages: PostEditVerticalPassageE
   return passages.filter(p => p.id !== id);
 }
 
+/** Finds the real node at `(x, y)` on floor `level` — the post-edit analogue of the preset stage's
+ * `cellExistsAt`: post-edit addresses already-resolved graph nodes rather than raw field cells, so
+ * "does the point exist on that floor" is a node lookup, not a field-membership check. */
+function findNodeAt(nodes: NodeDto[], resolveNodeLevel: (id: number) => number | undefined, point: [number, number], level: number): NodeDto | undefined {
+  return nodes.find((n) => n.x === point[0] && n.y === point[1] && (resolveNodeLevel(n.id) ?? 0) === level);
+}
+
+/** Pure setter — replaces one end of a vertical-passage entry with an already-resolved endpoint,
+ * trusting the caller for consistency. The command log replays this verbatim (`command.endpoint`
+ * is always the RESULT of a successful `resolveVerticalPassageMove` call, computed once at
+ * dispatch time — see `postEditSlice.ts`'s `movePostEditVerticalPassageEndpoint` action), so this
+ * stays a plain, infallible reducer step; it does not itself sync the other end (GitHub issue
+ * #566's actual fix lives in `resolveVerticalPassageMove`, which decides BOTH ends' resulting
+ * `PostEditEndpoint`s before a command is ever appended). */
 export function movePostEditVerticalPassageEndpoint(
   passages: PostEditVerticalPassageEntry[],
   hit: PostEditVerticalPassageEndpointHit,
@@ -89,8 +137,77 @@ export function movePostEditVerticalPassageEndpoint(
   });
 }
 
+/** Resolves what BOTH ends of a vertical passage should become after dragging `hit.end` to
+ * `newNode` (GitHub issue #566) — a vertical passage's two ends are the same (x, y) column on
+ * different floors, so moving only the dragged end (the pre-fix behavior) desyncs the passage's
+ * own coordinates. Fails (`failure` set, no `from`/`to`) when the OTHER end's own floor has no
+ * node at `newNode`'s `(x, y)` — the caller (`postEditSlice.ts`) is expected to revert the whole
+ * drag gesture on failure, never append a command for a partial move. */
+export function resolveVerticalPassageMove(
+  entry: PostEditVerticalPassageEntry,
+  end: "from" | "to",
+  newNode: NodeDto,
+  nodes: NodeDto[],
+  resolveNodeLevel: (id: number) => number | undefined,
+): { from: PostEditEndpoint; to: PostEditEndpoint } | { failure: PostEditVerticalDragFailure } {
+  const otherEp = end === "from" ? entry.to : entry.from;
+  if (otherEp.kind !== "node") return { failure: { level: resolveNodeLevel(newNode.id) ?? 0, point: [newNode.x, newNode.y] } };
+  const otherLevel = resolveNodeLevel(otherEp.id) ?? 0;
+  const otherNode = findNodeAt(nodes, resolveNodeLevel, [newNode.x, newNode.y], otherLevel);
+  if (!otherNode) return { failure: { level: otherLevel, point: [newNode.x, newNode.y] } };
+  const own = nodeEndpoint(newNode.id);
+  const other = nodeEndpoint(otherNode.id);
+  return end === "from" ? { from: own, to: other } : { from: other, to: own };
+}
+
 export function removePostEditElevator(elevators: PostEditElevatorEntry[], id: string): PostEditElevatorEntry[] {
   return elevators.filter(e => e.id !== id);
+}
+
+/** Pure setter — replaces an elevator's `floors` with an already-resolved list, trusting the
+ * caller for consistency. Mirrors `movePostEditVerticalPassageEndpoint`'s own doc comment: the
+ * command log replays this verbatim, the real GitHub issue #566 fix lives in
+ * `resolveElevatorMove`. */
+export function movePostEditElevatorEndpoint(
+  elevators: PostEditElevatorEntry[],
+  id: string,
+  floors: PostEditEndpoint[],
+): PostEditElevatorEntry[] {
+  return elevators.map((e) => (e.id === id ? { ...e, floors } : e));
+}
+
+function endpointLevel(f: PostEditEndpoint, resolveNodeLevel: (id: number) => number | undefined): number {
+  return f.kind === "node" ? (resolveNodeLevel(f.id) ?? 0) : (f.level ?? 0);
+}
+
+/** Resolves what EVERY floor endpoint of an elevator should become after dragging `hit.level`'s
+ * own endpoint to `newNode` (GitHub issue #566) — mirrors `resolveVerticalPassageMove`, but an
+ * elevator's whole fan shares one column, so a drag on any one floor's marker must re-target every
+ * other floor's own endpoint to the same point too. Covers `split`-kind floor endpoints too (an
+ * elevator floor CAN be split-addressed, see `confirmPostEditElevatorPlacement`) — a split floor's
+ * own `level` comes straight off the endpoint, no node lookup needed for that part. Fails when no
+ * node exists at `newNode`'s `(x, y)` on one of the OTHER floors (first such floor, ascending
+ * order). Returns each resolved OTHER floor as a raw `NodeDto`; the caller re-wraps a floor that
+ * was originally `split`-kind back through `resolveNodeIdToEndpoint` (needs `postEditDraftSplitPoints`,
+ * not available in this file) so its slot identity survives the move. */
+export function resolveElevatorMove(
+  entry: PostEditElevatorEntry,
+  hit: PostEditElevatorEndpointHit,
+  newNode: NodeDto,
+  nodes: NodeDto[],
+  resolveNodeLevel: (id: number) => number | undefined,
+): { own: NodeDto; others: Map<number, NodeDto> } | { failure: PostEditVerticalDragFailure } {
+  const otherLevels = entry.floors
+    .map((f) => endpointLevel(f, resolveNodeLevel))
+    .filter((level) => level !== hit.level)
+    .sort((a, b) => a - b);
+  const resolvedByLevel = new Map<number, NodeDto>();
+  for (const level of otherLevels) {
+    const node = findNodeAt(nodes, resolveNodeLevel, [newNode.x, newNode.y], level);
+    if (!node) return { failure: { level, point: [newNode.x, newNode.y] } };
+    resolvedByLevel.set(level, node);
+  }
+  return { own: newNode, others: resolvedByLevel };
 }
 
 /** Every node id reachable from any of `startIds` via `elevator`-kind edges in `edges`, `startIds`

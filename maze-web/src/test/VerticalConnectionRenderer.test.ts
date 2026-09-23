@@ -139,7 +139,8 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     decorativeElevator: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
     decorativeStairsArrowColor: 0x444444,
     decorativeStairsArrowSize: 0.6,
-    decorativeStairsAccentColor: 0x2a2a2a,
+    decorativeStairsOneWayArrowColor: 0x2a2a2a,
+    decorativeStairsOneWayArrowSize: 0.6,
     elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, textColor: 0x666666, fontWeight: "bold" },
     ...overrides,
   };
@@ -693,25 +694,57 @@ describe("VerticalConnectionRenderer", () => {
 
     render(renderer, {
       markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: "up" })],
-      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsAccentColor: 0xbbbbbb }),
+      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsOneWayArrowColor: 0xbbbbbb }),
     });
 
     const arrowStroke = g.strokeCalls[g.strokeCalls.length - 1];
     expect(arrowStroke.color).toBe(0xaaaaaa);
   });
 
-  it("style 'decorative' draws a one-way VerticalPassage's arrow in the accent color at both ends", () => {
+  it("style 'decorative' draws a one-way VerticalPassage's arrow in the one-way arrow color at both ends", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
 
     render(renderer, {
       markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" })],
-      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsAccentColor: 0xbbbbbb }),
+      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsOneWayArrowColor: 0xbbbbbb }),
     });
 
     const arrowStroke = g.strokeCalls[g.strokeCalls.length - 1];
     expect(arrowStroke.color).toBe(0xbbbbbb);
+  });
+
+  it("style 'decorative' sizes a one-way VerticalPassage's arrow from its own size field, independent of the two-way arrow size (GitHub issue #583)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative", decorativeStairsArrowSize: 0.3, decorativeStairsOneWayArrowSize: 0.9 }),
+    });
+
+    // `drawStairsIcon` alone emits exactly 1 moveTo + 6 lineTo (see the "3 risers interleaved with
+    // 2 shelves" test above) — the arrow shaft drawn right after is moveTo[1]/lineTo[6], and its
+    // span is `2 * r * size`, so a larger `decorativeStairsOneWayArrowSize` must produce a longer
+    // span than the same marker drawn with a smaller one, proving it read its own size field.
+    const span = (fake: FakeGraphics) => {
+      const moveTo = fake.calls.filter((c) => c.method === "moveTo")[1].args;
+      const lineTo = fake.calls.filter((c) => c.method === "lineTo")[6].args;
+      return Math.hypot(lineTo[0] - moveTo[0], lineTo[1] - moveTo[1]);
+    };
+    const largeSpan = span(g);
+    expect(largeSpan).toBeGreaterThan(0);
+
+    const rendererSmall = new VerticalConnectionRenderer(container as never);
+    const gSmall = (rendererSmall as unknown as { g: FakeGraphics }).g;
+    render(rendererSmall, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative", decorativeStairsArrowSize: 0.3, decorativeStairsOneWayArrowSize: 0.3 }),
+    });
+
+    expect(largeSpan).toBeGreaterThan(span(gSmall));
   });
 
   it("crossed-out (arrival end) arrow still draws an arrowhead, plus a tick just past the tip (GitHub issue #428 fifth follow-up: crossed-out arrow was missing its own head)", () => {

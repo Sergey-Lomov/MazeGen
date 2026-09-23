@@ -203,11 +203,12 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
   // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
   // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
-  // one-way arrow still uses the dedicated accent color (`decorativeStairsAccentColor`) below, since
-  // that distinction is the whole point of the one-way from/to treatment.
+  // one-way arrow still uses its own dedicated color (`decorativeStairsOneWayArrowColor`) below,
+  // since that distinction is the whole point of the one-way from/to treatment.
   decorativeStairsArrowColor: canvas.vertical.default,
   decorativeStairsArrowSize: 0.75,
-  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
+  decorativeStairsOneWayArrowColor: ONE_WAY_ACCENT_DARK,
+  decorativeStairsOneWayArrowSize: 0.75,
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files

@@ -82,6 +82,14 @@ export interface PresetVerticalPassageEndpointHit {
   end: "from" | "to";
 }
 
+/** Endpoint of a preset elevator (GitHub issue #566) — identified by the owning entry's id and the
+ * floor level of the dragged marker (an elevator has no "from"/"to", only a set of floor
+ * endpoints, so the hit is keyed by floor level rather than an end name). */
+export interface PresetElevatorEndpointHit {
+  id: number;
+  level: number;
+}
+
 const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
 
 /** Filters a flat, maze-wide `presetConnections` map (GitHub issue #340) down to the entries
@@ -224,6 +232,35 @@ export function pickVerticalPassageEndpointAt(
   return best;
 }
 
+/** Same hit-test as `pickVerticalPassageEndpointAt`, for elevators (GitHub issue #566) — only ever
+ * tests the active floor's own endpoint of each elevator entry (mirrors `buildPresetVerticalMarkers`'s
+ * own active-floor filter), so `PresetElevatorEndpointHit.level` is always the active floor. */
+export function pickElevatorEndpointAt(
+  viewportX: number,
+  viewportY: number,
+  cfg: TessellationConfig,
+  elevators: PresetElevatorEntry[],
+  activeLevel: number | undefined,
+): PresetElevatorEndpointHit | null {
+  const proj = makeProjection(cfg);
+  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  let best: PresetElevatorEndpointHit | null = null;
+  let bestDistSq = Infinity;
+  for (const e of elevators) {
+    const own = e.floors.find((f) => (f.level ?? 0) === (activeLevel ?? 0));
+    if (!own) continue;
+    const { x: px, y: py } = proj.gridToScreen(own.point[0], own.point[1]);
+    const dx = px - viewportX;
+    const dy = py - viewportY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < thresholdSq && distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = { id: e.id, level: activeLevel ?? 0 };
+    }
+  }
+  return best;
+}
+
 export function cycleTeleportDirection(
   teleports: PresetTeleportEntry[],
   id: number,
@@ -265,17 +302,6 @@ export function cycleVerticalPassageDirection(
 
 export function removeVerticalPassage(passages: PresetVerticalPassageEntry[], id: number): PresetVerticalPassageEntry[] {
   return passages.filter(p => p.id !== id);
-}
-
-export function moveVerticalPassageEndpoint(
-  passages: PresetVerticalPassageEntry[],
-  hit: PresetVerticalPassageEndpointHit,
-  endpoint: PresetEndpoint,
-): PresetVerticalPassageEntry[] {
-  return passages.map(p => {
-    if (p.id !== hit.id) return p;
-    return { ...p, [hit.end]: endpoint };
-  });
 }
 
 export function removeElevator(elevators: PresetElevatorEntry[], id: number): PresetElevatorEntry[] {
@@ -634,4 +660,5 @@ export { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./edgeHitTesting";
 export {
   cellExistsAt, computeInvalidKeys, computeInvalidKeysFromCells, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys,
   computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidSplitPoints,
+  moveVerticalPassageEndpoint, moveElevatorEndpoint, type VerticalDragFailure,
 } from "./fieldValidity";

@@ -105,7 +105,7 @@ Only when `verticalStyle === "decorative"`, compare each of the following with
 - `decorativeStairsTwoWay.lineColor` — two-way vertical passage line;
 - `decorativeStairsArrowColor` — two-way vertical passage arrow;
 - `decorativeStairsOneWay.lineColor` — one-way vertical passage line;
-- `decorativeStairsAccentColor` — one-way vertical passage secondary color;
+- `decorativeStairsOneWayArrowColor` — one-way vertical passage arrow color;
 - `decorativeElevator.lineColor` — elevator line.
 
 In every Vector by walls style, compare `wallColor` with `floorColor` and emit a separate wall-vs-

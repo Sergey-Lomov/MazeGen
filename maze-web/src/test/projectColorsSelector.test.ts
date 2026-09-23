@@ -316,6 +316,19 @@ describe("overrideActiveProfileColor", () => {
     expect(overridden?.twoWayArrowColor).toBe(original.twoWayArrowColor);
   });
 
+  it("overrides the decorative one-way arrow field without colliding with the abstract one-way arrow field", () => {
+    const state = makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, verticalStyle: "decorative" },
+    });
+    const original = state.vectorByWallsSettings;
+    const overridden = overrideActiveProfileColor(state, PC.decorArrowOneWay.name(), 0x123456);
+    expect(overridden).not.toBeNull();
+    if (!overridden || !("decorativeStairsOneWayArrowColor" in overridden)) throw new Error("Expected vector-by-walls settings");
+    expect(overridden?.decorativeStairsOneWayArrowColor).toBe(0x123456);
+    expect(overridden?.oneWayArrowColor).toBe(original.oneWayArrowColor);
+  });
+
   it("overrides a split color even when the profile still uses the default palette", () => {
     const state = makeState({
       openRenderModeSettings: "vector_by_corridors",

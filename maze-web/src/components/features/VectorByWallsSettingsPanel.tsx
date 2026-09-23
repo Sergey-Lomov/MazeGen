@@ -645,14 +645,28 @@ export function VectorByWallsSettingsPanel() {
                       lineColorDefault={D.decorativeStairsOneWay.lineColor}
                       lineColorFieldName={PC.decorLineOneWay.name()}
                     />
-                    <ColorRow
-                      label={m["image_export.vector_by_walls.one_way_accent_color"]()}
-                      color={settings.decorativeStairsAccentColor}
-                      onChange={(decorativeStairsAccentColor) => patchVerticalSettings({ decorativeStairsAccentColor })}
-                      priorityColors={[PC.decorLineOneWay.at(settings.decorativeStairsOneWay.lineColor), floor]}
-                      defaultColor={D.decorativeStairsAccentColor}
-                      fieldName={PC.oneWayAccent.name()}
-                    />
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                          color={settings.decorativeStairsOneWayArrowColor}
+                          onChange={(decorativeStairsOneWayArrowColor) => patchVerticalSettings({ decorativeStairsOneWayArrowColor })}
+                          priorityColors={[PC.decorLineOneWay.at(settings.decorativeStairsOneWay.lineColor), floor]}
+                          defaultColor={D.decorativeStairsOneWayArrowColor}
+                          fieldName={PC.decorArrowOneWay.name()}
+                        />
+                        <SliderRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                          value={settings.decorativeStairsOneWayArrowSize}
+                          onChange={(decorativeStairsOneWayArrowSize) => patchVerticalSettings({ decorativeStairsOneWayArrowSize })}
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          format={(v) => v.toFixed(2)}
+                        />
+                      </div>
+                    </div>
                   </div>
                   )}
                 </div>
