@@ -6,6 +6,7 @@ import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings }
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
 import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
@@ -15,19 +16,6 @@ const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, 
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
-
-// Point (0,0) split into node 0 (slot 0: east+west) and node 4 (slot 1: north+south) — a
-// recognized "bridge" special shape (see `mazeSelectors.test.ts`'s own bridge-topology test for
-// the geometry this produces). Node 6 sits on a plain, non-split, non-special cell.
-const bridgeSplitNodes = [
-  n(0, 0, 0), n(1, 1, 0), n(2, -1, 0),
-  n(3, 0, 1), n(4, 0, 0), n(5, 0, -1),
-  n(6, 5, 5),
-];
-const bridgeSplitEdges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
-
-// A plain (non-special) 2-node split point at (1,1) — no recognized bridge/diagonal topology.
-const plainSplitNodes = [n(0, 1, 1), n(1, 1, 1), n(2, 5, 5)];
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start,
