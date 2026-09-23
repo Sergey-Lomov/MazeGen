@@ -43,7 +43,7 @@ function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
     ["label_background", PC.markerIndexFill.name()],
     ["vertical_two_way_line", PC.decorLineTwoWay.name()], ["vertical_one_way_line", PC.decorLineOneWay.name()],
     ["elevator_line", PC.decorLineElevator.name()], ["vertical_two_way_arrow", PC.decorArrowTwoWay.name()],
-    ["vertical_one_way_accent", PC.decorAccentOneWay.name()],
+    ["vertical_one_way_decorative_arrow", PC.decorArrowOneWay.name()],
   ];
   const direct = roles.find(([, name]) => name === fieldName);
   if (direct) return direct[0];

@@ -128,6 +128,7 @@ export type ExportWarningColorRole =
   | "teleport_connector" | "teleport_badge_border" | "teleport_badge_fill" | "teleport_badge_text"
   | "vertical_two_way_fill" | "vertical_two_way_border" | "vertical_two_way_arrow"
   | "vertical_two_way_line" | "vertical_one_way_fill" | "vertical_one_way_accent" | "vertical_one_way_arrow" | "vertical_one_way_line"
+  | "vertical_one_way_decorative_arrow"
   | "elevator_fill" | "elevator_border" | "elevator_arrow" | "elevator_line"
   | "elevator_badge_fill";
 
@@ -154,7 +155,7 @@ const COLOR_ROLES_BY_WARNING_ID: Partial<Record<ExportWarningId, [ExportWarningC
   split_colors_low_contrast_each_other: ["split", "split"],
   wall_low_contrast_floor: ["wall", "floor"], vertical_two_way_line_low_contrast_floor: ["vertical_two_way_line", "floor"],
   vertical_two_way_arrow_low_contrast_floor: ["vertical_two_way_arrow", "floor"],
-  vertical_one_way_accent_low_contrast_floor: ["vertical_one_way_accent", "floor"], elevator_line_low_contrast_floor: ["elevator_line", "floor"],
+  vertical_one_way_accent_low_contrast_floor: ["vertical_one_way_decorative_arrow", "floor"], elevator_line_low_contrast_floor: ["elevator_line", "floor"],
   vertical_one_way_line_low_contrast_floor: ["vertical_one_way_line", "floor"],
 };
 
@@ -803,7 +804,7 @@ function addCommonContrastWarnings(
       edges: edgePairs(oneWayVertical),
     }] : []);
     pushContrastWarningEntries(warnings, "vertical_one_way_accent_low_contrast_floor", oneWayVertical.length > 0 ? [{
-      foreground: wallsSettings.decorativeStairsAccentColor,
+      foreground: wallsSettings.decorativeStairsOneWayArrowColor,
       background: baseColor,
       nodes: edgeNodeIds(oneWayVertical, warningNodeById),
       edges: edgePairs(oneWayVertical),

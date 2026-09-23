@@ -104,7 +104,8 @@ const INERT_DECORATIVE_FILLER: VerticalDecorativeFields = {
   decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
   decorativeStairsArrowColor: canvas.floor.default,
   decorativeStairsArrowSize: 0.75,
-  decorativeStairsAccentColor: canvas.floor.default,
+  decorativeStairsOneWayArrowColor: canvas.floor.default,
+  decorativeStairsOneWayArrowSize: 0.75,
 };
 
 /** Builds `VerticalConnectionRenderer`'s style from a mode's own vertical-connection fields plus the
@@ -138,7 +139,8 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
     decorativeElevator: dec.decorativeElevator,
     decorativeStairsArrowColor: dec.decorativeStairsArrowColor,
     decorativeStairsArrowSize: dec.decorativeStairsArrowSize,
-    decorativeStairsAccentColor: dec.decorativeStairsAccentColor,
+    decorativeStairsOneWayArrowColor: dec.decorativeStairsOneWayArrowColor,
+    decorativeStairsOneWayArrowSize: dec.decorativeStairsOneWayArrowSize,
     elevatorBadges: settings.elevatorBadges,
   };
 }

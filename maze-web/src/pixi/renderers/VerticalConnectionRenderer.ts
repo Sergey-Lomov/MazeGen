@@ -77,7 +77,12 @@ export type VerticalConnectionStyle = {
   /** Direction-arrow size, as a fraction of the stairs icon's own half-width (0-1) — same
    *  convention as `twoWayArrowSize`. */
   decorativeStairsArrowSize: number;
-  decorativeStairsAccentColor: number;
+  /** One-way stairs arrow color, both ends — mirrors `oneWayAccentColor`'s own from/to distinction
+   *  but as one shared color, not a fill/border split (there's no fill on a line icon to split). */
+  decorativeStairsOneWayArrowColor: number;
+  /** One-way stairs arrow size, independent of `decorativeStairsArrowSize` (GitHub issue #583) —
+   *  same fraction-of-half-width convention. */
+  decorativeStairsOneWayArrowSize: number;
   /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
    *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
   elevatorBadges: ElevatorBadgeSettings;
@@ -675,8 +680,9 @@ export class VerticalConnectionRenderer {
    *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator`'s own `lineColor`/
    *  `lineWidth`/`size` fields (no fill/border/gap/shape concept for a stroke-only icon). Only a
    *  `VerticalPassage` draws a direction arrow (`drawStairsArrow`) — a two-way passage draws it in
-   *  `decorativeStairsArrowColor`; a one-way passage draws it in `decorativeStairsAccentColor` at
-   *  both ends, crossed-out at the arrival (`arrowFilled: false`) end. `Elevator` never draws an
+   *  `decorativeStairsArrowColor`; a one-way passage draws it in `decorativeStairsOneWayArrowColor`
+   *  (its own size, `decorativeStairsOneWayArrowSize`) at both ends, crossed-out at the arrival
+   *  (`arrowFilled: false`) end. `Elevator` never draws an
    *  arrow, decorative or not (see `VerticalConnectionStyle`'s own doc comment). Position-grouping
    *  (same-cell spread) mirrors the marker-shape branch's own logic, sized off each icon's own
    *  `size` instead of a marker's `borderWidth`/`gapWidth` (neither exists here). */
@@ -708,7 +714,8 @@ export class VerticalConnectionRenderer {
 
     if (marker.direction) {
       const oneWay = !marker.filled;
-      const arrowColor = oneWay ? style.decorativeStairsAccentColor : style.decorativeStairsArrowColor;
+      const arrowColor = oneWay ? style.decorativeStairsOneWayArrowColor : style.decorativeStairsArrowColor;
+      const arrowSize = oneWay ? style.decorativeStairsOneWayArrowSize : style.decorativeStairsArrowSize;
       const crossedOut = oneWay && !marker.arrowFilled;
       // `marker.direction` is the floor this marker's own connection leads to (GitHub issue #428
       // third follow-up) — same up/down reasoning `render`'s own marker-shape branch already applies
@@ -716,7 +723,7 @@ export class VerticalConnectionRenderer {
       // "down" end. `"both"` never reaches a `VerticalPassage` marker (only `Elevator`, which draws
       // no decorative arrow at all — see this method's own doc comment), so it's not handled here.
       const pointsUp = marker.direction === "up";
-      drawStairsArrow(this.g, cx, cy, radius, style.decorativeStairsArrowSize, arrowColor, lineStyle.lineWidth, crossedOut, pointsUp);
+      drawStairsArrow(this.g, cx, cy, radius, arrowSize, arrowColor, lineStyle.lineWidth, crossedOut, pointsUp);
     }
 
     this.wireInteractivity(marker, interactive, cx, cy, radius);
