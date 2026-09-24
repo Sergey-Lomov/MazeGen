@@ -1223,6 +1223,11 @@ hover uses):
 
 **Danger styling:** the Reset icon button uses the `btn-tool-icon-selected-danger` class (red border + inset shadow when selected, `base.error`) instead of the accent `btn-tool-icon-selected` — `reset` is in `PostEditFeature`'s `DANGER_TOOLS` set. Its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click. (`delete` is styled the same way — also in `DANGER_TOOLS`.)
 
+After a Reset/Delete action changes the derived post-edit graph, `PostEditRenderer` preserves the
+current edge or cell hover until the pointer moves, so the destructive target remains visible.
+Changing the active tool or floor clears that cached hover because the hit target may no longer
+be valid (GitHub issue #592).
+
 ### `delete` Tool Detail (GitHub issue #386, multi-entity picker + split slots added by #550)
 
 Removes generation-placed content anchored to a cell — the counterpart to `wall`/`reset` (which only
