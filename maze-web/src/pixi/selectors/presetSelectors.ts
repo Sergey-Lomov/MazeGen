@@ -351,7 +351,13 @@ export function buildIsolatedCellHighlights(
  *  out from `PresetConnectionsFeature`'s own `orphanSplitCount` so the same "is this slot referenced"
  *  logic drives both the warning's count/floor badges and its hover highlight (GitHub issue #420).
  *  Level-agnostic (spans every floor, mirroring the feature's own count) — keys are `"x,y"` (floor 0)
- *  or `"x,y@level"` (GitHub issue #340), the `@level` suffix stripped before parsing coordinates. */
+ *  or `"x,y@level"` (GitHub issue #340), the `@level` suffix stripped before parsing coordinates.
+ *
+ *  A reference is intentional even when its connection state is `"undefined"`. `"undefined"` is a
+ *  valid explicit preset choice: once the user edits a split node, returning all of its faces to
+ *  `"undefined"` still counts as configuring that node, so the orphan warning must stay hidden.
+ *  The distinction is between an absent connection entry and an entry whose state happens to be
+ *  `"undefined"`; do not simplify this check to inspect connection state only. */
 export function computeOrphanSplitPoints(
   presetSplitPoints: Record<string, number[]>,
   presetConnections: Map<string, PresetConnectionEntry>,

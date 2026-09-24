@@ -521,6 +521,14 @@ The status-bar cell inspector already reports a `Gen source` line per node (`bui
 
 **Orphan slots are not auto-removed.** A declared slot with nothing referencing it is created anyway at generation time (see "Applying split points" below) and surfaces as a dedicated warning in the Preset Connections panel (`orphanSplitCount`, same `warningBubble` style as the isolated-nodes warning) — informational only, does not block generation.
 
+The orphan check is based on whether the slot has any preset entity entry, not on whether that
+entry currently requires a connection. An explicit `undefined` connection is still a reference:
+if the user changes a split node's settings and then returns every face to `undefined`, the node is
+considered intentionally configured and the orphan warning remains hidden. Only a split slot with
+no connection, teleport, start/finish, or generation-source entry is reported as orphaned. This is
+intentional behavior and must not be changed by treating `undefined` as equivalent to an absent
+entry.
+
 The Preset Connections panel always renders its Problems subsection header, even when there are no isolated nodes or orphan split points. The header uses the shared localized `common.problems` label and shows the current warning count (`Problems (N)` / `Проблемы (N)`), where `N = isolatedNodes.length + orphanSplitCount`. The subsection starts collapsed by default (`presetSectionsExpanded.problems: false`); when `N > 0`, its label immediately uses the UI warning color without animation, so the count can be noticed without causing a layout jump.
 
 ### Rendering

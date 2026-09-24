@@ -109,6 +109,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   setPresetConnectionUndefined: (key, from, to) => set((state) => {
     const presetConnections = new Map(state.presetConnections);
+    // Keep an explicit user choice as a real entry. `undefined` is not the same as "never
+    // configured": orphan split-node diagnostics use entry presence, so reverting every face to
+    // undefined intentionally suppresses the warning after the user has edited the node.
     presetConnections.set(key, { from, to, state: "undefined", source: "user" });
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
