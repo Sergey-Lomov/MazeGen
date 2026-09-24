@@ -4,7 +4,7 @@ import {
   rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
   findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes,
+  removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes, rotateSplitPointBreaksNeighborShape,
 } from "../pixi/postEditUtils";
 import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitFaceLayout";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
@@ -788,5 +788,65 @@ describe("pruneRemovedSplitNodes", () => {
       (n.level ?? 0) === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${n.level}`;
     expect(pruneRemovedSplitNodes(nodes, { "1,1@1": [] }, pointKey)).toEqual([nodes[0]]);
     expect(pruneRemovedSplitNodes(nodes, { "1,1@1": [0] }, pointKey)).toEqual(nodes);
+  });
+});
+
+// --- rotateSplitPointBreaksNeighborShape (GitHub issue #588) ---
+
+describe("rotateSplitPointBreaksNeighborShape", () => {
+  // 5x5 grid so a split point one step off-center still has all 4 of its own neighbors in-field
+  // (unlike the 3x3 `gridNodes`/`centerCellSet` above, which only fits a split point AT the
+  // center).
+  const wideCellSet = new Set<string>();
+  const wideNodes: NodeDto[] = [];
+  for (let x = -2; x <= 2; x++) {
+    for (let y = -2; y <= 2; y++) {
+      wideCellSet.add(`${x},${y}`);
+      wideNodes.push({ id: idOf(x, y), x, y, i: 0 });
+    }
+  }
+
+  it("rotating an unsplit point breaks a split neighbor's recognized bridge shape", () => {
+    // Neighbor [1,0] is a degree-4 bridge: original node E-W (E=[2,0], W=[0,0] — the rotating
+    // point), slot 0 N-S (N=[1,1], S=[1,-1]).
+    const neighborOriginal = nodeEndpoint(idOf(1, 0));
+    const neighborSlot = splitEndpoint([1, 0], 0);
+    const center = nodeEndpoint(idOf(0, 0));
+    const edges: Record<string, PostEditEdge> = {};
+    edges[edgeKey(neighborOriginal, nodeEndpoint(idOf(2, 0)))] = { from: neighborOriginal, to: nodeEndpoint(idOf(2, 0)), kind: "basic" };
+    edges[edgeKey(nodeEndpoint(idOf(2, 0)), neighborOriginal)] = { from: nodeEndpoint(idOf(2, 0)), to: neighborOriginal, kind: "basic" };
+    edges[edgeKey(neighborOriginal, center)] = { from: neighborOriginal, to: center, kind: "basic" };
+    edges[edgeKey(center, neighborOriginal)] = { from: center, to: neighborOriginal, kind: "basic" };
+    edges[edgeKey(neighborSlot, nodeEndpoint(idOf(1, 1)))] = { from: neighborSlot, to: nodeEndpoint(idOf(1, 1)), kind: "basic" };
+    edges[edgeKey(nodeEndpoint(idOf(1, 1)), neighborSlot)] = { from: nodeEndpoint(idOf(1, 1)), to: neighborSlot, kind: "basic" };
+    edges[edgeKey(neighborSlot, nodeEndpoint(idOf(1, -1)))] = { from: neighborSlot, to: nodeEndpoint(idOf(1, -1)), kind: "basic" };
+    edges[edgeKey(nodeEndpoint(idOf(1, -1)), neighborSlot)] = { from: nodeEndpoint(idOf(1, -1)), to: neighborSlot, kind: "basic" };
+    const splitPoints = { "1,0": [0] };
+
+    // Rotating the (unsplit) center by +1 moves its E-face passage to N — [1,0]'s original node
+    // loses its W-face connection to `center` and, being itself split, gets it wall-compensated
+    // instead of just vanishing, dropping it to 1 connected face (E only) — no longer a bridge.
+    const broken = rotateSplitPointBreaksNeighborShape(edges, [0, 0], [], 1, squareCfg, wideCellSet, wideNodes, {}, splitPoints);
+    expect(broken).toBe(true);
+
+    // The reverse direction (-1) moves the E-face passage to S instead — same outcome, opposite
+    // rotation.
+    const brokenOtherDirection = rotateSplitPointBreaksNeighborShape(edges, [0, 0], [], -1, squareCfg, wideCellSet, wideNodes, {}, splitPoints);
+    expect(brokenOtherDirection).toBe(true);
+  });
+
+  it("no-op rotation (nothing wired at the rotating point) never reports a break", () => {
+    const splitPoints = { "1,0": [0] };
+    const broken = rotateSplitPointBreaksNeighborShape({}, [0, 0], [], 1, squareCfg, wideCellSet, wideNodes, {}, splitPoints);
+    expect(broken).toBe(false);
+  });
+
+  it("rotating next to a plain (non-split) neighbor never reports a break", () => {
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    const edges: Record<string, PostEditEdge> = {};
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward" };
+    const broken = rotateSplitPointBreaksNeighborShape(edges, [0, 0], [], 1, squareCfg, wideCellSet, wideNodes, {}, {});
+    expect(broken).toBe(false);
   });
 });

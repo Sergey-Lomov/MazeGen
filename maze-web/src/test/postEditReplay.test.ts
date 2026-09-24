@@ -401,6 +401,47 @@ describe("filterCommandsForPoint — vertical passage / elevator lifelines", () 
   });
 });
 
+describe("applyPostEditCommand — rotateSplitPoint", () => {
+  // GitHub issue #588 follow-up: `applyRotatedNodesToEdges` (shared with the dry-run break-check in
+  // `postEditUtils.ts`) resolves a "no slotId" node via `nodeAt`, which must filter by level — two
+  // levels can share the same (x, y) with each having their own original node.
+  it("resolves the rotating point's original node on the correct level when another level shares its coordinates", () => {
+    const context = baseContext([
+      { id: 0, x: 0, y: 0, i: 0, level: 0 },
+      { id: 1, x: 0, y: 0, i: 0, level: 1 },
+      { id: 2, x: 1, y: 0, i: 0, level: 1 },
+    ]);
+    const baseline = makeBaseline({ context });
+    const face: (neighbor: PostEditEndpoint) => { neighbor: PostEditEndpoint; toNeighbor: PostEditEdgeState; fromNeighbor: PostEditEdgeState } = (neighbor) => ({
+      neighbor,
+      toNeighbor: { kind: "basic", from: n(1), to: neighbor },
+      fromNeighbor: { kind: "basic", from: neighbor, to: n(1) },
+    });
+    const result = applyPostEditCommand(context, baseline.derived, {
+      kind: "rotateSplitPoint",
+      point: [0, 0],
+      level: 1,
+      nodes: [{ faces: [face(n(2))] }],
+    });
+    expect(result.applied).toBe(true);
+    // Written against node 1 (level 1's original), never node 0 (level 0's — same coordinates).
+    expect(result.state.edges[edgeKey(n(1), n(2))]?.kind).toBe("basic");
+    expect(result.state.edges[edgeKey(n(0), n(2))]).toBeUndefined();
+  });
+
+  it("fails closed when the rotating point has no original node on the targeted level", () => {
+    const context = baseContext([{ id: 0, x: 0, y: 0, i: 0, level: 0 }]);
+    const baseline = makeBaseline({ context });
+    const result = applyPostEditCommand(context, baseline.derived, {
+      kind: "rotateSplitPoint",
+      point: [0, 0],
+      level: 1,
+      nodes: [{ faces: [] }],
+    });
+    expect(result.applied).toBe(false);
+  });
+});
+
 describe("delete -> point reset restores", () => {
   it("the individual commands the Delete tool emits for a point are pruned by a reset of that point", () => {
     // GitHub issue #545: the Delete tool no longer emits one bundled `deletePoint` command — it

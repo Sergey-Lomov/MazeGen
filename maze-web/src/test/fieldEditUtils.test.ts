@@ -24,6 +24,7 @@ import {
   pickEdgeAtPosition,
   presetEdgeKey,
   rotatePresetSplitPoint,
+  rotatePresetSplitPointBreaksNeighborShape,
   resolvePresetPartnerAt,
   allNodesAt,
   presetSplitNodeFaceKinds,
@@ -938,6 +939,60 @@ describe("rotatePresetSplitPoint", () => {
     // neighbor is simply not written for the new (W) face at all.
     expect(result.has(presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([0, 0])))).toBe(false);
     expect(result.has(presetEdgeKey(presetEndpoint([-1, 0]), presetEndpoint([0, 0])))).toBe(false);
+  });
+});
+
+// --- rotatePresetSplitPointBreaksNeighborShape (GitHub issue #588) ---
+
+describe("rotatePresetSplitPointBreaksNeighborShape", () => {
+  // 5x5 field so a split point one step off-center still has all 4 of its own neighbors in-field
+  // (`centerCellSet` above only fits a split point AT the center).
+  const wideCellSet = new Set<string>();
+  for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++) wideCellSet.add(`${x},${y}`);
+
+  it("rotating an unsplit point breaks a split neighbor's recognized bridge shape", () => {
+    // Neighbor (1,0) is a degree-4 bridge: original node E-W (E=(2,0), W=(0,0) — the rotating
+    // point), slot 0 N-S (N=(1,1), S=(1,-1)). Every non-participating face is explicit `wall` —
+    // `detectSplitSpecialShapeKind` counts a preset's default `"undefined"` face as connected too
+    // (only `"wall"` excludes it), so a face left unset would wrongly look connected.
+    const neighborOriginal = presetEndpoint([1, 0]);
+    const neighborSlot = presetEndpoint([1, 0], 0);
+    const center = presetEndpoint([0, 0]);
+    const connections = new Map([
+      [presetEdgeKey(neighborOriginal, presetEndpoint([2, 0])), { from: neighborOriginal, to: presetEndpoint([2, 0]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighborOriginal, center), { from: center, to: neighborOriginal, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighborOriginal, presetEndpoint([1, 1])), { from: neighborOriginal, to: presetEndpoint([1, 1]), state: "wall" as const, source: "user" as const }],
+      [presetEdgeKey(neighborOriginal, presetEndpoint([1, -1])), { from: presetEndpoint([1, -1]), to: neighborOriginal, state: "wall" as const, source: "user" as const }],
+      [presetEdgeKey(neighborSlot, presetEndpoint([1, 1])), { from: neighborSlot, to: presetEndpoint([1, 1]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighborSlot, presetEndpoint([1, -1])), { from: presetEndpoint([1, -1]), to: neighborSlot, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(neighborSlot, presetEndpoint([2, 0])), { from: neighborSlot, to: presetEndpoint([2, 0]), state: "wall" as const, source: "user" as const }],
+      [presetEdgeKey(neighborSlot, center), { from: center, to: neighborSlot, state: "wall" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "1,0": [0] };
+
+    // Rotating the (unsplit) center by +1 moves its E-face passage to N — (1,0)'s original node
+    // loses its W-face connection to `center` and, being itself split, gets it wall-compensated
+    // instead of just vanishing, dropping it to 1 connected face (E only) — no longer a bridge.
+    const broken = rotatePresetSplitPointBreaksNeighborShape(connections, [0, 0], [], 1, squareCfg, wideCellSet, presetSplitPoints, {});
+    expect(broken).toBe(true);
+
+    // The reverse direction (-1) moves the E-face passage to S instead — same outcome.
+    const brokenOtherDirection = rotatePresetSplitPointBreaksNeighborShape(connections, [0, 0], [], -1, squareCfg, wideCellSet, presetSplitPoints, {});
+    expect(brokenOtherDirection).toBe(true);
+  });
+
+  it("no-op rotation (nothing wired at the rotating point) never reports a break", () => {
+    const presetSplitPoints = { "1,0": [0] };
+    const broken = rotatePresetSplitPointBreaksNeighborShape(new Map(), [0, 0], [], 1, squareCfg, wideCellSet, presetSplitPoints, {});
+    expect(broken).toBe(false);
+  });
+
+  it("rotating next to a plain (non-split) neighbor never reports a break", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const broken = rotatePresetSplitPointBreaksNeighborShape(connections, [0, 0], [], 1, squareCfg, wideCellSet, {}, {});
+    expect(broken).toBe(false);
   });
 });
 

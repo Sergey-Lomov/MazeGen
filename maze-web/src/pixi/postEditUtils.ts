@@ -4,9 +4,9 @@ import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import {
   type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual,
-  buildLogicalCandidates, isDecidedPostEditEdge,
+  buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement,
 } from "./postEditEndpoint";
-import { canCompleteOppositePair, hasCompleteOppositePair } from "./splitFaceLayout";
+import { canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind, type SplitFaceKind } from "./splitFaceLayout";
 import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 
@@ -206,6 +206,50 @@ export function currentSplitNodeFaces(edges: Record<string, PostEditEdge>, targe
     byNeighbor.set(nKey, face);
   }
   return [...byNeighbor.values()];
+}
+
+/** `endpoint`'s per-face kind at `point`, in `getNeighborData`'s offset order — the standalone,
+ * any-point counterpart of `ManageSplitNodesDialog`'s inline `facesOf` (GitHub issue #588),
+ * generalized so a caller can compute this for a NEIGHBOR point, not just the dialog's own focused
+ * one (needed to detect whether rotating one split point breaks a neighbor's recognized special
+ * shape before applying the rotation). A face outside `cellSet` reads as `"wall"` (boundary); one
+ * with no real node at the neighbor coordinate also reads as `"wall"` (nothing to connect to). The
+ * connected neighbor node is resolved the same way a face click would (`resolvePartnerForPlacement`
+ * over the neighbor's own candidates), so a split neighbor's real connected slot is found even when
+ * its active UI slot isn't the one wired to `point`. Mirrors `presetSplitNodeFaceKinds`
+ * (`fieldEditUtils.ts`) for the preset stage. */
+export function postEditSplitNodeFaceKinds(
+  endpoint: PostEditEndpoint,
+  point: [number, number],
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+  edges: Record<string, PostEditEdge>,
+  splitPoints: Record<string, number[]>,
+  activeSplitNode: Record<string, PostEditEndpoint>,
+  nodes: NodeDto[],
+  level?: number,
+): SplitFaceKind[] {
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  const levelSplitPoints = recordOnLevel(splitPoints, level);
+  const splitPointsAt = (p: [number, number]) => levelSplitPoints[`${p[0]},${p[1]}`] ?? [];
+  return offsets.map(([dx, dy]): SplitFaceKind => {
+    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    if (!cellSet.has(`${neighbor[0]},${neighbor[1]}`)) return "wall";
+    const neighborIds: number[] = [];
+    for (const n of nodes) if (n.x === neighbor[0] && n.y === neighbor[1] && (n.level ?? 0) === (level ?? 0)) neighborIds.push(n.id);
+    if (neighborIds.length === 0) return "wall";
+    const candidates = buildLogicalCandidates(neighbor, neighborIds, splitPointsAt(neighbor), level);
+    const resolved = resolvePartnerForPlacement([endpoint], candidates, edges, activeSplitNode, neighbor, level);
+    if (!resolved) return "wall";
+    const neighborPartner = resolved.endpoint;
+
+    const fwd = edges[edgeKey(endpoint, neighborPartner)];
+    const bwd = edges[edgeKey(neighborPartner, endpoint)];
+    if (fwd?.kind === "basic" || bwd?.kind === "basic") return "passage";
+    if (fwd?.kind === "one_way_forward" || fwd?.kind === "one_way_backward") return "one_way_out";
+    if (bwd?.kind === "one_way_forward" || bwd?.kind === "one_way_backward") return "one_way_in";
+    return "wall";
+  });
 }
 
 /** Which of `candidatePoint`'s own geometric face indices (per `getNeighborData(cfg, ...)`'s fixed
@@ -483,4 +527,104 @@ export function rotateSplitPointNodes(
     result.push({ slotId, faces: currentSplitNodeFaces(rotated, splitEndpoint(point, slotId, level)) });
   }
   return result;
+}
+
+/** `nodes` filtered to `point`/`level`, indexed the same way a split point's own node list is
+ * ordered elsewhere (original node first). Shared by `postEditReplay.ts`'s `"rotateSplitPoint"`
+ * (and other) replay cases and `applyRotatedNodesToEdges` below, so both resolve a point's
+ * original node identically (level-scoped — a same-coordinate node on another level is never a
+ * match). */
+export function nodeAt(nodes: NodeDto[], point: [number, number], level: number | undefined, index: number): NodeDto | undefined {
+  const levelNodes = nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0));
+  return levelNodes[index];
+}
+
+/** Rebuilds the edges map a `rotateSplitPoint` command's replay would produce (`postEditReplay.ts`'s
+ * `"rotateSplitPoint"` case) from `rotateSplitPointNodes`' own resolved-node snapshot — every edge
+ * referencing one of `point`'s own nodes is dropped first, then each resolved node's full post-
+ * rotation face list (including any wall-compensation edge written onto an old split neighbor,
+ * see `rotateSplitPointNodes`' doc comment) is written back. Shared by the real replay path
+ * (`postEditReplay.ts` calls this instead of duplicating the loop) and
+ * `rotateSplitPointBreaksNeighborShape`'s dry run below, so the three can never disagree on what a
+ * rotation actually produces. Returns `undefined` if a resolved node claims to be the point's
+ * original (undecided `slotId`) but `nodes` has none at `point`/`level` — mirrors replay's own
+ * `fail(state)` case; callers that aren't a command replay (the dry run below) treat this the same
+ * as "rotation is a no-op". */
+export function applyRotatedNodesToEdges(
+  edges: Record<string, PostEditEdge>,
+  point: [number, number],
+  level: number | undefined,
+  nodes: NodeDto[],
+  rotatedNodes: ResolvedRotateNode[],
+): Record<string, PostEditEdge> | undefined {
+  const targets: PostEditEndpoint[] = [];
+  for (const rotatedNode of rotatedNodes) {
+    if (rotatedNode.slotId === undefined) {
+      const original = nodeAt(nodes, point, level, 0);
+      if (original === undefined) return undefined;
+      targets.push(nodeEndpoint(original.id));
+    } else {
+      targets.push(splitEndpoint(point, rotatedNode.slotId, level));
+    }
+  }
+  const refsAnyTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+    targets.some((target) => endpointsEqual(e.from, target) || endpointsEqual(e.to, target));
+  const next = Object.fromEntries(Object.entries(edges).filter(([, e]) => !refsAnyTarget(e)));
+  rotatedNodes.forEach((rotatedNode, i) => {
+    const target = targets[i];
+    for (const face of rotatedNode.faces) {
+      const toKey = edgeKey(target, face.neighbor);
+      const fromKey = edgeKey(face.neighbor, target);
+      if (face.toNeighbor.kind === "wall") delete next[toKey]; else next[toKey] = face.toNeighbor;
+      if (face.fromNeighbor.kind === "wall") delete next[fromKey]; else next[fromKey] = face.fromNeighbor;
+    }
+  });
+  return next;
+}
+
+/** True if rotating `point`'s split nodes by `direction` would make a currently-recognized special
+ * shape (bridge/diagonal/etc., `detectSplitSpecialShapeKind`) at one of `point`'s geometric
+ * neighbors unrecognized (GitHub issue #588) — dry-runs the rotation (`rotateSplitPointNodes` is
+ * pure) and compares each split neighbor's own `faceKindsByNode` before/after via
+ * `postEditSplitNodeFaceKinds`. Only `point`'s immediate geometric neighbors can possibly be
+ * affected — a rotation only ever re-keys edges touching `point`'s own nodes. A neighbor that isn't
+ * itself split (fewer than 2 declared nodes), or wasn't recognized before the rotation, is never a
+ * "break" regardless of what happens to it after. */
+export function rotateSplitPointBreaksNeighborShape(
+  edges: Record<string, PostEditEdge>,
+  point: [number, number],
+  slotIds: number[],
+  direction: 1 | -1,
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+  nodes: NodeDto[],
+  activeSplitNode: Record<string, PostEditEndpoint>,
+  splitPoints: Record<string, number[]>,
+  level?: number,
+): boolean {
+  const rotatedNodes = rotateSplitPointNodes(edges, point, slotIds, direction, cfg, cellSet, nodes, activeSplitNode, splitPoints, level);
+  if (rotatedNodes.length === 0) return false;
+  const after = applyRotatedNodesToEdges(edges, point, level, nodes, rotatedNodes);
+  if (after === undefined) return false; // rotation couldn't resolve its own original node — same as a no-op
+
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  const levelSplitPoints = recordOnLevel(splitPoints, level);
+  for (const [dx, dy] of offsets) {
+    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighborSlots = levelSplitPoints[`${neighbor[0]},${neighbor[1]}`] ?? [];
+    const neighborOriginal = nodeAt(nodes, neighbor, level, 0);
+    const neighborEndpoints: PostEditEndpoint[] = [
+      ...(neighborOriginal ? [nodeEndpoint(neighborOriginal.id)] : []),
+      ...neighborSlots.map((slotId) => splitEndpoint(neighbor, slotId, level)),
+    ];
+    if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+
+    const before = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, edges, splitPoints, activeSplitNode, nodes, level));
+    const beforeKind = detectSplitSpecialShapeKind(before);
+    if (beforeKind === null) continue; // wasn't recognized before — nothing to break
+
+    const afterKinds = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, after, splitPoints, activeSplitNode, nodes, level));
+    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+  }
+  return false;
 }

@@ -14,6 +14,7 @@ import {
   removePostEditElevator,
 } from "./postEditVerticalUtils";
 import { removeSlot } from "./splitPointsCore";
+import { nodeAt, applyRotatedNodesToEdges } from "./postEditUtils";
 import type { EdgeDto } from "../wasm/types";
 
 /** Baseline nodes/edges a log's endpoints resolve against, plus the split-slot resolver built from
@@ -58,11 +59,6 @@ export interface PostEditApplyResult {
 
 function pointKeyOf(point: [number, number], level?: number): string {
   return level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
-}
-
-function nodeAt(nodes: NodeDto[], point: [number, number], level: number | undefined, index: number): NodeDto | undefined {
-  const levelNodes = nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0));
-  return levelNodes[index];
 }
 
 /** True if `ep` currently resolves against `context` (a `node` endpoint always resolves; a
@@ -255,31 +251,8 @@ export function applyPostEditCommand(
       // follow-up: a full snapshot, unlike the old diff-shaped `moves`, is safe to have an EARLIER
       // command in its own lifeline dropped by compaction without leaving a dangling re-key).
       if (command.nodes.length === 0) return ok(state);
-      const targets: PostEditEndpoint[] = [];
-      for (const rotatedNode of command.nodes) {
-        if (rotatedNode.slotId === undefined) {
-          const node = nodeAt(context.nodes, command.point, command.level, 0);
-          if (node === undefined) return fail(state);
-          targets.push(nodeEndpoint(node.id));
-        } else {
-          targets.push(splitEndpoint(command.point, rotatedNode.slotId, command.level));
-        }
-      }
-      const refsAnyTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
-        targets.some((target) => endpointsEqual(e.from, target) || endpointsEqual(e.to, target));
-      let edges = Object.fromEntries(Object.entries(state.edges).filter(([, e]) => !refsAnyTarget(e)));
-      for (let i = 0; i < command.nodes.length; i++) {
-        const rotatedNode = command.nodes[i];
-        const target = targets[i];
-        for (const face of rotatedNode.faces) {
-          const toKey = edgeKey(target, face.neighbor);
-          const fromKey = edgeKey(face.neighbor, target);
-          if (face.toNeighbor.kind === "wall") delete edges[toKey];
-          else edges[toKey] = face.toNeighbor;
-          if (face.fromNeighbor.kind === "wall") delete edges[fromKey];
-          else edges[fromKey] = face.fromNeighbor;
-        }
-      }
+      const edges = applyRotatedNodesToEdges(state.edges, command.point, command.level, context.nodes, command.nodes);
+      if (edges === undefined) return fail(state);
       return ok({ ...state, edges });
     }
     case "applySplitBlueprint": {

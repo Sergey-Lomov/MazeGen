@@ -132,6 +132,11 @@ interface Props<E> {
   /** Rotates every node's connections by one geometric face, clockwise (`1`) or counter-clockwise
    * (`-1`) — see `rotatePostEditSplitPoint`/`rotatePresetSplitPoint`. */
   onRotate: (direction: 1 | -1) => void;
+  /** Dry-runs a rotate and reports whether it would break a neighboring split point's currently
+   *  recognized special shape (bridge/diagonal/etc. — GitHub issue #588), so `onRotate` can be
+   *  gated behind a `ConfirmModal` instead of silently degrading the neighbor's rendering. Optional
+   *  — omitted by the pattern editor, which has no neighbor-shape concept to check. */
+  wouldBreakNeighborShape?: (direction: 1 | -1) => boolean;
   /** Hovering a link bubble highlights that specific connection on the canvas (GitHub issue #237)
    *  — same mechanism as `EdgeHighlightRenderer`'s existing hover highlight, driven here by the
    *  panel instead of a canvas pointermove. `row` is the bubble's own card row (the link's "from"
@@ -182,11 +187,12 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
  * only layout/styling, the kind switcher, and the remove-confirmation flow. */
 export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
-  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate,
+  onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
 }: Props<E>) {
   const [pendingRemove, setPendingRemove] = useState<SplitNodesRow<E> | null>(null);
   const [pendingBlueprint, setPendingBlueprint] = useState<SplitNodeBlueprint | null>(null);
+  const [pendingRotate, setPendingRotate] = useState<1 | -1 | null>(null);
   // Tracks whether the user has made any manual edit to this point since the panel opened (face
   // click, add/remove node, rotate, start/finish toggle) — a fresh `useState` per mount, so it
   // resets whenever the panel reopens (React remounts on a `point` change since the caller keys
@@ -215,9 +221,16 @@ export function SplitNodesDialogView<E>({
   };
   const handleFaceClick = markEdited(onFaceClick);
   const handleFaceRightClick = markEdited(onFaceRightClick);
-  const handleRotate = markEdited(onRotate);
+  const handleRotateNow = markEdited(onRotate);
   const handleAdd = markEdited(onAdd);
   const handleRemove = markEdited(onRemove);
+  // Dry-runs the rotation before applying it (GitHub issue #588) — if it would break a neighboring
+  // split point's currently recognized special shape, confirm first instead of silently degrading
+  // the neighbor's rendering.
+  const handleRotate = (direction: 1 | -1) => {
+    if (wouldBreakNeighborShape?.(direction)) setPendingRotate(direction);
+    else handleRotateNow(direction);
+  };
 
   return (
     <>
@@ -397,6 +410,13 @@ export function SplitNodesDialogView<E>({
         message={m["post_edit.confirm_apply_blueprint"]()}
         onConfirm={() => { onApplyBlueprint?.(pendingBlueprint); setPendingBlueprint(null); }}
         onCancel={() => setPendingBlueprint(null)}
+      />
+    )}
+    {pendingRotate !== null && (
+      <ConfirmModal
+        message={m["post_edit.confirm_rotate_breaks_neighbor_shape"]()}
+        onConfirm={() => { handleRotateNow(pendingRotate); setPendingRotate(null); }}
+        onCancel={() => setPendingRotate(null)}
       />
     )}
     </>
