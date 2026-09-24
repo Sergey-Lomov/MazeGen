@@ -177,6 +177,15 @@ describe("buildPresetWallGroups", () => {
     const { undecided } = buildPresetWallGroups(cells, new Map(), cfg, { "-1,0": [] });
     expect(undecided).toHaveLength(1);
   });
+
+  it("keeps a split-point cell's field-boundary sides as solid walls (GitHub issue #572)", () => {
+    const splitPoints = { "-1,0": [0] };
+    const { preset } = buildPresetWallGroups(cells, new Map(), cfg, splitPoints);
+    // "-1,0" has 3 boundary sides (4 neighbor offsets - 1 shared interior edge with "0,0")
+    const boundaryWalls = preset.filter(e => e.kind === "none" && e.a[0] === -1 && e.a[1] === 0);
+    expect(boundaryWalls).toHaveLength(3);
+    for (const wall of boundaryWalls) expect(wall.style).toBe("solid");
+  });
 });
 
 // --- buildPresetSplitPassages ---
