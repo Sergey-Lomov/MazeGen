@@ -34,7 +34,7 @@ import {
   buildLinkHoverHighlight,
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
-import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, withoutLevel, type PresetEndpoint } from "./presetEndpoint";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
@@ -324,8 +324,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
         if (override?.kind !== "elevatorEndpoint" || override.id !== e.id) return e;
         return { ...e, floors: e.floors.map((f) => ((f.level ?? 0) === override.level ? presetEndpoint(override.point, undefined, f.level) : f)) };
       });
-    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
-    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
+    // Markers must resolve against a level-less endpoint (GitHub issue #589) — see `withoutLevel`.
+    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0))
+      ? withoutLevel(state.presetStart) : null;
+    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0))
+      ? withoutLevel(state.presetFinish) : null;
     const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
 
     this.grid.render({ viewport: this.viewport }, cfg);
@@ -461,8 +464,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     );
     // `buildPresetNodePositions` keys split-point nodes without a `level` suffix, so match markers:
     // resolve against a level-less copy of the endpoint (it's already known to be on this floor).
-    const anchor: PresetEndpoint = { point: endpoint.point, slotId: endpoint.slotId };
-    const [x, y] = presetEndpointScreenPos(anchor, this.cfg, positions);
+    const [x, y] = presetEndpointScreenPos(withoutLevel(endpoint), this.cfg, positions);
     this.genSource.render({ sourceScreen: { x, y } });
   }
 
