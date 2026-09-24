@@ -5,7 +5,7 @@ import { getCellNeighborOffsets, getNeighborData } from "./tessellationGeometry"
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
-import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair } from "./splitFaceLayout";
+import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
@@ -758,6 +758,50 @@ export function rotatePresetSplitPoint(
     next.set(newKey, { from: newFrom, to: newTo, state, source: entry.source });
   });
   return next;
+}
+
+/** True if rotating `point`'s split nodes by `direction` would make a currently-recognized special
+ * shape (bridge/diagonal/etc., `detectSplitSpecialShapeKind`) at one of `point`'s geometric
+ * neighbors unrecognized (GitHub issue #588) — dry-runs the rotation (`rotatePresetSplitPoint` is
+ * pure) and compares each split neighbor's own `faceKindsByNode` before/after via
+ * `presetSplitNodeFaceKinds`. Only `point`'s immediate geometric neighbors can possibly be
+ * affected — a rotation only ever re-keys entries touching `point`'s own nodes. A neighbor that
+ * isn't itself split (fewer than 2 declared nodes), or wasn't recognized before the rotation, is
+ * never a "break" regardless of what happens to it after. Mirrors post-edit's
+ * `rotateSplitPointBreaksNeighborShape` (`postEditUtils.ts`). */
+export function rotatePresetSplitPointBreaksNeighborShape(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  point: [number, number],
+  slotIds: number[],
+  direction: 1 | -1,
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+  presetSplitPoints: Record<string, number[]>,
+  presetActiveSplitNode: Record<string, PresetEndpoint>,
+  level?: number,
+): boolean {
+  const after = rotatePresetSplitPoint(
+    presetConnections, point, slotIds, direction, cfg, cellSet, presetSplitPoints, presetActiveSplitNode, level,
+  );
+  if (after === presetConnections) return false; // refused — nothing changes
+
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  for (const [dx, dy] of offsets) {
+    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    const neighborEndpoints = allNodesAt(neighbor, presetSplitPoints, level);
+    if (neighborEndpoints.length < 2) continue; // not split — nothing to break
+
+    const before = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
+      ep, neighbor, cfg, cellSet, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
+    ));
+    if (detectSplitSpecialShapeKind(before) === null) continue; // wasn't recognized before — nothing to break
+
+    const afterKinds = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
+      ep, neighbor, cfg, cellSet, after, presetSplitPoints, presetActiveSplitNode, level,
+    ));
+    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+  }
+  return false;
 }
 
 /**

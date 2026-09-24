@@ -1757,6 +1757,7 @@
   "post_edit.split_blueprints_label": "Blueprints",
   "post_edit.split_blueprint_disabled_hint": "Some blueprints are disabled because their required connections would cross the field boundary at this point.",
   "post_edit.confirm_apply_blueprint": "This will replace every existing node/connection at this point. Continue?",
+  "post_edit.confirm_rotate_breaks_neighbor_shape": "Rotating this tile will break the shape of a neighboring split tile. Further rotation may restore it, but that isn't guaranteed. Continue?",
   "post_edit.changes_tool": "Changes list",
   "post_edit.changes_title": "Changes",
   "post_edit.changes_empty": "No changes yet",

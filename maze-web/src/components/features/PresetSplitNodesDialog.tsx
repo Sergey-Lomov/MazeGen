@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
+import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds, rotatePresetSplitPointBreaksNeighborShape } from "../../pixi/fieldEditUtils";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -294,6 +294,9 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       onAdd={() => addPresetSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.slotId !== undefined) removePresetSplitNode(point, row.endpoint.slotId); }}
       onRotate={(direction) => rotatePresetSplitPoint(point, direction)}
+      wouldBreakNeighborShape={(direction) => rotatePresetSplitPointBreaksNeighborShape(
+        presetConnections, point, slots, direction, cfg, inFieldCells, splitPoints, activeSplitNode, level,
+      )}
       onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
       onHoverElement={(_row, element) => {

@@ -15,6 +15,7 @@ import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
 import { resolveSplitNodeShortLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
+import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditUtils";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { buildPostEditPointEntities } from "../../pixi/postEditPointEntities";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
@@ -359,6 +360,9 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
+      wouldBreakNeighborShape={(direction) => draftEdges !== null && rotateSplitPointBreaksNeighborShape(
+        draftEdges, point, slots, direction, cfg, inFieldCells, nodes, activeSplitNode, splitPoints, level,
+      )}
       onHoverLink={(row, link) => {
         const from = resolveEndpointToHoverPoint(row.endpoint, nodeById);
         const to = resolveEndpointToHoverPoint(link.otherEndpoint, nodeById);
