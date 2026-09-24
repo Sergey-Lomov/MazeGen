@@ -3,6 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey,
   resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, resolveEndpointToHoverPoint,
+  buildLogicalCandidates, resolvePartnerForPlacement,
 } from "../../pixi/postEditEndpoint";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -197,6 +198,22 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     return activeEntry ?? nodeEndpoint(ids[0]);
   };
 
+  // Which of a (possibly split) neighbor point's nodes actually connects back to `endpoint` — a
+  // thin wrapper over the shared `resolvePartnerForPlacement` (GitHub issue #580): tries every real
+  // node at `p` for a decided/wall edge with `endpoint` before falling back to the neighbor's
+  // active UI slot, so a neighbor that's itself split doesn't get checked against the wrong one of
+  // its nodes.
+  const resolveConnectedNeighborAt = (p: [number, number], endpoint: PostEditEndpoint): PostEditEndpoint | null => {
+    if (!draftEdges) return resolveActiveAt(p);
+    const ids: number[] = [];
+    for (const n of nodes) if (n.x === p[0] && n.y === p[1]) ids.push(n.id);
+    if (ids.length === 0) return null;
+    const pSlots = recordOnLevel(splitPoints, level)[`${p[0]},${p[1]}`] ?? [];
+    const candidates = buildLogicalCandidates(p, ids, pSlots, level);
+    const result = resolvePartnerForPlacement([endpoint], candidates, draftEdges, activeSplitNode, p, level);
+    return result?.endpoint ?? null;
+  };
+
   // Faces of one node (any row, not just the active one) — used both to build `tileNodes` (all of
   // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
   // named special-split topology for `semanticNames` below.
@@ -208,7 +225,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       if (boundary) return { kind: "wall" as TileFaceKind, boundary };
       if (!draftEdges) return { kind: "wall" as TileFaceKind, boundary };
 
-      const neighborActive = resolveActiveAt(neighbor);
+      const neighborActive = resolveConnectedNeighborAt(neighbor, endpoint);
       if (!neighborActive) return { kind: "wall" as TileFaceKind, boundary: false };
 
       const fwd = draftEdges[edgeKey(endpoint, neighborActive)];
@@ -285,8 +302,6 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     }),
   ];
 
-  const activeEndpoint: PostEditEndpoint | null = activeSplitNode[key] ?? originalEndpoint;
-
   const blueprints = useMemo(
     () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
     [cfg, point],
@@ -294,25 +309,36 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const tileNodes: TileFaceNode[] = rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) }));
 
-  const handleFaceClick = (offsetIndex: number) => {
-    if (!activeEndpoint) return;
+  // Resolves the real (point-node, neighbor-node) pair a click on `offsetIndex` addresses. The
+  // `point` side is always the user's explicitly active node — a click edits whichever node the
+  // user selected in the dialog, never a different one of `point`'s own nodes picked by evidence
+  // (that would silently retarget the wrong node whenever a non-active node of `point` happened to
+  // already have a decided/wall face here). Only the `neighbor` side is resolved by evidence
+  // (GitHub issue #580's click-handler counterpart — `resolveActiveAt` alone on the neighbor picked
+  // the wrong node whenever the neighbor was itself split and its active slot wasn't the one
+  // connected to `point`'s active side).
+  const resolveFaceClickPair = (offsetIndex: number): { point: PostEditEndpoint; neighbor: PostEditEndpoint } | null => {
+    if (!draftEdges) return null;
+    const activeEndpoint = activeSplitNode[key] ?? originalEndpoint;
+    if (!activeEndpoint) return null;
     const { offsets } = getNeighborData(cfg, point[0], point[1]);
     const [dx, dy] = offsets[offsetIndex];
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-    const neighborActive = resolveActiveAt(neighbor);
-    if (!neighborActive) return;
+    const neighborActive = resolveConnectedNeighborAt(neighbor, activeEndpoint);
+    return neighborActive ? { point: activeEndpoint, neighbor: neighborActive } : null;
+  };
+
+  const handleFaceClick = (offsetIndex: number) => {
+    const pair = resolveFaceClickPair(offsetIndex);
+    if (!pair) return;
     const tool = activeKind === "passage" ? "passage" : activeKind === "one_way" ? "one_way" : "wall";
-    applyPostEditToolAt(tool, edgeKey(activeEndpoint, neighborActive), activeEndpoint, neighborActive);
+    applyPostEditToolAt(tool, edgeKey(pair.point, pair.neighbor), pair.point, pair.neighbor);
   };
 
   const handleFaceRightClick = (offsetIndex: number) => {
-    if (!activeEndpoint) return;
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    const [dx, dy] = offsets[offsetIndex];
-    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-    const neighborActive = resolveActiveAt(neighbor);
-    if (!neighborActive) return;
-    applyPostEditToolAt("wall", edgeKey(activeEndpoint, neighborActive), activeEndpoint, neighborActive);
+    const pair = resolveFaceClickPair(offsetIndex);
+    if (!pair) return;
+    applyPostEditToolAt("wall", edgeKey(pair.point, pair.neighbor), pair.point, pair.neighbor);
   };
 
   return (

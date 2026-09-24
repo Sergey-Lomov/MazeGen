@@ -165,7 +165,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     // `ep` may be a cross-floor partner (teleport/vertical passage), so key by its own level, not
     // the dialog's active floor.
     const epLevel = ep.level ?? level ?? 0;
-    const epKey = epLevel === undefined ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
+    const epKey = epLevel === 0 ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
     const isSplitPoint = (splitPoints[epKey]?.length ?? 0) > 0;
     const floorPrefix = epLevel !== (level ?? 0) ? `L${epLevel + 1}:` : "";
     if (ep.slotId === undefined && !isSplitPoint) return `${floorPrefix}${ep.point[0]},${ep.point[1]}`;

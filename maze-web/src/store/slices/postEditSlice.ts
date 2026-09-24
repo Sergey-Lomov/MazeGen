@@ -836,7 +836,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const before = state.postEditDraftEdges;
     const rotatedNodes = rotateSplitPointNodes(
       before, point, slotIds, direction, state.activeTessellationConfig,
-      cellSet, floorNodes, state.postEditActiveSplitNode, level,
+      cellSet, floorNodes, state.postEditActiveSplitNode, state.postEditDraftSplitPoints, level,
     );
     if (rotatedNodes.length === 0) return;
     appendPostEditCommand(get, set, { kind: "rotateSplitPoint", point, level, nodes: rotatedNodes });

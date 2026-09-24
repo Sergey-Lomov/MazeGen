@@ -1,3 +1,5 @@
+import type { PostEditEdge } from "../store/postEditTypes";
+
 /** The point+slot half of `PostEditEndpoint` (below), standalone — identifies one of a split
  * point's extra nodes by its stable per-point `slotId`. Always describes *some* added slot, never
  * "a point with no slot" (that's `PostEditEndpoint`'s separate `node` variant, or `PresetEndpoint`
@@ -181,50 +183,145 @@ export function resolvePostEditPartnerAt(
   pointOldEndpoints: PostEditEndpoint[],
   neighborPoint: [number, number],
   neighborNodeIds: number[],
-  draftEdges: Readonly<Record<string, { from: PostEditEndpoint; to: PostEditEndpoint }>>,
+  draftEdges: Readonly<Record<string, PostEditEdge>>,
   neighborSplitSlots: number[],
   activeMap: Readonly<Record<string, PostEditEndpoint>>,
   level?: number,
 ): PostEditEndpoint | null {
   if (neighborNodeIds.length === 0) return null;
-  const sortedSlots = [...neighborSplitSlots].sort((a, b) => a - b);
-  // A confirmed split slot's generation-time edges are keyed by `splitEndpoint(...)` (baseline
-  // build, `buildMultiFloorPostEditDraft`'s `endpointFor`), while a user-drawn edge on the same
-  // slot is keyed by plain `nodeEndpoint(id)` (`setEdge` commands always carry the resolved node
-  // endpoint) — an existing edge can be recorded under either form, so both must be tried.
-  // `neighborNodeIds[0]` is the point's original node (`i === 0`); `neighborNodeIds[k + 1]`
-  // corresponds to `sortedSlots[k]` (same convention as the active-slot fallback below).
-  const candidates: PostEditEndpoint[] = neighborNodeIds.map((id) => nodeEndpoint(id));
-  const splitCandidateFor = (idx: number): PostEditEndpoint | undefined => {
-    const slotId = sortedSlots[idx - 1];
-    return slotId === undefined ? undefined : splitEndpoint(neighborPoint, slotId, level);
-  };
-
-  for (let idx = 0; idx < candidates.length; idx++) {
-    const candidate = candidates[idx];
-    const splitCandidate = splitCandidateFor(idx);
-    for (const from of pointOldEndpoints) {
-      if (draftEdges[edgeKey(from, candidate)] || draftEdges[edgeKey(candidate, from)]) return candidate;
-      if (splitCandidate && (draftEdges[edgeKey(from, splitCandidate)] || draftEdges[edgeKey(splitCandidate, from)])) return candidate;
-    }
-  }
-  const key = level === undefined ? `${neighborPoint[0]},${neighborPoint[1]}` : `${neighborPoint[0]},${neighborPoint[1]}@${level}`;
-  const active = activeMap[key];
-  if (active) {
-    // The active-slot fallback may itself be an unresolved `split` endpoint (a not-yet-confirmed
-    // slot) — resolve it to the matching confirmed id when possible so the returned endpoint stays
-    // consistent with `candidates` above; otherwise return it as-is (nothing to resolve against yet).
-    if (active.kind === "node") return active;
-    const slotIndex = sortedSlots.indexOf(active.slotId);
-    return slotIndex >= 0 && neighborNodeIds[slotIndex + 1] !== undefined ? nodeEndpoint(neighborNodeIds[slotIndex + 1]) : active;
-  }
-  return candidates[0];
+  const candidates = buildLogicalCandidates(neighborPoint, neighborNodeIds, neighborSplitSlots, level);
+  const result = resolvePartnerForPlacement(pointOldEndpoints, candidates, draftEdges, activeMap, neighborPoint, level);
+  return result?.endpoint ?? null;
 }
 
 /** True if `ep` is a plain node endpoint equal to `id` — replaces ad-hoc `x === nodeId` checks
  * that assumed a bare number. */
 export function endpointIsNode(ep: PostEditEndpoint, id: number): boolean {
   return ep.kind === "node" && ep.id === id;
+}
+
+/** One real node at a (possibly split) point, addressable by either of its two equivalent
+ * `PostEditEndpoint` forms — `nodeEndpoint(nodeId)` (the resolved id, how a user-drawn edge is
+ * keyed) and, for a non-original node, `splitEndpoint(point, slotId, level)` (how a
+ * generation-time edge to that same node is keyed, see `resolverForNodeId`'s doc comment). A
+ * resolver that only tries one form silently misses an edge recorded under the other (GitHub
+ * issue #580). */
+export interface LogicalCandidate {
+  nodeId: number;
+  slotId?: number;
+  forms: PostEditEndpoint[];
+}
+
+/** Canonical candidate list for one point: original node first, then each slot ascending by
+ * `slotId` — the tie-break order every resolver built on `LogicalCandidate` relies on. Built from
+ * the same (nodeIds-in-snapshot-order, sorted-slotIds) contract `buildSplitNodeResolver`/
+ * `resolverForNodeId` already document (index 0 = original, index k+1 = the k-th sorted slot) —
+ * never re-derives node<->slot pairing ad hoc from two independently-ordered arrays. */
+export function buildLogicalCandidates(
+  point: [number, number],
+  nodeIdsInSnapshotOrder: number[],
+  splitSlots: number[],
+  level?: number,
+): LogicalCandidate[] {
+  const sortedSlots = [...splitSlots].sort((a, b) => a - b);
+  return nodeIdsInSnapshotOrder.map((nodeId, i) => {
+    const slotId = i === 0 ? undefined : sortedSlots[i - 1];
+    const forms: PostEditEndpoint[] = [nodeEndpoint(nodeId)];
+    if (slotId !== undefined) forms.push(splitEndpoint(point, slotId, level));
+    return { nodeId, slotId, forms };
+  });
+}
+
+/** True for a real connection (`basic`/one-way) — false for `wall`. A typed predicate instead of
+ * ad hoc `kind === "basic" || kind.startsWith("one_way")` checks scattered across resolvers. */
+export function isDecidedPostEditEdge(edge: PostEditEdge): boolean {
+  return edge.kind === "basic" || edge.kind === "one_way_forward" || edge.kind === "one_way_backward";
+}
+
+export type PairState = "decided" | "wall" | "none";
+
+/** Generic two-pass tiering selector shared by every "which candidate is my partner" resolver
+ * (post-edit and preset alike, each supplying its own `classifyPair`). Pass 1 scans every
+ * candidate/form/target combination for `"decided"` before Pass 2 even looks at `"wall"` —
+ * tiering is structural (two full passes), never a per-iteration priority check, so a later-found
+ * decided match always beats an earlier-found wall match regardless of which form of which
+ * candidate happened to be tried first. */
+export function selectByTiering<C, F>(
+  candidates: { forms: F[]; identity: C }[],
+  targetForms: F[],
+  classifyPair: (target: F, form: F) => PairState,
+): { identity: C; form: F; state: "decided" | "wall" } | null {
+  for (const pass of ["decided", "wall"] as const) {
+    for (const candidate of candidates) {
+      for (const form of candidate.forms) {
+        for (const target of targetForms) {
+          if (classifyPair(target, form) === pass) return { identity: candidate.identity, form, state: pass };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function classifyPostEditPair(
+  draftEdges: Readonly<Record<string, PostEditEdge>>,
+  target: PostEditEndpoint,
+  form: PostEditEndpoint,
+): PairState {
+  const fwd = draftEdges[edgeKey(target, form)];
+  const bwd = draftEdges[edgeKey(form, target)];
+  if ((fwd && isDecidedPostEditEdge(fwd)) || (bwd && isDecidedPostEditEdge(bwd))) return "decided";
+  if (fwd?.kind === "wall" || bwd?.kind === "wall") return "wall";
+  return "none";
+}
+
+/** Whether `neighborPoint`'s nodes already have a decided/wall connection toward one of
+ * `targetForms` — no active-slot/original fallback (see `resolvePartnerForPlacement` for that).
+ * `null` means no evidence at all, not "no connection" — `resolvePartnerForPlacement` (this
+ * module's sole caller) falls through to the active-slot/original tiers when this returns `null`. */
+function findFacePartnerEvidence(
+  targetForms: PostEditEndpoint[],
+  candidates: LogicalCandidate[],
+  draftEdges: Readonly<Record<string, PostEditEdge>>,
+): { endpoint: PostEditEndpoint; state: "decided" | "wall" } | null {
+  const result = selectByTiering(
+    candidates.map((c) => ({ forms: c.forms, identity: c })),
+    targetForms,
+    (target, form) => classifyPostEditPair(draftEdges, target, form),
+  );
+  return result ? { endpoint: result.form, state: result.state } : null;
+}
+
+/** `findFacePartnerEvidence` plus an active-slot/original fallback for callers that need SOME
+ * partner regardless of whether real evidence exists (face preview, blueprint-apply) — the
+ * fallback is validated against `candidates` first, so a stale `activeMap` entry (referencing a
+ * node that no longer exists at `neighborPoint`) is never returned (falls through to `original`
+ * instead). `source` tells the caller which tier actually produced the result. */
+export function resolvePartnerForPlacement(
+  targetForms: PostEditEndpoint[],
+  candidates: LogicalCandidate[],
+  draftEdges: Readonly<Record<string, PostEditEdge>>,
+  activeMap: Readonly<Record<string, PostEditEndpoint>>,
+  neighborPoint: [number, number],
+  level?: number,
+): { endpoint: PostEditEndpoint; source: "decided" | "wall" | "active" | "original" } | null {
+  const evidence = findFacePartnerEvidence(targetForms, candidates, draftEdges);
+  if (evidence) return { endpoint: evidence.endpoint, source: evidence.state };
+  const key = level === undefined ? `${neighborPoint[0]},${neighborPoint[1]}` : `${neighborPoint[0]},${neighborPoint[1]}@${level}`;
+  const active = activeMap[key];
+  if (active) {
+    // A stale/unresolved active entry (e.g. a not-yet-confirmed split slot) is only normalized to
+    // its candidate's canonical `nodeEndpoint` form once it's confirmed matching one of
+    // `candidates`' own forms — same as `resolvePostEditPartnerAt` always did, so the returned
+    // endpoint stays consistent with every other candidate this function returns. A `node`-kind
+    // active is already canonical either way. An unresolved `split`-kind active matching no
+    // candidate (its slot isn't confirmed into `candidates` yet) is returned as-is — there is
+    // nothing to resolve it against yet, and falling through to `original` here would silently
+    // discard a real (if not yet confirmed) active choice.
+    const match = candidates.find((c) => c.forms.some((f) => endpointsEqual(f, active)));
+    return match ? { endpoint: nodeEndpoint(match.nodeId), source: "active" } : { endpoint: active, source: "active" };
+  }
+  return candidates[0] ? { endpoint: candidates[0].forms[0], source: "original" } : null;
 }
 
 /** Resolves an endpoint to a real `NodeId`, if possible. A `node` endpoint resolves trivially;

@@ -694,7 +694,7 @@ describe("rotatePresetSplitPoint", () => {
     const connections = new Map([
       [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
     ]);
-    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, {}, {});
     expect(result.has(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])))).toBe(false);
     const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
     expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage", source: "user" });
@@ -704,7 +704,7 @@ describe("rotatePresetSplitPoint", () => {
     const connections = new Map([
       [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
     ]);
-    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet, {}, {});
     expect(result.has(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, -1])))).toBe(true);
   });
 
@@ -714,7 +714,7 @@ describe("rotatePresetSplitPoint", () => {
     const connections = new Map([
       [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const }],
     ]);
-    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, {}, {});
     // New neighbor (0,1): canonical order is still (0,0) first (lower y) — same "out of (0,0)"
     // meaning must still be one_way_forward with (0,0) as `from`.
     const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
@@ -730,7 +730,7 @@ describe("rotatePresetSplitPoint", () => {
     // Rotating (0,0) by -1 moves this W-face (index 2) connection to N (index 1): new neighbor
     // (0,1), whose canonical order puts (0,0) first (lower y). Same "into (0,0)" meaning must now
     // read as one_way_backward, since (0,0) is now the canonical `from`.
-    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet, {}, {});
     const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
     expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "one_way_backward", source: "user" });
   });
@@ -740,7 +740,7 @@ describe("rotatePresetSplitPoint", () => {
       [presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
       [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([-1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([-1, 0]), state: "wall" as const, source: "user" as const }],
     ]);
-    const result = rotatePresetSplitPoint(connections, [0, 0], [0], 1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [0], 1, squareCfg, centerCellSet, {}, {});
     expect(result.get(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([0, 1])))?.state).toBe("passage");
     expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 0], 0)))).toBeUndefined();
     expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, -1])))?.state).toBe("wall");
@@ -752,14 +752,192 @@ describe("rotatePresetSplitPoint", () => {
     const connections = new Map([
       [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
     ]);
-    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet, {}, {});
     expect(result).toBe(connections); // same reference — untouched
+  });
+
+  it("rotating onto a neighbor whose split slot already forms a finished bridge doesn't add a 3rd face to it (GitHub issue #580 preset counterpart)", () => {
+    // Square face order [E,N,W,S] = [0,1,2,3]. Rotating (0,0) by +1 lands the new connection on
+    // neighbor (0,1)'s S face (index 3, toward (0,0)) — geometrically that can never be "opposite"
+    // a bridge occupying {E,W} = {0,2} (circularDist(3,0,4)=1, circularDist(3,2,4)=1), so geometry
+    // evidence can't fire; this exercises the fallback-tier safety guard instead.
+    const bridgeSlot = presetEndpoint([0, 1], 0);
+    const eastOfNeighbor = presetEndpoint([1, 1]);
+    const westOfNeighbor = presetEndpoint([-1, 1]);
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const }],
+      [presetEdgeKey(bridgeSlot, eastOfNeighbor), { from: bridgeSlot, to: eastOfNeighbor, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(bridgeSlot, westOfNeighbor), { from: bridgeSlot, to: westOfNeighbor, state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "0,1": [0] };
+    const activeSplitNode = { "0,1": bridgeSlot };
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, presetSplitPoints, activeSplitNode);
+    // The neighbor's ORIGINAL node (0 decided faces, safe) gets the new connection instead of the
+    // finished bridge slot, even though the bridge slot is active.
+    const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
+    expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "one_way_forward", source: "user" });
+    // The bridge slot's own two faces must be untouched.
+    expect(result.get(presetEdgeKey(bridgeSlot, eastOfNeighbor))?.state).toBe("passage");
+    expect(result.get(presetEdgeKey(bridgeSlot, westOfNeighbor))?.state).toBe("passage");
+  });
+
+  it("rotating a bridge tile re-stitches the static neighbor's existing bridge slot onto the original node that lands on the shared face — and a SECOND rotation still resolves it correctly (GitHub issue #580 preset second-rotation repro)", () => {
+    // Mirrors post-edit's own #580 user repro: two adjacent bridge tiles, (0,0) rotating, (0,1)
+    // static, both wired to each other via their own slot 0. After the first rotation, (0,0)'s
+    // ORIGINAL node ends up facing (0,1)'s bridge slot — a decided connection between two nodes that
+    // are each addressed by a DIFFERENT form (plain vs `slotId`). A second rotation must still
+    // recognize that connection when checking `bridgeSlot`'s own decided faces (previously
+    // `presetDecidedFaceIndicesOf` only ever checked a neighbor's plain/original form, silently
+    // missing any connection actually stored against one of the neighbor's slots).
+    const bridgeSlot = presetEndpoint([0, 1], 0);
+    const east = presetEndpoint([1, 0]);
+    const west = presetEndpoint([-1, 0]);
+    const original = presetEndpoint([0, 0]);
+    const slot = presetEndpoint([0, 0], 0);
+    const connections = new Map([
+      // (0,0)'s original: E/W through-passage, unrelated to the neighbor.
+      [presetEdgeKey(original, east), { from: original, to: east, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(original, west), { from: original, to: west, state: "passage" as const, source: "user" as const }],
+      // (0,0)'s slot 0: N face, bridge-to-bridge with the static neighbor's own bridge slot.
+      [presetEdgeKey(slot, bridgeSlot), { from: slot, to: bridgeSlot, state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "0,0": [0], "0,1": [0] };
+
+    // First rotation (direction 1): original's E face moves to N (now facing the static neighbor),
+    // slot's N face moves to W (now unrelated).
+    const afterFirst = rotatePresetSplitPoint(connections, [0, 0], [0], 1, squareCfg, centerCellSet, presetSplitPoints, {});
+    const firstMoved = afterFirst.get(presetEdgeKey(original, bridgeSlot));
+    expect(firstMoved).toEqual({ from: original, to: bridgeSlot, state: "passage", source: "user" });
+    // The stale bridge-to-bridge entry must be explicitly walled off, not left as a missing/"undefined" face.
+    expect(afterFirst.get(presetEdgeKey(slot, bridgeSlot))?.state).toBe("wall");
+
+    // Second rotation: original's N face (now facing the bridge) moves to W, slot's W face moves to S.
+    // The bridge slot's connection to `original` must still be recognized as a real decided face
+    // (not silently dropped/misrouted to the neighbor's original) when resolving this move.
+    // Second rotation, same direction: original's N face (now facing the bridge) moves to W —
+    // `selectExistingPresetFaceOwner` must recognize `bridgeSlot`'s decided face toward `original`
+    // on this exact (E, from the neighbor's side) face and keep the connection intact via the new
+    // (-1,0) neighbor's real node — not fall through to some unrelated candidate. Since (-1,0) isn't
+    // itself split, the connection lands on its plain form; the point under test is that the tier
+    // before it (existing-connection reuse against `bridgeSlot`) doesn't wrongly disturb `bridgeSlot`
+    // itself, and `bridgeSlot`'s own two faces stay exactly as they were.
+    const afterSecond = rotatePresetSplitPoint(afterFirst, [0, 0], [0], 1, squareCfg, centerCellSet, presetSplitPoints, {});
+    expect(afterSecond.get(presetEdgeKey(presetEndpoint([-1, 0]), original))?.state).toBe("passage");
+    // `bridgeSlot` must have exactly one face now (toward nothing from `point`'s side any more) —
+    // the stale bridge-to-bridge entry must be explicitly walled, not left dangling alongside a new one.
+    expect(afterSecond.get(presetEdgeKey(original, bridgeSlot))?.state).toBe("wall");
+    expect(afterSecond.get(presetEdgeKey(slot, bridgeSlot))?.state).toBe("wall");
+  });
+
+  it("selectExistingPresetFaceOwner recognizes a decided face against a neighbor's SPLIT slot, not just its original (GitHub issue #580 preset second-rotation repro)", () => {
+    // The exact failing condition: `point`'s original already connects to neighbor (0,1)'s SLOT 0
+    // (not its original) on the face that IS the new target face for an incoming rotation — before
+    // the fix, `presetDecidedFaceIndicesOf` only ever checked the neighbor's plain/original form, so
+    // this real, already-standing connection was invisible to `selectExistingPresetFaceOwner`,
+    // wrongly falling through to the geometry/fallback tier and re-wiring the face onto the
+    // neighbor's ORIGINAL node instead of leaving the existing slot connection alone.
+    const original = presetEndpoint([0, 0]);
+    const bridgeSlot = presetEndpoint([0, 1], 0);
+    const eastOfNeighbor = presetEndpoint([1, 1]);
+    const westOfNeighbor = presetEndpoint([-1, 1]);
+    const connections = new Map([
+      [presetEdgeKey(original, bridgeSlot), { from: original, to: bridgeSlot, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(bridgeSlot, eastOfNeighbor), { from: bridgeSlot, to: eastOfNeighbor, state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(bridgeSlot, westOfNeighbor), { from: bridgeSlot, to: westOfNeighbor, state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "0,1": [0] };
+    // Rotating (0,0) by -1 moves its (only) N-face passage to E — a brand-new move that must resolve
+    // the OLD neighbor side correctly too (via `bridgeSlot`, found through `allNodesAt`), independent
+    // of the actual bug under test, then land on a fresh E-face connection.
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet, presetSplitPoints, {});
+    // The bridge slot's connection to `original` must be explicitly walled (the point's N face moved
+    // away) and NOT silently re-attached to the neighbor's original node — `original` itself moved to face E.
+    expect(result.get(presetEdgeKey(original, bridgeSlot))?.state).toBe("wall");
+    expect(result.has(presetEdgeKey(original, presetEndpoint([0, 1])))).toBe(false);
+    // The bridge slot's own two faces are untouched — the rotation of (0,0) must not perturb them.
+    expect(result.get(presetEdgeKey(bridgeSlot, eastOfNeighbor))?.state).toBe("passage");
+    expect(result.get(presetEdgeKey(bridgeSlot, westOfNeighbor))?.state).toBe("passage");
   });
 
   it("no connections at all on this point — no-op, no boundary refusal", () => {
     const connections = new Map<string, PresetConnectionEntry>();
-    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet);
+    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet, {}, {});
     expect(result).toEqual(connections);
+  });
+
+  it("old neighbor's connection lives on its SPLIT slot, not its original node — still found and moved (GitHub issue #580 preset counterpart)", () => {
+    // Old neighbor (0,1) declares a slot 0; the passage from (0,0) actually connects to that slot,
+    // not (0,1)'s original node. The old-neighbor lookup must search every declared node of (0,1),
+    // not just presetEndpoint([0,1]).
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1], 0)), { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1], 0), state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "0,1": [0] };
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, presetSplitPoints, {});
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1], 0)))?.state).toBe("wall");
+    const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([-1, 0])));
+    expect(moved?.state).toBe("passage");
+  });
+
+  it("a neighbor's slot already connected to `point` on the exact target face keeps that connection as-is, even though it also forms a finished bridge (GitHub issue #580 user repro, preset counterpart)", () => {
+    // Point (0,0) has a passage on its N-face (to (0,1)) and another on its W-face (to neighbor
+    // (-1,0)'s slot 0, which also forms a finished E/W bridge — its other face goes to (-2,0)).
+    // Rotating direction 1 moves the N-face passage onto W (landing on (-1,0)) and the W-face
+    // passage onto S (landing on (0,-1)) at the same time. The neighbor's slot 0 already has a
+    // REAL decided connection on exactly the face the N-face move is landing on (its own E face,
+    // toward `point`) — that existing partner simply carries over via `point`'s original node
+    // (unchanged content, since it was already exactly this), regardless of it being a finished
+    // bridge; the geometry/fallback "avoid disturbing a finished bridge" tier only applies when
+    // there is no real existing connection to defer to.
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])), { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([0, 0])), { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([-2, 0])), { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([-2, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "-1,0": [0] };
+    const presetActiveSplitNode = { "-1,0": presetEndpoint([-1, 0], 0) };
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, presetSplitPoints, presetActiveSplitNode);
+    // The bridge slot's connection to `point`'s original stands, untouched.
+    expect(result.get(presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([0, 0])))?.state).toBe("passage");
+    // The W-face move (formerly toward the bridge slot) lands on the new S neighbor's original node.
+    expect(result.get(presetEdgeKey(presetEndpoint([0, -1]), presetEndpoint([0, 0])))?.state).toBe("passage");
+    // The bridge slot's OTHER face (toward (-2,0)) is untouched — still a two-face bridge, not three.
+    expect(result.get(presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([-2, 0])))?.state).toBe("passage");
+  });
+
+  it("control: no finished bridge on the new neighbor — active slot is honored as usual", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])), { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([-2, 0])), { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([-2, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "-1,0": [0] };
+    const presetActiveSplitNode = { "-1,0": presetEndpoint([-1, 0], 0) };
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, presetSplitPoints, presetActiveSplitNode);
+    const moved = result.get(presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([0, 0])));
+    expect(moved?.state).toBe("passage");
+  });
+
+  it("every node of the new neighbor already holds a finished bridge — the new face is refused outright, not wired onto the least-bad option", () => {
+    // Neighbor (-1,0)'s slot 0 AND its original node each already hold their own complete N/S
+    // opposite pair (toward (-1,1) and (-1,-1) — two independent edges per neighbor node, unrelated
+    // to `point`). There is no safe candidate left at all for the new E-face connection (toward
+    // `point`): picking either would corrupt it, so the rotate must leave this connection unwritten
+    // instead of guessing (the actual repro: a bridge tile rotated onto a neighbor that's itself a
+    // finished two-node bridge on both its own nodes).
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])), { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, 1]), presetEndpoint([-1, 0], 0)), { from: presetEndpoint([-1, 1]), to: presetEndpoint([-1, 0], 0), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0], 0)), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0], 0), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, 1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, 1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const presetSplitPoints = { "-1,0": [0] };
+    const presetActiveSplitNode = { "-1,0": presetEndpoint([-1, 0], 0) };
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet, presetSplitPoints, presetActiveSplitNode);
+    // Neither the slot nor the original gained a 3rd face — the point's own connection to the
+    // neighbor is simply not written for the new (W) face at all.
+    expect(result.has(presetEdgeKey(presetEndpoint([-1, 0], 0), presetEndpoint([0, 0])))).toBe(false);
+    expect(result.has(presetEdgeKey(presetEndpoint([-1, 0]), presetEndpoint([0, 0])))).toBe(false);
   });
 });
 

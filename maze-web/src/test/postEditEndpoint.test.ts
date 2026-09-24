@@ -202,7 +202,7 @@ describe("buildSplitNodeResolver", () => {
 describe("resolvePostEditPartnerAt (GitHub issue #243)", () => {
   it("returns the neighbor's real connecting node — found via an existing draftEdges entry", () => {
     const draftEdges = {
-      [edgeKey(nodeEndpoint(0), nodeEndpoint(10))]: { from: nodeEndpoint(0), to: nodeEndpoint(10), kind: "basic" },
+      [edgeKey(nodeEndpoint(0), nodeEndpoint(10))]: { from: nodeEndpoint(0), to: nodeEndpoint(10), kind: "basic" as const },
     };
     const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1, 10], draftEdges, [0], {});
     expect(result).toEqual(nodeEndpoint(10));

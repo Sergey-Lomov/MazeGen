@@ -5,7 +5,8 @@ import { getCellNeighborOffsets, getNeighborData } from "./tessellationGeometry"
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
-import type { SplitFaceKind } from "./splitFaceLayout";
+import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair } from "./splitFaceLayout";
+import { selectByTiering, type PairState } from "./postEditEndpoint";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -448,24 +449,15 @@ export function resolvePresetPartnerAt(
   activeMap: Record<string, PresetEndpoint>,
   level?: number,
 ): PresetEndpoint {
-  const candidates = allNodesAt(neighborPoint, presetSplitPoints, level);
-
-  // A `passage`/one-way entry is a real connection and wins outright. A `wall` entry only counts
-  // as a fallback match (recorded lower priority) — a blueprint explicitly writes `wall` on every
-  // face it doesn't use (see `applyPresetSplitBlueprint`), so the *first* candidate found with an
-  // explicit `wall` isn't necessarily the neighbor's real connecting node; a later candidate might
-  // still hold the real `passage`. Only fall through to a `wall` match if no candidate has a
-  // `passage`/one-way entry at all.
-  let wallFallback: PresetEndpoint | null = null;
-  for (const candidate of candidates) {
-    for (const from of pointOldEndpoints) {
-      const entry = presetConnections.get(presetEdgeKey(from, candidate));
-      if (!entry || entry.state === "undefined") continue;
-      if (entry.state === "wall") { wallFallback ??= candidate; continue; }
-      return candidate;
-    }
-  }
-  return wallFallback ?? resolvePresetActiveEndpoint(neighborPoint, activeMap, level);
+  const candidates = allNodesAt(neighborPoint, presetSplitPoints, level).map((ep) => ({ forms: [ep], identity: ep }));
+  const classifyPair = (target: PresetEndpoint, form: PresetEndpoint): PairState => {
+    const entry = presetConnections.get(presetEdgeKey(form, target));
+    if (!entry || entry.state === "undefined") return "none";
+    if (entry.state === "wall") return "wall";
+    return "decided";
+  };
+  const result = selectByTiering(candidates, pointOldEndpoints, classifyPair);
+  return result?.identity ?? resolvePresetActiveEndpoint(neighborPoint, activeMap, level);
 }
 
 /** Every node currently declared at `point` on `level` (original plus every declared slot, per
@@ -539,14 +531,132 @@ export function presetEdgeKey(a: PresetEndpoint, b: PresetEndpoint): string {
   return `${presetEndpointKey(fa)}-${presetEndpointKey(fb)}`;
 }
 
+/** Which of `candidatePoint`'s own geometric face indices (per `getNeighborData`'s fixed offset
+ * order) already carry a **decided** connection (`passage`/`one_way_forward`/`one_way_backward`),
+ * checked against any of the candidate's own forms — mirrors post-edit's own `decidedFaceIndicesOf`
+ * (`postEditUtils.ts`). A `wall`/`undefined` entry does not count (see `canCompleteOppositePair`'s
+ * own doc comment — only a real decided connection forms a bridge pair). */
+function presetDecidedFaceIndicesOf(
+  candidatePoint: [number, number],
+  candidateForms: PresetEndpoint[],
+  presetConnections: Map<string, PresetConnectionEntry>,
+  cfg: TessellationConfig,
+  presetSplitPoints: Record<string, number[]>,
+): Set<number> {
+  const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
+  const result = new Set<number>();
+  for (const form of candidateForms) {
+    offsets.forEach(([dx, dy], i) => {
+      const neighbor: [number, number] = [candidatePoint[0] + dx, candidatePoint[1] + dy];
+      // Check against EVERY one of the neighbor's declared nodes (original + slots), not just its
+      // original — a face's real partner across the shared edge is just as often one of the
+      // neighbor's split slots (e.g. two adjacent bridge tiles), and checking only the original
+      // silently missed that decided face entirely (GitHub issue #580 preset second-rotation
+      // follow-up: after a first rotation re-stitches a bridge pair through both sides' slots, a
+      // second rotation's geometry/safety checks read this same face as "not decided" and mis-owns
+      // it back onto the neighbor's original node).
+      const neighborForms = allNodesAt(neighbor, presetSplitPoints, form.level);
+      const decided = neighborForms.some((nf) => {
+        const entry = presetConnections.get(presetEdgeKey(form, nf));
+        return entry && (entry.state === "passage" || entry.state === "one_way_forward" || entry.state === "one_way_backward");
+      });
+      if (decided) result.add(i);
+    });
+  }
+  return result;
+}
+
+/** The candidate at `neighborPoint` that already has a DECIDED connection on exactly `targetFace`
+ * (toward `point`), if any — mirrors post-edit's `selectExistingFaceOwner` (`postEditUtils.ts`). The
+ * common case for two adjacent split points wired to each other (e.g. two neighboring "bridge"
+ * tiles): rotating one moves a DIFFERENT one of its own nodes onto the face that already connects to
+ * the other tile's node — the two nodes were already partners on this shared face before the
+ * rotation, and remain so after, just via the rotated point's other node. Must be checked before
+ * `canCompleteOppositePair`'s geometry guess: the existing partner's own `presetDecidedFaceIndicesOf`
+ * already contains `targetFace`, so the geometry guard's "target face not already decided" check
+ * would otherwise wrongly exclude it as "already occupied" — it isn't occupied by a THIRD party, it's
+ * occupied by the very connection this rotation is re-keying. */
+function selectExistingPresetFaceOwner(
+  candidates: PresetEndpoint[],
+  neighborPoint: [number, number],
+  targetFace: number,
+  presetConnections: Map<string, PresetConnectionEntry>,
+  cfg: TessellationConfig,
+  presetSplitPoints: Record<string, number[]>,
+): PresetEndpoint | null {
+  const matches = candidates.filter((c) => presetDecidedFaceIndicesOf(neighborPoint, [c], presetConnections, cfg, presetSplitPoints).has(targetFace));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** Resolves which node of a (possibly split) `newNeighbor` a preset rotate's brand-new face should
+ * connect to — the preset counterpart of post-edit's `resolveFaceOwner` (`postEditUtils.ts`), same
+ * priority order: an already-standing decided connection on exactly this face
+ * (`selectExistingPresetFaceOwner`) first, then geometry evidence (`canCompleteOppositePair`, does
+ * this candidate's OWN other decided faces complete a bridge/diagonal pair with the new face), then
+ * the neighbor's active UI slot or original node, restricted to candidates that do NOT already hold a
+ * finished opposite pair (`hasCompleteOppositePair` — a 0/1-decided-face candidate is always safe to
+ * extend). `assignedThisRotation` guards the geometry tier against the same neighbor node being
+ * claimed by two different new faces within one multi-move rotation, same as the post-edit side.
+ *
+ * Returns `null` when EVERY candidate at `newNeighbor` already holds a finished pair (e.g. rotating
+ * a bridge tile onto a neighbor that's itself fully wired on both its own nodes) — there is no safe
+ * node to hand the new face to, and picking "the least bad" one would still corrupt it, so the
+ * caller leaves this face disconnected (wall) rather than guess. */
+function resolvePresetFaceOwner(
+  point: [number, number],
+  newNeighbor: [number, number],
+  cfg: TessellationConfig,
+  presetConnections: Map<string, PresetConnectionEntry>,
+  presetSplitPoints: Record<string, number[]>,
+  presetActiveSplitNode: Record<string, PresetEndpoint>,
+  assignedThisRotation: Map<string, number>,
+  level: number | undefined,
+): PresetEndpoint | null {
+  const candidates = allNodesAt(newNeighbor, presetSplitPoints, level);
+  const { offsets: neighborOffsets } = getNeighborData(cfg, newNeighbor[0], newNeighbor[1]);
+  const degree = neighborOffsets.length;
+  const targetFace = neighborOffsets.findIndex(([dx, dy]) => newNeighbor[0] + dx === point[0] && newNeighbor[1] + dy === point[1]);
+
+  if (targetFace !== -1) {
+    const existing = selectExistingPresetFaceOwner(candidates, newNeighbor, targetFace, presetConnections, cfg, presetSplitPoints);
+    if (existing) return existing;
+
+    const matches = candidates.filter((c) => canCompleteOppositePair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), targetFace, degree));
+    if (matches.length === 1) {
+      const owner = matches[0];
+      const ownerKey = presetEndpointKey(owner);
+      if (assignedThisRotation.get(ownerKey) === undefined) {
+        assignedThisRotation.set(ownerKey, targetFace);
+        return owner;
+      }
+    }
+  }
+
+  const safeCandidates = candidates.filter((c) => !hasCompleteOppositePair(presetDecidedFaceIndicesOf(newNeighbor, [c], presetConnections, cfg, presetSplitPoints), degree));
+  if (safeCandidates.length === 0) return null;
+
+  const active = resolvePresetActiveEndpoint(newNeighbor, presetActiveSplitNode, level);
+  const activeIsSafe = safeCandidates.some((c) => presetEndpointsEqual(c, active));
+  if (activeIsSafe) return active;
+  const activeMatchesUnsafe = candidates.some((c) => presetEndpointsEqual(c, active));
+  return activeMatchesUnsafe ? safeCandidates[0] : active;
+}
+
 /** Rotates every geometric-face connection of a split point's nodes by one offset index
  * (clockwise/counter-clockwise, per `getNeighborData`'s fixed offset order) — a face's whole
  * state (wall/passage/one_way + direction) moves from its current neighbor to the next one around
  * the point, for every node of the point (original + every declared slot) at once. Teleports are
  * untouched — a teleport isn't tied to a geometric face/offset, only ordinary connections are.
  *
- * Refuses (returns the input map unchanged) if any face that currently carries a connection would
- * land on a neighbor outside the field — there'd be nowhere left to draw it. */
+ * The OLD neighbor side of the lookup searches every one of the old neighbor's own declared nodes
+ * (not just its original), preferring a decided (`passage`/one-way) entry over a `wall` one — same
+ * tiering `resolvePresetPartnerAt` uses — so a connection to one of the old neighbor's SPLIT nodes
+ * isn't silently missed (GitHub issue #580's preset-side counterpart). The NEW neighbor side is
+ * resolved via `resolvePresetFaceOwner` (geometry evidence, then a bridge-safety-aware fallback),
+ * not simply the new neighbor's original node.
+ *
+ * Refuses (returns the input map unchanged, same reference) if any face that currently carries a
+ * connection would land on a neighbor outside the field — there'd be nowhere left to draw it. */
 export function rotatePresetSplitPoint(
   presetConnections: Map<string, PresetConnectionEntry>,
   point: [number, number],
@@ -554,6 +664,8 @@ export function rotatePresetSplitPoint(
   direction: 1 | -1,
   cfg: TessellationConfig,
   cellSet: Set<string>,
+  presetSplitPoints: Record<string, number[]>,
+  presetActiveSplitNode: Record<string, PresetEndpoint>,
   level?: number,
 ): Map<string, PresetConnectionEntry> {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
@@ -562,36 +674,80 @@ export function rotatePresetSplitPoint(
 
   const endpoints: PresetEndpoint[] = [presetEndpoint(point, undefined, level), ...slotIds.map((slotId) => presetEndpoint(point, slotId, level))];
 
-  type Move = { key: string; ep: PresetEndpoint; neighbor: [number, number]; entry: PresetConnectionEntry };
+  type Move = { key: string; ep: PresetEndpoint; oldNeighborNode: PresetEndpoint; newNeighbor: [number, number]; entry: PresetConnectionEntry };
   const moves: Move[] = [];
 
   for (const ep of endpoints) {
     for (let i = 0; i < n; i++) {
       const neighbor: [number, number] = [point[0] + offsets[i][0], point[1] + offsets[i][1]];
-      const key = presetEdgeKey(ep, presetEndpoint(neighbor, undefined, level));
-      const entry = presetConnections.get(key);
-      if (!entry) continue;
+      const oldNeighborCandidates = allNodesAt(neighbor, presetSplitPoints, level).map((c) => ({ forms: [c], identity: c }));
+      const classifyPair = (target: PresetEndpoint, form: PresetEndpoint): PairState => {
+        const e = presetConnections.get(presetEdgeKey(form, target));
+        if (!e || e.state === "undefined") return "none";
+        return e.state === "wall" ? "wall" : "decided";
+      };
+      const found = selectByTiering(oldNeighborCandidates, [ep], classifyPair);
+      if (!found) continue;
+      const oldNeighborNode = found.identity;
+      const key = presetEdgeKey(ep, oldNeighborNode);
+      const entry = presetConnections.get(key)!;
 
       const j = (i + direction + n) % n;
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
       if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return presetConnections; // boundary — refuse entirely
 
-      moves.push({ key, ep, neighbor: newNeighbor, entry });
+      moves.push({ key, ep, oldNeighborNode, newNeighbor, entry });
     }
   }
 
   const next = new Map(presetConnections);
   for (const { key } of moves) next.delete(key);
-  for (const { ep, neighbor, entry } of moves) {
-    const neighborEp = presetEndpoint(neighbor, undefined, level);
+
+  // A `neighborEp` resolved via `selectExistingPresetFaceOwner` may already have a standing entry
+  // toward ANY of `point`'s own forms (not necessarily the specific `ep` this move re-keys), since
+  // the two points were already partners on this shared face before the rotation. Resolve every
+  // move's owner and drop those standing entries FIRST, in one pass, before any rotated entry is
+  // written — doing the delete inside the same loop that writes would wipe out an earlier move's
+  // freshly-written entry whenever two moves resolve to the same owner (mirrors post-edit's
+  // `rotateSplitPointNodes` fix for the same bug).
+  const assignedThisRotation = new Map<string, number>();
+  const resolvedOwners = moves.map((m) => resolvePresetFaceOwner(point, m.newNeighbor, cfg, presetConnections, presetSplitPoints, presetActiveSplitNode, assignedThisRotation, level));
+  for (const neighborEp of resolvedOwners) {
+    if (!neighborEp) continue;
+    for (const ep of endpoints) next.delete(presetEdgeKey(neighborEp, ep));
+  }
+
+  // An old neighbor node that ISN'T picked up as `ep`'s new-face owner this rotation loses its
+  // partner on the face that used to point at `point`. When that old neighbor is itself split (has
+  // more than one declared node at its point), leaving the face merely absent from the map reads as
+  // "undefined"/optional in the UI and silently turns one of its OTHER, unrelated decided faces into
+  // part of an incomplete/broken bridge shape — so this must become an explicit wall instead. A
+  // plain (non-split) old neighbor has nothing else to protect, so it keeps the old "just vanish"
+  // behavior (structurally identical for a single-node point, and covered by existing tests). This
+  // checks the exact (ep, oldNeighborNode) pair, not just whether oldNeighborNode is claimed by
+  // SOME move — the same physical neighbor node can simultaneously lose one of point's nodes as its
+  // old partner and gain a DIFFERENT one of point's nodes as its new partner within one rotation.
+  const rewrittenPairKeys = new Set(moves.map(({ ep }, i) => resolvedOwners[i] && presetEdgeKey(ep, resolvedOwners[i]!)).filter((k): k is string => k !== null));
+  for (const { ep, oldNeighborNode, entry } of moves) {
+    if (rewrittenPairKeys.has(presetEdgeKey(ep, oldNeighborNode))) continue;
+    if (allNodesAt(oldNeighborNode.point, presetSplitPoints, oldNeighborNode.level).length < 2) continue;
+    const epIsLower = ep.point[0] < oldNeighborNode.point[0] || (ep.point[0] === oldNeighborNode.point[0] && ep.point[1] < oldNeighborNode.point[1]);
+    const [wallFrom, wallTo] = epIsLower ? [ep, oldNeighborNode] : [oldNeighborNode, ep];
+    next.set(presetEdgeKey(ep, oldNeighborNode), { from: wallFrom, to: wallTo, state: "wall", source: entry.source });
+  }
+
+  moves.forEach(({ ep, newNeighbor, entry }, i) => {
+    const neighborEp = resolvedOwners[i];
+    if (!neighborEp) return; // no safe node to hand this face to — leave it disconnected (wall)
     const newKey = presetEdgeKey(ep, neighborEp);
-    const epIsLower = ep.point[0] < neighbor[0] || (ep.point[0] === neighbor[0] && ep.point[1] < neighbor[1]);
+    const epIsLower = ep.point[0] < newNeighbor[0] || (ep.point[0] === newNeighbor[0] && ep.point[1] < newNeighbor[1]);
     const [newFrom, newTo] = epIsLower ? [ep, neighborEp] : [neighborEp, ep];
 
     // Direction is stored relative to canonical from/to, not to `ep` — re-derive it relative to
-    // `ep` first (which side of the *old* entry it was), then rebuild against the *new* canonical
-    // order, so a one-way passage keeps pointing the same way relative to `ep` even if canonical
-    // order flips between the old and new neighbor.
+    // `ep` first (which side of the *old* entry it was, against the OLD neighbor node the
+    // connection was actually found on), then rebuild against the *new* canonical order, so a
+    // one-way passage keeps pointing the same way relative to `ep` even if canonical order flips
+    // between the old and new neighbor.
     let state = entry.state;
     if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
       const epWasFrom = presetEndpointsEqual(entry.from, ep);
@@ -600,7 +756,7 @@ export function rotatePresetSplitPoint(
       state = (epIsNewFrom === outOfEp) ? "one_way_forward" : "one_way_backward";
     }
     next.set(newKey, { from: newFrom, to: newTo, state, source: entry.source });
-  }
+  });
   return next;
 }
 

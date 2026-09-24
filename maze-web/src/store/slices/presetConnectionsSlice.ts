@@ -531,7 +531,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const cells = resolveCells(field.tessellationConfig, customPts);
     const cellSet = buildCellSet(cells);
     const presetConnections = rotatePresetSplitPoint(
-      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet, level,
+      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet,
+      state.presetSplitPoints, state.presetActiveSplitNode, level,
     );
     if (presetConnections === state.presetConnections) return {};
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });

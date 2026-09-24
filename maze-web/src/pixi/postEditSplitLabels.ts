@@ -12,7 +12,7 @@
 
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
-import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual } from "./postEditEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual, buildLogicalCandidates, resolvePartnerForPlacement } from "./postEditEndpoint";
 import { getNeighborData } from "./tessellationGeometry";
 import { splitNodeSemanticNames } from "./splitNodeNames";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
@@ -44,6 +44,29 @@ function resolveActiveAt(ctx: SplitLabelContext, floorNodes: readonly NodeDto[],
   return ctx.activeSplitNode[pKey] ?? nodeEndpoint(ids[0]);
 }
 
+/** Which of a (possibly split) neighbor point's nodes actually connects back to `endpoint` — a
+ *  thin wrapper over the shared `resolvePartnerForPlacement` (GitHub issue #580): tries every real
+ *  node at `p` for a decided/wall edge with `endpoint` before falling back to the neighbor's active
+ *  UI slot, so a neighbor that's itself split doesn't get checked against the wrong one of its
+ *  nodes. */
+function resolveConnectedNeighborAt(
+  ctx: SplitLabelContext,
+  floorNodes: readonly NodeDto[],
+  level: number | undefined,
+  p: [number, number],
+  endpoint: PostEditEndpoint,
+): PostEditEndpoint | null {
+  if (!ctx.draftEdges) return resolveActiveAt(ctx, floorNodes, level, p);
+  const ids: number[] = [];
+  for (const n of floorNodes) if (n.x === p[0] && n.y === p[1]) ids.push(n.id);
+  if (ids.length === 0) return null;
+  const pKey = `${p[0]},${p[1]}`;
+  const pSlots = ctx.splitPoints[level === undefined ? pKey : `${pKey}@${level}`] ?? [];
+  const candidates = buildLogicalCandidates(p, ids, pSlots, level);
+  const result = resolvePartnerForPlacement([endpoint], candidates, ctx.draftEdges, ctx.activeSplitNode, p, level);
+  return result?.endpoint ?? null;
+}
+
 /** Faces of one node at `point` — mirrors `ManageSplitNodesDialog`'s own `facesOf`. */
 function facesOf(
   ctx: SplitLabelContext,
@@ -60,7 +83,7 @@ function facesOf(
     if (boundary) return { kind: "wall" as TileFaceKind, boundary };
     if (!ctx.draftEdges) return { kind: "wall" as TileFaceKind, boundary };
 
-    const neighborActive = resolveActiveAt(ctx, floorNodes, level, neighbor);
+    const neighborActive = resolveConnectedNeighborAt(ctx, floorNodes, level, neighbor, endpoint);
     if (!neighborActive) return { kind: "wall" as TileFaceKind, boundary: false };
 
     const fwd = ctx.draftEdges[edgeKey(endpoint, neighborActive)];
