@@ -19,10 +19,13 @@ export interface MarkerEndpointVisual {
   borderMatchColor: number;
 }
 
-/** Resolves the endpoint-marker visual for one node of a link on the drawn floor. */
+/** Resolves the endpoint-marker visual for one node of a link on the drawn floor. The optional
+ *  `oneWay` flag is set for one-way vertical passages so the renderer can select their distinct
+ *  marker color/style. */
 export type ResolveMarkerEndpointVisual = (
   nodeId: number,
   kind: MarkerIndexLinkKind,
+  oneWay?: boolean,
 ) => MarkerEndpointVisual;
 
 /** One index label to draw on the active floor. `pos` is the world-space center of the anchor
@@ -47,6 +50,8 @@ interface Link {
   kind: MarkerIndexLinkKind;
   /** Every node id that is an endpoint of this link. */
   nodeIds: number[];
+  /** Whether a vertical passage has no reverse directed edge. */
+  oneWay?: boolean;
 }
 
 /** Canonical sort key for a link: its kind, then its endpoints sorted by `(level, nodeId)`.
@@ -108,6 +113,9 @@ export function buildMarkerIndexLabels(
 
   // teleport + vertical_passage: unordered endpoint pair, deduped across both directed edges.
   const seenPair = new Map<string, Link>();
+  const verticalPairs = new Set(
+    edges.filter((e) => e.kind === "vertical_passage").map((e) => `${e.from}->${e.to}`),
+  );
   for (const e of edges) {
     if (e.kind !== "teleport" && e.kind !== "vertical_passage") continue;
     if (!nodeById.has(e.from) || !nodeById.has(e.to)) continue;
@@ -122,7 +130,11 @@ export function buildMarkerIndexLabels(
     }
     const pairKey = `${kind}:${lo},${hi}`;
     if (seenPair.has(pairKey)) continue;
-    const link: Link = { kind, nodeIds: [lo, hi] };
+    const link: Link = {
+      kind,
+      nodeIds: [lo, hi],
+      oneWay: kind === "vertical" && !verticalPairs.has(`${e.to}->${e.from}`),
+    };
     seenPair.set(pairKey, link);
     links.push(link);
   }
@@ -166,7 +178,7 @@ export function buildMarkerIndexLabels(
         dedup.add(cellKey);
       }
       const center = getCellCenter(node.x, node.y, cfg);
-      const visual = resolveEndpointVisual(id, link.kind);
+      const visual = resolveEndpointVisual(id, link.kind, link.oneWay);
       labels.push({
         pos: [center.x, center.y],
         label,

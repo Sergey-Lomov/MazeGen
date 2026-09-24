@@ -18,7 +18,9 @@ const marker = (patch: Partial<VerticalMarkerStyle> = {}): VerticalMarkerStyle =
 
 const verticalStyle = (patch: Partial<VerticalConnectionStyle> = {}): VerticalConnectionStyle => ({
   twoWayPassageMarker: marker({ fillColor: 0x00aa00, borderColor: 0x00bb00 }),
+  oneWayPassageMarker: marker({ fillColor: 0x00aa00, borderColor: 0x00bb00 }),
   elevatorMarker: marker({ fillColor: 0x0000aa, borderColor: 0x0000bb }),
+  oneWayAccentColor: 0x00cc00,
   ...patch,
 } as VerticalConnectionStyle);
 
@@ -46,6 +48,39 @@ describe("buildMarkerIndexEndpointResolver", () => {
       verticalStyle: verticalStyle({ elevatorMarker: marker({ size: 0.25, borderWidth: 4 }) }),
     });
     expect(resolve(2, "elevator").outerRadius).toBeCloseTo(0.25 * TILE_SIZE + 4);
+  });
+
+  it("uses the drawn decorative line color and size for vertical indices", () => {
+    const resolve = buildMarkerIndexEndpointResolver({
+      teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
+      verticalStyle: verticalStyle({
+        style: "decorative",
+        decorativeStairsTwoWay: { lineColor: 0x123456, lineWidth: 5, size: 0.31 },
+        decorativeElevator: { lineColor: 0x654321, lineWidth: 6, size: 0.27 },
+      }),
+    });
+    expect(resolve(1, "vertical")).toEqual({ outerRadius: 0.31 * TILE_SIZE, borderMatchColor: 0x123456 });
+    expect(resolve(2, "elevator")).toEqual({ outerRadius: 0.27 * TILE_SIZE, borderMatchColor: 0x654321 });
+  });
+
+  it("uses the one-way decorative line color for one-way vertical indices", () => {
+    const resolve = buildMarkerIndexEndpointResolver({
+      teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
+      verticalStyle: verticalStyle({
+        style: "decorative",
+        decorativeStairsTwoWay: { lineColor: 0x123456, lineWidth: 5, size: 0.31 },
+        decorativeStairsOneWay: { lineColor: 0xabcdef, lineWidth: 5, size: 0.29 },
+      }),
+    });
+    expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 * TILE_SIZE, borderMatchColor: 0xabcdef });
+  });
+
+  it("uses the one-way secondary color for abstract vertical indices", () => {
+    const resolve = buildMarkerIndexEndpointResolver({
+      teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
+      verticalStyle: verticalStyle({ oneWayAccentColor: 0xfedcba }),
+    });
+    expect(resolve(1, "vertical", true).borderMatchColor).toBe(0xfedcba);
   });
 
   it("resolves a teleport endpoint via the base teleport style when no group override applies", () => {
