@@ -161,6 +161,17 @@ describe("buildMarkerIndexLabels — endpoint visual", () => {
     expect(set.labels[0].markerOuterRadius).toBe(7);
     expect(set.labels[0].borderMatchColor).toBe(0xabc00);
   });
+
+  it("passes one-way status to the endpoint resolver for vertical passages", () => {
+    const nodes = [n(0, 1, 1, 0), n(1, 1, 1, 1)];
+    const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "vertical_passage" }];
+    const calls: Array<[number, string, boolean | undefined]> = [];
+    buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), (id, kind, oneWay) => {
+      calls.push([id, kind, oneWay]);
+      return { outerRadius: 7, borderMatchColor: 0xabc00 };
+    });
+    expect(calls).toEqual([[0, "vertical", true]]);
+  });
 });
 
 describe("buildMarkerIndexLabels — coverage", () => {

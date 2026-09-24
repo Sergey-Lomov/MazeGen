@@ -231,7 +231,7 @@ export function buildMarkerIndexEndpointResolver(args: {
     if (e.toNode !== undefined) teleportPointByNode.set(e.toNode, e.to);
   }
 
-  return (nodeId: number, kind: MarkerIndexLinkKind): MarkerEndpointVisual => {
+  return (nodeId: number, kind: MarkerIndexLinkKind, oneWay = false): MarkerEndpointVisual => {
     if (kind === "teleport") {
       const pt = teleportPointByNode.get(nodeId);
       const override = pt ? overrideAt(pt[0], pt[1]) : undefined;
@@ -240,6 +240,23 @@ export function buildMarkerIndexEndpointResolver(args: {
       return {
         outerRadius: teleportStyle.size * TILE_SIZE + Math.max(0, teleportStyle.borderWidth),
         borderMatchColor: teleportStyle.borderWidth > 0 ? border : fill,
+      };
+    }
+    // Decorative styles replace the hidden abstract marker fields entirely.
+    if (verticalStyle.style === "decorative") {
+      const lineStyle = kind === "elevator"
+        ? verticalStyle.decorativeElevator
+        : oneWay ? verticalStyle.decorativeStairsOneWay : verticalStyle.decorativeStairsTwoWay;
+      return {
+        outerRadius: lineStyle.size * TILE_SIZE,
+        borderMatchColor: lineStyle.lineColor,
+      };
+    }
+    if (kind === "vertical" && oneWay) {
+      const m = verticalStyle.oneWayPassageMarker;
+      return {
+        outerRadius: m.size * TILE_SIZE + Math.max(0, m.borderWidth ?? 0),
+        borderMatchColor: verticalStyle.oneWayAccentColor,
       };
     }
     const m = kind === "elevator" ? verticalStyle.elevatorMarker : verticalStyle.twoWayPassageMarker;
