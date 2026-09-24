@@ -27,6 +27,14 @@ export function presetEndpoint(point: [number, number], slotId?: number, level?:
   return { point, ...(slotId !== undefined ? { slotId } : {}), ...(level !== undefined ? { level } : {}) };
 }
 
+/** Drops `level` from an endpoint already known to be on the current floor — `buildPresetNodePositions`
+ * keys split-point nodes without a `level` suffix, so every caller resolving a marker through
+ * `presetEndpointScreenPos`/`nodePositions` must match against a level-less copy first (GitHub issue
+ * #589). */
+export function withoutLevel(ep: PresetEndpoint): PresetEndpoint {
+  return { point: ep.point, slotId: ep.slotId };
+}
+
 /** Structural equality: every field must match literally, including `slotId`/`level` both being
  * `undefined` (two "original node, floor 0" endpoints at the same point are equal). Not
  * implemented via `SplitRef`'s comparator — that type never represents "no slot", so a separate

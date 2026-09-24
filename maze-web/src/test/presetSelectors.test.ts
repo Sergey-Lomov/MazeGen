@@ -66,6 +66,41 @@ describe("buildPresetMarkers", () => {
     expect(marker.pos[0]).toBeCloseTo(center.x + TILE_SIZE * 0.25);
     expect(marker.pos[1]).toBeCloseTo(center.y);
   });
+
+  it("falls back to the tile center when the endpoint still carries a `level` `buildPresetNodePositions` doesn't key on (GitHub issue #589)", () => {
+    // `buildPresetNodePositions` keys split-point nodes without a `level` suffix -- a caller on a
+    // floor above 0 MUST strip `level` (via `withoutLevel`) before resolving through this selector,
+    // or the lookup misses and silently falls back to the plain tile center instead of the
+    // shape-aware anchor. This pins that documented fallback so a future caller forgetting
+    // `withoutLevel` (the exact regression in GitHub issue #589's `PresetConnectionsRenderer`) is
+    // caught by a visibly wrong position rather than a subtle one.
+    const splitCfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const connections = new Map<string, PresetConnectionEntry>();
+    const add = (key: string, from: ReturnType<typeof presetEndpoint>, to: ReturnType<typeof presetEndpoint>) =>
+      connections.set(key, { from, to, state: "passage", source: "user" });
+    const original = presetEndpoint([0, 0]);
+    const slot = presetEndpoint([0, 0], 0);
+    add("left", original, presetEndpoint([-1, 0]));
+    add("right", original, presetEndpoint([1, 0]));
+    add("up", slot, presetEndpoint([0, -1]));
+    add("down", slot, presetEndpoint([0, 1]));
+
+    // Same shape as the renderer's own floor-1 pipeline: `presetSplitPoints`/`connections` are
+    // already level-stripped (as if filtered via `recordOnLevel`/`presetConnectionsOnLevel`), but
+    // this endpoint still carries `level: 1` -- simulating a caller that forgot `withoutLevel`.
+    const notStripped = presetEndpoint([0, 0], undefined, 1);
+    const marker = buildPresetMarkers(notStripped, null, splitCfg, { "0,0": [0] }, connections)[0];
+    const center = getCellCenter(0, 0, splitCfg);
+    expect(marker.pos).toEqual([center.x, center.y]);
+  });
+});
+
+describe("withoutLevel", () => {
+  it("strips `level` while keeping `point`/`slotId`, matching what buildPresetNodePositions keys split nodes on (GitHub issue #589)", async () => {
+    const { withoutLevel } = await import("../pixi/presetEndpoint");
+    expect(withoutLevel(presetEndpoint([3, 5], 2, 1))).toEqual({ point: [3, 5], slotId: 2 });
+    expect(withoutLevel(presetEndpoint([3, 5]))).toEqual({ point: [3, 5], slotId: undefined });
+  });
 });
 
 describe("buildLocks", () => {
