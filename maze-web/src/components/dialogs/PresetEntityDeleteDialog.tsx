@@ -9,7 +9,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
-import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -33,6 +33,7 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
   const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
   const presetElevators = useMazeStore((s) => s.presetElevators);
   const presetConnections = useMazeStore((s) => s.presetConnections);
+  const presetActiveSplitNode = useMazeStore((s) => s.presetActiveSplitNode);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const activeFloorIndex = useMazeStore((s) => Math.max(s.floors.findIndex((f) => f.id === s.activeFloorId), 0));
@@ -53,7 +54,7 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
       const levelConnections = presetConnectionsOnLevel(presetConnections, level);
       const slotOrder: (number | undefined)[] = [undefined, ...slotIds];
       const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
-        presetEndpoint(point, slotId, level), point, cfg, inFieldCells, levelConnections, levelSplitPoints, {}, level,
+        presetEndpoint(point, slotId, level), point, cfg, inFieldCells, levelConnections, levelSplitPoints, presetActiveSplitNode, level,
       ));
       splitSemanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
     }
@@ -65,7 +66,7 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
   }, [
     prompt, activeFloorIndex, presetSplitPoints, presetStart, presetFinish, presetGenSource,
     presetTeleports, presetVerticalPassages, presetElevators, presetConnections, lockedNodes, autoLockedNodes,
-    cfg, fieldPoints, fieldEditMode, level,
+    cfg, fieldPoints, fieldEditMode, level, presetActiveSplitNode,
   ]);
 
   if (!prompt) return null;
@@ -74,9 +75,16 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
     return null;
   }
   const [x, y] = prompt.point;
+  const actionTitle = (entity: (typeof entities)[number]): string => {
+    if (entity.kind === "teleport") return m["post_edit.entity_delete_label_teleport"]();
+    if (entity.kind === "vertical_passage") return m["post_edit.entity_delete_label_vertical_passage"]();
+    if (entity.kind === "elevator") return m["post_edit.entity_delete_label_elevator"]();
+    if (entity.kind === "edge") return entity.title.replace(/\s+(?:<->|->|<-)\s+.*$/, "");
+    return entity.title;
+  };
 
   return (
-    <Modal title={m["preset.entity_delete_title"]({ x, y })} size="approve" onClose={onClose}>
+    <Modal title={m["preset.entity_delete_title"]({ x, y })} size="approveWide" onClose={onClose}>
       <p style={styles.hint}>{m["preset.entity_delete_hint"]()}</p>
       <div style={styles.list}>
         {entities.map((e) => (
@@ -86,7 +94,16 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
             layoutStyle={styles.item}
             onClick={() => removeOne(e)}
           >
-            {e.title}
+            <span style={styles.action}>{actionTitle(e)}</span>
+            {e.entityId !== undefined && <span style={styles.idBubble}>id: {e.entityId}</span>}
+            <div style={styles.bubbles}>
+              {(e.bubbles ?? []).map((bubble, j) => (
+                <span key={j} style={styles.bubbleGroup}>
+                  {j > 0 && e.showArrow && <span style={styles.arrow}>{e.arrow}</span>}
+                  <span style={styles.bubble}>{bubble}</span>
+                </span>
+              ))}
+            </div>
           </Button>
         ))}
       </div>
@@ -116,10 +133,58 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.control,
     display: "flex",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.rowGap,
     width: "100%",
     justifyContent: "flex-start",
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     borderRadius: radius.sm,
+  },
+  action: {
+    ...typography.body,
+    whiteSpace: "nowrap",
+  },
+  idBubble: {
+    ...typography.caption,
+    fontFamily: "Consolas, Menlo, Monaco, monospace",
+    display: "inline-flex",
+    alignItems: "center",
+    borderStyle: "solid",
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: `0 ${spacing.itemGap}px`,
+    background: ui.bg.success,
+    borderColor: ui.text.success,
+    color: ui.text.success,
+    whiteSpace: "nowrap",
+  },
+  bubbles: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.itemGap / 2,
+  },
+  bubbleGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+  },
+  arrow: {
+    ...muted(typography.caption),
+  },
+  bubble: {
+    ...typography.caption,
+    fontFamily: "Consolas, Menlo, Monaco, monospace",
+    display: "inline-flex",
+    alignItems: "center",
+    borderStyle: "solid",
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: `0 ${spacing.itemGap}px`,
+    background: ui.debug.refHighlight.bg,
+    borderColor: ui.debug.refHighlight.text,
+    color: ui.debug.refHighlight.text,
+    whiteSpace: "nowrap",
   },
   footer: {
     display: "flex",

@@ -1159,6 +1159,37 @@ describe("mazeStore preset connections", () => {
       expect(backwardRow.title).toBe(`${m["preset.one_way"]()} -> (0,1)`);
     });
 
+    it("builds endpoint bubbles while leaving start and finish rows without coordinate bubbles", () => {
+      useMazeStore.setState({
+        presetStart: presetEndpoint([0, 0]),
+        presetFinish: presetEndpoint([0, 0]),
+        presetConnections: new Map([
+          ["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall" as const, source: "user" as const }],
+        ]),
+      });
+      const state = useMazeStore.getState();
+      const entities = buildPresetPointEntities([0, 0], undefined, 0, { kind: "point_all" }, {
+        presetSplitPoints: {}, presetStart: state.presetStart, presetFinish: state.presetFinish, presetGenSource: null,
+        presetTeleports: [], presetVerticalPassages: [], presetElevators: [], presetConnections: state.presetConnections,
+        lockedNodes: new Map(), autoLockedNodes: new Set(),
+      });
+      expect(entities.find((e) => e.kind === "start")?.bubbles).toEqual([]);
+      expect(entities.find((e) => e.kind === "finish")?.bubbles).toEqual([]);
+      expect(entities.find((e) => e.kind === "edge")?.bubbles).toEqual(["0,0", "1,0"]);
+    });
+
+    it("labels every endpoint bubble with its floor for cross-floor teleports and elevators", () => {
+      const teleports = [{ id: 4, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2], undefined, 1), direction: "two_way" as const }];
+      const elevators = [{ id: 7, floors: [presetEndpoint([0, 0]), presetEndpoint([0, 0], undefined, 1), presetEndpoint([0, 0], undefined, 2)] }];
+      const entities = buildPresetPointEntities([0, 0], undefined, 0, { kind: "point_all" }, {
+        presetSplitPoints: {}, presetStart: null, presetFinish: null, presetGenSource: null,
+        presetTeleports: teleports, presetVerticalPassages: [], presetElevators: elevators,
+        presetConnections: new Map(), lockedNodes: new Map(), autoLockedNodes: new Set(),
+      });
+      expect(entities.find((e) => e.kind === "teleport")?.bubbles).toEqual(["L1:0,0", "L2:2,2"]);
+      expect(entities.find((e) => e.kind === "elevator")?.bubbles).toEqual(["L1:0,0", "L2:0,0", "L3:0,0"]);
+    });
+
     it("split_node row is present regardless of whether the slot still carries other entities", () => {
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
