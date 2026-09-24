@@ -2,6 +2,10 @@
 
 ## Current edge model
 
+### Endpoint drag hit area
+
+Post-edit teleport, vertical-passage, and elevator endpoint hit-tests use the tessellation projection's `screenToGrid` result. A pointer press anywhere inside the cell containing an endpoint can therefore start a drag; it is not limited to the rendered marker's radius. If multiple endpoint markers share a cell, the nearest rendered marker is selected. Unresolvable endpoints and endpoints on inactive floors remain excluded as before.
+
 Wall, passage, and one-way are states of a geometric face, not independent entities.
 `setEdge`/`setEdgePair` is the only event for changing such a state; changing one-way direction
 emits the state again with the opposite directed face. One-way edges have no id, lifecycle,

@@ -6,7 +6,6 @@ import type {
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey, endpointsEqual } from "./postEditEndpoint";
-import { TELEPORT_ENDPOINT_HIT_RADIUS } from "./postEditTeleportUtils";
 
 /** Same hit-test as `pickPostEditTeleportEndpointAt`, for post-edit vertical passages (GitHub issue
  * #341) — mirrors `pickVerticalPassageEndpointAt` (`fieldEditUtils.ts`), adapted to node-id space:
@@ -24,7 +23,7 @@ export function pickPostEditVerticalPassageEndpointAt(
   activeLevel: number | undefined,
 ): PostEditVerticalPassageEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   let best: PostEditVerticalPassageEndpointHit | null = null;
   let bestDistSq = Infinity;
   for (const p of passages) {
@@ -35,10 +34,11 @@ export function pickPostEditVerticalPassageEndpointAt(
       const node = nodeById.get(ep.id);
       if (!node) continue;
       const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
+      if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
       const dx = px - viewportX;
       const dy = py - viewportY;
       const distSq = dx * dx + dy * dy;
-      if (distSq < thresholdSq && distSq < bestDistSq) {
+      if (distSq < bestDistSq) {
         bestDistSq = distSq;
         best = { id: p.id, end };
       }
@@ -61,7 +61,7 @@ export function pickPostEditElevatorEndpointAt(
   activeLevel: number | undefined,
 ): PostEditElevatorEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   let best: PostEditElevatorEndpointHit | null = null;
   let bestDistSq = Infinity;
   for (const e of elevators) {
@@ -70,10 +70,11 @@ export function pickPostEditElevatorEndpointAt(
     const node = nodeById.get(own.id);
     if (!node) continue;
     const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
+    if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
     const dx = px - viewportX;
     const dy = py - viewportY;
     const distSq = dx * dx + dy * dy;
-    if (distSq < thresholdSq && distSq < bestDistSq) {
+    if (distSq < bestDistSq) {
       bestDistSq = distSq;
       best = { id: e.id, level: activeLevel ?? 0 };
     }

@@ -1,6 +1,5 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditTeleportEntry, PostEditTeleportEndpointHit } from "../store/mazeStore";
-import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint } from "./postEditEndpoint";
@@ -100,8 +99,6 @@ export function movePostEditTeleportEndpoint(
   });
 }
 
-export const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
-
 /** Hit-tests post-edit teleport endpoints by node id → screen position (via nodeById), unlike
  * PresetConnectionsController's cell-coordinate based pickTeleportEndpointAt.
  *
@@ -117,7 +114,7 @@ export function pickPostEditTeleportEndpointAt(
   resolveSplit: (point: [number, number], slotId: number) => number | undefined,
 ): PostEditTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   let best: PostEditTeleportEndpointHit | null = null;
   let bestDistSq = Infinity;
   for (const t of teleports) {
@@ -127,10 +124,11 @@ export function pickPostEditTeleportEndpointAt(
       const node = nodeById.get(nodeId);
       if (!node) continue;
       const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
+      if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
       const dx = px - viewportX;
       const dy = py - viewportY;
       const distSq = dx * dx + dy * dy;
-      if (distSq < thresholdSq && distSq < bestDistSq) {
+      if (distSq < bestDistSq) {
         bestDistSq = distSq;
         best = { id: t.id, end };
       }
