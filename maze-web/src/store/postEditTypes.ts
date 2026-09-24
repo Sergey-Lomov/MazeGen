@@ -5,18 +5,11 @@ export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_b
 
 export type PostEditTool = "wall" | "passage" | "reset" | "delete" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
 
-/** A directed post-edit edge — discriminated by `kind` (GitHub issue #564) so a one-way edge's
- * stable `id` is required exactly when `kind` is one of the `one_way_*` variants, and impossible
- * to attach to a `wall`/`basic` edge. `id` is assigned by `_nextPostEditOneWayId`, minted at
- * baseline-construction time for a generation-baked one-way (keyed by canonical `edgeKey(from,to)`,
- * see `assignSequentialIds`) or on fresh creation/flip via the `one_way` tool — see
- * `applyPostEditToolAt`. Reused as `PostEditEdgeState` for `setEdgePair`'s `aToB`/`bToA` payload.
- * `id` is a stable string (GitHub issue #564 second follow-up, `"ow{n}"`) — see
- * `postEditIdFormat.ts`'s doc comment for the per-category prefix convention shared by every
- * post-edit entity id (one-way, split point, teleport, vertical passage, elevator). */
+/** A directed post-edit edge state. One-way is a face state, not a separate entity: it carries no
+ * id and is replaced by the next wall/passage/one-way state on the same face. */
 export type PostEditEdge =
   | { kind: "wall" | "basic"; from: PostEditEndpoint; to: PostEditEndpoint }
-  | { kind: "one_way_forward" | "one_way_backward"; from: PostEditEndpoint; to: PostEditEndpoint; id: string };
+  | { kind: "one_way_forward" | "one_way_backward"; from: PostEditEndpoint; to: PostEditEndpoint };
 
 /** Same shape as `PostEditEdge` — used for `setEdgePair`'s `aToB`/`bToA` command fields, which
  * describe a directed edge's RESULTING state after the command, not a `Record`-stored entry. Kept

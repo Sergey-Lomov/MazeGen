@@ -1,11 +1,11 @@
 import type { NodeDto } from "../wasm/types";
 import { endpointsEqual, splitEndpoint, nodeEndpoint, type PostEditEndpoint } from "./postEditEndpoint";
-import type { PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry, PostEditMeta, PostEditEdge } from "../store/postEditTypes";
+import type { PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry, PostEditMeta } from "../store/postEditTypes";
 import { endpointBubble, splitPointBubble, type PostEditEntityBubble } from "./postEditCommandLabels";
 import type { SplitLabelContext } from "./postEditSplitLabels";
 import * as m from "~/paraglide/messages";
 
-export type PostEditPointEntityKind = "start" | "finish" | "teleport" | "vertical_passage" | "elevator" | "one_way" | "split_point";
+export type PostEditPointEntityKind = "start" | "finish" | "teleport" | "vertical_passage" | "elevator" | "split_point";
 
 /** A single removable entity anchored on a post-edit point, built for the delete-tool picker dialog
  *  (GitHub issue #550, mirroring the preset-side dialog from #540). Pure data — no mutation here; the
@@ -42,23 +42,12 @@ export type PostEditPointEntityKind = "start" | "finish" | "teleport" | "vertica
  *  the front of the list, so every row's first bubble is always "here," matching what the user just
  *  clicked.
  *
- *  `one_way` (GitHub issue #550 eighth follow-up) is a face — not vertex — entity, the one exception
- *  to this dialog's original "vertex-anchored content only" scope (`Specs/post-edit.md`'s `delete`
- *  Tool Detail): a one-way passage on one of the point's own faces is still something the user
- *  reasonably expects to remove from here, so it gets its own row like everything else, keyed by the
- *  one-way's own stable id (`entityId`, same `oneWay:${id}` lifeline `postEditCommandLabel` shows).
- *  `otherEndpoint` (only ever set for this kind) is the face's OTHER side — `removePostEditPointEntity`
- *  needs both ends to reset the exact face, unlike every other kind here which only ever needs
- *  `endpoint`. Removing it resets the face to its generation-time state (`applyPostEditToolAt`'s own
- *  "reset" tool, the same action a right-click on the face's edge already performs), never a bare
- *  "make it a wall" — a one-way carved out of a generation-time passage reverts to that passage, not
- *  to a wall. */
+ *  Connections rendered on cell faces are deliberately excluded: the delete tool removes
+ *  point-anchored elements only. Wall, passage, and one-way state are edited by their edge tools. */
 export interface PostEditPointEntityDescriptor {
   kind: PostEditPointEntityKind;
   id: string;
   endpoint: PostEditEndpoint;
-  /** The other side of a `one_way` row's own face — `undefined` for every other kind. */
-  otherEndpoint?: PostEditEndpoint;
   title: string;
   entityId: string | undefined;
   bubbles: PostEditEntityBubble[];
@@ -72,9 +61,6 @@ export interface PostEditPointEntitiesInput {
   postEditDraftTeleports: PostEditTeleportEntry[];
   postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
   postEditDraftElevators: PostEditElevatorEntry[];
-  /** Scanned for one-way faces touching one of `nodesHere` (GitHub issue #550 eighth follow-up) —
-   *  keyed by `edgeKey(from, to)`, same `Record` `applyPostEditToolAt` itself reads/writes. */
-  postEditDraftEdges: Record<string, PostEditEdge>;
   /** Resolves any `PostEditEndpoint` (node or split) to its own floor level (0-based, matching
    *  `activeFloorLevel`'s "undefined = floor 0" convention) — a `node` endpoint needs a lookup
    *  against the confirmed snapshot; a `split` endpoint carries its own `level` field directly. */
@@ -103,15 +89,11 @@ export function buildPostEditPointEntities(
   input: PostEditPointEntitiesInput,
 ): PostEditPointEntityDescriptor[] {
   const {
-    postEditDraftMeta, postEditDraftTeleports, postEditDraftVerticalPassages, postEditDraftElevators, postEditDraftEdges, nodeLevel,
+    postEditDraftMeta, postEditDraftTeleports, postEditDraftVerticalPassages, postEditDraftElevators, nodeLevel,
     nodeById, multiFloor, splitCtx,
   } = input;
-  const oneWayEdges = Object.values(postEditDraftEdges).filter(
-    (e): e is Extract<PostEditEdge, { kind: "one_way_forward" | "one_way_backward" }> => e.kind === "one_way_forward" || e.kind === "one_way_backward",
-  );
   const out: PostEditPointEntityDescriptor[] = [];
   const seen = new Set<string>();
-
   for (const endpoint of nodesHere) {
     if (postEditDraftMeta?.start && endpointsEqual(postEditDraftMeta.start, endpoint) && !seen.has("start")) {
       seen.add("start");
@@ -162,29 +144,6 @@ export function buildPostEditPointEntities(
       out.push({ kind: "elevator", id: e.id, endpoint, title: m["post_edit.entity_delete_label_elevator"](), entityId: e.id, bubbles, showArrow: false, arrow: "->" });
     }
 
-    // One-way faces touching this node (GitHub issue #550 eighth follow-up) — a face-anchored
-    // exception to this dialog's otherwise vertex-only scope, see the interface doc comment above.
-    // `entry.from`/`entry.to` are always this recorded side's own direction (`applyPostEditToolAt`
-    // only ever writes `one_way_forward`, meaning traffic flows `from -> to` on this exact record —
-    // `one_way_backward` is a defensive union member never actually produced, see `PostEditEdge`'s
-    // own doc comment), so `departingHere`/`arrivingHere` below read the record's `kind` as fixed
-    // ("forward" already means "this from/to pair", never "flip them") rather than re-deriving a
-    // direction from it.
-    for (const edge of oneWayEdges) {
-      const departingHere = endpointsEqual(edge.from, endpoint);
-      const arrivingHere = endpointsEqual(edge.to, endpoint);
-      if (!departingHere && !arrivingHere) continue;
-      const dedupKey = `one_way:${edge.id}`;
-      if (seen.has(dedupKey)) continue;
-      seen.add(dedupKey);
-      const other = departingHere ? edge.to : edge.from;
-      const arrow = departingHere ? "->" : "<-";
-      const bubbles = [endpointBubble(endpoint, nodeById, multiFloor, splitCtx), endpointBubble(other, nodeById, multiFloor, splitCtx)];
-      out.push({
-        kind: "one_way", id: edge.id, endpoint, otherEndpoint: other,
-        title: m["post_edit.entity_delete_label_one_way"](), entityId: edge.id, bubbles, showArrow: true, arrow,
-      });
-    }
   }
 
   // One row for the whole split tile (GitHub issue #550 follow-up), not one per slot — `endpoint` is

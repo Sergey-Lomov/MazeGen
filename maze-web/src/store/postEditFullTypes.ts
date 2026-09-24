@@ -119,7 +119,6 @@ export interface PostEditState {
    * created via wall/passage → one-way mints from here; flipping direction on the same face reuses
    * the existing side's id (same entity); returning to wall/passage and back to one-way mints a new
    * id (a new entity on the same face). */
-  _nextPostEditOneWayId: number;
   /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
   postEditDraftMeta: PostEditMeta | null;
   /** slotIds of a split point's extra nodes (beyond the point's original node), keyed by "x,y".

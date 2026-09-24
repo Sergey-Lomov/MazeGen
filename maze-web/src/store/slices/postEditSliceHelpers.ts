@@ -197,17 +197,6 @@ export function buildMultiFloorPostEditDraft(
   // across the whole draft — each `extractPostEditTeleports` call numbers its own batch from 1.
   draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: formatPostEditId("teleport", i + 1) }));
 
-  // One-way edge ids (GitHub issue #564) — same problem as teleports above: each per-level
-  // `buildPostEditDraftEdgesFromGenerated` call numbers its own batch from 1, so a multi-floor
-  // draft would otherwise collide (floor 0's id=1 and floor 1's id=1 both existing). Renumber once
-  // globally, sorted by each edge's own canonical `edgeKey`, after every level is merged.
-  const oneWayEntries = Object.entries(draftEdges).filter(
-    (entry): entry is [string, Extract<PostEditEdge, { id: string }>] =>
-      entry[1].kind === "one_way_forward" || entry[1].kind === "one_way_backward",
-  );
-  const oneWayIdMap = assignSequentialIds(oneWayEntries.map(([key]) => ({ key })));
-  for (const [key, edge] of oneWayEntries) draftEdges[key] = { ...edge, id: formatPostEditId("oneWay", oneWayIdMap.get(key)!) };
-
   // Split-tile id (GitHub issue #564) — one id per point key, assigned deterministically from the
   // sorted canonical point keys (`assignSequentialIds`), independent of node/edge iteration order.
   const splitPointIdMap = assignSequentialIds(Object.keys(splitPoints).map((key) => ({ key })));
@@ -304,20 +293,15 @@ export function derivedStateToLegacyFields(derived: PostEditDerivedState): {
  *  colliding a freshly baseline-seeded id with the next user-created entity's id. */
 export function nextPostEditIdCounters(derived: PostEditDerivedState): {
   _nextPostEditTeleportId: number;
-  _nextPostEditOneWayId: number;
   _nextPostEditSplitPointId: number;
   _nextPostEditVerticalPassageId: number;
   _nextPostEditElevatorId: number;
 } {
-  const oneWayIds = Object.values(derived.edges)
-    .filter((e): e is Extract<PostEditEdge, { id: string }> => e.kind === "one_way_forward" || e.kind === "one_way_backward")
-    .map((e) => parsePostEditIdNumber("oneWay", e.id));
   const splitPointIdValues = Object.values(derived.splitPointIds).map((id) => parsePostEditIdNumber("splitPoint", id));
   const verticalPassageIds = derived.verticalPassages.map((p) => parsePostEditIdNumber("verticalPassage", p.id));
   const elevatorIds = derived.elevators.map((e) => parsePostEditIdNumber("elevator", e.id));
   return {
     _nextPostEditTeleportId: derived.teleports.length + 1,
-    _nextPostEditOneWayId: oneWayIds.length > 0 ? Math.max(...oneWayIds) + 1 : 1,
     _nextPostEditSplitPointId: splitPointIdValues.length > 0 ? Math.max(...splitPointIdValues) + 1 : 1,
     _nextPostEditVerticalPassageId: verticalPassageIds.length > 0 ? Math.max(...verticalPassageIds) + 1 : 1,
     _nextPostEditElevatorId: elevatorIds.length > 0 ? Math.max(...elevatorIds) + 1 : 1,
@@ -487,7 +471,6 @@ export function buildPostEditPointEntitiesAt(
     postEditDraftTeleports: state.postEditDraftTeleports,
     postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
     postEditDraftElevators: state.postEditDraftElevators,
-    postEditDraftEdges: state.postEditDraftEdges ?? {},
     nodeLevel,
     nodeById, multiFloor, splitCtx,
   });

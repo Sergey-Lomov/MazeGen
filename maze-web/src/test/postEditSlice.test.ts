@@ -28,8 +28,7 @@ const n = nodeEndpoint;
 const key01 = edgeKey(n(0), n(1));
 /** Builds a `PostEditEdgeState` for a hand-written command/expectation literal — a one-way kind
  *  carries `id` (default "o1"), wall/basic doesn't (GitHub issue #564's discriminated union). */
-const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
-  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _id = "o1"): PostEditEdgeState => ({ kind, from, to });
 
 /** The default generation snapshot every test starts from: two floor-0 nodes with a single
  *  one-directional `basic` edge 0->1 (so `buildPostEditBaseline` derives a `one_way_forward` draft
@@ -144,9 +143,10 @@ describe("mazeStore post-edit actions", () => {
     // Start from a plain wall (not the seeded two-way passage) so `one_way` clicks are: 1) create a
     // fresh one-way, 2) flip it, 3) flip it back — the second and third clicks form a cancelling
     // pair (GitHub issue #548), while the creation itself always survives (GitHub issue #548
-    // follow-up: creation is only dropped if the entity is later actually destroyed). Auto-compact
+    // follow-up: creation is only dropped if the entity is later actually destroyed). The setup
+    // wall is obsolete once the one-way replaces it. Auto-compact
     // is on from the very first click, so every intermediate count below is already compacted.
-    useMazeStore.setState({ postEditAutoCompact: true, postEditTool: "wall" });
+    seedPostEdit({ edges: [] }, { postEditAutoCompact: true, postEditTool: "wall" });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     const afterWall = useMazeStore.getState().postEditCommands.length;
 
@@ -161,7 +161,7 @@ describe("mazeStore post-edit actions", () => {
     const afterSecondFlip = useMazeStore.getState().postEditCommands.length;
 
     expect(afterCreate).toBeGreaterThan(afterWall);
-    expect(afterFirstFlip).toBeGreaterThan(afterCreate);
+    expect(afterFirstFlip).toBe(afterCreate);
     expect(afterSecondFlip).toBe(afterCreate);
   });
 
@@ -236,7 +236,6 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands[1]).toEqual({
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"),
-      directionFlip: undefined, replacedOneWayIds: { aToB: undefined, bToA: undefined },
     });
 
     seedPostEdit({ edges: [] }, { postEditTool: "passage" });
@@ -244,7 +243,6 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditCommands).toEqual([
       {
         kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "basic"),
-        directionFlip: undefined, replacedOneWayIds: { aToB: undefined, bToA: undefined },
       },
     ]);
 
@@ -253,7 +251,6 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditCommands).toEqual([
       {
         kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward"), bToA: es(n(1), n(0), "wall"),
-        directionFlip: undefined, replacedOneWayIds: { aToB: undefined, bToA: undefined },
       },
     ]);
   });
@@ -278,44 +275,35 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditCommands).toHaveLength(2);
   });
 
-  it("applyPostEditTool marks a one_way click as directionFlip only when the face was already one-way (GitHub issue #545)", () => {
+  it("applyPostEditTool rewrites one-way face state on repeated clicks", () => {
     seedPostEdit({ edges: [] }, { postEditTool: "one_way" });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands).toEqual([
       {
         kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward"), bToA: es(n(1), n(0), "wall"),
-        directionFlip: undefined, replacedOneWayIds: { aToB: undefined, bToA: undefined },
       },
     ]);
 
-    // Second one_way click on the now-one-way face flips its direction - same tool, but now it must
-    // be tagged `directionFlip: true` so the "Changes" panel labels it as a direction change, not a
-    // fresh one-way passage.
+    // Second click writes the opposite face state.
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands[1]).toEqual({
-      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"), directionFlip: true,
-      replacedOneWayIds: undefined,
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward"),
     });
 
-    // Third click flips it again - must swap back to `aToB: one_way_forward`, not re-emit the same
+    // Third click swaps back to `aToB: one_way_forward`, not re-emit the same
     // `bToA: one_way_forward` the second click already produced (GitHub issue #575: the flip branch
     // used to always normalize its result to `bToA: one_way_forward` regardless of which side was
     // one-way going in, so every flip after the first was a no-op on the actual edge state while
-    // still appending a new command). Must still be the SAME id, still flagged `directionFlip: true`,
-    // never a fresh mint.
+    // still appending a new command. Face states have no identity or minting lifecycle.
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands[2]).toEqual({
-      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
-      replacedOneWayIds: undefined,
+      kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward"), bToA: es(n(1), n(0), "wall"),
     });
-    expect(useMazeStore.getState()._nextPostEditOneWayId).toBe(2);
   });
 
   it("applyPostEditTool('one_way') on an already-two-way passage creates a fresh forward one-way instead of flipping (GitHub issue #545)", () => {
     // A `basic` face has a record on BOTH sides, same as a one-way face does on one side - the
-    // branch must key off which side is actually one-way, not just "does a record exist here",
-    // or a one_way click on a plain passage silently demotes it to backward-only without
-    // `directionFlip` ever making sense of it.
+    // branch must key off which side is actually one-way, not just "does a record exist here".
     seedPostEdit(
       { edges: [], commands: [{ kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "basic") }] },
       { postEditTool: "one_way" },
@@ -323,7 +311,6 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditCommands[1]).toEqual({
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward"), bToA: es(n(1), n(0), "wall"),
-      directionFlip: undefined, replacedOneWayIds: { aToB: undefined, bToA: undefined },
     });
   });
 
@@ -550,7 +537,7 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(s.nodes).toEqual(s._generatedNodes);
     expect(s.edges).toEqual(s._generatedEdges);
-    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward", id: "o1" } });
+    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward" } });
     expect(s.postEditDirty).toBe(false);
   });
 
@@ -573,7 +560,7 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.getState().resetPostEdit();
     const s = useMazeStore.getState();
     expect(s._generatedNodes.map((n) => n.id).sort()).toEqual([0, 1, 2]);
-    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward", id: "o1" } });
+    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward" } });
     expect(s.postEditDraftSplitPoints).toEqual({});
   });
 
@@ -655,8 +642,8 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDraftSplitPoints).toEqual({ "0,0": [0], "0,0@1": [0] });
     const floor0Key = edgeKey(splitEndpoint([0, 0], 0), n(1));
     const floor1Key = edgeKey(splitEndpoint([0, 0], 0, 1), n(4));
-    expect(s.postEditDraftEdges?.[floor0Key]).toEqual({ from: splitEndpoint([0, 0], 0), to: n(1), kind: "one_way_forward", id: "o1" });
-    expect(s.postEditDraftEdges?.[floor1Key]).toEqual({ from: splitEndpoint([0, 0], 0, 1), to: n(4), kind: "one_way_forward", id: "o2" });
+    expect(s.postEditDraftEdges?.[floor0Key]).toEqual({ from: splitEndpoint([0, 0], 0), to: n(1), kind: "one_way_forward" });
+    expect(s.postEditDraftEdges?.[floor1Key]).toEqual({ from: splitEndpoint([0, 0], 0, 1), to: n(4), kind: "one_way_forward" });
   });
 
   it("resetPostEdit clears split-point draft state", () => {
@@ -786,6 +773,14 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDirty).toBe(true);
   });
 
+  it("creates finish with id f after the existing finish was removed", () => {
+    useMazeStore.setState({ postEditAutoConfirm: false });
+    useMazeStore.getState().clearPostEditEndpoint("finish");
+    useMazeStore.getState().setPostEditEndpoint("finish", n(5));
+    const commands = useMazeStore.getState().postEditCommands;
+    expect(commands.at(-1)).toEqual({ kind: "addMeta", slot: "finish", id: "f", endpoint: n(5) });
+  });
+
   it("confirmPostEdit prunes a node whose split slot was removed client-side, so it's not resent to WASM (GitHub issue #327)", async () => {
     // (0,0) was auto-split at generation into original (i=0, id 0) + one extra node (i=1, id 2) -
     // removeSplitNode already dropped slot 0 from postEditDraftSplitPoints, but state.nodes still
@@ -847,7 +842,7 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]).toBeUndefined();
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     const s = useMazeStore.getState();
-    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward", id: "o1" });
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
     expect(s.postEditDirty).toBe(true);
   });
 
@@ -866,7 +861,7 @@ describe("mazeStore post-edit actions", () => {
     });
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     const s = useMazeStore.getState();
-    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward", id: "o1" });
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
     expect(Object.keys(s.postEditDraftEdges ?? {})).toHaveLength(1);
   });
 
@@ -960,6 +955,17 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftMeta?.start).toEqual(n(1));
     expect(s.postEditDraftMeta?.finish).toBeNull();
+  });
+
+  it("delete tool ignores one-way face state and does not open the entity picker", () => {
+    seedPostEdit({ commands: [{
+      kind: "setEdgePair", a: n(0), b: n(1),
+      aToB: es(n(0), n(1), "one_way_forward"), bToA: es(n(1), n(0), "wall"),
+    }] });
+    useMazeStore.getState().requestPostEditEntityDelete([0, 0], undefined, false);
+    const s = useMazeStore.getState();
+    expect(s.postEditEntityDeletePrompt).toBeNull();
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
   });
 
   it("deletePostEditPoint suppresses a generation-time vertical passage/elevator touching the point, so it isn't resent on confirm", () => {

@@ -11,8 +11,7 @@ import type { NodeDto } from "../wasm/types";
 /** Builds a `PostEditEdgeState` (GitHub issue #564) — `id` is required exactly when `kind` is a
  *  one-way variant, defaulting to "o1" when omitted since most label-formatting tests don't care
  *  about the actual id value. */
-const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
-  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _id = "o1"): PostEditEdgeState => ({ kind, from, to });
 
 const n = (id: number, x: number, y: number, level?: number, i = 0): NodeDto =>
   (level === undefined ? { id, x, y, i } : { id, x, y, i, level }) as NodeDto;
@@ -92,6 +91,8 @@ describe("postEditCommandLabel", () => {
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
     expect(label.arrow).toBe("->");
+    expect(label.rowHighlight?.danger).toBe(true);
+    expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
   });
 
   it("removeElevator shows its own denormalized floors, not a live-entry lookup (GitHub issue #564 partial)", () => {
@@ -101,6 +102,8 @@ describe("postEditCommandLabel", () => {
     };
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5", "L3:3:5"]);
+    expect(label.rowHighlight?.danger).toBe(true);
+    expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
   });
 
   describe("vertical passage bubbles", () => {
@@ -196,6 +199,9 @@ describe("postEditCommandLabel", () => {
         const label = postEditCommandLabel(command, nodeById, false);
         expect(label.bubbles.map((b) => b.text)).toEqual(["0:0", "1:0"]);
       }
+      const removeLabel = postEditCommandLabel(removeCommand, nodeById, false);
+      expect(removeLabel.rowHighlight?.danger).toBe(true);
+      expect(removeLabel.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
     });
 
     it("row hover highlights both endpoint points, never a connecting line", () => {
@@ -341,6 +347,31 @@ describe("postEditCommandLabel", () => {
       expect(label.bubbles.map((b) => b.text)).toEqual(["3:5"]);
     });
 
+    it("start and finish creation commands keep their fixed entity ids", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5, undefined, 0)]);
+      const start = postEditCommandLabel({ kind: "addMeta", slot: "start", id: "s", endpoint: nodeEndpoint(0) }, nodeById, false);
+      const finish = postEditCommandLabel({ kind: "addMeta", slot: "finish", id: "f", endpoint: nodeEndpoint(0) }, nodeById, false);
+      expect(start.entityId).toBe("s");
+      expect(finish.entityId).toBe("f");
+      expect(start.action).toMatch(/Create start|Создан старт/);
+      expect(finish.action).toMatch(/Create finish|Создан финиш/);
+    });
+
+    it("set start/finish row hover highlights the assigned point", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const label = postEditCommandLabel({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) }, nodeById, false);
+      expect(label.rowHighlight).toEqual({ kind: "point", point: [3, 5], level: undefined });
+    });
+
+    it("deleting start/finish uses the danger highlight", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const label = postEditCommandLabel({ kind: "removeMeta", slot: "finish", id: "f", endpoint: nodeEndpoint(0) }, nodeById, false);
+      expect(label.rowHighlight).toEqual({
+        kind: "point", danger: true, point: [3, 5], level: undefined,
+      });
+      expect(label.bubbles[0].highlight).toEqual({ kind: "point", danger: true, point: [3, 5], level: undefined });
+    });
+
     it("a split endpoint (not yet confirmed to a real node) gets the suffix from its own slotId", () => {
       const nodes = [n(0, 3, 5, undefined, 0)];
       const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
@@ -366,6 +397,27 @@ describe("postEditCommandLabel", () => {
       const command: PostEditCommand = { kind: "rotateSplitPoint", point: [3, 5], nodes: [] };
       const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
       expect(label.bubbles[0].text).toBe("3:5");
+      expect(label.rowHighlight).toEqual({ kind: "point", point: [3, 5], level: undefined, highlightMode: "outset" });
+      expect(label.bubbles[0].highlight).toEqual({ kind: "point", point: [3, 5], level: undefined, highlightMode: "outset" });
+    });
+
+    it("all split-entity bubbles use the expanded-cell mode and deletion bubbles are dangerous", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const commands: PostEditCommand[] = [
+        { kind: "addSplitNode", point: [3, 5], slotId: 0, pointId: "s1" },
+        { kind: "removeSplitNode", point: [3, 5], slotId: 0, pointId: "s1" },
+        { kind: "removeSplitPoint", point: [3, 5], pointId: "s1", removedSlotIds: [0] },
+        { kind: "applySplitBlueprint", point: [3, 5], pointId: "s1", resolvedSlots: [] },
+        { kind: "updateSplitNodeFaces", point: [3, 5], slotId: 0, pointId: "s1", faces: [] },
+      ];
+      for (const command of commands) {
+        const label = postEditCommandLabel(command, nodeById, false);
+        expect(label.bubbles[0].highlight?.highlightMode).toBe("outset");
+        if (command.kind === "removeSplitNode" || command.kind === "removeSplitPoint") {
+          expect(label.bubbles[0].highlight?.danger).toBe(true);
+          expect(label.rowHighlight?.danger).toBe(true);
+        }
+      }
     });
 
     it("applySplitBlueprint uses the plain action text and carries its own entityId when unnamed", () => {
@@ -498,12 +550,12 @@ describe("postEditCommandLabel", () => {
       })).toBeUndefined();
     });
 
-    it("returns the one-way id for setEdge/setEdgePair one-way variants", () => {
-      expect(entityIdOf({ kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") })).toBe("o7");
+    it("returns no id for one-way setEdge/setEdgePair variants", () => {
+      expect(entityIdOf({ kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") })).toBeUndefined();
       expect(entityIdOf({
         kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
         aToB: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o8"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
-      })).toBe("o8");
+      })).toBeUndefined();
     });
 
     it("returns the entity's own id for teleport/vertical-passage/elevator commands", () => {
@@ -534,11 +586,6 @@ describe("postEditCommandLabel", () => {
       // the observable agreement rather than the sharing itself).
       const nodeById = buildNodeByIdMap([n(0, 0, 0), n(1, 1, 0)]);
       const idBearingCommands: PostEditCommand[] = [
-        { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o7") },
-        {
-          kind: "setEdgePair", a: nodeEndpoint(0), b: nodeEndpoint(1),
-          aToB: es(nodeEndpoint(0), nodeEndpoint(1), "one_way_forward", "o8"), bToA: es(nodeEndpoint(1), nodeEndpoint(0), "wall"),
-        },
         { kind: "addTeleport", id: "t3", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
         { kind: "addVerticalPassage", id: "v2", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" },
         { kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1)] },

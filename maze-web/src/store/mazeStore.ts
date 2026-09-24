@@ -270,7 +270,6 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
           _nextPostEditVerticalPassageId: Math.max(file.postEdit.nextVerticalPassageId, minCounters._nextPostEditVerticalPassageId),
           _nextPostEditElevatorId: Math.max(file.postEdit.nextElevatorId, minCounters._nextPostEditElevatorId),
           _nextSplitSlotId: nextSplitSlotId,
-          _nextPostEditOneWayId: Math.max(file.postEdit.nextOneWayId, minCounters._nextPostEditOneWayId),
           _nextPostEditSplitPointId: Math.max(file.postEdit.nextSplitPointId, minCounters._nextPostEditSplitPointId),
         });
       } else {

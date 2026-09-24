@@ -122,8 +122,22 @@ export function applyPostEditCommand(
       if (!state.teleports.some((t) => t.id === command.id)) return fail(state);
       return ok({ ...state, teleports: removePostEditTeleport(state.teleports, command.id) });
     }
+    case "addMeta": {
+      // Compaction may remove a generated waypoint's obsolete `removeMeta` when the same fixed
+      // slot is recreated later. The surviving creation event must still replay over the pristine
+      // generated slot; incremental store actions never append addMeta while the slot is occupied.
+      return ok({ ...state, meta: { ...state.meta, [command.slot]: command.endpoint } });
+    }
     case "setMeta": {
       return ok({ ...state, meta: { ...state.meta, [command.slot]: command.endpoint } });
+    }
+    case "removeMeta": {
+      // `endpoint` is the waypoint's own pre-deletion snapshot used by the Changes panel. It must
+      // survive compaction even when an earlier move command is dropped, so deletion addresses the
+      // fixed slot/id rather than requiring that denormalized display coordinate to match replay's
+      // current coordinate.
+      if (state.meta[command.slot] === null) return fail(state);
+      return ok({ ...state, meta: { ...state.meta, [command.slot]: null } });
     }
     case "addSplitNode": {
       const key = pointKeyOf(command.point, command.level);
@@ -444,22 +458,12 @@ export function lifelineKeysOf(command: PostEditCommand): string[] {
     case "setEdge":
       // Same "resulting id, or spatial key if wall/basic" rule as `setEdgePair`'s own sides — a
       // one-way `setEdge` is its own stable id lifeline, not the spatial edge key.
-      return command.edge.kind.startsWith("one_way")
-        ? [`oneWay:${(command.edge as { id: string }).id}`]
-        : [`edge:${edgeKey(command.edge.from, command.edge.to)}`];
+      return [`edge:${edgeKey(command.edge.from, command.edge.to)}`];
     case "setEdgePair": {
       // A wall/basic side has no lifeline of its own (it's not an addressable entity); a one-way
-      // side's lifeline is its RESULTING id, and `replacedOneWayIds` (resolved at construction time)
-      // names any id it just destroyed — both are included, since a lifeline being destroyed must
-      // still cascade a point-reset the same way one being created does.
-      const keys: string[] = [];
-      if (command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward") keys.push(`oneWay:${command.aToB.id}`);
-      if (command.bToA.kind === "one_way_forward" || command.bToA.kind === "one_way_backward") keys.push(`oneWay:${command.bToA.id}`);
-      if (command.replacedOneWayIds?.aToB !== undefined) keys.push(`oneWay:${command.replacedOneWayIds.aToB}`);
-      if (command.replacedOneWayIds?.bToA !== undefined) keys.push(`oneWay:${command.replacedOneWayIds.bToA}`);
-      return keys;
+      return [`edge:${edgeKey(command.a, command.b)}`];
     }
-    case "setMeta":
+    case "addMeta": case "setMeta": case "removeMeta":
       return [`meta:${command.slot}`];
   }
 }
@@ -493,7 +497,7 @@ function commandTouchesPoint(
       const t = before.teleports.find((x) => x.id === command.id);
       return (t !== undefined && (epTouches(t.from) || epTouches(t.to))) || epTouches(command.endpoint);
     }
-    case "setMeta":
+    case "addMeta": case "setMeta": case "removeMeta":
       return command.endpoint !== null && epTouches(command.endpoint);
     case "addSplitNode": case "removeSplitNode": case "removeSplitPoint": case "rotateSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
       return command.point[0] === point[0] && command.point[1] === point[1] && (command.level ?? 0) === (level ?? 0);
@@ -537,7 +541,11 @@ function endpointsReferencedBy(command: PostEditCommand): PostEditEndpoint[] {
     case "setTeleportDirection": return [command.from, command.to];
     case "moveTeleportEndpoint": return [command.endpoint, command.from, command.to];
     case "removeTeleport": return [command.from, command.to];
-    case "setMeta": return command.endpoint !== null ? [command.endpoint] : (command.previousEndpoint ? [command.previousEndpoint] : []);
+    case "addMeta": return [command.endpoint];
+    case "setMeta": return command.endpoint === null
+      ? (command.previousEndpoint ? [command.previousEndpoint] : [])
+      : [command.endpoint, ...(command.previousEndpoint ? [command.previousEndpoint] : [])];
+    case "removeMeta": return [command.endpoint];
     case "addVerticalPassage": return [command.from, command.to];
     case "setVerticalPassageDirection": return [command.from, command.to];
     case "moveVerticalPassageEndpoint": return [command.endpoint, command.from, command.to];
@@ -628,26 +636,13 @@ export function filterCommandsForPoint(
 }
 
 /** True when `command` mints a fresh entity lifeline rather than editing/moving/removing an
- * existing one (GitHub issue #547's "Delete" action on the Changes panel, `deleteCommandAt` below,
- * distinguishes the two: deleting a create command cascades its whole lifeline + dependents, same
- * as a point-reset; deleting any other command kind is a plain single-entry collapse). Every
- * `add*`/`applySplitBlueprint` is unconditionally a create. A `setEdge`/`setEdgePair` side counts
- * as a create only when it MINTS a fresh one-way id — i.e. the resulting side is one-way and that
- * side isn't a `directionFlip` (a flip reuses the existing id, same entity, new direction, not a
- * new lifeline); a face reset back to wall/basic, or a plain wall/passage toggle, has no lifeline
- * of its own to begin with and is never a create. */
+ * existing one. Face-state commands are never entity creation commands. */
 export function isCreateCommand(command: PostEditCommand): boolean {
   switch (command.kind) {
-    case "addTeleport": case "addVerticalPassage": case "addElevator":
+    case "addTeleport": case "addVerticalPassage": case "addElevator": case "addMeta":
     case "addSplitNode": case "applySplitBlueprint":
       return true;
-    case "setEdge":
-      return command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward";
-    case "setEdgePair": {
-      if (command.directionFlip) return false;
-      return command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward"
-        || command.bToA.kind === "one_way_forward" || command.bToA.kind === "one_way_backward";
-    }
+    case "removeMeta":
     default:
       return false;
   }
@@ -662,7 +657,7 @@ export function isCreateCommand(command: PostEditCommand): boolean {
  * authored — re-deriving it from `before` would silently change what the user asked for, not just
  * refresh a stale snapshot. A command with no denormalized fields (or whose referenced entity no
  * longer exists in `before` — nothing left to re-derive from) is returned unchanged. */
-export function renormalizeCommand(before: PostEditDerivedState, command: PostEditCommand): PostEditCommand {
+export function renormalizeCommand(before: PostEditDerivedState, command: PostEditCommand, rebuildMoves = false): PostEditCommand {
   switch (command.kind) {
     case "setTeleportDirection": {
       const t = before.teleports.find((x) => x.id === command.id);
@@ -696,7 +691,11 @@ export function renormalizeCommand(before: PostEditDerivedState, command: PostEd
       // against `before` here: only `command.end`'s own dragged value could differ if this exact same
       // physical drag were replayed from a different preceding state, and it never is (compaction only
       // drops OTHER commands, it never invents a new drag target for a surviving one).
-      return p ? { ...command, direction: p.direction } : command;
+      if (!p) return command;
+      if (!rebuildMoves) return { ...command, direction: p.direction };
+      const from = command.end === "from" ? command.endpoint : p.from;
+      const to = command.end === "to" ? command.endpoint : p.to;
+      return { ...command, from, to, direction: p.direction };
     }
     case "removeVerticalPassage": {
       const p = before.verticalPassages.find((x) => x.id === command.id);
@@ -754,18 +753,11 @@ export function cascadeRemoveLifelines(
   return renormalized;
 }
 
-/** True for a command whose entire job is flipping an EXISTING entity's direction back and forth
- * (GitHub issue #547 second follow-up) — `setTeleportDirection`/`setVerticalPassageDirection`, or a
- * `setEdgePair`/`setEdge` one-way `directionFlip` (never a fresh one-way mint, which is a create,
- * not a flip). Used by `nextDirectionCommandIndex` to find the deleted flip's own "undo" pair. */
+/** True for a command whose entire job is flipping an existing link's direction back and forth. */
 export function isDirectionCommand(command: PostEditCommand): boolean {
   switch (command.kind) {
     case "setTeleportDirection": case "setVerticalPassageDirection":
       return true;
-    case "setEdge":
-      return (command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward");
-    case "setEdgePair":
-      return command.directionFlip === true;
     default:
       return false;
   }
@@ -846,7 +838,7 @@ export function deleteCommandAt(
   const renormalized: PostEditCommand[] = [];
   let state = baseline.derived;
   for (const command of withoutTarget) {
-    renormalized.push(renormalizeCommand(state, command));
+    renormalized.push(renormalizeCommand(state, command, true));
     const result = applyPostEditCommand(baseline.context, state, renormalized[renormalized.length - 1]);
     if (result.applied) state = result.state;
   }

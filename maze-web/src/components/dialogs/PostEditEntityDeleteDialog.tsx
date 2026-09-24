@@ -29,9 +29,9 @@ export function PostEditEntityDeleteDialog({ onClose }: Props) {
   const postEditDraftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const postEditDraftVerticalPassages = useMazeStore((s) => s.postEditDraftVerticalPassages);
   const postEditDraftElevators = useMazeStore((s) => s.postEditDraftElevators);
+  const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const floors = useMazeStore((s) => s.floors);
   const postEditActiveSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
-  const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const activeTessellationConfig = useMazeStore((s) => s.activeTessellationConfig);
   const floorFields = useMazeStore((s) => s.floorFields);
 

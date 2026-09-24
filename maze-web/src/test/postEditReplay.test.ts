@@ -14,8 +14,7 @@ const n = nodeEndpoint;
 
 /** Builds a `PostEditEdgeState` (GitHub issue #564) — `id` required exactly when `kind` is a
  *  one-way variant, defaulting to "o1". */
-const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
-  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _id = "o1"): PostEditEdgeState => ({ kind, from, to });
 
 function emptyDerived(): PostEditDerivedState {
   return {
@@ -179,7 +178,7 @@ describe("updateSplitNodeFaces (GitHub issue #545)", () => {
       faces: [{ neighbor: n(1), toNeighbor: es(slot, n(1), "basic"), fromNeighbor: es(n(1), slot, "one_way_backward") }],
     }).state;
     expect(state.edges[edgeKey(slot, n(1))]).toEqual({ from: slot, to: n(1), kind: "basic" });
-    expect(state.edges[edgeKey(n(1), slot)]).toEqual({ from: n(1), to: slot, kind: "one_way_backward", id: "o1" });
+    expect(state.edges[edgeKey(n(1), slot)]).toEqual({ from: n(1), to: slot, kind: "one_way_backward" });
 
     // A later command with a different face list replaces the first entirely — the removed
     // neighbor's edges are gone, not left stale from the previous command.
@@ -519,7 +518,6 @@ describe("setEdgePair one-way lifelines (GitHub issue #564)", () => {
       {
         kind: "setEdgePair", a: n(0), b: n(1),
         aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o8"),
-        replacedOneWayIds: { bToA: "o3" },
       },
     ];
     // Any point on the a/b face touches both the destroyed and the created lifeline.
@@ -536,19 +534,18 @@ describe("isCreateCommand (GitHub issue #547)", () => {
     expect(isCreateCommand({ kind: "applySplitBlueprint", point: [0, 0], resolvedSlots: [], pointId: "s1" })).toBe(true);
   });
 
-  it("a fresh one-way mint (setEdge/setEdgePair) is a create; a flip or wall/basic toggle isn't", () => {
-    expect(isCreateCommand({ kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") })).toBe(true);
+  it("edge state commands are not entity creation commands", () => {
+    expect(isCreateCommand({ kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") })).toBe(false);
     expect(isCreateCommand({ kind: "setEdge", edge: es(n(0), n(1), "basic") })).toBe(false);
     expect(isCreateCommand({
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"),
-    })).toBe(true);
+    })).toBe(false);
     expect(isCreateCommand({
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "wall"),
     })).toBe(false);
     // Flipping an already-one-way face reuses its id — same entity, new direction, not a create.
     expect(isCreateCommand({
       kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"),
-      directionFlip: true,
     })).toBe(false);
   });
 
@@ -799,7 +796,7 @@ describe("deleteCommandAt — direction-flip pair cascade (GitHub issue #547 sec
     ]);
   });
 
-  it("applies to vertical-passage direction cycles and one-way directionFlip too", () => {
+  it("applies to vertical-passage direction cycles", () => {
     const context = baseContext([{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }]);
     const baseline = makeBaseline({ context });
     const vpCommands: PostEditCommand[] = [
@@ -811,31 +808,19 @@ describe("deleteCommandAt — direction-flip pair cascade (GitHub issue #547 sec
       { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
     ]);
 
-    const oneWayCommands: PostEditCommand[] = [
-      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
-      {
-        kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
-      },
-      {
-        kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
-      },
-    ];
-    expect(deleteCommandAt(baseline, oneWayCommands, 1)).toEqual([oneWayCommands[0]]);
   });
 
-  it("a bare setEdge one-way is itself a create (never a flip, since setEdge has no directionFlip field) — deleting a middle mint cascades the whole lifeline, not a direction-pair collapse", () => {
+  it("a bare setEdge one-way is a face-state update", () => {
     const baseline = makeBaseline();
     const cascadeCommands: PostEditCommand[] = [
       { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
       { kind: "setEdge", edge: es(n(0), n(1), "one_way_backward", "o1") },
       { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
     ];
-    expect(deleteCommandAt(baseline, cascadeCommands, 1)).toEqual([]);
+    expect(deleteCommandAt(baseline, cascadeCommands, 1)).toEqual([cascadeCommands[0], cascadeCommands[2]]);
   });
 
-  it("isDirectionCommand's setEdge branch: a setEdgePair flip's pair search recognizes a same-id bare setEdge one-way candidate in between as a direction command and cascades it", () => {
+  it("edge state deletion does not use direction lifelines", () => {
     // `nextDirectionCommandIndex`'s search loop classifies every intervening command via
     // `isDirectionCommand`, including a plain `setEdge` candidate (not just the delete target) —
     // this is the only way `isDirectionCommand`'s own `setEdge` branch is reachable, since a
@@ -845,11 +830,11 @@ describe("deleteCommandAt — direction-flip pair cascade (GitHub issue #547 sec
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
+        aToB: es(n(0), n(1), "one_way_backward", "o1"), bToA: es(n(1), n(0), "wall"),
       },
       { kind: "setEdge", edge: es(n(0), n(1), "one_way_forward", "o1") },
     ];
-    expect(deleteCommandAt(baseline, commands, 1)).toEqual([commands[0]]);
+    expect(deleteCommandAt(baseline, commands, 1)).toEqual([commands[0], commands[2]]);
   });
 });
 

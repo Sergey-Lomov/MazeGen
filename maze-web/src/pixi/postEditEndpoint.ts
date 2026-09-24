@@ -60,9 +60,12 @@ export interface PostEditHoverPoint {
  * `DebugRefHighlightOverlay` uses for a `node` ref) and `link` via `NodeEdgeHighlightRenderer`
  * (line + end markers, unchanged from the old `postEditHoveredLink`). */
 export type PostEditHoveredEntity =
-  | ({ kind: "point" } & PostEditHoverPoint)
-  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint; highlightStyle?: "line" | "one_way" | "boundary" }
-  | { kind: "points"; points: PostEditHoverPoint[] };
+  // `danger` switches the canvas hover color to the destructive red used by deletion log events.
+  // `highlightMode` controls whether the cell highlight is inset (ordinary) or outset (split
+  // entities, whose highlight must expand beyond the cell rather than shrink inside it).
+  | ({ kind: "point" } & PostEditHoverPoint & { danger?: boolean; highlightMode?: "inset" | "outset" })
+  | { kind: "link"; from: PostEditHoverPoint; to: PostEditHoverPoint; highlightStyle?: "line" | "one_way" | "boundary"; danger?: boolean; highlightMode?: "inset" | "outset" }
+  | { kind: "points"; points: PostEditHoverPoint[]; danger?: boolean; highlightMode?: "inset" | "outset" };
 
 /** Resolves a `PostEditEndpoint` to the `PostEditHoverPoint` `PostEditHoveredEntity` needs — a
  * `split` endpoint already carries its own `point`/`level` directly; a `node` endpoint is looked up

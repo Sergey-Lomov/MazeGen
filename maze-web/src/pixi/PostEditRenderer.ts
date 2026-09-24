@@ -382,15 +382,17 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.linkHover.render(link);
     this.boundaryHover.clear();
     for (const boundary of boundaryLinks ?? []) {
-      const color = boundary.style === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
+      const color = state.postEditHoveredEntity?.danger
+        ? canvas.fieldEditor.danger
+        : boundary.style === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
       const span = boundary.style === "one_way"
         ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
         : WALL_HIGHLIGHT_SPAN;
       drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span);
     }
     this.entityHighlight.render({
-      nodes: state.nodes, regionGroups, color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
-      insetMode: "inset",
+      nodes: state.nodes, regionGroups, color: state.postEditHoveredEntity?.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
+      insetMode: state.postEditHoveredEntity?.highlightMode ?? "inset",
     });
   }
 

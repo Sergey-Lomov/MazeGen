@@ -64,7 +64,7 @@ function pointMatchesNode(p: PostEditHoverPoint, n: NodeDto): boolean {
  *  "не подсвечиваем пустое место"). Only when both endpoints resolve on the SAME active floor (an
  *  ordinary same-floor link) is the connecting line itself drawn. */
 function buildLinkHoverHighlight(
-  link: { from: PostEditHoverPoint; to: PostEditHoverPoint },
+  link: { from: PostEditHoverPoint; to: PostEditHoverPoint; danger?: boolean },
   nodes: NodeDto[],
   activeLevel: number,
   cfg: TessellationConfig,
@@ -76,7 +76,7 @@ function buildLinkHoverHighlight(
       line: [{
         from: getCellCenter(fromNode.x, fromNode.y, cfg),
         to: getCellCenter(toNode.x, toNode.y, cfg),
-        color: canvas.fieldEditor.hover,
+        color: link.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
         alpha: 1.0,
         width: WALL_THICKNESS * 2,
         nodeRadius: NODE_RADIUS,

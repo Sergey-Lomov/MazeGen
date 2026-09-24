@@ -59,20 +59,7 @@ export type PostEditCommand =
   // stays for the rare single-direction case (`applySplitBlueprint`'s per-face wiring, GitHub issue
   // #235, which sets one direction from a freshly-minted slot and its own reverse as two
   // independently-timed commands against different lifelines).
-  // `directionFlip` (GitHub issue #545): true when the `one_way` tool clicked a face that was
-  // ALREADY one-way, flipping its direction rather than creating a fresh one-way passage from a
-  // wall/passage — the "Changes" panel must label these differently ("changed direction" vs. "set
-  // one-way passage"), mirroring `setVerticalPassageDirection` vs. `addVerticalPassage`. `false`/
-  // `undefined` for every other pair outcome (wall/passage/new-one-way).
-  // `aToB`/`bToA` (GitHub issue #564) are `PostEditEdgeState` — the same discriminated union as
-  // `PostEditEdge` — instead of a bare `PostEditEdgeKind` plus optional id fields, so "one-way
-  // carries an id, wall/basic doesn't" is a type-level invariant on the command payload itself, not
-  // just on stored state. `replacedOneWayIds` records which one-way id(s), if any, this command
-  // DESTROYS on each side — resolved at command-construction time in the store action (pre-state is
-  // available then; a post-state-only payload can't tell what a side USED to be). Per-side, not a
-  // flat array, since each side's old one-way (if any) is independent of the other's. `undefined`
-  // for a side that wasn't previously a one-way (nothing to destroy there).
-  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeState; bToA: PostEditEdgeState; directionFlip?: boolean; replacedOneWayIds?: { aToB?: string; bToA?: string } }
+  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeState; bToA: PostEditEdgeState }
   | { kind: "addTeleport"; id: string; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   // `from`/`to` (GitHub issue #564 follow-up) are this teleport's own endpoints, denormalized onto
   // the command at construction time — same fix already applied to every vertical-passage command;
@@ -92,7 +79,9 @@ export type PostEditCommand =
   // `endpoint` is `null` (a clear); without it, the "Changes" panel had no coordinates left to show
   // for a "start/finish cleared" row once the slot itself is empty. `undefined` when setting rather
   // than clearing (`endpoint` is non-null then, so the row already has its own location to show).
-  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null; previousEndpoint?: PostEditEndpoint }
+  | { kind: "addMeta"; slot: "start" | "finish"; id: "s" | "f"; endpoint: PostEditEndpoint }
+  | { kind: "setMeta"; slot: "start" | "finish"; id?: "s" | "f"; endpoint: PostEditEndpoint | null; previousEndpoint?: PostEditEndpoint }
+  | { kind: "removeMeta"; slot: "start" | "finish"; id: "s" | "f"; endpoint: PostEditEndpoint }
   // `pointId` (GitHub issue #564) is the split TILE's own stable id (distinct from `slotId`, which
   // addresses one node within the tile) — resolved at command-construction time in the store
   // action: the point's current id if it already exists (in the baseline or created earlier in this
