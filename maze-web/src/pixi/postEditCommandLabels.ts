@@ -93,7 +93,7 @@ export function endpointBubble(ep: PostEditEndpoint, nodeById: ReadonlyMap<numbe
  *  `slotId`-bearing overload below: these commands rotate/reset the WHOLE tile, not one node of
  *  it, so naming a single slot would misrepresent what changed. */
 export function splitPointBubble(point: [number, number], level: number | undefined, multiFloor: boolean): PostEditEntityBubble {
-  return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level } };
+  return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level, highlightMode: "outset" } };
 }
 
 /** Same as `splitPointBubble`, for a command that DOES address one specific slot (`addSplitNode`,
@@ -101,9 +101,9 @@ export function splitPointBubble(point: [number, number], level: number | undefi
  *  parenthetical (GitHub issue #546 fourth follow-up, eighth follow-up: prefers
  *  `resolveSplitNodeShortLabel`'s semantic name, falling back to plain `splitNodeLabelShort` only
  *  when `splitCtx` is `null` or the topology isn't a recognized named one). */
-function splitSlotBubble(point: [number, number], level: number | undefined, slotId: number, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
+function splitSlotBubble(point: [number, number], level: number | undefined, slotId: number, multiFloor: boolean, splitCtx: SplitLabelContext | null, danger = false): PostEditEntityBubble {
   const suffix = resolveSplitNodeShortLabel(splitCtx, point, level, { kind: "split", point, slotId, level }) ?? splitNodeLabelShort(slotId);
-  return { text: formatPoint({ point, level }, multiFloor, suffix), highlight: { kind: "point", point, level } };
+  return { text: formatPoint({ point, level }, multiFloor, suffix), highlight: { kind: "point", point, level, highlightMode: "outset", ...(danger ? { danger: true } : {}) } };
 }
 
 /** Same as `splitSlotBubble`, for `updateSplitNodeFaces` with `slotId: undefined` — the point's
@@ -114,8 +114,9 @@ function splitSlotBubble(point: [number, number], level: number | undefined, slo
  *  already resolves `node`-kind endpoints (and their short-label suffix) correctly. */
 function splitOriginalNodeBubble(point: [number, number], level: number | undefined, nodeById: ReadonlyMap<number, NodeDto>, multiFloor: boolean, splitCtx: SplitLabelContext | null): PostEditEntityBubble {
   const original = [...nodeById.values()].find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0) && n.i === 0);
-  if (original === undefined) return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level } };
-  return endpointBubble(nodeEndpoint(original.id), nodeById, multiFloor, splitCtx);
+  if (original === undefined) return { text: formatPoint({ point, level }, multiFloor), highlight: { kind: "point", point, level, highlightMode: "outset" } };
+  const bubble = endpointBubble(nodeEndpoint(original.id), nodeById, multiFloor, splitCtx);
+  return { ...bubble, highlight: bubble.highlight ? { ...bubble.highlight, highlightMode: "outset" } : null };
 }
 
 /** Two bubbles for a same-floor edge/teleport-shaped entity — rendered "from -> to" by the panel
@@ -193,6 +194,13 @@ function pointsRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditH
     .map((b) => (b.highlight?.kind === "point" ? b.highlight : undefined))
     .filter((p): p is PostEditHoverPoint & { kind: "point" } => p !== undefined);
   return points.length > 0 ? { kind: "points", points } : null;
+}
+
+/** Row-hover target for a non-link command: keep a single entity as a `point` target, while
+ * multi-point commands (currently elevators) use the `points` group shape. */
+function plainRowHighlight(bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null {
+  if (bubbles.length === 1 && bubbles[0].highlight?.kind === "point") return bubbles[0].highlight;
+  return pointsRowHighlight(bubbles);
 }
 
 /** Row-hover highlight for a same-floor edge/teleport row (GitHub issue #546 second follow-up) — the
@@ -281,18 +289,32 @@ export function postEditCommandLabel(
   // extended to follow that routing) — a straight-line `link` row-highlight over it reads as a second,
   // wrong connector, so a same-floor teleport row highlights both endpoint points instead, same as a
   // vertical passage/elevator (GitHub issue #546 third follow-up).
-  const teleportRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->"): PostEditCommandLabel =>
-    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: pointsRowHighlight(bubbles), entityId: undefined });
-  const verticalPassageRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->"): PostEditCommandLabel =>
-    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: pointsRowHighlight(bubbles), entityId: undefined });
+  const teleportRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
+  const dangerBubbles = (bubbles: PostEditEntityBubble[]): PostEditEntityBubble[] => bubbles.map((bubble) => ({
+    ...bubble,
+    highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null,
+  }));
+  const dangerPointsRow = (bubbles: readonly PostEditEntityBubble[]): PostEditHoveredEntity | null => {
+    const rowHighlight = pointsRowHighlight(bubbles);
+    return rowHighlight ? { ...rowHighlight, danger: true } : null;
+  };
+  const verticalPassageRow = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
   // An elevator never shows an arrow glyph (GitHub issue #546 third follow-up) — unlike a vertical
   // passage/teleport, it has no single "from -> to" direction of its own even when it happens to
   // span exactly two floors (`addElevator`'s `floors` is an unordered set of stops, not a directed
   // pair), so `showArrow` is unconditionally `false` regardless of `bubbles.length`.
-  const elevatorRow = (action: string, bubbles: PostEditEntityBubble[]): PostEditCommandLabel =>
-    ({ action, bubbles, showArrow: false, arrow: "->", rowHighlight: pointsRowHighlight(bubbles), entityId: undefined });
-  const plain = (action: string, bubbles: PostEditEntityBubble[]): PostEditCommandLabel =>
-    ({ action, bubbles, showArrow: false, arrow: "->", rowHighlight: null, entityId: undefined });
+  const elevatorRow = (action: string, bubbles: PostEditEntityBubble[], danger = false): PostEditCommandLabel =>
+    ({ action, bubbles, showArrow: false, arrow: "->", rowHighlight: danger ? dangerPointsRow(bubbles) : pointsRowHighlight(bubbles), entityId: undefined });
+  const plain = (action: string, bubbles: PostEditEntityBubble[], danger = false): PostEditCommandLabel => {
+    const rowHighlight = plainRowHighlight(bubbles);
+    return {
+      action, bubbles, showArrow: false, arrow: "->",
+      rowHighlight: danger && rowHighlight ? { ...rowHighlight, danger: true } : rowHighlight,
+      entityId: undefined,
+    };
+  };
 
   // The entity's own stable id (GitHub issue #574's `entityIdOf`) is attached to the label as its
   // own field, not baked into `action`'s text (GitHub issue #573 split it out into its own bubble) —
@@ -334,7 +356,12 @@ export function postEditCommandLabel(
     case "moveTeleportEndpoint":
       return withEntityId(teleportRow(m["post_edit.changes_action_move_teleport_endpoint"](), edge(command.from, command.to), teleportArrow(command.direction)));
     case "removeTeleport":
-      return withEntityId(teleportRow(m["post_edit.changes_action_remove_teleport"](), edge(command.from, command.to), teleportArrow(command.direction)));
+      return withEntityId(teleportRow(
+        m["post_edit.changes_action_remove_teleport"](),
+        dangerBubbles(edge(command.from, command.to)),
+        teleportArrow(command.direction),
+        true,
+      ));
     case "addMeta": case "setMeta": case "removeMeta": {
       const set = command.kind !== "removeMeta";
       const action = command.slot === "start"
@@ -343,17 +370,27 @@ export function postEditCommandLabel(
       // `previousEndpoint` (GitHub issue #564 follow-up) is this clear's own denormalized prior
       // value — without it a "start/finish cleared" row showed no coordinates at all.
       const bubbleEndpoint = command.endpoint ?? ("previousEndpoint" in command ? command.previousEndpoint : undefined);
-      return withEntityId(plain(action, bubbleEndpoint ? [endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx)] : []));
+      const bubble = bubbleEndpoint ? endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx) : undefined;
+      const deletionBubble = bubble && command.kind === "removeMeta"
+        ? { ...bubble, highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null }
+        : bubble;
+      return withEntityId(plain(action, deletionBubble ? [deletionBubble] : [], command.kind === "removeMeta"));
     }
     case "addSplitNode":
       return withEntityId(plain(m["post_edit.changes_action_add_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));
     case "removeSplitNode":
-      return withEntityId(plain(m["post_edit.changes_action_remove_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));
+      return withEntityId(plain(m["post_edit.changes_action_remove_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx, true)], true));
     case "removeSplitPoint":
       // Un-splitting the whole tile (GitHub issue #550 follow-up feedback point 1) — no slot suffix,
       // unlike `removeSplitNode`'s single-slot bubble: naming one particular node would misrepresent
       // an action that also folds in the original node's own generation-edge restore.
-      return withEntityId(plain(m["post_edit.changes_action_remove_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]));
+      {
+        const bubble = splitPointBubble(command.point, command.level, multiFloor);
+        return withEntityId(plain(m["post_edit.changes_action_remove_split_point"](), [{
+          ...bubble,
+          highlight: bubble.highlight ? { ...bubble.highlight, danger: true } : null,
+        }], true));
+      }
     case "rotateSplitPoint":
       return plain(m["post_edit.changes_action_rotate_split_point"](), [splitPointBubble(command.point, command.level, multiFloor)]);
     case "applySplitBlueprint": {
@@ -396,8 +433,9 @@ export function postEditCommandLabel(
       // so an id-based lookup would otherwise always miss.
       return withEntityId(verticalPassageRow(
         m["post_edit.changes_action_remove_vertical_passage"](),
-        verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx),
+        dangerBubbles(verticalPassageBubbles(command.from, command.to, nodeById, multiFloor, splitCtx)),
         verticalPassageArrow(command.direction),
+        true,
       ));
     case "addElevator":
       return withEntityId(elevatorRow(m["post_edit.changes_action_add_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx)));
@@ -406,6 +444,9 @@ export function postEditCommandLabel(
     case "removeElevator":
       // `floors` is the removed elevator's own denormalized field (GitHub issue #564 partial) —
       // same reasoning as `removeVerticalPassage` above.
-      return withEntityId(elevatorRow(m["post_edit.changes_action_remove_elevator"](), elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx)));
+      {
+        const bubbles = dangerBubbles(elevatorBubbles(command.floors, nodeById, multiFloor, splitCtx));
+        return withEntityId(elevatorRow(m["post_edit.changes_action_remove_elevator"](), bubbles, true));
+      }
   }
 }

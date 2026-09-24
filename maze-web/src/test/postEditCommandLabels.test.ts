@@ -91,6 +91,8 @@ describe("postEditCommandLabel", () => {
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
     expect(label.arrow).toBe("->");
+    expect(label.rowHighlight?.danger).toBe(true);
+    expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
   });
 
   it("removeElevator shows its own denormalized floors, not a live-entry lookup (GitHub issue #564 partial)", () => {
@@ -100,6 +102,8 @@ describe("postEditCommandLabel", () => {
     };
     const label = postEditCommandLabel(command, nodeById, true);
     expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5", "L3:3:5"]);
+    expect(label.rowHighlight?.danger).toBe(true);
+    expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
   });
 
   describe("vertical passage bubbles", () => {
@@ -195,6 +199,9 @@ describe("postEditCommandLabel", () => {
         const label = postEditCommandLabel(command, nodeById, false);
         expect(label.bubbles.map((b) => b.text)).toEqual(["0:0", "1:0"]);
       }
+      const removeLabel = postEditCommandLabel(removeCommand, nodeById, false);
+      expect(removeLabel.rowHighlight?.danger).toBe(true);
+      expect(removeLabel.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
     });
 
     it("row hover highlights both endpoint points, never a connecting line", () => {
@@ -350,6 +357,21 @@ describe("postEditCommandLabel", () => {
       expect(finish.action).toMatch(/Create finish|Создан финиш/);
     });
 
+    it("set start/finish row hover highlights the assigned point", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const label = postEditCommandLabel({ kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) }, nodeById, false);
+      expect(label.rowHighlight).toEqual({ kind: "point", point: [3, 5], level: undefined });
+    });
+
+    it("deleting start/finish uses the danger highlight", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const label = postEditCommandLabel({ kind: "removeMeta", slot: "finish", id: "f", endpoint: nodeEndpoint(0) }, nodeById, false);
+      expect(label.rowHighlight).toEqual({
+        kind: "point", danger: true, point: [3, 5], level: undefined,
+      });
+      expect(label.bubbles[0].highlight).toEqual({ kind: "point", danger: true, point: [3, 5], level: undefined });
+    });
+
     it("a split endpoint (not yet confirmed to a real node) gets the suffix from its own slotId", () => {
       const nodes = [n(0, 3, 5, undefined, 0)];
       const splitCtx = splitCtxFor(nodes, { "3,5": [0] });
@@ -375,6 +397,27 @@ describe("postEditCommandLabel", () => {
       const command: PostEditCommand = { kind: "rotateSplitPoint", point: [3, 5], nodes: [] };
       const label = postEditCommandLabel(command, buildNodeByIdMap([]), false);
       expect(label.bubbles[0].text).toBe("3:5");
+      expect(label.rowHighlight).toEqual({ kind: "point", point: [3, 5], level: undefined, highlightMode: "outset" });
+      expect(label.bubbles[0].highlight).toEqual({ kind: "point", point: [3, 5], level: undefined, highlightMode: "outset" });
+    });
+
+    it("all split-entity bubbles use the expanded-cell mode and deletion bubbles are dangerous", () => {
+      const nodeById = buildNodeByIdMap([n(0, 3, 5)]);
+      const commands: PostEditCommand[] = [
+        { kind: "addSplitNode", point: [3, 5], slotId: 0, pointId: "s1" },
+        { kind: "removeSplitNode", point: [3, 5], slotId: 0, pointId: "s1" },
+        { kind: "removeSplitPoint", point: [3, 5], pointId: "s1", removedSlotIds: [0] },
+        { kind: "applySplitBlueprint", point: [3, 5], pointId: "s1", resolvedSlots: [] },
+        { kind: "updateSplitNodeFaces", point: [3, 5], slotId: 0, pointId: "s1", faces: [] },
+      ];
+      for (const command of commands) {
+        const label = postEditCommandLabel(command, nodeById, false);
+        expect(label.bubbles[0].highlight?.highlightMode).toBe("outset");
+        if (command.kind === "removeSplitNode" || command.kind === "removeSplitPoint") {
+          expect(label.bubbles[0].highlight?.danger).toBe(true);
+          expect(label.rowHighlight?.danger).toBe(true);
+        }
+      }
     });
 
     it("applySplitBlueprint uses the plain action text and carries its own entityId when unnamed", () => {

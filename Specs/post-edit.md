@@ -653,6 +653,14 @@ combined `points`-kind bubble an elevator/vertical passage used to render, see b
 bubble naming an entity nothing's left in the log to resolve a point from); hovering a bubble passes
 its `highlight` straight through to `postEditHoveredEntity`.
 
+Deletion bubbles and their row targets carry `danger: true`, so deletion previews for start/finish,
+teleports, vertical passages, elevators, and split entities use the destructive red canvas color —
+the marker applies to the bubble itself as well as the row hover. Split-related command bubbles and
+row targets (`addSplitNode`, `removeSplitNode`, `removeSplitPoint`, `rotateSplitPoint`,
+`applySplitBlueprint`, and `updateSplitNodeFaces`) also carry `highlightMode: "outset"`, matching the
+expanded-cell split highlight used elsewhere in post-edit. Ordinary point/entity highlights keep the
+default inward/inset mode.
+
 **Elevator/vertical-passage bubbles are now one bubble per floor**, not a single combined bubble
 (GitHub issue #546 second follow-up reversed the original #546 follow-up's design) — an elevator's
 `addElevator`/`updateElevatorFloors` command renders `L1:x:y`, `L2:x:y`, `L3:x:y`, ... (one bubble per
