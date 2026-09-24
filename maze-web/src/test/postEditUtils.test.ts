@@ -6,6 +6,7 @@ import {
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes,
 } from "../pixi/postEditUtils";
+import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitFaceLayout";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
@@ -176,7 +177,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     const to = nodeEndpoint(idOf(1, 0));
     edges[edgeKey(from, to)] = { from, to, kind: "one_way_forward", id: "o1" };
 
-    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {}, {});
     const newTo = nodeEndpoint(idOf(0, 1));
     expect(result).toEqual([{
       slotId: undefined,
@@ -190,7 +191,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     const center = nodeEndpoint(idOf(0, 0));
     edges[edgeKey(outer, center)] = { from: outer, to: center, kind: "one_way_forward", id: "o1" };
 
-    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {}, {});
     const newOuter = nodeEndpoint(idOf(0, 1)); // N neighbor
     expect(result).toEqual([{
       slotId: undefined,
@@ -205,7 +206,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     edges[edgeKey(center, east)] = { from: center, to: east, kind: "basic" };
     edges[edgeKey(east, center)] = { from: east, to: center, kind: "basic" };
 
-    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, {}, {});
     const north = nodeEndpoint(idOf(0, 1));
     expect(result).toEqual([{
       slotId: undefined,
@@ -222,7 +223,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     edges[edgeKey(slot, east)] = { from: slot, to: east, kind: "one_way_forward", id: "o1" };
     edges[edgeKey(center, west)] = { from: center, to: west, kind: "one_way_forward", id: "o2" };
 
-    const result = rotateSplitPointNodes(edges, [0, 0], [0], 1, squareCfg, centerCellSet, gridNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [0], 1, squareCfg, centerCellSet, gridNodes, {}, {});
     const north = nodeEndpoint(idOf(0, 1));
     const south = nodeEndpoint(idOf(0, -1));
     expect(result).toEqual(expect.arrayContaining([
@@ -245,7 +246,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     edges[edgeKey(corner, northNeighbor)] = { from: corner, to: northNeighbor, kind: "basic" };
 
     // Rotating by +1 moves the N-face connection to W, which is outside the field.
-    const result = rotateSplitPointNodes(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {});
+    const result = rotateSplitPointNodes(edges, [-1, -1], [], 1, squareCfg, centerCellSet, cornerNodes, {}, {});
     expect(result).toEqual([]);
   });
 
@@ -258,7 +259,7 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     edges[edgeKey(from, to)] = { from, to, kind: "one_way_forward", id: "o1" };
 
     // Rotating by +1 moves the E-face connection to N (0,1), which is in-field but nodeless.
-    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, sparseNodes, {});
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, sparseNodes, {}, {});
     expect(result).toEqual([]);
   });
 
@@ -272,11 +273,279 @@ describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 comp
     const northSlot = splitEndpoint([0, 1], 0);
     const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": northSlot };
 
-    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode);
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode, {});
     expect(result).toEqual([{
       slotId: undefined,
       faces: [faceOf(northSlot, { kind: "one_way_forward", from: center, to: northSlot, id: "o1" }, wallTo(northSlot, center))],
     }]);
+  });
+
+  // Bridge geometry ring for the tests below: a 5x5 grid so the bridge neighbor at (0,1) has all
+  // four of its own neighbors in-field ((1,1),(0,2),(-1,1),(0,0)).
+  const ringNodes: NodeDto[] = [];
+  for (let x = -2; x <= 2; x++) for (let y = -2; y <= 2; y++) ringNodes.push({ id: idOf(x, y), x, y, i: 0 });
+  // The neighbor (0,1)'s declared split slot 0 needs its own real NodeDto (i: 1) alongside its
+  // original (i: 0) — otherwise `buildLogicalCandidates` only ever sees one candidate there.
+  const bridgeSlotNodeId = 9001;
+  ringNodes.push({ id: bridgeSlotNodeId, x: 0, y: 1, i: 1 });
+  const ringCellSet = new Set(ringNodes.map((n) => `${n.x},${n.y}`));
+  const bridgeSlot = splitEndpoint([0, 1], 0); // the neighbor's split node forming the bridge
+  const bridgeOriginal = nodeEndpoint(idOf(0, 1));
+
+  it("rotating onto a neighbor whose OTHER node already forms a finished bridge doesn't add a 3rd face to it, even when the bridge node is active (GitHub issue #580 rotation counterpart)", () => {
+    // Square face order [E,N,W,S] = [0,1,2,3]. The rotate lands the new connection on neighbor
+    // (0,1)'s S face (toward (0,0), face 3) — geometrically that can never be "opposite" a bridge
+    // whose own pair occupies {E,W} = {0,2} (circularDist(3,0,4)=1, circularDist(3,2,4)=1), so the
+    // geometry-evidence tier can't fire here at all; this exercises the fallback-tier guard instead.
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    // The neighbor's slot 0 already has a COMPLETE, unrelated opposite pair: E (toward (1,1)) and
+    // W (toward (-1,1)) — a finished bridge that must not gain a 3rd face.
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeSlot, westOfNeighbor)] = { from: bridgeSlot, to: westOfNeighbor, kind: "basic" };
+    // Active slot deliberately points AT the finished bridge — the exact condition the user
+    // described ("reproduces with any active node, as long as the bridge sits on a different side
+    // than the active node's own passages"): the bug picked this active node regardless.
+    const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": bridgeSlot };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
+    // The neighbor's ORIGINAL node (0 decided faces, safe to extend) gets the new connection
+    // instead of the finished bridge slot.
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(bridgeOriginal, { kind: "one_way_forward", from: center, to: bridgeOriginal, id: "o1" }, wallTo(bridgeOriginal, center))],
+    }]);
+  });
+
+  it("control: no finished bridge on the neighbor — active slot is honored as usual", () => {
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    // Neighbor's slot 0 has only ONE decided face — not a finished pair, safe to extend, so the
+    // guard doesn't exclude it and active is honored normally.
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": bridgeSlot };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(bridgeSlot, { kind: "one_way_forward", from: center, to: bridgeSlot, id: "o1" }, wallTo(bridgeSlot, center))],
+    }]);
+  });
+
+  it("control: neighbor's finished bridge sits on a DIFFERENT split slot than the one active — still not disturbed, active slot (itself safe) is honored", () => {
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeSlot, westOfNeighbor)] = { from: bridgeSlot, to: westOfNeighbor, kind: "basic" };
+    // Active is the ORIGINAL node this time (itself has 0 decided faces, safe) — the finished
+    // bridge sits on the (inactive) slot instead. Active should be honored as-is.
+    const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": bridgeOriginal };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
+    expect(result).toEqual([{
+      slotId: undefined,
+      faces: [faceOf(bridgeOriginal, { kind: "one_way_forward", from: center, to: bridgeOriginal, id: "o1" }, wallTo(bridgeOriginal, center))],
+    }]);
+  });
+
+  it("every candidate at the neighbor already holds a finished bridge — the new face is refused outright (stays wall), not wired onto the least-bad option", () => {
+    // Both of the neighbor's nodes (original AND slot 0) already hold a complete opposite pair.
+    // There is no safe node to hand the new face to — picking either would corrupt it, so the
+    // rotate must leave this face disconnected rather than guess (this is the actual GitHub #580
+    // rotation-counterpart repro: a bridge tile rotated onto a neighbor that's itself a finished
+    // two-node bridge, where every one of the neighbor's own nodes is already fully wired).
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeSlot, westOfNeighbor)] = { from: bridgeSlot, to: westOfNeighbor, kind: "basic" };
+    // The neighbor's ORIGINAL node also already holds its own complete opposite pair (a different
+    // finished bridge, unrelated to the slot's and to `point`) — its own E/W faces, toward (1,1)
+    // and (-1,1) as seen from (0,1)... no: reuse N/S (toward (0,2) and (0,0)) would collide with
+    // `point` itself, so use the original's E face (toward (1,1)) paired with its W face (toward
+    // (-1,1)) instead — same opposite pair the slot already occupies is fine, they're different
+    // nodes of the same point; what matters is the ORIGINAL, not just the slot, is unsafe too.
+    edges[edgeKey(bridgeOriginal, eastOfNeighbor)] = { from: bridgeOriginal, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeOriginal, westOfNeighbor)] = { from: bridgeOriginal, to: westOfNeighbor, kind: "basic" };
+    const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": bridgeSlot };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
+    // (0,0)'s own E-face one-way move is refused (no safe owner at the neighbor) — the point ends
+    // up with no connection to (0,1) at all (absence reads as wall, same "nothing to draw" contract
+    // `currentSplitNodeFaces` already uses for a neighbor with no edge in either direction).
+    expect(result).toEqual([{ slotId: undefined, faces: [] }]);
+  });
+
+  it("multi-move rotate: two moves land on the same finished-bridge neighbor — both avoid the bridge slot", () => {
+    // Point (0,0) has an original node and slot 0, both with a connection on their E face; rotating
+    // moves both onto the N face, landing on the same neighbor (0,1) which has a finished bridge on
+    // its own slot 0. Neither move should wire onto the finished bridge — both independently fall
+    // back to the one remaining safe candidate (the neighbor's original node); reusing the same
+    // safe candidate for two different point-side nodes is legitimate (a node can have more than
+    // one face pointing at the same neighbor's original node) and is not what `assignedThisRotation`
+    // guards against (that guard is for the geometry tier only, see its own doc comment).
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const slot = splitEndpoint([0, 0], 0);
+    const east = nodeEndpoint(idOf(1, 0));
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "one_way_forward", id: "o1" };
+    edges[edgeKey(slot, east)] = { from: slot, to: east, kind: "one_way_forward", id: "o2" };
+
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeSlot, westOfNeighbor)] = { from: bridgeSlot, to: westOfNeighbor, kind: "basic" };
+    const activeSplitNode: Record<string, PostEditEndpoint> = { "0,1": bridgeSlot };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    const result = rotateSplitPointNodes(edges, [0, 0], [0], 1, squareCfg, ringCellSet, ringNodes, activeSplitNode, splitPoints);
+    const originalFace = result.find((r) => r.slotId === undefined)!;
+    const slotFace = result.find((r) => r.slotId === 0)!;
+    // Neither move ever wires onto the finished bridge slot.
+    expect(originalFace.faces[0].neighbor).not.toEqual(bridgeSlot);
+    expect(slotFace.faces[0].neighbor).not.toEqual(bridgeSlot);
+    expect(originalFace.faces[0].neighbor).toEqual(bridgeOriginal);
+    expect(slotFace.faces[0].neighbor).toEqual(bridgeOriginal);
+  });
+
+  it("rotating a bridge tile re-stitches the static neighbor's existing bridge partner onto the corridor node that lands on the shared face, and drops the old bridge-to-bridge edge (GitHub issue #580 user repro)", () => {
+    // Mirrors the exact reported scenario: two adjacent "bridge" tiles, one above the other, bridges
+    // wired to each other. Rotating the point's bridge tile (both its corridor node E/W face and its
+    // bridge slot's N face move by one step) makes the corridor land on the face shared with the
+    // static neighbor — the neighbor's bridge slot (still pointing at `point`, unchanged) must now
+    // connect to `point`'s corridor node instead of `point`'s (now moved-away) bridge slot, and the
+    // old bridge-to-bridge edge must be gone, not left dangling alongside the new one.
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    const slot = splitEndpoint([0, 0], 0);
+    const east = nodeEndpoint(idOf(1, 0));
+    const west = nodeEndpoint(idOf(-1, 0));
+    // Point's corridor (original node): E/W through-passage — unrelated to the neighbor.
+    edges[edgeKey(center, east)] = { from: center, to: east, kind: "basic" };
+    edges[edgeKey(east, center)] = { from: east, to: center, kind: "basic" };
+    edges[edgeKey(center, west)] = { from: center, to: west, kind: "basic" };
+    edges[edgeKey(west, center)] = { from: west, to: center, kind: "basic" };
+    // Point's bridge (slot 0): N face, bidirectional bridge-to-bridge with the static neighbor's own
+    // bridge slot at (0,1).
+    edges[edgeKey(slot, bridgeSlot)] = { from: slot, to: bridgeSlot, kind: "basic" };
+    edges[edgeKey(bridgeSlot, slot)] = { from: bridgeSlot, to: slot, kind: "basic" };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    // Rotate direction 1: E(0)->N(1), N(1)->W(2) — the corridor's E face moves onto N (now facing the
+    // static neighbor at (0,1)), the bridge's N face moves onto W (now facing (-1,0), unrelated).
+    const result = rotateSplitPointNodes(edges, [0, 0], [0], 1, squareCfg, ringCellSet, ringNodes, {}, splitPoints);
+
+    const originalFace = result.find((r) => r.slotId === undefined)!;
+    const slotFace = result.find((r) => r.slotId === 0)!;
+    // `resolveFaceOwner` resolves the neighbor's existing partner to its canonical form — the `split`
+    // form here, since the partner is itself a split slot.
+    const newNorthFace = originalFace.faces.find((f) => JSON.stringify(f.neighbor) === JSON.stringify(bridgeSlot));
+    expect(newNorthFace).toBeDefined();
+    expect(newNorthFace!.toNeighbor).toEqual({ kind: "basic", from: center, to: bridgeSlot });
+    expect(newNorthFace!.fromNeighbor).toEqual({ kind: "basic", from: bridgeSlot, to: center });
+    // The stale bridge-to-bridge edge on `slot`'s own side must become an explicit wall, not vanish —
+    // `slot` itself is split (has more than one declared node), so its stale face must be protected.
+    const staleSlotFace = slotFace.faces.find((f) => JSON.stringify(f.neighbor) === JSON.stringify(bridgeSlot));
+    expect(staleSlotFace?.toNeighbor).toEqual({ kind: "wall", from: slot, to: bridgeSlot });
+    expect(staleSlotFace?.fromNeighbor).toEqual({ kind: "wall", from: bridgeSlot, to: slot });
+  });
+
+  it("old neighbor losing its partner becomes an explicit wall, not a missing/undecided face, when the old neighbor is itself split (GitHub issue #580 wall-compensation counterpart)", () => {
+    // `point`'s original starts connected to the neighbor's bridge slot on its N face (toward (0,1)).
+    // The neighbor's bridge slot ALSO already has a complete, unrelated opposite pair (E/W, toward
+    // (1,1)/(-1,1)) — a finished bridge. Rotating `point`'s N face away (to W) makes the bridge slot
+    // lose its partner on that face entirely (no move of `point`'s claims it back) — merely deleting
+    // that stale edge would leave the bridge slot with one decided face short of its recognized shape
+    // and the vacated face reading as undecided/optional in the UI; it must become an explicit wall.
+    const edges: Record<string, PostEditEdge> = {};
+    const center = nodeEndpoint(idOf(0, 0));
+    edges[edgeKey(center, bridgeSlot)] = { from: center, to: bridgeSlot, kind: "basic" };
+    edges[edgeKey(bridgeSlot, center)] = { from: bridgeSlot, to: center, kind: "basic" };
+    const eastOfNeighbor = nodeEndpoint(idOf(1, 1));
+    const westOfNeighbor = nodeEndpoint(idOf(-1, 1));
+    edges[edgeKey(bridgeSlot, eastOfNeighbor)] = { from: bridgeSlot, to: eastOfNeighbor, kind: "basic" };
+    edges[edgeKey(bridgeSlot, westOfNeighbor)] = { from: bridgeSlot, to: westOfNeighbor, kind: "basic" };
+    const splitPoints: Record<string, number[]> = { "0,1": [0] };
+
+    // Rotate direction 1: original's N face (toward the bridge) moves to W (unrelated) — the bridge
+    // slot's own partner face is vacated, and nothing in this rotation claims the bridge slot back.
+    const result = rotateSplitPointNodes(edges, [0, 0], [], 1, squareCfg, ringCellSet, ringNodes, {}, splitPoints);
+
+    const originalFace = result.find((r) => r.slotId === undefined)!;
+    const staleFace = originalFace.faces.find((f) => JSON.stringify(f.neighbor) === JSON.stringify(bridgeSlot));
+    expect(staleFace).toBeDefined();
+    expect(staleFace!.toNeighbor).toEqual({ kind: "wall", from: center, to: bridgeSlot });
+    expect(staleFace!.fromNeighbor).toEqual({ kind: "wall", from: bridgeSlot, to: center });
+  });
+});
+
+describe("canCompleteOppositePair", () => {
+  it("matches when the opposite face is decided and the target face is free", () => {
+    expect(canCompleteOppositePair(new Set([2]), 0, 4)).toBe(true);
+    expect(canCompleteOppositePair(new Set([1]), 3, 4)).toBe(true);
+  });
+
+  it("does not match when no decided face is opposite the target", () => {
+    expect(canCompleteOppositePair(new Set([1]), 2, 4)).toBe(false);
+    expect(canCompleteOppositePair(new Set(), 0, 4)).toBe(false);
+  });
+
+  it("does not match when the target face itself is already decided", () => {
+    expect(canCompleteOppositePair(new Set([0, 2]), 0, 4)).toBe(false);
+  });
+
+  it("odd degree (triangle) never matches", () => {
+    expect(canCompleteOppositePair(new Set([0]), 1, 3)).toBe(false);
+    expect(canCompleteOppositePair(new Set([0, 1, 2]), 0, 3)).toBe(false);
+  });
+
+  it("degree 6 (hex) opposite pair", () => {
+    expect(canCompleteOppositePair(new Set([2]), 5, 6)).toBe(true);
+    expect(canCompleteOppositePair(new Set([2]), 4, 6)).toBe(false);
+  });
+});
+
+describe("hasCompleteOppositePair", () => {
+  it("matches a finished opposite pair", () => {
+    expect(hasCompleteOppositePair(new Set([0, 2]), 4)).toBe(true);
+    expect(hasCompleteOppositePair(new Set([1, 3]), 4)).toBe(true);
+  });
+
+  it("does not match two decided faces that aren't opposite", () => {
+    expect(hasCompleteOppositePair(new Set([0, 1]), 4)).toBe(false);
+  });
+
+  it("does not match fewer or more than exactly 2 decided faces", () => {
+    expect(hasCompleteOppositePair(new Set(), 4)).toBe(false);
+    expect(hasCompleteOppositePair(new Set([0]), 4)).toBe(false);
+    expect(hasCompleteOppositePair(new Set([0, 1, 2]), 4)).toBe(false);
+  });
+
+  it("odd degree (triangle) never matches", () => {
+    expect(hasCompleteOppositePair(new Set([0, 1]), 3)).toBe(false);
+  });
+
+  it("degree 6 (hex) opposite pair", () => {
+    expect(hasCompleteOppositePair(new Set([1, 4]), 6)).toBe(true);
+    expect(hasCompleteOppositePair(new Set([1, 3]), 6)).toBe(false);
   });
 });
 

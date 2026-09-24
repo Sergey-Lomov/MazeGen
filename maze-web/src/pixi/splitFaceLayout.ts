@@ -27,6 +27,35 @@ export function circularDist(a: number, b: number, degree: number): number {
   return Math.min(d, degree - d);
 }
 
+/** True if a candidate node holding `decidedFaces` should own a brand-new face at `targetFace`
+ * because doing so completes a recognized bridge/diagonal pair (GitHub issue #580's rotation
+ * counterpart, shared by post-edit's `rotateSplitPointNodes` and preset's `rotatePresetSplitPoint`)
+ * — `targetFace` isn't already decided, AND the face geometrically opposite it
+ * (`circularDist(targetFace, opposite, degree) === degree / 2`) already **is** decided. A `wall`/
+ * undecided opposite face does not count — only a real decided connection forms a bridge pair.
+ * Bridge/diagonal shapes are only defined for even degree (square=4, hex=6) —
+ * `detectSplitSpecialShapeKind`'s own guard — so this is unconditionally `false` for odd degree
+ * (triangle=3). The candidate's total decided-face count elsewhere is irrelevant to this check. */
+export function canCompleteOppositePair(decidedFaces: ReadonlySet<number>, targetFace: number, degree: number): boolean {
+  if (degree % 2 !== 0) return false;
+  if (decidedFaces.has(targetFace)) return false;
+  for (const face of decidedFaces) if (circularDist(targetFace, face, degree) === degree / 2) return true;
+  return false;
+}
+
+/** True if `decidedFaces` already forms a complete opposite pair (2 decided faces, geometrically
+ * opposite each other) — a finished bridge/diagonal. Handing such a candidate a 3rd decided face
+ * unconditionally destroys its recognized shape (`detectSplitSpecialShapeKind` requires an exact
+ * 2-face count per node for degree 4/6, no tolerance for a 3rd), regardless of which face the 3rd
+ * one is or whether it's geometrically opposite anything — checked independently of
+ * `canCompleteOppositePair` so a rotate's fallback path can avoid picking an already-finished
+ * candidate when a less committed one is available. */
+export function hasCompleteOppositePair(decidedFaces: ReadonlySet<number>, degree: number): boolean {
+  if (degree % 2 !== 0 || decidedFaces.size !== 2) return false;
+  const [a, b] = [...decidedFaces];
+  return circularDist(a, b, degree) === degree / 2;
+}
+
 /** The two outer faces of three consecutive faces on a circular tile, excluding the middle. */
 export function adjacentTripleOuterFaces(faces: number[], degree: number): [number, number] | null {
   if (faces.length !== 3) return null;
