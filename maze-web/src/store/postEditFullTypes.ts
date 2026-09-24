@@ -230,6 +230,15 @@ export interface PostEditState {
    *  `removePostEditPointEntity` directly, no dialog). The dialog rebuilds its row list from this
    *  `point`/`level` on every render (`buildPostEditPointEntities`), never caching descriptors. */
   postEditEntityDeletePrompt: { point: [number, number]; level?: number } | null;
+  /** In-progress multi-command reset prompt (GitHub issue #549, mirroring the delete tool's own
+   *  picker) — set when the `reset` tool's cell branch targets a point carrying more than one
+   *  still-relevant command (per compaction; one dialog row per distinct command, not per
+   *  lifeline — see `PostEditResetLifelineDescriptor`'s own doc comment for why). `requestPostEditReset`
+   *  is the sole entry point: it counts `buildPostEditResetLifelinesAt`'s rows for `point`/`level`
+   *  and only opens this prompt when the count is >1 (0 is a no-op, 1 resets that command directly,
+   *  no dialog). The dialog rebuilds its row list from this `point`/`level` on every render, never
+   *  caching rows. */
+  postEditResetPrompt: { point: [number, number]; level?: number } | null;
   /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
    *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
    *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
@@ -288,8 +297,29 @@ export interface PostEditActions {
   resetPostEdit: () => void;
   /** Cell branch of the unified Reset tool (GitHub issue #327) — resets one point's
    * edges/teleports/split-slots/start-finish back to generation-time state. See
-   * `resetPostEditPoint` (postEditUtils.ts). */
+   * `resetPostEditPoint` (postEditUtils.ts). Called for the "Reset all" dialog button and the
+   * Shift-bypass bulk path (GitHub issue #549) — the ordinary click path goes through
+   * `requestPostEditReset` instead, which opens a picker dialog when the point carries more than
+   * one still-relevant command (one row per distinct command, not per lifeline). */
   resetPostEditPoint: (point: [number, number]) => void;
+  /** Entry point from `PostEditController` for the `reset` tool's cell branch (GitHub issue #549,
+   *  mirroring `requestPostEditEntityDelete` from #550/#540). Counts
+   *  `buildPostEditResetLifelinesAt`'s rows for `point`/`level`: 0 is a no-op, exactly 1 calls
+   *  `resetPostEditPointLifeline` on its own `commandIndex` directly (no dialog), more than 1 opens
+   *  `postEditResetPrompt`. `bulk` (held Shift) bypasses the picker dialog entirely and resets every
+   *  lifeline at once via `resetPostEditPoint`. */
+  requestPostEditReset: (point: [number, number], level: number | undefined, bulk?: boolean) => void;
+  cancelPostEditReset: () => void;
+  /** Resets exactly one row's own lifeline down to before its LATEST command (GitHub issue #549
+   *  follow-up) — thin wrapper over `deletePostEditCommand(commandIndex)` (GitHub issue #547's
+   *  existing per-row Delete action), `commandIndex` being that row's own
+   *  `PostEditResetLifelineDescriptor.commandIndex`. The single code path both a reset-dialog row
+   *  click and `requestPostEditReset`'s count===1 shortcut go through. Closes the prompt if, after
+   *  the reset, the prompt's own point has no affected lifelines left. */
+  resetPostEditPointLifeline: (commandIndex: number) => void;
+  /** "Reset all" — resets every lifeline currently affecting `postEditResetPrompt`'s point (via
+   *  `resetPostEditPoint`, the whole-point fixed-point lifeline cascade) and closes the prompt. */
+  resetAllPostEditPointLifelines: () => void;
   /** Delete tool (GitHub issue #386, extended by #550) — removes every generation-placed non-edge
    * piece of content touching `point`'s nodes: start/finish marker, teleport links, vertical
    * passages, elevators, split slots. Basic edges are untouched (see `wall`/`reset`). This is the

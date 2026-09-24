@@ -1031,6 +1031,106 @@ describe("mazeStore post-edit actions", () => {
   });
 });
 
+describe("mazeStore reset-dialog actions (GitHub issue #549)", () => {
+  it("requestPostEditReset is a no-op when nothing touches the point", () => {
+    useMazeStore.getState().requestPostEditReset([5, 5], undefined, false);
+    expect(useMazeStore.getState().postEditResetPrompt).toBeNull();
+  });
+
+  it("requestPostEditReset resets the single command directly, without opening the dialog, when exactly one lifeline is affected", () => {
+    seedPostEdit({ commands: [{ kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" }] });
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, false);
+    const s = useMazeStore.getState();
+    expect(s.postEditResetPrompt).toBeNull();
+    expect(s.postEditCommands.some((c) => c.kind === "addTeleport")).toBe(false);
+  });
+
+  it("requestPostEditReset opens the dialog when more than one lifeline is affected, and cancelPostEditReset closes it without changing the log", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+        { kind: "setEdge", edge: es(n(0), n(1), "basic") },
+      ],
+    });
+    const before = useMazeStore.getState().postEditCommands;
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, false);
+    expect(useMazeStore.getState().postEditResetPrompt).toEqual({ point: [0, 0], level: undefined });
+    useMazeStore.getState().cancelPostEditReset();
+    expect(useMazeStore.getState().postEditResetPrompt).toBeNull();
+    expect(useMazeStore.getState().postEditCommands).toBe(before);
+  });
+
+  it("requestPostEditReset with bulk (held Shift) skips the dialog and resets the whole point directly", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+        { kind: "setEdge", edge: es(n(0), n(1), "basic") },
+      ],
+    });
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, true);
+    const s = useMazeStore.getState();
+    expect(s.postEditResetPrompt).toBeNull();
+    expect(s.postEditCommands).toHaveLength(0);
+  });
+
+  it("resetPostEditPointLifeline resets only the clicked row's own command, leaving the other lifeline's command intact (Delete semantics, not truncate-after)", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+        { kind: "setEdge", edge: es(n(0), n(1), "basic") },
+      ],
+    });
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, false);
+    const rows = useMazeStore.getState().postEditCommands;
+    const teleportIndex = rows.findIndex((c) => c.kind === "addTeleport");
+    useMazeStore.getState().resetPostEditPointLifeline(teleportIndex);
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands.some((c) => c.kind === "addTeleport")).toBe(false);
+    expect(s.postEditCommands.some((c) => c.kind === "setEdge")).toBe(true);
+    // The other lifeline still touches the point, so the dialog stays open for it.
+    expect(s.postEditResetPrompt).toEqual({ point: [0, 0], level: undefined });
+  });
+
+  it("resetPostEditPointLifeline auto-closes the dialog once no lifeline is left at the point", () => {
+    seedPostEdit({ commands: [{ kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" }] });
+    // Force the dialog open directly (bypassing the single-lifeline auto-resolve in requestPostEditReset)
+    // to exercise resetPostEditPointLifeline's own closing check in isolation.
+    useMazeStore.setState({ postEditResetPrompt: { point: [0, 0], level: undefined } });
+    useMazeStore.getState().resetPostEditPointLifeline(0);
+    expect(useMazeStore.getState().postEditResetPrompt).toBeNull();
+  });
+
+  it("resetAllPostEditPointLifelines closes the dialog and resets every lifeline touching the point at once", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
+        { kind: "setEdge", edge: es(n(0), n(1), "basic") },
+      ],
+    });
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, false);
+    useMazeStore.getState().resetAllPostEditPointLifelines();
+    const s = useMazeStore.getState();
+    expect(s.postEditResetPrompt).toBeNull();
+    expect(s.postEditCommands).toHaveLength(0);
+  });
+
+  // Regression test for the multi-slot removeSplitPoint dedup bug found during review: two
+  // lifelines whose latest command is the SAME shared removeSplitPoint must collapse into one
+  // dialog row, so resetting one doesn't secretly also un-remove the other slot.
+  it("clicking the single row for a shared removeSplitPoint command restores both of its slots at once, not just one", () => {
+    seedPostEdit({
+      commands: [{ kind: "removeSplitPoint", point: [0, 0], pointId: "p1", removedSlotIds: [0, 1] }],
+    });
+    useMazeStore.getState().requestPostEditReset([0, 0], undefined, false);
+    const s0 = useMazeStore.getState();
+    // A single shared command means exactly one lifeline reaches the dialog-opening threshold from
+    // the caller's point of view only when there'd be >1 DISTINCT rows — here there's exactly one
+    // row (one command), so requestPostEditReset resolves it directly without opening a dialog.
+    expect(s0.postEditResetPrompt).toBeNull();
+    expect(s0.postEditCommands).toHaveLength(0);
+  });
+});
+
 describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #341)", () => {
   /** Two floors' worth of `floors`/`floorFields`, with `activeFloorId` on floor index 1 — the
    *  geometry `startPostEditVerticalPassagePlacement`'s own available-direction probe reads. */

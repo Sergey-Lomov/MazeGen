@@ -17,6 +17,7 @@ import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDia
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
+import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
 import { AlertModal } from "../AlertModal";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -111,6 +112,8 @@ export function PostEditFeature() {
   const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
   const postEditEntityDeletePrompt = useMazeStore((s) => s.postEditEntityDeletePrompt);
   const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
+  const postEditResetPrompt = useMazeStore((s) => s.postEditResetPrompt);
+  const cancelPostEditReset = useMazeStore((s) => s.cancelPostEditReset);
   const postEditDragFailureMessage = useMazeStore((s) => s.postEditDragFailureMessage);
   const dismissPostEditDragFailureMessage = useMazeStore((s) => s.dismissPostEditDragFailureMessage);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
@@ -139,6 +142,14 @@ export function PostEditFeature() {
       cancelPostEditEntityDelete();
     }
   }, [openCard, postEditEntityDeletePrompt, cancelPostEditEntityDelete]);
+
+  // Same reasoning as the entity-delete picker above — the reset picker (GitHub issue #549) has no
+  // meaning once the user leaves the post-edit card.
+  useEffect(() => {
+    if (openCard !== "post_edit" && postEditResetPrompt !== null) {
+      cancelPostEditReset();
+    }
+  }, [openCard, postEditResetPrompt, cancelPostEditReset]);
 
   // The "Changes" panel closes when leaving the post-edit card, same as the other post-edit
   // panels above — it has no meaning once the user is looking at a different feature.
@@ -189,6 +200,10 @@ export function PostEditFeature() {
 
       {postEditEntityDeletePrompt && (
         <PostEditEntityDeleteDialog onClose={cancelPostEditEntityDelete} />
+      )}
+
+      {postEditResetPrompt && (
+        <PostEditResetDialog onClose={cancelPostEditReset} />
       )}
 
       {postEditDragFailureMessage && (
