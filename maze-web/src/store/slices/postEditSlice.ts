@@ -39,6 +39,7 @@ import {
   derivedStateToLegacyFields as legacyFieldsFor, resolveActiveNodeIdAt, nextPostEditIdCounters,
   nextSplitSlotIdCounters,
   buildPostEditPointEntitiesAt, removePostEditSplitSlots, resolveNodeIdToEndpoint,
+  buildPostEditResetLifelinesAt,
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
 
@@ -79,6 +80,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _nextPostEditElevatorId: 1,
   postEditSplitTargetPrompt: null,
   postEditEntityDeletePrompt: null,
+  postEditResetPrompt: null,
   postEditChangesOpen: true,
   postEditChangesEntityFilter: null,
   postEditDragOverride: null,
@@ -487,6 +489,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditElevatorPending: null,
         postEditSplitTargetPrompt: null,
         postEditEntityDeletePrompt: null,
+        postEditResetPrompt: null,
         postEditChangesEntityFilter: null,
       };
     });
@@ -658,6 +661,44 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     if (!prompt) return;
     set({ postEditEntityDeletePrompt: null });
     get().deletePostEditPoint(prompt.point);
+  },
+
+  requestPostEditReset: (point, level, bulk) => {
+    const state = get();
+    const lifelines = buildPostEditResetLifelinesAt(state, point, level);
+    if (lifelines.length === 0) return;
+    // Held shift bypasses the picker dialog entirely and resets every lifeline at once — mirrors
+    // `requestPostEditEntityDelete`'s own bulk shortcut (GitHub issue #550/#540).
+    if (bulk) {
+      get().resetPostEditPoint(point);
+      return;
+    }
+    if (lifelines.length === 1) {
+      get().resetPostEditPointLifeline(lifelines[0].commandIndex);
+      return;
+    }
+    set({ postEditResetPrompt: { point, level }, postEditSplitTargetPrompt: null });
+  },
+
+  cancelPostEditReset: () => set({ postEditResetPrompt: null }),
+
+  resetPostEditPointLifeline: (commandIndex) => {
+    // A row resets only its own lifeline's LATEST command (GitHub issue #549 follow-up), same
+    // single-entry-collapse-or-cascade semantics `deletePostEditCommand` already gives the Changes
+    // panel's own per-row Delete action — not the whole lifeline via a lifeline-key cascade.
+    get().deletePostEditCommand(commandIndex);
+
+    const prompt = get().postEditResetPrompt;
+    if (!prompt) return;
+    const remaining = buildPostEditResetLifelinesAt(get(), prompt.point, prompt.level);
+    if (remaining.length === 0) set({ postEditResetPrompt: null });
+  },
+
+  resetAllPostEditPointLifelines: () => {
+    const prompt = get().postEditResetPrompt;
+    if (!prompt) return;
+    set({ postEditResetPrompt: null });
+    get().resetPostEditPoint(prompt.point);
   },
 
   resetPostEditCommand: (commandIndex) => {

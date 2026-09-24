@@ -1023,7 +1023,7 @@ Picking a node calls `applyPostEditSplitTargetPick(nodeId)`, which clears the pr
 
 `PostEditRenderer` draws every node of a split point at once, not just the currently active one — `postEditActiveSplitNode` still governs which endpoint edge-tool clicks/edits target, but no longer filters what's drawn.
 
-A split point (a point with more than one `NodeDto`) is excluded entirely from `buildMazeWalls`'s ordinary wall/passage reading — every geometric edge touching one is skipped there (both interior walls and boundary walls), and rendered instead by `buildSplitPassages` + `SplitJunctionRenderer`:
+A split point (a point with more than one `NodeDto`) is excluded from `buildMazeWalls`'s ordinary wall/passage reading — every geometric edge touching one is skipped there, and rendered instead by `buildSplitPassages` + `SplitJunctionRenderer`. Its **boundary** sides (a field-edge face has no neighbor, so it can never be one of a split node's own connected faces) are the one exception: `buildMazeWalls` draws those in a separate pass instead of skipping them along with the interior faces, otherwise a split point placed against the field edge would render with no boundary wall at all — the same fix mirrored on the preset stage's `buildPresetWallGroups` (GitHub issue #572, `Specs/preset-connections.md`'s "Rendering" section).
 
 - For each geometric face a node connects across (`kind !== "teleport"`, matched by node id, not just cell coordinate — a "face" means a neighboring tile, not a specific node of that neighbor), that node draws its own share of the wall on that face (`SplitPassage.wallSegments`, in its own color). When several of the point's nodes connect across the same face, the face's edge is divided evenly among them in slot order, each getting one contiguous sub-segment, so two independent passages sharing a face read as visually distinct rather than overlapping. Every face always has one of `"wall" | "passage" | "one_way_out" | "one_way_in" | "undefined"` — post-edit defaults an undecided face to `"wall"` (no optional-connection concept exists here; see `Specs/preset-connections.md`'s "Split nodes" section for the preset stage's `"undefined"` default). When the neighbor across a face is itself split, each node's *specific* partner among the neighbor's nodes is resolved individually (not a single assumed "the" neighbor node), so a decided connection to one particular neighbor slot is never misread against a different one of that neighbor's nodes.
 - Those shares are linked into `connectors`: a node with **exactly 2** connected faces, both plain two-way passages, draws one straight line directly between its two shares' centers — no hub point, since a pure through-passage reads more naturally as one continuous corridor than a bent one via a hub. Any other count (1, or 3+), or exactly 2 but not both plain passages, draws one line per share from the node's own point on a small circle around the tile center (radius = 1/2 of the cell's own radius, i.e. `TILE_SIZE / 4`, evenly distributed among the point's node count — 3 nodes → 0°/120°/240°, etc. — rotated by a per-tessellation starting angle, `getSplitCircleRotationDeg` in `tessellationGeometry.ts` — 45° for square, 0° for hex/tri pending visual tuning) out to that share's center. The circle itself is never drawn. A node with zero connections draws nothing at all. A one-way's arrowhead is drawn on this connector line (never on the along-face segment); an `"undefined"` share/connector renders desaturated (`disabledOf`/`disabledOfNumber`) instead of the node's normal color. A face where every one of the point's nodes explicitly has `"wall"` renders as one plain solid wall spanning the whole face instead of per-node segments.
@@ -1168,14 +1168,40 @@ hover uses):
   non-split endpoint pair — see the cell branch below for how a split point's faces actually get
   reset), the guard exists purely so a future caller can't silently hit the mismatched semantics.
 - **Outside the near-edge zone, or the near-edge hit touches a split point (either endpoint's
-  point currently has more than one node)** — cell branch: `resetPostEditPoint(point)` prunes every
-  command in the log whose lifeline ever touched `point` (fixed-point cascade, see "Point-reset" in
-  the Command Log section above) and replays what remains. This restores the point to
-  generation-time state — every edge/teleport/vertical-passage/elevator/start-finish command
+  point currently has more than one node)** — cell branch: `requestPostEditReset(point, level,
+  bulk)` (GitHub issue #549, mirroring `requestPostEditEntityDelete` from #550/#540) is the entry
+  point. It counts the point's still-relevant lifelines via `buildPostEditResetLifelinesAt`
+  (`collectAffectedLifelineKeys` in `postEditReplay.ts` — the same fixed-point "which lifelines
+  currently touch `point`/`level`" scan `filterCommandsForPoint` runs internally, exposed on its own
+  so the dialog can list the set before anything is pruned): 0 is a no-op, exactly 1 calls
+  `resetPostEditPointLifeline` on its own `commandIndex` directly (no dialog), more than 1 opens
+  `postEditResetPrompt` — `PostEditResetDialog` then lists one row per DISTINCT command among those
+  lifelines' latest commands, not one row per lifeline: a command naming several lifelines at once
+  (`removeSplitPoint`, whose `removedSlotIds` can span multiple slots) collapses its lifelines into a
+  single row, since resetting it resets all of them together. Each row is labeled via the same
+  `postEditCommandLabel` vocabulary the "Changes" panel rows use, built from that command,
+  `commandIndex` being its own oldest-to-newest log index. The dialog carries a "Reset all" button.
+  Clicking a row resets only that ONE command, not any lifeline's whole history — `resetPostEditPointLifeline` is a thin
+  wrapper over `deletePostEditCommand(commandIndex)` (GitHub issue #547's existing per-row Delete
+  action): a plain move/direction-change/removal collapses away leaving the rest of the lifeline's
+  history (including earlier commands of the SAME lifeline) intact and replayed on top, while a
+  command that MINTS the lifeline (its first command, no baseline counterpart) cascades the whole
+  lifeline away instead, same as any other create-command delete — there's nothing left for a
+  dependent to describe once its creation is undone. Held **Shift** (`bulk:
+  true`, captured at pointerdown the same way `PostEditController`'s delete-tool bulk flag is, so a
+  drag started with Shift held stays bulk for its whole gesture) bypasses the picker entirely and
+  calls `resetPostEditPoint(point)` directly — the pre-#549 one-shot behavior, unchanged: it prunes
+  every command in the log whose lifeline ever touched `point` (fixed-point cascade, see
+  "Point-reset" in the Command Log section above) and replays what remains. This restores the point
+  to generation-time state — every edge/teleport/vertical-passage/elevator/start-finish command
   touching any of the point's current *or past* nodes (original plus every split slot ever added
   there, including one added via `addSplitNode` and never confirmed) is dropped, so the derived
   state falls back to `postEditBaseline.derived` for that lifeline. This is the only way to reset a
   split connection — the edge branch refuses it.
+
+  A count>1 request that opens the dialog mid-drag ends the gesture right there (same `endEdgeDrag()`
+  guard the delete tool's own picker uses), so a drag never keeps running "held" underneath an open
+  dialog.
 
   Drag-capable, same as the edge branch (GitHub issue #489): a press-drag paints a reset stroke
   across every in-field cell the cursor enters, deduped per gesture. `BaseController`'s

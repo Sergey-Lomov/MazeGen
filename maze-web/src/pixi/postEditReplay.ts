@@ -588,6 +588,28 @@ function collectAffectedLifelines(
   return toRemove;
 }
 
+/** Fixed-point collection of every lifeline key currently touching `point`/`level` (plan section 9)
+ * — the same repeated-`collectAffectedLifelines` loop `filterCommandsForPoint` runs internally,
+ * exposed on its own so a caller that needs the affected *set* (not the pruned log) doesn't have to
+ * re-derive it — the post-edit Reset tool's multi-lifeline picker dialog (GitHub issue #549) is the
+ * motivating case: it lists one row per affected lifeline, built from the CURRENT (unpruned) log,
+ * before the user picks which one (or all) to actually reset. */
+export function collectAffectedLifelineKeys(
+  baseline: PostEditBaseline,
+  commands: PostEditCommand[],
+  point: [number, number],
+  level?: number,
+): Set<string> {
+  let current = commands;
+  let accumulated = new Set<string>();
+  for (;;) {
+    const toRemove = collectAffectedLifelines(baseline, current, point, level);
+    if (toRemove.size === 0) return accumulated;
+    accumulated = new Set([...accumulated, ...toRemove]);
+    current = current.filter((cmd) => !lifelineKeysOf(cmd).some((k) => toRemove.has(k)));
+  }
+}
+
 /** Prunes `commands` to remove every command belonging to a lifeline that currently touches
  * `point`/`level`, iterating to a fixed point so multi-level dependency chains (slot -> edge on
  * slot -> move another lifeline through that slot -> ...) are fully resolved, not just the first

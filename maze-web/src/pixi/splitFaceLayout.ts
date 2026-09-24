@@ -110,7 +110,13 @@ export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]):
     const aOpposite = isOpposite(connectedIndices[0]);
     const bOpposite = isOpposite(connectedIndices[1]);
     if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not recognized
-    return aOpposite ? "bridge" : "diagonal";
+    if (!aOpposite) return "diagonal";
+    // Both nodes span an opposite-face pair, but a "bridge" needs the two pairs to be the
+    // *different* axis (e.g. N/S crossing E/W) — two nodes both claiming the same axis (both
+    // {0,2} or both {1,3}) is a degenerate double-coverage of one pair, not a real bridge
+    // (GitHub issue #591).
+    const samePair = connectedIndices[0][0] === connectedIndices[1][0] && connectedIndices[0][1] === connectedIndices[1][1];
+    return samePair ? null : "bridge";
   }
 
   // degree === 6
@@ -118,7 +124,11 @@ export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]):
   const oppositeCount = oppositeFlags.filter(Boolean).length;
 
   if (nodeCount === 2) {
-    if (oppositeCount === 2) return "hex_bridge";
+    if (oppositeCount === 2) {
+      // Same distinct-pair requirement as degree 4's "bridge" above (GitHub issue #591).
+      const samePair = connectedIndices[0][0] === connectedIndices[1][0] && connectedIndices[0][1] === connectedIndices[1][1];
+      return samePair ? null : "hex_bridge";
+    }
     if (oppositeCount === 0) return "hex_diagonal";
     return null; // one opposite, one not — not recognized
   }

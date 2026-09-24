@@ -39,7 +39,6 @@ export function buildPresetWallGroups(
         continue;
       }
       if (splitPointKeys.has(`${nx},${ny}`)) continue; // rendered by buildPresetSplitPassages instead
-
       // each interior edge is shared by two cells; only process it once, from
       // the lexicographically-smaller side
       const ownsEdge = x < nx || (x === nx && y < ny);
@@ -73,6 +72,23 @@ export function buildPresetWallGroups(
       }
 
       preset.push({ a: [x, y], b: [nx, ny], kind, style: "solid", oneWayDir });
+    }
+  }
+
+  // Boundary walls for split-point cells (GitHub issue #572) — the main loop above skips a
+  // split-point cell entirely (its interior faces are rendered by buildPresetSplitPassages
+  // instead), which also skipped its field-edge side since a boundary offset is never one of
+  // buildPresetSplitPassages's connected faces (only in-field neighbors are registered — see
+  // buildPresetSplitPassages's own doc comment). One cell per (x,y) here (unlike mazeSelectors'
+  // per-node walls.ts), so no dedup is needed.
+  for (const [x, y] of cells) {
+    if (!splitPointKeys.has(`${x},${y}`)) continue;
+    const { offsets } = getNeighborData(cfg, x, y);
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (cellSet.has(`${nx},${ny}`)) continue;
+      preset.push({ a: [x, y], b: [nx, ny], kind: "none", style: "solid" });
     }
   }
 

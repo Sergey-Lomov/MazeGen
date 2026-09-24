@@ -17,6 +17,7 @@ import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from 
 import { formatPostEditId, parsePostEditIdNumber } from "../../pixi/postEditIdFormat";
 import { buildPostEditPointEntities, type PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
 import { buildNodeByIdMap } from "../../pixi/postEditCommandLabels";
+import { buildPostEditResetLifelines, type PostEditResetLifelineDescriptor } from "../../pixi/postEditResetLifelines";
 import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -474,6 +475,43 @@ export function buildPostEditPointEntitiesAt(
     nodeLevel,
     nodeById, multiFloor, splitCtx,
   });
+}
+
+/** The slice of `MazeStore` `buildPostEditResetLifelinesAt` reads — same narrowing reasoning as
+ * `PostEditPointEntitiesSourceState`, plus the log/baseline fields a lifeline listing (unlike the
+ * delete picker's live-entity listing) needs to read directly. */
+export type PostEditResetLifelinesSourceState = Pick<
+  MazeStore,
+  "nodes" | "postEditDraftSplitPoints" | "postEditActiveSplitNode" | "floors" | "floorFields" | "activeTessellationConfig"
+  | "postEditBaseline" | "postEditCommands" | "postEditDraftEdges"
+>;
+
+/** Builds the row list for the post-edit Reset tool's multi-lifeline picker dialog (GitHub issue
+ * #549) at one point/level — defers to `buildPostEditResetLifelines` for the actual lifeline
+ * collection/labeling, resolving the `nodeById`/`splitCtx` label context the same way
+ * `buildPostEditPointEntitiesAt` does. Returns `[]` before the first generation (no baseline yet). */
+export function buildPostEditResetLifelinesAt(
+  state: PostEditResetLifelinesSourceState,
+  point: [number, number],
+  level: number | undefined,
+): PostEditResetLifelineDescriptor[] {
+  if (state.postEditBaseline === null) return [];
+  const nodeById = buildNodeByIdMap(state.nodes);
+  const multiFloor = state.floors.length > 1;
+  const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig)) : new Set<string>();
+  };
+  const splitCtx: SplitLabelContext = {
+    allNodes: state.nodes,
+    splitPoints: state.postEditDraftSplitPoints,
+    activeSplitNode: state.postEditActiveSplitNode,
+    draftEdges: state.postEditDraftEdges,
+    cfg: state.activeTessellationConfig,
+    inFieldCellsAt,
+  };
+  return buildPostEditResetLifelines(state.postEditBaseline, state.postEditCommands, point, level, nodeById, multiFloor, splitCtx);
 }
 
 /** Removes `targetSlotIds` from `point` (GitHub issue #550 follow-up feedback points 2-3) — the

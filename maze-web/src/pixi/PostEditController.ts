@@ -28,12 +28,13 @@ function isSplitCell(point: [number, number], nodeMap: Map<string, number[]>): b
   return ids !== undefined && ids.length > 1;
 }
 
-/** True while the entity-delete picker (GitHub issue #550) is open — pointer input must not keep
- *  driving canvas tools underneath it, mirroring `isPresetModalOpen`'s own guard for the preset
- *  side (GitHub issue #540 follow-up bug report: without this, an in-flight cell drag gesture that
- *  opened the dialog on its first cell kept running as the cursor moved to further cells). */
+/** True while the entity-delete picker (GitHub issue #550) or the reset picker (GitHub issue #549)
+ *  is open — pointer input must not keep driving canvas tools underneath it, mirroring
+ *  `isPresetModalOpen`'s own guard for the preset side (GitHub issue #540 follow-up bug report:
+ *  without this, an in-flight cell drag gesture that opened the dialog on its first cell kept
+ *  running as the cursor moved to further cells). */
 function isPostEditModalOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
-  return state.postEditEntityDeletePrompt !== null;
+  return state.postEditEntityDeletePrompt !== null || state.postEditResetPrompt !== null;
 }
 
 
@@ -66,11 +67,13 @@ export class PostEditController extends BaseController {
   private verticalPassageDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
   private elevatorDragOrigin: PostEditEndpoint | null = null;
 
-  // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
-  // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
-  // not whatever it happens to be on a later pointermove (mirrors `PresetConnectionsController`'s
-  // own `bulkDelete` field, GitHub issue #550).
-  private bulkDelete = false;
+  // Captured at pointerdown so a cell-drag gesture (which re-requests deletion/reset on every cell
+  // it visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started
+  // with, not whatever it happens to be on a later pointermove (mirrors
+  // `PresetConnectionsController`'s own `bulkDelete` field, GitHub issue #550). Shared by both the
+  // `delete` tool and the `reset` tool's cell branch (GitHub issue #549) — one shift-held flag per
+  // gesture, whichever picker-backed tool is active.
+  private bulkPointAction = false;
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === "Escape") {
@@ -79,6 +82,7 @@ export class PostEditController extends BaseController {
       useMazeStore.getState().cancelPostEditElevatorPlacement();
       useMazeStore.getState().cancelPostEditSplitTarget();
       useMazeStore.getState().cancelPostEditEntityDelete();
+      useMazeStore.getState().cancelPostEditReset();
     }
   };
 
@@ -273,7 +277,7 @@ export class PostEditController extends BaseController {
       this.renderer.updateHover(null);
       if (state.postEditTool === "delete") {
         this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
-          useMazeStore.getState().requestPostEditEntityDelete(p, level, this.bulkDelete);
+          useMazeStore.getState().requestPostEditEntityDelete(p, level, this.bulkPointAction);
           this.dragDidApply = true;
           // A count>1 request opens `postEditEntityDeletePrompt` synchronously — the drag gesture
           // must end right here, or it silently keeps running (as "button still held") once the
@@ -316,8 +320,11 @@ export class PostEditController extends BaseController {
       this.renderer.updateHover(null);
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
       this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
-        useMazeStore.getState().resetPostEditPoint(p);
+        useMazeStore.getState().requestPostEditReset(p, level, this.bulkPointAction);
         this.dragDidApply = true;
+        // A count>1 request opens `postEditResetPrompt` synchronously — the drag gesture must end
+        // right here, same reasoning as the `delete` tool's own guard above (GitHub issue #549).
+        if (useMazeStore.getState().postEditResetPrompt) this.endEdgeDrag();
       });
       return;
     }
@@ -344,7 +351,7 @@ export class PostEditController extends BaseController {
     // Held shift bypasses the entity picker dialog for this gesture — captured here (not read
     // fresh at request time) so a drag started with shift held stays bulk-delete for every cell
     // it visits, even if shift happens to be released mid-drag.
-    this.bulkDelete = shiftKey === true;
+    this.bulkPointAction = shiftKey === true;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.postEditTool;
@@ -367,7 +374,7 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
-        useMazeStore.getState().requestPostEditEntityDelete([cell.x, cell.y], level, this.bulkDelete);
+        useMazeStore.getState().requestPostEditEntityDelete([cell.x, cell.y], level, this.bulkPointAction);
         // A count>1 request opens `postEditEntityDeletePrompt` synchronously — don't arm a drag
         // gesture in that case, or it's stuck "held" once the dialog closes (no further
         // pointerdown/pointerup pair reaches the canvas to end it normally; mirrors
@@ -528,9 +535,14 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
-        useMazeStore.getState().resetPostEditPoint([cell.x, cell.y]);
-        this.beginCellDrag([cell.x, cell.y]);
-        this.dragDidApply = true;
+        useMazeStore.getState().requestPostEditReset([cell.x, cell.y], level, this.bulkPointAction);
+        // A count>1 request opens `postEditResetPrompt` synchronously — don't arm a drag gesture in
+        // that case, or it's stuck "held" once the dialog closes (mirrors the `delete` tool's own
+        // guard below, GitHub issue #549).
+        if (!useMazeStore.getState().postEditResetPrompt) {
+          this.beginCellDrag([cell.x, cell.y]);
+          this.dragDidApply = true;
+        }
       }
       return;
     }
