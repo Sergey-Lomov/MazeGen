@@ -259,6 +259,16 @@ describe("detectSplitSpecialShapeKind", () => {
     expect(detectSplitSpecialShapeKind([passage([0, 1], 4), passage([2, 3], 4)])).toBe("diagonal");
   });
 
+  it("degree 4, 2 nodes: both opposite pairs on the SAME axis -> null, not bridge (GitHub issue #591)", () => {
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 4), passage([0, 2], 4)])).toBeNull();
+    expect(detectSplitSpecialShapeKind([passage([1, 3], 4), passage([1, 3], 4)])).toBeNull();
+  });
+
+  it("degree 6, 2 nodes: both opposite pairs on the SAME axis -> null, not hex_bridge (GitHub issue #591)", () => {
+    expect(detectSplitSpecialShapeKind([passage([0, 3], 6), passage([0, 3], 6)])).toBeNull();
+    expect(detectSplitSpecialShapeKind([passage([1, 4], 6), passage([1, 4], 6)])).toBeNull();
+  });
+
   it("a node without the face count required by a recognized topology never matches a special shape", () => {
     const oneConnected = [passage([0], 6), passage([1, 4], 6)];
     expect(detectSplitSpecialShapeKind(oneConnected)).toBeNull();
