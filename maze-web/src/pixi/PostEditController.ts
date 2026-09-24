@@ -292,6 +292,35 @@ export class PostEditController extends BaseController {
     const nodeMap = this.getNodeMap(floorNodes);
 
     if (state.postEditTool === "reset") {
+      // Once a reset gesture has started, keep dispatching through the branch selected at
+      // pointerdown. The cursor may cross an edge hit zone, but that must not switch a cell reset
+      // stroke to edge mutations (or make the cell stroke stop being processed).
+      if (this.isCellDrag) {
+        const proj = makeProjection(state.activeTessellationConfig);
+        const cell = proj.screenToGrid(vpX, vpY);
+        const inField = nodeMap.has(`${cell.x},${cell.y}`);
+        this.renderer.updateHover(null);
+        this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
+        this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
+          useMazeStore.getState().requestPostEditReset(p, level, this.bulkPointAction);
+          this.dragDidApply = true;
+          if (useMazeStore.getState().postEditResetPrompt) this.endEdgeDrag();
+        });
+        return;
+      }
+      if (this.isEdgeDrag) {
+        const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(edge, true);
+        this.continueEdgeDrag(edge, (e) => {
+          const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode, level);
+          if (nodeKey) {
+            useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+            this.dragDidApply = true;
+          }
+        });
+        return;
+      }
       const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       // Split connections can't be reset via the edge branch (GitHub issue #327) — outside the
       // near-edge zone, or when the near-edge hit touches a split point, fall back to cell hover.

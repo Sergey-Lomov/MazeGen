@@ -16,6 +16,8 @@ class TestController extends BaseController {
   continueCellDrag(point: [number, number] | null, onNewCell: (point: [number, number]) => void): void { super.continueCellDrag(point, onNewCell); }
   endEdgeDrag(): void { super.endEdgeDrag(); }
   get isDragActive(): boolean { return super.isDragActive; }
+  get isEdgeDrag(): boolean { return super.isEdgeDrag; }
+  get isCellDrag(): boolean { return super.isCellDrag; }
 
   armMarkerDrag(marker: "set_start" | "set_finish"): void { super.armMarkerDrag(marker); }
   releaseMarkerDrag(): void { super.releaseMarkerDrag(); }
@@ -38,6 +40,8 @@ describe("BaseController edge drag", () => {
     const c = new TestController();
     c.beginEdgeDrag("a");
     expect(c.isDragActive).toBe(true);
+    expect(c.isEdgeDrag).toBe(true);
+    expect(c.isCellDrag).toBe(false);
 
     const seen: string[] = [];
     c.continueEdgeDrag(edge("a"), (e) => seen.push(e.key));
@@ -106,6 +110,8 @@ describe("BaseController cell drag", () => {
     const c = new TestController();
     c.beginCellDrag([0, 0]);
     expect(c.isDragActive).toBe(true);
+    expect(c.isEdgeDrag).toBe(false);
+    expect(c.isCellDrag).toBe(true);
 
     const seen: [number, number][] = [];
     c.continueCellDrag([0, 0], (p) => seen.push(p));
@@ -144,20 +150,48 @@ describe("BaseController cell drag", () => {
     c.beginCellDrag([0, 0]);
     c.endEdgeDrag();
     expect(c.isDragActive).toBe(false);
+    expect(c.isEdgeDrag).toBe(false);
+    expect(c.isCellDrag).toBe(false);
 
     const seen: [number, number][] = [];
     c.continueCellDrag([0, 0], (p) => seen.push(p));
     expect(seen).toEqual([]);
   });
 
-  it("a cell drag and an edge drag never share a visited-set key (namespaced)", () => {
+  it("a cell drag cannot be continued through the edge callback", () => {
     const c = new TestController();
-    // Cell branch starts the gesture, then the cursor grazes an edge whose key happens to
-    // stringify like the cell's — the `cell:` prefix keeps them distinct so the edge still fires.
+    // Cell branch starts the gesture, then the cursor grazes an edge. The gesture kind remains
+    // cell, so the edge callback must not fire.
     c.beginCellDrag([1, 0]);
     const edgeSeen: string[] = [];
     c.continueEdgeDrag(edge("1,0"), (e) => edgeSeen.push(e.key));
-    expect(edgeSeen).toEqual(["1,0"]);
+    expect(edgeSeen).toEqual([]);
+  });
+
+  it("locks a cell gesture to cell callbacks even when an edge is hit", () => {
+    const c = new TestController();
+    c.beginCellDrag([0, 0]);
+
+    const edgeSeen: string[] = [];
+    const cellSeen: [number, number][] = [];
+    c.continueEdgeDrag(edge("edge"), (e) => edgeSeen.push(e.key));
+    c.continueCellDrag([1, 0], (p) => cellSeen.push(p));
+
+    expect(edgeSeen).toEqual([]);
+    expect(cellSeen).toEqual([[1, 0]]);
+  });
+
+  it("locks an edge gesture to edge callbacks even when a cell is hit", () => {
+    const c = new TestController();
+    c.beginEdgeDrag("start");
+
+    const edgeSeen: string[] = [];
+    const cellSeen: [number, number][] = [];
+    c.continueCellDrag([1, 0], (p) => cellSeen.push(p));
+    c.continueEdgeDrag(edge("next"), (e) => edgeSeen.push(e.key));
+
+    expect(cellSeen).toEqual([]);
+    expect(edgeSeen).toEqual(["next"]);
   });
 });
 

@@ -189,6 +189,31 @@ export class PresetConnectionsController extends BaseController {
       // Both branches are drag-capable (GitHub issue #489) — edge via `beginEdgeDrag`, cell via
       // `beginCellDrag` (BaseController, shared bookkeeping).
       const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      // Once a clear gesture has started, keep dispatching through the branch selected at
+      // pointerdown. Crossing an edge hit zone must not switch a cell clear to edge mutations,
+      // and a cell clear must continue while the cursor is over an edge.
+      if (this.isCellDrag) {
+        const proj = makeProjection(cfg);
+        const cell = proj.screenToGrid(vpX, vpY);
+        const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+        this.renderer.updateHover(null);
+        this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
+        this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
+          const l = activeFloorLevel(useMazeStore.getState());
+          useMazeStore.getState().requestPresetEntityDelete(p, l, { kind: "point_all" }, this.bulkDelete);
+          if (useMazeStore.getState().presetEntityDeletePrompt) this.endEdgeDrag();
+        });
+        return;
+      }
+      if (this.isEdgeDrag) {
+        const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(edge, true);
+        this.continueEdgeDrag(edge, (e) => {
+          useMazeStore.getState().applyPresetConnectionsToolAt("reset", e.key, e.from, e.to);
+        });
+        return;
+      }
       const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       const level = activeFloorLevel(state);
       const isSplit = (p: [number, number]) => {

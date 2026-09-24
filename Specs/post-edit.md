@@ -1209,9 +1209,10 @@ hover uses):
   `beginEdgeDrag`/`continueEdgeDrag`) drive it — they share the one `dragVisited` set and the
   `endEdgeDrag`/`isDragActive` teardown with the edge drag, keyed through a private
   `cell:x,y`-prefixed helper so a cell key can never collide with a `FieldEdge` key (a gesture is
-  only ever one or the other, since the active tool is fixed for its duration). The near-edge zone
-  still hands off to the edge branch mid-drag, so a stroke that grazes an edge resets that grain
-  instead of the point there. In auto-confirm mode each painted cell schedules a debounced
+  only ever one or the other, since the drag kind is locked by the branch selected at pointerdown).
+  The near-edge hit test may change hover presentation during a gesture, but it cannot switch the
+  mutation branch: a cell-started stroke remains a cell reset and an edge-started stroke remains an
+  edge reset. In auto-confirm mode each painted cell schedules a debounced
   reconfirm on pointer-up, identical to the edge branch.
 
   Post-edit itself isn't multi-floor-aware (`Specs/floors.md`'s "Non-goals") even though generation
