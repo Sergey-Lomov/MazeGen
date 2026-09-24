@@ -20,8 +20,6 @@ export interface ProjectFilePostEdit {
   nextElevatorId: number;
   /** Per point key ("x,y" or "x,y@level") high-water mark for that point's split slot ids. */
   nextSplitSlotId: Record<string, number>;
-  /** High-water mark for one-way edge ids (GitHub issue #564). */
-  nextOneWayId: number;
   /** High-water mark for split point (whole-tile) ids (GitHub issue #564). */
   nextSplitPointId: number;
 }

@@ -9,8 +9,7 @@ import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 
-const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
-  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _legacyId?: string): PostEditEdgeState => ({ kind, from, to });
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -80,7 +79,6 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditElevatorPending: null,
     _nextPostEditElevatorId: 1,
     _nextSplitSlotId: {},
-    _nextPostEditOneWayId: 1,
     postEditDraftSplitPointIds: {},
     _nextPostEditSplitPointId: 1,
     fieldDirty: false,
@@ -407,7 +405,7 @@ describe("parseAndValidate — malformed input", () => {
     data.postEdit = {
       commands: [{ kind: "setEdge", edge: { kind: "bogus", from: nodeEndpoint(0), to: nodeEndpoint(1) } }],
       nextTeleportId: 1, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
-      nextOneWayId: 1, nextSplitPointId: 1,
+      nextSplitPointId: 1,
     };
     expect(() => parseAndValidate(data)).toThrow(/Invalid PostEditEdge kind/);
   });
@@ -432,10 +430,11 @@ describe("parseAndValidate — malformed input", () => {
     data.postEdit = {
       commands: [{ kind: "addTeleport", id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "bogus" }],
       nextTeleportId: 2, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
-      nextOneWayId: 1, nextSplitPointId: 1,
+      nextSplitPointId: 1,
     };
     expect(() => parseAndValidate(data)).toThrow(/Invalid.*[Dd]irection/);
   });
+
 
   it("throws when root is not an object", () => {
     expect(() => parseAndValidate("not an object")).toThrow(/Expected object/);

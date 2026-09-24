@@ -1,6 +1,6 @@
 import type { NodeDto } from "../wasm/types";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
-import type { PostEditEdgeState, PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
+import type { PostEditTeleportDirection, PostEditVerticalPassageDirection } from "../store/postEditTypes";
 import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPoint, resolveEndpointToHoverPoint, nodeEndpoint } from "./postEditEndpoint";
 import { messageForTitleKey } from "./splitPatternTitles";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
@@ -222,11 +222,6 @@ export function buildNodeByIdMap(nodes: readonly NodeDto[]): Map<number, NodeDto
  *  `PostEditCommand`'s own doc comment in `postEditCommandTypes.ts`), so "the resulting one-way
  *  side" is always at most one of `aToB`/`bToA`. Shared by `entityIdOf` and `postEditCommandLabel`'s
  *  own `setEdgePair` case so the two never resolve a command's one-way side differently. */
-function oneWaySideOf(aToB: PostEditEdgeState, bToA: PostEditEdgeState): (PostEditEdgeState & { kind: "one_way_forward" | "one_way_backward" }) | undefined {
-  const side = aToB.kind === "one_way_forward" || aToB.kind === "one_way_backward" ? aToB : bToA;
-  return side.kind === "one_way_forward" || side.kind === "one_way_backward" ? side : undefined;
-}
-
 /** The stable entity id a command is associated with (GitHub issue #574), or `undefined` for a
  *  command kind with no id of its own (`setEdge`/`setEdgePair` on a wall/basic face, `setMeta`,
  *  `rotateSplitPoint` — a face toggle/meta slot/whole-tile rotation isn't a stably-identified
@@ -240,9 +235,9 @@ function oneWaySideOf(aToB: PostEditEdgeState, bToA: PostEditEdgeState): (PostEd
 export function entityIdOf(command: PostEditCommand): string | undefined {
   switch (command.kind) {
     case "setEdge":
-      return command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward" ? command.edge.id : undefined;
+      return undefined;
     case "setEdgePair":
-      return oneWaySideOf(command.aToB, command.bToA)?.id;
+      return undefined;
     case "addTeleport": case "setTeleportDirection": case "moveTeleportEndpoint": case "removeTeleport":
       return command.id;
     case "addVerticalPassage": case "setVerticalPassageDirection": case "moveVerticalPassageEndpoint": case "removeVerticalPassage":
@@ -251,8 +246,8 @@ export function entityIdOf(command: PostEditCommand): string | undefined {
       return command.id;
     case "addSplitNode": case "removeSplitNode": case "removeSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
       return command.pointId;
-    case "setMeta": case "rotateSplitPoint":
-      return undefined;
+    case "addMeta": case "setMeta": case "removeMeta": case "rotateSplitPoint":
+      return command.kind === "rotateSplitPoint" ? undefined : command.id;
   }
 }
 
@@ -271,6 +266,13 @@ export function postEditCommandLabel(
   multiFloor: boolean,
   splitCtx: SplitLabelContext | null = null,
 ): PostEditCommandLabel {
+  // The generated Paraglide module can lag behind message JSON during a dev-server session.
+  // New lifecycle labels must therefore degrade to their existing wording instead of crashing
+  // the Changes panel when the module has not been regenerated yet.
+  const localized = (key: string, fallback: () => string): string => {
+    const candidate = (m as Record<string, unknown>)[key];
+    return typeof candidate === "function" ? (candidate as () => string)() : fallback();
+  };
   const edge = (from: PostEditEndpoint, to: PostEditEndpoint) => edgeBubbles(from, to, nodeById, multiFloor, splitCtx);
   const link = (action: string, bubbles: PostEditEntityBubble[], arrow: "->" | "<-" | "<->", highlightStyle: "line" | "one_way" | "boundary" = "line"): PostEditCommandLabel =>
     ({ action, bubbles, showArrow: bubbles.length === 2, arrow, rowHighlight: linkRowHighlight(bubbles, highlightStyle), entityId: undefined });
@@ -317,12 +319,7 @@ export function postEditCommandLabel(
       if (command.aToB.kind === "basic" && command.bToA.kind === "basic") {
         return withEntityId(link(m["post_edit.changes_action_set_edge_passage"](), edge(command.a, command.b), "<->", "boundary"));
       }
-      // `directionFlip` (GitHub issue #545): this click changed an already-one-way face's
-      // direction rather than creating a fresh one-way passage — labeled distinctly, mirrors
-      // `setVerticalPassageDirection` vs. `addVerticalPassage`.
-      const action = command.directionFlip
-        ? m["post_edit.changes_action_flip_edge_one_way"]()
-        : m["post_edit.changes_action_set_edge_one_way"]();
+      const action = m["post_edit.changes_action_set_edge_one_way"]();
       // Bubble order is always `a, b` (GitHub issue #546 follow-up: fixed point order, direction
       // shown by the arrow glyph alone, not by swapping which bubble comes first) — `aToB` says
       // whether traffic actually flows a->b or b->a.
@@ -338,15 +335,15 @@ export function postEditCommandLabel(
       return withEntityId(teleportRow(m["post_edit.changes_action_move_teleport_endpoint"](), edge(command.from, command.to), teleportArrow(command.direction)));
     case "removeTeleport":
       return withEntityId(teleportRow(m["post_edit.changes_action_remove_teleport"](), edge(command.from, command.to), teleportArrow(command.direction)));
-    case "setMeta": {
-      const set = command.endpoint !== null;
+    case "addMeta": case "setMeta": case "removeMeta": {
+      const set = command.kind !== "removeMeta";
       const action = command.slot === "start"
-        ? (set ? m["post_edit.changes_action_set_start"]() : m["post_edit.changes_action_clear_start"]())
-        : (set ? m["post_edit.changes_action_set_finish"]() : m["post_edit.changes_action_clear_finish"]());
+        ? (command.kind === "addMeta" ? localized("post_edit.changes_action_add_start", () => "Create start") : set ? m["post_edit.changes_action_set_start"]() : m["post_edit.changes_action_clear_start"]())
+        : (command.kind === "addMeta" ? localized("post_edit.changes_action_add_finish", () => "Create finish") : set ? m["post_edit.changes_action_set_finish"]() : m["post_edit.changes_action_clear_finish"]());
       // `previousEndpoint` (GitHub issue #564 follow-up) is this clear's own denormalized prior
       // value — without it a "start/finish cleared" row showed no coordinates at all.
-      const bubbleEndpoint = command.endpoint ?? command.previousEndpoint;
-      return plain(action, bubbleEndpoint ? [endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx)] : []);
+      const bubbleEndpoint = command.endpoint ?? ("previousEndpoint" in command ? command.previousEndpoint : undefined);
+      return withEntityId(plain(action, bubbleEndpoint ? [endpointBubble(bubbleEndpoint, nodeById, multiFloor, splitCtx)] : []));
     }
     case "addSplitNode":
       return withEntityId(plain(m["post_edit.changes_action_add_split_node"](), [splitSlotBubble(command.point, command.level, command.slotId, multiFloor, splitCtx)]));

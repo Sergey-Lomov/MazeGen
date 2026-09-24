@@ -3,7 +3,6 @@ import type { PostEditEdge } from "../store/mazeStore";
 import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual } from "./postEditEndpoint";
-import { formatPostEditId } from "./postEditIdFormat";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 
 export {
@@ -53,11 +52,7 @@ export function assignSequentialIds(items: { key: string }[]): Map<string, numbe
  * (GitHub issue #222), or a plain `node` endpoint otherwise — never a not-yet-confirmed split
  * node, since every id here already exists in the snapshot. Defaults to `nodeEndpoint` for callers
  * that predate auto-split (no split points possible, so it's always the identity resolution).
- *
- * One-way edges get a stable id (GitHub issue #564), assigned deterministically by
- * `assignSequentialIds` over each one-way edge's own canonical `edgeKey(from, to)` — already
- * directional (forward/backward on the same face sort to different keys), so no extra direction
- * component is needed in the key. */
+ */
 export function buildPostEditDraftEdgesFromGenerated(
   edges: EdgeDto[],
   endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
@@ -71,13 +66,10 @@ export function buildPostEditDraftEdgesFromGenerated(
     const to = endpointFor(e.to);
     entries.push({ key: edgeKey(from, to), from, to, oneWay: !hasReverse });
   }
-  const oneWayIds = assignSequentialIds(entries.filter((e) => e.oneWay).map((e) => ({ key: e.key })));
   const result: Record<string, PostEditEdge> = {};
   for (const e of entries) {
-    // Provisional id, same as `extractPostEditTeleports`' own — `buildMultiFloorPostEditDraft`
-    // renumbers every one-way edge globally after merging all per-level batches.
     result[e.key] = e.oneWay
-      ? { from: e.from, to: e.to, kind: "one_way_forward", id: formatPostEditId("oneWay", oneWayIds.get(e.key)!) }
+      ? { from: e.from, to: e.to, kind: "one_way_forward" }
       : { from: e.from, to: e.to, kind: "basic" };
   }
   return result;
@@ -258,9 +250,7 @@ export function rotateSplitPointNodes(
     // `edge.kind === "wall" || edge.kind === "basic"` would not narrow here — TS doesn't narrow a
     // discriminated union via `===` against an already-union-typed discriminant field, only via
     // exact single-literal checks — so branch on the one-way member instead.
-    const movedEdge: PostEditEdge = edge.kind === "one_way_forward" || edge.kind === "one_way_backward"
-      ? { kind: edge.kind, from, to, id: edge.id }
-      : { kind: edge.kind, from, to };
+    const movedEdge: PostEditEdge = { kind: edge.kind, from, to };
     rotated[edgeKey(from, to)] = movedEdge;
   }
 

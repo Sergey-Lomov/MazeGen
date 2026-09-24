@@ -9,8 +9,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 
 const n = nodeEndpoint;
 
-const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], id = "o1"): PostEditEdgeState =>
-  kind === "one_way_forward" || kind === "one_way_backward" ? { kind, from, to, id } : { kind, from, to };
+const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _legacyId?: string): PostEditEdgeState => ({ kind, from, to });
 
 function emptyDerived(): PostEditDerivedState {
   return {
@@ -43,11 +42,10 @@ describe("compactPostEditCommands — edge group (GitHub issue #548)", () => {
         aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"),
       },
     ];
-    // The wall->passage toggle collapses to just "passage" (the plain edge group); the one-way
-    // creation belongs to its own `oneWay:o1` group and is never superseded by a plain toggle —
-    // creating a one-way passage stays visible unless the entity itself is later destroyed.
+    // The earlier wall/passage setup is obsolete once the one-way is placed on the same face;
+    // the one-way creation itself remains visible.
     const compacted = compactPostEditCommands(baseline, commands);
-    expect(compacted).toEqual([commands[1], commands[2]]);
+    expect(compacted).toEqual([commands[2]]);
     expect(replayPostEditCommands(baseline, compacted)).toEqual(replayPostEditCommands(baseline, commands));
   });
 
@@ -58,6 +56,39 @@ describe("compactPostEditCommands — edge group (GitHub issue #548)", () => {
       { kind: "setEdgePair", a: n(2), b: n(3), aToB: es(n(2), n(3), "basic"), bToA: es(n(3), n(2), "basic") },
     ];
     expect(compactPostEditCommands(baseline, commands)).toEqual(commands);
+  });
+
+  it("keeps only the final wall when generation was a passage", () => {
+    const baseline = makeBaseline({ derived: {
+      ...emptyDerived(),
+      edges: { "n0-n1": es(n(0), n(1), "basic"), "n1-n0": es(n(1), n(0), "basic") },
+    } });
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "basic") },
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall") },
+    ];
+    expect(compactPostEditCommands(baseline, commands)).toEqual([commands[1]]);
+  });
+
+  it("keeps only the final passage when generation was a wall", () => {
+    const baseline = makeBaseline();
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall") },
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "basic") },
+    ];
+    expect(compactPostEditCommands(baseline, commands)).toEqual([commands[1]]);
+  });
+
+  it("drops a plain sequence when its final state equals generation", () => {
+    const baseline = makeBaseline({ derived: {
+      ...emptyDerived(),
+      edges: { "n0-n1": es(n(0), n(1), "basic"), "n1-n0": es(n(1), n(0), "basic") },
+    } });
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall") },
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "basic"), bToA: es(n(1), n(0), "basic") },
+    ];
+    expect(compactPostEditCommands(baseline, commands)).toEqual([]);
   });
 });
 
@@ -76,11 +107,11 @@ describe("compactPostEditCommands — one-way creation survives unless the entit
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"), directionFlip: true,
+        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o1"),
       },
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"), directionFlip: true,
+        aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall"),
       },
     ];
     const compacted = compactPostEditCommands(baseline, commands);
@@ -94,11 +125,33 @@ describe("compactPostEditCommands — one-way creation survives unless the entit
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"), replacedOneWayIds: { aToB: "o1" },
+        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"),
       },
     ];
     const compacted = compactPostEditCommands(baseline, commands);
     expect(compacted).toEqual([]);
+    expect(replayPostEditCommands(baseline, compacted)).toEqual(replayPostEditCommands(baseline, commands));
+  });
+
+  it("keeps a final wall when generation had a passage", () => {
+    const baseline = makeBaseline({
+      derived: {
+        ...emptyDerived(),
+        edges: {
+          ["n0-n1"]: es(n(0), n(1), "basic"),
+          ["n1-n0"]: es(n(1), n(0), "basic"),
+        },
+      },
+    });
+    const commands: PostEditCommand[] = [
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
+      {
+        kind: "setEdgePair", a: n(0), b: n(1),
+        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"),
+      },
+    ];
+    const compacted = compactPostEditCommands(baseline, commands);
+    expect(compacted).toEqual([commands[1]]);
     expect(replayPostEditCommands(baseline, compacted)).toEqual(replayPostEditCommands(baseline, commands));
   });
 
@@ -108,7 +161,7 @@ describe("compactPostEditCommands — one-way creation survives unless the entit
       { kind: "setEdgePair", a: n(0), b: n(1), aToB: es(n(0), n(1), "one_way_forward", "o1"), bToA: es(n(1), n(0), "wall") },
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o2"), replacedOneWayIds: { aToB: "o1" },
+        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "one_way_forward", "o2"),
       },
     ];
     const compacted = compactPostEditCommands(baseline, commands);
@@ -120,13 +173,13 @@ describe("compactPostEditCommands — one-way creation survives unless the entit
     const baseline = makeBaseline({
       derived: {
         ...emptyDerived(),
-        edges: { [`${"n0"}-${"n1"}`]: { kind: "one_way_forward", from: n(0), to: n(1), id: "o1" } },
+        edges: { [`${"n0"}-${"n1"}`]: { kind: "one_way_forward", from: n(0), to: n(1) } },
       },
     });
     const commands: PostEditCommand[] = [
       {
         kind: "setEdgePair", a: n(0), b: n(1),
-        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"), replacedOneWayIds: { aToB: "o1" },
+        aToB: es(n(0), n(1), "wall"), bToA: es(n(1), n(0), "wall"),
       },
     ];
     expect(compactPostEditCommands(baseline, commands)).toBe(commands);
@@ -337,5 +390,39 @@ describe("compactPostEditCommands — idempotence and no-op", () => {
     const once = compactPostEditCommands(baseline, commands);
     const twice = compactPostEditCommands(baseline, once);
     expect(twice).toEqual(once);
+  });
+});
+
+describe("compactPostEditCommands - waypoint lifecycle", () => {
+  it("collapses consecutive finish moves to the latest Set finish", () => {
+    const baseline = makeBaseline({ derived: { ...emptyDerived(), meta: { start: null, finish: n(1) } } });
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "finish", id: "f", endpoint: n(2), previousEndpoint: n(1) },
+      { kind: "setMeta", slot: "finish", id: "f", endpoint: n(3), previousEndpoint: n(2) },
+    ];
+    expect(compactPostEditCommands(baseline, commands)).toEqual([commands[1]]);
+  });
+
+  it("keeps the finish's pre-deletion coordinate after its move is compacted away", () => {
+    const baseline = makeBaseline({ derived: { ...emptyDerived(), meta: { start: null, finish: n(1) } } });
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "finish", id: "f", endpoint: n(5), previousEndpoint: n(1) },
+      { kind: "removeMeta", slot: "finish", id: "f", endpoint: n(5) },
+    ];
+    const compacted = compactPostEditCommands(baseline, commands);
+    expect(compacted).toEqual([{ kind: "removeMeta", slot: "finish", id: "f", endpoint: n(5) }]);
+    expect(replayPostEditCommands(baseline, compacted).meta.finish).toBeNull();
+  });
+
+  it("keeps remove/create/move events when a generated finish is deleted and recreated", () => {
+    const baseline = makeBaseline({ derived: { ...emptyDerived(), meta: { start: null, finish: n(1) } } });
+    const commands: PostEditCommand[] = [
+      { kind: "removeMeta", slot: "finish", id: "f", endpoint: n(1) },
+      { kind: "addMeta", slot: "finish", id: "f", endpoint: n(5) },
+      { kind: "setMeta", slot: "finish", id: "f", endpoint: n(6), previousEndpoint: n(5) },
+    ];
+    const compacted = compactPostEditCommands(baseline, commands);
+    expect(compacted).toEqual([commands[1], commands[2]]);
+    expect(replayPostEditCommands(baseline, compacted).meta.finish).toEqual(n(6));
   });
 });

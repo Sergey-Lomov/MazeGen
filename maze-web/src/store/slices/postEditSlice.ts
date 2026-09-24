@@ -53,7 +53,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditDraftTeleports: [] as PostEditTeleportEntry[],
   postEditTeleportPendingFrom: null,
   _nextPostEditTeleportId: 1,
-  _nextPostEditOneWayId: 1,
   postEditDraftMeta: null,
   postEditDraftSplitPoints: {},
   postEditDraftSplitPointIds: {},
@@ -109,61 +108,41 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const currentEdges = state.postEditDraftEdges ?? {};
     const fwdKey = edgeKey(from_, to_);
     const bwdKey = edgeKey(to_, from_);
-    const fromId = from_.kind === "node" ? from_.id : undefined;
-    const toId = to_.kind === "node" ? to_.id : undefined;
     // Effective current entry of each direction — a face's reducer (`setEdgePair`'s own
     // `applyPostEditCommand` case) deletes the record entirely for `wall`, so "no record" and
     // "explicit wall" are the same state on the wire; the `?? wallEdge` fallback below collapses
     // them back for comparison, matching what's actually rendered.
     const wallEdge = (from: PostEditEndpoint, to: PostEditEndpoint): PostEditEdge => ({ kind: "wall", from, to });
-    const curAToBEntry = currentEdges[fwdKey] ?? wallEdge(from_, to_);
-    const curBToAEntry = currentEdges[bwdKey] ?? wallEdge(to_, from_);
-    const curAToB = curAToBEntry.kind;
-    const curBToA = curBToAEntry.kind;
+    const curAToB = (currentEdges[fwdKey] ?? wallEdge(from_, to_)).kind;
+    const curBToA = (currentEdges[bwdKey] ?? wallEdge(to_, from_)).kind;
     const wasOneWay = curAToB === "one_way_forward" || curAToB === "one_way_backward"
       || curBToA === "one_way_forward" || curBToA === "one_way_backward";
-    // One-way id resolution (GitHub issue #564): a fresh one-way (from wall/passage) mints a new id;
-    // flipping an already-one-way face reuses whichever side currently carries the id (same entity,
-    // new direction). `replacedOneWayIds` records the id(s), if any, this command destroys on each
-    // side — resolved here (pre-state still available), never inferred later from the log.
-    let nextOneWayId = state._nextPostEditOneWayId;
-    const mintOneWayId = (): string => formatPostEditId("oneWay", nextOneWayId++);
-    const oldAToBId = curAToB === "one_way_forward" || curAToB === "one_way_backward" ? curAToBEntry.id : undefined;
-    const oldBToAId = curBToA === "one_way_forward" || curBToA === "one_way_backward" ? curBToAEntry.id : undefined;
-
     let aToB: PostEditEdgeState;
     let bToA: PostEditEdgeState;
-    let replacedOneWayIds: { aToB?: string; bToA?: string } | undefined;
     if (tool === "reset") {
+      const fromId = from_.kind === "node" ? from_.id : undefined;
+      const toId = to_.kind === "node" ? to_.id : undefined;
       const origAB = state._generatedEdges.some((e) => e.from === fromId && e.to === toId);
       const origBA = state._generatedEdges.some((e) => e.from === toId && e.to === fromId);
       // A face restored to a baseline one-way gets its ORIGINAL baseline id back, read from
       // `postEditBaseline.derived.edges` — never mints a new one, since nothing new is being
       // created (issue #564: reset restores identity, not just kind).
-      const baselineEdges = state.postEditBaseline.derived.edges;
       if (origAB && origBA) { aToB = { kind: "basic", from: from_, to: to_ }; bToA = { kind: "basic", from: to_, to: from_ }; }
       else if (origAB) {
-        const baseline = baselineEdges[fwdKey];
-        const id = baseline && (baseline.kind === "one_way_forward" || baseline.kind === "one_way_backward") ? baseline.id : mintOneWayId();
-        aToB = { kind: "one_way_forward", from: from_, to: to_, id };
+        aToB = { kind: "one_way_forward", from: from_, to: to_ };
         bToA = { kind: "wall", from: to_, to: from_ };
       } else if (origBA) {
-        const baseline = baselineEdges[bwdKey];
-        const id = baseline && (baseline.kind === "one_way_forward" || baseline.kind === "one_way_backward") ? baseline.id : mintOneWayId();
         aToB = { kind: "wall", from: from_, to: to_ };
-        bToA = { kind: "one_way_forward", from: to_, to: from_, id };
+        bToA = { kind: "one_way_forward", from: to_, to: from_ };
       } else { aToB = { kind: "wall", from: from_, to: to_ }; bToA = { kind: "wall", from: to_, to: from_ }; }
-      replacedOneWayIds = { aToB: oldAToBId, bToA: oldBToAId };
     } else if (tool === "wall") {
       if (curAToB === "wall" && curBToA === "wall") return;
       aToB = { kind: "wall", from: from_, to: to_ };
       bToA = { kind: "wall", from: to_, to: from_ };
-      replacedOneWayIds = { aToB: oldAToBId, bToA: oldBToAId };
     } else if (tool === "passage") {
       if (curAToB === "basic" && curBToA === "basic") return;
       aToB = { kind: "basic", from: from_, to: to_ };
       bToA = { kind: "basic", from: to_, to: from_ };
-      replacedOneWayIds = { aToB: oldAToBId, bToA: oldBToAId };
     } else if (tool === "one_way") {
       // Flip only when THIS face is already the one-way side - not just "some record exists" (a
       // `basic` two-way passage also has a record on both sides, and clicking `one_way` on it must
@@ -181,28 +160,25 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         // toward `bToA` — otherwise every flip after the first re-set the same `bToA` side and
         // never actually toggled the direction (GitHub issue #575).
         const aToBIsOneWay = curAToB === "one_way_forward" || curAToB === "one_way_backward";
-        const id = oldAToBId ?? oldBToAId ?? mintOneWayId();
         if (aToBIsOneWay) {
           aToB = { kind: "wall", from: from_, to: to_ };
-          bToA = { kind: "one_way_forward", from: to_, to: from_, id };
+          bToA = { kind: "one_way_forward", from: to_, to: from_ };
         } else {
-          aToB = { kind: "one_way_forward", from: from_, to: to_, id };
+          aToB = { kind: "one_way_forward", from: from_, to: to_ };
           bToA = { kind: "wall", from: to_, to: from_ };
         }
       } else {
         // Fresh one-way from wall/passage: mints a new id, destroys whatever one-way (if any) used
         // to occupy either side (a `basic` two-way passage has no one-way id to destroy on either
         // side, so both stay `undefined` there).
-        const id = mintOneWayId();
-        aToB = { kind: "one_way_forward", from: from_, to: to_, id };
+        aToB = { kind: "one_way_forward", from: from_, to: to_ };
         bToA = { kind: "wall", from: to_, to: from_ };
-        replacedOneWayIds = { aToB: oldAToBId, bToA: oldBToAId };
       }
     } else {
       return;
     }
 
-    // A face touching a split point's own node is recorded as a fresh `updateSplitNodeFaces`
+      // A face touching a split point's own node is recorded as a fresh `updateSplitNodeFaces`
     // command carrying that node's FULL current face list, not a `setEdgePair` targeting just the
     // clicked face — one click reconfiguring one face of a split node is still "reconfigure this
     // node's wiring", the same one-entity-one-lifeline treatment `updateElevatorFloors` gives a
@@ -251,12 +227,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       const target = splitSide.slotId === undefined ? (splitSideIsFrom ? from_ : to_) : splitEndpoint(splitSide.point, splitSide.slotId, splitSide.level);
       const faces = currentSplitNodeFaces(currentEdges, target).filter((f) => !endpointsEqual(f.neighbor, neighbor));
       if (toNeighbor.kind !== "wall" || fromNeighbor.kind !== "wall") faces.push({ neighbor, toNeighbor, fromNeighbor });
-      const applied = appendPostEditCommand(get, set, {
+      appendPostEditCommand(get, set, {
         kind: "updateSplitNodeFaces", point: splitSide.point, level: splitSide.level, slotId: splitSide.slotId, faces, pointId,
       });
-      if (applied && nextOneWayId !== state._nextPostEditOneWayId) {
-        set({ _nextPostEditOneWayId: nextOneWayId });
-      }
     } else if (tool === "reset") {
       // Unlike wall/passage/one_way, "reset" doesn't record a new "restored to generation state"
       // command — it REMOVES whatever earlier command(s) touched this exact edge, mirroring
@@ -278,11 +251,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (filtered.length === state.postEditCommands.length) return;
       replacePostEditCommands(get, set, filtered, true);
     } else {
-      const directionFlip = tool === "one_way" && wasOneWay ? true : undefined;
-      const applied = appendPostEditCommand(get, set, { kind: "setEdgePair", a: from_, b: to_, aToB, bToA, directionFlip, replacedOneWayIds });
-      if (applied && nextOneWayId !== state._nextPostEditOneWayId) {
-        set({ _nextPostEditOneWayId: nextOneWayId });
-      }
+      appendPostEditCommand(get, set, { kind: "setEdgePair", a: from_, b: to_, aToB, bToA });
     }
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
@@ -619,21 +588,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (e.floors.some(endpointRefsTarget)) appendPostEditCommand(get, set, { kind: "removeElevator", id: e.id, floors: e.floors });
     }
 
-    // One-way faces touching the point (GitHub issue #550 eighth follow-up) — a face-anchored
-    // exception to this action's otherwise vertex-only scope, matching the picker dialog's own
-    // `one_way` row. Reset (not a plain wall) so a one-way carved out of a generation-time passage
-    // reverts to that passage, same as `removePostEditPointEntity`'s `one_way` case. Collected up
-    // front from a single `derived.edges` snapshot, then applied via `applyPostEditToolAt` (which
-    // itself reads/appends against LIVE state) — safe here since none of these faces can reference
-    // each other (each is an independent one-way id, unlike the split-slot cascade above).
-    const oneWayFaces = Object.values(derived.edges).filter(
-      (e): e is Extract<PostEditEdge, { kind: "one_way_forward" | "one_way_backward" }> =>
-        (e.kind === "one_way_forward" || e.kind === "one_way_backward") && refsTarget(e),
-    );
-    for (const edge of oneWayFaces) {
-      get().applyPostEditToolAt("reset", "", edge.from, edge.to);
-    }
-
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -675,16 +629,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       case "elevator":
         get().removePostEditElevator(descriptor.id);
         break;
-      case "one_way": {
-        // Face-anchored, not vertex-anchored like every other kind here (GitHub issue #550 eighth
-        // follow-up) — resets the face to its generation-time state via the same "reset" tool a
-        // right-click on the edge already runs, restoring whatever wall/passage/one-way generation
-        // produced there instead of just wiping it to a bare wall.
-        if (descriptor.otherEndpoint) {
-          get().applyPostEditToolAt("reset", "", descriptor.endpoint, descriptor.otherEndpoint);
-        }
-        break;
-      }
       case "split_point": {
         // GitHub issue #550 follow-up: one row for the whole tile, not one per slot — per-slot
         // removal has its own dedicated surface ("Manage split nodes"). `descriptor.endpoint` is the
@@ -750,14 +694,20 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   setPostEditEndpoint: (kind, endpoint) => {
-    appendPostEditCommand(get, set, { kind: "setMeta", slot: kind, endpoint });
+    const current = get().postEditDerived?.meta[kind] ?? null;
+    const id = kind === "start" ? "s" : "f";
+    appendPostEditCommand(get, set, current === null
+      ? { kind: "addMeta", slot: kind, id, endpoint }
+      : { kind: "setMeta", slot: kind, id, endpoint, previousEndpoint: current });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
   },
   clearPostEditEndpoint: (kind) => {
     const previousEndpoint = get().postEditDerived?.meta[kind] ?? undefined;
-    appendPostEditCommand(get, set, { kind: "setMeta", slot: kind, endpoint: null, previousEndpoint });
+    if (!previousEndpoint) return;
+    const id = kind === "start" ? "s" : "f";
+    appendPostEditCommand(get, set, { kind: "removeMeta", slot: kind, id, endpoint: previousEndpoint });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }

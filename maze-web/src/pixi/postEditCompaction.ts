@@ -3,9 +3,10 @@ import type { PostEditBaseline } from "./postEditReplay";
 import {
   applyPostEditCommand, isCreateCommand, isDirectionCommand, renormalizeCommand,
 } from "./postEditReplay";
-import { endpointKey, type PostEditEndpoint } from "./postEditEndpoint";
+import { edgeKey, endpointKey, type PostEditEndpoint } from "./postEditEndpoint";
 
-/** Groups a command belongs to for compaction purposes (`Specs/post-edit.md`'s "Command Log
+/** Groups commands by the spatial face or entity whose state they change.
+/* (`Specs/post-edit.md`'s "Command Log
  * Compaction" section) — coarser than `lifelineKeysOf` for a plain wall/basic face: every
  * `setEdge`/`setEdgePair` whose resulting side(s) are wall/basic (never one-way) shares one `edge:`
  * group keyed by the face's own undirected endpoint-pair key, since a plain wall<->passage toggle
@@ -17,29 +18,14 @@ import { endpointKey, type PostEditEndpoint } from "./postEditEndpoint";
  * by that side's own `oneWay:${id}` — the SAME per-id lifeline `lifelineKeysOf` already uses — and
  * collapsed by `collapseEntityGroup` exactly like a teleport/vertical-passage lifeline (create,
  * flip-pair, remove). Every other command kind keeps its own `lifelineKeysOf` key(s) unchanged.
- * Returns an array for the same reason `lifelineKeysOf` does — a `setEdgePair` can touch up to two
+ * Returns an array for the same reason `lifelineKeysOf` does — a command can touch multiple groups.
  * independent one-way lifelines (one per side) plus/instead of the plain wall/basic edge group. */
 function compactionGroupsOf(command: PostEditCommand): string[] {
   if (command.kind === "setEdge") {
-    return command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward"
-      ? [`oneWay:${command.edge.id}`]
-      : [`edge:${undirectedEdgeKey(command.edge.from, command.edge.to)}`];
+    return [`edge:${undirectedEdgeKey(command.edge.from, command.edge.to)}`];
   }
   if (command.kind === "setEdgePair") {
-    const groups: string[] = [];
-    const aToBIsOneWay = command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward";
-    const bToAIsOneWay = command.bToA.kind === "one_way_forward" || command.bToA.kind === "one_way_backward";
-    if (aToBIsOneWay) groups.push(`oneWay:${(command.aToB as { id: string }).id}`);
-    if (bToAIsOneWay) groups.push(`oneWay:${(command.bToA as { id: string }).id}`);
-    // A one-way side this command DESTROYS (`replacedOneWayIds`) is also folded in — that old
-    // entity's own lifeline must see this command as its terminating "remove" step, exactly the way
-    // `lifelineKeysOf` already includes a destroyed id so a point-reset cascades it too.
-    if (command.replacedOneWayIds?.aToB !== undefined) groups.push(`oneWay:${command.replacedOneWayIds.aToB}`);
-    if (command.replacedOneWayIds?.bToA !== undefined) groups.push(`oneWay:${command.replacedOneWayIds.bToA}`);
-    // Only when NEITHER side is one-way does this command belong to the plain wall/basic edge group
-    // — a face transitioning TO or FROM one-way is entity creation/destruction, not a plain toggle.
-    if (groups.length === 0) groups.push(`edge:${undirectedEdgeKey(command.a, command.b)}`);
-    return groups;
+    return [`edge:${undirectedEdgeKey(command.a, command.b)}`];
   }
   if (command.kind === "updateSplitNodeFaces") {
     return [command.slotId === undefined
@@ -71,7 +57,8 @@ function compactionGroupsOf(command: PostEditCommand): string[] {
   if (command.kind === "addElevator" || command.kind === "updateElevatorFloors" || command.kind === "removeElevator") {
     return [`elevator:${command.id}`];
   }
-  return [`meta:${command.slot}`];
+  if (command.kind === "addMeta" || command.kind === "setMeta" || command.kind === "removeMeta") return [`meta:${command.slot}`];
+  return [];
 }
 
 function pointKeyOf(point: [number, number], level?: number): string {
@@ -99,36 +86,46 @@ function isMoveCommand(command: PostEditCommand): boolean {
 
 /** True when `command` (already known to belong to `oneWay:${id}`'s own group) is the step that
  * DESTROYS that specific id — either a plain wall/basic result overwriting the face the one-way sat
- * on, or a fresh one-way created on the SAME face replacing it (`replacedOneWayIds` names the old id
- * on the side no longer carrying it). Never true for a `directionFlip`, which keeps the same id
+ * on, or a fresh one-way created on the SAME face replacing it. Face state has no entity identity.
  * alive under a new direction — that is this group's own "move/flip" step, not its remove. */
-function isOneWayRemoveCommand(command: PostEditCommand, id: string): boolean {
-  if (command.kind === "setEdge") {
-    return command.edge.kind !== "one_way_forward" && command.edge.kind !== "one_way_backward";
+/** Compacts one start/finish lifeline without confusing lifecycle events with overwrites. */
+function collapseMetaGroup(commands: PostEditCommand[], indices: number[], superseded: Set<number>): void {
+  const removeAt = indices.findIndex((i) => commands[i].kind === "removeMeta");
+  const firstRemove = removeAt === -1 ? undefined : removeAt;
+  const before = firstRemove === undefined ? indices : indices.slice(0, firstRemove + 1);
+  const suffix = firstRemove === undefined ? indices : indices.slice(firstRemove + 1);
+  const hasCreateBeforeRemove = before.some((i) => commands[i].kind === "addMeta");
+
+  if (firstRemove !== undefined) {
+    if (hasCreateBeforeRemove) {
+      // Created and destroyed within the same log: the whole temporary lifecycle is unobservable.
+      for (const i of before) superseded.add(i);
+    } else {
+      // A generated waypoint existed before the log, so retain its explicit deletion and drop
+      // only the overwritten moves that led to it.
+      for (const i of before.slice(0, -1)) superseded.add(i);
+    }
+
+    // A later recreation supersedes the deletion itself. The surviving addMeta is replayed over
+    // the generated slot (addMeta deliberately supports this compaction case), so the log keeps
+    // the current creation/move lifecycle without an obsolete remove event.
+    if (suffix.some((i) => commands[i].kind === "addMeta")) {
+      for (const i of before) superseded.add(i);
+    }
   }
-  if (command.kind === "setEdgePair") {
-    if (command.directionFlip) return false;
-    return command.replacedOneWayIds?.aToB === id || command.replacedOneWayIds?.bToA === id;
+
+  const creates = suffix.filter((i) => commands[i].kind === "addMeta");
+  const keepCreate = creates[0];
+  const moves = suffix.filter((i) => commands[i].kind === "setMeta");
+  const keepMove = moves.at(-1);
+  for (const i of suffix) {
+    if (i !== keepCreate && i !== keepMove) superseded.add(i);
   }
-  return false;
 }
 
 /** True when `command` mints `id` fresh (the "create" step of an `oneWay:${id}` group) — a
- * `setEdge`/`setEdgePair` whose resulting one-way side carries `id` and isn't a `directionFlip`
+ * `setEdge`/`setEdgePair` whose resulting side changes the face state
  * (a flip reuses an existing id, it never mints one). */
-function isOneWayCreateCommand(command: PostEditCommand, id: string): boolean {
-  if (command.kind === "setEdge") {
-    return (command.edge.kind === "one_way_forward" || command.edge.kind === "one_way_backward") && command.edge.id === id;
-  }
-  if (command.kind === "setEdgePair") {
-    if (command.directionFlip) return false;
-    const aId = command.aToB.kind === "one_way_forward" || command.aToB.kind === "one_way_backward" ? command.aToB.id : undefined;
-    const bId = command.bToA.kind === "one_way_forward" || command.bToA.kind === "one_way_backward" ? command.bToA.id : undefined;
-    return aId === id || bId === id;
-  }
-  return false;
-}
-
 /** Collapsing pass for one `oneWay:${id}` group (GitHub issue #548 follow-up) — same create/
  * flip-pair/remove shape `collapseEntityGroup` gives a teleport/vertical-passage lifeline, but a
  * one-way's own "create" is deliberately NEVER folded away by a plain later toggle the way a
@@ -136,31 +133,16 @@ function isOneWayCreateCommand(command: PostEditCommand, id: string): boolean {
  * supersedes the id's own creation — a user reads "set one-way passage" as a real action worth
  * keeping visible even though a later direction flip is technically equivalent to having created it
  * facing the other way to begin with. */
-function collapseOneWayGroup(commands: PostEditCommand[], indices: number[], id: string, superseded: Set<number>): void {
-  const removeIdx = indices.find((i) => isOneWayRemoveCommand(commands[i], id));
-  if (removeIdx !== undefined) {
-    const before = indices.filter((i) => i < removeIdx);
-    for (const i of before) superseded.add(i);
-    // The remove step itself is only superseded (dropped entirely) when this id was created AND
-    // destroyed within this same log — never when the remove command is ALSO the create step of a
-    // DIFFERENT one-way id on the same physical face (e.g. replacing o1 with a fresh o2 in one
-    // click): that command must survive to record o2's own creation, even though it simultaneously
-    // ends o1's lifeline.
-    const firstIsCreate = indices.length > 0 && isOneWayCreateCommand(commands[indices[0]], id);
-    const mintsAnotherId = isCreateCommand(commands[removeIdx]);
-    if (firstIsCreate && !mintsAnotherId) superseded.add(removeIdx);
-    return;
-  }
+function edgeStateMatches(a: { kind: string }, b: { kind: string }): boolean {
+  if (a.kind !== b?.kind) return false;
+  return true;
+}
 
-  // No remove in this log — only direction-flip pairs collapse; the create itself always survives.
-  const flipIndices = indices.filter((i) => {
-    const c = commands[i];
-    return c.kind === "setEdgePair" && c.directionFlip === true;
-  });
-  for (let k = 0; k + 1 < flipIndices.length; k += 2) {
-    superseded.add(flipIndices[k]);
-    superseded.add(flipIndices[k + 1]);
-  }
+function restoresBaseline(baseline: PostEditBaseline, command: PostEditCommand): boolean {
+  if (command.kind !== "setEdgePair") return false;
+  const baselineAB = baseline.derived.edges[edgeKey(command.a, command.b)] ?? { kind: "wall" };
+  const baselineBA = baseline.derived.edges[edgeKey(command.b, command.a)] ?? { kind: "wall" };
+  return edgeStateMatches(command.aToB, baselineAB) && edgeStateMatches(command.bToA, baselineBA);
 }
 
 /** One pass over `commands`, collecting the index set of every command whose own effect is fully
@@ -196,10 +178,12 @@ function collapseOneWayGroup(commands: PostEditCommand[], indices: number[], id:
  *   from scratch — a later one supersedes every earlier `slot:`/`originalNode:`/`point:` command of
  *   the SAME point (across every one of that point's slot groups at once), the same "whole point
  *   rebuilt" reasoning `removeSplitNode` uses for a single slot.
- * - **`setMeta`**: a later `setMeta` for the same slot supersedes the earlier one outright (only the
- *   slot's current value is ever observable).
+ * - **Start/finish meta commands**: are intentionally never collapsed. A waypoint's creation,
+ *   movement, and removal are distinct lifecycle events. Dropping `removeMeta` before a later
+ *   `addMeta` would make that add replay against the generated waypoint and fail; dropping
+ *   `addMeta` before a move would erase the creation event even though moving is not creation.
  */
-function collectSuperseded(commands: PostEditCommand[]): Set<number> {
+function collectSuperseded(baseline: PostEditBaseline, commands: PostEditCommand[]): Set<number> {
   const superseded = new Set<number>();
   const groupIndices = new Map<string, number[]>();
   for (let i = 0; i < commands.length; i++) {
@@ -256,15 +240,17 @@ function collectSuperseded(commands: PostEditCommand[]): Set<number> {
     if (group.startsWith("edge:")) {
       // Plain wall/basic toggle sequence on one face — every command but the group's last is
       // immediately overwritten. A one-way side never reaches this group (see `compactionGroupsOf`).
-      for (let k = 0; k < indices.length - 1; k++) superseded.add(indices[k]);
-      continue;
-    }
-    if (group.startsWith("oneWay:")) {
-      collapseOneWayGroup(commands, indices, group.slice("oneWay:".length), superseded);
+      const last = indices.at(-1)!;
+      if (restoresBaseline(baseline, commands[last])) {
+        // The final plain state is the generation state, so this whole sequence is unobservable.
+        for (const i of indices) superseded.add(i);
+      } else {
+        for (let k = 0; k < indices.length - 1; k++) superseded.add(indices[k]);
+      }
       continue;
     }
     if (group.startsWith("meta:")) {
-      for (let k = 0; k < indices.length - 1; k++) superseded.add(indices[k]);
+      collapseMetaGroup(commands, indices, superseded);
       continue;
     }
     if (group.startsWith("slot:") || group.startsWith("originalNode:")) {
@@ -351,7 +337,7 @@ export function compactPostEditCommands(
 ): PostEditCommand[] {
   let current = commands;
   for (;;) {
-    const superseded = collectSuperseded(current);
+    const superseded = collectSuperseded(baseline, current);
     if (superseded.size === 0) break;
     current = current.filter((_, i) => !superseded.has(i));
   }

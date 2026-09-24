@@ -27,10 +27,8 @@ vi.mock("../wasm/mazeService", () => ({
 
 // --- postEditEdgesToDto ---
 
-const pe = (from: number, to: number, kind: PostEditEdge["kind"], id = "o1"): PostEditEdge =>
-  kind === "one_way_forward" || kind === "one_way_backward"
-    ? { from: nodeEndpoint(from), to: nodeEndpoint(to), kind, id }
-    : { from: nodeEndpoint(from), to: nodeEndpoint(to), kind };
+const pe = (from: number, to: number, kind: PostEditEdge["kind"], _legacyId?: string): PostEditEdge =>
+  ({ from: nodeEndpoint(from), to: nodeEndpoint(to), kind });
 const noSplits = () => undefined;
 
 describe("postEditEdgesToDto", () => {

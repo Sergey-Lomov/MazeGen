@@ -126,17 +126,14 @@ function validateOptionalLevel(obj: Record<string, unknown>, path: string): numb
   return level;
 }
 
-/** Validates a `PostEditEdgeState`/`PostEditEdge` discriminated union (GitHub issue #564) — `id` is
- * required exactly when `kind` is one of the `one_way_*` variants, mirroring the type itself. */
+/** Validates a `PostEditEdgeState`/`PostEditEdge` face state. */
 function validatePostEditEdgeState(v: unknown, path: string): PostEditEdgeState {
   const obj = assertObject(v, path);
   const kind = assertString(obj.kind, `${path}.kind`);
   const from = validatePostEditEndpoint(obj.from, `${path}.from`);
   const to = validatePostEditEndpoint(obj.to, `${path}.to`);
   if (kind === "wall" || kind === "basic") return { kind, from, to };
-  if (kind === "one_way_forward" || kind === "one_way_backward") {
-    return { kind, from, to, id: assertString(obj.id, `${path}.id`) };
-  }
+  if (kind === "one_way_forward" || kind === "one_way_backward") return { kind, from, to };
   throw new Error(`Invalid PostEditEdge kind at ${path}.kind: ${kind}`);
 }
 
@@ -183,6 +180,13 @@ function validateOptionalBlueprintTitleKey(obj: Record<string, unknown>, path: s
   return assertString(obj.blueprintTitleKey, `${path}.blueprintTitleKey`);
 }
 
+function validateMetaId(v: unknown, slot: "start" | "finish", path: string): "s" | "f" {
+  const id = assertString(v, path);
+  const expected = slot === "start" ? "s" : "f";
+  if (id !== expected) throw new Error(`Invalid meta id at ${path}: expected ${expected}`);
+  return id;
+}
+
 function validateResolvedRotateNode(v: unknown, path: string): ResolvedRotateNode {
   const obj = assertObject(v, path);
   return {
@@ -202,21 +206,11 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
   switch (kind) {
     case "setEdge":
       return { kind, edge: validatePostEditEdgeState(obj.edge, `${path}.edge`) };
-    case "setEdgePair": {
-      const replacedOneWayIdsObj = obj.replacedOneWayIds !== undefined ? assertObject(obj.replacedOneWayIds, `${path}.replacedOneWayIds`) : undefined;
-      const replacedOneWayIds = replacedOneWayIdsObj !== undefined
-        ? {
-            aToB: replacedOneWayIdsObj.aToB !== undefined ? assertString(replacedOneWayIdsObj.aToB, `${path}.replacedOneWayIds.aToB`) : undefined,
-            bToA: replacedOneWayIdsObj.bToA !== undefined ? assertString(replacedOneWayIdsObj.bToA, `${path}.replacedOneWayIds.bToA`) : undefined,
-          }
-        : undefined;
+    case "setEdgePair":
       return {
         kind, a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
         aToB: validatePostEditEdgeState(obj.aToB, `${path}.aToB`), bToA: validatePostEditEdgeState(obj.bToA, `${path}.bToA`),
-        directionFlip: typeof obj.directionFlip === "boolean" ? obj.directionFlip : undefined,
-        replacedOneWayIds,
       };
-    }
     case "addTeleport":
       return {
         kind, id: assertString(obj.id, `${path}.id`),
@@ -242,12 +236,18 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         direction: validateTeleportDirection(obj.direction, `${path}.direction`),
       };
+    case "addMeta":
+      if (obj.slot !== "start" && obj.slot !== "finish") throw new Error(`Invalid slot at ${path}.slot`);
+      return { kind, slot: obj.slot, id: validateMetaId(obj.id, obj.slot, `${path}.id`), endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`) };
     case "setMeta":
       if (obj.slot !== "start" && obj.slot !== "finish") throw new Error(`Invalid slot at ${path}.slot`);
       return {
-        kind, slot: obj.slot, endpoint: obj.endpoint === null ? null : validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+        kind, slot: obj.slot, id: obj.id === undefined ? undefined : validateMetaId(obj.id, obj.slot, `${path}.id`), endpoint: obj.endpoint === null ? null : validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
         previousEndpoint: obj.previousEndpoint === undefined ? undefined : validatePostEditEndpoint(obj.previousEndpoint, `${path}.previousEndpoint`),
       };
+    case "removeMeta":
+      if (obj.slot !== "start" && obj.slot !== "finish") throw new Error(`Invalid slot at ${path}.slot`);
+      return { kind, slot: obj.slot, id: validateMetaId(obj.id, obj.slot, `${path}.id`), endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`) };
     case "addSplitNode":
     case "removeSplitNode":
       return {
@@ -368,7 +368,6 @@ export function validatePostEdit(v: unknown): ProjectFilePostEdit {
     nextVerticalPassageId: assertNumber(obj.nextVerticalPassageId, "postEdit.nextVerticalPassageId"),
     nextElevatorId: assertNumber(obj.nextElevatorId, "postEdit.nextElevatorId"),
     nextSplitSlotId: validateSplitSlotIdMarks(obj.nextSplitSlotId, "postEdit.nextSplitSlotId"),
-    nextOneWayId: assertNumber(obj.nextOneWayId, "postEdit.nextOneWayId"),
     nextSplitPointId: assertNumber(obj.nextSplitPointId, "postEdit.nextSplitPointId"),
   };
 }
@@ -529,4 +528,3 @@ export function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
     throw new Error(`Invalid NodeLockKind at ${path}: ${kind}`);
   return kind;
 }
-

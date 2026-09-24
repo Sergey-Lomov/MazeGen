@@ -12,8 +12,8 @@ const n = nodeEndpoint;
  *  object at all), which this round-trip style would have caught immediately. */
 describe("validatePostEditCommand — post-edit command round-trip (GitHub issue #564 follow-up)", () => {
   const cases: PostEditCommand[] = [
-    { kind: "setEdge", edge: { kind: "one_way_forward", from: n(0), to: n(1), id: "o1" } },
-    { kind: "setEdgePair", a: n(0), b: n(1), aToB: { kind: "one_way_forward", from: n(0), to: n(1), id: "o1" }, bToA: { kind: "wall", from: n(1), to: n(0) }, directionFlip: false, replacedOneWayIds: { aToB: "o2" } },
+    { kind: "setEdge", edge: { kind: "one_way_forward", from: n(0), to: n(1) } },
+    { kind: "setEdgePair", a: n(0), b: n(1), aToB: { kind: "one_way_forward", from: n(0), to: n(1) }, bToA: { kind: "wall", from: n(1), to: n(0) } },
     { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
     { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "forward" },
     { kind: "setTeleportDirection", id: "t1", direction: "two_way", from: n(0), to: n(1) },

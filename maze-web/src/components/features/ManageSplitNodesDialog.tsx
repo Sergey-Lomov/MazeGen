@@ -152,7 +152,6 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       postEditDraftSplitPoints: splitPoints,
       postEditDraftMeta: draftMeta, postEditDraftTeleports: draftTeleports,
       postEditDraftVerticalPassages: draftVerticalPassages, postEditDraftElevators: draftElevators,
-      postEditDraftEdges: draftEdges ?? {},
       nodeLevel: (ep) => ep.kind === "node" ? (nodeById.get(ep.id)?.level ?? 0) : (ep.level ?? 0),
       nodeById, multiFloor: new Set(nodes.map((n) => n.level ?? 0)).size > 1, splitCtx: splitLabelContext,
     },
