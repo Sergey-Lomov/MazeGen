@@ -24,6 +24,11 @@ export interface PresetPointEntityDescriptor {
   endpoint: PresetEndpoint;
   nodeIndex: number;
   title: string;
+  /** Coordinate/endpoint bubbles shown by the entity-delete dialog. */
+  bubbles?: string[];
+  showArrow?: boolean;
+  arrow?: "->" | "<-" | "<->";
+  entityId?: string;
 }
 
 export type PresetPointEntityScope =
@@ -37,6 +42,27 @@ function formatFloor(level: number): string {
 function formatTarget(other: PresetEndpoint, activeFloorLevel: number): string {
   const otherLevel = other.level ?? 0;
   return otherLevel === activeFloorLevel ? `(${other.point[0]},${other.point[1]})` : `(${formatFloor(otherLevel)})`;
+}
+
+function endpointBubbleText(
+  endpoint: PresetEndpoint,
+  activeFloorLevel: number,
+  splitPoints: Record<string, number[]>,
+  splitSemanticNames?: { full: string; short: string }[] | null,
+  nodeIndex?: number,
+  forceFloor = false,
+): string {
+  const endpointLevel = endpoint.level ?? 0;
+  const floorPrefix = forceFloor || endpointLevel !== activeFloorLevel ? `L${endpointLevel + 1}:` : "";
+  const key = endpointLevel === 0
+    ? `${endpoint.point[0]},${endpoint.point[1]}`
+    : `${endpoint.point[0]},${endpoint.point[1]}@${endpointLevel}`;
+  const isSplit = (splitPoints[key]?.length ?? 0) > 0;
+  const suffix = isSplit
+    ? (splitSemanticNames?.[nodeIndex ?? (endpoint.slotId === undefined ? 0 : endpoint.slotId + 1)]?.short
+      ?? m["post_edit.split_node_label_short"]({ slotId: endpoint.slotId === undefined ? 1 : endpoint.slotId + 2 }))
+    : undefined;
+  return `${floorPrefix}${endpoint.point[0]},${endpoint.point[1]}${suffix ? ` (${suffix})` : ""}`;
 }
 
 function formatLockKind(kind: NodeLockKind): string {
@@ -179,6 +205,71 @@ export function buildPresetPointEntities(
     presetConnections, lockedNodes, splitSemanticNames,
   } = input;
 
+  const decorate = (entities: PresetPointEntityDescriptor[]): PresetPointEntityDescriptor[] => entities.map((entity) => {
+    const here = endpointBubbleText(entity.endpoint, activeFloorLevel, presetSplitPoints, splitSemanticNames, entity.nodeIndex);
+    let bubbles = [here];
+    let showArrow = false;
+    let arrow: "->" | "<-" | "<->" = "->";
+    let entityId: string | undefined;
+
+    if (entity.kind === "teleport") {
+      const entry = presetTeleports.find((candidate) => String(candidate.id) === entity.id);
+      if (entry) {
+        const departingHere = presetEndpointsEqual(entry.from, entity.endpoint);
+        const other = departingHere ? entry.to : entry.from;
+        const isForward = departingHere === (entry.direction !== "backward");
+        const forceFloor = (entity.endpoint.level ?? 0) !== (other.level ?? 0);
+        bubbles = [
+          endpointBubbleText(entity.endpoint, activeFloorLevel, presetSplitPoints, splitSemanticNames, entity.nodeIndex, forceFloor),
+          endpointBubbleText(other, activeFloorLevel, presetSplitPoints, undefined, undefined, forceFloor),
+        ];
+        showArrow = true;
+        arrow = entry.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
+        entityId = entity.id;
+      }
+    } else if (entity.kind === "vertical_passage") {
+      const entry = presetVerticalPassages.find((candidate) => String(candidate.id) === entity.id);
+      if (entry) {
+        const departingHere = presetEndpointsEqual(entry.from, entity.endpoint);
+        const other = departingHere ? entry.to : entry.from;
+        const isForward = departingHere === (entry.direction !== "backward");
+        const forceFloor = (entity.endpoint.level ?? 0) !== (other.level ?? 0);
+        bubbles = [
+          endpointBubbleText(entity.endpoint, activeFloorLevel, presetSplitPoints, splitSemanticNames, entity.nodeIndex, forceFloor),
+          endpointBubbleText(other, activeFloorLevel, presetSplitPoints, undefined, undefined, forceFloor),
+        ];
+        showArrow = true;
+        arrow = entry.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
+        entityId = entity.id;
+      }
+    } else if (entity.kind === "elevator") {
+      const entry = presetElevators.find((candidate) => String(candidate.id) === entity.id);
+      if (entry) {
+        bubbles = [entity.endpoint, ...entry.floors.filter((floor) => !presetEndpointsEqual(floor, entity.endpoint))]
+          .map((floor, index) => index === 0
+            ? endpointBubbleText(entity.endpoint, activeFloorLevel, presetSplitPoints, splitSemanticNames, entity.nodeIndex, true)
+            : endpointBubbleText(floor, activeFloorLevel, presetSplitPoints, undefined, undefined, true));
+        entityId = entity.id;
+      }
+    } else if (entity.kind === "edge") {
+      const entry = presetConnections.get(entity.id);
+      if (entry) {
+        const other = presetEndpointsEqual(entry.from, entity.endpoint) ? entry.to : entry.from;
+        bubbles = [here, endpointBubbleText(other, activeFloorLevel, presetSplitPoints)];
+        showArrow = true;
+        arrow = entry.state === "one_way_forward"
+          ? (presetEndpointsEqual(entry.from, entity.endpoint) ? "->" : "<-")
+          : entry.state === "one_way_backward"
+            ? (presetEndpointsEqual(entry.from, entity.endpoint) ? "<-" : "->")
+            : "<->";
+      }
+    }
+
+    if (entity.kind === "start" || entity.kind === "finish") bubbles = [];
+
+    return { ...entity, bubbles, showArrow, arrow, ...(entityId ? { entityId } : {}) };
+  });
+
   if (scope.kind === "vertex_markers") {
     const out: PresetPointEntityDescriptor[] = [];
     const seen = new Set<string>();
@@ -196,7 +287,7 @@ export function buildPresetPointEntities(
         out.push({ ...e, nodeIndex: nodeIndex === -1 ? 0 : nodeIndex });
       }
     }
-    return out;
+    return decorate(out);
   }
 
   const nodesHere = allNodesAt(point, presetSplitPoints, level);
@@ -273,5 +364,5 @@ export function buildPresetPointEntities(
     out.push({ kind: "split_node", id: `split_node:${slotId}`, endpoint, nodeIndex: i + 1, title });
   });
 
-  return out;
+  return decorate(out);
 }
