@@ -298,6 +298,29 @@ describe("presetSplitNodeFaceKinds", () => {
     expect(kinds[0]).toBe("one_way_out");
     expect(kinds[2]).toBe("one_way_in");
   });
+
+  it("resolves a floor-scoped split node with level-free endpoints (GitHub issue #596)", () => {
+    const floorLevel = 1;
+    const originalAtFloor = presetEndpoint(point, undefined, floorLevel);
+    const neighborAtFloor = presetEndpoint([2, 1], undefined, floorLevel);
+    const globalConnections = new Map([
+      [presetEdgeKey(originalAtFloor, neighborAtFloor), {
+        from: originalAtFloor,
+        to: neighborAtFloor,
+        state: "passage" as const,
+        source: "user" as const,
+      }],
+    ]);
+    const scopedConnections = presetConnectionsOnLevel(globalConnections, floorLevel);
+
+    // Selectors operating on one floor strip both the endpoint level and the record key suffix.
+    // Passing a level-bearing endpoint to this scoped map would miss the passage and return
+    // "undefined", which prevents semantic split-node names from being recognized.
+    const kinds = presetSplitNodeFaceKinds(
+      presetEndpoint(point), point, cfg, inFieldCells, scopedConnections, { "1,1": [0] }, {}, undefined,
+    );
+    expect(kinds[0]).toBe("passage");
+  });
 });
 
 // --- computeAutoLockedNodes ---

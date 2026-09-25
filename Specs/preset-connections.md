@@ -585,6 +585,13 @@ For the two drag actions, whether every OTHER floor even has a cell at the new p
 
 Every preset marker/edge selector that resolves a `PresetEndpoint` through `buildPresetNodePositions`'s shared `nodePositions` map (`buildPresetVerticalMarkers`, `buildPresetTeleportEdges`) strips the endpoint's `.level` before the lookup (`withoutLevel`, `presetConnectionsGeometry.ts`) — that map is built once per active-floor redraw from already level-filtered `presetSplitPoints`/`presetConnections`, so its keys never carry a `@level` suffix, while a vertical-passage/elevator/teleport endpoint's own `PresetEndpoint` still does whenever it sits on a non-zero floor. Looking it up with the level suffix intact only ever matched by accident on floor 0 (no suffix either way); on any other floor it silently fell back to the plain cell center instead of the split node's real anchor. `redrawGenSource` (`PresetConnectionsRenderer.ts`) already followed this convention before GitHub issue #594's work.
 
+### Target-floor split-node name resolution (GitHub issue #596)
+
+`PresetSplitTargetDialog` scopes the selected floor's split points and connections before deriving
+semantic node names. The face-kind inputs must therefore use level-free endpoints and an undefined
+level, matching that scoped data; retaining a non-zero endpoint level makes the edge lookup miss and
+falls back to generic `Node N` labels.
+
 ### Entity delete/reset dialog (GitHub issue #540)
 
 Deleting the contents of a point used to be one unconditional action (`resetPresetPoint`, the `clear` tool's cell-drag/click) and RMB vertex-tools resolved to at most one hit via a hardcoded priority chain (`onStart` → `onFinish` → teleport → vertical passage → elevator) — so a click could silently remove the wrong one of several markers stacked on the same node. Both paths now go through a shared "which entity(s)?" flow instead of guessing.
