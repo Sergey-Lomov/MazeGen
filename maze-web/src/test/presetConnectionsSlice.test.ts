@@ -888,6 +888,21 @@ describe("mazeStore preset connections", () => {
       expect(presetEndpointsEqual(s.presetTeleports[0].to, presetEndpoint([1, 0]))).toBe(true);
     });
 
+    it("moving a teleport endpoint through the store preserves its floor", () => {
+      useMazeStore.setState({
+        presetTeleports: [{
+          id: 1,
+          from: presetEndpoint([0, 0], undefined, 1),
+          to: presetEndpoint([1, 0], undefined, 0),
+          direction: "forward",
+        }],
+      });
+      useMazeStore.getState().movePresetTeleportEndpoint(1, "from", [2, 2], 1);
+      const teleport = useMazeStore.getState().presetTeleports[0];
+      expect(teleport.from).toEqual(presetEndpoint([2, 2], undefined, 1));
+      expect(teleport.to).toEqual(presetEndpoint([1, 0], undefined, 0));
+    });
+
     it("elevator opens an elevator placement anchored on the picked slot", () => {
       // Elevator needs a second floor to be a valid placement anchor.
       const state = useMazeStore.getState();

@@ -280,12 +280,13 @@ export function moveTeleportEndpoint(
   teleports: PresetTeleportEntry[],
   hit: PresetTeleportEndpointHit,
   cell: [number, number],
+  level: number,
 ): PresetTeleportEntry[] {
   return teleports.map(t => {
     if (t.id !== hit.id) return t;
     // Moving to a different cell drops any slot the endpoint previously addressed — the slot
     // belonged to the old point, not the new one.
-    return { ...t, [hit.end]: presetEndpoint(cell) };
+    return { ...t, [hit.end]: presetEndpoint(cell, undefined, level) };
   });
 }
 

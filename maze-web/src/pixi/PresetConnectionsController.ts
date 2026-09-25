@@ -109,7 +109,12 @@ export class PresetConnectionsController extends BaseController {
         // endpoint's cell is rejected below, so pointerup must not reinterpret it as a click.
         this.teleportDragMoved = true;
         if (!movedToOther) {
-          useMazeStore.getState().movePresetTeleportEndpoint(this.draggingTeleportEndpoint.id, this.draggingTeleportEndpoint.end, [cell.x, cell.y]);
+          useMazeStore.getState().movePresetTeleportEndpoint(
+            this.draggingTeleportEndpoint.id,
+            this.draggingTeleportEndpoint.end,
+            [cell.x, cell.y],
+            current.level ?? 0,
+          );
         }
       }
       return;

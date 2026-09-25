@@ -668,3 +668,6 @@ These per-node marker lines are built by `buildPresetNodeMarkerLines`, itself a 
 | Card closes | Renderer clears graphics; `highlightInvalidPresets` and `highlightIsolatedNodes` reset to `false` |
 | Generate | Invalid connections filtered out, valid ones sent to WASM |
 | `defaultEdgeState` changes | All `source:"default"` entries removed and repopulated; auto-lock recomputed |
+
+When an existing teleport endpoint is dragged to another cell, its current floor is preserved;
+moving to a different cell drops any split-node slot attached to the old cell.

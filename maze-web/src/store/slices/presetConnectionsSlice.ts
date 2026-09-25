@@ -243,8 +243,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     debugStale: debugStaleOf(state),
   })),
 
-  movePresetTeleportEndpoint: (id, end, cell) => set((state) => ({
-    presetTeleports: moveTeleportEndpoint(state.presetTeleports, { id, end }, cell),
+  movePresetTeleportEndpoint: (id, end, cell, level) => set((state) => ({
+    presetTeleports: moveTeleportEndpoint(state.presetTeleports, { id, end }, cell, level),
     presetsDirty: true,
     debugStale: debugStaleOf(state),
   })),

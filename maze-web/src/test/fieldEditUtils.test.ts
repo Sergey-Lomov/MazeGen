@@ -488,15 +488,27 @@ describe("removeTeleport", () => {
 
 describe("moveTeleportEndpoint", () => {
   it("moves the 'from' endpoint of the matching entry", () => {
-    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "from" }, [5, 5]);
-    expect(result[0].from).toEqual(presetEndpoint([5, 5]));
+    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "from" }, [5, 5], 0);
+    expect(result[0].from).toEqual(presetEndpoint([5, 5], undefined, 0));
     expect(result[0].to).toEqual(presetEndpoint([1, 1]));
   });
 
   it("moves the 'to' endpoint of the matching entry", () => {
-    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5]);
-    expect(result[0].to).toEqual(presetEndpoint([5, 5]));
+    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5], 0);
+    expect(result[0].to).toEqual(presetEndpoint([5, 5], undefined, 0));
     expect(result[0].from).toEqual(presetEndpoint([0, 0]));
+  });
+
+  it("preserves the dragged endpoint's floor", () => {
+    const entry: PresetTeleportEntry = {
+      id: 1,
+      from: presetEndpoint([0, 0], undefined, 1),
+      to: presetEndpoint([1, 1], undefined, 0),
+      direction: "forward",
+    };
+    const result = moveTeleportEndpoint([entry], { id: 1, end: "from" }, [5, 5], 1);
+    expect(result[0].from).toEqual(presetEndpoint([5, 5], undefined, 1));
+    expect(result[0].to).toEqual(entry.to);
   });
 });
 

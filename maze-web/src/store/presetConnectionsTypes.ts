@@ -201,7 +201,7 @@ export interface PresetConnectionsActions {
   addPresetTeleport: (from: PresetEndpoint, to: PresetEndpoint, direction: "forward" | "two_way") => void;
   cyclePresetTeleportDirection: (id: number) => void;
   removePresetTeleport: (id: number) => void;
-  movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number]) => void;
+  movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number], level: number) => void;
   /** Click on a cell with `vertical_passage_one_way`/`vertical_passage_two_way` active — resolves
    * available directions itself (via `cellExistsAt`) and either creates the entry immediately (one
    * direction available) or opens `presetVerticalPassagePending` for `PresetVerticalDirectionDialog`
