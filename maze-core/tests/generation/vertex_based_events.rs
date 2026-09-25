@@ -17,7 +17,6 @@ fn no_randomness_params() -> GenerationParams {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     }
 }
 
@@ -519,7 +518,6 @@ fn vertex_based_reserve_search_scopes_are_nonempty_and_nested_under_a_step_scope
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
@@ -570,7 +568,6 @@ fn vertex_based_junction_count_scopes_open_with_setup_then_slot_rolls_matching_m
         depth_first: 0.5,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();

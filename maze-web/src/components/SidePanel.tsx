@@ -6,7 +6,7 @@ import { sharedStyles } from "../styles/shared";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import type React from "react";
 
-const MIN_PANEL_WIDTH = 320;
+const MIN_PANEL_WIDTH = 360;
 
 /** DOM id of `App.tsx`'s slot beside the canvas column — every `SidePanel` portals here
  *  regardless of where in the component tree it's triggered from (GitHub issue #237), so it
@@ -29,11 +29,12 @@ interface Props {
   children: React.ReactNode;
 }
 
-/** Generic resizable side panel (GitHub issue #237) — same shape as `DebugPanel`: docked to the
- *  canvas's right edge, drag-to-resize handle on its left edge, header with title/close. Used by
- *  the split-node management panels (post-edit, preset, pattern editor) so editing a node's
- *  connections reads as directly manipulating the canvas rather than a modal dialog floating over
- *  it — every click's effect on the maze is visible immediately behind the panel. */
+/** Generic resizable side panel (GitHub issue #237): docked to the canvas's right edge,
+ *  drag-to-resize handle on its left edge, header with title/close. Used by the split-node
+ *  management panels (post-edit, preset, pattern editor) and `DebugPanel` (GitHub issue #607) so
+ *  editing a node's connections reads as directly manipulating the canvas rather than a modal
+ *  dialog floating over it — every click's effect on the maze is visible immediately behind the
+ *  panel. */
 export function SidePanel({ title, subtitle, onClose, warnings, overlay, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);

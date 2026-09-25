@@ -132,10 +132,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
 
             if matches!(result, RepairResult::Fixed { .. }) {
                 any_fixed = true;
-                if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx) {
-                    if invalid.contains(&neighbor_idx) {
-                        merged_away.insert(neighbor_idx);
-                    }
+                if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx)
+                    && invalid.contains(&neighbor_idx)
+                {
+                    merged_away.insert(neighbor_idx);
                 }
                 all_commands.extend(commands);
             }

@@ -229,6 +229,7 @@ fn enqueue_junction(
 /// (`Graph::add_edge`'s kind-aware dedup): `graph.outgoing_edges` yields one entry per `EdgeId`,
 /// not deduped by target, so `dfs_from_junction` calls this once per physical edge in that case,
 /// and only the caller knows which physical edge a given call corresponds to (GitHub issue #197).
+#[allow(clippy::too_many_arguments)]
 fn process_outgoing(
     graph: &Graph,
     junction: NodeId,
@@ -304,7 +305,7 @@ fn dfs_from_junction(
 
         let outgoing: Vec<(NodeId, EdgeKind)> = graph
             .outgoing_edges(junction)
-            .map(|e| (e.to, e.kind.clone()))
+            .map(|e| (e.to, e.kind))
             .collect();
         for (next, kind) in outgoing {
             process_outgoing(

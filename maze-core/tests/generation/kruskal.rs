@@ -548,9 +548,7 @@ fn kruskal_rejected_edge_emits_no_edge_added_or_sets_merged() {
     generate_kruskal(&mut graph, &field, 1, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
-    let has_rejection = tape
-        .iter()
-        .any(|e| matches!(e, KruskalEvent::EdgeRejected { .. }));
+    let has_rejection = tape.iter().any(|e| matches!(e, KruskalEvent::EdgeRejected));
     assert!(
         has_rejection,
         "a 2x2 field has a cycle among its 4 candidate edges — at least one must be rejected"
@@ -567,7 +565,7 @@ fn kruskal_rejected_edge_emits_no_edge_added_or_sets_merged() {
             .collect();
         let rejected = events
             .iter()
-            .any(|e| matches!(e, KruskalEvent::EdgeRejected { .. }));
+            .any(|e| matches!(e, KruskalEvent::EdgeRejected));
         let added = events
             .iter()
             .any(|e| matches!(e, KruskalEvent::EdgeAdded { .. }));

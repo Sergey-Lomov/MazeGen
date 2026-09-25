@@ -188,10 +188,10 @@ fn orient_farthest_pair_exhaustive(graph: &Graph, a: NodeId, b: NodeId) -> (Node
     let forward_dist = exhaustive_distance(graph, a, b).unwrap_or(usize::MAX);
     let backward_dist = exhaustive_distance(graph, b, a);
 
-    if let Some(backward_dist) = backward_dist {
-        if backward_dist > forward_dist {
-            return (b, a);
-        }
+    if let Some(backward_dist) = backward_dist
+        && backward_dist > forward_dist
+    {
+        return (b, a);
     }
     (a, b)
 }
@@ -620,7 +620,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let g = Graph::new(); // no nodes registered -- empty field
-        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut rng = MazeRng::seed_from_u64(1);
         let params = exhaustive_params();
         let (result, _) = RepairStrategy::apply(

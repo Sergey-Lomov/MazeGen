@@ -438,10 +438,10 @@ pub(crate) fn try_remove_teleport_with_reverse(
     if try_remove_edge_by_id(graph, id, preset_state) {
         removed.push(id);
     }
-    if let Some(reverse_id) = reverse_id {
-        if try_remove_edge_by_id(graph, reverse_id, preset_state) {
-            removed.push(reverse_id);
-        }
+    if let Some(reverse_id) = reverse_id
+        && try_remove_edge_by_id(graph, reverse_id, preset_state)
+    {
+        removed.push(reverse_id);
     }
     removed
 }
@@ -459,10 +459,10 @@ pub(crate) fn try_remove_vertical_passage_with_reverse(
     if try_remove_edge_by_id(graph, id, preset_state) {
         removed.push(id);
     }
-    if let Some(reverse_id) = reverse_id {
-        if try_remove_edge_by_id(graph, reverse_id, preset_state) {
-            removed.push(reverse_id);
-        }
+    if let Some(reverse_id) = reverse_id
+        && try_remove_edge_by_id(graph, reverse_id, preset_state)
+    {
+        removed.push(reverse_id);
     }
     removed
 }
@@ -499,10 +499,11 @@ pub(crate) fn try_remove_edge_with_reverse(
     if try_remove_edge_by_id(graph, id, preset_state) {
         removed.push(id);
     }
-    if let Some(reverse_id) = reverse_id {
-        if reverse_id != id && try_remove_edge_by_id(graph, reverse_id, preset_state) {
-            removed.push(reverse_id);
-        }
+    if let Some(reverse_id) = reverse_id
+        && reverse_id != id
+        && try_remove_edge_by_id(graph, reverse_id, preset_state)
+    {
+        removed.push(reverse_id);
     }
     removed
 }

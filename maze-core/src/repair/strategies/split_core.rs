@@ -179,6 +179,7 @@ fn pick_free_neighbor<T: Tessellation>(
 
 /// Pattern-based candidate against `at`, trying every `rotation`/`mirror` combination in random
 /// order until one validates, or returns `None` if every combination fails.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn plan_pattern_split<T: Tessellation>(
     maze: &Maze<T>,
     at: NodeId,
@@ -189,9 +190,7 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
     allow_lose: bool,
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let Some(point) = maze.field.point_of(at) else {
-        return None;
-    };
+    let point = maze.field.point_of(at)?;
     let degree = T::faces().len();
     if degree == 0 || pattern.node_count < 2 {
         return None;
@@ -264,9 +263,7 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
             match face.requirement {
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let Some(tess_face) = T::face_at(resolved_index) else {
-                        return None;
-                    };
+                    let tess_face = T::face_at(resolved_index)?;
                     let neighbor_point = T::step(point, tess_face);
                     let level = maze.field.level_of(at).expect("at must be in field");
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);

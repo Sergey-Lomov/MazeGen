@@ -135,7 +135,6 @@ fn generate_maze_with_extreme_params_is_connected() {
         branching: 1.0,
         directionality: 1.0,
         cyclicity: 1.0,
-        ..Default::default()
     };
     let all_min = GenerationParams {
         depth_first: 0.0,
@@ -143,7 +142,6 @@ fn generate_maze_with_extreme_params_is_connected() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
     let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);
@@ -177,7 +175,6 @@ fn generate_maze_params_affect_structure() {
         branching: 1.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let low_branching = GenerationParams {
         depth_first: 0.0,
@@ -185,7 +182,6 @@ fn generate_maze_params_affect_structure() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
     let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);

@@ -728,7 +728,8 @@ mod preset_edges_for_post_edit_tests {
     use super::*;
     use maze_runner::config::PresetConnectionStateDto;
 
-    fn existing(entries: &[(([i32; 2], u32, u32), u64)]) -> HashMap<([i32; 2], u32, u32), u64> {
+    #[allow(clippy::type_complexity)]
+    fn existing(entries: &[(([i32; 2], u32, u32), u64)]) -> SplitSlotMap {
         entries.iter().copied().collect()
     }
 
@@ -837,7 +838,8 @@ mod preset_edges_for_post_edit_tests {
 mod resolve_preset_nodes_for_post_edit_tests {
     use super::*;
 
-    fn existing(entries: &[(([i32; 2], u32, u32), u64)]) -> HashMap<([i32; 2], u32, u32), u64> {
+    #[allow(clippy::type_complexity)]
+    fn existing(entries: &[(([i32; 2], u32, u32), u64)]) -> SplitSlotMap {
         entries.iter().copied().collect()
     }
 

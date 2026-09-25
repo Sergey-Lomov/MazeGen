@@ -24,11 +24,11 @@ pub(super) fn roll_vertical_balance(
     elements: &ElementsConfig,
     state: &mut GenState,
     src: NodeId,
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> VerticalKind {
     let roll = state.rng.random::<f64>();
     let is_elevator = roll < elements.vertical_passage_elevator_balance;
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::VerticalBalanceRolled {
             src,
             roll,
@@ -117,7 +117,7 @@ pub(super) fn add_vertical_passage_edge(
     } else {
         graph.add_bidirectional_edge(src, dst, EdgeKind::VerticalPassage);
     }
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::VerticalPassageAdded {
             src,
             dst,
@@ -223,7 +223,7 @@ pub(super) fn try_growth_vertical_passage<T: Tessellation>(
     state.visited.insert(dst);
     state.in_reserve.remove(&dst);
     add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::NodeVisited {
             node: dst,
             parent: src,

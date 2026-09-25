@@ -332,7 +332,7 @@ fn build_preset_state_teleport_forward_adds_single_directed_teleport_edge() {
     assert!(!state.preset_connected.contains(&a));
     assert!(!state.preset_connected.contains(&b));
     assert_eq!(state.preset_teleports.get(&a), Some(&vec![b]));
-    assert!(state.preset_teleports.get(&b).is_none());
+    assert!(!state.preset_teleports.contains_key(&b));
 }
 
 #[test]
@@ -404,7 +404,7 @@ fn build_preset_state_teleport_backward_adds_single_directed_teleport_edge() {
     assert_eq!(graph.edge(ba).unwrap().kind, EdgeKind::Teleport);
     assert!(state.preset_edges.contains(&(b, a)));
     assert_eq!(state.preset_teleports.get(&b), Some(&vec![a]));
-    assert!(state.preset_teleports.get(&a).is_none());
+    assert!(!state.preset_teleports.contains_key(&a));
 }
 
 /// Guards the from/to swap at `preset_state.rs`'s `TeleportDirection::Backward` arm, same concern

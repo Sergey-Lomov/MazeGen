@@ -288,6 +288,7 @@
   "generation.split_diag_unreachable_node": "У «{name}» нет ни одного соединения, он будет недостижим.",
   "generation.split_diag_dangling_sibling": "Узел {index}, грань {face}: связанный узел больше не существует.",
 
+  "debug.title": "Отладка",
   "debug.outdated_warning": "Снимок отладки устарел, перегенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",
   "debug.next_step": "Следующий шаг",

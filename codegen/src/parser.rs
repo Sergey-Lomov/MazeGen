@@ -40,10 +40,10 @@ pub fn discover_sources(root: &Path) -> Result<Vec<EventSource>, ParseError> {
             message: e.to_string(),
         })?;
         for item in &file.items {
-            if let Item::Enum(item_enum) = item {
-                if has_derive_wire_event(&item_enum.attrs) {
-                    sources.push(parse_enum(&entry, root, item_enum)?);
-                }
+            if let Item::Enum(item_enum) = item
+                && has_derive_wire_event(&item_enum.attrs)
+            {
+                sources.push(parse_enum(&entry, root, item_enum)?);
             }
         }
     }

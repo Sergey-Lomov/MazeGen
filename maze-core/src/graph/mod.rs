@@ -115,7 +115,7 @@ impl Graph {
             .find(|&&eid| {
                 self.edges[eid]
                     .as_ref()
-                    .map_or(false, |e| e.to == to && &e.kind == kind)
+                    .is_some_and(|e| e.to == to && &e.kind == kind)
             })
             .copied()
     }
@@ -126,7 +126,7 @@ impl Graph {
         b: NodeId,
         kind: EdgeKind,
     ) -> (EdgeId, EdgeId) {
-        let ab = self.add_edge(a, b, kind.clone());
+        let ab = self.add_edge(a, b, kind);
         let ba = self.add_edge(b, a, kind);
         (ab, ba)
     }
@@ -210,7 +210,7 @@ impl Graph {
         self.outgoing
             .get(&from)?
             .iter()
-            .find(|&&eid| self.edges[eid].as_ref().map_or(false, |e| e.to == to))
+            .find(|&&eid| self.edges[eid].as_ref().is_some_and(|e| e.to == to))
             .copied()
     }
 

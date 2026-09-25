@@ -250,8 +250,8 @@ fn teleport_is_deterministic_for_fixed_seed() {
         &empty_presets(),
         None,
     );
-    let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
-    let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
+    let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to, e.kind)).collect();
+    let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to, e.kind)).collect();
     e1.sort_by_key(|(f, t, _)| (*f, *t));
     e2.sort_by_key(|(f, t, _)| (*f, *t));
     assert_eq!(e1, e2);
@@ -443,7 +443,6 @@ fn teleport_junction_reduces_geometric_count_by_one_when_teleport_added() {
         branching: 1.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     let level = field.single_level_id();
@@ -503,7 +502,6 @@ fn teleport_corridor_adds_exactly_one_geometric_and_one_teleport() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
-        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     let level = field.single_level_id();
@@ -549,7 +547,6 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 1.0,
-        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
     let level = field.single_level_id();

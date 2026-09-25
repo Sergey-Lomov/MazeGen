@@ -30,6 +30,7 @@ use std::collections::HashMap;
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
 /// `qc_engine`: used to run quality checks (no repair). Pass None to skip QC (e.g. when
 /// caller already has authoritative issues from a repair cycle).
+#[allow(clippy::too_many_arguments)]
 pub fn build_analytics_snapshot<T: Tessellation>(
     maze: &mut Maze<T>,
     qc_engine: Option<&QualityControlEngine<T>>,

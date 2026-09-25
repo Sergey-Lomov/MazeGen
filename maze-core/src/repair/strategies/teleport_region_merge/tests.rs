@@ -799,12 +799,12 @@ fn is_deterministic_for_fixed_seed() {
     let edges_a: Vec<_> = maze_a
         .graph
         .edges()
-        .map(|e| (e.from, e.to, e.kind.clone()))
+        .map(|e| (e.from, e.to, e.kind))
         .collect();
     let edges_b: Vec<_> = maze_b
         .graph
         .edges()
-        .map(|e| (e.from, e.to, e.kind.clone()))
+        .map(|e| (e.from, e.to, e.kind))
         .collect();
     assert_eq!(edges_a, edges_b);
 }

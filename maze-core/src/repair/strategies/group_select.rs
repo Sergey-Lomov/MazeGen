@@ -113,6 +113,7 @@ pub fn order_by_priority<E: Clone + Eq + std::hash::Hash>(
 /// did before this extraction — the caller decides what "allowed" means for its own `K`
 /// (`OneWayGroupSelectStrategy` excludes route-protected edges when its own param is set), this
 /// function only ever calls it, never interprets it.
+#[allow(clippy::too_many_arguments)]
 pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
     issue: &InvalidGroupIssue<K>,
     maze: &Maze<T>,
@@ -183,7 +184,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
 /// Result: `Fixed` iff at least one nested call returned `Fixed`; `Failed` otherwise. A
 /// wholly-protected group never counts as a success on its own.
 #[allow(clippy::too_many_arguments)]
-pub fn multi_target_group_select_apply<'a, T: Tessellation, K: InvalidGroupIssueKind>(
+pub fn multi_target_group_select_apply<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
     groups: &[(Vec<K::Element>, u32)],
     invalid_sources: &HashMap<Vec<K::Element>, Vec<String>>,
     maze: &Maze<T>,
@@ -200,10 +201,7 @@ pub fn multi_target_group_select_apply<'a, T: Tessellation, K: InvalidGroupIssue
     element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
-) -> (RepairResult, Vec<MutationCommand>)
-where
-    T: 'a,
-{
+) -> (RepairResult, Vec<MutationCommand>) {
     run_group_candidate_pass::<T, K>(
         groups,
         invalid_sources,
@@ -226,7 +224,7 @@ where
 /// per-group attribution hook has it without another plumbing change) — the `to_remove` budget
 /// and membership come entirely from `groups`.
 #[allow(clippy::too_many_arguments)]
-fn run_group_candidate_pass<'a, T: Tessellation, K: InvalidGroupIssueKind>(
+fn run_group_candidate_pass<'a, T: Tessellation + 'a, K: InvalidGroupIssueKind>(
     groups: &[(Vec<K::Element>, u32)],
     _invalid_sources: &HashMap<Vec<K::Element>, Vec<String>>,
     maze: &Maze<T>,
@@ -243,10 +241,7 @@ fn run_group_candidate_pass<'a, T: Tessellation, K: InvalidGroupIssueKind>(
     element_invalidated: impl Fn(&K::Element, &[MutationCommand], &Maze<T>) -> bool,
     order_candidates: impl Fn(&mut Vec<K::Element>, &HashMap<K::Element, usize>, &mut dyn RngCore),
     wholly_protected_auto_resolve: bool,
-) -> (RepairResult, Vec<MutationCommand>)
-where
-    T: 'a,
-{
+) -> (RepairResult, Vec<MutationCommand>) {
     if groups.is_empty() {
         return (RepairResult::Fixed { score: None }, vec![]);
     }
@@ -443,6 +438,7 @@ mod tests {
     }
     crate::impl_erased_repair_strategy!(UnreachableStrategy, InvalidOneWayIssue);
 
+    #[allow(clippy::ptr_arg)]
     fn no_order(
         candidates: &mut Vec<EdgeId>,
         _membership: &HashMap<EdgeId, usize>,

@@ -116,6 +116,7 @@ impl<T: Tessellation> Stage<T> {
     /// actually converging). A rule whose strategy returns `Failed` is skipped on later passes
     /// only until the graph next mutates (GitHub issue #280) — see `check_and_dispatch`'s doc
     /// comment for why a graph mutation, not just elapsed time, is what clears it.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn run_repair(
         &self,
         maze: &mut Maze<T>,
@@ -213,6 +214,7 @@ impl<T: Tessellation> Stage<T> {
     /// issue that made a previously failed rule fail. A `Fixed` result's own `score` (if any) is
     /// otherwise unused here — a route's score is computed independently of repair dispatch via
     /// `MazeAnalysis::route_score` (GitHub issue #532), not accumulated from strategy results.
+    #[allow(clippy::too_many_arguments)]
     fn check_and_dispatch(
         &self,
         maze: &mut Maze<T>,

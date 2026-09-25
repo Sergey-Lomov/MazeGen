@@ -44,10 +44,10 @@ where
         if dist[u] < cost {
             continue;
         }
-        if let Some(max) = max_dist {
-            if cost > max {
-                break;
-            }
+        if let Some(max) = max_dist
+            && cost > max
+        {
+            break;
         }
         for (v, weight) in neighbors(nav, u) {
             let next_cost = cost + weight;
@@ -277,10 +277,10 @@ pub(crate) fn route_aware_junction_flags(
                 }
                 let e = &edges[ei];
                 if e.is_elevator {
-                    if let Some(group) = &elevator_group {
-                        if group.contains(&e.to) {
-                            continue;
-                        }
+                    if let Some(group) = &elevator_group
+                        && group.contains(&e.to)
+                    {
+                        continue;
                     }
                     if !elevator_choice_taken {
                         elevator_choice_taken = true;

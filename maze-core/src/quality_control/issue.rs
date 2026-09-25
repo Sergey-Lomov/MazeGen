@@ -343,7 +343,7 @@ pub const INVALID_CROSS_ELEMENT_GROUP: IssueKind = IssueKind::InvalidCrossElemen
 /// downstream with "unknown strategy" the same way any other kind with no matching strategy
 /// registration would — there is no dedicated rejection at this layer, by design, since strategy
 /// availability is the repair engine's concern, not `IssueKind`'s.
-
+///
 /// Shared `source_checks`/`details` bookkeeping every concrete `Issue` type embeds — see
 /// `Issue`'s trait doc comment for the split between what's object-safe (`kind`/`meta`/
 /// `meta_mut`/`as_any`) and what's not (`KIND`/`merge`).

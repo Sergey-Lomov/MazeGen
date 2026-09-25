@@ -28,10 +28,10 @@ fn resolve_start<P: Copy>(
     gen_source_xy: Option<[i32; 2]>,
     to_xy: impl Fn(P) -> (i32, i32),
 ) -> P {
-    if let Some([px, py]) = gen_source_xy {
-        if let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py)) {
-            return p;
-        }
+    if let Some([px, py]) = gen_source_xy
+        && let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py))
+    {
+        return p;
     }
     pick_start(pts, to_xy)
 }
@@ -45,10 +45,9 @@ fn build_multi_level_field<T: Tessellation>(
     ids: &mut IdGenerator,
 ) -> Result<MultiLevelField<T>, JsValue> {
     let first = level_points.remove(0);
-    let mut mf =
-        MultiLevelField::<T>::single_level(first, ids).map_err(|e| JsValue::from_str(e))?;
+    let mut mf = MultiLevelField::<T>::single_level(first, ids).map_err(JsValue::from_str)?;
     for points in level_points {
-        let field = Field::<T>::new(points, ids).map_err(|e| JsValue::from_str(e))?;
+        let field = Field::<T>::new(points, ids).map_err(JsValue::from_str)?;
         mf.add_level(field);
     }
     Ok(mf)

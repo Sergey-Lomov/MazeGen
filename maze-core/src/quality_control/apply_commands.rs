@@ -235,11 +235,10 @@ pub fn apply_commands<T: Tessellation>(
                     // resolved while still live; its point is `at`'s own (every old node lives there).
                     if let (Some(state), Some(old_nodes)) =
                         (debug_state.as_deref_mut(), old_point_nodes.as_ref())
+                        && let Some(point) = maze.field.point_of(at)
                     {
-                        if let Some(point) = maze.field.point_of(at) {
-                            for &old in old_nodes {
-                                state.note(old, point);
-                            }
+                        for &old in old_nodes {
+                            state.note(old, point);
                         }
                     }
                     let new_nodes = crate::generation::try_replace_point_nodes(
@@ -260,17 +259,17 @@ pub fn apply_commands<T: Tessellation>(
         if ok {
             applied += 1;
         }
-        if let Some(log) = event_log.as_mut() {
-            if let Some(event) = qc_event_for_command(
+        if let Some(log) = event_log.as_mut()
+            && let Some(event) = qc_event_for_command(
                 &cmd,
                 ok,
                 edge_endpoints,
                 reverse_removed,
                 old_point_nodes,
                 replaced_nodes,
-            ) {
-                log.emit(event);
-            }
+            )
+        {
+            log.emit(event);
         }
     }
     ApplyOutcome { proposed, applied }

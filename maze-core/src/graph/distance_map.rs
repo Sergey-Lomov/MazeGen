@@ -231,7 +231,7 @@ mod tests {
         }
         let nodes: Vec<NavNodeId> = dist_map.keys().copied().collect();
         for (i, &node) in nodes.iter().enumerate() {
-            dist_map.insert(node, (i as usize) * 10);
+            dist_map.insert(node, i * 10);
         }
         let expected = *dist_map.values().min().unwrap();
         assert_eq!(cycle_min_distance(&nav, &cycle, &dist_map), expected);

@@ -71,10 +71,10 @@ fn emit_codec_imports(out: &mut String, source: &EventSource) {
             VariantShape::Struct(fields) => fields.iter().map(|f| &f.ty).collect(),
         };
         for ty in fields {
-            if let FieldType::Custom(name) = ty {
-                if let Some(c) = codecs::lookup(name) {
-                    seen.insert(c.rust_write_fn);
-                }
+            if let FieldType::Custom(name) = ty
+                && let Some(c) = codecs::lookup(name)
+            {
+                seen.insert(c.rust_write_fn);
             }
         }
     }

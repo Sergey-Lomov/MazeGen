@@ -10,6 +10,14 @@ use crate::space::Tessellation;
 use rand::RngCore;
 use std::collections::HashMap;
 
+/// `run_repair_stages`'s result: the exhausted repair budget, per-rule/per-check timing
+/// accumulators, and per-rule iteration counts.
+type RepairStagesResult = (
+    RepairBudget,
+    HashMap<String, HashMap<String, RuleTimingAcc>>,
+    HashMap<String, u32>,
+);
+
 /// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
 /// `iterations_done`/`start_ms` are NOT reset per stage (see `Specs/repair.md`'s "Stages and the
 /// repair budget"). `limit_reached` is written by `run_repair_stages`, not by `Stage::run_repair`
@@ -39,15 +47,15 @@ impl RepairBudget {
         &self,
         now_ms: &(impl Fn() -> f64 + ?Sized),
     ) -> Option<RepairLimitKind> {
-        if let Some(max) = self.limits.max_iterations() {
-            if self.iterations_done >= max {
-                return Some(RepairLimitKind::MaxIterations);
-            }
+        if let Some(max) = self.limits.max_iterations()
+            && self.iterations_done >= max
+        {
+            return Some(RepairLimitKind::MaxIterations);
         }
-        if let Some(budget_secs) = self.limits.time_budget_secs() {
-            if now_ms() - self.start_ms >= budget_secs * 1000.0 {
-                return Some(RepairLimitKind::TimeBudget);
-            }
+        if let Some(budget_secs) = self.limits.time_budget_secs()
+            && now_ms() - self.start_ms >= budget_secs * 1000.0
+        {
+            return Some(RepairLimitKind::TimeBudget);
         }
         None
     }
@@ -83,6 +91,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
     /// Runs the full check+repair process: a fixpoint repair loop per stage (in order, sharing
     /// one `RepairBudget`), then an unconditional final report pass over every stage. Replaces
     /// both `QualityControlEngine`+`RepairEngine`'s combined role in the pre-#106 `build_maze`.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_full(
         &self,
         maze: &mut Maze<T>,
@@ -90,8 +99,8 @@ impl<T: Tessellation> QualityControlEngine<T> {
         preset_state: &PresetState,
         limits: RepairLimits,
         now_ms: impl Fn() -> f64,
-        mut event_log: Option<&mut EventLog<QcEvent>>,
-        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
+        event_log: Option<&mut EventLog<QcEvent>>,
+        debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
         let (budget, mut repair_timing, iterations) = self.run_repair_stages(
@@ -100,8 +109,8 @@ impl<T: Tessellation> QualityControlEngine<T> {
             preset_state,
             limits,
             &now_ms,
-            event_log.as_deref_mut(),
-            debug_state.as_deref_mut(),
+            event_log,
+            debug_state,
         );
 
         let mut remaining = self.collect_final_report(maze, rng, &mut repair_timing, &now_ms);
@@ -145,6 +154,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
     /// the inner fixpoint loop lives entirely inside `Stage::run_repair`, which simply returns a
     /// `StageOutcome` instead of breaking out through a label — this function sees only one loop
     /// level.
+    #[allow(clippy::too_many_arguments)]
     fn run_repair_stages(
         &self,
         maze: &mut Maze<T>,
@@ -154,11 +164,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
         now_ms: &impl Fn() -> f64,
         mut event_log: Option<&mut EventLog<QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
-    ) -> (
-        RepairBudget,
-        HashMap<String, HashMap<String, RuleTimingAcc>>,
-        HashMap<String, u32>,
-    ) {
+    ) -> RepairStagesResult {
         let mut budget = RepairBudget::new(limits, now_ms);
         let mut timing: HashMap<String, HashMap<String, RuleTimingAcc>> = HashMap::new();
         let mut iterations: HashMap<String, u32> = HashMap::new();

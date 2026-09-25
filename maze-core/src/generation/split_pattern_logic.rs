@@ -342,6 +342,7 @@ fn try_adaptation<T: Tessellation>(
 /// exists and `parent->src` doesn't, `OneWay(Backward)` the reverse. A face resolving to `parent`
 /// with a mismatching requirement invalidates the whole adaptation outright (no silent
 /// reinterpretation) rather than falling through to the ordinary visited-neighbor check.
+#[allow(clippy::too_many_arguments)]
 fn enumerate_adaptations<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
@@ -454,6 +455,7 @@ fn adaptation_respects_presets(
 /// Applies a chosen adaptation's face resolving to `parent` by relocating the real existing edge
 /// (remove old, recreate on `node`) instead of adding a brand-new one — see
 /// `apply_pattern_adaptation`'s own doc comment for why. Returns `true` when this face was in fact
+#[allow(clippy::too_many_arguments)]
 /// the parent-relocation case (caller skips ordinary requirement handling for it).
 fn try_relocate_parent_edge(
     graph: &mut Graph,
@@ -539,13 +541,14 @@ fn apply_face_requirement(
         }
         SplitFaceRequirement::Wall => {}
         SplitFaceRequirement::Unspecified => {
-            if let Some(dst) = dst {
-                if !state.visited.contains(&dst) && !state.in_reserve.contains(&dst) {
-                    state.reserve.push(dst);
-                    state.in_reserve.insert(dst);
-                    if let Some(log) = scope.as_deref_mut() {
-                        log.emit(VertexBasedEvent::NodeQueuedToReserve { node: dst });
-                    }
+            if let Some(dst) = dst
+                && !state.visited.contains(&dst)
+                && !state.in_reserve.contains(&dst)
+            {
+                state.reserve.push(dst);
+                state.in_reserve.insert(dst);
+                if let Some(log) = scope {
+                    log.emit(VertexBasedEvent::NodeQueuedToReserve { node: dst });
                 }
             }
         }

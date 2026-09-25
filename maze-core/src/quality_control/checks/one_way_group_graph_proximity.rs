@@ -76,7 +76,7 @@ impl<'a> DirectedDistanceCache<'a> {
                     self.nav,
                     a,
                     DistanceDirection::Forward,
-                    |e| Self::is_not_teleport_hop(e),
+                    Self::is_not_teleport_hop,
                     max_dist,
                 )
             })
@@ -90,7 +90,7 @@ impl<'a> DirectedDistanceCache<'a> {
                     self.nav,
                     a,
                     DistanceDirection::Reverse,
-                    |e| Self::is_not_teleport_hop(e),
+                    Self::is_not_teleport_hop,
                     max_dist,
                 )
             })

@@ -387,7 +387,7 @@ impl<'a> ScoredPathContext<'a> {
                     &mut elevator_group_cache,
                 );
 
-                if best_score.map_or(true, |b| score > b) {
+                if best_score.is_none_or(|b| score > b) {
                     best_score = Some(score);
                     best = Some((s, f, score));
                 }
@@ -530,6 +530,7 @@ fn elevator_stop_counts<T: Tessellation>(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn score_path(
     nav: &NavGraph,
     oneway_flags: &[bool],

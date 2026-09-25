@@ -62,10 +62,10 @@ pub fn resolve_start<P: Copy>(
     gen_source_xy: Option<[i32; 2]>,
     to_xy: impl Fn(P) -> (i32, i32),
 ) -> P {
-    if let Some([px, py]) = gen_source_xy {
-        if let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py)) {
-            return p;
-        }
+    if let Some([px, py]) = gen_source_xy
+        && let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py))
+    {
+        return p;
     }
     pick_start(pts, to_xy)
 }

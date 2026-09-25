@@ -48,6 +48,7 @@ pub fn find_invalid_cycles<T: Tessellation>(
 ///   those, re-indexed from `0`, `invalid` becomes `0..flagged.len()`, `invalid_sources` is left
 ///   empty. Only a strategy proven not to read a valid cycle's content may omit this flag — see
 ///   `InvalidLoopRandomStrategy::requirement`'s doc comment.
+#[allow(clippy::too_many_arguments)]
 pub fn build_issue(
     nav: &NavGraph,
     cycles: &[Vec<usize>],

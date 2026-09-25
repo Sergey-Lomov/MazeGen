@@ -8,6 +8,21 @@ use maze_core::{
 };
 use std::collections::{HashMap, HashSet};
 
+/// Split-tile slot map: `(point, slot_id, level)` -> resolved `NodeId` (as `u64`).
+pub(crate) type SplitSlotMap = HashMap<([i32; 2], u32, u32), u64>;
+
+/// `build_field_from_nodes`'s result: the assembled field, the split-slot map built from `nodes`,
+/// each node's degree, and the `level_fields` index -> real `LevelId` mapping.
+pub(crate) type BuildFieldFromNodesResult<T> = Result<
+    (
+        MultiLevelField<T>,
+        SplitSlotMap,
+        HashMap<u64, u32>,
+        Vec<maze_core::space::LevelId>,
+    ),
+    String,
+>;
+
 /// Resolves one `PostEditEndpointDto` to a real `NodeId` (as `u64`). `Node` passes through as-is;
 /// `Split` looks up `(point, slot_id, level)` in `split_map` (built by `apply_split_points`) — `Err`
 /// if absent, meaning the edge list and `split_points` disagree about which slots exist (a caller
@@ -15,7 +30,7 @@ use std::collections::{HashMap, HashSet};
 /// input case on this path).
 pub(crate) fn resolve_post_edit_endpoint(
     ep: &PostEditEndpointDto,
-    split_map: &HashMap<([i32; 2], u32, u32), u64>,
+    split_map: &SplitSlotMap,
 ) -> Result<u64, String> {
     match ep {
         PostEditEndpointDto::Node { id } => Ok(*id as u64),
@@ -40,7 +55,7 @@ pub(crate) fn resolve_post_edit_endpoint(
 pub(crate) fn build_graph_from_post_edit_edges(
     graph: &mut Graph,
     edges: &[PostEditEdgeDto],
-    split_map: &HashMap<([i32; 2], u32, u32), u64>,
+    split_map: &SplitSlotMap,
 ) -> Result<(), String> {
     for e in edges {
         let from_id = resolve_post_edit_endpoint(&e.from, split_map)?;
@@ -118,9 +133,9 @@ pub(crate) fn apply_split_points<T: Tessellation>(
     maze: &mut Maze<T>,
     xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
     split_points: &[([i32; 2], u32, u32)],
-    existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
+    existing_by_index: &SplitSlotMap,
     level_ids: &[maze_core::space::LevelId],
-) -> Result<HashMap<([i32; 2], u32, u32), u64>, String> {
+) -> Result<SplitSlotMap, String> {
     let mut map = HashMap::new();
     for &(xy, slot_id, level_index) in split_points {
         let node = match existing_by_index.get(&(xy, slot_id + 1, level_index)) {
@@ -153,8 +168,8 @@ pub(crate) fn apply_split_points<T: Tessellation>(
 /// uses for the generation path.
 pub(crate) fn resolve_preset_endpoint_for_post_edit(
     ep: &maze_runner::config::PresetEndpointDto,
-    existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
-    split_map: &HashMap<([i32; 2], u32, u32), u64>,
+    existing_by_index: &SplitSlotMap,
+    split_map: &SplitSlotMap,
 ) -> Option<u64> {
     let level = ep.level.unwrap_or(0);
     match ep.slot {
@@ -174,8 +189,8 @@ pub(crate) fn resolve_preset_endpoint_for_post_edit(
 /// as `build_preset_state`.
 pub(crate) fn preset_edges_for_post_edit(
     preset_connections: &[PresetConnectionDto],
-    existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
-    split_map: &HashMap<([i32; 2], u32, u32), u64>,
+    existing_by_index: &SplitSlotMap,
+    split_map: &SplitSlotMap,
 ) -> HashSet<(u64, u64)> {
     let mut preset_edges = HashSet::new();
     for preset in preset_connections {
@@ -223,8 +238,8 @@ pub(crate) fn preset_edges_for_post_edit(
 /// `preset_edges_for_post_edit`.
 pub(crate) fn resolve_preset_nodes_for_post_edit(
     preset_split_points: &[([i32; 2], u32, u32)],
-    existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
-    split_map: &HashMap<([i32; 2], u32, u32), u64>,
+    existing_by_index: &SplitSlotMap,
+    split_map: &SplitSlotMap,
 ) -> HashSet<u64> {
     preset_split_points
         .iter()
@@ -273,15 +288,7 @@ pub(crate) fn build_field_from_nodes<T: Tessellation>(
     nodes: &[crate::dto::NodeDto],
     level_field_count: usize,
     xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
-) -> Result<
-    (
-        MultiLevelField<T>,
-        HashMap<([i32; 2], u32, u32), u64>,
-        HashMap<u64, u32>,
-        Vec<maze_core::space::LevelId>,
-    ),
-    String,
->
+) -> BuildFieldFromNodesResult<T>
 where
     T::Point: Copy,
 {
@@ -301,7 +308,7 @@ where
     for entries in &mut entries_by_level {
         entries.sort_by_key(|&(_, _, i)| i);
     }
-    let existing_by_index: HashMap<([i32; 2], u32, u32), u64> = nodes
+    let existing_by_index: SplitSlotMap = nodes
         .iter()
         .map(|n| (([n.x, n.y], n.i, n.level), n.id as u64))
         .collect();

@@ -244,14 +244,14 @@ fn handle_empty_frontier<T: Tessellation>(
                 &mut state.rng,
             )
         });
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::TeleportBridgeAdded {
-                    src: from,
-                    dst: to,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::TeleportBridgeAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
         state.visited.insert(src);
         add_to_frontier(
@@ -347,10 +347,10 @@ fn handle_empty_frontier<T: Tessellation>(
             state.in_reserve.insert(*n);
         }
         state.reserve = kept;
-        if result.is_none() {
-            if let Some(g) = search_scope.as_mut() {
-                g.emit(VertexBasedEvent::ReserveExhausted);
-            }
+        if result.is_none()
+            && let Some(g) = search_scope.as_mut()
+        {
+            g.emit(VertexBasedEvent::ReserveExhausted);
         }
         result
     };
@@ -422,7 +422,7 @@ fn handle_empty_frontier<T: Tessellation>(
             start,
             start_reassignment,
             scope.as_deref_mut(),
-            debug_state.as_deref_mut(),
+            debug_state,
         );
         if outcome == SplitOutcome::Handled {
             return true;
@@ -438,14 +438,14 @@ fn handle_empty_frontier<T: Tessellation>(
         let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
             try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng)
         });
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::BridgeAdded {
-                    src: from,
-                    dst: to,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::BridgeAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
         bridge
     };
@@ -456,7 +456,7 @@ fn handle_empty_frontier<T: Tessellation>(
         &mut state.frontier,
         &mut state.in_frontier,
     );
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::NodeVisited {
             node: src,
             parent: bridge,
@@ -541,6 +541,7 @@ fn step_from_frontier<T: Tessellation>(
 /// own teleport roll/connect-step runs at all — `step_from_frontier`'s own (non-split) call site
 /// always passes `true`; the non-pattern split path passes `false` for every per-node call and
 /// rolls teleport once for the whole split event instead (see `handle_non_pattern_split`).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     graph: &mut Graph,
     field: &MultiLevelField<T>,
@@ -719,15 +720,15 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
                 try_add_edge(g, src, cyclic, elements, preset_state, &mut state.rng)
             })
         };
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::CyclicEdgeAdded {
-                    src: from,
-                    dst: to,
-                    teleport: teleport_spent_on_cycle,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::CyclicEdgeAdded {
+                src: from,
+                dst: to,
+                teleport: teleport_spent_on_cycle,
+                bidirectional,
+            });
         }
     }
 
@@ -764,14 +765,14 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
         let added = add_edge_and_detect_direction(graph, src, dst, |g| {
             try_add_edge(g, src, dst, elements, preset_state, &mut state.rng)
         });
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded {
-                    src: from,
-                    dst: to,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::EdgeAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
         state.visited.insert(dst);
         state.in_reserve.remove(&dst);
@@ -820,14 +821,14 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
                     &mut state.rng,
                 )
             });
-            if let Some((from, to, bidirectional)) = added {
-                if let Some(log) = scope.as_deref_mut() {
-                    log.emit(VertexBasedEvent::TeleportConnectAdded {
-                        src: from,
-                        dst: to,
-                        bidirectional,
-                    });
-                }
+            if let Some((from, to, bidirectional)) = added
+                && let Some(log) = scope.as_deref_mut()
+            {
+                log.emit(VertexBasedEvent::TeleportConnectAdded {
+                    src: from,
+                    dst: to,
+                    bidirectional,
+                });
             }
             state.visited.insert(dst);
             state.in_reserve.remove(&dst);
@@ -905,6 +906,7 @@ fn geometric_cyclic_candidates<T: Tessellation>(
 /// geometric-neighbor pool instead of skipping the cyclic edge entirely (GitHub issue #337 —
 /// intentional behavior change from the prior no-fallback semantics, for consistency with the new
 /// vertical-cyclic model; applies independently of floor_count).
+#[allow(clippy::too_many_arguments)]
 fn roll_cyclic_edge<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
@@ -963,7 +965,7 @@ fn roll_cyclic_edge<T: Tessellation>(
         }
     } else {
         let visited_neighbors = geometric_cyclic_candidates(graph, field, preset_state, state, src);
-        if let Some(log) = scope.as_deref_mut() {
+        if let Some(log) = scope {
             log.emit(VertexBasedEvent::CyclicCandidatesComputed {
                 src,
                 geometric: true,
@@ -986,6 +988,7 @@ fn roll_cyclic_edge<T: Tessellation>(
 /// so the teleport doesn't add branching *beyond* what junction already decided for this src —
 /// count-1 geometric connections are taken, leaving exactly one slot for the teleport connection
 /// `step_from_frontier` adds afterward.
+#[allow(clippy::too_many_arguments)]
 fn choose_connect_targets<T: Tessellation>(
     field: &MultiLevelField<T>,
     params: &GenerationParams,
@@ -1062,7 +1065,7 @@ fn choose_connect_targets<T: Tessellation>(
                     &mut ctx,
                     scope.as_deref_mut(),
                 );
-                if let Some(log) = scope.as_deref_mut() {
+                if let Some(log) = scope {
                     log.emit(VertexBasedEvent::JunctionCandidatesChosen {
                         src,
                         candidates: chosen.clone(),
@@ -1149,15 +1152,15 @@ struct PickContext<'a, T: Tessellation> {
 fn choose_candidate<T: Tessellation>(
     candidates: &[NodeId],
     ctx: &mut PickContext<T>,
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> (NodeId, bool) {
     if candidates.len() == 1 {
-        if ctx.parent.is_some() {
-            if let Some(log) = scope {
-                log.emit(VertexBasedEvent::SingleCandidateSkipsDirectionality {
-                    node: candidates[0],
-                });
-            }
+        if ctx.parent.is_some()
+            && let Some(log) = scope
+        {
+            log.emit(VertexBasedEvent::SingleCandidateSkipsDirectionality {
+                node: candidates[0],
+            });
         }
         return (candidates[0], false);
     }
@@ -1177,7 +1180,7 @@ fn choose_candidate<T: Tessellation>(
                 .find(|&n| ctx.field.is_straight(p, ctx.src, n))
         })
         .flatten();
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::DirectionalityRolled {
             roll,
             directionality: ctx.params.directionality,
@@ -1224,11 +1227,11 @@ fn filter_teleport_pool_by_floor<T: Tessellation>(
     state: &mut GenState,
     src: NodeId,
     pool: Vec<NodeId>,
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> Vec<NodeId> {
     let roll = state.rng.random::<f64>();
     let other_floor_preferred = roll < elements.cross_floor_teleport_balance;
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::CrossFloorTeleportRolled {
             roll,
             balance: elements.cross_floor_teleport_balance,
@@ -1245,12 +1248,10 @@ fn filter_teleport_pool_by_floor<T: Tessellation>(
         } else {
             same_floor
         }
+    } else if !same_floor.is_empty() {
+        same_floor
     } else {
-        if !same_floor.is_empty() {
-            same_floor
-        } else {
-            other_floor
-        }
+        other_floor
     }
 }
 

@@ -157,16 +157,19 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  // No `paddingBottom` here — `Modal`'s own `body` is a flex column with `gap: dialogSpacing.gap`
+  // between its direct children (this `<p>` and `styles.body` below), so an extra bottom padding
+  // on the `<p>` itself would stack on top of that gap instead of replacing it (GitHub issue #609
+  // follow-up).
   hint: {
     ...typography.control,
     color: ui.text.secondary,
     margin: 0,
-    paddingBottom: dialogSpacing.paddingY,
   },
   body: {
     display: "flex",
     gap: dialogSpacing.paddingX,
-    alignItems: "flex-start",
+    alignItems: "center",
   },
   list: {
     display: "flex",

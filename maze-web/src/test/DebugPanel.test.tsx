@@ -181,6 +181,17 @@ describe("DebugPanel", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("clicking the SidePanel close button exits debug mode and stops autoplay", () => {
+    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, debugMode: true });
+    render(<DebugPanel />);
+    // SidePanel's header close button carries no title/aria-label of its own — locate it via the
+    // panel title text it sits alongside (header layout, see SidePanel.tsx).
+    const title = screen.getByText("Debug");
+    const closeBtn = title.closest("div")!.parentElement!.querySelector("button.hoverable") as HTMLButtonElement;
+    fireEvent.click(closeBtn);
+    expect(useMazeStore.getState().debugMode).toBe(false);
+  });
+
   it("shows the current step (1-based) and total steps", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 1 });
     render(<DebugPanel />);

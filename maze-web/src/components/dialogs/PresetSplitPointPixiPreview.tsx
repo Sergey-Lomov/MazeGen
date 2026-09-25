@@ -6,6 +6,7 @@ import { getCellVertices, getCellCenter } from "../../pixi/tessellationGeometry"
 import { buildPresetSplitPassages, buildPresetNodePositions, presetEndpointScreenPos } from "../../pixi/selectors/presetSelectors";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../../pixi/renderers/SplitJunctionRenderer";
 import { WallRenderer } from "../../pixi/renderers/WallRenderer";
+import { fitTileToWorld, clipToTile } from "../../pixi/tilePreviewFit";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
 import { canvas } from "../../pixi/colorTokens";
 import { splitSlotColor } from "../../pixi/colorUtils";
@@ -73,19 +74,7 @@ export function PresetSplitPointPixiPreview({
 
       const verts = getCellVertices(point[0], point[1], cfg) ?? [];
       const center = getCellCenter(point[0], point[1], cfg);
-      const pad = 6;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const v of [...verts, center]) {
-        minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
-        maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
-      }
-      const w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
-      const scale = Math.min(size / w, size / h);
-      world.scale.set(scale);
-      world.position.set(
-        (size - w * scale) / 2 - (minX - pad) * scale,
-        (size - h * scale) / 2 - (minY - pad) * scale,
-      );
+      const scale = fitTileToWorld(world, verts, center, size);
 
       if (verts.length > 0) {
         const bg = new Graphics();
@@ -93,10 +82,18 @@ export function PresetSplitPointPixiPreview({
         world.addChild(bg);
       }
 
+      // `content` clipped to this tile's own polygon (GitHub issue #609) — `buildPresetSplitPassages`
+      // resolves every declared split point on the floor, not just this one, so a neighbouring
+      // split point's geometry would otherwise bleed into the preview whenever it happens to fall
+      // within this canvas's pixel bounds. See `fitTileToWorld`/`clipToTile` (`pixi/tilePreviewFit.ts`).
+      const content = new Container();
+      world.addChild(content);
+      clipToTile(content, verts);
+
       const wallsLayer = new Container();
       const splitLayer = new Container();
       const markerLayer = new Container();
-      world.addChild(wallsLayer, splitLayer, markerLayer);
+      content.addChild(wallsLayer, splitLayer, markerLayer);
 
       const wallRenderer = new WallRenderer(wallsLayer);
       const splitRenderer = new SplitJunctionRenderer(splitLayer);

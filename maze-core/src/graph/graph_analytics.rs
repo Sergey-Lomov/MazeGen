@@ -5,6 +5,10 @@ use crate::dsu::Dsu;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 
+/// `cycle_core`'s result: the Euler-formula core's edge/node sets, the independent GF(2) cycle
+/// basis (nav-edge-index cycles), and the fully deduped simple-cycle count.
+type CycleCoreResult = Option<(HashSet<NavNodeId>, HashSet<usize>, Vec<Vec<usize>>, usize)>;
+
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
 /// physical corridor and are yielded once (via the lower edge index); edges with no reverse
 /// (one-way corridors) are yielded individually. Self-loop edges count too — a self-loop's
@@ -54,8 +58,8 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 
     let mut removed = vec![false; n];
     let mut queue: VecDeque<NavNodeId> = VecDeque::new();
-    for nid in 0..n {
-        if degree[nid] <= 1 {
+    for (nid, &d) in degree.iter().enumerate() {
+        if d <= 1 {
             queue.push_back(nid);
         }
     }
@@ -104,9 +108,7 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 /// a CW and CCW walk of the same physical loop are two separate entries in the raw cycle list
 /// (needed for the Euler-formula core above), which would double-count every bidirectional
 /// cycle in this UI-facing count if left undeduped.
-fn cycle_core(
-    nav: &NavGraph,
-) -> Option<(HashSet<NavNodeId>, HashSet<usize>, Vec<Vec<usize>>, usize)> {
+fn cycle_core(nav: &NavGraph) -> CycleCoreResult {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let (cycles, basis) = match find_all_simple_cycles(nav) {
         CycleSearchResult::Cycles { cycles, basis } => (cycles, basis),

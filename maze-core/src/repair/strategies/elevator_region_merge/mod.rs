@@ -339,6 +339,7 @@ fn try_merge_via_elevator<T: Tessellation>(
 /// same point. A candidate elevator is skipped entirely (not reused) unless its own point is
 /// itself among `target_points`; the new stop is then placed at that exact point, never at some
 /// other point `target_points` merely happens to also offer.
+#[allow(clippy::too_many_arguments)]
 fn try_reuse_existing_elevator<T: Tessellation>(
     maze: &Maze<T>,
     region_set: &HashSet<NodeId>,
@@ -404,13 +405,12 @@ fn try_reuse_existing_elevator<T: Tessellation>(
             .collect();
         candidate_nodes.sort_unstable();
 
-        if let Some(&new_stop) = candidate_nodes.iter().choose(rng) {
-            if let Some(cmds) =
+        if let Some(&new_stop) = candidate_nodes.iter().choose(rng)
+            && let Some(cmds) =
                 add_stop_command_checked(maze, elevator, new_stop, preset_state, planned)
-            {
-                commands.extend(cmds);
-                return true;
-            }
+        {
+            commands.extend(cmds);
+            return true;
         }
     }
 

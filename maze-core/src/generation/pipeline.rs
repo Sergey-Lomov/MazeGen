@@ -127,6 +127,7 @@ pub struct GenerationTiming {
 /// `qc_engine` is the single orchestrator: it drives its own stages, each stage its own rules,
 /// each rule its own checks and strategy. This function itself is now just plumbing: construct
 /// `Maze`, seed the shared `MazeRng`, delegate to `qc_engine.run_full`.
+#[allow(clippy::too_many_arguments)]
 pub fn build_maze<T: Tessellation>(
     field: MultiLevelField<T>,
     graph: Graph,
