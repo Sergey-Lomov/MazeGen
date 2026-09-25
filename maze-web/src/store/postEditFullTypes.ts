@@ -2,6 +2,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEndpoint, PostEditHoveredEntity } from "../pixi/postEditEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditCommand } from "./postEditCommandTypes";
+import type { PostEditResetLifelineDescriptor } from "../pixi/postEditResetLifelines";
 import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
 import type { PostEditPointEntityDescriptor } from "../pixi/postEditPointEntities";
 import type {
@@ -236,9 +237,9 @@ export interface PostEditState {
    *  lifeline — see `PostEditResetLifelineDescriptor`'s own doc comment for why). `requestPostEditReset`
    *  is the sole entry point: it counts `buildPostEditResetLifelinesAt`'s rows for `point`/`level`
    *  and only opens this prompt when the count is >1 (0 is a no-op, 1 resets that command directly,
-   *  no dialog). The dialog rebuilds its row list from this `point`/`level` on every render, never
-   *  caching rows. */
-  postEditResetPrompt: { point: [number, number]; level?: number } | null;
+   *  no dialog). The dialog snapshots the row list when it opens and only removes rows explicitly
+   *  reset from that snapshot; it does not promote older commands while remaining open. */
+  postEditResetPrompt: { point: [number, number]; level?: number; lifelines: PostEditResetLifelineDescriptor[] } | null;
   /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
    *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
    *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
@@ -313,10 +314,11 @@ export interface PostEditActions {
   /** Resets exactly one row's own lifeline down to before its LATEST command (GitHub issue #549
    *  follow-up) — thin wrapper over `deletePostEditCommand(commandIndex)` (GitHub issue #547's
    *  existing per-row Delete action), `commandIndex` being that row's own
-   *  `PostEditResetLifelineDescriptor.commandIndex`. The single code path both a reset-dialog row
+   *  `PostEditResetLifelineDescriptor.commandIndex`. Dialog rows additionally pass their
+   *  snapshotted command so index shifts cannot target a different command. The single code path both a reset-dialog row
    *  click and `requestPostEditReset`'s count===1 shortcut go through. Closes the prompt if, after
    *  the reset, the prompt's own point has no affected lifelines left. */
-  resetPostEditPointLifeline: (commandIndex: number) => void;
+  resetPostEditPointLifeline: (commandIndex: number, command?: PostEditCommand, lifelineKeys?: string[]) => void;
   /** "Reset all" — resets every lifeline currently affecting `postEditResetPrompt`'s point (via
    *  `resetPostEditPoint`, the whole-point fixed-point lifeline cascade) and closes the prompt. */
   resetAllPostEditPointLifelines: () => void;

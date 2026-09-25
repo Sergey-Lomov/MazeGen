@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import { computeAnalytics } from "../../wasm/mazeService";
-import type { PostEditEdgeWasmDto } from "../../wasm/types";
+import type { NodeDto, PostEditEdgeWasmDto } from "../../wasm/types";
 import {
   postEditTeleportsToDto,
   rotateSplitPointNodes,
@@ -27,7 +27,7 @@ import type {
 } from "../storeTypes";
 import type { PostEditCommand, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
-import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt } from "../../pixi/postEditReplay";
+import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt, isCreateCommand, replayPostEditCommands, lifelineKeysOf } from "../../pixi/postEditReplay";
 import { compactPostEditCommands } from "../../pixi/postEditCompaction";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
@@ -42,6 +42,101 @@ import {
   buildPostEditResetLifelinesAt,
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
+
+function endpointTouchesPoint(
+  endpoint: PostEditEndpoint,
+  nodes: NodeDto[],
+  point: [number, number] | undefined,
+  level: number | undefined,
+): boolean {
+  if (point === undefined) return true;
+  const endpointLevel = endpoint.kind === "split"
+    ? endpoint.level ?? 0
+    : nodes.find((node) => node.id === endpoint.id)?.level ?? 0;
+  if (endpointLevel !== (level ?? 0)) return false;
+  return endpoint.kind === "split"
+    ? endpoint.point[0] === point[0] && endpoint.point[1] === point[1]
+    : (() => {
+      const node = nodes.find((candidate) => candidate.id === endpoint.id);
+      return node?.x === point[0] && node?.y === point[1];
+    })();
+}
+
+function samePostEditCommand(a: PostEditCommand, b: PostEditCommand): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Keep the creation event for a post-edit-only entity when Reset removes it, then append the
+ * matching remove event. Without this, reset silently pruned the creation command and the Changes
+ * log had no deletion entry (GitHub issue #593). Generation-backed entities are deliberately not
+ * included: resetting them restores their baseline state and therefore has no deletion to record. */
+function resetCommandsWithDeletionEvents(
+  state: PostEditState,
+  remainingCommands: PostEditCommand[],
+  point?: [number, number],
+  level?: number,
+): PostEditCommand[] {
+  const { postEditBaseline: baseline, postEditDerived: derived, postEditCommands: commands } = state;
+  if (!baseline || !derived) return commands;
+  const baselineTeleportIds = new Set(baseline.derived.teleports.map((entry) => entry.id));
+  const baselinePassageIds = new Set(baseline.derived.verticalPassages.map((entry) => entry.id));
+  const baselineElevatorIds = new Set(baseline.derived.elevators.map((entry) => entry.id));
+  const targetKey = point === undefined ? undefined : level === undefined
+    ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const touches = (from: PostEditEndpoint, to: PostEditEndpoint) =>
+    endpointTouchesPoint(from, baseline.context.nodes, point, level)
+    || endpointTouchesPoint(to, baseline.context.nodes, point, level);
+
+  const createdTeleports = derived.teleports.filter((entry) =>
+    !baselineTeleportIds.has(entry.id) && touches(entry.from, entry.to));
+  const createdPassages = derived.verticalPassages.filter((entry) =>
+    !baselinePassageIds.has(entry.id) && touches(entry.from, entry.to));
+  const createdElevators = derived.elevators.filter((entry) =>
+    !baselineElevatorIds.has(entry.id)
+    && (point === undefined || entry.floors.some((floor) => endpointTouchesPoint(floor, baseline.context.nodes, point, level))));
+  const createdMeta = (slot: "start" | "finish") =>
+    baseline.derived.meta[slot] === null && derived.meta[slot] !== null
+    && endpointTouchesPoint(derived.meta[slot]!, baseline.context.nodes, point, level);
+
+  const createdSplitSlots = targetKey === undefined
+    ? Object.entries(derived.splitPoints).flatMap(([key, slots]) => slots.filter((slot) => !(baseline.derived.splitPoints[key] ?? []).includes(slot)).map((slot) => ({ key, slot })))
+    : (derived.splitPoints[targetKey] ?? []).filter((slot) => !(baseline.derived.splitPoints[targetKey] ?? []).includes(slot)).map((slot) => ({ key: targetKey, slot }));
+  const createdSplitKeys = new Set(createdSplitSlots.map(({ key }) => key));
+  const createdCommands = commands.filter((command) => {
+    if (!isCreateCommand(command)) return false;
+    switch (command.kind) {
+      case "addMeta": return createdMeta(command.slot);
+      case "addTeleport": return createdTeleports.some((entry) => entry.id === command.id);
+      case "addVerticalPassage": return createdPassages.some((entry) => entry.id === command.id);
+      case "addElevator": return createdElevators.some((entry) => entry.id === command.id);
+      case "addSplitNode":
+      case "applySplitBlueprint": {
+        const key = command.level === undefined
+          ? `${command.point[0]},${command.point[1]}` : `${command.point[0]},${command.point[1]}@${command.level}`;
+        return createdSplitKeys.has(key);
+      }
+      default: return false;
+    }
+  });
+
+  const deletions: PostEditCommand[] = [];
+  if (createdMeta("start")) deletions.push({ kind: "removeMeta", slot: "start", id: "s", endpoint: derived.meta.start! });
+  if (createdMeta("finish")) deletions.push({ kind: "removeMeta", slot: "finish", id: "f", endpoint: derived.meta.finish! });
+  for (const entry of createdTeleports) deletions.push({ kind: "removeTeleport", id: entry.id, from: entry.from, to: entry.to, direction: entry.direction });
+  for (const entry of createdPassages) deletions.push({ kind: "removeVerticalPassage", id: entry.id, from: entry.from, to: entry.to, direction: entry.direction });
+  for (const entry of createdElevators) deletions.push({ kind: "removeElevator", id: entry.id, floors: entry.floors });
+  for (const key of createdSplitKeys) {
+    const [x, yAndLevel] = key.split(",");
+    const [y, rawLevel] = yAndLevel.split("@");
+    const splitPoint: [number, number] = [Number(x), Number(y)];
+    const splitLevel = rawLevel === undefined ? undefined : Number(rawLevel);
+    const pointId = derived.splitPointIds[key];
+    const slots = createdSplitSlots.filter((entry) => entry.key === key).map((entry) => entry.slot);
+    if (pointId && slots.length > 0) deletions.push({ kind: "removeSplitPoint", point: splitPoint, level: splitLevel, pointId, removedSlotIds: slots });
+  }
+
+  return [...remainingCommands, ...createdCommands, ...deletions];
+}
 
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
   postEditAutoConfirm: true,
@@ -467,16 +562,32 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // issue #564) occupies ids 1..N of its own category — the next user-created one must start
       // past them, not collide (#363's fix, now generalized to every category since generation-baked
       // vertical passages/elevators are full baseline entries too).
+      const resetCommands = resetCommandsWithDeletionEvents(state, []);
+      const resetDerived = replayPostEditCommands(baseline, resetCommands);
+      const nextIds = nextPostEditIdCounters(resetDerived);
+      const baselineSplitCounters = nextSplitSlotIdCounters(baseline.derived.splitPoints);
+      const nextSplitSlots = Object.fromEntries([...new Set([
+        ...Object.keys(state._nextSplitSlotId),
+        ...Object.keys(baseline.derived.splitPoints),
+      ])].map((key) => [key, Math.max(
+        state._nextSplitSlotId[key] ?? 0,
+        baselineSplitCounters[key] ?? 0,
+      )]));
       return {
         nodes: state._generatedNodes,
         edges: state._generatedEdges,
         postEditBaseline: baseline,
-        postEditDerived: baseline.derived,
-        postEditCommands: [] as PostEditCommand[],
-        ...legacyFieldsFor(baseline.derived),
-        ...nextPostEditIdCounters(baseline.derived),
+        postEditDerived: resetDerived,
+        postEditCommands: resetCommands,
+        ...legacyFieldsFor(resetDerived),
+        // Reset now keeps add/remove pairs in the log for post-edit-only entities. Preserve the
+        // high-water marks so a later add cannot reuse an id still present in that history.
+        _nextPostEditTeleportId: Math.max(state._nextPostEditTeleportId, nextIds._nextPostEditTeleportId),
+        _nextPostEditSplitPointId: Math.max(state._nextPostEditSplitPointId, nextIds._nextPostEditSplitPointId),
+        _nextPostEditVerticalPassageId: Math.max(state._nextPostEditVerticalPassageId, nextIds._nextPostEditVerticalPassageId),
+        _nextPostEditElevatorId: Math.max(state._nextPostEditElevatorId, nextIds._nextPostEditElevatorId),
         postEditTeleportPendingFrom: null,
-        _nextSplitSlotId: nextSplitSlotIdCounters(baseline.derived.splitPoints),
+        _nextSplitSlotId: nextSplitSlots,
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
         postEditEdges: null,
@@ -506,7 +617,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // slot. `postEditActiveSplitNode` (ephemeral UI state, not in the log) is cleared for this
     // point directly, mirroring the old code's own `activeSplitNode` reset.
     const filtered = filterCommandsForPoint(state.postEditBaseline, state.postEditCommands, point, level);
-    replacePostEditCommands(get, set, filtered, true);
+    const resetCommands = resetCommandsWithDeletionEvents(state, filtered, point, level);
+    replacePostEditCommands(get, set, resetCommands, true);
     const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     set((state) => {
       const nextActive = { ...state.postEditActiveSplitNode };
@@ -677,21 +789,39 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       get().resetPostEditPointLifeline(lifelines[0].commandIndex);
       return;
     }
-    set({ postEditResetPrompt: { point, level }, postEditSplitTargetPrompt: null });
+    set({ postEditResetPrompt: { point, level, lifelines }, postEditSplitTargetPrompt: null });
   },
 
   cancelPostEditReset: () => set({ postEditResetPrompt: null }),
 
-  resetPostEditPointLifeline: (commandIndex) => {
+  resetPostEditPointLifeline: (commandIndex, snapshotCommand, snapshotKeys) => {
     // A row resets only its own lifeline's LATEST command (GitHub issue #549 follow-up), same
     // single-entry-collapse-or-cascade semantics `deletePostEditCommand` already gives the Changes
     // panel's own per-row Delete action — not the whole lifeline via a lifeline-key cascade.
-    get().deletePostEditCommand(commandIndex);
+    const state = get();
+    let actualIndex = snapshotCommand === undefined
+      ? commandIndex
+      : state.postEditCommands.findIndex((command) => samePostEditCommand(command, snapshotCommand));
+    if (actualIndex < 0 && snapshotKeys !== undefined) {
+      for (let i = state.postEditCommands.length - 1; i >= 0; i -= 1) {
+        const keys = lifelineKeysOf(state.postEditCommands[i]);
+        if (snapshotKeys.every((key) => keys.includes(key))) {
+          actualIndex = i;
+          break;
+        }
+      }
+    }
+    const targetCommand = actualIndex >= 0 ? state.postEditCommands[actualIndex] : undefined;
+    if (targetCommand !== undefined) get().deletePostEditCommand(actualIndex);
 
     const prompt = get().postEditResetPrompt;
     if (!prompt) return;
-    const remaining = buildPostEditResetLifelinesAt(get(), prompt.point, prompt.level);
+    const removedCommand = snapshotCommand ?? targetCommand;
+    const remaining = removedCommand === undefined
+      ? prompt.lifelines
+      : prompt.lifelines.filter((row) => !samePostEditCommand(row.command, removedCommand));
     if (remaining.length === 0) set({ postEditResetPrompt: null });
+    else set({ postEditResetPrompt: { ...prompt, lifelines: remaining } });
   },
 
   resetAllPostEditPointLifelines: () => {

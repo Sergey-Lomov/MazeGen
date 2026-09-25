@@ -1180,7 +1180,10 @@ hover uses):
   (`removeSplitPoint`, whose `removedSlotIds` can span multiple slots) collapses its lifelines into a
   single row, since resetting it resets all of them together. Each row is labeled via the same
   `postEditCommandLabel` vocabulary the "Changes" panel rows use, built from that command,
-  `commandIndex` being its own oldest-to-newest log index. The dialog carries a "Reset all" button.
+  `commandIndex` being its own oldest-to-newest log index. The dialog snapshots this row list when
+  it opens: after one row is reset, only that row is removed; an older command exposed by the reset
+  is not promoted into a new row until the dialog is closed and opened again. The dialog carries a
+  "Reset all" button.
   Clicking a row resets only that ONE command, not any lifeline's whole history — `resetPostEditPointLifeline` is a thin
   wrapper over `deletePostEditCommand(commandIndex)` (GitHub issue #547's existing per-row Delete
   action): a plain move/direction-change/removal collapses away leaving the rest of the lifeline's
@@ -1196,7 +1199,11 @@ hover uses):
   to generation-time state — every edge/teleport/vertical-passage/elevator/start-finish command
   touching any of the point's current *or past* nodes (original plus every split slot ever added
   there, including one added via `addSplitNode` and never confirmed) is dropped, so the derived
-  state falls back to `postEditBaseline.derived` for that lifeline. This is the only way to reset a
+  state falls back to `postEditBaseline.derived` for that lifeline. When the reset removes an entity
+  created only during post-edit, its creation command is retained and a matching localized `remove*`
+  command is appended to the log, so the Changes/event log records the deletion while replay still
+  ends at the generation state. Generation-backed entities are restored without a synthetic removal
+  event. This is the only way to reset a
   split connection — the edge branch refuses it.
 
   A count>1 request that opens the dialog mid-drag ends the gesture right there (same `endEdgeDrag()`
