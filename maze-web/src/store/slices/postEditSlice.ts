@@ -34,9 +34,10 @@ import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
 import { configAllCells } from "../../pixi/tessellationCells";
 import {
-  toWasmEndpoint, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage,
+  toWasmEndpoint, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage, tryCommitPostEditVerticalPassage,
+  resolveDragTargets, dispatchPostEditElevatorPlacement,
   buildPostEditBaseline, appendPostEditCommand, replacePostEditCommands,
-  derivedStateToLegacyFields as legacyFieldsFor, resolveActiveNodeIdAt, nextPostEditIdCounters,
+  derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters,
   nextSplitSlotIdCounters,
   buildPostEditPointEntitiesAt, removePostEditSplitSlots, resolveNodeIdToEndpoint,
   buildPostEditResetLifelinesAt,
@@ -1073,7 +1074,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       return;
     }
     if (freeDirections.length === 1) {
-      commitPostEditVerticalPassage(get, set, origin, tool, freeDirections[0]);
+      tryCommitPostEditVerticalPassage(get, set, origin, tool, freeDirections[0]);
       return;
     }
     set({ postEditVerticalPassagePending: { origin, tool, availableDirections: freeDirections } });
@@ -1082,7 +1083,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   choosePostEditVerticalPassageDirection: (direction) => {
     const pending = get().postEditVerticalPassagePending;
     if (!pending) return;
-    commitPostEditVerticalPassage(get, set, pending.origin, pending.tool, direction);
+    tryCommitPostEditVerticalPassage(get, set, pending.origin, pending.tool, direction);
   },
 
   cancelPostEditVerticalPassagePlacement: () => set({ postEditVerticalPassagePending: null }),
@@ -1117,17 +1118,28 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
-  movePostEditVerticalPassageEndpoint: (id, end, endpoint) => {
+  movePostEditVerticalPassageEndpoint: (id, end, endpoint, otherEndpoint) => {
     const state = get();
     const target = state.postEditDraftVerticalPassages.find((p) => p.id === id);
-    if (!target || endpoint.kind !== "node") return;
-    const newNode = state.nodes.find((n) => n.id === endpoint.id);
+    if (!target) return;
+    // `endpoint` is normally `node`-kind (the plain landing node) but can now be a `split`-kind
+    // pick (GitHub issue #567, when the user picked a numbered slot via `PostEditSplitTargetDialog`
+    // for the dragged end's own landing point) — either way the real node id is resolved fresh via
+    // `resolveEndpoint`/`buildSplitNodeResolver` to drive `resolveVerticalPassageMove`'s (x, y)
+    // lookup; `endpoint` itself is passed through unchanged as the dragged end's own resulting form.
+    const nodeMap = buildMultiFloorPointNodeMap(state.nodes);
+    const resolveSplit = buildSplitNodeResolver(nodeMap, state.postEditDraftSplitPoints);
+    const newNodeId = resolveEndpoint(endpoint, resolveSplit);
+    const newNode = newNodeId !== undefined ? state.nodes.find((n) => n.id === newNodeId) : undefined;
     if (!newNode) return;
     // GitHub issue #566: dragging one end of a vertical passage must move BOTH ends to the same
     // (x, y) — `resolveVerticalPassageMove` resolves the OTHER end's own node on its own floor and
     // fails (reverting the whole gesture, no command appended) if that floor has no node there.
+    // `otherEndpoint` (GitHub issue #567) is the user's own pick for that other floor when it also
+    // turned out to be split — passed straight through instead of `findNodeAt`'s bare first-node
+    // pick.
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
-    const resolved = resolveVerticalPassageMove(target, end, newNode, state.nodes, resolveNodeLevel);
+    const resolved = resolveVerticalPassageMove(target, end, newNode, state.nodes, resolveNodeLevel, endpoint, otherEndpoint);
     if ("failure" in resolved) {
       set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "vertical_passage" } });
       return;
@@ -1190,40 +1202,32 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const originNode = origin.kind === "node" ? state.nodes.find((n) => n.id === origin.id) : undefined;
     if (origin.kind === "node" && !originNode) return;
     const point: [number, number] = origin.kind === "node" ? [originNode!.x, originNode!.y] : origin.point;
-    // Every selected floor resolves to whichever node the user last picked at `point` on that
-    // floor (GitHub issue #546 fifth follow-up — `postEditActiveSplitNode`, same map the edge
-    // tools already read via `PostEditController.resolveActiveEndpointAt`), falling back to that
-    // floor's own original node only when nothing's been picked there yet. Previously always took
-    // the original node outright, silently ignoring a split floor's actually-clicked slot. The
-    // RESULT is resolved through `resolveNodeIdToEndpoint` (GitHub issue #550 ninth/tenth follow-up),
-    // not a bare `nodeEndpoint(nodeId)` — a floor that's actually a split point's numbered slot must
-    // be recorded as `splitEndpoint(...)`, matching what a confirmed round-trip already produces
-    // (`extractPostEditElevators`), or it silently drops out of the delete dialog's slot rows.
-    const floors: PostEditEndpoint[] = [];
-    for (const level of Array.from(pending.floors).sort((a, b) => a - b)) {
-      const nodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === level).map((n) => n.id);
-      const nodeId = resolveActiveNodeIdAt(point, nodeIds, state.postEditActiveSplitNode, level === 0 ? undefined : level);
-      if (nodeId === undefined) continue;
-      floors.push(resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, nodeId));
+    const levels = Array.from(pending.floors).sort((a, b) => a - b);
+    // GitHub issue #567 second follow-up: any of the pending floors can independently be a split
+    // point — checked here via the same maze-wide `pointNodeMap` the drag-commit path uses, BEFORE
+    // falling back to `resolveActiveNodeIdAt`'s active/first-node default. Before this fix, a fresh
+    // elevator placement whose target floor happened to already be split silently attached to
+    // whichever node was "active" there (or the first one), the same ambiguity the drag-onto-
+    // existing-endpoint case already got a dialog for.
+    const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+    const { picks, queue } = resolveDragTargets(levels.map((level) => ({ point, level: level === 0 ? undefined : level })), pointNodeMap);
+    if (queue.length > 0) {
+      const first = queue[0];
+      set({
+        postEditSplitTargetPrompt: {
+          point: first.point, level: first.level, nodeIds: first.nodeIds,
+          action: { tool: "place_elevator", origin, levels, editingId: pending.editingId },
+          queue, picks,
+        },
+      });
+      return;
     }
+    // Every floor resolved for free (none split) — same fallback `resolveActiveNodeIdAt` gave before
+    // this fix for the single-confirmed-node/no-node cases (`resolveDragTargets` only fills `picks`
+    // from a point's CONFIRMED nodes, same as `resolveActiveNodeIdAt`'s own `nodeIds` source).
+    const floors = picks.filter((p): p is PostEditEndpoint => p !== undefined);
     if (floors.length < 2) return;
-    const editingId = pending.editingId;
-    // `editingId` is always set when editing an existing entry now (GitHub issue #564 — a
-    // generation-baked elevator is a full baseline draft entry with its own id, found by
-    // `startPostEditElevatorPlacement`'s `existingDraft` lookup) — no separate generation-mesh
-    // suppression concept, `updateElevatorFloors` is an ordinary edit of an existing draft entry.
-    const applied = editingId !== undefined
-      ? appendPostEditCommand(get, set, { kind: "updateElevatorFloors", id: editingId, floors })
-      : appendPostEditCommand(get, set, { kind: "addElevator", id: formatPostEditId("elevator", state._nextPostEditElevatorId), floors });
-    if (applied) {
-      if (editingId === undefined) {
-        set((state) => ({ _nextPostEditElevatorId: state._nextPostEditElevatorId + 1 }));
-      }
-      set({ postEditElevatorPending: null });
-    }
-    if (get().postEditAutoConfirm) {
-      void get().confirmPostEdit();
-    }
+    dispatchPostEditElevatorPlacement(get, set, pending.editingId, floors);
   },
 
   cancelPostEditElevatorPlacement: () => set({ postEditElevatorPending: null }),
@@ -1237,31 +1241,40 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
-  movePostEditElevatorEndpoint: (id, level, endpoint) => {
+  movePostEditElevatorEndpoint: (id, level, endpoint, otherEndpoints) => {
     const state = get();
     const target = state.postEditDraftElevators.find((e) => e.id === id);
-    if (!target || endpoint.kind !== "node") return;
-    const newNode = state.nodes.find((n) => n.id === endpoint.id);
+    if (!target) return;
+    // `endpoint` is normally `node`-kind (the plain landing node) but can now be a `split`-kind
+    // pick (GitHub issue #567, when the user picked a numbered slot for the dragged floor's own
+    // landing point) — resolve the real node id fresh via `resolveEndpoint`/`buildSplitNodeResolver`
+    // to drive `resolveElevatorMove`'s (x, y) lookup; `endpoint` itself passes through unchanged.
+    const nodeMap = buildMultiFloorPointNodeMap(state.nodes);
+    const resolveSplit = buildSplitNodeResolver(nodeMap, state.postEditDraftSplitPoints);
+    const newNodeId = resolveEndpoint(endpoint, resolveSplit);
+    const newNode = newNodeId !== undefined ? state.nodes.find((n) => n.id === newNodeId) : undefined;
     if (!newNode) return;
     // GitHub issue #566: dragging one floor's marker moves every OTHER floor's own endpoint to the
     // same (x, y) too — reuses `updateElevatorFloors`, no dedicated command kind needed since it
-    // already carries the full resulting `floors` array.
+    // already carries the full resulting `floors` array. `otherEndpoints` (GitHub issue #567) are
+    // the user's own picks for whichever OTHER floors also turned out split, keyed by level —
+    // passed straight through `resolveElevatorMove`'s override map instead of `findNodeAt`'s bare
+    // first-node pick.
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
-    const resolved = resolveElevatorMove(target, { id, level }, newNode, state.nodes, resolveNodeLevel);
+    const overridesByLevel = new Map<number, PostEditEndpoint>([[level, endpoint], ...(otherEndpoints ?? []).map((o): [number, PostEditEndpoint] => [o.level, o.endpoint])]);
+    const resolved = resolveElevatorMove(target, { id, level }, newNode, state.nodes, resolveNodeLevel, overridesByLevel);
     if ("failure" in resolved) {
       set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "elevator" } });
       return;
     }
-    // Split-kind floors (an elevator floor CAN be split-addressed, see
-    // `confirmPostEditElevatorPlacement`) must keep their slot identity across the move — re-wrap
-    // through `resolveNodeIdToEndpoint` rather than the plain `nodeEndpoint` the util returns raw ids for.
+    // `resolved.own`/`.others` are already the correct final `PostEditEndpoint` for each floor —
+    // either the user's own explicit pick (already the right node/split kind) or a plain
+    // `nodeEndpoint` from `findNodeAt`. No re-wrap needed: unlike before GitHub issue #567, a
+    // floor's resulting kind is decided by what it actually resolved to this move, not by whether
+    // it happened to be split-addressed BEFORE the move.
     const floors = target.floors.map((f) => {
       const floorLevel = f.kind === "node" ? (resolveNodeLevel(f.id) ?? 0) : (f.level ?? 0);
-      const resolvedNode = floorLevel === level ? resolved.own : resolved.others.get(floorLevel);
-      if (!resolvedNode) return f;
-      return f.kind === "split"
-        ? resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, resolvedNode.id)
-        : nodeEndpoint(resolvedNode.id);
+      return floorLevel === level ? resolved.own : (resolved.others.get(floorLevel) ?? f);
     });
     appendPostEditCommand(get, set, { kind: "updateElevatorFloors", id, floors });
     if (get().postEditAutoConfirm) {
@@ -1273,12 +1286,11 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   requestPostEditSplitTarget: (prompt) => set({ postEditSplitTargetPrompt: prompt }),
 
-  cancelPostEditSplitTarget: () => set({ postEditSplitTargetPrompt: null }),
+  cancelPostEditSplitTarget: () => set({ postEditSplitTargetPrompt: null, postEditDragOverride: null }),
 
   applyPostEditSplitTargetPick: (nodeId) => {
     const prompt = get().postEditSplitTargetPrompt;
     if (!prompt) return;
-    set({ postEditSplitTargetPrompt: null });
     // `nodeId` is a resolved `NodeId` — when the picked cell is a split point, that id may belong to
     // one of its numbered slots, not the original node. Resolving it through `resolveNodeIdToEndpoint`
     // (built fresh from live `state.nodes`/`postEditDraftSplitPoints`, same as `confirmPostEdit`'s
@@ -1290,6 +1302,63 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const endpoint = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, nodeId);
     const { action } = prompt;
+
+    // GitHub issue #567: a `move_*`/`place_*` action defers a drag commit or a fresh placement
+    // through a QUEUE of split points (see `postEditSplitTargetPrompt`'s own doc comment) — this
+    // pick fills one slot of `picks` rather than dispatching immediately. `queue`/`picks` are
+    // always present together for these five tools (the caller never opens one without the other).
+    if (
+      action.tool === "move_teleport_endpoint" || action.tool === "move_vertical_passage_endpoint" || action.tool === "move_elevator_endpoint"
+      || action.tool === "place_vertical_passage" || action.tool === "place_elevator"
+    ) {
+      const queue = prompt.queue ?? [];
+      const picks = [...(prompt.picks ?? [])];
+      // `queue[0]` is always the point currently on screen (`PostEditController`/the slice action
+      // that opened the prompt keeps `queue` un-shifted, mirroring `point`/`level`/`nodeIds` in its
+      // own `[0]` — see `postEditSplitTargetPrompt`'s doc comment) — always defined here, since the
+      // prompt is only ever opened with at least that one entry.
+      const current = queue[0];
+      const targetIndex = current ? current.targetIndex : 0;
+      picks[targetIndex] = endpoint;
+      const rest = queue.slice(1);
+      if (rest.length > 0) {
+        const next = rest[0];
+        set({ postEditSplitTargetPrompt: { ...prompt, point: next.point, level: next.level, nodeIds: next.nodeIds, queue: rest, picks } });
+        return;
+      }
+      // The queue is fully resolved now — clear the drag override too (see `PostEditController`'s
+      // pointerup handlers for why it was left alone while the prompt was open): the `move_*`
+      // dispatch below writes the final position straight into the draft, so the renderer no longer
+      // needs the override to show it.
+      set({ postEditSplitTargetPrompt: null, postEditDragOverride: null });
+      if (action.tool === "move_teleport_endpoint") {
+        const target = picks[0];
+        if (target) get().movePostEditTeleportEndpoint(action.id, action.end, target);
+      } else if (action.tool === "move_vertical_passage_endpoint") {
+        const own = picks[0];
+        const other = picks[1];
+        if (own) get().movePostEditVerticalPassageEndpoint(action.id, action.end, own, other);
+      } else if (action.tool === "move_elevator_endpoint") {
+        const resolved = action.levels.map((level, i) => ({ level, endpoint: picks[i] })).filter((r): r is { level: number; endpoint: PostEditEndpoint } => r.endpoint !== undefined);
+        if (resolved.length === action.levels.length) get().movePostEditElevatorEndpoint(action.id, resolved[0].level, resolved[0].endpoint, resolved.slice(1));
+      } else if (action.tool === "place_vertical_passage") {
+        const to = picks[0];
+        if (to) commitPostEditVerticalPassage(get, set, action.origin, action.passageTool, action.direction, to);
+      } else {
+        const floors = picks.filter((p): p is PostEditEndpoint => p !== undefined);
+        if (floors.length === action.levels.length) dispatchPostEditElevatorPlacement(get, set, action.editingId, floors);
+      }
+      return;
+    }
+
+    // Clears `postEditDragOverride` too, not just the prompt — a `set_start`/`set_finish` pick can
+    // originate from a marker drag onto a split tile (GitHub issue #567 follow-up), whose in-flight
+    // drag preview left an override pointing at the ORIGINAL (pre-dialog) resolved node; leaving it
+    // set after this dispatch made the renderer keep showing the marker there until something else
+    // happened to clear it later, even though `setPostEditEndpoint` below already wrote the
+    // genuinely-picked node into the draft. Harmless no-op for every other `action.tool` here, none
+    // of which touch a drag override.
+    set({ postEditSplitTargetPrompt: null, postEditDragOverride: null });
     switch (action.tool) {
       case "set_start":
         get().setPostEditEndpoint("start", endpoint);

@@ -143,21 +143,40 @@ export function movePostEditVerticalPassageEndpoint(
  * different floors, so moving only the dragged end (the pre-fix behavior) desyncs the passage's
  * own coordinates. Fails (`failure` set, no `from`/`to`) when the OTHER end's own floor has no
  * node at `newNode`'s `(x, y)` — the caller (`postEditSlice.ts`) is expected to revert the whole
- * drag gesture on failure, never append a command for a partial move. */
+ * drag gesture on failure, never append a command for a partial move.
+ *
+ * `ownEndpoint`/`otherEndpoint` (GitHub issue #567) override the plain `nodeEndpoint(...)` this
+ * function would otherwise build for the dragged end / resolve via `findNodeAt` for the other end
+ * — used once the user has explicitly picked a node via `PostEditSplitTargetDialog` for a landing
+ * point that turned out to be split (`findNodeAt`'s bare `.find()` would otherwise silently always
+ * pick that point's original node, never letting the user land on a numbered slot). Omitted
+ * (`undefined`) for a plain, non-split landing point — the original `nodeEndpoint`/`findNodeAt`
+ * behavior is unchanged in that case. */
 export function resolveVerticalPassageMove(
   entry: PostEditVerticalPassageEntry,
   end: "from" | "to",
   newNode: NodeDto,
   nodes: NodeDto[],
   resolveNodeLevel: (id: number) => number | undefined,
+  ownEndpoint?: PostEditEndpoint,
+  otherEndpoint?: PostEditEndpoint,
 ): { from: PostEditEndpoint; to: PostEditEndpoint } | { failure: PostEditVerticalDragFailure } {
   const otherEp = end === "from" ? entry.to : entry.from;
-  if (otherEp.kind !== "node") return { failure: { level: resolveNodeLevel(newNode.id) ?? 0, point: [newNode.x, newNode.y] } };
-  const otherLevel = resolveNodeLevel(otherEp.id) ?? 0;
-  const otherNode = findNodeAt(nodes, resolveNodeLevel, [newNode.x, newNode.y], otherLevel);
-  if (!otherNode) return { failure: { level: otherLevel, point: [newNode.x, newNode.y] } };
-  const own = nodeEndpoint(newNode.id);
-  const other = nodeEndpoint(otherNode.id);
+  // The OTHER end's CURRENT endpoint can already be `split`-kind (GitHub issue #567 — it may have
+  // been resolved to a numbered slot by an earlier drag/placement), not just `node`-kind — a
+  // split-kind endpoint carries its own `level` directly, same `endpointLevel` reads for an
+  // elevator floor, so this no longer needs to bail out early. Bailing here used to fail EVERY
+  // drag of a vertical passage whose other end already lived on a split tile, even though the
+  // caller (`PostEditController`) already queues a fresh pick for that other end via
+  // `otherEndpoint` when it's needed.
+  const otherLevel = endpointLevel(otherEp, resolveNodeLevel);
+  const own = ownEndpoint ?? nodeEndpoint(newNode.id);
+  let other = otherEndpoint;
+  if (!other) {
+    const otherNode = findNodeAt(nodes, resolveNodeLevel, [newNode.x, newNode.y], otherLevel);
+    if (!otherNode) return { failure: { level: otherLevel, point: [newNode.x, newNode.y] } };
+    other = nodeEndpoint(otherNode.id);
+  }
   return end === "from" ? { from: own, to: other } : { from: other, to: own };
 }
 
@@ -190,25 +209,38 @@ function endpointLevel(f: PostEditEndpoint, resolveNodeLevel: (id: number) => nu
  * node exists at `newNode`'s `(x, y)` on one of the OTHER floors (first such floor, ascending
  * order). Returns each resolved OTHER floor as a raw `NodeDto`; the caller re-wraps a floor that
  * was originally `split`-kind back through `resolveNodeIdToEndpoint` (needs `postEditDraftSplitPoints`,
- * not available in this file) so its slot identity survives the move. */
+ * not available in this file) so its slot identity survives the move.
+ *
+ * `overridesByLevel` (GitHub issue #567) — a level -> already-resolved `PostEditEndpoint` map for
+ * any floor (the dragged one included) whose landing point turned out to be split and got an
+ * explicit user pick via `PostEditSplitTargetDialog`; that floor's own entry is used verbatim
+ * instead of `findNodeAt`'s bare `.find()` (which would otherwise silently always pick the point's
+ * original node). A level with no override entry keeps the original behavior. */
 export function resolveElevatorMove(
   entry: PostEditElevatorEntry,
   hit: PostEditElevatorEndpointHit,
   newNode: NodeDto,
   nodes: NodeDto[],
   resolveNodeLevel: (id: number) => number | undefined,
-): { own: NodeDto; others: Map<number, NodeDto> } | { failure: PostEditVerticalDragFailure } {
+  overridesByLevel?: ReadonlyMap<number, PostEditEndpoint>,
+): { own: PostEditEndpoint; others: Map<number, PostEditEndpoint> } | { failure: PostEditVerticalDragFailure } {
   const otherLevels = entry.floors
     .map((f) => endpointLevel(f, resolveNodeLevel))
     .filter((level) => level !== hit.level)
     .sort((a, b) => a - b);
-  const resolvedByLevel = new Map<number, NodeDto>();
+  const resolvedByLevel = new Map<number, PostEditEndpoint>();
   for (const level of otherLevels) {
+    const override = overridesByLevel?.get(level);
+    if (override) {
+      resolvedByLevel.set(level, override);
+      continue;
+    }
     const node = findNodeAt(nodes, resolveNodeLevel, [newNode.x, newNode.y], level);
     if (!node) return { failure: { level, point: [newNode.x, newNode.y] } };
-    resolvedByLevel.set(level, node);
+    resolvedByLevel.set(level, nodeEndpoint(node.id));
   }
-  return { own: newNode, others: resolvedByLevel };
+  const own = overridesByLevel?.get(hit.level) ?? nodeEndpoint(newNode.id);
+  return { own, others: resolvedByLevel };
 }
 
 /** Every node id reachable from any of `startIds` via `elevator`-kind edges in `edges`, `startIds`
@@ -324,13 +356,16 @@ export function postEditVerticalPassageDirectionToDto(
 }
 
 /** Converts editable vertical-passage/elevator entries to the flat `{from, to, kind}[]` shape
- * `ComputeAnalyticsConfig.vertical_edges` expects — mirrors `postEditTeleportsToDto`, but each
- * endpoint is always `node`-kind already (a vertical passage/elevator is never `split`-addressed),
- * so `resolveEndpoint` only ever hits the trivial branch; kept for symmetry and to skip an entry
- * whose endpoint somehow isn't a `node` (shouldn't happen). `direction: "backward"` runs `to->from`,
- * same convention `postEditTeleportsToDto` uses. An elevator fans out into every pairwise
- * combination of its resolvable floor endpoints, both directions — mirrors `build_preset_state`'s
- * own elevator-establishing loop on the Rust side. */
+ * `ComputeAnalyticsConfig.vertical_edges` expects — mirrors `postEditTeleportsToDto`. An endpoint
+ * can be `split`-kind (GitHub issue #567: landing a drag/fresh placement on a split tile's non-main
+ * node), so `resolveSplit` MUST be a maze-wide/unscoped resolver, not one built from a single
+ * floor's nodes — a vertical passage/elevator is inherently cross-floor, so a split `to`/other-floor
+ * endpoint routinely lives on a floor other than whichever one the caller is currently rendering;
+ * a floor-scoped resolver silently fails on it, and the `if (from === undefined || to === undefined)
+ * continue` below then drops the WHOLE edge, not just the unresolved endpoint. `direction:
+ * "backward"` runs `to->from`, same convention `postEditTeleportsToDto` uses. An elevator fans out
+ * into every pairwise combination of its resolvable floor endpoints, both directions — mirrors
+ * `build_preset_state`'s own elevator-establishing loop on the Rust side. */
 export function postEditVerticalToDto(
   passages: PostEditVerticalPassageEntry[],
   elevators: PostEditElevatorEntry[],

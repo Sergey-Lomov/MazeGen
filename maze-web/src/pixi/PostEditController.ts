@@ -13,7 +13,7 @@ import {
 import { selectFloorScopedMaze, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
-import { resolveNodeIdToEndpoint } from "../store/slices/postEditSliceHelpers";
+import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets } from "../store/slices/postEditSliceHelpers";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -133,6 +133,18 @@ export class PostEditController extends BaseController {
 
   private getNodeById(nodes: NodeDto[]): Map<number, NodeDto> {
     return new Map(nodes.map(n => [n.id, n]));
+  }
+
+  /** Clears `postEditDragOverride`, unless a split-target prompt is currently open — leaving it
+   * set in that case is what keeps the drag preview showing the dropped position while the dialog
+   * asks which node to use, instead of snapping back to the pre-drag position for as long as the
+   * dialog stays up. `applyPostEditSplitTargetPick`/`cancelPostEditSplitTarget` clear it once the
+   * gesture is actually settled (committed or abandoned). Shared by all 4 drag-commit branches in
+   * `onPointerUp` (marker, teleport, vertical-passage, elevator endpoints). */
+  private clearDragOverrideUnlessPromptOpen(): void {
+    if (useMazeStore.getState().postEditSplitTargetPrompt === null) {
+      useMazeStore.getState().setPostEditDragOverride(null);
+    }
   }
 
   onPointerMove(canvasX: number, canvasY: number): void {
@@ -586,11 +598,41 @@ export class PostEditController extends BaseController {
     // different endpoint than it started from (a plain click that never moved must stay a no-op,
     // same as before this change — it simply never got a pointermove to react to).
     if (button === 0 && this.draggingMarker) {
+      const marker = this.draggingMarker;
       const override = useMazeStore.getState().postEditDragOverride;
       if (override?.kind === "marker" && (this.markerDragOrigin === null || !endpointsEqual(override.endpoint, this.markerDragOrigin))) {
-        useMazeStore.getState().setPostEditEndpoint(this.draggingMarker === "set_start" ? "start" : "finish", override.endpoint);
+        // GitHub issue #567 follow-up: the override's endpoint was already silently resolved to a
+        // single node during the drag preview (`resolveActiveEndpointAt`'s active/first-node
+        // fallback), same as the teleport/vertical-passage/elevator drag-commit branches below —
+        // re-derive the landing POINT from that resolved node and check it for split-ness before
+        // committing, so a drop on a split tile prompts for which node instead of silently
+        // attaching to whichever node the preview happened to pick.
+        const state = useMazeStore.getState();
+        const overrideEndpoint = override.endpoint;
+        const droppedNode = overrideEndpoint.kind === "node" ? state.nodes.find((n) => n.id === overrideEndpoint.id) : undefined;
+        const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+        const { picks, queue } = droppedNode
+          ? resolveDragTargets([{ point: [droppedNode.x, droppedNode.y], level: droppedNode.level }], pointNodeMap)
+          : { picks: [], queue: [] };
+        if (queue.length > 0) {
+          // Same "which node?" prompt a fresh click already gets on a split cell (see the
+          // `VERTEX_TOOLS`/`requestPostEditSplitTarget` branch above) — `set_start`/`set_finish` is
+          // a plain single-target action (no `queue`/`picks` needed, see `postEditSplitTargetPrompt`'s
+          // own doc comment), so `queue`/`picks` here are only used to detect split-ness; the prompt
+          // itself is opened without them, same as that click branch.
+          const first = queue[0];
+          state.requestPostEditSplitTarget({
+            point: first.point, level: first.level, nodeIds: first.nodeIds,
+            action: { tool: marker === "set_start" ? "set_start" : "set_finish" },
+          });
+        } else {
+          const target = picks[0] ?? overrideEndpoint;
+          useMazeStore.getState().setPostEditEndpoint(marker === "set_start" ? "start" : "finish", target);
+        }
       }
-      useMazeStore.getState().setPostEditDragOverride(null);
+      // Leave `postEditDragOverride` alone while a split-target prompt is open (queued above) — see
+      // `clearDragOverrideUnlessPromptOpen`'s own doc comment for why.
+      this.clearDragOverrideUnlessPromptOpen();
       this.markerDragOrigin = null;
     }
     super.onPointerUp(button);
@@ -603,7 +645,33 @@ export class PostEditController extends BaseController {
           // #545) — the override built up during the drag is exactly the final position.
           const override = useMazeStore.getState().postEditDragOverride;
           if (override?.kind === "teleportEndpoint" && override.id === this.draggingTeleportEndpoint.id) {
-            useMazeStore.getState().movePostEditTeleportEndpoint(override.id, override.end, override.endpoint);
+            const state = useMazeStore.getState();
+            const hit = this.draggingTeleportEndpoint;
+            // GitHub issue #567: the override's endpoint was already silently resolved to a single
+            // node during the drag preview (`resolveActiveEndpointAt`'s active/first-node fallback)
+            // — re-derive the landing POINT from that resolved node and check it for split-ness
+            // before committing, so a drop on a split tile prompts instead of silently attaching to
+            // whichever node the preview happened to pick.
+            const overrideEndpoint = override.endpoint;
+            const node = overrideEndpoint.kind === "node" ? state.nodes.find((n) => n.id === overrideEndpoint.id) : undefined;
+            const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+            const { picks, queue } = node
+              ? resolveDragTargets([{ point: [node.x, node.y], level: node.level }], pointNodeMap)
+              : { picks: [], queue: [] };
+            if (queue.length > 0) {
+              // `queue[0]` is ALSO the point about to be shown — `requestPostEditSplitTarget`'s
+              // `point`/`level`/`nodeIds` always mirror `queue[0]`, `queue` itself stays un-shifted
+              // (current entry included) so `applyPostEditSplitTargetPick` can read `queue[0]`'s own
+              // `targetIndex` for whichever point is currently on screen.
+              const first = queue[0];
+              state.requestPostEditSplitTarget({
+                point: first.point, level: first.level, nodeIds: first.nodeIds,
+                action: { tool: "move_teleport_endpoint", id: hit.id, end: hit.end },
+                queue, picks,
+              });
+            } else {
+              state.movePostEditTeleportEndpoint(override.id, override.end, override.endpoint);
+            }
           }
         } else {
           const state = useMazeStore.getState();
@@ -624,7 +692,9 @@ export class PostEditController extends BaseController {
             }
           }
         }
-        useMazeStore.getState().setPostEditDragOverride(null);
+        // Leave `postEditDragOverride` alone while a split-target prompt is open (queued above) —
+        // see `clearDragOverrideUnlessPromptOpen`'s own doc comment for why.
+        this.clearDragOverrideUnlessPromptOpen();
         this.draggingTeleportEndpoint = null;
         this.teleportDragMoved = false;
         this.teleportDragOrigin = null;
@@ -637,7 +707,35 @@ export class PostEditController extends BaseController {
           // own per-move suppression, now issued once on release instead of once per move.
           const override = useMazeStore.getState().postEditDragOverride;
           if (override?.kind === "verticalPassageEndpoint" && override.id === this.draggingVerticalPassageEndpoint.id) {
-            useMazeStore.getState().movePostEditVerticalPassageEndpoint(override.id, override.end, override.endpoint);
+            const state = useMazeStore.getState();
+            const hit = this.draggingVerticalPassageEndpoint;
+            const overrideEndpoint = override.endpoint;
+            const draggedNode = overrideEndpoint.kind === "node" ? state.nodes.find((n) => n.id === overrideEndpoint.id) : undefined;
+            // GitHub issue #567/#566: dragging one end also re-targets the OTHER end to the same
+            // (x, y) on its own floor — that other point can independently be split too, so it must
+            // be queued for its own pick alongside the dragged end's own point, not silently
+            // resolved to its first node via `resolveVerticalPassageMove`'s plain `findNodeAt`.
+            const entry = state.postEditDraftVerticalPassages.find((p) => p.id === hit.id);
+            const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+            const otherEp = entry ? (hit.end === "from" ? entry.to : entry.from) : undefined;
+            const otherLevel = otherEp?.kind === "node" ? resolveNodeLevel(otherEp.id) : otherEp?.level;
+            const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+            const { picks, queue } = draggedNode
+              ? resolveDragTargets(
+                  [{ point: [draggedNode.x, draggedNode.y], level: draggedNode.level }, { point: [draggedNode.x, draggedNode.y], level: otherLevel }],
+                  pointNodeMap,
+                )
+              : { picks: [], queue: [] };
+            if (queue.length > 0) {
+              const first = queue[0];
+              state.requestPostEditSplitTarget({
+                point: first.point, level: first.level, nodeIds: first.nodeIds,
+                action: { tool: "move_vertical_passage_endpoint", id: hit.id, end: hit.end },
+                queue, picks,
+              });
+            } else {
+              state.movePostEditVerticalPassageEndpoint(override.id, override.end, override.endpoint);
+            }
           }
         } else {
           const state = useMazeStore.getState();
@@ -645,7 +743,8 @@ export class PostEditController extends BaseController {
             state.cyclePostEditVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
           }
         }
-        useMazeStore.getState().setPostEditDragOverride(null);
+        // See `clearDragOverrideUnlessPromptOpen`'s own doc comment for why this is conditional.
+        this.clearDragOverrideUnlessPromptOpen();
         this.draggingVerticalPassageEndpoint = null;
         this.verticalPassageDragMoved = false;
         this.verticalPassageDragOrigin = null;
@@ -658,7 +757,39 @@ export class PostEditController extends BaseController {
           // resolved by `movePostEditElevatorEndpoint`/`resolveElevatorMove` at dispatch time.
           const override = useMazeStore.getState().postEditDragOverride;
           if (override?.kind === "elevatorEndpoint" && override.id === this.draggingElevatorEndpoint.id) {
-            useMazeStore.getState().movePostEditElevatorEndpoint(override.id, override.level, override.endpoint);
+            const state = useMazeStore.getState();
+            const hit = this.draggingElevatorEndpoint;
+            const overrideEndpoint = override.endpoint;
+            const draggedNode = overrideEndpoint.kind === "node" ? state.nodes.find((n) => n.id === overrideEndpoint.id) : undefined;
+            // GitHub issue #567/#566: the drag re-targets EVERY other floor's own endpoint to the
+            // same (x, y) too — each of those floors' own point can independently be split, and the
+            // drop can land on more than one split floor at once, so every affected floor is queued
+            // for its own pick (ascending level order, dragged floor first — mirrors
+            // `resolveElevatorMove`'s own `others` ordering) instead of each silently resolving to
+            // its first node via `findNodeAt`.
+            const entry = state.postEditDraftElevators.find((e) => e.id === hit.id);
+            const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+            const otherLevels = entry
+              ? entry.floors
+                  .map((f) => (f.kind === "node" ? (resolveNodeLevel(f.id) ?? 0) : (f.level ?? 0)))
+                  .filter((lvl) => lvl !== hit.level)
+                  .sort((a, b) => a - b)
+              : [];
+            const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+            const targets = draggedNode
+              ? [{ point: [draggedNode.x, draggedNode.y] as [number, number], level: hit.level }, ...otherLevels.map((lvl) => ({ point: [draggedNode.x, draggedNode.y] as [number, number], level: lvl }))]
+              : [];
+            const { picks, queue } = draggedNode ? resolveDragTargets(targets, pointNodeMap) : { picks: [], queue: [] };
+            if (queue.length > 0) {
+              const first = queue[0];
+              state.requestPostEditSplitTarget({
+                point: first.point, level: first.level, nodeIds: first.nodeIds,
+                action: { tool: "move_elevator_endpoint", id: hit.id, levels: [hit.level, ...otherLevels] },
+                queue, picks,
+              });
+            } else {
+              state.movePostEditElevatorEndpoint(override.id, override.level, override.endpoint);
+            }
           }
         } else {
           // Plain click on an elevator's own marker reopens the floor-picker dialog to edit it,
@@ -670,7 +801,8 @@ export class PostEditController extends BaseController {
           const own = entry?.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === hit.level);
           if (own) state.startPostEditElevatorPlacement(own);
         }
-        useMazeStore.getState().setPostEditDragOverride(null);
+        // See `clearDragOverrideUnlessPromptOpen`'s own doc comment for why this is conditional.
+        this.clearDragOverrideUnlessPromptOpen();
         this.draggingElevatorEndpoint = null;
         this.elevatorDragMoved = false;
         this.elevatorDragOrigin = null;
@@ -762,3 +894,4 @@ function buildNodeMap(nodes: NodeDto[]): Map<string, number[]> {
   }
   return m;
 }
+

@@ -22,6 +22,7 @@
  *    adjacent-face nodes are "Side corridor 1" / "Side corridor 2" by ascending lowest face index. */
 
 import { detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
+import type { SplitSpecialShapeKind } from "./renderers/types";
 import * as m from "~/paraglide/messages";
 
 /** Minimal shape this module needs from a `TileFaceNode` — its per-face kinds, in `offsets` order. */
@@ -130,4 +131,28 @@ export function splitNodeSemanticNamesFromKinds(faceKindsByNode: SplitFaceKind[]
  *  `null` if this point's topology has no registered names. */
 export function splitNodeSemanticNames(nodes: SplitNodeFaces[]): SemanticName[] | null {
   return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)));
+}
+
+/** One name for the whole split point's recognized shape (not per-node) — e.g. for
+ *  `PostEditElevatorFloorDialog`'s floor-status label, which names the SHAPE a floor's split point
+ *  draws as, not which of its nodes an elevator stop would land on. */
+export function splitPointShapeName(kind: SplitSpecialShapeKind): string {
+  switch (kind) {
+    case "bridge":
+    case "hex_bridge":
+      return m["post_edit.split_node_name_bridge"]();
+    case "diagonal":
+    case "hex_diagonal":
+      return m["post_edit.split_shape_name_diagonal"]();
+    case "hex_diagonal_divider":
+      return m["post_edit.split_shape_name_diagonal_divider"]();
+    case "hex_triple_bridge":
+      return m["post_edit.split_shape_name_triple_bridge"]();
+    case "hex_triple_corridor":
+      return m["post_edit.split_shape_name_triple_corridor"]();
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
 }

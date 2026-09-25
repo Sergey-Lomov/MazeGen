@@ -4,13 +4,10 @@ import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { splitPointFaceKindsByNode } from "../../pixi/splitNodeGeometry";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
-import { resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "../../pixi/postEditEndpoint";
-import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import type { EdgeDto } from "../../wasm/types";
+import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -31,6 +28,17 @@ function colorToCss(color: number): string {
  * the point's confirmed nodes in snapshot order — index 0 the original node, the rest its slots
  * (same order and palette `ManageSplitNodesDialog` uses).
  *
+ * A pick does NOT call `onClose` itself — a `move_*`/`place_*` action's queue (GitHub issue #567)
+ * can span several split floors, one prompt at a time, and `applyPostEditSplitTargetPick` already
+ * decides on its own whether to advance `postEditSplitTargetPrompt` to the next queued floor or
+ * clear it to `null` once every floor resolved; this component just renders whatever prompt state
+ * comes back. Calling `onClose` (== `cancelPostEditSplitTarget`) after every pick used to
+ * short-circuit that queue — it wiped the freshly-advanced prompt for the NEXT floor right after
+ * `pick` set it, so a multi-split-floor elevator placement only ever got a dialog for its first
+ * split floor and then silently never dispatched (`applyPostEditSplitTargetPick`'s dispatch only
+ * fires once the queue is empty). `onClose` (the modal's own X/backdrop) still cancels explicitly.
+ *
+
  * A small Pixi preview on the right (`SplitPointPixiPreview`) renders the point with the exact
  * same pipeline the main canvas uses — a recognised special shape (bridge/diagonal) draws with
  * its real geometry. On a special shape each node also gets a marker dot in its colour at its
@@ -44,67 +52,23 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const level = useMazeStore(activeFloorLevel);
+  const activeLevel = useMazeStore(activeFloorLevel);
 
   const point = prompt?.point ?? null;
+  // The prompted point can be on a floor OTHER than the currently active one — a vertical-passage/
+  // elevator endpoint's drop target is always on a different floor than the dragged end, and the
+  // queue can walk through several floors in turn (GitHub issue #567). The preview must build
+  // against THAT floor, not the active one, or `pointNodes` never matches (wrong floor's node set)
+  // and the whole preview silently renders nothing. `level` is `undefined` for floor 0 (established
+  // convention, e.g. `PostEditController`'s own `toLevel === 0 ? undefined : toLevel`), so it must
+  // be defaulted to 0 explicitly, not treated as "unset, fall back to active floor".
+  const level = prompt ? (prompt.level ?? 0) : (activeLevel ?? 0);
 
   const preview = useMemo(() => {
     if (!point) return null;
-    const floorNodes = allNodes.filter((n) => (n.level ?? 0) === (level ?? 0));
-    const pointNodes = floorNodes.filter((n) => n.x === point[0] && n.y === point[1]);
-    if (pointNodes.length < 2) return null;
-
-    // Draft basic/one-way edges + teleports as directed real-id edges, resolved against the
-    // confirmed node snapshot — the full floor's set (a split point's edges run to neighbouring
-    // cells) feeds the preview geometry and special-shape detection alike.
-    //
-    // `bareNodeMap`/`resolveSplit` are scoped to THIS floor alone (bare "x,y" keys, built from
-    // `floorNodes` only, `level` stripped off every endpoint before resolving) — not maze-wide.
-    // `buildSplitNodeResolver` refuses to fall back from an "x,y@level" lookup to the bare key
-    // (GitHub issue #425's fix), so on any floor above the first, resolving a `draftEdges`
-    // endpoint by its own real (non-undefined) `level` against a bare-only map always failed,
-    // silently dropping every edge touching that floor's split slot — the slot rendered with only
-    // wall faces and no marker dot (GitHub issue #546 tenth follow-up).
-    const floorNodeIds = new Set(floorNodes.map((n) => n.id));
-    const bareNodeMap = new Map<string, number[]>();
-    for (const n of floorNodes) {
-      const k = `${n.x},${n.y}`;
-      const list = bareNodeMap.get(k);
-      if (list) list.push(n.id); else bareNodeMap.set(k, [n.id]);
-    }
-    const resolveSplit = buildSplitNodeResolver(bareNodeMap, recordOnLevel(splitPoints, level));
-    const edges: EdgeDto[] = [];
-    for (const e of Object.values(draftEdges ?? {})) {
-      if (e.kind === "wall") continue;
-      const from = floorScopedEndpoint(e.from, level, floorNodeIds);
-      const to = floorScopedEndpoint(e.to, level, floorNodeIds);
-      if (!from || !to) continue;
-      const fromId = resolveEndpoint(from, resolveSplit);
-      const toId = resolveEndpoint(to, resolveSplit);
-      if (fromId === undefined || toId === undefined) continue;
-      edges.push({ from: fromId, to: toId, kind: "basic" });
-    }
-    for (const t of draftTeleports) {
-      const from = floorScopedEndpoint(t.from, level, floorNodeIds);
-      const to = floorScopedEndpoint(t.to, level, floorNodeIds);
-      if (!from || !to) continue;
-      const fromId = resolveEndpoint(from, resolveSplit);
-      const toId = resolveEndpoint(to, resolveSplit);
-      if (fromId === undefined || toId === undefined) continue;
-      if (t.direction !== "backward") edges.push({ from: fromId, to: toId, kind: "teleport" });
-      if (t.direction !== "forward") edges.push({ from: toId, to: fromId, kind: "teleport" });
-    }
-
-    const directed = new Set(
-      edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`),
-    );
-    const byTile = new Map<string, typeof floorNodes>();
-    for (const n of floorNodes) {
-      const k = `${n.x}:${n.y}`;
-      const list = byTile.get(k);
-      if (list) list.push(n); else byTile.set(k, [n]);
-    }
-    const faceKindsByNode = splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg);
+    const geometry = buildSplitFloorGeometry(point, level ?? 0, allNodes, draftEdges, draftTeleports, splitPoints, cfg);
+    if (!geometry) return null;
+    const { pointNodes, floorNodes, edges, faceKindsByNode } = geometry;
     const special = detectSplitSpecialShapeKind(faceKindsByNode) !== null;
     const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
 
@@ -115,7 +79,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   const [x, y] = point;
 
   return (
-    <Modal title={m["post_edit.split_target_title"]({ x, y })} size="approve" onClose={onClose}>
+    <Modal title={m["post_edit.split_target_title"]({ x, y, level: level + 1 })} size="approve" onClose={onClose}>
       <p style={styles.hint}>{m["post_edit.split_target_hint"]()}</p>
       <div style={styles.body}>
         <div style={styles.list}>
@@ -124,7 +88,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
               key={id}
               variant="secondary"
               layoutStyle={styles.item}
-              onClick={() => { pick(id); onClose(); }}
+              onClick={() => pick(id)}
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
               {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
