@@ -1,15 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import React, { useEffect } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { ui, radius, typography, muted, inset, spacing } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
+import { SidePanel } from "./SidePanel";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
 import * as m from "~/paraglide/messages";
 import type { EventedEventKind } from "../wasm/mazeService";
-
-const MIN_PANEL_WIDTH = 320;
 
 /** Maps a debug-value name (GitHub issue #131, e.g. `"recursion_stack"`) to its i18n label. Not
  *  auto-derived from the name — a runtime string can't be turned into a paraglide message key —
@@ -66,29 +64,11 @@ export function DebugPanel() {
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
-  const [width, setWidth] = useState(MIN_PANEL_WIDTH);
-  const resizing = useRef(false);
   const total = debugArena?.totalSteps ?? 0;
   // Each half is sized to `total`'s digit count (the max either side can reach), not the current
   // step's digit count, so the " / " separator stays pinned to the row's center instead of
   // drifting as the digit count changes during scrubbing/playback.
   const stepLabelHalfWidth = `${String(total).length}ch`;
-
-  useEffect(() => {
-    function handleMouseMove(e: MouseEvent) {
-      if (!resizing.current) return;
-      setWidth((w) => Math.max(MIN_PANEL_WIDTH, w - e.movementX));
-    }
-    function handleMouseUp() {
-      resizing.current = false;
-    }
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -122,14 +102,11 @@ export function DebugPanel() {
   const atEnd   = debugStep >= total - 1;
 
   return (
-    <div style={{ ...styles.panel, width, minWidth: MIN_PANEL_WIDTH }}>
-      <div
-        style={styles.resizeHandle}
-        onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
-      />
-      {debugStale && (
-        <div style={styles.staleAlert}>{m["debug.outdated_warning"]()}</div>
-      )}
+    <SidePanel
+      title={m["debug.title"]()}
+      onClose={handleClose}
+      warnings={debugStale ? [m["debug.outdated_warning"]()] : undefined}
+    >
       <div style={styles.controls}>
         {/* Step buttons */}
         <button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>❮</button>
@@ -162,9 +139,6 @@ export function DebugPanel() {
           }}
         />
         <span style={styles.label}>ms</span>
-
-        {/* Close */}
-        <button className="hoverable" style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
       </div>
 
       {multiFloor && (
@@ -224,29 +198,11 @@ export function DebugPanel() {
       )}
 
       <DebugEventTree />
-    </div>
+    </SidePanel>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  panel: {
-    background: ui.bg.panel,
-    borderLeft: `1px solid ${ui.border.default}`,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    flexShrink: 0,
-    position: "relative",
-  },
-  resizeHandle: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: -3,
-    width: 6,
-    cursor: "ew-resize",
-    zIndex: 1,
-  },
   controls: {
     display: "flex",
     alignItems: "center",
@@ -327,23 +283,5 @@ const styles: Record<string, React.CSSProperties> = {
   slider: {
     flex: 1,
     minWidth: 60,
-  },
-  closeBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    cursor: "default",
-    padding: `0 ${inset.iconButtonInset}px`,
-    flexShrink: 0,
-    lineHeight: 1,
-    marginLeft: "auto",
-  },
-  staleAlert: {
-    ...typography.body,
-    background: ui.bg.error,
-    color: ui.text.error,
-    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
-    flexShrink: 0,
   },
 };

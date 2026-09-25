@@ -279,6 +279,7 @@
   "generation.split_diag_dead_node": "{name} only has wall faces and no valid neighbor, it will be unreachable.",
   "generation.split_diag_unreachable_node": "{name} has no connections at all, it will be unreachable.",
   "generation.split_diag_dangling_sibling": "Node {index}, face {face}: sibling target no longer exists.",
+  "debug.title": "Debug",
   "debug.outdated_warning": "Debug snapshot is outdated — re-generate to update",
   "debug.prev_step": "Previous step",
   "debug.next_step": "Next step",
