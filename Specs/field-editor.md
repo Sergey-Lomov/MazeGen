@@ -30,6 +30,9 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 | `hex` | `hexagon` | `hex_hexagon` |
 | `triangle` | `triangle` | `triangle_triangle` |
 
+When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
+including teleports, vertical passages, and elevators.
+
 ## State fields (mazeStore)
 
 Tessellation kind and orientation (`tessellationKind`, `hexOrientation`, `triOrientation`) are

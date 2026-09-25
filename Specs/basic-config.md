@@ -47,7 +47,7 @@ Orientation dropdowns appear only when the relevant kind is selected in preview.
 
 **`syncPreviewToConfirmed()`** — atomically copies `tessellationKind → previewKind`, `hexOrientation → previewHexOrientation`, `triOrientation → previewTriOrientation`, rebuilds `previewTessellationConfig`. Single `set()` call, no intermediate renders.
 
-**`confirmTessellation()`** — copies preview → confirmed, sets `tessellationConfirmed = true`, syncs preview fields to confirmed (via `buildPreviewState`), resets shape to `rect`/`parallelogram`/`rect`. If kind changed, clears maze (nodes, edges, start, finish, navNodes, navEdges, components, warnings, stats, error) and resets `freeFieldPoints` for the new kind.
+**`confirmTessellation()`** — copies preview → confirmed, sets `tessellationConfirmed = true`, syncs preview fields to confirmed (via `buildPreviewState`), resets shape to `rect`/`parallelogram`/`rect`. If kind changed, clears maze (nodes, edges, start, finish, navNodes, navEdges, components, warnings, stats, error), all tessellation-dependent presets (including teleports, vertical passages, and elevators), and resets `freeFieldPoints` for the new kind.
 
 ## FeatureCard status
 

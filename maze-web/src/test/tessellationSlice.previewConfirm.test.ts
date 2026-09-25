@@ -129,6 +129,27 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.finish).toBeNull();
   });
 
+  it("confirmTessellation with different kind clears all incompatible presets", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      previewKind: "hex",
+      presetTeleports: [{ id: 7, from: { point: [0, 0] }, to: { point: [1, 0] }, direction: "two_way" }],
+      presetVerticalPassages: [{ id: 8, from: { point: [0, 0] }, to: { point: [0, 0], level: 1 }, direction: "two_way" }],
+      presetElevators: [{ id: 9, floors: [{ point: [0, 0] }, { point: [0, 0], level: 1 }] }],
+      _nextPresetTeleportId: 10,
+      _nextPresetVerticalPassageId: 11,
+      _nextPresetElevatorId: 12,
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.presetTeleports).toEqual([]);
+    expect(s.presetVerticalPassages).toEqual([]);
+    expect(s.presetElevators).toEqual([]);
+    expect(s._nextPresetTeleportId).toBe(1);
+    expect(s._nextPresetVerticalPassageId).toBe(1);
+    expect(s._nextPresetElevatorId).toBe(1);
+  });
+
   it("confirmTessellation resets every floor's FloorFieldConfig, not just the active one", () => {
     const otherFloorId = "floor_2";
     const s0 = useMazeStore.getState();
