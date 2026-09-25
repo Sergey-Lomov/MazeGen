@@ -1,5 +1,5 @@
 import type React from "react";
-import { spacing } from "../../styles/theme";
+import { indent, spacing } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
@@ -101,5 +101,5 @@ export function sharedStyleFieldReset(overrides: SharedStyleOverrides, group: Sh
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };

@@ -2,7 +2,7 @@ import type * as React from "react";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { spacing, typography } from "../../styles/theme";
+import { indent, spacing, typography } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
@@ -114,6 +114,6 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, h
 
 const styles: Record<string, React.CSSProperties> = {
   markerGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  markerGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  markerGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   markerGroupNoIndent: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
 };

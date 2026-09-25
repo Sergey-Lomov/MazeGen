@@ -1,7 +1,7 @@
 import type * as React from "react";
 import type { ElevatorBadgeSettings, VectorByWallsSharedStyleOverrides } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { spacing, typography } from "../../styles/theme";
+import { indent, spacing, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
@@ -160,5 +160,5 @@ export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onCha
 
 const styles: Record<string, React.CSSProperties> = {
   wrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  group: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  group: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };
