@@ -6,6 +6,7 @@ import { getCellVertices, getCellCenter, buildNodePositions } from "../../pixi/t
 import { buildSplitPassages } from "../../pixi/selectors/mazeSelectors";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../../pixi/renderers/SplitJunctionRenderer";
 import { WallRenderer } from "../../pixi/renderers/WallRenderer";
+import { fitTileToWorld, clipToTile } from "../../pixi/tilePreviewFit";
 import { canvas } from "../../pixi/colorTokens";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { ui } from "../../styles/theme";
@@ -74,22 +75,11 @@ export function SplitPointPixiPreview({ point, cfg, pointNodes, allNodes, allEdg
       instance.stage.addChild(world);
 
       // Fit: this tile's own vertex bbox (plus a small margin) fills the canvas — every other
-      // cell's geometry is drawn too, but sits outside the viewport.
+      // cell's geometry is drawn too, but `content` below is clipped to this tile's own polygon
+      // (GitHub issue #609), so none of it is ever visible.
       const verts = getCellVertices(point[0], point[1], cfg) ?? [];
       const center = getCellCenter(point[0], point[1], cfg);
-      const pad = 6;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const v of [...verts, center]) {
-        minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
-        maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
-      }
-      const w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
-      const scale = Math.min(size / w, size / h);
-      world.scale.set(scale);
-      world.position.set(
-        (size - w * scale) / 2 - (minX - pad) * scale,
-        (size - h * scale) / 2 - (minY - pad) * scale,
-      );
+      const scale = fitTileToWorld(world, verts, center, size);
 
       if (verts.length > 0) {
         const bg = new Graphics();
@@ -97,10 +87,14 @@ export function SplitPointPixiPreview({ point, cfg, pointNodes, allNodes, allEdg
         world.addChild(bg);
       }
 
+      const content = new Container();
+      world.addChild(content);
+      clipToTile(content, verts);
+
       const wallsLayer = new Container();
       const splitLayer = new Container();
       const markerLayer = new Container();
-      world.addChild(wallsLayer, splitLayer, markerLayer);
+      content.addChild(wallsLayer, splitLayer, markerLayer);
 
       const wallRenderer = new WallRenderer(wallsLayer);
       const splitRenderer = new SplitJunctionRenderer(splitLayer);
