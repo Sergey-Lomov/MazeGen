@@ -100,15 +100,6 @@ export function remapPresetEndpointLevel(ep: PresetEndpoint, swap: [number, numb
   return level === ep.level ? ep : { ...ep, level };
 }
 
-/** `"L{n}: "` prefix for a `PresetEndpoint`'s own floor (1-based, matching `DebugEventTree.tsx`'s
- * `Lf:x:y` bubble-label convention) — used wherever a preset marker's coordinates are shown as
- * plain text (start/finish/gen-source chips, GitHub issue #340's multi-floor follow-up). Empty
- * string when `multiFloor` is false (a single-floor maze's chips are unchanged, every node is
- * trivially floor 1) or `level` is floor 0 with no other floor to disambiguate against. */
-export function presetEndpointLevelLabel(ep: PresetEndpoint, multiFloor: boolean): string {
-  return multiFloor ? `L${(ep.level ?? 0) + 1}: ` : "";
-}
-
 /** Remaps a `"x,y"` / `"x,y@level"` map key (`lockedNodes`/`presetSplitPoints`/
  * `presetActiveSplitNode`) through the same `swap` `remapLevel` applies to a `PresetEndpoint.level`
  * (GitHub issue #340's `moveFloor` follow-up). */

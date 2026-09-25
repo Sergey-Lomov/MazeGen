@@ -216,7 +216,7 @@ export function DebugEventTree() {
   }, [multiFloor, coords, activeFloorIndex, floors, setActiveFloorId]);
   // An `issue` bubble's own row of `L{n}` floor badges (GitHub issue #467, superseding the single
   // badge of GitHub issue #350) — `DebugRefBubble` only reads this for `target.kind === "issue"`,
-  // every other bubble kind already shows its floor via the label's own `Lf:x:y` prefix. Lists
+  // every other bubble kind already shows its floor via the label's own `Lf x:y` prefix. Lists
   // every distinct floor the issue's structural payload touches (deduplicated, ascending), matching
   // the Analytics `IssueBubble`'s own `IssueFloorBadges` behavior — a floor-scoped canvas highlight
   // only shows the active floor's entities, so this is where a user discovers the same issue also

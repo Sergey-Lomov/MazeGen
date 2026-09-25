@@ -10,8 +10,9 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
-import { resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
-import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { presetTargetLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { formatTargetLabel } from "../../pixi/targetLabel";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { buildPresetPointEntities } from "../../pixi/pointEntities";
 import type { TileFace, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
@@ -87,15 +88,14 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   };
 
   const originalEndpoint = presetEndpoint(point, undefined, level);
-  const nodeSuffixOf = (ep: PresetEndpoint): string | undefined => {
-    return resolvePresetSplitNodeShortLabel(presetSplitLabelContext, ep);
-  };
-  const floorNodeLabel = (ep: PresetEndpoint): string => `L${(ep.level ?? 0) + 1}${nodeSuffixOf(ep) ? ` (${nodeSuffixOf(ep)})` : ""}`;
+  // Cross-floor bubble for a vertical-passage/elevator partner (GitHub issue #602) — always shows
+  // the floor, via the shared `presetTargetLabel`.
+  const floorNodeLabel = (ep: PresetEndpoint): string => presetTargetLabel(presetSplitLabelContext, ep, true);
 
   const pointElements = buildPresetPointEntities(point, level, level ?? 0, { kind: "point_all" }, {
     presetSplitPoints: splitPoints, presetStart, presetFinish, presetGenSource,
     presetTeleports, presetVerticalPassages, presetElevators, presetConnections,
-    lockedNodes, autoLockedNodes,
+    lockedNodes, autoLockedNodes, splitCtx: presetSplitLabelContext,
   });
   const elementsFor = (ep: PresetEndpoint): ElementInfo<PresetEndpoint>[] => pointElements
     .filter((e) => ["start", "finish", "teleport", "vertical_passage", "elevator", "lock"].includes(e.kind) && presetEndpointsEqual(e.endpoint, ep))
@@ -161,16 +161,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   // issue #487). A plain endpoint on a non-split point has no suffix. There's no "real NodeId" to
   // resolve (presets run before generation), so unlike post-edit's `describeEndpoint`, this never
   // needs a `nodes` snapshot lookup.
+  // `ep` may be a cross-floor partner (teleport/vertical passage), so its own level (not the
+  // dialog's active floor) decides whether the floor prefix shows.
   const describeEndpoint = (ep: PresetEndpoint): string => {
-    // `ep` may be a cross-floor partner (teleport/vertical passage), so key by its own level, not
-    // the dialog's active floor.
     const epLevel = ep.level ?? level ?? 0;
-    const epKey = epLevel === 0 ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
-    const isSplitPoint = (splitPoints[epKey]?.length ?? 0) > 0;
-    const floorPrefix = epLevel !== (level ?? 0) ? `L${epLevel + 1}:` : "";
-    if (ep.slotId === undefined && !isSplitPoint) return `${floorPrefix}${ep.point[0]},${ep.point[1]}`;
-    const semantic = resolvePresetSplitNodeShortLabel(presetSplitLabelContext, ep);
-    return `${floorPrefix}${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
+    return presetTargetLabel(presetSplitLabelContext, ep, epLevel !== (level ?? 0));
   };
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
@@ -278,7 +273,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
 
   return (
     <SplitNodesDialogView
-      title={m["post_edit.manage_split_nodes"]({ x: point[0], y: point[1] })}
+      title={m["post_edit.manage_split_nodes"]({ coords: formatTargetLabel(point, level ?? 0, floors.length > 1, undefined) })}
       point={point}
       cfg={cfg}
       currentLevel={level ?? 0}

@@ -12,7 +12,8 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
-import { resolveSplitNodeShortLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
+import { postEditTargetLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import { rotateSplitPointBreaksNeighborShape } from "../../pixi/postEditUtils";
@@ -137,12 +138,10 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   }, [nodes, point]);
   const originalEndpoint: PostEditEndpoint | null = originalNodeId !== undefined ? nodeEndpoint(originalNodeId) : null;
   const nodeLevelOf = (ep: PostEditEndpoint): number => ep.kind === "node" ? (nodeById.get(ep.id)?.level ?? 0) : (ep.level ?? 0);
-  const nodeSuffixOf = (ep: PostEditEndpoint): string | undefined => {
-    const node = ep.kind === "node" ? nodeById.get(ep.id) : undefined;
-    const targetPoint: [number, number] = node ? [node.x, node.y] : ep.kind === "split" ? ep.point : point;
-    return resolveSplitNodeShortLabel(splitLabelContext, targetPoint, node?.level ?? (ep.kind === "split" ? ep.level : undefined), ep);
-  };
-  const floorNodeLabel = (ep: PostEditEndpoint): string => `L${nodeLevelOf(ep) + 1}${nodeSuffixOf(ep) ? ` (${nodeSuffixOf(ep)})` : ""}`;
+  // Cross-floor bubble for a vertical-passage/elevator partner (GitHub issue #602) — always shows
+  // the floor (the point's `(x, y)` never disambiguates floors on its own, unlike a same-floor
+  // link's `describeEndpoint`), via the shared `postEditTargetLabel`.
+  const floorNodeLabel = (ep: PostEditEndpoint): string => postEditTargetLabel(splitLabelContext, ep, nodeById, true);
 
   const entityOriginal = nodes.find((n) => n.x === point[0] && n.y === point[1]);
   const entityNodes: PostEditEndpoint[] = entityOriginal
@@ -255,12 +254,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // (semantic tag when this point is a recognized special split, GitHub issue #487); a plain
   // `node` endpoint elsewhere on the maze (not this point's original node) has no label at all,
   // just its coordinates.
-  const describeEndpoint = (ep: PostEditEndpoint): string => {
-    const resolved = resolveEndpointToHoverPoint(ep, nodeById);
-    if (!resolved) return ep.kind === "node" ? `#${ep.id}` : `${ep.point[0]},${ep.point[1]}`;
-    const suffix = resolveSplitNodeShortLabel(splitLabelContext, resolved.point, resolved.level, ep);
-    return `${resolved.point[0]},${resolved.point[1]}${suffix ? ` (${suffix})` : ""}`;
-  };
+  const describeEndpoint = (ep: PostEditEndpoint): string => postEditTargetLabel(splitLabelContext, ep, nodeById, false);
 
   // Groups a node's edges/teleports by partner, collapsing a passage's two directed `basic`
   // entries (A->B and B->A — see `applyPostEditEdgeTool`'s "passage" branch, which always writes
@@ -344,7 +338,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   return (
     <SplitNodesDialogView
-      title={m["post_edit.manage_split_nodes"]({ x: point[0], y: point[1] })}
+      title={m["post_edit.manage_split_nodes"]({ coords: formatTargetLabel(point, level ?? 0, floors.length > 1, undefined) })}
       point={point}
       cfg={cfg}
       currentLevel={level ?? 0}

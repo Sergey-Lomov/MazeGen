@@ -12,7 +12,7 @@ const MAX_PANEL_WIDTH = 300;
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 /** `"{n}: {title}"` — the switcher's own display label for a floor, 1-based index (array position
- *  + 1) so it matches `NodeDto.level + 1`'s convention (see `DebugEventTree.tsx`'s `Lf:x:y` bubble
+ *  + 1) so it matches `NodeDto.level + 1`'s convention (see `DebugEventTree.tsx`'s `Lf x:y` bubble
  *  prefix, GitHub issue #350) rather than the raw 0-based array index. */
 function floorDisplayLabel(floor: FloorState, index: number): string {
   return `${index + 1}: ${floor.title}`;

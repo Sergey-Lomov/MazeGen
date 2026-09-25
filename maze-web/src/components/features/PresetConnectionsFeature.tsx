@@ -4,7 +4,8 @@ import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
-import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
@@ -297,7 +298,7 @@ export function PresetConnectionsFeature() {
       {presetTeleportPendingFrom && (
         <Stack gap="itemGap">
           <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
-            {m["preset.teleport_pending"]()}: {presetEndpointLevelLabel(presetTeleportPendingFrom, floors.length > 1)}{presetTeleportPendingFrom.point[0]},{presetTeleportPendingFrom.point[1]}
+            {m["preset.teleport_pending"]()}: {formatTargetLabel(presetTeleportPendingFrom.point, presetTeleportPendingFrom.level ?? 0, floors.length > 1, undefined)}
           </StatusTag>
         </Stack>
       )}
@@ -323,8 +324,8 @@ export function PresetConnectionsFeature() {
           title={m["vertical_drag.dialog_title"]()}
           message={
             presetDragFailureMessage.entityKind === "elevator"
-              ? m["vertical_drag.failed_elevator"]({ level: presetDragFailureMessage.level + 1, x: presetDragFailureMessage.point[0], y: presetDragFailureMessage.point[1] })
-              : m["vertical_drag.failed_passage"]({ level: presetDragFailureMessage.level + 1, x: presetDragFailureMessage.point[0], y: presetDragFailureMessage.point[1] })
+              ? m["vertical_drag.failed_elevator"]({ coords: formatTargetLabel(presetDragFailureMessage.point, presetDragFailureMessage.level, true, undefined) })
+              : m["vertical_drag.failed_passage"]({ coords: formatTargetLabel(presetDragFailureMessage.point, presetDragFailureMessage.level, true, undefined) })
           }
           onClose={dismissPresetDragFailureMessage}
         />

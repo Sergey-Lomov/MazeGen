@@ -1409,8 +1409,8 @@ describe("mazeStore preset connections", () => {
       // even though one is stored one_way_forward (from=here) and the other one_way_backward (to=here).
       const forwardRow = entities.find((e) => e.kind === "edge" && e.id === "0,0-1,0")!;
       const backwardRow = entities.find((e) => e.kind === "edge" && e.id === "0,0-0,1")!;
-      expect(forwardRow.title).toBe(`${m["preset.one_way"]()} -> (1,0)`);
-      expect(backwardRow.title).toBe(`${m["preset.one_way"]()} -> (0,1)`);
+      expect(forwardRow.title).toBe(`${m["preset.one_way"]()} -> (1:0)`);
+      expect(backwardRow.title).toBe(`${m["preset.one_way"]()} -> (0:1)`);
     });
 
     it("builds endpoint bubbles while leaving start and finish rows without coordinate bubbles", () => {
@@ -1429,7 +1429,7 @@ describe("mazeStore preset connections", () => {
       });
       expect(entities.find((e) => e.kind === "start")?.bubbles).toEqual([]);
       expect(entities.find((e) => e.kind === "finish")?.bubbles).toEqual([]);
-      expect(entities.find((e) => e.kind === "edge")?.bubbles).toEqual(["0,0", "1,0"]);
+      expect(entities.find((e) => e.kind === "edge")?.bubbles).toEqual(["0:0", "1:0"]);
     });
 
     it("labels every endpoint bubble with its floor for cross-floor teleports and elevators", () => {
@@ -1440,8 +1440,8 @@ describe("mazeStore preset connections", () => {
         presetTeleports: teleports, presetVerticalPassages: [], presetElevators: elevators,
         presetConnections: new Map(), lockedNodes: new Map(), autoLockedNodes: new Set(),
       });
-      expect(entities.find((e) => e.kind === "teleport")?.bubbles).toEqual(["L1:0,0", "L2:2,2"]);
-      expect(entities.find((e) => e.kind === "elevator")?.bubbles).toEqual(["L1:0,0", "L2:0,0", "L3:0,0"]);
+      expect(entities.find((e) => e.kind === "teleport")?.bubbles).toEqual(["L1 0:0", "L2 2:2"]);
+      expect(entities.find((e) => e.kind === "elevator")?.bubbles).toEqual(["L1 0:0", "L2 0:0", "L3 0:0"]);
     });
 
     it("split_node row is present regardless of whether the slot still carries other entities", () => {

@@ -9,6 +9,7 @@ import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -76,10 +77,10 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   }, [point, allNodes, level, cfg, draftEdges, draftTeleports, splitPoints]);
 
   if (!prompt || !point) return null;
-  const [x, y] = point;
 
+  const coords = formatTargetLabel(point, level, true, undefined);
   return (
-    <Modal title={m["post_edit.split_target_title"]({ x, y, level: level + 1 })} size="approve" onClose={onClose}>
+    <Modal title={m["post_edit.split_target_title"]({ coords })} size="approve" onClose={onClose}>
       <p style={styles.hint}>{m["post_edit.split_target_hint"]()}</p>
       <div style={styles.body}>
         <div style={styles.list}>

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   presetEndpoint, presetEndpointsEqual, presetEndpointIsSplit, presetEndpointKey, presetEndpointFromKey, presetEndpointToDto,
-  presetEndpointLevelLabel,
 } from "../pixi/presetEndpoint";
 
 describe("presetEndpoint", () => {
@@ -75,20 +74,5 @@ describe("presetEndpointFromKey", () => {
   it("rejects malformed keys instead of producing NaN coordinates", () => {
     expect(presetEndpointFromKey("1,2:bad")).toBeNull();
     expect(presetEndpointFromKey("1,2:3@bad")).toBeNull();
-  });
-});
-
-describe("presetEndpointLevelLabel", () => {
-  it("single-floor maze — empty, regardless of level", () => {
-    expect(presetEndpointLevelLabel(presetEndpoint([1, 2]), false)).toBe("");
-    expect(presetEndpointLevelLabel(presetEndpoint([1, 2], undefined, 2), false)).toBe("");
-  });
-
-  it("multi-floor maze, floor 0 (level undefined) — L1 prefix", () => {
-    expect(presetEndpointLevelLabel(presetEndpoint([1, 2]), true)).toBe("L1: ");
-  });
-
-  it("multi-floor maze, non-zero level — 1-based L{n} prefix", () => {
-    expect(presetEndpointLevelLabel(presetEndpoint([1, 2], undefined, 2), true)).toBe("L3: ");
   });
 });

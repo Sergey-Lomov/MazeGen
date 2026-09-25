@@ -3,6 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { buildPostEditPointEntitiesAt } from "../../store/slices/postEditSliceHelpers";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -55,10 +56,10 @@ export function PostEditEntityDeleteDialog({ onClose }: Props) {
     onClose();
     return null;
   }
-  const [x, y] = prompt.point;
+  const coords = formatTargetLabel(prompt.point, prompt.level ?? 0, floors.length > 1, undefined);
 
   return (
-    <Modal title={m["post_edit.entity_delete_title"]({ x, y })} size="approveWide" onClose={onClose}>
+    <Modal title={m["post_edit.entity_delete_title"]({ coords })} size="approveWide" onClose={onClose}>
       <p style={styles.hint}>{m["post_edit.entity_delete_hint"]()}</p>
       <div style={styles.list}>
         {entities.map((e) => (

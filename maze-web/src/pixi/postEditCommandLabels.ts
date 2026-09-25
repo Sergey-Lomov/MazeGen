@@ -5,9 +5,10 @@ import { type PostEditEndpoint, type PostEditHoveredEntity, type PostEditHoverPo
 import { messageForTitleKey } from "./splitPatternTitles";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
 import { resolveSplitNodeShortLabel, type SplitLabelContext } from "./postEditSplitLabels";
+import { formatTargetLabel } from "./targetLabel";
 import * as m from "~/paraglide/messages";
 
-/** One entity bubble in a "Changes" panel row (GitHub issue #546) — `text` is the same `Lf:x:y`/
+/** One entity bubble in a "Changes" panel row (GitHub issue #546) — `text` is the same `Lf x:y`/
  *  `x:y` coordinate convention the debug event tree's own bubbles use (`bubbleLabel`,
  *  `debugRowText.ts`), never a raw `NodeId`/entity id. Always names exactly one point (GitHub issue
  *  #546 second follow-up dropped the earlier "combined" bubble that named several floors of the same
@@ -22,7 +23,7 @@ export interface PostEditEntityBubble {
 /** One row of the "Changes" panel (GitHub issue #545, bubbles added by #546, per-point bubbles and
  *  `rowHighlight` by the #546 second follow-up) — a human-readable action plus one or more entity
  *  bubbles, each naming exactly one point (never a combined multi-floor bubble — an elevator's
- *  three floors are three separate bubbles, `L1:x:y`/`L2:x:y`/`L3:x:y`, not one `x:y [L1,L2,L3]`),
+ *  three floors are three separate bubbles, `L1 x:y`/`L2 x:y`/`L3 x:y`, not one `x:y [L1,L2,L3]`),
  *  derived from a single `PostEditCommand`. `showArrow` draws a plain text glyph between exactly
  *  two bubbles (same "from -> to" reading `SplitNodesDialogView`'s link bubbles use) without
  *  implying anything about `rowHighlight` — a vertical passage/elevator/cross-floor teleport shows
@@ -59,18 +60,12 @@ export interface PostEditCommandLabel {
   entityId: string | undefined;
 }
 
-/** Coordinate text for one point, matching the debug event tree's own bubble convention exactly
- *  (`bubbleLabel` in `debugRowText.ts`): `x:y` on a single-floor maze, `Lf:x:y` (1-based floor) on
- *  a multi-floor one — no words, no parens. `multiFloor` mirrors that function's own parameter.
- *  `slotSuffix`, when given, appends the same `" (N{slotId})"` parenthetical the debug tree's own
- *  `bubbleLabel` appends for a split point's non-original node (GitHub issue #546 fourth follow-up
- *  — every "Changes" panel bubble now mirrors that convention, matching `debugRowText.ts`'s own
- *  `p.split ? "${coord} (${...})" : coord` shape exactly instead of a plain coordinate). */
+/** Coordinate text for one point, via the shared `formatTargetLabel` (GitHub issue #602) — same
+ *  `x:y`/`Lf x:y` + `" (suffix)"` convention every stage now shares. `"?"` for a point that never
+ *  resolved at all (a not-yet-confirmed split node). */
 function formatPoint(p: PostEditHoverPoint | undefined, multiFloor: boolean, slotSuffix?: string): string {
   if (p === undefined) return "?";
-  const [x, y] = p.point;
-  const coord = multiFloor ? `L${(p.level ?? 0) + 1}:${x}:${y}` : `${x}:${y}`;
-  return slotSuffix === undefined ? coord : `${coord} (${slotSuffix})`;
+  return formatTargetLabel(p.point, p.level ?? 0, multiFloor, slotSuffix);
 }
 
 /** One bubble naming a plain point/node endpoint, hover-highlighting it as a `point` entity. Any
@@ -129,8 +124,8 @@ function edgeBubbles(from: PostEditEndpoint, to: PostEditEndpoint, nodeById: Rea
 
 /** One bubble per elevator floor (GitHub issue #546 second follow-up) — every one of an elevator's
  *  floor endpoints shares one `(x, y)` (it's a vertical stack at one point, see
- *  `startPostEditElevatorPlacement`), but each still gets its own bubble (`L1:x:y`, `L2:x:y`, ...,
- *  the same `Lf:x:y` format `formatPoint` already uses for any multi-floor point) rather than one
+ *  `startPostEditElevatorPlacement`), but each still gets its own bubble (`L1 x:y`, `L2 x:y`,
+ *  ..., the same `Lf x:y` format `formatPoint` already uses for any multi-floor point) rather than one
  *  combined `x:y [L1,L2,L3]` bubble — so hovering ONE floor's bubble highlights only that floor's
  *  own point, matching every other point bubble's "hover me, highlight me" contract instead of
  *  lighting up every floor at once. `multiFloor` is always `true` here in practice (an elevator only
@@ -142,7 +137,7 @@ function elevatorBubbles(floors: readonly PostEditEndpoint[], nodeById: Readonly
 
 /** Two bubbles for a vertical passage (GitHub issue #546 second follow-up) — `from`/`to` share one
  *  `(x, y)` (see `PostEditVerticalPassageEntry`'s doc comment), only their floor differs; each still
- *  gets its own `Lf:x:y` bubble (not a combined `x:y [L1->L2]` one) so hovering one floor's bubble
+ *  gets its own `Lf x:y` bubble (not a combined `x:y [L1->L2]` one) so hovering one floor's bubble
  *  highlights only that floor's own point. `direction` only decides the row's `arrow` glyph
  *  (`postEditCommandLabel` sets it), not anything about these two bubbles themselves — `from`/`to`'s
  *  own display order is always fixed (GitHub issue #546 follow-up: flipping direction changes the
@@ -266,7 +261,7 @@ export function entityIdOf(command: PostEditCommand): string | undefined {
  *  bubble-relevant fields (from/to/direction/floors) denormalized at construction time (GitHub
  *  issue #564) rather than resolving through a live draft lookup by id — an id-only lookup is
  *  correct only for the newest row about an entity, and breaks for any older row once a later
- *  command edits or removes it. `multiFloor` selects the debug tree's own `Lf:x:y` vs. plain `x:y`
+ *  command edits or removes it. `multiFloor` selects the debug tree's own `Lf x:y` vs. plain `x:y`
  *  bubble format (`floors.length > 1`, GitHub issue #546). */
 export function postEditCommandLabel(
   command: PostEditCommand,

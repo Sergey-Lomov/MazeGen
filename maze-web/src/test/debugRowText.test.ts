@@ -21,7 +21,7 @@ describe("buildDebugRowText (GitHub issue #482)", () => {
 
   it("prefixes the floor on a multi-floor maze", () => {
     const tokens: Token[] = [{ kind: "node", id: 2n }];
-    expect(buildDebugRowText(tokens, coords, true)).toBe("L2:3:4");
+    expect(buildDebugRowText(tokens, coords, true)).toBe("L2 3:4");
     expect(buildDebugRowText(tokens, coords, false)).toBe("3:4");
   });
 

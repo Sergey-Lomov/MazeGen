@@ -66,8 +66,8 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftTeleports: [{ id: "t1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
     });
-    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Teleport <-> (3,2)");
-    expect(inspect(st, 3, 2)).toBe("x:3, y:2 | Teleport <-> (0,0)");
+    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Teleport <-> (3:2)");
+    expect(inspect(st, 3, 2)).toBe("x:3, y:2 | Teleport <-> (0:0)");
   });
 
   it("a draft teleport anchored on a confirmed split slot resolves to that node", () => {
@@ -85,7 +85,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       ],
     });
     // The teleport departs the split slot (Node 2), not the original node (Node 1).
-    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | [Node 1: empty] | [Node 2: Teleport -> (3,2)]");
+    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | [Node 1: empty] | [Node 2: Teleport -> (3:2)]");
   });
 
   it("generation-time vertical passage is shown — a full baseline draft entry (GitHub issue #564)", () => {
@@ -94,7 +94,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftVerticalPassages: [{ id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
     });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2)");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2 0:0)");
   });
 
   it("generation-time elevator is shown — a full baseline draft entry (GitHub issue #564)", () => {
@@ -105,7 +105,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftElevators: [{ id: "e1", floors: [nodeEndpoint(1), nodeEndpoint(2), nodeEndpoint(3)] }],
     });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2, L3)");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2 0:0, L3 0:0)");
   });
 
   it("a user-placed draft vertical passage (not yet confirmed) is reported", () => {
@@ -116,7 +116,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
         { id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "forward" },
       ],
     });
-    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Vertical passage -> (L2)");
+    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Vertical passage -> (L2 0:0)");
   });
 });
 

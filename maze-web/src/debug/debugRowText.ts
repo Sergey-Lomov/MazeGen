@@ -6,17 +6,18 @@
 
 import { resolveIssue } from "../components/issueRegistry";
 import type { Token } from "./algorithmRegistry";
+import { formatTargetLabel } from "../pixi/targetLabel";
 import * as m from "~/paraglide/messages";
 
 /** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
  *  e.g. "Passage added", not "Passage added: 3:18 → 3:19"). Format is `x:y`, no parens/comma —
- *  or, on a multi-floor maze (GitHub issue #350), `Lf:x:y` (1-based floor index, `L` prefix so
- *  it's unambiguous this is a floor, not another coordinate), so a bubble stays readable when
- *  nodes on different floors legitimately share the same `(x, y)`. The floor prefix is only shown
- *  when `multiFloor` — a single-floor maze's bubbles are unchanged, since every node is trivially
- *  floor 1. `issue` tokens are the one exception: there's no id to format, so the label is the
- *  issue kind's own resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s
- *  `IssueBubble` reads), not a coordinate. */
+ *  or, on a multi-floor maze (GitHub issue #350), `Lf x:y` (1-based floor index, `L` prefix,
+ *  space-separated from the coordinates so the floor stays unambiguous even with negative
+ *  coordinates — see `formatTargetLabel`), so a bubble stays readable when nodes on different
+ *  floors legitimately share the same `(x, y)`. The floor prefix is only shown when `multiFloor` — a single-floor
+ *  maze's bubbles are unchanged, since every node is trivially floor 1. `issue` tokens are the
+ *  one exception: there's no id to format, so the label is the issue kind's own resolved display
+ *  name (`resolveIssue`, the same registry `IssuesBlock`'s `IssueBubble` reads), not a coordinate. */
 export function bubbleLabel(
   token: Token,
   coords?: (id: bigint) => { x: number; y: number; level: number; i: number; split: boolean } | null,
@@ -34,10 +35,13 @@ export function bubbleLabel(
     // degrades gracefully rather than crashing the whole tree either way (a React render-time
     // throw here previously took down the entire debug panel).
     if (!p) return `#${id}`;
-    const coord = multiFloor ? `L${p.level + 1}:${p.x}:${p.y}` : `${p.x}:${p.y}`;
     // A split point's node also names which node of the point it is (GitHub issue #468) — 1-based
     // compact "N{N}" form, the point's original node is "N1". Non-split points stay bare coords.
-    return p.split ? `${coord} (${m["post_edit.split_node_label_short"]({ slotId: p.i + 1 })})` : coord;
+    // No semantic-name resolution here (GitHub issue #602) — the debug tape has no `cfg`/edges
+    // context to recognize a special-split topology with, unlike the preset/post-edit resolvers
+    // (`presetTargetLabel`/`postEditTargetLabel`), so it always falls back to the generic "N{n}".
+    const splitLabel = p.split ? m["post_edit.split_node_label_short"]({ slotId: p.i + 1 }) : undefined;
+    return formatTargetLabel([p.x, p.y], p.level, multiFloor, splitLabel);
   };
   switch (token.kind) {
     case "text": return token.text;

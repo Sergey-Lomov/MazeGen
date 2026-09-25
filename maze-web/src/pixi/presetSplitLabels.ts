@@ -3,6 +3,7 @@ import { presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
 import { splitNodeSemanticNamesFromKinds, splitPointShapeName } from "./splitNodeNames";
 import { detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
+import { formatTargetLabel } from "./targetLabel";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
 
@@ -15,17 +16,18 @@ export interface PresetSplitLabelContext {
   inFieldCellsAt: (level: number) => Set<string>;
 }
 
-/** Returns the semantic short name for a preset endpoint (for example `Cor1`) when its split
- * topology is recognized, with the compact `N{n}` label as fallback. Returns undefined for an
- * unsplit point, so callers can omit the parenthetical entirely. */
-export function resolvePresetSplitNodeShortLabel(
+/** Shared lookup behind `resolvePresetSplitNodeShortLabel`/`resolvePresetSplitNodeFullLabel` —
+ *  resolves `endpoint`'s split point to its declared nodes, their semantic names (when the face
+ *  configuration matches a recognized special-split topology), and `endpoint`'s own index among
+ *  them. `null` when the point has no split entry at all. */
+function resolvePresetSplitNodeNames(
   ctx: PresetSplitLabelContext,
   endpoint: PresetEndpoint,
-): string | undefined {
+): { nodes: PresetEndpoint[]; names: ReturnType<typeof splitNodeSemanticNamesFromKinds>; index: number } | null {
   const level = endpoint.level ?? 0;
   const normalizedLevel = level === 0 ? undefined : level;
   const key = presetSplitPointKey(endpoint.point, normalizedLevel);
-  if ((ctx.splitPoints[key]?.length ?? 0) === 0) return undefined;
+  if ((ctx.splitPoints[key]?.length ?? 0) === 0) return null;
 
   const nodes = allNodesAt(endpoint.point, ctx.splitPoints, normalizedLevel);
   const names = splitNodeSemanticNamesFromKinds(nodes.map((node) => presetSplitNodeFaceKinds(
@@ -39,8 +41,55 @@ export function resolvePresetSplitNodeShortLabel(
     normalizedLevel,
   )));
   const index = nodes.findIndex((node) => presetEndpointsEqual(node, endpoint));
+  return { nodes, names, index };
+}
+
+/** Returns the semantic short name for a preset endpoint (for example `Cor1`) when its split
+ * topology is recognized, with the compact `N{n}` label as fallback. Returns undefined for an
+ * unsplit point, so callers can omit the parenthetical entirely. */
+export function resolvePresetSplitNodeShortLabel(
+  ctx: PresetSplitLabelContext,
+  endpoint: PresetEndpoint,
+): string | undefined {
+  const resolved = resolvePresetSplitNodeNames(ctx, endpoint);
+  if (!resolved) return undefined;
+  const { nodes, names, index } = resolved;
   if (index < 0) return splitNodeLabelShort(endpoint.slotId);
   return names?.[index]?.short ?? splitNodeLabelShort(nodes[index].slotId);
+}
+
+/** Full-form counterpart of `resolvePresetSplitNodeShortLabel` (e.g. "Corridor 1" instead of
+ *  "Cor1") — used where the split-node row itself is the row's whole title (entity-delete dialog's
+ *  "split_node" row), not a parenthetical suffix on a coordinate. `undefined` for an unsplit
+ *  point, same fallback contract as the short form. */
+export function resolvePresetSplitNodeFullLabel(
+  ctx: PresetSplitLabelContext,
+  endpoint: PresetEndpoint,
+): string | undefined {
+  const resolved = resolvePresetSplitNodeNames(ctx, endpoint);
+  if (!resolved || resolved.index < 0) return undefined;
+  return resolved.names?.[resolved.index]?.full;
+}
+
+/** The single preset-stage point-label formatter (GitHub issue #602) — every preset UI spot that
+ *  shows a point's coordinates (status bar, entity-delete dialog bubbles, split-node dialog links)
+ *  goes through this, instead of each resolving coordinates/floor/split-node independently. Always
+ *  resolves the split-node suffix via `resolvePresetSplitNodeShortLabel` (semantic name when the
+ *  point's face configuration matches a recognized special-split topology, else the generic
+ *  "N{n}" short label) — `formatTarget`'s two previous callers never resolved this at all (GitHub
+ *  issue #595's follow-up).
+ *
+ *  `includeFloor` is the caller's own call, same as every one of the ten call sites unified here
+ *  had before this refactor — cross-floor-relative-to-the-active-floor for a same-point/teleport-
+ *  style bubble, or always-true for a cross-floor target bubble (vertical passage/elevator, whose
+ *  other end is by construction never on the endpoint's own floor). */
+export function presetTargetLabel(
+  ctx: PresetSplitLabelContext,
+  endpoint: PresetEndpoint,
+  includeFloor: boolean,
+): string {
+  const suffix = resolvePresetSplitNodeShortLabel(ctx, endpoint);
+  return formatTargetLabel(endpoint.point, endpoint.level ?? 0, includeFloor, suffix);
 }
 
 /** Whether `point`/`level` is a declared split point at all, per `ctx.splitPoints` — used to gate

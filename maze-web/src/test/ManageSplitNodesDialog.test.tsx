@@ -40,7 +40,7 @@ beforeEach(() => {
 describe("ManageSplitNodesDialog", () => {
   it("renders one card for the original node plus one per slot, coordinates in the modal header", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("Manage split nodes: 2, 2")).toBeInTheDocument();
+    expect(screen.getByText("Manage split nodes: 2:2")).toBeInTheDocument();
     expect(screen.getByText("Node 1")).toBeInTheDocument();
     expect(screen.getByText("Node 2")).toBeInTheDocument();
     expect(screen.getByText("Node 3")).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("ManageSplitNodesDialog", () => {
     // Every card's own coordinates ("2,2") lead the bubble, then the arrow, then the partner's —
     // slot 0's own side gets a compact "(N2)" suffix (row order: original = Node 1, slot 0 =
     // Node 2). The partner (0,0) is a plain node on a non-split point, so it gets no suffix.
-    expect(screen.getByText("2,2 (N2) <- 0,0")).toBeInTheDocument();
+    expect(screen.getByText("2:2 (N2) <- 0:0")).toBeInTheDocument();
   });
 
   it("shows the original node's own links, resolved by its real NodeId, not the point's coordinates", () => {
@@ -142,7 +142,7 @@ describe("ManageSplitNodesDialog", () => {
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // (2,2) is a split point, so its original node's own side gets a compact "(N1)" suffix too.
-    expect(screen.getByText("2,2 (N1) -> 1,0")).toBeInTheDocument();
+    expect(screen.getByText("2:2 (N1) -> 1:0")).toBeInTheDocument();
   });
 
   it("collapses a passage's matched forward+backward basic pair into a single <-> link", () => {
@@ -153,8 +153,8 @@ describe("ManageSplitNodesDialog", () => {
       },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("2,2 (N1) <-> 1,0")).toBeInTheDocument();
-    expect(screen.queryByText("2,2 (N1) -> 1,0")).not.toBeInTheDocument();
+    expect(screen.getByText("2:2 (N1) <-> 1:0")).toBeInTheDocument();
+    expect(screen.queryByText("2:2 (N1) -> 1:0")).not.toBeInTheDocument();
     expect(screen.queryByText("2,2 (N1) <- 1,0")).not.toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe("ManageSplitNodesDialog", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // The link belongs to slot 0 (node 6), not the original node — slot 0's own side gets its
     // compact "(N2)" suffix (row order: original = Node 1, slot 0 = Node 2).
-    expect(screen.getByText("2,2 (N2) -> 1,0")).toBeInTheDocument();
+    expect(screen.getByText("2:2 (N2) -> 1:0")).toBeInTheDocument();
     // Slot 0 (node 6) is also the run's start node — must resolve as such despite draftMeta
     // carrying a plain node endpoint, not a split one.
     expect(screen.getByText("Start")).toBeInTheDocument();
@@ -191,9 +191,9 @@ describe("ManageSplitNodesDialog", () => {
     // Original node's card (row "Node 1"): both nodes of the bubble belong to this split point,
     // so each side gets its compact "(N{N})" suffix — the original node included (slot 0 is not a
     // special node any more, GitHub issue #468).
-    expect(screen.getByText("2,2 (N1) -> 2,2 (N2)")).toBeInTheDocument();
+    expect(screen.getByText("2:2 (N1) -> 2:2 (N2)")).toBeInTheDocument();
     // Slot 0's card (row "Node 2"): same bubble seen from the other side.
-    expect(screen.getByText("2,2 (N2) <- 2,2 (N1)")).toBeInTheDocument();
+    expect(screen.getByText("2:2 (N2) <- 2:2 (N1)")).toBeInTheDocument();
   });
 
   it("applies a blueprint immediately, with no confirm, when clicked right after the panel opens", () => {

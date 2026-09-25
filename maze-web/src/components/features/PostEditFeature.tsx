@@ -18,6 +18,7 @@ import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDire
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
 import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { AlertModal } from "../AlertModal";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -211,8 +212,8 @@ export function PostEditFeature() {
           title={m["vertical_drag.dialog_title"]()}
           message={
             postEditDragFailureMessage.entityKind === "elevator"
-              ? m["vertical_drag.failed_elevator"]({ level: postEditDragFailureMessage.level + 1, x: postEditDragFailureMessage.point[0], y: postEditDragFailureMessage.point[1] })
-              : m["vertical_drag.failed_passage"]({ level: postEditDragFailureMessage.level + 1, x: postEditDragFailureMessage.point[0], y: postEditDragFailureMessage.point[1] })
+              ? m["vertical_drag.failed_elevator"]({ coords: formatTargetLabel(postEditDragFailureMessage.point, postEditDragFailureMessage.level, true, undefined) })
+              : m["vertical_drag.failed_passage"]({ coords: formatTargetLabel(postEditDragFailureMessage.point, postEditDragFailureMessage.level, true, undefined) })
           }
           onClose={dismissPostEditDragFailureMessage}
         />

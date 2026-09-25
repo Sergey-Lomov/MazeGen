@@ -1691,9 +1691,11 @@ carried everything needed.
 
 `bubbleLabel` (`DebugEventTree.tsx`) prefixes a coordinate bubble's label with its 1-based floor
 index on a multi-floor maze (`floors.length > 1`, mirroring `AlgorithmSelectDialog.tsx`'s/
-`GenerationFeature.tsx`'s own `multiFloor` convention) — `Lf:x:y` (e.g. `L2:4:-2`) instead of
-plain `x:y`. `L`, not a bare number, so the floor digit is never mistaken for another coordinate
-component; 1-based to match `FloorSwitcher.tsx`'s own display convention (see below), not
+`GenerationFeature.tsx`'s own `multiFloor` convention) — `Lf x:y` (e.g. `L2 4:-2`) instead of
+plain `x:y`. `L` + a plain space, not a bare number or a `:` separator, so the floor digit is
+never mistaken for another coordinate component — a `:` there would blur into the coordinates
+themselves once either number went negative (`L2:4:-2` reads as three colon-separated numbers,
+not floor-plus-point). 1-based to match `FloorSwitcher.tsx`'s own display convention (see below), not
 `NodeDto.level`'s raw 0-based value. `NodeCoordIndex.get` (`debugTreeSelectors.ts`) grew a third
 `level` field (defaulting a missing `NodeDto.level` to `0`, same convention as
 `selectFloorScopedMaze`) to supply this.
@@ -1784,7 +1786,7 @@ expected to persist across debug sessions within the same app session.
 `FloorSwitcher.tsx`'s title row gained a matching 1-based index prefix (`"{n}: {title}"`, e.g.
 `"1: Floor 1"`) — `floorDisplayLabel`, factored out so `measureMaxTitleWidth`'s panel-sizing measures
 the same string that's actually rendered, not just the raw floor title. Unrelated to (predates) this
-issue's own bubble-prefix convention, but both now agree on 1-based, `Lf:x:y`-vs-`{n}: title`-shaped
+issue's own bubble-prefix convention, but both now agree on 1-based, `Lf x:y`-vs-`{n}: title`-shaped
 display of the same underlying `NodeDto.level`/array-position value.
 
 ### Out of Scope (#350)

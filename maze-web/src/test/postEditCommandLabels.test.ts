@@ -46,11 +46,11 @@ describe("postEditCommandLabel", () => {
     expect(label.arrow).toBe("->");
   });
 
-  it("uses Lf:x:y coordinates once multiFloor is true", () => {
+  it("uses Lf x:y coordinates once multiFloor is true", () => {
     const nodeById = buildNodeByIdMap([n(0, 0, 0, 1), n(1, 1, 0, 1)]);
     const command: PostEditCommand = { kind: "setEdge", edge: es(nodeEndpoint(0), nodeEndpoint(1), "basic") };
     const label = postEditCommandLabel(command, nodeById, true);
-    expect(label.bubbles.map((b) => b.text)).toEqual(["L2:0:0", "L2:1:0"]);
+    expect(label.bubbles.map((b) => b.text)).toEqual(["L2 0:0", "L2 1:0"]);
   });
 
   it("setEdge/setEdgePair row hover highlights the connecting line (same-floor link)", () => {
@@ -89,7 +89,7 @@ describe("postEditCommandLabel", () => {
       kind: "removeVerticalPassage", id: "v99", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
     };
     const label = postEditCommandLabel(command, nodeById, true);
-    expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
+    expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5"]);
     expect(label.arrow).toBe("->");
     expect(label.rowHighlight?.danger).toBe(true);
     expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
@@ -101,7 +101,7 @@ describe("postEditCommandLabel", () => {
       kind: "removeElevator", id: "e99", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
     };
     const label = postEditCommandLabel(command, nodeById, true);
-    expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5", "L3:3:5"]);
+    expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5", "L3 3:5"]);
     expect(label.rowHighlight?.danger).toBe(true);
     expect(label.bubbles.every((bubble) => bubble.highlight?.danger === true)).toBe(true);
   });
@@ -114,7 +114,7 @@ describe("postEditCommandLabel", () => {
         kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward",
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5"]);
       expect(label.showArrow).toBe(true);
       expect(label.arrow).toBe("->");
     });
@@ -124,7 +124,7 @@ describe("postEditCommandLabel", () => {
         kind: "addVerticalPassage", id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward",
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5"]);
       expect(label.arrow).toBe("<-");
     });
 
@@ -252,7 +252,7 @@ describe("postEditCommandLabel", () => {
       const nodeById = buildNodeByIdMap([n(0, 3, 5, 0), n(1, 3, 5, 1)]);
       const command: PostEditCommand = { kind: "setVerticalPassageDirection", id: "v99", direction: "forward", from: nodeEndpoint(0), to: nodeEndpoint(1) };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5"]);
     });
 
     it("moveVerticalPassageEndpoint shows its own denormalized from/to/direction, not a live-entry lookup (GitHub issue #564 follow-up)", () => {
@@ -262,7 +262,7 @@ describe("postEditCommandLabel", () => {
         from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way",
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:3:5", "L2:3:5"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 3:5", "L2 3:5"]);
       expect(label.arrow).toBe("<->");
     });
   });
@@ -486,7 +486,7 @@ describe("postEditCommandLabel", () => {
         kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "L2:2:2", "L3:2:2"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 2:2", "L2 2:2", "L3 2:2"]);
     });
 
     it("no arrow glyph for a 3+ floor elevator", () => {
@@ -512,7 +512,7 @@ describe("postEditCommandLabel", () => {
         kind: "addElevator", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(999)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "?"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 2:2", "?"]);
     });
 
     it("row hover highlights every floor's own point", () => {
@@ -534,7 +534,7 @@ describe("postEditCommandLabel", () => {
         kind: "updateElevatorFloors", id: "e1", floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)],
       };
       const label = postEditCommandLabel(command, nodeById, true);
-      expect(label.bubbles.map((b) => b.text)).toEqual(["L1:2:2", "L2:2:2", "L3:2:2"]);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L1 2:2", "L2 2:2", "L3 2:2"]);
       expect(label.entityId).toBe("e1");
       expect(label.showArrow).toBe(false);
     });

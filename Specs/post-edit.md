@@ -533,8 +533,16 @@ a per-underlying-edge suppression flood. The old `suppressGenerationPair` comman
 Each `PostEditEntityBubble` (`{ text, highlight }`) names exactly one point and renders as a
 hoverable chip — same monospace bubble style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles
 use — instead of a plain text string. `text` matches the debug event tree's own bubble convention
-exactly (`bubbleLabel`, `debugRowText.ts`): `x:y` on a single-floor maze, `Lf:x:y` (1-based floor) on
-a multi-floor one — no words, no parens; never a raw `NodeId`/entity id. A point that sits on a
+exactly (`bubbleLabel`, `debugRowText.ts`): `x:y` on a single-floor maze, `Lf x:y` (1-based floor) on
+a multi-floor one — no words, no parens; never a raw `NodeId`/entity id. This text is produced by
+the single shared `formatTargetLabel` (`maze-web/src/pixi/targetLabel.ts`, GitHub issue #602) —
+`point`/`level`/`includeFloor`/`splitLabel` in, `"Lf x:y (suffix)"` out — the one formatter every
+stage (preset, post-edit, debug event tree) now goes through instead of each assembling its own
+coordinate/floor/split-node text independently. Each stage keeps its own resolver responsible for
+turning its own endpoint/node shape into those four primitives: `presetTargetLabel`
+(`presetSplitLabels.ts`), `postEditTargetLabel` (this bubble's own `formatPoint`, above,
+`postEditCommandLabels.ts`), and the debug tree's own `bubbleLabel` (`debugRowText.ts`) — none of
+them reimplement the coordinate/floor text itself any more. A point that sits on a
 split tile's non-original node also gets the debug tree's own `" (N{n})"` parenthetical suffix
 (GitHub issue #546 fourth follow-up, `splitNodeLabelShort` — shared with the debug event tree and
 "Manage split nodes"' link bubbles, same `1` = original / `slotId + 2` = extra-slot numbering): a
