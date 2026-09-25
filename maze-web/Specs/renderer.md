@@ -17,7 +17,8 @@ Top-level coordinator. Holds a single `viewport: Container` for the maze, plus s
 **Interaction:**
 - **Pan**: `pointerdown → pointermove` delta applied to `viewport.x/y`, synced to overlays.
 - **Zoom**: wheel event → factor `1.1` (in) / `0.9` (out) around mouse position.
-- Window `blur` cancels drag.
+- Releasing the pointer outside the canvas or window `blur` cancels the active pointer gesture;
+  release-only edits are not committed.
 - In field edit mode: pointer events routed to `FieldEditController`.
 - In preset connections mode: pointer events routed to `PresetConnectionsController`.
 

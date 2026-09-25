@@ -839,6 +839,35 @@ export class PostEditController extends BaseController {
     }
   }
 
+  cancelPointerGesture(): void {
+    const state = useMazeStore.getState();
+    const gestureActive = this.isDragActive
+      || this.draggingMarker !== null
+      || this.draggingTeleportEndpoint !== null
+      || this.draggingVerticalPassageEndpoint !== null
+      || this.draggingElevatorEndpoint !== null;
+    if (this.dragDidApply && state.postEditAutoConfirm) {
+      this.scheduleConfirm();
+    }
+    this.dragDidApply = false;
+
+    super.cancelPointerGesture();
+    this.markerDragOrigin = null;
+    this.teleportDragOrigin = null;
+    this.verticalPassageDragOrigin = null;
+    this.elevatorDragOrigin = null;
+    this.draggingTeleportEndpoint = null;
+    this.teleportDragMoved = false;
+    this.draggingVerticalPassageEndpoint = null;
+    this.verticalPassageDragMoved = false;
+    this.draggingElevatorEndpoint = null;
+    this.elevatorDragMoved = false;
+    this.bulkPointAction = false;
+    if (gestureActive) {
+      useMazeStore.getState().setPostEditDragOverride(null);
+    }
+  }
+
   /** Starts or completes a two-click teleport placement at the given node. No-op on completion
    * if the node equals the pending origin node. `nodeId` is always an already-resolved real
    * node — a split node not yet confirmed can't be teleport-clicked yet (see the VERTEX_TOOLS
@@ -923,4 +952,3 @@ function buildNodeMap(nodes: NodeDto[]): Map<string, number[]> {
   }
   return m;
 }
-

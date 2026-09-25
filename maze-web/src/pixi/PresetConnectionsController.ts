@@ -593,6 +593,25 @@ export class PresetConnectionsController extends BaseController {
     }
   }
 
+  cancelPointerGesture(): void {
+    const gestureActive = this.isDragActive
+      || this.draggingMarker !== null
+      || this.draggingTeleportEndpoint !== null
+      || this.draggingVerticalPassageEndpoint !== null
+      || this.draggingElevatorEndpoint !== null;
+    super.cancelPointerGesture();
+    this.draggingTeleportEndpoint = null;
+    this.teleportDragMoved = false;
+    this.draggingVerticalPassageEndpoint = null;
+    this.verticalPassageDragMoved = false;
+    this.draggingElevatorEndpoint = null;
+    this.elevatorDragMoved = false;
+    this.bulkDelete = false;
+    if (gestureActive) {
+      useMazeStore.getState().setPresetDragOverride(null);
+    }
+  }
+
   /** Starts or completes a two-click teleport placement at the cell under (vpX, vpY). No-op if
    * the cell is outside the field, or (on completion) equal to the pending origin cell. */
   private tryTeleportClick(vpX: number, vpY: number, tool: string, state: ReturnType<typeof useMazeStore.getState>): void {

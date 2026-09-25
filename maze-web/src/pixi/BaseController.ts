@@ -50,6 +50,14 @@ export abstract class BaseController {
     if (button === 0) this.releaseMarkerDrag();
   }
 
+  /** Cancels transient pointer state without committing a release-only action. Used when the
+   * pointer is released outside the canvas or the window loses focus. */
+  cancelPointerGesture(): void {
+    this.isPanning = false;
+    this.endEdgeDrag();
+    this.releaseMarkerDrag();
+  }
+
   /** Only bookkeeping for "have we already painted this edge in the current drag gesture" —
    * does not touch the store, does not decide which tool is active, does not trigger a redraw.
    * Callers own the store action and any visual update via `onNewEdge`. */
