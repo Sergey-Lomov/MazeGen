@@ -1,7 +1,7 @@
 import type * as React from "react";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { spacing, typography } from "../../styles/theme";
+import { indent, spacing, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
@@ -186,8 +186,8 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   subGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   subHeader: { ...typography.body },
-  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };

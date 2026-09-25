@@ -4,7 +4,7 @@ import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimi
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
-import { typography, muted, spacing } from "../../styles/theme";
+import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { Switch } from "../Switch";
@@ -201,7 +201,7 @@ export function FieldSetupFeature() {
       {isCustom && (
         <>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
-          <Grid templateColumns="1fr 1fr" gap="itemGap">
+          <Grid templateColumns="1fr 1fr" gap="itemGap" style={styles.nestedContent}>
           {primitivesForKind(tessellationKind).map(([p, label]) => (
             <Button
               key={p}
@@ -330,6 +330,8 @@ const styles: Record<string, React.CSSProperties> = {
   select: sharedStyles.select,
   input: sharedStyles.input,
   sectionLabel: { ...typography.body, marginTop: spacing.groupGap },
+  // One indent level for the "Tools" section's own content, relative to `sectionLabel`.
+  nestedContent: { paddingLeft: indent.tree },
   originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", ...muted(typography.body) },
   originLabel: { ...muted(typography.body) },
 };

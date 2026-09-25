@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
-import { inset, spacing, typography, ui } from "../../styles/theme";
+import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { ColorRow } from "../ColorRow";
@@ -1052,10 +1052,10 @@ export function VectorByWallsSettingsPanel() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap, padding: `${inset.panelInsetY}px ${inset.panelInsetX}px` },
-  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   subGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   subHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3 },
   subHeader: { ...typography.body },
-  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
 };

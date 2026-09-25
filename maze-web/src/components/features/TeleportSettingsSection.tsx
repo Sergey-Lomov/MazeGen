@@ -4,7 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
-import { spacing, ui, typography } from "../../styles/theme";
+import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ToggleRow } from "../ToggleRow";
 import { ColorRow } from "../ColorRow";
@@ -563,11 +563,11 @@ export function TeleportSettingsSection({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   subsectionLabel: { ...typography.body },
-  subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
-  subsectionNested: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
-  groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  subsectionNested: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
   groupRow: {
     display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, outline: "none",
     padding: spacing.itemGap, borderRadius: 3, border: `1px solid ${ui.border.default}`,
