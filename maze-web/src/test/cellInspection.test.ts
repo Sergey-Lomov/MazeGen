@@ -38,28 +38,28 @@ describe("buildCellInspection", () => {
       { from: 2, to: 1, kind: "teleport" },
     ];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Teleport <-> (7,2)");
+    expect(result).toBe("x:3, y:5 | Teleport <-> (7:2)");
   });
 
   it("same-floor one-way teleport, departure end", () => {
     const nodeById = new Map([[1, node(1, 3, 5)], [2, node(2, 7, 2)]]);
     const edges: EdgeDto[] = [{ from: 1, to: 2, kind: "teleport" }];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Teleport -> (7,2)");
+    expect(result).toBe("x:3, y:5 | Teleport -> (7:2)");
   });
 
   it("same-floor one-way teleport, arrival end", () => {
     const nodeById = new Map([[1, node(1, 3, 5)], [2, node(2, 7, 2)]]);
     const edges: EdgeDto[] = [{ from: 1, to: 2, kind: "teleport" }];
     const result = buildCellInspection(nodeById, edges, 7, 2, 0, null, null);
-    expect(result).toBe("x:7, y:2 | Teleport <- (3,5)");
+    expect(result).toBe("x:7, y:2 | Teleport <- (3:5)");
   });
 
   it("cross-floor teleport shows floor label instead of coordinates", () => {
     const nodeById = new Map([[1, node(1, 3, 5, { level: 0 })], [2, node(2, 7, 2, { level: 2 })]]);
     const edges: EdgeDto[] = [{ from: 1, to: 2, kind: "teleport" }];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Teleport -> (L3)");
+    expect(result).toBe("x:3, y:5 | Teleport -> (L3 7:2)");
   });
 
   it("bidirectional vertical passage", () => {
@@ -69,21 +69,21 @@ describe("buildCellInspection", () => {
       { from: 2, to: 1, kind: "vertical_passage" },
     ];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2 3:5)");
   });
 
   it("one-way vertical passage, departure end", () => {
     const nodeById = new Map([[1, node(1, 3, 5, { level: 0 })], [2, node(2, 3, 5, { level: 1 })]]);
     const edges: EdgeDto[] = [{ from: 1, to: 2, kind: "vertical_passage" }];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Vertical passage -> (L2)");
+    expect(result).toBe("x:3, y:5 | Vertical passage -> (L2 3:5)");
   });
 
   it("one-way vertical passage, arrival end", () => {
     const nodeById = new Map([[1, node(1, 3, 5, { level: 0 })], [2, node(2, 3, 5, { level: 1 })]]);
     const edges: EdgeDto[] = [{ from: 1, to: 2, kind: "vertical_passage" }];
     const result = buildCellInspection(nodeById, edges, 3, 5, 1, null, null);
-    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1 3:5)");
   });
 
   it("elevator to several floors, no arrow, sorted/deduped floor list", () => {
@@ -97,7 +97,7 @@ describe("buildCellInspection", () => {
       { from: 1, to: 3, kind: "elevator" },
     ];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, null, null);
-    expect(result).toBe("x:3, y:5 | Elevator (L2, L4)");
+    expect(result).toBe("x:3, y:5 | Elevator (L2 3:5, L4 3:5)");
   });
 
   it("split cell: one empty node, one node with markers, joined with ' | ' at the outer level and '; ' inside a node", () => {
@@ -108,7 +108,7 @@ describe("buildCellInspection", () => {
     ]);
     const edges: EdgeDto[] = [{ from: 2, to: 3, kind: "teleport" }];
     const result = buildCellInspection(nodeById, edges, 3, 5, 0, 2, null);
-    expect(result).toBe("x:3, y:5 | [Node 1: empty] | [Node 2: Start; Teleport -> (7,2)]");
+    expect(result).toBe("x:3, y:5 | [Node 1: empty] | [Node 2: Start; Teleport -> (7:2)]");
   });
 
   it("split node ordering follows NodeDto.i, not map insertion order", () => {
@@ -176,14 +176,14 @@ describe("buildCellInspection", () => {
         { from: 1, to: 3, kind: "elevator" },
       ];
       const result = buildCellInspection(nodes, edges, 0, 0, 0, 1, 1);
-      expect(result).toBe("x:0, y:0 | Старт | Финиш | Телепорт -> (1,0) | Лифт (L2)");
+      expect(result).toBe("x:0, y:0 | Старт | Финиш | Телепорт -> (1:0) | Лифт (L2 0:0)");
       expect(result).not.toMatch(/Start|Finish|Teleport|Vertical passage|Elevator|empty|Node/);
 
       const verticalResult = buildCellInspection(
         new Map([...nodes, [4, node(4, 0, 0, { i: 0, level: 2 })]]),
         [{ from: 1, to: 4, kind: "vertical_passage" }], 0, 0, 0, null, null,
       );
-      expect(verticalResult).toBe("x:0, y:0 | Вертикальный проход -> (L3)");
+      expect(verticalResult).toBe("x:0, y:0 | Вертикальный проход -> (L3 0:0)");
     } finally {
       setLocale("en", { reload: false });
     }

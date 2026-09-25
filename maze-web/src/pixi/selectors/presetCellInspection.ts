@@ -5,6 +5,7 @@ import {
 } from "../fieldEditUtils";
 import { presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
+import type { PresetSplitLabelContext } from "../presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -33,10 +34,11 @@ function buildPresetNodeMarkerLines(
   presetVerticalPassages: PresetVerticalPassageEntry[],
   presetElevators: PresetElevatorEntry[],
   lockKind: NodeLockKind | undefined,
+  splitCtx: PresetSplitLabelContext | null = null,
 ): string[] {
   const lines = presetVertexMarkerEntities(
     endpoint, activeFloorLevel, presetStart, presetFinish, presetGenSource,
-    presetTeleports, presetVerticalPassages, presetElevators,
+    presetTeleports, presetVerticalPassages, presetElevators, splitCtx,
   ).map((e) => e.title);
 
   if (lockKind) lines.push(m["status.cell_lock"]({ kind: formatLockKind(lockKind) }));
@@ -72,6 +74,7 @@ export function buildPresetCellInspection(
   cfg: TessellationConfig | null = null,
   inFieldCells: Set<string> = new Set(),
   presetConnections: Map<string, PresetConnectionEntry> = new Map(),
+  splitCtx: PresetSplitLabelContext | null = null,
 ): string {
   const coordLabel = `x:${x}, y:${y}`;
   const level = floorLevel === 0 ? undefined : floorLevel;
@@ -83,7 +86,7 @@ export function buildPresetCellInspection(
     const lockKind = lockedNodes.get(presetEndpointKey(nodesHere[0])) ?? (autoLockedNodes.has(presetEndpointKey(nodesHere[0])) ? "both" : undefined);
     const lines = buildPresetNodeMarkerLines(
       nodesHere[0], floorLevel, presetStart, presetFinish, presetGenSource,
-      presetTeleports, presetVerticalPassages, presetElevators, lockKind,
+      presetTeleports, presetVerticalPassages, presetElevators, lockKind, splitCtx,
     );
     return lines.length === 0 ? coordLabel : [coordLabel, ...lines].join(" | ");
   }
@@ -103,6 +106,7 @@ export function buildPresetCellInspection(
       endpoint, floorLevel, presetStart, presetFinish, presetGenSource,
       presetTeleports, presetVerticalPassages, presetElevators,
       lockedNodes.get(presetEndpointKey(endpoint)) ?? (autoLockedNodes.has(presetEndpointKey(endpoint)) ? "both" : undefined),
+      splitCtx,
     );
     const body = lines.length === 0 ? m["status.cell_empty"]() : lines.join("; ");
     return `[${semanticNames?.[i]?.full ?? m["status.cell_node"]({ number: i + 1 })}: ${body}]`;

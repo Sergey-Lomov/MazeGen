@@ -64,7 +64,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, teleports, [], [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Teleport <-> (7,2)");
+    expect(result).toBe("x:3, y:5 | Teleport <-> (7:2)");
   });
 
   it("one-way teleport, departure end", () => {
@@ -74,7 +74,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, teleports, [], [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Teleport -> (7,2)");
+    expect(result).toBe("x:3, y:5 | Teleport -> (7:2)");
   });
 
   it("one-way teleport, arrival end", () => {
@@ -84,7 +84,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       7, 2, 0, {}, null, null, null, teleports, [], [], new Map(), new Set(),
     );
-    expect(result).toBe("x:7, y:2 | Teleport <- (3,5)");
+    expect(result).toBe("x:7, y:2 | Teleport <- (3:5)");
   });
 
   it("backward teleport direction flips departure/arrival reading", () => {
@@ -95,7 +95,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, teleports, [], [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Teleport <- (7,2)");
+    expect(result).toBe("x:3, y:5 | Teleport <- (7:2)");
   });
 
   it("cross-floor teleport shows floor label", () => {
@@ -105,7 +105,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, teleports, [], [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Teleport -> (L3)");
+    expect(result).toBe("x:3, y:5 | Teleport -> (L3 7:2)");
   });
 
   it("bidirectional vertical passage", () => {
@@ -115,7 +115,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2 3:5)");
   });
 
   it("one-way vertical passage, arrival end", () => {
@@ -125,7 +125,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 1, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1 3:5)");
   });
 
   it("backward vertical passage, departure end reads as arrival", () => {
@@ -136,7 +136,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <- (L2)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <- (L2 3:5)");
   });
 
   it("elevator to several floors, no arrow, sorted/deduped", () => {
@@ -153,7 +153,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], [], elevators, new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Elevator (L2, L4)");
+    expect(result).toBe("x:3, y:5 | Elevator (L2 3:5, L4 3:5)");
   });
 
   it("elevator not touching this node is ignored", () => {
@@ -179,7 +179,7 @@ describe("buildPresetCellInspection", () => {
       3, 5, 0, presetSplitPoints, presetEndpoint([3, 5], 0), null, null, teleports, [], [],
       locked, new Set(),
     );
-    expect(result).toBe("x:3, y:5 | [Node 1: Lock (both)] | [Node 2: Start; Teleport -> (7,2)]");
+    expect(result).toBe("x:3, y:5 | [Node 1: Lock (both)] | [Node 2: Start; Teleport -> (7:2)]");
   });
 
   it("split point: auto-lock (no manual entry) reported only on original node", () => {

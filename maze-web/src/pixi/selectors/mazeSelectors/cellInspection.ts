@@ -3,18 +3,54 @@ import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import { selectVerticalPassagePairSet } from "./vertical";
 import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
 import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
+import { formatTargetLabel } from "../../targetLabel";
 import * as m from "~/paraglide/messages";
 
-function formatFloor(level: number): string {
-  return `L${level + 1}`;
+/** Semantic split-node short label for `node` (e.g. "Cor1"), when its point's face configuration
+ *  matches a recognized special-split topology, else `undefined` for a non-split point/generic
+ *  fallback caller. `cfg` is `null` to skip resolution entirely (mirrors `buildCellInspection`'s
+ *  own "no cfg = always generic 'Node N'" contract). Mirrors the preset/post-edit resolvers'
+ *  `resolvePresetSplitNodeShortLabel`/`resolveSplitNodeShortLabel`, adapted to this selector's own
+ *  raw `nodeById`/`edges` data shape (no `PostEditEndpoint`/`draftEdges` here). */
+function resolveNodeSplitLabel(
+  node: NodeDto,
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig | null,
+): string | undefined {
+  if (!cfg) return undefined;
+  const nodeLevel = node.level ?? 0;
+  const pointNodes = Array.from(nodeById.values())
+    .filter((n) => n.x === node.x && n.y === node.y && (n.level ?? 0) === nodeLevel)
+    .sort((a, b) => a.i - b.i);
+  if (pointNodes.length <= 1) return undefined;
+
+  const floorNodes = Array.from(nodeById.values()).filter((n) => (n.level ?? 0) === nodeLevel);
+  const byTile = new Map<string, NodeDto[]>();
+  for (const n of floorNodes) {
+    const k = `${n.x}:${n.y}`;
+    const list = byTile.get(k);
+    if (list) list.push(n); else byTile.set(k, [n]);
+  }
+  const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
+  const semanticNames = splitNodeSemanticNamesFromKinds(splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg));
+  const index = pointNodes.findIndex((n) => n.id === node.id);
+  return semanticNames?.[index]?.short ?? m["post_edit.split_node_label_short"]({ slotId: node.i + 1 });
 }
 
-/** A teleport/vertical-passage endpoint target, formatted per GitHub issue #353's contract: same-
- *  floor target shows plain cell coordinates, cross-floor target shows the floor label instead
- *  (never both — the floor is implied by the coordinate when they're on the active floor). */
-function formatTarget(other: NodeDto, activeFloorLevel: number): string {
+/** A teleport/vertical-passage endpoint target, formatted via the shared `formatTargetLabel`
+ *  (GitHub issue #602) — same-floor target shows plain coordinates, cross-floor target shows the
+ *  floor prefix too (GitHub issue #353's contract: same-floor omits the floor since it's implied
+ *  by the coordinate; cross-floor needs it since the coordinate alone wouldn't disambiguate),
+ *  plus the target's own split-node suffix when it lands on a split tile (GitHub issue #595's
+ *  follow-up — this never resolved before). Wrapped in parens, matching this selector's own
+ *  pre-existing convention for every marker line (not the bare-bubble convention `presetTargetLabel`/
+ *  `postEditTargetLabel` use — this text is inline status-bar prose, not a UI bubble). */
+function formatTarget(other: NodeDto, activeFloorLevel: number, nodeById: Map<number, NodeDto>, edges: EdgeDto[], cfg: TessellationConfig | null): string {
   const otherLevel = other.level ?? 0;
-  return otherLevel === activeFloorLevel ? `(${other.x},${other.y})` : `(${formatFloor(otherLevel)})`;
+  const crossFloor = otherLevel !== activeFloorLevel;
+  const suffix = resolveNodeSplitLabel(other, nodeById, edges, cfg);
+  return `(${formatTargetLabel([other.x, other.y], otherLevel, crossFloor, suffix)})`;
 }
 
 /** Every marker-line contributed by one specific node — start/finish, teleport endpoints, and
@@ -28,6 +64,7 @@ function buildNodeMarkerLines(
   edges: EdgeDto[],
   start: number | null,
   finish: number | null,
+  cfg: TessellationConfig | null,
 ): string[] {
   const lines: string[] = [];
   if (start === node.id) lines.push(m["status.cell_start"]());
@@ -51,16 +88,18 @@ function buildNodeMarkerLines(
     const other = nodeById.get(otherId);
     if (!other) continue;
     const reverseExists = edges.some((r) => r.kind === "teleport" && r.from === e.to && r.to === e.from);
-    const target = formatTarget(other, activeFloorLevel);
+    const target = formatTarget(other, activeFloorLevel, nodeById, edges, cfg);
     const arrow = reverseExists ? "<->" : departingHere ? "->" : "<-";
     lines.push(m["status.cell_teleport"]({ arrow, target }));
   }
 
   // Vertical passages (one-way or two-way) and elevators (always two-way, fan out to several
   // floors from one node) — mirrors `buildVerticalConnectionMarkers`'s own from/arrival split.
+  // Both are cross-floor by construction (the other end is never this node's own floor), so their
+  // target always includes the floor prefix — no same-floor/cross-floor branch like teleports have.
   const verticalPairs = selectVerticalPassagePairSet(edges);
   const seenVerticalPair = new Set<string>();
-  const elevatorTargetLevels: number[] = [];
+  const elevatorTargets: NodeDto[] = [];
   for (const e of edges) {
     if (e.kind !== "vertical_passage" && e.kind !== "elevator") continue;
     if (e.from !== node.id && e.to !== node.id) continue;
@@ -68,7 +107,7 @@ function buildNodeMarkerLines(
     if (e.kind === "elevator") {
       if (e.from !== node.id) continue; // elevator has no one-way arrival end to report separately
       const other = nodeById.get(e.to);
-      if (other) elevatorTargetLevels.push(other.level ?? 0);
+      if (other) elevatorTargets.push(other);
       continue;
     }
 
@@ -81,13 +120,20 @@ function buildNodeMarkerLines(
     const other = nodeById.get(otherId);
     if (!other) continue;
     const reverseExists = verticalPairs.has(`${e.to}->${e.from}`);
-    const target = `(${formatFloor(other.level ?? 0)})`;
+    const target = formatTarget(other, activeFloorLevel, nodeById, edges, cfg);
     const arrow = reverseExists ? "<->" : departingHere ? "->" : "<-";
     lines.push(m["status.cell_vertical_passage"]({ arrow, target }));
   }
-  if (elevatorTargetLevels.length > 0) {
-    const sorted = [...new Set(elevatorTargetLevels)].sort((a, b) => a - b);
-    lines.push(m["status.cell_elevator"]({ targets: sorted.map(formatFloor).join(", ") }));
+  if (elevatorTargets.length > 0) {
+    const seenLevel = new Set<number>();
+    const uniqueTargets = elevatorTargets.filter((t) => {
+      const level = t.level ?? 0;
+      if (seenLevel.has(level)) return false;
+      seenLevel.add(level);
+      return true;
+    }).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+    const targets = uniqueTargets.map((t) => formatTargetLabel([t.x, t.y], t.level ?? 0, true, resolveNodeSplitLabel(t, nodeById, edges, cfg)));
+    lines.push(m["status.cell_elevator"]({ targets: targets.join(", ") }));
   }
 
   return lines;
@@ -103,7 +149,7 @@ function buildNodeMarkerLines(
  *  which floor is currently active.
  *
  *  An ordinary (non-split) cell renders as `"x:3, y:5"` when it carries no marker at all, else
- *  `"x:3, y:5 | Start | Teleport -> (7,2)"` (`" | "`-joined marker lines). A split cell (more than
+ *  `"x:3, y:5 | Start | Teleport -> (7:2)"` (`" | "`-joined marker lines). A split cell (more than
  *  one node at the same point, on the same floor) renders each node as its own `"[Node N: ...]"`
  *  block — `N` is `node.i + 1` (the point's original node first, then each slot in creation
  *  order, matching `NodeDto.i`'s own per-point index convention — see `Specs/post-edit.md`'s
@@ -132,7 +178,7 @@ export function buildCellInspection(
   if (nodesHere.length === 0) return coordLabel;
 
   if (nodesHere.length === 1) {
-    const lines = buildNodeMarkerLines(nodesHere[0], nodeById, edges, start, finish);
+    const lines = buildNodeMarkerLines(nodesHere[0], nodeById, edges, start, finish, cfg);
     return lines.length === 0 ? coordLabel : [coordLabel, ...lines].join(" | ");
   }
 
@@ -152,7 +198,7 @@ export function buildCellInspection(
   }
 
   const blocks = nodesHere.map((n, index) => {
-    const lines = buildNodeMarkerLines(n, nodeById, edges, start, finish);
+    const lines = buildNodeMarkerLines(n, nodeById, edges, start, finish, cfg);
     const body = lines.length === 0 ? m["status.cell_empty"]() : lines.join("; ");
     return `[${semanticNames?.[index]?.full ?? m["status.cell_node"]({ number: n.i + 1 })}: ${body}]`;
   });

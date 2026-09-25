@@ -2,6 +2,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import { buildCellInspection, postEditEdgesToDto } from "./selectors/mazeSelectors";
 import { buildPresetCellInspection } from "./selectors/presetCellInspection";
+import type { PresetSplitLabelContext } from "./presetSplitLabels";
 import { presetConnectionsOnLevel } from "./fieldEditUtils";
 import { buildActiveCells } from "./selectors/fieldSelectors";
 import { buildCellSet } from "./selectors/sharedSelectors";
@@ -131,12 +132,27 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
     const level = activeFloorIndex === 0 ? undefined : activeFloorIndex;
     const inFieldCells = buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, cfg));
     const presetConnections = presetConnectionsOnLevel(st.presetConnections, level);
+    // Full multi-floor split-label context (GitHub issue #602) — lets a cross-floor target
+    // (teleport/vertical-passage/elevator) resolve its own split-node semantic name too, not just
+    // the point's own entity (GitHub issue #595's follow-up gap).
+    const splitCtx: PresetSplitLabelContext = {
+      splitPoints: st.presetSplitPoints,
+      presetConnections: st.presetConnections,
+      activeSplitNode: st.presetActiveSplitNode,
+      cfgAt: (targetLevel) => st.floorFields[st.floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+      inFieldCellsAt: (targetLevel) => {
+        const targetFloor = st.floorFields[st.floors[targetLevel]?.id ?? ""];
+        return targetFloor
+          ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+          : inFieldCells;
+      },
+    };
     return buildPresetCellInspection(
       x, y, activeFloorIndex,
       st.presetSplitPoints, st.presetStart, st.presetFinish, st.presetGenSource,
       st.presetTeleports, st.presetVerticalPassages, st.presetElevators,
       st.lockedNodes, st.autoLockedNodes,
-      cfg, inFieldCells, presetConnections,
+      cfg, inFieldCells, presetConnections, splitCtx,
     );
   }
 

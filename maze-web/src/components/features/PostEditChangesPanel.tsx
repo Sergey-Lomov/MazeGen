@@ -44,7 +44,7 @@ const ROW_ACTION_ICON_SIZE = 16;
  *  (`Specs/post-edit.md`'s "Command Log" section), one row per `PostEditCommand`, as an action plus
  *  the entity/entities it applies to, rendered as hoverable, clickable bubbles (GitHub issue #546) —
  *  same monospace-chip style `DebugRefBubble`/`SplitNodesDialogView`'s link bubbles use — same
- *  `Lf:x:y`/`x:y` coordinate text the debug event tree's own bubbles use, not a wordy entity
+ *  `Lf x:y`/`x:y` coordinate text the debug event tree's own bubbles use, not a wordy entity
  *  description. Each bubble names exactly one point, highlights only that point on hover (GitHub
  *  issue #546 second follow-up — an elevator's/vertical passage's several floors are separate
  *  bubbles, joined by a plain text arrow glyph when `showArrow`, never one combined bubble), and

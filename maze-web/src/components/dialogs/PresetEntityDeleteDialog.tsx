@@ -3,12 +3,10 @@ import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { buildPresetPointEntities } from "../../pixi/pointEntities";
-import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { presetEndpoint } from "../../pixi/presetEndpoint";
-import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
-import { activeFloorLevel } from "../../store/storeHelpers";
+import type { PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -40,33 +38,38 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
   const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
-  const level = useMazeStore(activeFloorLevel);
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const floors = useMazeStore((s) => s.floors);
+
+  const inFieldCells = useMemo(
+    () => buildCellSet(buildActiveCells(fieldPoints, fieldEditMode, cfg)),
+    [fieldPoints, fieldEditMode, cfg],
+  );
+
+  const splitCtx: PresetSplitLabelContext = useMemo(() => ({
+    splitPoints: presetSplitPoints,
+    presetConnections,
+    activeSplitNode: presetActiveSplitNode,
+    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+    inFieldCellsAt: (targetLevel) => {
+      const targetFloor = floorFields[floors[targetLevel]?.id ?? ""];
+      return targetFloor
+        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+        : inFieldCells;
+    },
+  }), [presetSplitPoints, presetConnections, presetActiveSplitNode, floorFields, floors, cfg, inFieldCells]);
 
   const entities = useMemo(() => {
     if (!prompt) return [];
-    const point = prompt.point;
-    const slotIds = presetSplitPoints[prompt.level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${prompt.level}`] ?? [];
-    let splitSemanticNames: { full: string; short: string }[] | null = null;
-    if (slotIds.length > 0) {
-      const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
-      const inFieldCells = buildCellSet(cells);
-      const levelSplitPoints = recordOnLevel(presetSplitPoints, level);
-      const levelConnections = presetConnectionsOnLevel(presetConnections, level);
-      const slotOrder: (number | undefined)[] = [undefined, ...slotIds];
-      const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
-        presetEndpoint(point, slotId, level), point, cfg, inFieldCells, levelConnections, levelSplitPoints, presetActiveSplitNode, level,
-      ));
-      splitSemanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
-    }
     return buildPresetPointEntities(prompt.point, prompt.level, activeFloorIndex, prompt.scope, {
       presetSplitPoints, presetStart, presetFinish, presetGenSource,
       presetTeleports, presetVerticalPassages, presetElevators,
-      presetConnections, lockedNodes, autoLockedNodes, splitSemanticNames,
+      presetConnections, lockedNodes, autoLockedNodes, splitCtx,
     });
   }, [
     prompt, activeFloorIndex, presetSplitPoints, presetStart, presetFinish, presetGenSource,
     presetTeleports, presetVerticalPassages, presetElevators, presetConnections, lockedNodes, autoLockedNodes,
-    cfg, fieldPoints, fieldEditMode, level, presetActiveSplitNode,
+    splitCtx,
   ]);
 
   if (!prompt) return null;
@@ -74,7 +77,7 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
     onClose();
     return null;
   }
-  const [x, y] = prompt.point;
+  const coords = formatTargetLabel(prompt.point, prompt.level ?? 0, floors.length > 1, undefined);
   const actionTitle = (entity: (typeof entities)[number]): string => {
     if (entity.kind === "teleport") return m["post_edit.entity_delete_label_teleport"]();
     if (entity.kind === "vertical_passage") return m["post_edit.entity_delete_label_vertical_passage"]();
@@ -84,7 +87,7 @@ export function PresetEntityDeleteDialog({ onClose }: Props) {
   };
 
   return (
-    <Modal title={m["preset.entity_delete_title"]({ x, y })} size="approveWide" onClose={onClose}>
+    <Modal title={m["preset.entity_delete_title"]({ coords })} size="approveWide" onClose={onClose}>
       <p style={styles.hint}>{m["preset.entity_delete_hint"]()}</p>
       <div style={styles.list}>
         {entities.map((e) => (

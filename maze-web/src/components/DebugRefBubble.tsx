@@ -27,7 +27,7 @@ import type React from "react";
  *  #350) — a row of `L{n}` badges below an `issue` bubble, one per distinct floor the issue's
  *  structural payload touches, matching Analytics' `IssueBubble`/`IssueFloorBadges` presentation.
  *  Only `issue` bubbles get these — every other target kind already shows its floor via the label's
- *  own `Lf:x:y` prefix. `FloorBadgeRow` itself hides on a single-floor maze and wires each badge's
+ *  own `Lf x:y` prefix. `FloorBadgeRow` itself hides on a single-floor maze and wires each badge's
  *  click-to-navigate. */
 export function DebugRefBubble({
   target, label, onClickFloor, targetFloorIndices,

@@ -266,13 +266,13 @@ describe("DebugEventTree on a multi-floor maze", () => {
     });
   });
 
-  it("prefixes a bubble's coordinates with its 1-based floor (Lf:x:y)", () => {
+  it("prefixes a bubble's coordinates with its 1-based floor (Lf x:y)", () => {
     render(<DebugEventTree />);
     expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
-    // EdgeAdded(1, 2), bidirectional -> one "edge" bubble, "L2:0:0 <-> L2:3:4" — both nodes are
+    // EdgeAdded(1, 2), bidirectional -> one "edge" bubble, "L2 0:0 <-> L2 3:4" — both nodes are
     // floor index 1 -> "L2".
-    expect(screen.getByText("L2:0:0 <-> L2:3:4")).toBeInTheDocument();
+    expect(screen.getByText("L2 0:0 <-> L2 3:4")).toBeInTheDocument();
   });
 
   it("clicking a bubble switches the active floor to the bubble's own floor", () => {
@@ -281,7 +281,7 @@ describe("DebugEventTree on a multi-floor maze", () => {
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
 
     expect(useMazeStore.getState().activeFloorId).toBe("floor_0");
-    fireEvent.click(screen.getByText("L2:0:0 <-> L2:3:4"));
+    fireEvent.click(screen.getByText("L2 0:0 <-> L2 3:4"));
     expect(useMazeStore.getState().activeFloorId).toBe("floor_1");
   });
 
@@ -291,7 +291,7 @@ describe("DebugEventTree on a multi-floor maze", () => {
     expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
     expect(screen.getByText("0:0 <-> 3:4")).toBeInTheDocument();
-    expect(screen.queryByText(/L2:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/L2 /)).not.toBeInTheDocument();
   });
 });
 
@@ -318,7 +318,7 @@ describe("bubbleLabel split-node suffix", () => {
   });
 
   it("prefixes the floor and still appends the suffix on a multi-floor maze", () => {
-    expect(bubbleLabel({ kind: "node", id: 2n }, coords, true)).toBe("L1:2:2 (N2)");
+    expect(bubbleLabel({ kind: "node", id: 2n }, coords, true)).toBe("L1 2:2 (N2)");
   });
 
   it("falls back to #id for an unresolved node, no suffix", () => {

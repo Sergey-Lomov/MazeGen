@@ -12,10 +12,11 @@
 
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
-import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual, buildLogicalCandidates, resolvePartnerForPlacement } from "./postEditEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, endpointsEqual, buildLogicalCandidates, resolvePartnerForPlacement, resolveEndpointToHoverPoint } from "./postEditEndpoint";
 import { getNeighborData } from "./tessellationGeometry";
 import { splitNodeSemanticNames } from "./splitNodeNames";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
+import { formatTargetLabel } from "./targetLabel";
 import type { TileFace, TileFaceKind } from "../components/features/TileFaceEditor";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
@@ -95,6 +96,29 @@ function facesOf(
     else if (fwd?.kind === "wall" || bwd?.kind === "wall") kind = "wall";
     return { kind, boundary: false };
   });
+}
+
+/** The single post-edit-stage point-label formatter (GitHub issue #602) — every post-edit UI spot
+ *  that shows a point's coordinates (status bar, "Changes" panel bubbles, "Manage split nodes"
+ *  dialog links) goes through this, instead of each resolving coordinates/floor/split-node
+ *  independently. Always resolves the split-node suffix via `resolveSplitNodeShortLabel` —
+ *  `formatTarget`'s previous caller (`cellInspection.ts`) never resolved this at all (GitHub issue
+ *  #595's follow-up).
+ *
+ *  `includeFloor` is the caller's own call, same as every one of the ten call sites unified here
+ *  had before this refactor. `ctx` is `null` for a caller with no split/geometry context handy
+ *  (mirrors `resolveSplitNodeShortLabel`'s own `ctx: null` case) — the suffix is simply omitted
+ *  then, same as an unsplit point always has. */
+export function postEditTargetLabel(
+  ctx: SplitLabelContext | null,
+  endpoint: PostEditEndpoint,
+  nodeById: ReadonlyMap<number, { x: number; y: number; level?: number }>,
+  includeFloor: boolean,
+): string {
+  const resolved = resolveEndpointToHoverPoint(endpoint, nodeById);
+  if (!resolved) return endpoint.kind === "node" ? `#${endpoint.id}` : formatTargetLabel(endpoint.point, endpoint.level ?? 0, includeFloor, undefined);
+  const suffix = resolveSplitNodeShortLabel(ctx, resolved.point, resolved.level, endpoint);
+  return formatTargetLabel(resolved.point, resolved.level ?? 0, includeFloor, suffix);
 }
 
 /** Short label for `endpoint`, addressing `point`/`level` — the point's recognized special-split

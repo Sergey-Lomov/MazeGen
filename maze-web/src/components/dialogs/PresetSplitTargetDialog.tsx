@@ -12,6 +12,7 @@ import type { NodeLockKind } from "../../wasm/types";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -98,11 +99,12 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     return autoLockedNodes.has(key) ? "replace" : null;
   };
 
+  const coords = formatTargetLabel(point, level ?? 0, true, undefined);
   return (
     <Modal
       title={lockAction
-        ? m["preset.lock_target_title"]({ x, y, level: (level ?? 0) + 1 })
-        : m["preset.split_target_title"]({ x, y, level: (level ?? 0) + 1 })}
+        ? m["preset.lock_target_title"]({ coords })
+        : m["preset.split_target_title"]({ coords })}
       size="approve"
       onClose={onClose}
     >

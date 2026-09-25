@@ -2,6 +2,7 @@ import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
+import { formatTargetLabel } from "../../pixi/targetLabel";
 import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -25,6 +26,7 @@ export function PostEditResetDialog({ onClose }: Props) {
   const prompt = useMazeStore((s) => s.postEditResetPrompt);
   const resetOne = useMazeStore((s) => s.resetPostEditPointLifeline);
   const resetAll = useMazeStore((s) => s.resetAllPostEditPointLifelines);
+  const floors = useMazeStore((s) => s.floors);
   const lifelines = prompt?.lifelines ?? [];
 
   if (!prompt) return null;
@@ -32,10 +34,10 @@ export function PostEditResetDialog({ onClose }: Props) {
     onClose();
     return null;
   }
-  const [x, y] = prompt.point;
+  const coords = formatTargetLabel(prompt.point, prompt.level ?? 0, floors.length > 1, undefined);
 
   return (
-    <Modal title={m["post_edit.reset_dialog_title"]({ x, y })} size="approveWide" onClose={onClose}>
+    <Modal title={m["post_edit.reset_dialog_title"]({ coords })} size="approveWide" onClose={onClose}>
       <p style={styles.hint}>{m["post_edit.reset_dialog_hint"]()}</p>
       <div style={styles.list}>
         {lifelines.map((l) => (
