@@ -56,7 +56,7 @@ pub(super) fn maybe_reassign_start(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     state: &mut GenState,
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
     if src != start || start_reassignment.is_some() {
         return;
@@ -67,13 +67,13 @@ pub(super) fn maybe_reassign_start(
         original: start,
         reassigned_to,
     });
-    if reassigned_to != start {
-        if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::SplitStartReassigned {
-                original: start,
-                reassigned_to,
-            });
-        }
+    if reassigned_to != start
+        && let Some(log) = scope
+    {
+        log.emit(VertexBasedEvent::SplitStartReassigned {
+            original: start,
+            reassigned_to,
+        });
     }
 }
 
@@ -87,14 +87,14 @@ pub(super) fn mark_connected(
     dst: NodeId,
     src: NodeId,
     split_nodes: &[NodeId],
-    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
     state.visited.insert(dst);
     state.in_reserve.remove(&dst);
     if !split_nodes.contains(&dst) {
         add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
     }
-    if let Some(log) = scope.as_deref_mut() {
+    if let Some(log) = scope {
         log.emit(VertexBasedEvent::NodeVisited {
             node: dst,
             parent: src,
@@ -156,14 +156,14 @@ pub(super) fn apply_split_teleport(
             &mut state.rng,
         )
     });
-    if let Some((from, to, bidirectional)) = added {
-        if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::TeleportConnectAdded {
-                src: from,
-                dst: to,
-                bidirectional,
-            });
-        }
+    if let Some((from, to, bidirectional)) = added
+        && let Some(log) = scope.as_deref_mut()
+    {
+        log.emit(VertexBasedEvent::TeleportConnectAdded {
+            src: from,
+            dst: to,
+            bidirectional,
+        });
     }
     mark_connected(state, dst, anchor, &[], scope);
 }

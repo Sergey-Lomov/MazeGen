@@ -4,7 +4,7 @@
 //! already substituted in. Pure navigation/typing aid (GitHub issue #406) — it never invents the
 //! check's/strategy's actual logic, only the boilerplate shape every one of them shares.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::naming::to_pascal_case;
 
@@ -17,7 +17,7 @@ pub struct NewFileScaffold {
 /// Builds the skeleton `Check<T, I>` impl + checklist for a new check id. `checks_dir` is
 /// `maze-core/src/quality_control/checks`; the caller owns writing the file and declaring the
 /// `mod` (same split as every other codegen entry point in `main.rs`).
-pub fn new_check(id: &str, checks_dir: &PathBuf) -> NewFileScaffold {
+pub fn new_check(id: &str, checks_dir: &Path) -> NewFileScaffold {
     let type_name = to_pascal_case(id);
     let struct_name = format!("{type_name}Check");
     let issue_name = format!("{type_name}Issue");
@@ -84,7 +84,7 @@ Verify with: cargo run -p codegen -- --check
 
 /// Builds the skeleton `RepairStrategy<T, I>` impl + checklist for a new strategy id.
 /// `strategies_dir` is `maze-core/src/repair/strategies`.
-pub fn new_strategy(id: &str, strategies_dir: &PathBuf) -> NewFileScaffold {
+pub fn new_strategy(id: &str, strategies_dir: &Path) -> NewFileScaffold {
     let type_name = to_pascal_case(id);
     let struct_name = format!("{type_name}Strategy");
 

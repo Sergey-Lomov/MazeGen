@@ -192,7 +192,7 @@ mod tests {
         }
         let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         for (from, to, kind) in edges {
-            g.add_edge(p(*from), p(*to), kind.clone());
+            g.add_edge(p(*from), p(*to), *kind);
         }
         Maze::new(field, g)
     }

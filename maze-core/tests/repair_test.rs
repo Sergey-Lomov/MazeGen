@@ -314,10 +314,7 @@ fn make_disconnected_maze() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let ordered: Vec<NodeId> = (0..4)
         .map(|x| {
             maze.field
-                .nodes_at(
-                    maze.field.single_level_id(),
-                    SquarePoint { x: x as i32, y: 0 },
-                )
+                .nodes_at(maze.field.single_level_id(), SquarePoint { x, y: 0 })
                 .first()
                 .copied()
                 .unwrap()

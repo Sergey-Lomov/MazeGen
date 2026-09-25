@@ -11,6 +11,26 @@ use maze_core::{
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
+/// `run_initial_generation`'s result: the generation source's unmerged `TapeSource`/event kind/
+/// debug-value names, elapsed generation time, start reassignment (if any), and every node's
+/// resolved point — see the function's own doc comment.
+/// `merge_debug_sources`'s result: the merged encoded tape, its debug-value names, and its
+/// per-source event-kind metadata list.
+type MergedDebugSources = (
+    Option<maze_core::event_log::EncodedTape>,
+    Vec<(String, maze_core::event_log::DebugValueKind)>,
+    Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
+);
+
+type InitialGenerationResult<T> = (
+    Option<maze_core::event_log::TapeSource>,
+    Option<maze_core::event_log::EventedEventKind>,
+    Vec<(String, maze_core::event_log::DebugValueKind)>,
+    f64,
+    Option<maze_core::generation::StartReassignment>,
+    Vec<(maze_core::ids::NodeId, <T as Tessellation>::Point)>,
+);
+
 fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> PresetEndpoint {
     PresetEndpoint {
         point: (dto.point[0], dto.point[1]),
@@ -42,24 +62,19 @@ fn run_initial_generation<T: Tessellation>(
     preset_state: &maze_core::generation::PresetState,
     qc_experiment: bool,
     debug_events: bool,
-) -> (
-    Option<maze_core::event_log::TapeSource>,
-    Option<maze_core::event_log::EventedEventKind>,
-    Vec<(String, maze_core::event_log::DebugValueKind)>,
-    f64,
-    Option<maze_core::generation::StartReassignment>,
-    Vec<(maze_core::ids::NodeId, T::Point)>,
-) {
+) -> InitialGenerationResult<T> {
     use maze_core::generation::pipeline::now_ms;
 
-    let initial_build_start = now_ms();
-    let (raw_source, event_kind, debug_value_names, start_reassignment, all_node_points): (
+    type InitialSourceParts<T> = (
         Option<maze_core::event_log::TapeSource>,
         Option<maze_core::event_log::EventedEventKind>,
         Vec<(String, maze_core::event_log::DebugValueKind)>,
         Option<maze_core::generation::StartReassignment>,
-        Vec<(maze_core::ids::NodeId, T::Point)>,
-    ) = if qc_experiment {
+        Vec<(maze_core::ids::NodeId, <T as Tessellation>::Point)>,
+    );
+
+    let initial_build_start = now_ms();
+    let (raw_source, event_kind, debug_value_names, start_reassignment, all_node_points): InitialSourceParts<T> = if qc_experiment {
         (None, None, Vec::new(), None, Vec::new())
     } else if debug_events {
         let result =
@@ -389,11 +404,7 @@ fn merge_debug_sources(
     generation_kind: Option<maze_core::event_log::EventedEventKind>,
     generation_debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
     qc_tape: Option<maze_core::event_log::EncodedTape>,
-) -> (
-    Option<maze_core::event_log::EncodedTape>,
-    Vec<(String, maze_core::event_log::DebugValueKind)>,
-    Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
-) {
+) -> MergedDebugSources {
     let qc_source = qc_tape.map(|tape| maze_core::event_log::TapeSource {
         scope_name: "quality_control",
         tape,

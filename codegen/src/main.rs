@@ -108,12 +108,11 @@ fn main() -> ExitCode {
                 .join("maze-core")
                 .join("src")
                 .join(&source.location.rust_file);
-            if let Ok(existing) = fs::read_to_string(&source_file_path) {
-                if let Some(updated) =
+            if let Ok(existing) = fs::read_to_string(&source_file_path)
+                && let Some(updated) =
                     rust_emitter::ensure_mod_declared(&existing, &source.location.stem)
-                {
-                    let _ = fs::write(&source_file_path, updated);
-                }
+            {
+                let _ = fs::write(&source_file_path, updated);
             }
         }
 
@@ -174,12 +173,11 @@ fn main() -> ExitCode {
                 .join("maze-core")
                 .join("src")
                 .join(&source.rust_file);
-            if let Ok(existing) = fs::read_to_string(&source_file_path) {
-                if let Some(updated) =
+            if let Ok(existing) = fs::read_to_string(&source_file_path)
+                && let Some(updated) =
                     id_enum::ensure_mod_declared(&existing, &to_snake_case_stem(&source.enum_name))
-                {
-                    let _ = fs::write(&source_file_path, updated);
-                }
+            {
+                let _ = fs::write(&source_file_path, updated);
             }
         }
 
@@ -546,11 +544,11 @@ fn write_new_scaffold(
     }
 
     if let Ok(mod_rs_text) = fs::read_to_string(mod_rs_path) {
-        if let Some(updated) = scaffold_new::ensure_mod_declared(&mod_rs_text, id) {
-            if let Err(e) = fs::write(mod_rs_path, updated) {
-                eprintln!("codegen: failed to update {}: {e}", mod_rs_path.display());
-                return ExitCode::FAILURE;
-            }
+        if let Some(updated) = scaffold_new::ensure_mod_declared(&mod_rs_text, id)
+            && let Err(e) = fs::write(mod_rs_path, updated)
+        {
+            eprintln!("codegen: failed to update {}: {e}", mod_rs_path.display());
+            return ExitCode::FAILURE;
         }
     } else {
         eprintln!(

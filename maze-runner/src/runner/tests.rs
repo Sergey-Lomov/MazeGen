@@ -52,8 +52,10 @@ mod nested_strategy_tests {
         strategy: StrategyConfig,
     ) -> Result<maze_core::quality_control::QualityControlEngine<SquareTessellation>, String> {
         let rule = scc_count_rule(Some(strategy));
-        let mut config = GenerateConfig::default();
-        config.stages = one_stage(rule);
+        let config = GenerateConfig {
+            stages: one_stage(rule),
+            ..Default::default()
+        };
         build_qc_and_repair::<SquareTessellation>(&config)
     }
 
@@ -123,8 +125,10 @@ mod nested_strategy_tests {
             strategy: Some(strategy),
             params: HashMap::new(),
         };
-        let mut config = GenerateConfig::default();
-        config.stages = one_stage(rule);
+        let config = GenerateConfig {
+            stages: one_stage(rule),
+            ..Default::default()
+        };
         let result = build_qc_and_repair::<SquareTessellation>(&config);
         assert!(
             result.is_err(),
@@ -152,12 +156,13 @@ mod nested_strategy_tests {
     }
 
     fn config_with_points(points: Vec<[i32; 2]>) -> GenerateConfig {
-        let mut config = GenerateConfig::default();
-        config.tessellation = crate::config::TessellationConfig {
-            tessellation_type: TessellationType::Square,
-        };
-        config.level_fields = vec![points];
-        config
+        GenerateConfig {
+            tessellation: crate::config::TessellationConfig {
+                tessellation_type: TessellationType::Square,
+            },
+            level_fields: vec![points],
+            ..Default::default()
+        }
     }
 
     fn issue_kinds(result: &crate::runner::MazeRunResult) -> Vec<&'static str> {
@@ -817,8 +822,10 @@ mod rule_level_params_tests {
     fn build(
         rule: QcRuleConfig,
     ) -> Result<maze_core::quality_control::QualityControlEngine<SquareTessellation>, String> {
-        let mut config = GenerateConfig::default();
-        config.stages = one_stage(rule);
+        let config = GenerateConfig {
+            stages: one_stage(rule),
+            ..Default::default()
+        };
         build_qc_and_repair::<SquareTessellation>(&config)
     }
 
@@ -979,12 +986,13 @@ mod level_fields_tests {
     use crate::runner::run_from_config;
 
     fn config_with_level_fields(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
-        let mut config = GenerateConfig::default();
-        config.tessellation = TessellationConfig {
-            tessellation_type: TessellationType::Square,
-        };
-        config.level_fields = level_fields;
-        config
+        GenerateConfig {
+            tessellation: TessellationConfig {
+                tessellation_type: TessellationType::Square,
+            },
+            level_fields,
+            ..Default::default()
+        }
     }
 
     #[test]

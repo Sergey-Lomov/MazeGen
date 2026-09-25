@@ -81,17 +81,17 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
                     })
                     .min();
 
-                if let Some(dist) = closest {
-                    if (dist as f64) < self.distance {
-                        groups.push((
-                            vec![
-                                SplitTileNodes::new(own_nodes.clone()),
-                                SplitTileNodes::new(other_nodes.clone()),
-                            ],
-                            1,
-                        ));
-                        break;
-                    }
+                if let Some(dist) = closest
+                    && (dist as f64) < self.distance
+                {
+                    groups.push((
+                        vec![
+                            SplitTileNodes::new(own_nodes.clone()),
+                            SplitTileNodes::new(other_nodes.clone()),
+                        ],
+                        1,
+                    ));
+                    break;
                 }
             }
         }

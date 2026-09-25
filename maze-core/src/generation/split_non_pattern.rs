@@ -68,14 +68,14 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
             try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng)
         });
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded {
-                    src: from,
-                    dst: to,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::EdgeAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
         // `src` is processed synchronously by this same event's per-node loop below, not via a
         // later frontier pop — pushing it to `frontier` here (as the ordinary, non-split bridge
@@ -170,14 +170,14 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
         let added = add_edge_and_detect_direction(graph, node, dst, |g| {
             try_add_edge(g, node, dst, elements, preset_state, &mut state.rng)
         });
-        if let Some((from, to, bidirectional)) = added {
-            if let Some(log) = scope.as_deref_mut() {
-                log.emit(VertexBasedEvent::EdgeAdded {
-                    src: from,
-                    dst: to,
-                    bidirectional,
-                });
-            }
+        if let Some((from, to, bidirectional)) = added
+            && let Some(log) = scope.as_deref_mut()
+        {
+            log.emit(VertexBasedEvent::EdgeAdded {
+                src: from,
+                dst: to,
+                bidirectional,
+            });
         }
     }
 
@@ -251,7 +251,6 @@ mod tests {
         let src_point = field.point_of(src);
         let split_nodes: Vec<NodeId> = field
             .all_node_ids()
-            .into_iter()
             .filter(|n| field.point_of(*n) == src_point)
             .collect();
         assert_eq!(

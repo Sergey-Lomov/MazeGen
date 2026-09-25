@@ -35,10 +35,10 @@ pub fn rust_tags(source: &str) -> BTreeSet<u16> {
     while let Some(rel) = body[pos..].find(marker) {
         let start = pos + rel + marker.len();
         let rest = &body[start..];
-        if let Some(paren) = rest.find(')') {
-            if let Ok(tag) = rest[..paren].trim().parse::<u16>() {
-                tags.insert(tag);
-            }
+        if let Some(paren) = rest.find(')')
+            && let Ok(tag) = rest[..paren].trim().parse::<u16>()
+        {
+            tags.insert(tag);
         }
         pos = start;
     }
@@ -63,10 +63,10 @@ pub fn ts_tags(source: &str) -> BTreeSet<u16> {
     while let Some(rel) = body[pos..].find(marker) {
         let start = pos + rel + marker.len();
         let rest = &body[start..];
-        if let Some(paren) = rest.find(')') {
-            if let Ok(tag) = rest[..paren].trim().parse::<u16>() {
-                tags.insert(tag);
-            }
+        if let Some(paren) = rest.find(')')
+            && let Ok(tag) = rest[..paren].trim().parse::<u16>()
+        {
+            tags.insert(tag);
         }
         pos = start;
     }

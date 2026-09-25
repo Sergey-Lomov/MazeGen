@@ -9,6 +9,10 @@ use crate::ids::{IdGenerator, NodeId};
 use crate::space::{MultiLevelField, Tessellation};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+/// Slot map for preset split-tile teleports keyed by `(level, x, y)`, plus the set of nodes
+/// already claimed by a preset split point.
+type PresetTeleportBuild = (HashMap<(u32, i32, i32), Vec<u32>>, HashSet<NodeId>);
+
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
 #[derive(Debug)]
 pub struct PresetState {
@@ -186,7 +190,7 @@ fn apply_split_points<T: Tessellation>(
     split_points: &[((i32, i32), u32, u32)],
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     mut debug_state: Option<&mut super::DebugGenerationState<T>>,
-) -> Result<(HashMap<(u32, i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
+) -> Result<PresetTeleportBuild, String> {
     // Sort by (level, point, slot) — `((i32,i32), u32, u32)`'s natural tuple order sorts by point
     // first, so re-key to (level_index, point, slot) before sorting.
     let mut sorted: Vec<(u32, (i32, i32), u32)> = split_points
@@ -261,6 +265,7 @@ fn resolve_preset_endpoint<T: Tessellation>(
 ///
 /// `split_points` (declared extra nodes) is applied to `field` before any preset/lock is resolved
 /// — see `apply_split_points` above.
+#[allow(clippy::too_many_arguments)]
 pub fn build_preset_state<T: Tessellation>(
     graph: &mut Graph,
     field: &mut MultiLevelField<T>,

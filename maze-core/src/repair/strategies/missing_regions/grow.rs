@@ -209,7 +209,7 @@ pub(super) fn grow_front<T: Tessellation>(
         if frontier.is_empty() {
             // Same-component front-expansion has nowhere left to go -- try crossing into a
             // bordering component with spare excess budget before giving up entirely.
-            let Some(opened) = try_open_excess_neighbor(
+            let opened = try_open_excess_neighbor(
                 draft,
                 &in_region,
                 scc,
@@ -219,9 +219,7 @@ pub(super) fn grow_front<T: Tessellation>(
                 &allowed_components,
                 ctx,
                 rng,
-            ) else {
-                return None;
-            };
+            )?;
             allowed_components.insert(opened.component);
             if in_region.insert(opened.node) {
                 frontier.push(opened.node);

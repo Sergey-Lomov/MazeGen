@@ -185,17 +185,17 @@ pub fn generate<T: Tessellation>(
     // would misrepresent it as bidirectional once replayed for debug rendering (GitHub issue #193).
     let preset_edges: Vec<(NodeId, NodeId, EdgeKind)> = graph
         .edges()
-        .map(|e| (e.from, e.to, e.kind.clone()))
+        .map(|e| (e.from, e.to, e.kind))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
     for (a, b, _) in &preset_edges {
         dsu.union_by_min(node_index[a], node_index[b]);
     }
-    if let Some(log) = event_log.as_deref_mut() {
-        if !preset_edges.is_empty() {
-            log.emit(KruskalEvent::PresetUnionsApplied(preset_edges));
-        }
+    if let Some(log) = event_log.as_deref_mut()
+        && !preset_edges.is_empty()
+    {
+        log.emit(KruskalEvent::PresetUnionsApplied(preset_edges));
     }
 
     for (a, b) in edges {

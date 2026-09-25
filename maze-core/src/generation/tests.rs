@@ -360,14 +360,8 @@ fn try_add_edge_delegates_to_try_add_edge_kind_with_basic_and_one_way_chance() {
         &mut rng(3),
     );
 
-    let mut ea: Vec<_> = graph_a
-        .edges()
-        .map(|e| (e.from, e.to, e.kind.clone()))
-        .collect();
-    let mut eb: Vec<_> = graph_b
-        .edges()
-        .map(|e| (e.from, e.to, e.kind.clone()))
-        .collect();
+    let mut ea: Vec<_> = graph_a.edges().map(|e| (e.from, e.to, e.kind)).collect();
+    let mut eb: Vec<_> = graph_b.edges().map(|e| (e.from, e.to, e.kind)).collect();
     ea.sort_by_key(|(f, t, _)| (*f, *t));
     eb.sort_by_key(|(f, t, _)| (*f, *t));
     assert_eq!(ea, eb);

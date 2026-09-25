@@ -145,7 +145,7 @@ impl<'a> DirectedDistanceCache<'a> {
                     self.nav,
                     a,
                     DistanceDirection::Forward,
-                    |e| Self::is_not_teleport_hop(e),
+                    Self::is_not_teleport_hop,
                     max_dist,
                 )
             })
@@ -159,7 +159,7 @@ impl<'a> DirectedDistanceCache<'a> {
                     self.nav,
                     a,
                     DistanceDirection::Reverse,
-                    |e| Self::is_not_teleport_hop(e),
+                    Self::is_not_teleport_hop,
                     max_dist,
                 )
             })
@@ -241,18 +241,18 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
                     .filter_map(|(a, b)| dist_cache.distance(a, b))
                     .min();
 
-                if let Some(dist) = closest {
-                    if (dist as f64) < self.distance {
-                        let both_route_protected = self.protect_route
-                            && is_teleport_route_protected(maze, own_id)
-                            && is_teleport_route_protected(maze, other_id);
-                        // A pair excluded because both sides are route-critical doesn't stop the
-                        // scan for `own_id` — a farther, non-protected candidate may still exist
-                        // and would otherwise never be recorded.
-                        if !both_route_protected {
-                            groups.push((vec![own_id, other_id], 1));
-                            break;
-                        }
+                if let Some(dist) = closest
+                    && (dist as f64) < self.distance
+                {
+                    let both_route_protected = self.protect_route
+                        && is_teleport_route_protected(maze, own_id)
+                        && is_teleport_route_protected(maze, other_id);
+                    // A pair excluded because both sides are route-critical doesn't stop the
+                    // scan for `own_id` — a farther, non-protected candidate may still exist
+                    // and would otherwise never be recorded.
+                    if !both_route_protected {
+                        groups.push((vec![own_id, other_id], 1));
+                        break;
                     }
                 }
             }

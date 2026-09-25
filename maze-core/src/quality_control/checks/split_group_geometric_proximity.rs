@@ -86,7 +86,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
                     self.floor_mode.include_height(),
                 )
             },
-            |&(.., ref own_nodes), &(.., ref other_nodes)| {
+            |(.., own_nodes), (.., other_nodes)| {
                 (
                     vec![
                         SplitTileNodes::new(own_nodes.clone()),

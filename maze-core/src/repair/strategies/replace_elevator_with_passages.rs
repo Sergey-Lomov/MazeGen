@@ -156,7 +156,7 @@ fn full_floor_span_pairs<T: Tessellation>(
         .levels_ordered()
         .enumerate()
         .filter(|&(idx, _)| idx >= bottom && idx <= top)
-        .map(|(_, level)| maze.field.node_at(level, point.clone()))
+        .map(|(_, level)| maze.field.node_at(level, point))
         .collect();
     nodes_by_floor
         .windows(2)

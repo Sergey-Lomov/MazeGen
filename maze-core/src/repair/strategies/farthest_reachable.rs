@@ -106,8 +106,8 @@ fn bfs_distances(graph: &Graph, source: NodeId, forward: bool) -> HashMap<NodeId
             graph.incoming_neighbors(node).collect()
         };
         for next in neighbors {
-            if !dist.contains_key(&next) {
-                dist.insert(next, d + 1);
+            if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(next) {
+                e.insert(d + 1);
                 queue.push_back((next, d + 1));
             }
         }

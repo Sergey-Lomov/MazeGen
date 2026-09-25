@@ -204,7 +204,7 @@ pub(crate) fn merge_cycle_sets(
 /// against itself (`seen.insert` inside the loop, not just checked before it) — a naive
 /// `.filter(|id| !seen.contains(id))` would miss a duplicate `Id` appearing twice within
 /// `other_invalid` itself, since `seen` would never observe the first occurrence.
-
+///
 /// Shared merge algorithm for the `Vec<(RepairArea, u32)>` deficit shape common to every
 /// per-area-deficit `Issue` type (`MissingLoopsIssue`, `MissingOneWaysIssue`,
 /// `MissingTeleportsIssue`, `MissingSplitTilesIssue` — GitHub issue #369's floor-scope follow-up).

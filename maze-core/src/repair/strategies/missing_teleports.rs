@@ -439,8 +439,8 @@ fn bfs_distances<T: Tessellation>(
     queue.push_back((source, 0));
     while let Some((node, d)) = queue.pop_front() {
         for next in maze.graph.outgoing_neighbors(node) {
-            if !dist.contains_key(&next) {
-                dist.insert(next, d + 1);
+            if let std::collections::hash_map::Entry::Vacant(e) = dist.entry(next) {
+                e.insert(d + 1);
                 queue.push_back((next, d + 1));
             }
         }
@@ -510,8 +510,8 @@ fn pick_exit<T: Tessellation>(
         }
     }
 
-    if allow_out_of_interval {
-        if let Some(exit) = pick_from_set(
+    if allow_out_of_interval
+        && let Some(exit) = pick_from_set(
             &out_of_interval,
             entry_level,
             cross_floor_mode,
@@ -520,9 +520,9 @@ fn pick_exit<T: Tessellation>(
             dead_ends,
             maze,
             rng,
-        ) {
-            return Some(exit);
-        }
+        )
+    {
+        return Some(exit);
     }
 
     None

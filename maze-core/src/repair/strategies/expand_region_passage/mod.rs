@@ -452,6 +452,7 @@ fn farthest_pair_combination<T: Tessellation>(
         .iter()
         .map(|&(a, _)| maze.field.point_of(a).map(T::cartesian))
         .collect();
+    #[allow(clippy::type_complexity)]
     let mut best: Option<((NodeId, NodeId), (NodeId, NodeId), f64)> = None;
     for i in 0..pairs.len() {
         let Some((x1, y1)) = points[i] else { continue };

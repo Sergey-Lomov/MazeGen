@@ -498,7 +498,7 @@ fn walk_corridor_detects_revisit_without_hanging() {
     add_bidir(&mut g, 3, 4);
     add_bidir(&mut g, 4, 2);
     // extra dead end so node 5 is isolated/separate component, ensuring multi-component handling
-    let _ = g.add_node(5);
+    g.add_node(5);
 
     let nav = build_nav_graph(&g);
     // Must terminate (test itself proves no infinite loop) and cover all 5 nodes.

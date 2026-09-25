@@ -43,7 +43,7 @@ pub(super) fn try_reuse<T: Tessellation>(
         .iter()
         .enumerate()
         .filter(|(idx, members)| {
-            if classes.get(idx).is_none() {
+            if !classes.contains_key(idx) {
                 return false;
             }
             !members

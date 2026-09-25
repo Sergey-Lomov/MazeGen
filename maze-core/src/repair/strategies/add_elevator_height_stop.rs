@@ -198,7 +198,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue>
                     Some(false) if down_eligible => false,
                     _ => {
                         if down_eligible && up_eligible {
-                            rng.next_u32() % 2 == 0
+                            rng.next_u32().is_multiple_of(2)
                         } else {
                             up_eligible
                         }
@@ -238,15 +238,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue>
             } else {
                 below_pool.choose(rng).copied()
             };
-            if let Some(node) = below_pick {
-                if !current_stops_grown.contains(&node) {
-                    for &other in &current_stops_grown {
-                        commands
-                            .push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
-                    }
-                    current_stops_grown.push(node);
-                    added_here += 1;
+            if let Some(node) = below_pick
+                && !current_stops_grown.contains(&node)
+            {
+                for &other in &current_stops_grown {
+                    commands.push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
                 }
+                current_stops_grown.push(node);
+                added_here += 1;
             }
             let above_pool: Vec<NodeId> = above_pool
                 .into_iter()
@@ -257,14 +256,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorHeightIssue>
             } else {
                 above_pool.choose(rng).copied()
             };
-            if let Some(node) = above_pick {
-                if !current_stops_grown.contains(&node) {
-                    for &other in &current_stops_grown {
-                        commands
-                            .push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
-                    }
-                    added_here += 1;
+            if let Some(node) = above_pick
+                && !current_stops_grown.contains(&node)
+            {
+                for &other in &current_stops_grown {
+                    commands.push(MutationCommand::AddBidirectionalElevator { a: node, b: other });
                 }
+                added_here += 1;
             }
 
             total_added += added_here;

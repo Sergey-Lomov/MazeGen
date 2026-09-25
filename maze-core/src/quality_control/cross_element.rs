@@ -145,15 +145,14 @@ pub fn cross_element_edges<T: Tessellation>(maze: &Maze<T>, element: &CrossEleme
             let mut edges = vec![*id];
             // A two-way vertical passage: include the reverse so `element_invalidated` sees the
             // whole passage gone only when both directions are removed.
-            if edge.kind == EdgeKind::VerticalPassage {
-                if let Some(rev) = maze.graph.edge_between(edge.to, edge.from)
-                    && maze
-                        .graph
-                        .edge(rev)
-                        .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
-                {
-                    edges.push(rev);
-                }
+            if edge.kind == EdgeKind::VerticalPassage
+                && let Some(rev) = maze.graph.edge_between(edge.to, edge.from)
+                && maze
+                    .graph
+                    .edge(rev)
+                    .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
+            {
+                edges.push(rev);
             }
             edges
         }

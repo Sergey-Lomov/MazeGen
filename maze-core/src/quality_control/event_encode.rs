@@ -148,7 +148,7 @@ fn write_str_keyed_edge_pairs(
     out: &mut Vec<u8>,
     map: &std::collections::HashMap<String, Vec<IssueEdgeGroupPayload>>,
 ) {
-    write_str_keyed_lists(out, map, |out, group| write_edge_group_payload(out, group));
+    write_str_keyed_lists(out, map, write_edge_group_payload);
 }
 
 /// Encodes one check's own raw display details (GitHub issue #171) — `Issue::details()`'s

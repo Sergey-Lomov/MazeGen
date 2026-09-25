@@ -784,7 +784,7 @@ fn elevator_stop_counts_applies_max_0_stops_minus_2_per_elevator_hop() {
         }
     }
 
-    let edges_owned = vec![
+    let edges_owned = [
         NavEdge {
             from: 0,
             to: 1,

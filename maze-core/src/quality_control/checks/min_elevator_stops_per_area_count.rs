@@ -53,7 +53,6 @@ impl<T: Tessellation> Check<T, AreaMissingElevatorStopsIssue>
                 let mut missing: Vec<(RepairArea, u32)> = maze
                     .field
                     .levels_ordered()
-                    .into_iter()
                     .filter_map(|level| {
                         let count = per_floor.get(&level).map_or(0, |stops| stops.len() as u32);
                         let missing = self.min_stops.saturating_sub(count);

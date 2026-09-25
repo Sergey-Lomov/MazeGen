@@ -97,7 +97,7 @@ fn add_directed_teleport_applies() {
         .graph
         .edge_between(nodes[0], nodes[1])
         .and_then(|id| maze.graph.edge(id));
-    assert_eq!(edge.map(|e| e.kind.clone()), Some(EdgeKind::Teleport));
+    assert_eq!(edge.map(|e| e.kind), Some(EdgeKind::Teleport));
 }
 
 #[test]

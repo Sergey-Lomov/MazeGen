@@ -480,9 +480,7 @@ fn johnson_circuit(
             path_edges.pop();
             path_nodes.pop();
 
-            let Some(got_cycle) = result else {
-                return None;
-            };
+            let got_cycle = result?;
             found_cycle |= got_cycle;
 
             if got_cycle {

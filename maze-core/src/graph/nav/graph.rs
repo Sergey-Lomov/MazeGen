@@ -246,11 +246,10 @@ impl NavGraph {
                 self.edges[i].is_teleport,
                 self.edges[i].is_elevator,
                 self.edges[i].is_vertical,
-            )) {
-                if i != j {
-                    self.edges[i].reverse_edge = Some(j);
-                    self.edges[j].reverse_edge = Some(i);
-                }
+            )) && i != j
+            {
+                self.edges[i].reverse_edge = Some(j);
+                self.edges[j].reverse_edge = Some(i);
             }
         }
     }

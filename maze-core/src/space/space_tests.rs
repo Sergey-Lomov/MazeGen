@@ -628,7 +628,7 @@ mod transform_face_index_tests {
 
     #[test]
     fn every_rotation_and_mirror_symmetry_is_a_valid_permutation_for_every_tessellation() {
-        fn check_permutations<T: Tessellation>(tables: &[&[usize]], degree: usize) {
+        fn check_permutations(tables: &[&[usize]], degree: usize) {
             for perm in tables {
                 assert_eq!(perm.len(), degree, "permutation length must match degree");
                 let mut sorted = perm.to_vec();
@@ -640,27 +640,27 @@ mod transform_face_index_tests {
                 );
             }
         }
-        check_permutations::<SquareTessellation>(
+        check_permutations(
             SquareTessellation::rotation_symmetries(),
             SquareTessellation::faces().len(),
         );
-        check_permutations::<SquareTessellation>(
+        check_permutations(
             SquareTessellation::mirror_symmetries(),
             SquareTessellation::faces().len(),
         );
-        check_permutations::<HexTessellation>(
+        check_permutations(
             HexTessellation::rotation_symmetries(),
             HexTessellation::faces().len(),
         );
-        check_permutations::<HexTessellation>(
+        check_permutations(
             HexTessellation::mirror_symmetries(),
             HexTessellation::faces().len(),
         );
-        check_permutations::<TriTessellation>(
+        check_permutations(
             TriTessellation::rotation_symmetries(),
             TriTessellation::faces().len(),
         );
-        check_permutations::<TriTessellation>(
+        check_permutations(
             TriTessellation::mirror_symmetries(),
             TriTessellation::faces().len(),
         );

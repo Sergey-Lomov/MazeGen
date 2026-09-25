@@ -118,7 +118,6 @@ fn farthest_node(
     dist.into_iter()
         .filter(|(node, _)| exclude_group != Some(node_group[node]))
         .max_by(|(n1, d1), (n2, d2)| d1.cmp(d2).then(n2.cmp(n1)))
-        .map(|(node, d)| (node, d))
 }
 
 #[cfg(test)]

@@ -358,10 +358,8 @@ pub fn generate<T: Tessellation>(
                     }
                     let erased_loop = next.contains_key(&chosen);
                     next.insert(current, chosen);
-                    if erased_loop {
-                        if let Some(g) = search_scope.as_mut() {
-                            g.emit(WilsonEvent::LoopErased { node: chosen });
-                        }
+                    if erased_loop && let Some(g) = search_scope.as_mut() {
+                        g.emit(WilsonEvent::LoopErased { node: chosen });
                     }
                     if visited.contains(&chosen) {
                         true

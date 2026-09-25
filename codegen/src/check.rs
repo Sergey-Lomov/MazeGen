@@ -46,13 +46,13 @@ fn check_shape_field_types(
         VariantShape::Struct(fields) => fields.iter().map(|f| &f.ty).collect(),
     };
     for ty in fields {
-        if let FieldType::Custom(name) = ty {
-            if crate::codecs::lookup(name).is_none() {
-                errors.push(CheckError(format!(
-                    "{}::{}: unknown codec '{}'",
-                    source.enum_name, v.name, name
-                )));
-            }
+        if let FieldType::Custom(name) = ty
+            && crate::codecs::lookup(name).is_none()
+        {
+            errors.push(CheckError(format!(
+                "{}::{}: unknown codec '{}'",
+                source.enum_name, v.name, name
+            )));
         }
     }
 }
@@ -65,13 +65,13 @@ fn check_shape_field_types(
 pub fn detect_breaking_changes(old_text: &str, new_source: &EventSource) -> Vec<String> {
     let mut warnings = Vec::new();
     for v in &new_source.variants {
-        if let Some(old_tag) = old_tag_for(old_text, &v.name) {
-            if old_tag != v.tag {
-                warnings.push(format!(
+        if let Some(old_tag) = old_tag_for(old_text, &v.name)
+            && old_tag != v.tag
+        {
+            warnings.push(format!(
                     "tag changed for variant {}::{} ({} -> {}) — confirm this is an intentional wire-format break",
                     new_source.enum_name, v.name, old_tag, v.tag
                 ));
-            }
         }
         if let Some(old_call_seq) =
             old_write_call_sequence(old_text, &new_source.enum_name, &v.name)

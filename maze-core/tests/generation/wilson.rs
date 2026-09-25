@@ -539,7 +539,7 @@ fn wilson_tree_nesting_is_walk_scopes_containing_search_and_commit_scopes() {
                     "every walk scope must start with a WalkStartPicked event"
                 );
                 let sub_scope_names: Vec<&str> = walk_children[1..].iter().map(|c| match c.payload() {
-                    NodePayload::Scope(name) => name.as_ref(),
+                    NodePayload::Scope(name) => name,
                     NodePayload::Event(e) => panic!("expected only \"search\"/\"commit\" scopes after WalkStartPicked, got event {e:?}"),
                 }).collect();
                 // "commit" is only opened when there's actually a path to commit — a walk that

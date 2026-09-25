@@ -76,12 +76,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidLoopGroupIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_cycle_payload(invalid.iter(), invalid_sources, graph, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(RegionNeedsExpansionIssue {
@@ -194,12 +192,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidSplitTileIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_split_tile_payload(invalid, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidSplitTileGroupIssue {
@@ -207,12 +203,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidSplitTileGroupIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_split_tile_group_payload(groups, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidSplitNodeIssue {
@@ -220,12 +214,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidSplitNodeIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_split_node_payload(invalid, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidSplitNodeGroupIssue {
@@ -233,12 +225,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidSplitNodeGroupIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_split_node_group_payload(groups, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     // `InvalidSplitNodeConnectionGroupIssue` reuses the `InvalidOneWay` payload variant (identical
@@ -266,12 +256,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidSplitRouteIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_split_route_payload(routes, invalid_sources, graph, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(issue) = issue.as_any().downcast_ref::<ExcessiveSccCountIssue>() {
@@ -289,12 +277,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidElevatorIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_elevator_payload(invalid, invalid_sources, graph, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidElevatorGroupIssue {
@@ -302,12 +288,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidElevatorGroupIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_elevator_group_map(groups, invalid_sources, graph, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidElevatorStopIssue {
@@ -315,12 +299,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<InvalidElevatorStopIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_invalid_elevator_stop_payload(invalid, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(InvalidElevatorStopGroupIssue {
@@ -330,12 +312,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
     }) = issue
         .as_any()
         .downcast_ref::<InvalidElevatorStopGroupIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_elevator_stop_group_map(groups, invalid_sources, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(deficit_issue) = issue
@@ -387,16 +367,15 @@ pub fn resolve_issue_payload<T: Tessellation>(
     }) = issue
         .as_any()
         .downcast_ref::<MissingElevatorStopCountIssue>()
-    {
-        if let Some(payload) = resolve_missing_elevator_stop_count_payload(
+        && let Some(payload) = resolve_missing_elevator_stop_count_payload(
             missing,
             invalid_sources,
             graph,
             field,
             preset_state,
-        ) {
-            return payload;
-        }
+        )
+    {
+        return payload;
     }
 
     if let Some(MissingElevatorHeightIssue {
@@ -404,12 +383,10 @@ pub fn resolve_issue_payload<T: Tessellation>(
         invalid_sources,
         ..
     }) = issue.as_any().downcast_ref::<MissingElevatorHeightIssue>()
-    {
-        if let Some(payload) =
+        && let Some(payload) =
             resolve_missing_elevator_height_payload(missing, invalid_sources, graph, preset_state)
-        {
-            return payload;
-        }
+    {
+        return payload;
     }
 
     if let Some(ExcessiveElevatorStopGapIssue {
@@ -419,31 +396,29 @@ pub fn resolve_issue_payload<T: Tessellation>(
     }) = issue
         .as_any()
         .downcast_ref::<ExcessiveElevatorStopGapIssue>()
-    {
-        if let Some(payload) = resolve_excessive_elevator_stop_gap_payload(
+        && let Some(payload) = resolve_excessive_elevator_stop_gap_payload(
             missing,
             invalid_sources,
             graph,
             preset_state,
-        ) {
-            return payload;
-        }
+        )
+    {
+        return payload;
     }
 
     if let Some(cross) = issue
         .as_any()
         .downcast_ref::<InvalidCrossElementGroupIssue>()
-    {
-        if let Some(payload) = resolve_cross_element_group_payload(
+        && let Some(payload) = resolve_cross_element_group_payload(
             cross.groups(),
             cross.invalid_sources(),
             &cross.close_nodes,
             graph,
             field,
             preset_state,
-        ) {
-            return payload;
-        }
+        )
+    {
+        return payload;
     }
 
     IssuePayload::None

@@ -3,58 +3,47 @@ use crate::ids;
 use crate::meta::MazeMeta;
 use crate::space;
 
+type NavGraphCache = Option<(
+    u64,
+    Option<ids::NodeId>,
+    Option<ids::NodeId>,
+    graph::nav::NavGraph,
+)>;
+type RouteInfoCache = Option<(
+    u64,
+    Option<ids::NodeId>,
+    Option<ids::NodeId>,
+    Option<graph::routing::RouteInfo>,
+)>;
+type GraphAnalyticsCache = Option<(
+    u64,
+    Option<ids::NodeId>,
+    Option<ids::NodeId>,
+    GraphAnalytics,
+)>;
+type DistanceMapCache = Option<(
+    u64,
+    ids::NodeId,
+    std::collections::HashMap<graph::nav::NavNodeId, usize>,
+)>;
+type RegionClassesCache = Option<(
+    u64,
+    Option<ids::NodeId>,
+    Option<ids::NodeId>,
+    std::collections::HashMap<graph::scc::ComponentId, RegionClass>,
+)>;
+type ReachableSetCache = Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>;
+
 pub struct MazeAnalysis {
-    nav_graph: std::cell::RefCell<
-        Option<(
-            u64,
-            Option<ids::NodeId>,
-            Option<ids::NodeId>,
-            graph::nav::NavGraph,
-        )>,
-    >,
+    nav_graph: std::cell::RefCell<NavGraphCache>,
     scc: std::cell::RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
-    route_info: std::cell::RefCell<
-        Option<(
-            u64,
-            Option<ids::NodeId>,
-            Option<ids::NodeId>,
-            Option<graph::routing::RouteInfo>,
-        )>,
-    >,
-    graph_analytics: std::cell::RefCell<
-        Option<(
-            u64,
-            Option<ids::NodeId>,
-            Option<ids::NodeId>,
-            GraphAnalytics,
-        )>,
-    >,
-    distance_from_start: std::cell::RefCell<
-        Option<(
-            u64,
-            ids::NodeId,
-            std::collections::HashMap<graph::nav::NavNodeId, usize>,
-        )>,
-    >,
-    distance_from_finish: std::cell::RefCell<
-        Option<(
-            u64,
-            ids::NodeId,
-            std::collections::HashMap<graph::nav::NavNodeId, usize>,
-        )>,
-    >,
-    region_classes: std::cell::RefCell<
-        Option<(
-            u64,
-            Option<ids::NodeId>,
-            Option<ids::NodeId>,
-            std::collections::HashMap<graph::scc::ComponentId, RegionClass>,
-        )>,
-    >,
-    reachable_from_start:
-        std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
-    reachable_to_finish:
-        std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
+    route_info: std::cell::RefCell<RouteInfoCache>,
+    graph_analytics: std::cell::RefCell<GraphAnalyticsCache>,
+    distance_from_start: std::cell::RefCell<DistanceMapCache>,
+    distance_from_finish: std::cell::RefCell<DistanceMapCache>,
+    region_classes: std::cell::RefCell<RegionClassesCache>,
+    reachable_from_start: std::cell::RefCell<ReachableSetCache>,
+    reachable_to_finish: std::cell::RefCell<ReachableSetCache>,
 }
 
 impl Default for MazeAnalysis {

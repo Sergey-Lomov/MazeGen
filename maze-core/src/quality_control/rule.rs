@@ -191,31 +191,31 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                 }
             }
         }
-        if contributing_checks > 1 {
-            if let Some(log) = event_log.as_mut() {
-                let payload = merged
-                    .as_ref()
-                    .map(|issue| {
-                        super::issue_payload::resolve_issue_payload(
-                            issue,
-                            &maze.graph,
-                            &maze.field,
-                            scc.as_ref().unwrap(),
-                            preset_state,
-                            check_types.as_ref(),
-                        )
-                    })
-                    .unwrap_or_default();
-                let details = merged
-                    .as_ref()
-                    .map(|issue| issue.details().clone())
-                    .unwrap_or_default();
-                log.emit(QcEvent::IssuesMerged {
-                    issue_kind: I::KIND,
-                    payload,
-                    details,
-                });
-            }
+        if contributing_checks > 1
+            && let Some(log) = event_log.as_mut()
+        {
+            let payload = merged
+                .as_ref()
+                .map(|issue| {
+                    super::issue_payload::resolve_issue_payload(
+                        issue,
+                        &maze.graph,
+                        &maze.field,
+                        scc.as_ref().unwrap(),
+                        preset_state,
+                        check_types.as_ref(),
+                    )
+                })
+                .unwrap_or_default();
+            let details = merged
+                .as_ref()
+                .map(|issue| issue.details().clone())
+                .unwrap_or_default();
+            log.emit(QcEvent::IssuesMerged {
+                issue_kind: I::KIND,
+                payload,
+                details,
+            });
         }
         merged
     }
@@ -249,6 +249,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     /// `proposed`/`applied` directly. What a strategy itself narrates *inside* its own `"strategy
     /// <id>"` scope beyond the `*Proposed` line (e.g. per-strategy decision events) is each
     /// strategy's own concern, added issue-by-issue in later tickets.
+    #[allow(clippy::too_many_arguments)]
     pub fn check_and_repair_typed(
         &self,
         maze: &mut Maze<T>,
@@ -324,7 +325,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                 preset_state,
                 commands,
                 apply_scope.as_mut(),
-                debug_state.as_deref_mut(),
+                debug_state,
             )
         };
         RuleIterationOutcome::Repaired(result, outcome)
@@ -364,6 +365,7 @@ pub trait RuleTrait<T: Tessellation> {
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
     ) -> Vec<Box<dyn Issue>>;
+    #[allow(clippy::too_many_arguments)]
     fn check_and_repair(
         &self,
         maze: &mut Maze<T>,

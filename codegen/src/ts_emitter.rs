@@ -39,12 +39,12 @@ fn emit_wire_imports(out: &mut String, source: &EventSource) {
         match &v.shape {
             VariantShape::Unit => needs_expect_len = true,
             VariantShape::NewtypeTuple(field) => {
-                if let FieldType::Standard(t) = &field.ty {
-                    if let Some(m) = type_map::lookup(t) {
-                        fns.insert(m.ts_read_fn);
-                        if matches!(m.wire_width, WireWidth::Fixed(_)) {
-                            needs_expect_len = true;
-                        }
+                if let FieldType::Standard(t) = &field.ty
+                    && let Some(m) = type_map::lookup(t)
+                {
+                    fns.insert(m.ts_read_fn);
+                    if matches!(m.wire_width, WireWidth::Fixed(_)) {
+                        needs_expect_len = true;
                     }
                 }
             }
@@ -91,12 +91,12 @@ fn emit_codec_imports(out: &mut String, source: &EventSource) {
             VariantShape::Struct(fields) => fields.iter().map(|f| &f.ty).collect(),
         };
         for ty in fields {
-            if let FieldType::Custom(name) = ty {
-                if let Some(c) = codecs::lookup(name) {
-                    seen.insert(c.ts_read_fn);
-                    for t in c.ts_type_imports {
-                        seen_types.insert(*t);
-                    }
+            if let FieldType::Custom(name) = ty
+                && let Some(c) = codecs::lookup(name)
+            {
+                seen.insert(c.ts_read_fn);
+                for t in c.ts_type_imports {
+                    seen_types.insert(*t);
                 }
             }
         }

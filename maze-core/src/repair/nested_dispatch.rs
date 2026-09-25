@@ -323,7 +323,7 @@ mod tests {
     fn all_failed_candidates_exhaust_pool_and_return_failed() {
         let maze = maze_2_nodes();
         let mut rng = MazeRng::seed_from_u64(1);
-        let configs = vec![
+        let configs = [
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
@@ -381,7 +381,7 @@ mod tests {
             }
             crate::impl_erased_repair_strategy!(Tracking, MissingEndpointsIssue);
             let order = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-            let configs = vec![
+            let configs = [
                 no_params_config::<SquareTessellation>(Box::new(Tracking {
                     name: "a",
                     order: order.clone(),
@@ -410,8 +410,8 @@ mod tests {
                 &candidates,
                 &std::collections::HashMap::new(),
             );
-            let result = order.borrow().clone();
-            result
+
+            order.borrow().clone()
         }
 
         assert_eq!(run_order(), run_order());
@@ -421,7 +421,7 @@ mod tests {
     fn failed_then_fixed_candidate_ends_fixed_with_no_trace_of_failed_commands() {
         let maze = maze_2_nodes();
         let mut rng = MazeRng::seed_from_u64(7);
-        let configs = vec![
+        let configs = [
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
             no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
         ];
@@ -509,7 +509,7 @@ mod tests {
         fn all_failed_candidates_exhaust_pool_and_return_failed() {
             let maze = maze_2_nodes();
             let mut rng = MazeRng::seed_from_u64(1);
-            let configs = vec![
+            let configs = [
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
@@ -558,7 +558,7 @@ mod tests {
             }
             crate::impl_erased_repair_strategy!(Tracking, MissingEndpointsIssue);
             let order = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-            let configs = vec![
+            let configs = [
                 no_params_config::<SquareTessellation>(Box::new(Tracking {
                     name: "a",
                     order: order.clone(),
@@ -593,7 +593,7 @@ mod tests {
         fn failed_then_fixed_candidate_ends_fixed_with_no_trace_of_failed_commands() {
             let maze = maze_2_nodes();
             let mut rng = MazeRng::seed_from_u64(7);
-            let configs = vec![
+            let configs = [
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
             ];
@@ -640,7 +640,7 @@ mod tests {
                 }
             }
             crate::impl_erased_repair_strategy!(RecordsTried, MissingEndpointsIssue);
-            let configs = vec![
+            let configs = [
                 no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
                 no_params_config::<SquareTessellation>(Box::new(RecordsTried {
                     tried: tried.clone(),

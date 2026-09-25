@@ -331,7 +331,6 @@ fn golden_high_cyclicity_seed_21() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 1.0,
-        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
     let field_level = field.single_level_id();

@@ -504,16 +504,14 @@ pub(super) fn elevator_edges(
                 continue;
             }
             for (from, to) in [(a, b), (b, a)] {
-                if let Some(eid) = graph.edge_between(from, to) {
-                    if graph
+                if let Some(eid) = graph.edge_between(from, to)
+                    && graph
                         .edge(eid)
                         .is_some_and(|e| e.kind == EdgeKind::Elevator)
-                    {
-                        if let Some(pair) = edge_pair(graph, eid) {
-                            edges.push(pair);
-                            edge_ids.push(eid);
-                        }
-                    }
+                    && let Some(pair) = edge_pair(graph, eid)
+                {
+                    edges.push(pair);
+                    edge_ids.push(eid);
                 }
             }
         }
@@ -787,16 +785,14 @@ fn teleport_portal_edges(graph: &Graph, a: NodeId, b: NodeId) -> (Vec<[u32; 2]>,
     let mut pairs = Vec::new();
     let mut ids = Vec::new();
     for (from, to) in [(a, b), (b, a)] {
-        if let Some(eid) = graph.edge_between(from, to) {
-            if graph
+        if let Some(eid) = graph.edge_between(from, to)
+            && graph
                 .edge(eid)
                 .is_some_and(|e| e.kind == EdgeKind::Teleport)
-            {
-                if let Some(pair) = edge_pair(graph, eid) {
-                    pairs.push(pair);
-                    ids.push(eid);
-                }
-            }
+            && let Some(pair) = edge_pair(graph, eid)
+        {
+            pairs.push(pair);
+            ids.push(eid);
         }
     }
     (pairs, ids)
@@ -862,17 +858,14 @@ fn cross_element_entry<T: Tessellation>(
         }
         CrossElement::VerticalPassage(id) => {
             let mut edge_ids = vec![*id];
-            if let Some(edge) = graph.edge(*id) {
-                if edge.kind == EdgeKind::VerticalPassage {
-                    if let Some(rev) = graph.edge_between(edge.to, edge.from) {
-                        if graph
-                            .edge(rev)
-                            .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
-                        {
-                            edge_ids.push(rev);
-                        }
-                    }
-                }
+            if let Some(edge) = graph.edge(*id)
+                && edge.kind == EdgeKind::VerticalPassage
+                && let Some(rev) = graph.edge_between(edge.to, edge.from)
+                && graph
+                    .edge(rev)
+                    .is_some_and(|e| e.kind == EdgeKind::VerticalPassage)
+            {
+                edge_ids.push(rev);
             }
             // A vertical passage connects one x-y point across two floors; its two endpoints share
             // that point, so the highlight is a region square either way. When the scan pinned the

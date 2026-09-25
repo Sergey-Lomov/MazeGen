@@ -55,6 +55,7 @@ pub fn engine_with_rule<
 /// Builds a `QualityControlEngine` with two independent single-check rules, each with its own
 /// strategy and own Issue type, both in the same single stage (same rationale as
 /// `engine_with_rule`).
+#[allow(clippy::type_complexity)]
 pub fn two_rules<
     T: maze_core::space::Tessellation + 'static,
     IA: IssueRequirement + IssueMerge + 'static,
@@ -106,6 +107,7 @@ pub fn two_rules<
 /// Builds a two-stage `QualityControlEngine`: stage 1 has `rule_a` (strategy `strategy_a`),
 /// stage 2 has `rule_b` (strategy `strategy_b`) — same shape `two_rules` uses, but split across
 /// two `Stage`s instead of one.
+#[allow(clippy::type_complexity)]
 pub fn two_stages<
     T: maze_core::space::Tessellation + 'static,
     IA: IssueRequirement + IssueMerge + 'static,

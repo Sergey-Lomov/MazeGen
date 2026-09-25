@@ -1563,7 +1563,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             entry.kind,
-            ParamKindDto::Enum { ref default, .. } if *default == "dead_end_priority"
+            ParamKindDto::Enum { default, .. } if default == "dead_end_priority"
         ));
         let exit = strategy
             .params
@@ -1572,7 +1572,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             exit.kind,
-            ParamKindDto::Enum { ref default, .. } if *default == "dead_end_priority"
+            ParamKindDto::Enum { default, .. } if default == "dead_end_priority"
         ));
         let one_way = strategy
             .params
