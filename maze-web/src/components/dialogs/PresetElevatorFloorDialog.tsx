@@ -3,8 +3,10 @@ import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { Switch } from "../Switch";
-import { cellExistsAt } from "../../pixi/fieldEditUtils";
-import { resolveFieldAtOf } from "../../store/storeHelpers";
+import { cellExistsAt, resolveCells, presetConnectionsOnLevel } from "../../pixi/fieldEditUtils";
+import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { resolvePresetSplitShapeLabel } from "../../pixi/presetSplitLabels";
+import { resolveFieldAtOf, levelFieldsOf } from "../../store/storeHelpers";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -33,11 +35,46 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
   const pending = useMazeStore((s) => s.presetElevatorPending);
   const toggleFloor = useMazeStore((s) => s.togglePresetElevatorFloor);
   const confirm = useMazeStore((s) => s.confirmPresetElevatorPlacement);
+  const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
+  const presetConnections = useMazeStore((s) => s.presetConnections);
+  const presetActiveSplitNode = useMazeStore((s) => s.presetActiveSplitNode);
 
   const resolveFieldAt = useMemo(
     () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
     [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
   );
+  const levelFields = useMemo(
+    () => levelFieldsOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
+    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+  );
+
+  // Per-floor split-shape name, for the row label (GitHub issue #594, parity with post-edit's own
+  // `splitNameByFloor` from GitHub issue #567 follow-up) — a floor whose own elevator point resolves
+  // to more than one declared node is split, and may match a named shape (bridge, diagonal, ...),
+  // same recognition `PresetSplitTargetDialog`'s preview uses. Built once per floor set change
+  // rather than inline per row, since it needs each floor's own cells/connections slice.
+  const splitLabelByFloor = useMemo(() => {
+    if (!pending) return new Map<number, string>();
+    const result = new Map<number, string>();
+    for (let index = 0; index < levelFields.length; index++) {
+      const field = levelFields[index];
+      const cells = resolveCells(field.cfg, field.customPoints);
+      const inFieldCells = buildCellSet(cells);
+      const label = resolvePresetSplitShapeLabel(
+        {
+          splitPoints: presetSplitPoints,
+          presetConnections: presetConnectionsOnLevel(presetConnections, index === 0 ? undefined : index),
+          activeSplitNode: presetActiveSplitNode,
+          cfgAt: () => field.cfg,
+          inFieldCellsAt: () => inFieldCells,
+        },
+        pending.origin.point,
+        index,
+      );
+      if (label !== null) result.set(index, label);
+    }
+    return result;
+  }, [pending, levelFields, presetSplitPoints, presetConnections, presetActiveSplitNode]);
 
   if (!pending) return null;
   const originLevel = pending.origin.level ?? 0;
@@ -62,10 +99,12 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
           const status = statusOf(index);
           const checked = pending.floors.has(index);
           const disabled = status !== "available";
+          const splitLabel = splitLabelByFloor.get(index);
+          const statusText = splitLabel ? `${statusLabel[status]}, ${splitLabel}` : statusLabel[status];
           return (
             <div key={floor.id} style={styles.item}>
               <span style={styles.itemLabel}>
-                {`${index + 1}: ${floor.title}`} <span style={styles.itemStatus}>({statusLabel[status]})</span>
+                {`${index + 1}: ${floor.title}`} <span style={styles.itemStatus}>({statusText})</span>
               </span>
               <Switch checked={checked} disabled={disabled} onChange={() => !disabled && toggleFloor(index)} />
             </div>

@@ -115,7 +115,37 @@ export interface PresetConnectionsState {
           | { tool: "gen_source" }
           | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
           | { tool: "elevator" }
-          | { tool: "teleport_one_way" | "teleport_two_way" };
+          | { tool: "teleport_one_way" | "teleport_two_way" }
+          /** Deferred commit of a FRESH vertical-passage placement whose TARGET floor turned out to
+           *  be split (GitHub issue #594, parity with post-edit's `place_vertical_passage` from
+           *  GitHub issue #567) — `origin`/`passageTool`/`direction` are exactly
+           *  `commitPresetVerticalPassage`'s own params; only the `to` end (the target floor's own
+           *  point) needed resolving, so `picks` has exactly one slot. `origin` was already resolved
+           *  (possibly through this very dialog, if the origin point was itself split) before this
+           *  action was built, never re-resolved here. */
+          | { tool: "place_vertical_passage_target"; origin: PresetEndpoint; passageTool: "vertical_passage_one_way" | "vertical_passage_two_way"; direction: "up" | "down" }
+          /** Deferred commit of a FRESH elevator placement whose OTHER floors can independently be
+           *  split (GitHub issue #594, parity with post-edit's `place_elevator` from GitHub issue
+           *  #567) — `origin`/`levels`/`editingId` are exactly `confirmPresetElevatorPlacement`'s own
+           *  params (`levels` ascending, matching `pending.floors`' own sort order, origin's own level
+           *  included). Any subset of `levels` can independently be split, so every split floor gets
+           *  its own queued dialog; `picks[i]` is `levels[i]`'s own resolved target. */
+          | { tool: "place_elevator_target"; origin: PresetEndpoint; levels: number[]; editingId?: number }
+          /** Deferred commit of a vertical-passage-endpoint drag (GitHub issue #594, parity with
+           *  post-edit's `move_vertical_passage_endpoint` from GitHub issue #567) — `id`/`end`
+           *  identify the dragged endpoint. `picks` has two slots: `[0]` the dragged end's own new
+           *  target, `[1]` the OTHER end's own new target on its own floor (GitHub issue #566 moves
+           *  both ends to the same (x, y)). */
+          | { tool: "move_vertical_passage_endpoint"; id: number; end: "from" | "to" }
+          /** Deferred commit of an elevator-endpoint drag (GitHub issue #594, parity with post-edit's
+           *  `move_elevator_endpoint` from GitHub issue #567) — `id` identifies the dragged entry,
+           *  `levels` is every floor the drag re-targets (dragged floor first, then every OTHER floor
+           *  ascending). `picks[i]` is `levels[i]`'s own new target. */
+          | { tool: "move_elevator_endpoint"; id: number; levels: number[] };
+        /** Present only for the deferred drag/placement actions above — see `resolvePresetSplitTargets`
+         *  (`fieldEditUtils.ts`) and `applyPresetSplitTargetPick`'s own doc comment. */
+        queue?: { targetIndex: number; point: [number, number]; level?: number; slotIds: number[] }[];
+        picks?: (PresetEndpoint | undefined)[];
       }
     | null;
   /** In-progress entity-delete prompt (GitHub issue #540) — set whenever a `clear` cell click, or a
@@ -206,10 +236,14 @@ export interface PresetConnectionsActions {
    * available directions itself (via `cellExistsAt`) and either creates the entry immediately (one
    * direction available) or opens `presetVerticalPassagePending` for `PresetVerticalDirectionDialog`
    * (both available). A no-op if neither direction has a cell (shouldn't happen — the tools are
-   * hidden below 2 floors — but guarded defensively). */
+   * hidden below 2 floors — but guarded defensively). Either way, when the resolved TARGET floor's
+   * own point turns out to be declared split (GitHub issue #594), the actual entry creation is
+   * deferred through `presetSplitTargetPrompt` (`place_vertical_passage_target`) instead of
+   * `commitPresetVerticalPassage`'s previous silent `slotId: undefined` default. */
   startPresetVerticalPassagePlacement: (origin: PresetEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
-  /** Resolves a pending vertical-passage placement with the chosen direction, creating the entry.
-   * No-op if nothing is pending. */
+  /** Resolves a pending vertical-passage placement with the chosen direction, creating the entry —
+   * same target-floor split-tile detour as `startPresetVerticalPassagePlacement` above (GitHub issue
+   * #594). No-op if nothing is pending. */
   choosePresetVerticalPassageDirection: (direction: "up" | "down") => void;
   cancelPresetVerticalPassagePlacement: () => void;
   cyclePresetVerticalPassageDirection: (id: number) => void;
@@ -217,7 +251,10 @@ export interface PresetConnectionsActions {
   /** Moves BOTH ends of the passage to `point` (GitHub issue #566) — see
    *  `moveVerticalPassageEndpoint` (fieldValidity.ts)'s own doc comment. Sets
    *  `presetDragFailureMessage` and leaves `presetVerticalPassages` unchanged when `point` doesn't
-   *  resolve on the other end's own floor. */
+   *  resolve on the other end's own floor. When either end's landing point turns out to be split
+   *  (GitHub issue #594), defers the commit through `presetSplitTargetPrompt`
+   *  (`move_vertical_passage_endpoint`) instead of silently attaching both ends to their original
+   *  node — same split-tile check `tryCommitPresetVerticalPassage` runs for a fresh placement. */
   movePresetVerticalPassageEndpoint: (id: number, end: "from" | "to", point: [number, number]) => void;
   /** Starts a pending elevator placement at `origin` (the first click) — the active floor is
    * always included in `floors` from the start and can't be removed. If `origin`'s point already
@@ -228,14 +265,20 @@ export interface PresetConnectionsActions {
    * `floorIndex` is the origin's own floor (can't be unchecked) or no placement is pending. */
   togglePresetElevatorFloor: (floorIndex: number) => void;
   /** Commits the pending elevator placement (2+ floors selected) as a new `PresetElevatorEntry` and
-   * clears the pending state; a no-op (does not clear pending) if fewer than 2 floors are selected. */
+   * clears the pending state; a no-op (does not clear pending) if fewer than 2 floors are selected.
+   * When any selected floor's own point turns out to be declared split (GitHub issue #594), the
+   * actual commit is deferred through `presetSplitTargetPrompt` (`place_elevator_target`) instead of
+   * silently attaching that floor to its original node. */
   confirmPresetElevatorPlacement: () => void;
   cancelPresetElevatorPlacement: () => void;
   removePresetElevator: (id: number) => void;
   /** Moves EVERY floor endpoint of the elevator to `point` (GitHub issue #566) — see
    *  `moveElevatorEndpoint` (fieldValidity.ts)'s own doc comment. `level` is the dragged marker's
    *  own floor (the drag's "own end"). Sets `presetDragFailureMessage` and leaves `presetElevators`
-   *  unchanged when `point` doesn't resolve on one of the OTHER floors. */
+   *  unchanged when `point` doesn't resolve on one of the OTHER floors. When any floor's landing
+   *  point turns out to be split (GitHub issue #594), defers the commit through
+   *  `presetSplitTargetPrompt` (`move_elevator_endpoint`) instead of silently attaching every floor
+   *  to its original node. */
   movePresetElevatorEndpoint: (id: number, level: number, point: [number, number]) => void;
   /** Live drag preview setter (GitHub issue #566) — mirrors post-edit's own
    *  `setPostEditDragOverride`. */

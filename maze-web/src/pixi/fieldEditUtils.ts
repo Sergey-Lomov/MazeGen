@@ -461,15 +461,49 @@ export function resolvePresetPartnerAt(
   return result?.identity ?? resolvePresetActiveEndpoint(neighborPoint, activeMap, level);
 }
 
+/** The `presetSplitPoints`/`presetActiveSplitNode` record key for `point`/`level` — `"x,y"` for
+ * floor 0 (both `undefined` and `0` normalize to the unsuffixed key), `"x,y@level"` otherwise.
+ * The one place this format is built, so every caller (`allNodesAt`, `resolvePresetSplitTargets`,
+ * `presetSplitLabels.ts`'s `isPresetSplitPoint`) stays in sync with it. */
+export function presetSplitPointKey(point: [number, number], level?: number): string {
+  return level === undefined || level === 0 ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+}
+
 /** Every node currently declared at `point` on `level` (original plus every declared slot, per
  * `presetSplitPoints`) — used both by `resolvePresetPartnerAt` (the neighbor's full candidate set)
  * and by `applyPresetSplitBlueprint` (to explicitly wall off every neighbor node the blueprint's
  * resolved partner didn't pick, so a face doesn't silently leave one of the neighbor's other nodes
  * undecided — GitHub issue #243 follow-up). */
 export function allNodesAt(point: [number, number], presetSplitPoints: Record<string, number[]>, level?: number): PresetEndpoint[] {
-  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
-  const slots = presetSplitPoints[key] ?? [];
+  const slots = presetSplitPoints[presetSplitPointKey(point, level)] ?? [];
   return [presetEndpoint(point, undefined, level), ...slots.map((slotId) => presetEndpoint(point, slotId, level))];
+}
+
+/** GitHub issue #594 (parity with post-edit's `resolveDragTargets`, GitHub issue #567): resolves
+ * every target of a preset vertical-passage/elevator placement OR drag against `presetSplitPoints`,
+ * in `targets` order. A point with no declared slots resolves silently to its original node (`slotId:
+ * undefined`), same as before this issue — its endpoint lands straight in `picks`. A point with one
+ * or more declared slots needs the user to pick via `PresetSplitTargetDialog`, so it's left
+ * `undefined` in `picks` and instead queued (`queue`, carrying its own `targetIndex` so
+ * `applyPresetSplitTargetPick` can slot the eventual pick back into the right position once the
+ * dialog resolves it). `queue` empty means every target was plain — the caller then has every
+ * endpoint already in `picks` and should commit directly, no dialog. */
+export function resolvePresetSplitTargets(
+  targets: { point: [number, number]; level?: number }[],
+  presetSplitPoints: Record<string, number[]>,
+): { picks: (PresetEndpoint | undefined)[]; queue: { targetIndex: number; point: [number, number]; level?: number; slotIds: number[] }[] } {
+  const picks: (PresetEndpoint | undefined)[] = [];
+  const queue: { targetIndex: number; point: [number, number]; level?: number; slotIds: number[] }[] = [];
+  targets.forEach((t, targetIndex) => {
+    const slotIds = presetSplitPoints[presetSplitPointKey(t.point, t.level)] ?? [];
+    if (slotIds.length > 0) {
+      picks.push(undefined);
+      queue.push({ targetIndex, point: t.point, level: t.level, slotIds });
+    } else {
+      picks.push(presetEndpoint(t.point, undefined, t.level));
+    }
+  });
+  return { picks, queue };
 }
 
 /** One preset split node's kind on every one of its point's geometric faces (in `getNeighborData`

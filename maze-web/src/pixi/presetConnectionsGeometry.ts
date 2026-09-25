@@ -1,7 +1,7 @@
 import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "./fieldEditUtils";
 import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
 import { presetEndpointScreenPos } from "./selectors/presetSelectors";
-import type { PresetEndpoint } from "./presetEndpoint";
+import { withoutLevel, type PresetEndpoint } from "./presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
 import { resolveCrossFloorBadgeCells, type CrossFloorBadgePair } from "./selectors/mazeSelectors/teleport";
@@ -77,8 +77,14 @@ export function buildPresetTeleportEdges(
   },
 ): TeleportEdge[] {
   const active = activeLevel ?? 0;
+  // `nodePositions` (`buildPresetNodePositions`) keys split-point nodes WITHOUT a `level` suffix —
+  // it's built once per active-floor redraw from that floor's own already level-filtered
+  // `presetSplitPoints`/`presetConnections` (see `redrawGenSource`'s doc comment in
+  // `PresetConnectionsRenderer.ts` for the same convention). `ep` still carries its real `.level`,
+  // so strip it before the lookup or a split slot on any non-zero floor silently falls back to the
+  // plain cell center instead of its real anchor.
   const endpointPos = (ep: PresetEndpoint) => {
-    const [x, y] = presetEndpointScreenPos(ep, cfg, nodePositions);
+    const [x, y] = presetEndpointScreenPos(withoutLevel(ep), cfg, nodePositions);
     return { x, y };
   };
 
@@ -187,7 +193,14 @@ export function buildPresetVerticalMarkers(
     if (!onEntry && !onExit) continue;
     const own = onEntry ? entryCell : exitCell;
     const other = onEntry ? exitCell : entryCell;
-    const [posX, posY] = presetEndpointScreenPos(own, cfg, nodePositions);
+    // `nodePositions` (`buildPresetNodePositions`) keys split-point nodes WITHOUT a `level` suffix
+    // (it's built once per active-floor redraw from that floor's own already level-filtered
+    // `presetSplitPoints`/`presetConnections` — see `redrawGenSource`'s doc comment for the same
+    // convention). `own` still carries its real `.level` (0 for the active floor when it's floor 0,
+    // but the actual floor index otherwise), so looking it up as-is only ever matched by accident on
+    // floor 0 (`level: undefined` → no suffix either way); on any other floor the keyed lookup missed
+    // and silently fell back to the plain cell center, ignoring the split slot entirely.
+    const [posX, posY] = presetEndpointScreenPos(withoutLevel(own), cfg, nodePositions);
     const isOneWay = p.direction !== "two_way";
     // A one-way passage's marker is always empty (`filled: false`) at *both* ends — only the
     // arrow tells departure and arrival apart (solid on entry, outline on exit), same as
@@ -208,7 +221,10 @@ export function buildPresetVerticalMarkers(
     const onFloor = e.floors.filter((f) => (f.level ?? 0) === active);
     if (onFloor.length === 0) continue;
     const ownEndpoint = onFloor[0];
-    const [posX, posY] = presetEndpointScreenPos(ownEndpoint, cfg, nodePositions);
+    // Same level-suffix mismatch as the vertical-passage loop above — strip `.level` before the
+    // `nodePositions` lookup so a split slot on any non-zero floor resolves to its real anchor
+    // instead of silently falling back to the plain cell center.
+    const [posX, posY] = presetEndpointScreenPos(withoutLevel(ownEndpoint), cfg, nodePositions);
     const others = e.floors.filter((f) => (f.level ?? 0) !== active);
     const sawUp = others.some((f) => (f.level ?? 0) > active);
     const sawDown = others.some((f) => (f.level ?? 0) < active);
