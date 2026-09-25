@@ -18,13 +18,22 @@
  *  `debugRowText.ts`) responsible for turning its own endpoint/node into the `point`/`level`/
  *  `includeFloor`/`splitLabel` this function takes — `includeFloor`'s meaning (cross-floor-relative-
  *  to-the-active-floor, multi-floor-maze-at-all, or always) is entirely the caller's own call,
- *  matching whatever that call site showed before this refactor. */
+ *  matching whatever that call site showed before this refactor.
+ *
+ *  `floorOnly` (GitHub issue #595's compact-display follow-up) drops the coordinate pair and the
+ *  split-node suffix entirely, rendering just `L{floor}` — for a vertical-passage/elevator target,
+ *  whose x/y is always identical to the departure point's own (only the floor ever differs), so
+ *  the coordinates are redundant. `includeFloor` is implied/ignored when `floorOnly` is set. Status-
+ *  bar callers pass this for vertical-passage/elevator kinds specifically; teleport targets (whose
+ *  x/y can differ) keep the full display. */
 export function formatTargetLabel(
   point: readonly [number, number],
   level: number,
   includeFloor: boolean,
   splitLabel: string | undefined,
+  floorOnly = false,
 ): string {
+  if (floorOnly) return `L${level + 1}`;
   const coordText = `${point[0]}:${point[1]}`;
   const body = includeFloor ? `L${level + 1} ${coordText}` : coordText;
   return splitLabel ? `${body} (${splitLabel})` : body;

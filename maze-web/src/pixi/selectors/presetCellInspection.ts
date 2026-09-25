@@ -39,6 +39,7 @@ function buildPresetNodeMarkerLines(
   const lines = presetVertexMarkerEntities(
     endpoint, activeFloorLevel, presetStart, presetFinish, presetGenSource,
     presetTeleports, presetVerticalPassages, presetElevators, splitCtx,
+    true, // status bar: compact floor-only vertical-passage/elevator target (GitHub issue #595 follow-up)
   ).map((e) => e.title);
 
   if (lockKind) lines.push(m["status.cell_lock"]({ kind: formatLockKind(lockKind) }));

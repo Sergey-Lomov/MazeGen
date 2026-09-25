@@ -80,6 +80,13 @@ export function presetVertexMarkerEntities(
   presetVerticalPassages: PresetVerticalPassageEntry[],
   presetElevators: PresetElevatorEntry[],
   splitCtx: PresetSplitLabelContext | null = null,
+  /** Compact status-bar display (GitHub issue #595's follow-up): a vertical-passage/elevator
+   *  target's x/y is always identical to the departure point's own (only the floor ever differs),
+   *  so `true` drops its coordinate pair and split-node suffix down to just the floor (`L{floor}`).
+   *  Teleport targets are unaffected (their x/y can genuinely differ) — always the full display.
+   *  The entity-delete dialog keeps `false` (full display for every kind), since removing an entity
+   *  there benefits from the exact target shown. */
+  compactVerticalTarget = false,
 ): PresetPointEntityDescriptor[] {
   const out: PresetPointEntityDescriptor[] = [];
   const nodeIndex = 0; // placeholder, overwritten by callers that know the point's node order
@@ -121,7 +128,9 @@ export function presetVertexMarkerEntities(
     const arrivingHere = presetEndpointsEqual(v.to, endpoint);
     if (!departingHere && !arrivingHere) continue;
     const other = departingHere ? v.to : v.from;
-    const target = `(${splitCtx ? presetTargetLabel(splitCtx, other, true) : formatTargetLabel(other.point, other.level ?? 0, true, undefined)})`;
+    const target = `(${splitCtx
+      ? presetTargetLabel(splitCtx, other, true, compactVerticalTarget)
+      : formatTargetLabel(other.point, other.level ?? 0, true, undefined, compactVerticalTarget)})`;
     const isForward = departingHere === (v.direction !== "backward");
     const arrow = v.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
     out.push({
@@ -136,7 +145,9 @@ export function presetVertexMarkerEntities(
     if (others.length === 0) continue;
     const targets = [...new Map(others.map((f) => [f.level ?? 0, f])).values()]
       .sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
-      .map((f) => (splitCtx ? presetTargetLabel(splitCtx, f, true) : formatTargetLabel(f.point, f.level ?? 0, true, undefined)));
+      .map((f) => (splitCtx
+        ? presetTargetLabel(splitCtx, f, true, compactVerticalTarget)
+        : formatTargetLabel(f.point, f.level ?? 0, true, undefined, compactVerticalTarget)));
     out.push({
       kind: "elevator", id: String(e.id), endpoint, nodeIndex,
       title: m["status.cell_elevator"]({ targets: targets.join(", ") }),

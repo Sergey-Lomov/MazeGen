@@ -45,12 +45,24 @@ function resolveNodeSplitLabel(
  *  plus the target's own split-node suffix when it lands on a split tile (GitHub issue #595's
  *  follow-up — this never resolved before). Wrapped in parens, matching this selector's own
  *  pre-existing convention for every marker line (not the bare-bubble convention `presetTargetLabel`/
- *  `postEditTargetLabel` use — this text is inline status-bar prose, not a UI bubble). */
-function formatTarget(other: NodeDto, activeFloorLevel: number, nodeById: Map<number, NodeDto>, edges: EdgeDto[], cfg: TessellationConfig | null): string {
+ *  `postEditTargetLabel` use — this text is inline status-bar prose, not a UI bubble).
+ *
+ *  `floorOnly` (GitHub issue #595's compact-display follow-up): a vertical-passage/elevator target's
+ *  x/y is always identical to the departure point's own — only the floor ever differs — so callers
+ *  for those two kinds pass `true` to drop the coordinate pair and split-node suffix down to just
+ *  `L{floor}`. Teleport targets keep the full display (their x/y can genuinely differ). */
+function formatTarget(
+  other: NodeDto,
+  activeFloorLevel: number,
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig | null,
+  floorOnly = false,
+): string {
   const otherLevel = other.level ?? 0;
   const crossFloor = otherLevel !== activeFloorLevel;
   const suffix = resolveNodeSplitLabel(other, nodeById, edges, cfg);
-  return `(${formatTargetLabel([other.x, other.y], otherLevel, crossFloor, suffix)})`;
+  return `(${formatTargetLabel([other.x, other.y], otherLevel, crossFloor, suffix, floorOnly)})`;
 }
 
 /** Every marker-line contributed by one specific node — start/finish, teleport endpoints, and
@@ -120,7 +132,7 @@ function buildNodeMarkerLines(
     const other = nodeById.get(otherId);
     if (!other) continue;
     const reverseExists = verticalPairs.has(`${e.to}->${e.from}`);
-    const target = formatTarget(other, activeFloorLevel, nodeById, edges, cfg);
+    const target = formatTarget(other, activeFloorLevel, nodeById, edges, cfg, true);
     const arrow = reverseExists ? "<->" : departingHere ? "->" : "<-";
     lines.push(m["status.cell_vertical_passage"]({ arrow, target }));
   }
@@ -132,7 +144,7 @@ function buildNodeMarkerLines(
       seenLevel.add(level);
       return true;
     }).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-    const targets = uniqueTargets.map((t) => formatTargetLabel([t.x, t.y], t.level ?? 0, true, resolveNodeSplitLabel(t, nodeById, edges, cfg)));
+    const targets = uniqueTargets.map((t) => formatTargetLabel([t.x, t.y], t.level ?? 0, true, resolveNodeSplitLabel(t, nodeById, edges, cfg), true));
     lines.push(m["status.cell_elevator"]({ targets: targets.join(", ") }));
   }
 

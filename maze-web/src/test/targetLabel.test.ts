@@ -28,4 +28,12 @@ describe("formatTargetLabel", () => {
   it("omits the suffix parens for an empty-string split label", () => {
     expect(formatTargetLabel([3, 5], 0, false, "")).toBe("3:5");
   });
+
+  it("floorOnly renders just the floor, dropping coordinates and split suffix (GitHub issue #595 follow-up)", () => {
+    expect(formatTargetLabel([-4, 3], 1, true, "Node2", true)).toBe("L2");
+  });
+
+  it("floorOnly overrides includeFloor: false", () => {
+    expect(formatTargetLabel([3, 5], 2, false, undefined, true)).toBe("L3");
+  });
 });
