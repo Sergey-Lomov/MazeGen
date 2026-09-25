@@ -115,7 +115,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2 3:5)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <-> (L2)");
   });
 
   it("one-way vertical passage, arrival end", () => {
@@ -125,7 +125,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 1, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1 3:5)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <- (L1)");
   });
 
   it("backward vertical passage, departure end reads as arrival", () => {
@@ -136,7 +136,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], verticals, [], new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Vertical passage <- (L2 3:5)");
+    expect(result).toBe("x:3, y:5 | Vertical passage <- (L2)");
   });
 
   it("elevator to several floors, no arrow, sorted/deduped", () => {
@@ -153,7 +153,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], [], elevators, new Map(), new Set(),
     );
-    expect(result).toBe("x:3, y:5 | Elevator (L2 3:5, L4 3:5)");
+    expect(result).toBe("x:3, y:5 | Elevator (L2, L4)");
   });
 
   it("elevator not touching this node is ignored", () => {

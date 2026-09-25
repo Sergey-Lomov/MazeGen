@@ -94,7 +94,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftVerticalPassages: [{ id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "two_way" }],
     });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2 0:0)");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Vertical passage <-> (L2)");
   });
 
   it("generation-time elevator is shown — a full baseline draft entry (GitHub issue #564)", () => {
@@ -105,7 +105,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
       nodes,
       postEditDraftElevators: [{ id: "e1", floors: [nodeEndpoint(1), nodeEndpoint(2), nodeEndpoint(3)] }],
     });
-    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2 0:0, L3 0:0)");
+    expect(inspect(shown, 0, 0)).toBe("x:0, y:0 | Elevator (L2, L3)");
   });
 
   it("a user-placed draft vertical passage (not yet confirmed) is reported", () => {
@@ -116,7 +116,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
         { id: "v1", from: nodeEndpoint(1), to: nodeEndpoint(2), direction: "forward" },
       ],
     });
-    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Vertical passage -> (L2 0:0)");
+    expect(inspect(st, 0, 0)).toBe("x:0, y:0 | Vertical passage -> (L2)");
   });
 });
 

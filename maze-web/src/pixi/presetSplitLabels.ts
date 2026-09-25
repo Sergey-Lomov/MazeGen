@@ -87,9 +87,10 @@ export function presetTargetLabel(
   ctx: PresetSplitLabelContext,
   endpoint: PresetEndpoint,
   includeFloor: boolean,
+  floorOnly = false,
 ): string {
   const suffix = resolvePresetSplitNodeShortLabel(ctx, endpoint);
-  return formatTargetLabel(endpoint.point, endpoint.level ?? 0, includeFloor, suffix);
+  return formatTargetLabel(endpoint.point, endpoint.level ?? 0, includeFloor, suffix, floorOnly);
 }
 
 /** Whether `point`/`level` is a declared split point at all, per `ctx.splitPoints` — used to gate
