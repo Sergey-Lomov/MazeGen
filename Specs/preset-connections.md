@@ -382,7 +382,7 @@ For a declared split point (see "Split nodes" below), auto-lock checks **every o
 
 Both sets are merged when rendering (`buildLocks`) and when checking for isolated nodes (`buildIsolatedCellHighlights`).
 
-**Isolated node**: a node locked `"both"` (manually or via auto-lock) with no non-wall preset on any of that exact node's edges. Split slots are checked by their full endpoint identity, not merely by the shared point coordinates. The UI shows a warning and highlights such cells.
+**Isolated node**: a node locked `"both"` (manually or via auto-lock) with no non-wall preset on any of that exact node's edges. Split slots are checked by their full endpoint identity, not merely by the shared point coordinates. The UI uses this same exact-node check for both the Problems warning and the cell highlight, and highlights such cells.
 
 ## Card status
 
