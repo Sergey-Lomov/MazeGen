@@ -56,6 +56,9 @@ export const canvas = {
 
   fieldEditor: {
     hover: hexToNumber(base.canvasHover),
+    // Manage split nodes panel target (GitHub issue #606): a transparent fill with a yellow frame
+    // distinguishes the edited cell from the cursor hover while using the same full-cell geometry.
+    panelTarget: hexToNumber(base.warning),
     activeCell: hexToNumber(base.textDisabled),
     // Reset tool's hover highlight (GitHub issue #327) — red instead of the ordinary hover color,
     // matching `ui.text.error`/the DOM-side "toggle-danger" button variant, so a destructive tool
