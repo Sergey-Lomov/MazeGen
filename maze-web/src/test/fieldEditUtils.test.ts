@@ -148,16 +148,16 @@ describe("applyTool — passage", () => {
 });
 
 describe("applyTool — reset", () => {
-  it("clears the edge entirely when the default is undefined", () => {
+  it("stores explicit undefined when the default is undefined", () => {
     const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset");
-    expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
+    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
   });
 
-  it("materializes the current default as a source:\"default\" entry", () => {
+  it("stores reset as an explicit undefined user entry", () => {
     const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "wall");
-    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "wall", source: "default" });
+    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
   });
 
   it("resolves the active split slot before resetting — targets the slot's own key, not the plain point key", () => {
@@ -168,15 +168,15 @@ describe("applyTool — reset", () => {
       }],
     ]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "undefined", activeMap);
-    expect(result.has(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])))).toBe(false);
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])))).toMatchObject({ state: "undefined", source: "user" });
     expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
   });
 
-  it("reset with an active split slot and a non-undefined default materializes the slot-addressed key", () => {
+  it("reset with an active split slot stores the slot-addressed undefined key", () => {
     const activeMap = { "0,0": presetEndpoint([0, 0], 0) };
     const result = applyTool(new Map(), fe(0, 0, 1, 0), "reset", "wall", activeMap);
     const key = presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0]));
-    expect(result.get(key)).toMatchObject({ from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "wall", source: "default" });
+    expect(result.get(key)).toMatchObject({ from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "undefined", source: "user" });
   });
 });
 

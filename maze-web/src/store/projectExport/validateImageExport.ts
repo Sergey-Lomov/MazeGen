@@ -224,6 +224,7 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
     textColor: optNumber(obj, "textColor", fallback.textColor),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
     borderColorFromMarker: optBool(obj, "borderColorFromMarker", fallback.borderColorFromMarker),
+    borderWidthFromMarker: optBool(obj, "borderWidthFromMarker", fallback.borderWidthFromMarker),
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
     fontWeight: optElevatorBadgeFontWeight(obj, "fontWeight", fallback.fontWeight),
     coverage: validateMarkerIndexCoverage(obj.coverage, `${path}.coverage`, fallback.coverage),

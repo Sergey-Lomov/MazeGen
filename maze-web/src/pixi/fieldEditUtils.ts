@@ -864,7 +864,7 @@ export function applyTool(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
   tool: PresetConnectionTool,
-  defaultEdgeState: PresetConnectionClientState = "undefined",
+  _defaultEdgeState: PresetConnectionClientState = "undefined",
   activeMap: Record<string, PresetEndpoint> = {},
   level?: number,
 ): Map<string, PresetConnectionEntry> {
@@ -872,7 +872,10 @@ export function applyTool(
   const to = resolvePresetActiveEndpoint(edge.to, activeMap, level);
   const key = presetEdgeKey(from, to);
   if (tool === "reset") {
-    return materializeReset(connections, { key, from: edge.from, to: edge.to }, defaultEdgeState, from, to);
+    const next = new Map(connections);
+    // An explicit undefined assignment is distinct from an absent/default entry.
+    next.set(key, { from, to, state: "undefined", source: "user" });
+    return next;
   }
   const next = new Map(connections);
   if (tool === "one_way") {

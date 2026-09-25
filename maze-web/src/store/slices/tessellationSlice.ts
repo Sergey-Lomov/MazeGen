@@ -69,6 +69,15 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         presetFinish: null,
         presetGenSource: null,
         defaultEdgeState: "undefined" as const,
+        presetTeleports: [],
+        presetTeleportPendingFrom: null,
+        _nextPresetTeleportId: 1,
+        presetVerticalPassages: [],
+        presetVerticalPassagePending: null,
+        _nextPresetVerticalPassageId: 1,
+        presetElevators: [],
+        presetElevatorPending: null,
+        _nextPresetElevatorId: 1,
         debugArena: null, debugStep: 0, debugStale: false,
         // A split point (GitHub issue #221/#231) is a geometric-point-shaped concept — its slotIds
         // are meaningless once the tessellation kind changes and every point coordinate means
@@ -107,6 +116,15 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       ...buildResetMazeState(),
       error: null,
       debugArena: null, debugStep: 0, debugStale: false,
+      presetTeleports: [],
+      presetTeleportPendingFrom: null,
+      _nextPresetTeleportId: 1,
+      presetVerticalPassages: [],
+      presetVerticalPassagePending: null,
+      _nextPresetVerticalPassageId: 1,
+      presetElevators: [],
+      presetElevatorPending: null,
+      _nextPresetElevatorId: 1,
     };
   }),
 

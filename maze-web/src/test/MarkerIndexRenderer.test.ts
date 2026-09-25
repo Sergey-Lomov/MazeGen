@@ -83,6 +83,7 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
     textColor: 0x333333,
     borderColor: 0x444444,
     borderColorFromMarker: false,
+    borderWidthFromMarker: false,
     borderWidth: 2,
     fontWeight: "bold",
     coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true },
@@ -94,6 +95,7 @@ const label = (patch: Partial<MarkerIndexLabel> = {}): MarkerIndexLabel => ({
   pos: [100, 200],
   label: "1",
   markerOuterRadius: 10,
+  markerBorderWidth: 2,
   borderMatchColor: 0xabcdef,
   ...patch,
 });
@@ -145,15 +147,32 @@ describe("MarkerIndexRenderer.render", () => {
     expect(pathBounds(plate.fillPathPoints.at(-1)!).w).toBeCloseTo(widest + 2 * 0.04 * TILE_SIZE);
   });
 
-  it("draws a floor-colored gap ring outset by gap + borderWidth/2, below the body", () => {
+  it("draws a floor-colored gap ring outset by gap + borderWidth, below the body", () => {
     const { renderer, gapLayer, bodyLayer } = makeRenderer();
     renderer.render({ labels: [label()], allLabelStrings: ["1"], style: style({ gap: 4, borderWidth: 2 }), floorColor: 0x123456 });
     const ring = gapLayer()[0] as FakeGraphics;
     const body = bodyLayer()[0] as FakeGraphics;
-    const outset = 4 + 2 / 2;
+    const outset = 4 + 2;
     expect(ring.fillCalls[0]).toBe(0x123456);
     expect(pathBounds(ring.fillPathPoints[0]).x).toBeCloseTo(pathBounds(body.fillPathPoints.at(-1)!).x - outset);
     expect(pathBounds(ring.fillPathPoints[0]).w).toBeCloseTo(pathBounds(body.fillPathPoints.at(-1)!).w + 2 * outset);
+  });
+
+  it("inherits the marker border width for the plate and its gap outset", () => {
+    const { renderer, gapLayer, bodyLayer } = makeRenderer();
+    renderer.render({ labels: [label({ markerBorderWidth: 6 })], allLabelStrings: ["1"], style: style({ borderWidthFromMarker: true, borderWidth: 1, gap: 4 }), floorColor: 0x123456 });
+    const ring = pathBounds((gapLayer()[0] as FakeGraphics).fillPathPoints[0]);
+    const plate = pathBounds((bodyLayer()[0] as FakeGraphics).fillPathPoints.at(-1)!);
+    expect(ring.x).toBeCloseTo(plate.x - 10);
+    expect(pathBounds((bodyLayer()[0] as FakeGraphics).fillPathPoints[0]).x).toBeCloseTo(plate.x - 6);
+  });
+
+  it("uses its own border width when marker-border inheritance is disabled", () => {
+    const { renderer, bodyLayer } = makeRenderer();
+    renderer.render({ labels: [label({ markerBorderWidth: 6 })], allLabelStrings: ["1"], style: style({ borderWidthFromMarker: false, borderWidth: 2, gap: 0 }), floorColor: 0x123456 });
+    const body = bodyLayer()[0] as FakeGraphics;
+    const plate = pathBounds(body.fillPathPoints.at(-1)!);
+    expect(pathBounds(body.fillPathPoints[0]).x).toBeCloseTo(plate.x - 2);
   });
 
   it("omits the gap ring entirely when gap is 0", () => {

@@ -111,6 +111,20 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(activeField().tessellationConfig.type).toBe("square");
   });
 
+  it("setTessellationKind clears all incompatible presets", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      presetTeleports: [{ id: 7, from: { point: [0, 0] }, to: { point: [1, 0] }, direction: "two_way" }],
+      presetVerticalPassages: [{ id: 8, from: { point: [0, 0] }, to: { point: [0, 0], level: 1 }, direction: "two_way" }],
+      presetElevators: [{ id: 9, floors: [{ point: [0, 0] }, { point: [0, 0], level: 1 }] }],
+    });
+    useMazeStore.getState().setTessellationKind("square");
+    const s = useMazeStore.getState();
+    expect(s.presetTeleports).toEqual([]);
+    expect(s.presetVerticalPassages).toEqual([]);
+    expect(s.presetElevators).toEqual([]);
+  });
+
   it("setTessellationKind resets freeFieldPoints for target kind", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
     setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), triangle: new Set() } });
@@ -420,4 +434,3 @@ describe("mazeStore.setTriOrientation", () => {
     expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r90", cols: 6 });
   });
 });
-

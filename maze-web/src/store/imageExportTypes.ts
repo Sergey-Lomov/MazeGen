@@ -479,7 +479,10 @@ export interface MarkerIndexSettings {
    *  off: that marker's own border color if the marker has a border (`borderWidth > 0`), else the
    *  marker's fill color. Disables the `borderColor` setting in the panel. */
   borderColorFromMarker: boolean;
-  /** Whole pixels. `0` (the default) draws no border. */
+  /** When on, the plate border thickness follows the connection marker and the own thickness
+   *  setting is disabled in the panel. */
+  borderWidthFromMarker: boolean;
+  /** Whole pixels. `0` draws no border when `borderWidthFromMarker` is off. */
   borderWidth: number;
   fontWeight: LabelFontWeight;
   /** "Coverage" sub-section — which connection kinds get an index plate. A `teleport` link counts
