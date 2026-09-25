@@ -131,7 +131,7 @@
   "preset.wall": "Wall",
   "preset.passage": "Passage",
   "preset.reset": "Undefined",
-  "preset.default_edge": "Default Edge",
+  "preset.default_edge": "Default edges",
   "preset.default_undefined": "Undefined",
   "preset.default_wall": "Wall",
   "preset.default_passage": "Passage",

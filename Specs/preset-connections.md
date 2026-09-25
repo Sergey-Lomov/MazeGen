@@ -27,13 +27,12 @@ Teleports are a separate concept — see "Preset teleports" below — not part o
 Each `PresetConnectionEntry` carries a `source: "user" | "default"` field:
 
 - `"user"` — set explicitly by the user via a tool
-- `"default"` — injected automatically by the active `defaultEdgeState`, including by the `reset` tool/RMB (see below)
+- `"default"` — injected automatically by the active `defaultEdgeState`
 
-Applying the `reset` tool or RMB clears the edge's explicit user override so it goes back to tracking the current default, instead of pinning it to `"undefined"`:
-- If `defaultEdgeState` is `"undefined"`, the entry is removed from the map entirely.
-- Otherwise, the entry is set to `{ state: defaultEdgeState, source: "default" }` — same as if no user override had ever been set. Because `source` is now `"default"`, a later `defaultEdgeState` change will recompute this entry along with every other default entry (see "Default edge state" below), so the edge keeps following the default going forward.
-
-There is no way to explicitly pin an edge to `"undefined"` when `defaultEdgeState` is not `"undefined"` — `reset` always means "go back to default," not "force undecided."
+Applying the `reset` tool or RMB stores `{ state: "undefined", source: "user" }`. This explicit
+assignment remains undecided regardless of `defaultEdgeState` and appears in the entity-delete
+picker. Removing it restores the current default (or removes the map entry when that default is
+`"undefined"`).
 
 ## Canonical edge key
 

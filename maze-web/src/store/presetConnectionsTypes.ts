@@ -197,9 +197,7 @@ export interface PresetConnectionsActions {
   applyPresetConnectionsToolAt: (tool: PresetConnectionTool, key: string, from: [number, number], to: [number, number]) => void;
   /** Sets an edge to the client-only `"undefined"` state (explicit "preset allows but doesn't
    * force" — GitHub issue #234's "preset optional connection"). No `PresetConnectionTool` produces
-   * this state (see `Specs/preset-connections.md`'s "Entry source" — `reset` never pins `undefined`
-   * when a default is active); the "Manage split nodes" dialog is the only UI path to set it
-   * explicitly, so it bypasses `applyTool` and writes the entry directly. */
+   * this state; the "Manage split nodes" dialog also writes it directly for face editing. */
   setPresetConnectionUndefined: (key: string, from: PresetEndpoint, to: PresetEndpoint) => void;
   clearInvalidPresetConnections: () => void;
   resetPresetConnections: () => void;

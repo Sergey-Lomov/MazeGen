@@ -87,6 +87,7 @@ function formatEdgeState(state: PresetConnectionEntry["state"]): string {
     case "passage": return m["preset.passage"]();
     case "one_way_forward": return m["preset.one_way"]();
     case "one_way_backward": return m["preset.one_way"]();
+    case "undefined": return m["preset.default_undefined"]();
     default: return state;
   }
 }
@@ -313,7 +314,6 @@ export function buildPresetPointEntities(
     const seenEdge = new Set<string>();
     const originalEndpoint = nodesHere[0];
     for (const entry of presetConnections.values()) {
-      if (entry.state === "undefined") continue;
       // Only entries the user actually set (`source: "user"`) get their own removable row — a
       // `"default"` entry is just `defaultEdgeState`'s field-wide fill-in (`applyDefaultEdgeState`),
       // not something the user placed on this point, so it shouldn't clutter the entity list

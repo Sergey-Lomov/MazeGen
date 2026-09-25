@@ -136,7 +136,7 @@
   "preset.wall": "Стена",
   "preset.passage": "Проход",
   "preset.reset": "Неопред.",
-  "preset.default_edge": "Дефолт рёбер",
+  "preset.default_edge": "Ребра по-умолчанию",
   "preset.default_undefined": "Неопред.",
   "preset.default_wall": "Стена",
   "preset.default_passage": "Проход",
