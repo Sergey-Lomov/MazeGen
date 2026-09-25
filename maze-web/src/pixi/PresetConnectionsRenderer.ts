@@ -65,6 +65,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidHLContainer: Container;
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
+  private readonly splitPanelTargetContainer: Container;
   private readonly teleportPreviewContainer: Container;
   private readonly linkHoverContainer: Container;
 
@@ -91,6 +92,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidHL: EdgeHighlightRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
+  private readonly splitPanelTarget: CellFillRenderer;
   private readonly teleportPreview: Graphics;
   /** Highlights the link a "Manage split nodes" panel bubble is currently hovered (GitHub issue
    *  #237) — mirrors `PostEditRenderer`'s own `linkHover`, driven by `presetHoveredLink`. Same
@@ -122,6 +124,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHLContainer      = new Container();
     this.hoverContainer          = new Container();
     this.cellHoverContainer      = new Container();
+    this.splitPanelTargetContainer = new Container();
     this.teleportPreviewContainer = new Container();
     this.linkHoverContainer      = new Container();
     this.entityHighlightContainer = new Container();
@@ -144,6 +147,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.invalidHLContainer);
     this.root.addChild(this.hoverContainer);
     this.root.addChild(this.cellHoverContainer);
+    this.root.addChild(this.splitPanelTargetContainer);
     this.root.addChild(this.teleportPreviewContainer);
     this.root.addChild(this.linkHoverContainer);
     this.root.addChild(this.entityHighlightContainer);
@@ -166,6 +170,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
+    this.splitPanelTarget = new CellFillRenderer(this.splitPanelTargetContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover      = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
@@ -256,6 +261,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetElevators !== prev.presetElevators ||
       state.presetSplitPoints !== prev.presetSplitPoints ||
       state.presetActiveSplitNode !== prev.presetActiveSplitNode ||
+      state.presetFocusedPoint !== prev.presetFocusedPoint ||
       state.presetConnectionsTool !== prev.presetConnectionsTool ||
       state.presetDragOverride !== prev.presetDragOverride
     ) {
@@ -417,6 +423,13 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.redrawOrphanHL(state);
 
     this.redrawInvalidHL(state);
+    this.splitPanelTarget.render({
+      cells: state.presetFocusedPoint ? [state.presetFocusedPoint] : [],
+      color: canvas.fieldEditor.panelTarget,
+      alpha: 0,
+      inset: 0,
+      borderWidth: 3,
+    }, cfg);
 
     this.hover.render({ highlights: [] });
     this.redrawLinkHover(state);
@@ -620,6 +633,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHL.render({ highlights: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
     this.linkHover.clear();
     this.entityHighlight.clear();
     this.teleportPreview.clear();
@@ -643,6 +657,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHL.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
+    this.splitPanelTarget.destroy();
     this.linkHover.destroy();
     this.entityHighlight.destroy();
     this.teleportPreview.destroy();
@@ -664,6 +679,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHLContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
+    this.splitPanelTargetContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
     this.entityHighlightContainer.destroy();

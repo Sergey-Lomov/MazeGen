@@ -43,6 +43,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly markersContainer: Container;
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
+  private readonly splitPanelTargetContainer: Container;
   private readonly teleportPreviewContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly linkHoverContainer: Container;
@@ -58,6 +59,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
+  private readonly splitPanelTarget: CellFillRenderer;
   private readonly teleportPreview: Graphics;
   private readonly splitJunctions: SplitJunctionRenderer;
   /** Highlights the entity a "Manage split nodes" or "Changes" panel bubble is currently hovered
@@ -97,6 +99,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.verticalContainer    = new Container();
     this.markersContainer     = new Container();
     this.hoverContainer       = new Container();
+    this.splitPanelTargetContainer = new Container();
 
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
@@ -110,6 +113,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.hoverContainer);
     this.cellHoverContainer = new Container();
     this.root.addChild(this.cellHoverContainer);
+    this.root.addChild(this.splitPanelTargetContainer);
     this.teleportPreviewContainer = new Container();
     this.root.addChild(this.teleportPreviewContainer);
     this.linkHoverContainer = new Container();
@@ -129,6 +133,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markers     = new WaypointsRenderer(this.markersContainer);
     this.hover       = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover   = new CellFillRenderer(this.cellHoverContainer);
+    this.splitPanelTarget = new CellFillRenderer(this.splitPanelTargetContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover   = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
@@ -206,6 +211,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
+      state.postEditFocusedPoint !== prev.postEditFocusedPoint ||
       state.activeFloorId !== prev.activeFloorId ||
       state.postEditTool !== prev.postEditTool
     ) {
@@ -579,6 +585,13 @@ export class PostEditRenderer extends BaseFieldRenderer {
       color: this.hoverState.cellDanger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
       alpha: 0.35,
     }, cfg);
+    this.splitPanelTarget.render({
+      cells: state.postEditFocusedPoint ? [state.postEditFocusedPoint] : [],
+      color: canvas.fieldEditor.panelTarget,
+      alpha: 0,
+      inset: 0,
+      borderWidth: 3,
+    }, cfg);
     this.redrawHoveredEntity(state);
     this.redrawIssueHighlight(state);
   }
@@ -597,6 +610,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
     this.linkHover.clear();
     this.entityHighlight.clear();
     this.issueHighlight.clear();
@@ -614,6 +628,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markers.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
+    this.splitPanelTarget.destroy();
     this.linkHover.destroy();
     this.boundaryHover.destroy();
     this.entityHighlight.destroy();
@@ -629,6 +644,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markersContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
+    this.splitPanelTargetContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
     this.entityHighlightContainer.destroy();

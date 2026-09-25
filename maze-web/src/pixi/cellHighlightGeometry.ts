@@ -51,7 +51,9 @@ export function drawCellHighlight(
 ): void {
   if (vertices.length < 3) return;
   if (inset === 0) {
-    g.poly(vertices.flatMap(({ x, y }) => [x, y])).fill({ color, alpha });
+    const points = vertices.flatMap(({ x, y }) => [x, y]);
+    g.poly(points).fill({ color, alpha });
+    if (borderWidth > 0) g.poly(points).stroke({ color, alpha: 1, width: borderWidth });
     return;
   }
 

@@ -225,6 +225,9 @@ also do not receive a highlight perimeter.
 `PresetConnectionsRenderer` contains these highlight layers:
 
 - `cellHover`: cell-tool cursor, style 1.1;
+- `splitPanelTarget`: the cell currently edited by the Preset split nodes panel, using full-cell
+  geometry with no inset, a transparent fill, and yellow frame; it follows `presetFocusedPoint`
+  and clears when the panel closes (GitHub issue #606);
 - `hover`: wall/edge cursor, edge or boundary highlight;
 - `linkHover`: panel link bubble, style 1.7;
 - `isolatedHL`: isolated locked cells, independent inward-inset cells;
@@ -242,6 +245,9 @@ the cell under the cursor. Edge tools highlight the edge.
 `PostEditRenderer` contains:
 
 - `cellHover`: cell-tool cursor, style 1.1;
+- `splitPanelTarget`: the cell currently edited by the Manage split nodes panel, using the same
+  full-cell geometry with no inset, a transparent fill, and yellow frame; it follows `postEditFocusedPoint`
+  and clears when the panel closes (GitHub issue #606);
 - `hover`: cursor edge/wall highlight;
 - `linkHover`: same-floor link bubble, style 1.7;
 - `entityHighlight`: point/points bubbles, independent inward-inset cell groups;
