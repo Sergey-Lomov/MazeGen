@@ -957,6 +957,17 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDraftMeta?.finish).toBeNull();
   });
 
+  it("deletePostEditPoint records deletion events for co-located start and finish", () => {
+    seedPostEdit({ start: 0, finish: 0 });
+    useMazeStore.getState().requestPostEditEntityDelete([0, 0], undefined, true);
+    const commands = useMazeStore.getState().postEditCommands;
+
+    expect(commands).toEqual([
+      { kind: "removeMeta", slot: "start", id: "s", endpoint: n(0) },
+      { kind: "removeMeta", slot: "finish", id: "f", endpoint: n(0) },
+    ]);
+  });
+
   it("delete tool ignores one-way face state and does not open the entity picker", () => {
     seedPostEdit({ commands: [{
       kind: "setEdgePair", a: n(0), b: n(1),
