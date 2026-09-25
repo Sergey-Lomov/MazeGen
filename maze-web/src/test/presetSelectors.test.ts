@@ -14,7 +14,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight, buildLocks, computeIsolatedNodeKeys, buildIsolatedCellHighlights } = await import("../pixi/selectors/presetSelectors");
 const { getCellCenter } = await import("../pixi/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
@@ -125,6 +125,16 @@ describe("buildLocks", () => {
       }],
     ]);
     expect(buildIsolatedCellHighlights(new Map([["0,0:1", "both"]]), new Set(), connections)).toEqual([[0, 0]]);
+  });
+
+  it("does not report an auto-locked split node when its passage is connected to that slot", () => {
+    const split = presetEndpoint([0, 0], 1);
+    const connections = new Map<string, PresetConnectionEntry>([
+      [presetEdgeKey(split, presetEndpoint([1, 0])), {
+        from: split, to: presetEndpoint([1, 0]), state: "passage", source: "user",
+      }],
+    ]);
+    expect(computeIsolatedNodeKeys(new Map(), new Set(["0,0:1"]), connections)).toEqual([]);
   });
 });
 

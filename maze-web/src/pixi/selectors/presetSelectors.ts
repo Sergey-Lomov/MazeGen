@@ -320,11 +320,12 @@ export function buildLocks(
   });
 }
 
-export function buildIsolatedCellHighlights(
+/** Returns fully locked node keys that have no passage connected to that exact node. */
+export function computeIsolatedNodeKeys(
   lockedNodes: Map<string, NodeLockKind>,
   autoLockedNodes: Set<string>,
   connections: Map<string, PresetConnectionEntry>,
-): [number, number][] {
+): string[] {
   const allBothLocked = new Set<string>();
   for (const [key, kind] of lockedNodes) {
     if (kind === "both") allBothLocked.add(key);
@@ -333,15 +334,25 @@ export function buildIsolatedCellHighlights(
     allBothLocked.add(key);
   }
 
-  const result: [number, number][] = [];
-  for (const key of allBothLocked) {
+  return Array.from(allBothLocked).filter((key) => {
     const endpoint = presetEndpointFromKey(key);
-    if (!endpoint) continue;
-    const hasPassage = Array.from(connections.values()).some(e => {
+    if (!endpoint) return false;
+    return !Array.from(connections.values()).some(e => {
       if (e.state === "wall" || e.state === "undefined") return false;
       return presetEndpointsEqual(e.from, endpoint) || presetEndpointsEqual(e.to, endpoint);
     });
-    if (hasPassage) continue;
+  });
+}
+
+export function buildIsolatedCellHighlights(
+  lockedNodes: Map<string, NodeLockKind>,
+  autoLockedNodes: Set<string>,
+  connections: Map<string, PresetConnectionEntry>,
+): [number, number][] {
+  const result: [number, number][] = [];
+  for (const key of computeIsolatedNodeKeys(lockedNodes, autoLockedNodes, connections)) {
+    const endpoint = presetEndpointFromKey(key);
+    if (!endpoint) continue;
     result.push(endpoint.point);
   }
   return result;

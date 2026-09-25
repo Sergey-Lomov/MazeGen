@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { isPresetLockTool } from "../../store/storeTypes";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
-import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
+import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
@@ -160,23 +160,7 @@ export function PresetConnectionsFeature() {
     const lockedNodesOnLevel = mapOnLevel(lockedNodes, level);
     const autoLockedNodesOnLevel = setOnLevel(autoLockedNodes, level);
     const presetConnectionsOnActiveLevel = presetConnectionsOnLevel(presetConnections, level);
-    const allBothLocked = new Set<string>();
-    for (const [key, kind] of lockedNodesOnLevel) {
-      if (kind === "both") allBothLocked.add(key);
-    }
-    for (const key of autoLockedNodesOnLevel) {
-      allBothLocked.add(key);
-    }
-    const result: string[] = [];
-    for (const key of allBothLocked) {
-      const [x, y] = key.split(",").map(Number);
-      const hasPassage = Array.from(presetConnectionsOnActiveLevel.values()).some(e => {
-        if (e.state === "wall" || e.state === "undefined") return false;
-        return (e.from.point[0] === x && e.from.point[1] === y) || (e.to.point[0] === x && e.to.point[1] === y);
-      });
-      if (!hasPassage) result.push(key);
-    }
-    return result;
+    return computeIsolatedNodeKeys(lockedNodesOnLevel, autoLockedNodesOnLevel, presetConnectionsOnActiveLevel);
   }, [lockedNodes, autoLockedNodes, presetConnections, floors, activeFloorId]);
 
   // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
