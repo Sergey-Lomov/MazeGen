@@ -171,7 +171,7 @@ type PostEditCommand =
 ```
 
 There is no `deletePoint` command kind - the Delete tool appends ordinary per-entity commands
-(`setMeta`/`removeTeleport`/`removeVerticalPassage`/`removeElevator`/etc.), each with its own
+(`removeMeta`/`removeTeleport`/`removeVerticalPassage`/`removeElevator`/etc.), each with its own
 lifeline, so a point-reset undoes them through the same per-lifeline cascade as any other edit, with
 no dedicated delete lifeline involved.
 
@@ -501,7 +501,7 @@ with no highlight, rather than throwing.
 
 Every teleport/vertical-passage command (`setTeleportDirection`/`moveTeleportEndpoint`/
 `removeTeleport`, `setVerticalPassageDirection`/`moveVerticalPassageEndpoint`/
-`removeVerticalPassage`) and every elevator/`setMeta`-clear row carries its own bubble-relevant
+`removeVerticalPassage`) and every elevator/`removeMeta` row carries its own bubble-relevant
 from/to/direction/floors denormalized onto the command at construction time, rather than resolving
 through an id-keyed lookup into the CURRENT draft — mirroring every other pre-resolved field in
 `PostEditCommand` (the module doc comment in `postEditCommandTypes.ts` calls out
@@ -516,7 +516,7 @@ since-removed passage rendered "?" bubbles once the removal row above it started
 coordinates, by contrast) and its own arrow (a second pass — `moveVerticalPassageEndpoint`'s
 `direction` had not been denormalized yet, so a since-removed two-way passage's old move row
 rendered a plain one-way "->" instead of "<->"), then the identical pattern was found and fixed
-across every teleport command and the `setMeta` clear case in one pass. The old `PostEditLiveEntries`/
+across every teleport command and the `removeMeta` deletion case in one pass. The old `PostEditLiveEntries`/
 `buildLiveEntries`/`live` machinery (an id-keyed map built fresh from the CURRENT draft each render)
 has been removed entirely — no command kind resolves bubbles that way any more, every one carries
 what it needs on itself.
@@ -1312,7 +1312,7 @@ at once via `removePostEditSplitSlots` (below), same as the bulk primitive's own
 
 `deletePostEditPoint(point)` (the bulk/"Delete all" primitive) removes split content **first**, via
 `removePostEditSplitSlots` (see below) if the point has any declared slots, then appends one
-ordinary per-entity command for each remaining piece of content (`setMeta`/`removeTeleport`/
+ordinary per-entity command for each remaining piece of content (`removeMeta`/`removeTeleport`/
 `removeVerticalPassage`/`removeElevator`) built against state *after* the split removal — ordering
 matters here: computing meta/teleport/vertical/elevator clearing before the split removal would let
 the split's own cascade (see below) sweep away commands that were only just appended, discarding
@@ -1328,8 +1328,8 @@ branches), so a drag never keeps running "held" underneath an open dialog. Remov
 - Every declared split slot (GitHub issue #550 follow-up), via `removePostEditSplitSlots` — see
   below for the two removal strategies it picks between per slot.
 - Start/finish, if either currently addresses one of the point's nodes (same effect as
-  `clearPostEditEndpoint`, applied to both markers uniformly) — via an implicit `setMeta` outcome
-  within the same command's replay.
+  `clearPostEditEndpoint`, applied to both markers uniformly) — via one `removeMeta` deletion
+  command per marker. This remains two separate deletion events when both markers share a cell.
 - Every teleport with an endpoint on one of the point's nodes.
 - Every vertical passage/elevator with an endpoint on one of the point's nodes — generation-baked
   ones included (GitHub issue #564): since these are full baseline draft entries with their own

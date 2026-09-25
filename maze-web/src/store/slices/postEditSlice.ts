@@ -639,7 +639,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
    * `_generatedEdges` — it's a pure removal, and it never touches `postEditDraftEdges` at all (the
    * `wall`/`reset` tools already own basic-edge removal).
    *
-   * Appends one command per removed entity (`setMeta`/`removeTeleport`/`removeVerticalPassage`/
+   * Appends one command per removed entity (`removeMeta`/`removeTeleport`/`removeVerticalPassage`/
    * `removeElevator`) rather than a single bundled `deletePoint` command (GitHub issue #545) — each
    * removal gets its own lifeline (`lifelineKeysOf` in `postEditReplay.ts`), so the "Changes" panel
    * lists them as separate entries and a later `resetPostEditPoint` still undoes every one of them
@@ -689,10 +689,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       endpointRefsTarget(e.from) || endpointRefsTarget(e.to);
 
     if (derived.meta.start !== null && endpointRefsTarget(derived.meta.start)) {
-      appendPostEditCommand(get, set, { kind: "setMeta", slot: "start", endpoint: null, previousEndpoint: derived.meta.start });
+      appendPostEditCommand(get, set, { kind: "removeMeta", slot: "start", id: "s", endpoint: derived.meta.start });
     }
     if (derived.meta.finish !== null && endpointRefsTarget(derived.meta.finish)) {
-      appendPostEditCommand(get, set, { kind: "setMeta", slot: "finish", endpoint: null, previousEndpoint: derived.meta.finish });
+      appendPostEditCommand(get, set, { kind: "removeMeta", slot: "finish", id: "f", endpoint: derived.meta.finish });
     }
     for (const t of derived.teleports) {
       if (refsTarget(t)) appendPostEditCommand(get, set, { kind: "removeTeleport", id: t.id, from: t.from, to: t.to, direction: t.direction });
