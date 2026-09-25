@@ -176,6 +176,7 @@ export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
   textColor: canvas.floor.default,
   borderColor: canvas.vertical.default,
   borderColorFromMarker: true,
+  borderWidthFromMarker: true,
   borderWidth: 2,
   fontWeight: "bold",
   coverage: {

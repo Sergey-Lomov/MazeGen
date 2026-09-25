@@ -2116,6 +2116,7 @@
   "image_export.vector_by_walls.marker_index_padding_x": "Ширина",
   "image_export.vector_by_walls.marker_index_gap": "Зазор",
   "image_export.vector_by_walls.marker_index_border_width": "Толщина рамки",
+  "image_export.vector_by_walls.marker_index_border_width_from_marker": "Толщина рамки по маркеру",
   "image_export.vector_by_walls.marker_index_fill_color": "Цвет плашки",
   "image_export.vector_by_walls.marker_index_text_color": "Цвет текста",
   "image_export.vector_by_walls.marker_index_border_color_from_marker": "Цвет рамки по маркеру",

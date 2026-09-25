@@ -193,6 +193,7 @@ export function resolveEffectiveEndpoints(
 function markerEndpointVisual(m: MarkerSettings | VerticalMarkerStyle, fill: number, border: number, borderWidth: number): MarkerEndpointVisual {
   return {
     outerRadius: m.size * TILE_SIZE + Math.max(0, borderWidth),
+    borderWidth: Math.max(0, borderWidth),
     borderMatchColor: borderWidth > 0 ? border : fill,
   };
 }
@@ -239,6 +240,7 @@ export function buildMarkerIndexEndpointResolver(args: {
       const border = override?.borderColor ?? teleportStyle.edgeBorderColor;
       return {
         outerRadius: teleportStyle.size * TILE_SIZE + Math.max(0, teleportStyle.borderWidth),
+        borderWidth: Math.max(0, teleportStyle.borderWidth),
         borderMatchColor: teleportStyle.borderWidth > 0 ? border : fill,
       };
     }
@@ -249,6 +251,8 @@ export function buildMarkerIndexEndpointResolver(args: {
         : oneWay ? verticalStyle.decorativeStairsOneWay : verticalStyle.decorativeStairsTwoWay;
       return {
         outerRadius: lineStyle.size * TILE_SIZE,
+        // Decorative vertical elements have no marker border; their visible stroke is the line.
+        borderWidth: Math.max(0, lineStyle.lineWidth),
         borderMatchColor: lineStyle.lineColor,
       };
     }
@@ -256,6 +260,7 @@ export function buildMarkerIndexEndpointResolver(args: {
       const m = verticalStyle.oneWayPassageMarker;
       return {
         outerRadius: m.size * TILE_SIZE + Math.max(0, m.borderWidth ?? 0),
+        borderWidth: Math.max(0, m.borderWidth ?? 0),
         borderMatchColor: verticalStyle.oneWayAccentColor,
       };
     }

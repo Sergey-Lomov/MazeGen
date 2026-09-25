@@ -23,7 +23,7 @@ const style = (patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings =>
 
 // Stub endpoint visual — fixed radius + a color derived from the node id so per-endpoint
 // resolution can still be asserted where a test cares.
-const resolveVisual: ResolveMarkerEndpointVisual = (nodeId) => ({ outerRadius: 10, borderMatchColor: 0x100 + nodeId });
+const resolveVisual: ResolveMarkerEndpointVisual = (nodeId) => ({ outerRadius: 10, borderWidth: 3, borderMatchColor: 0x100 + nodeId });
 const build = (
   nodes: Parameters<typeof buildMarkerIndexLabels>[0],
   edges: Parameters<typeof buildMarkerIndexLabels>[1],
@@ -155,6 +155,7 @@ describe("buildMarkerIndexLabels — endpoint visual", () => {
     const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "teleport" }];
     const set = buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), (id) => ({
       outerRadius: 7 + id,
+      borderWidth: 4,
       borderMatchColor: 0xabc00 + id,
     }));
     expect(set.labels).toHaveLength(1);
@@ -168,7 +169,7 @@ describe("buildMarkerIndexLabels — endpoint visual", () => {
     const calls: Array<[number, string, boolean | undefined]> = [];
     buildMarkerIndexLabels(nodes, edges, cfg, 0, style(), (id, kind, oneWay) => {
       calls.push([id, kind, oneWay]);
-      return { outerRadius: 7, borderMatchColor: 0xabc00 };
+      return { outerRadius: 7, borderWidth: 2, borderMatchColor: 0xabc00 };
     });
     expect(calls).toEqual([[0, "vertical", true]]);
   });

@@ -32,6 +32,7 @@ interface PlateBox {
   h: number;
   cornerRadius: number;
   borderColor: number;
+  borderWidth: number;
 }
 
 /** "Marker indices" layer (GitHub issue #471) — draws a rectangular framed plate carrying a
@@ -73,7 +74,6 @@ export class MarkerIndexRenderer {
     const paddingX = style.paddingX * TILE_SIZE;
     const cornerRadius = style.cornerRadius * TILE_SIZE;
     const gap = Math.max(0, style.gap);
-    const borderWidth = Math.max(0, Math.round(style.borderWidth));
     const fontSize = fitMarkerIndexFontSize(plateH);
     const fontFamily = msdfFontFamily(style.fontWeight);
 
@@ -101,16 +101,17 @@ export class MarkerIndexRenderer {
         h: plateH,
         cornerRadius,
         borderColor,
+        borderWidth: Math.max(0, Math.round(style.borderWidthFromMarker ? item.markerBorderWidth : style.borderWidth)),
       };
     });
 
     // Pass 1 — gap rings (below the markers). A single outset rounded-rect fill in the floor
     // color, so the plate reads as a cut-out of the floor exactly like every other marker gap.
-    // The ring wraps the plate's *outer* edge — the border stroke is centered on the box edge,
-    // so it sticks out `borderWidth / 2` beyond it; the ring starts from there.
+    // The ring wraps the plate's *outer* edge. Marker borders use a geometric outward offset,
+    // so the plate uses the same full-width offset convention.
     if (gap > 0) {
-      const outset = gap + (borderWidth > 0 ? borderWidth / 2 : 0);
       for (const b of boxes) {
+        const outset = gap + b.borderWidth;
         const g = new Graphics();
         drawRoundedRect(g, b.x - outset, b.y - outset, b.w + 2 * outset, b.h + 2 * outset, b.cornerRadius + outset);
         g.fill(floorColor);
@@ -122,8 +123,8 @@ export class MarkerIndexRenderer {
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
       const g = new Graphics();
-      if (borderWidth > 0) {
-        drawRoundedRect(g, b.x - borderWidth / 2, b.y - borderWidth / 2, b.w + borderWidth, b.h + borderWidth, b.cornerRadius + borderWidth / 2);
+      if (b.borderWidth > 0) {
+        drawRoundedRect(g, b.x - b.borderWidth, b.y - b.borderWidth, b.w + 2 * b.borderWidth, b.h + 2 * b.borderWidth, b.cornerRadius + b.borderWidth);
         g.fill(b.borderColor);
       }
       drawRoundedRect(g, b.x, b.y, b.w, b.h, b.cornerRadius);

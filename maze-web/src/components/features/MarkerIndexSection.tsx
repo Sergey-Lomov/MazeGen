@@ -134,12 +134,18 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
                 format={(v) => String(Math.round(v))}
                 resetButton={gapResetButton}
               />
+              <ToggleRow
+                label={m["image_export.vector_by_walls.marker_index_border_width_from_marker"]()}
+                checked={settings.borderWidthFromMarker}
+                onChange={(borderWidthFromMarker) => onChange({ borderWidthFromMarker })}
+              />
               <SliderRow
                 label={m["image_export.vector_by_walls.marker_index_border_width"]()}
                 value={settings.borderWidth}
                 onChange={(borderWidth) => onChange({ borderWidth: Math.round(borderWidth) })}
                 min={0} max={10} step={1}
                 format={(v) => String(Math.round(v))}
+                disabled={settings.borderWidthFromMarker}
               />
               <ColorRow
                 label={m["image_export.vector_by_walls.marker_index_fill_color"]()}

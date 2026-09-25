@@ -14,6 +14,8 @@ export type MarkerIndexLinkKind = "teleport" | "vertical" | "elevator";
 export interface MarkerEndpointVisual {
   /** Marker's visual outer radius in world px (`size * TILE_SIZE + borderWidth`). */
   outerRadius: number;
+  /** Marker border thickness in whole pixels; the index plate mirrors it. */
+  borderWidth: number;
   /** Color to use for the plate border when `borderColorFromMarker` is on: the marker's own
    *  border color if it has a border, else its fill color. */
   borderMatchColor: number;
@@ -35,6 +37,7 @@ export interface MarkerIndexLabel {
   pos: [number, number];
   label: string;
   markerOuterRadius: number;
+  markerBorderWidth: number;
   borderMatchColor: number;
 }
 
@@ -183,6 +186,7 @@ export function buildMarkerIndexLabels(
         pos: [center.x, center.y],
         label,
         markerOuterRadius: visual.outerRadius,
+        markerBorderWidth: visual.borderWidth,
         borderMatchColor: visual.borderMatchColor,
       });
     }
