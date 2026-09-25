@@ -200,12 +200,21 @@ export interface VerticalDragFailure {
  * moving only the dragged end (the pre-fix behavior) desyncs the passage's own coordinates. Fails
  * (returns the original `passages` unchanged, plus the failing floor/point) when the new point
  * doesn't exist on the OTHER end's own floor field — the caller is expected to revert the whole
- * drag gesture on failure, never apply a partial move. */
+ * drag gesture on failure, never apply a partial move.
+ *
+ * `ownEndpoint`/`otherEndpoint` (GitHub issue #594, parity with post-edit's
+ * `resolveVerticalPassageMove` from GitHub issue #567) override the plain `presetEndpoint(point,
+ * undefined, ...)` this function would otherwise build for either end — used once the caller has
+ * checked both landing points against `presetSplitPoints` (`tryMovePresetVerticalPassageEndpoint`)
+ * and, for any that turned out split, the user has explicitly picked a node via
+ * `PresetSplitTargetDialog`. Omitted for a plain, non-split landing point — original behavior. */
 export function moveVerticalPassageEndpoint(
   passages: PresetVerticalPassageEntry[],
   hit: PresetVerticalPassageEndpointHit,
   point: [number, number],
   resolveFieldAt: ResolveFieldAt,
+  ownEndpoint?: PresetEndpoint,
+  otherEndpoint?: PresetEndpoint,
 ): { passages: PresetVerticalPassageEntry[]; failure?: VerticalDragFailure } {
   const entry = passages.find((p) => p.id === hit.id);
   if (!entry) return { passages };
@@ -217,8 +226,8 @@ export function moveVerticalPassageEndpoint(
   const ownLevel = hit.end === "from" ? entry.from.level : entry.to.level;
   const updated: PresetVerticalPassageEntry = {
     ...entry,
-    [hit.end]: presetEndpoint(point, undefined, ownLevel),
-    [hit.end === "from" ? "to" : "from"]: presetEndpoint(point, undefined, otherLevel),
+    [hit.end]: ownEndpoint ?? presetEndpoint(point, undefined, ownLevel),
+    [hit.end === "from" ? "to" : "from"]: otherEndpoint ?? presetEndpoint(point, undefined, otherLevel),
   };
   return { passages: passages.map((p) => (p.id === hit.id ? updated : p)) };
 }
@@ -227,12 +236,20 @@ export function moveVerticalPassageEndpoint(
  * issue #566) — mirrors `moveVerticalPassageEndpoint`, but an elevator's whole fan shares one
  * column, so a drag on any one floor's marker must re-target every other floor's own endpoint to
  * the same point too. Fails (unchanged `elevators`, plus the first floor that rejects the point, in
- * ascending floor order) when the new point doesn't exist on any of the OTHER floors' own fields. */
+ * ascending floor order) when the new point doesn't exist on any of the OTHER floors' own fields.
+ *
+ * `overridesByLevel` (GitHub issue #594, parity with post-edit's `resolveElevatorMove` from GitHub
+ * issue #567) — a level -> already-resolved `PresetEndpoint` map for any floor (the dragged one
+ * included) whose landing point turned out split and got an explicit user pick via
+ * `PresetSplitTargetDialog`; that floor's own entry is used verbatim instead of the plain
+ * `presetEndpoint(point, undefined, ...)` default. A level with no override entry keeps original
+ * behavior. */
 export function moveElevatorEndpoint(
   elevators: PresetElevatorEntry[],
   hit: PresetElevatorEndpointHit,
   point: [number, number],
   resolveFieldAt: ResolveFieldAt,
+  overridesByLevel?: ReadonlyMap<number, PresetEndpoint>,
 ): { elevators: PresetElevatorEntry[]; failure?: VerticalDragFailure } {
   const entry = elevators.find((e) => e.id === hit.id);
   if (!entry) return { elevators };
@@ -245,7 +262,7 @@ export function moveElevatorEndpoint(
   }
   const updated: PresetElevatorEntry = {
     ...entry,
-    floors: entry.floors.map((f) => presetEndpoint(point, undefined, f.level)),
+    floors: entry.floors.map((f) => overridesByLevel?.get(f.level ?? 0) ?? presetEndpoint(point, undefined, f.level)),
   };
   return { elevators: elevators.map((e) => (e.id === hit.id ? updated : e)) };
 }

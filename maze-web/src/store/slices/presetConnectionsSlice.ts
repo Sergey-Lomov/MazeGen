@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, moveElevatorEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, resolvePresetSplitTargets, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, moveElevatorEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
@@ -249,13 +249,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     debugStale: debugStaleOf(state),
   })),
 
-  startPresetVerticalPassagePlacement: (origin, tool) => set((state) => {
+  startPresetVerticalPassagePlacement: (origin, tool) => {
+    const state = get();
     const resolveFieldAt = resolveFieldAtOf(state);
     const originLevel = origin.level ?? 0;
     const availableDirections: ("up" | "down")[] = [];
     if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
-    if (availableDirections.length === 0) return {};
+    if (availableDirections.length === 0) return;
 
     // A click anywhere in a cell must edit an existing vertical passage for that adjacent floor,
     // not mint a second entry for the same pair. Two such entries are resolved as a bidirectional
@@ -273,25 +274,26 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       // If the cell identifies exactly one existing pair, mirror marker-click behavior. When both
       // adjacent floors already have passages, a cell click cannot tell which one was intended.
       if (directionEntries.length === 1 && directionEntries[0][1]) {
-        return {
+        set({
           presetVerticalPassages: cycleVerticalPassageDirection(state.presetVerticalPassages, directionEntries[0][1].id),
           presetsDirty: true,
           debugStale: debugStaleOf(state),
-        };
+        });
       }
-      return {};
+      return;
     }
     if (freeDirections.length === 1) {
-      return commitPresetVerticalPassage(state, origin, tool, freeDirections[0]);
+      tryCommitPresetVerticalPassage(get, set, origin, tool, freeDirections[0]);
+      return;
     }
-    return { presetVerticalPassagePending: { origin, tool, availableDirections: freeDirections } };
-  }),
+    set({ presetVerticalPassagePending: { origin, tool, availableDirections: freeDirections } });
+  },
 
-  choosePresetVerticalPassageDirection: (direction) => set((state) => {
-    const pending = state.presetVerticalPassagePending;
-    if (!pending) return {};
-    return commitPresetVerticalPassage(state, pending.origin, pending.tool, direction);
-  }),
+  choosePresetVerticalPassageDirection: (direction) => {
+    const pending = get().presetVerticalPassagePending;
+    if (!pending) return;
+    tryCommitPresetVerticalPassage(get, set, pending.origin, pending.tool, direction);
+  },
 
   cancelPresetVerticalPassagePlacement: () => set({ presetVerticalPassagePending: null }),
 
@@ -307,25 +309,92 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     debugStale: debugStaleOf(state),
   })),
 
-  movePresetVerticalPassageEndpoint: (id, end, point) => set((state) => {
-    const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, point, resolveFieldAtOf(state));
-    if (result.failure) return { presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } };
-    return {
-      presetVerticalPassages: result.passages,
-      presetsDirty: true,
-      debugStale: debugStaleOf(state),
-    };
-  }),
+  movePresetVerticalPassageEndpoint: (id, end, point) => {
+    const state = get();
+    const entry = state.presetVerticalPassages.find((p) => p.id === id);
+    if (!entry) return;
+    const otherEnd = end === "from" ? entry.to : entry.from;
+    const ownLevel = (end === "from" ? entry.from.level : entry.to.level) ?? 0;
+    const otherLevel = otherEnd.level ?? 0;
+    // Whether the OTHER floor even has a cell at the new point is checked here, before ANY
+    // split-target dialog opens — `moveVerticalPassageEndpoint`'s own `cellExistsAt` failure path
+    // only runs after the split-target queue (if any) has fully drained, which used to mean the
+    // user could answer a "which node?" prompt only to be told afterwards that the drag failed
+    // outright. A failure here is unaffected by which split node gets picked, so it's cheaper and
+    // more honest to catch it up front.
+    const resolveFieldAt = resolveFieldAtOf(state);
+    if (!cellExistsAt(resolveFieldAt, point, otherLevel)) {
+      set({ presetDragFailureMessage: { entityKind: "vertical_passage", level: otherLevel, point } });
+      return;
+    }
+    // Both landing points (the dragged end's new point AND the other end's own point, same (x, y),
+    // GitHub issue #566) can independently be declared split (GitHub issue #594) — checked BEFORE
+    // `moveVerticalPassageEndpoint`'s own `cellExistsAt` failure path, since a split pick has
+    // nothing to do with whether the other floor even has a cell there.
+    const { picks, queue } = resolvePresetSplitTargets(
+      [{ point, level: ownLevel === 0 ? undefined : ownLevel }, { point, level: otherLevel === 0 ? undefined : otherLevel }],
+      state.presetSplitPoints,
+    );
+    if (queue.length === 0) {
+      const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, point, resolveFieldAt, picks[0], picks[1]);
+      if (result.failure) set({ presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } });
+      else set({ presetVerticalPassages: result.passages, presetsDirty: true, debugStale: debugStaleOf(state) });
+      return;
+    }
+    const first = queue[0];
+    set({
+      presetSplitTargetPrompt: {
+        point: first.point, level: first.level, slotIds: first.slotIds,
+        action: { tool: "move_vertical_passage_endpoint", id, end },
+        queue, picks,
+      },
+      presetEntityDeletePrompt: null,
+    });
+  },
 
-  movePresetElevatorEndpoint: (id, level, point) => set((state) => {
-    const result = moveElevatorEndpoint(state.presetElevators, { id, level }, point, resolveFieldAtOf(state));
-    if (result.failure) return { presetDragFailureMessage: { entityKind: "elevator", ...result.failure } };
-    return {
-      presetElevators: result.elevators,
-      presetsDirty: true,
-      debugStale: debugStaleOf(state),
-    };
-  }),
+  movePresetElevatorEndpoint: (id, level, point) => {
+    const state = get();
+    const entry = state.presetElevators.find((e) => e.id === id);
+    if (!entry) return;
+    const levels = entry.floors.map((f) => f.level ?? 0).sort((a, b) => a - b);
+    // `levels` order mirrors `moveElevatorEndpoint`'s own — dragged floor first, then every OTHER
+    // floor ascending — so `picks[i]` matches `levels[i]` the same way `place_elevator_target`'s
+    // `picks` matches its own `levels` (GitHub issue #594, parity with post-edit's
+    // `move_elevator_endpoint` from GitHub issue #567).
+    const orderedLevels = [level, ...levels.filter((l) => l !== level)];
+    // Every OTHER floor's cell existence at the new point is checked here, before ANY split-target
+    // dialog opens — `moveElevatorEndpoint`'s own `cellExistsAt` failure path only runs after the
+    // whole split-target queue has drained, which used to let the user answer several "which node?"
+    // prompts only to be told afterwards the drag failed outright because some other floor simply
+    // has no cell there. A failure here is unaffected by which split node gets picked on any floor.
+    const resolveFieldAt = resolveFieldAtOf(state);
+    for (const otherLevel of levels.filter((l) => l !== level)) {
+      if (!cellExistsAt(resolveFieldAt, point, otherLevel)) {
+        set({ presetDragFailureMessage: { entityKind: "elevator", level: otherLevel, point } });
+        return;
+      }
+    }
+    const { picks, queue } = resolvePresetSplitTargets(
+      orderedLevels.map((l) => ({ point, level: l === 0 ? undefined : l })),
+      state.presetSplitPoints,
+    );
+    if (queue.length === 0) {
+      const overridesByLevel = new Map(orderedLevels.map((l, i) => [l, picks[i]!]));
+      const result = moveElevatorEndpoint(state.presetElevators, { id, level }, point, resolveFieldAt, overridesByLevel);
+      if (result.failure) set({ presetDragFailureMessage: { entityKind: "elevator", ...result.failure } });
+      else set({ presetElevators: result.elevators, presetsDirty: true, debugStale: debugStaleOf(state) });
+      return;
+    }
+    const first = queue[0];
+    set({
+      presetSplitTargetPrompt: {
+        point: first.point, level: first.level, slotIds: first.slotIds,
+        action: { tool: "move_elevator_endpoint", id, levels: orderedLevels },
+        queue, picks,
+      },
+      presetEntityDeletePrompt: null,
+    });
+  },
 
   setPresetDragOverride: (override) => set({ presetDragOverride: override }),
   dismissPresetDragFailureMessage: () => set({ presetDragFailureMessage: null }),
@@ -355,23 +424,49 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     return { presetElevatorPending: { ...pending, floors } };
   }),
 
-  confirmPresetElevatorPlacement: () => set((state) => {
+  confirmPresetElevatorPlacement: () => {
+    const state = get();
     const pending = state.presetElevatorPending;
-    if (!pending || pending.floors.size < 2) return {};
+    if (!pending || pending.floors.size < 2) return;
     const point = pending.origin.point;
-    const floors = Array.from(pending.floors).sort((a, b) => a - b)
-      .map((level) => presetEndpoint(point, undefined, level === 0 ? undefined : level));
-    const presetElevators = pending.editingId !== undefined
-      ? state.presetElevators.map((e) => e.id === pending.editingId ? { ...e, floors } : e)
-      : [...state.presetElevators, { id: state._nextPresetElevatorId, floors }];
-    return {
-      presetElevators,
-      _nextPresetElevatorId: pending.editingId !== undefined ? state._nextPresetElevatorId : state._nextPresetElevatorId + 1,
-      presetElevatorPending: null,
-      presetsDirty: true,
-      debugStale: debugStaleOf(state),
-    };
-  }),
+    const originLevel = pending.origin.level ?? 0;
+    const levels = Array.from(pending.floors).sort((a, b) => a - b);
+    // The ORIGIN's own level (GitHub issue #594 follow-up bug report) must NOT be re-resolved here
+    // even if it's declared split — `pending.origin` already carries the exact node the user picked
+    // for it (either a plain click, or an earlier `PresetSplitTargetDialog` pick when the origin
+    // point itself was split — see `applyPresetSplitTargetPick`'s `elevator` branch). Re-running
+    // `resolvePresetSplitTargets` against every floor including the origin's own re-queued a pick
+    // for a point the user had already resolved, and — because that extra queue entry's
+    // `targetIndex` never got filled by anything downstream — the elevator never committed at all
+    // (`dispatchPresetElevatorPlacement`'s `floors.length === action.levels.length` check kept
+    // failing forever): the origin's own point was in BOTH `presetSplitTargetPrompt`'s queue and
+    // already "resolved" in the user's mind, but nothing in this flow ever wrote `pending.origin`
+    // into `picks` for it.
+    const otherLevels = levels.filter((level) => level !== originLevel);
+    const { picks: otherPicks, queue } = resolvePresetSplitTargets(
+      otherLevels.map((level) => ({ point, level: level === 0 ? undefined : level })),
+      state.presetSplitPoints,
+    );
+    const picks: (PresetEndpoint | undefined)[] = levels.map((level) =>
+      level === originLevel ? pending.origin : otherPicks[otherLevels.indexOf(level)]);
+    // `queue` entries carry `targetIndex` into `otherPicks`/`otherLevels` — remap onto `picks`' own
+    // (full `levels`-based) indexing, since `levels` and `otherLevels` diverge by one skipped slot.
+    const remappedQueue = queue.map((q) => ({ ...q, targetIndex: levels.indexOf(otherLevels[q.targetIndex]) }));
+    if (remappedQueue.length === 0) {
+      const floors = picks.filter((p): p is PresetEndpoint => p !== undefined);
+      dispatchPresetElevatorPlacement(get, set, pending.editingId, floors);
+      return;
+    }
+    const first = remappedQueue[0];
+    set({
+      presetSplitTargetPrompt: {
+        point: first.point, level: first.level, slotIds: first.slotIds,
+        action: { tool: "place_elevator_target", origin: pending.origin, levels, editingId: pending.editingId },
+        queue: remappedQueue, picks,
+      },
+      presetEntityDeletePrompt: null,
+    });
+  },
 
   cancelPresetElevatorPlacement: () => set({ presetElevatorPending: null }),
 
@@ -670,10 +765,76 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   applyPresetSplitTargetPick: (slotId) => {
     const prompt = get().presetSplitTargetPrompt;
     if (!prompt) return;
-    set({ presetSplitTargetPrompt: null });
     const level = prompt.level;
     const endpoint = presetEndpoint(prompt.point, slotId, level);
     const { action } = prompt;
+
+    // GitHub issue #594 (parity with post-edit's `applyPostEditSplitTargetPick` from GitHub issue
+    // #567): a `move_*`/`place_*_target` action defers a drag commit or a fresh placement through a
+    // QUEUE of split points (see `presetSplitTargetPrompt`'s own doc comment) — this pick fills one
+    // slot of `picks` rather than dispatching immediately. `queue`/`picks` are always present
+    // together for these four tools.
+    if (
+      action.tool === "move_vertical_passage_endpoint" || action.tool === "move_elevator_endpoint"
+      || action.tool === "place_vertical_passage_target" || action.tool === "place_elevator_target"
+    ) {
+      const queue = prompt.queue ?? [];
+      const picks = [...(prompt.picks ?? [])];
+      const current = queue[0];
+      const targetIndex = current ? current.targetIndex : 0;
+      picks[targetIndex] = endpoint;
+      const rest = queue.slice(1);
+      if (rest.length > 0) {
+        const next = rest[0];
+        set({ presetSplitTargetPrompt: { ...prompt, point: next.point, level: next.level, slotIds: next.slotIds, queue: rest, picks } });
+        return;
+      }
+      set({ presetSplitTargetPrompt: null });
+      // Every branch below assumes `picks` is now fully resolved: `queue` is drained
+      // (`rest.length === 0`, checked above) and every non-queued target was already filled by
+      // `resolvePresetSplitTargets` before the prompt opened, so the "still missing" guards
+      // (`own && other`, `resolved.length === action.levels.length`, `if (to)`,
+      // `floors.length === action.levels.length`) should never actually trip. They stay as a
+      // defensive backstop — logged rather than silently dropped, so a future regression that DOES
+      // break the invariant surfaces instead of just quietly not creating the entity.
+      if (action.tool === "move_vertical_passage_endpoint") {
+        const own = picks[0];
+        const other = picks[1];
+        const state = get();
+        const entry = state.presetVerticalPassages.find((p) => p.id === action.id);
+        if (own && other && entry) {
+          const point = own.point;
+          const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id: action.id, end: action.end }, point, resolveFieldAtOf(state), own, other);
+          if (result.failure) set({ presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } });
+          else set({ presetVerticalPassages: result.passages, presetsDirty: true, debugStale: debugStaleOf(state) });
+        } else {
+          console.error("applyPresetSplitTargetPick: move_vertical_passage_endpoint queue drained with an unresolved pick", { action, picks });
+        }
+      } else if (action.tool === "move_elevator_endpoint") {
+        const resolved = action.levels.map((l, i) => ({ level: l, endpoint: picks[i] })).filter((r): r is { level: number; endpoint: PresetEndpoint } => r.endpoint !== undefined);
+        if (resolved.length === action.levels.length) {
+          const state = get();
+          const overridesByLevel = new Map(resolved.map((r) => [r.level, r.endpoint]));
+          const point = resolved[0].endpoint.point;
+          const result = moveElevatorEndpoint(state.presetElevators, { id: action.id, level: action.levels[0] }, point, resolveFieldAtOf(state), overridesByLevel);
+          if (result.failure) set({ presetDragFailureMessage: { entityKind: "elevator", ...result.failure } });
+          else set({ presetElevators: result.elevators, presetsDirty: true, debugStale: debugStaleOf(state) });
+        } else {
+          console.error("applyPresetSplitTargetPick: move_elevator_endpoint queue drained with an unresolved pick", { action, picks });
+        }
+      } else if (action.tool === "place_vertical_passage_target") {
+        const to = picks[0];
+        if (to) set(commitPresetVerticalPassage(get(), action.origin, action.passageTool, action.direction, to));
+        else console.error("applyPresetSplitTargetPick: place_vertical_passage_target queue drained with an unresolved pick", { action, picks });
+      } else {
+        const floors = picks.filter((p): p is PresetEndpoint => p !== undefined);
+        if (floors.length === action.levels.length) dispatchPresetElevatorPlacement(get, set, action.editingId, floors);
+        else console.error("applyPresetSplitTargetPick: place_elevator_target queue drained with an unresolved pick", { action, picks });
+      }
+      return;
+    }
+
+    set({ presetSplitTargetPrompt: null });
     switch (action.tool) {
       case "set_start":
         get().setPresetStartEndpoint(endpoint);
@@ -842,16 +1003,24 @@ function removeAllPresetPointEntitiesFor(
  * by `startPresetVerticalPassagePlacement`/the dialog) picks `to`'s floor. `vertical_passage_two_way`
  * always creates `direction: "two_way"`; `vertical_passage_one_way` always creates `"forward"` (`from`
  * is the departure end) — mirrors the old two-click tool's own click-order convention, just without
- * a second click. */
+ * a second click.
+ *
+ * `toOverride` (GitHub issue #594) is the user's own pick from `PresetSplitTargetDialog`, already
+ * resolved by `applyPresetSplitTargetPick` — when present it short-circuits the plain
+ * `presetEndpoint(origin.point, undefined, toLevel)` default below, which otherwise always attached
+ * `to` to the target floor's ORIGINAL node even when that point is declared split. Callers only ever
+ * pass it once `tryCommitPresetVerticalPassage` has already confirmed `to`'s point isn't split (or
+ * the dialog resolved it) — this function itself never re-checks split-ness. */
 function commitPresetVerticalPassage(
   state: MazeState,
   origin: PresetEndpoint,
   tool: "vertical_passage_one_way" | "vertical_passage_two_way",
   direction: "up" | "down",
+  toOverride?: PresetEndpoint,
 ): Partial<MazeState> {
   const originLevel = origin.level ?? 0;
   const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-  const to = presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
+  const to = toOverride ?? presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
   const entry: PresetVerticalPassageEntry = {
     id: state._nextPresetVerticalPassageId,
     from: origin,
@@ -865,6 +1034,64 @@ function commitPresetVerticalPassage(
     presetsDirty: true,
     debugStale: debugStaleOf(state),
   };
+}
+
+/** Entry point for a FRESH vertical-passage placement (GitHub issue #594, parity with post-edit's
+ * `tryCommitPostEditVerticalPassage` from GitHub issue #567) — wraps `commitPresetVerticalPassage`
+ * with a split-tile check on the TARGET floor: `to`'s own point is looked up in `presetSplitPoints`
+ * and, if declared split, the commit is deferred through `presetSplitTargetPrompt`
+ * (`action.tool: "place_vertical_passage_target"`) instead of silently taking
+ * `commitPresetVerticalPassage`'s previous `slotId: undefined` default. An unsplit `to` point
+ * commits exactly as before. */
+function tryCommitPresetVerticalPassage(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  origin: PresetEndpoint,
+  tool: "vertical_passage_one_way" | "vertical_passage_two_way",
+  direction: "up" | "down",
+): void {
+  const state = get();
+  const originLevel = origin.level ?? 0;
+  const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+  const { picks, queue } = resolvePresetSplitTargets([{ point: origin.point, level: toLevel === 0 ? undefined : toLevel }], state.presetSplitPoints);
+  if (queue.length === 0) {
+    set(commitPresetVerticalPassage(state, origin, tool, direction, picks[0]));
+    return;
+  }
+  const first = queue[0];
+  set({
+    presetSplitTargetPrompt: {
+      point: first.point, level: first.level, slotIds: first.slotIds,
+      action: { tool: "place_vertical_passage_target", origin, passageTool: tool, direction },
+      queue, picks,
+    },
+    presetEntityDeletePrompt: null,
+  });
+}
+
+/** Appends/updates the `PresetElevatorEntry` for a resolved `floors` list (GitHub issue #594,
+ * parity with post-edit's `dispatchPostEditElevatorPlacement` from GitHub issue #567) — the tail end
+ * of `confirmPresetElevatorPlacement`, factored out so `applyPresetSplitTargetPick`'s
+ * `place_elevator_target` branch can call it too once every queued split floor has been resolved
+ * through the dialog. `editingId` set → updates that existing entry in place; unset → mints a fresh
+ * one with the next elevator id. */
+function dispatchPresetElevatorPlacement(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  editingId: number | undefined,
+  floors: PresetEndpoint[],
+): void {
+  const state = get();
+  const presetElevators = editingId !== undefined
+    ? state.presetElevators.map((e) => e.id === editingId ? { ...e, floors } : e)
+    : [...state.presetElevators, { id: state._nextPresetElevatorId, floors }];
+  set({
+    presetElevators,
+    _nextPresetElevatorId: editingId !== undefined ? state._nextPresetElevatorId : state._nextPresetElevatorId + 1,
+    presetElevatorPending: null,
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  });
 }
 
 export function applyDefaultEdgeState(

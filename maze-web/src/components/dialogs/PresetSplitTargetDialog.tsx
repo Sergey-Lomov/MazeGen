@@ -4,14 +4,13 @@ import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
+import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds, resolveCells } from "../../pixi/fieldEditUtils";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
 import { presetEndpoint } from "../../pixi/presetEndpoint";
 import type { NodeLockKind } from "../../wasm/types";
 import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
-import { activeFloorLevel } from "../../store/storeHelpers";
+import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -37,20 +36,33 @@ function colorToCss(color: number): string {
 export function PresetSplitTargetDialog({ onClose }: Props) {
   const prompt = useMazeStore((s) => s.presetSplitTargetPrompt);
   const pick = useMazeStore((s) => s.applyPresetSplitTargetPick);
-  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
-  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
-  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const floors = useMazeStore((s) => s.floors);
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const hexOrientation = useMazeStore((s) => s.hexOrientation);
+  const triOrientation = useMazeStore((s) => s.triOrientation);
   const rawSplitPoints = useMazeStore((s) => s.presetSplitPoints);
   const rawConnections = useMazeStore((s) => s.presetConnections);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
-  const level = useMazeStore(activeFloorLevel);
 
   const point = prompt?.point ?? null;
+  // The prompt's own floor (GitHub issue #594) — NOT necessarily the active floor: a target-floor/
+  // drag placement (`place_vertical_passage_target`/`place_elevator_target`/`move_*_endpoint`) can
+  // prompt for a point on a floor other than the one currently being edited (e.g. the floor a
+  // vertical passage lands ON, one above/below the active floor). Reading `cfg`/cells/`level` off
+  // `activeFloorId` here — the pre-#594 behavior — silently resolved node names/preview against the
+  // WRONG floor's data whenever that happened, showing generic `Node N` labels and no preview
+  // instead of semantic names, even though the point genuinely is a recognized special shape.
+  const level = prompt?.level;
 
   const preview = useMemo(() => {
     if (!point || !prompt) return null;
-    const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
+    const levelFields = levelFieldsOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation });
+    const field = levelFields[level ?? 0];
+    if (!field) return null;
+    const cfg = field.cfg;
+    const cells = resolveCells(cfg, field.customPoints);
     const presetSplitPoints = recordOnLevel(rawSplitPoints, level);
     const presetConnections = presetConnectionsOnLevel(rawConnections, level);
     const { specialShapes } = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, {}, cells);
@@ -67,8 +79,8 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     ));
     const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
 
-    return { cells, presetSplitPoints, presetConnections, special, semanticNames };
-  }, [point, cfg, fieldPoints, fieldEditMode, rawSplitPoints, rawConnections, level, prompt]);
+    return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };
+  }, [point, floors, floorFields, tessellationKind, hexOrientation, triOrientation, rawSplitPoints, rawConnections, level, prompt]);
 
   if (!prompt || !point) return null;
   const [x, y] = point;
@@ -87,7 +99,13 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   };
 
   return (
-    <Modal title={lockAction ? m["preset.lock_target_title"]() : m["preset.split_target_title"]({ x, y })} size="approve" onClose={onClose}>
+    <Modal
+      title={lockAction
+        ? m["preset.lock_target_title"]({ x, y, level: (level ?? 0) + 1 })
+        : m["preset.split_target_title"]({ x, y, level: (level ?? 0) + 1 })}
+      size="approve"
+      onClose={onClose}
+    >
       <p style={styles.hint}>{lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}</p>
       <div style={styles.body}>
         <div style={styles.list}>
@@ -96,7 +114,15 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
               key={slotId ?? "original"}
               variant="secondary"
               layoutStyle={styles.item}
-              onClick={() => { pick(slotId); onClose(); }}
+              // A pick does NOT call `onClose` itself — a `move_*`/`place_*_target` action's queue
+              // (GitHub issue #594, same fix as post-edit's `PostEditSplitTargetDialog` for #567)
+              // reopens this dialog for the NEXT queued point by re-setting `presetSplitTargetPrompt`
+              // from inside `applyPresetSplitTargetPick` itself. Calling `onClose` (==
+              // `cancelPresetSplitTarget`, which nulls the prompt unconditionally) right after would
+              // immediately wipe out that freshly-set next prompt, so the dialog appeared to fire once
+              // then silently stop, and any action gated on the queue draining (e.g. elevator
+              // placement) never actually completed.
+              onClick={() => pick(slotId)}
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
               {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
@@ -108,7 +134,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
         {preview && (
           <PresetSplitPointPixiPreview
             point={point}
-            cfg={cfg}
+            cfg={preview.cfg}
             slotIds={prompt.slotIds}
             presetSplitPoints={preview.presetSplitPoints}
             presetConnections={preview.presetConnections}
