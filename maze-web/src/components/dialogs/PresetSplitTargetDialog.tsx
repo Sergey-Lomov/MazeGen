@@ -75,8 +75,12 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     // the node order matches the picker's own `options` below.
     const inFieldCells = buildCellSet(cells);
     const slotOrder: (number | undefined)[] = [undefined, ...prompt.slotIds];
+    // The split-point records and connections above are scoped to this floor and have had their
+    // `@level`/endpoint level stripped. Keep the endpoints passed to the shared face-kind helper
+    // in that same representation; retaining the target floor here makes presetEdgeKey look for
+    // level-suffixed entries that cannot exist in the scoped map (GitHub issue #596).
     const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
-      presetEndpoint(point, slotId, level), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
+      presetEndpoint(point, slotId), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, undefined,
     ));
     const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
 
