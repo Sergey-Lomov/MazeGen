@@ -65,6 +65,9 @@ export function FieldSetupFeature() {
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
+  const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
+  const confirmFieldEdit = useMazeStore((s) => s.confirmFieldEdit);
+  const cancelFieldEdit = useMazeStore((s) => s.cancelFieldEdit);
   const showFieldOrigin = useMazeStore((s) => s.showFieldOrigin);
   const setShowFieldOrigin = useMazeStore((s) => s.setShowFieldOrigin);
   const floorCount = useMazeStore((s) => s.floors.length);
@@ -239,6 +242,13 @@ export function FieldSetupFeature() {
           message={confirmMessages[confirmPending]}
           onConfirm={handleConfirm}
           onCancel={() => setConfirmPending(null)}
+        />
+      )}
+      {fieldEditConfirmation !== null && (
+        <ConfirmModal
+          message={m["field.reset_generation_warning"]()}
+          onConfirm={confirmFieldEdit}
+          onCancel={cancelFieldEdit}
         />
       )}
       {copyFloorDialogOpen && (

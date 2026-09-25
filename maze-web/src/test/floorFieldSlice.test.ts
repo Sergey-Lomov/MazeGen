@@ -12,10 +12,34 @@ beforeEach(() => {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 }, fieldDirty: false }),
       [OTHER_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 }, fieldDirty: false }),
     },
+    mazeDirty: false,
+    postEditDirty: false,
+    fieldEditConfirmation: null,
   });
 });
 
 describe("copyFloorField", () => {
+  it("clears downstream results when the field shape changes", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 1, x: 0, y: 0, i: 0 }],
+      edges: [{ from: 1, to: 1, kind: "basic" }],
+      statistics: {} as never,
+      mazeDirty: true,
+      postEditDirty: true,
+      postEditAnalytics: {} as never,
+    });
+    useMazeStore.getState().setSquareShape("free");
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({ kind: "setSquareShape", shape: "free" });
+    expect(useMazeStore.getState().nodes).toHaveLength(1);
+    useMazeStore.getState().confirmFieldEdit();
+    const state = useMazeStore.getState();
+    expect(state.nodes).toEqual([]);
+    expect(state.edges).toEqual([]);
+    expect(state.postEditAnalytics).toBeNull();
+    expect(state.mazeDirty).toBe(false);
+    expect(state.postEditDirty).toBe(false);
+  });
+
   it("replaces the active floor's FloorFieldConfig with a copy of the source floor's", () => {
     useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
     const { floorFields } = useMazeStore.getState();

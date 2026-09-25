@@ -59,6 +59,8 @@ A new floor (`addFloor`) starts as a copy of the floor it's stacked on top of �
 
 Generation sends `GenerateConfig.level_fields: Vec<Vec<[i32,i32]>>` to core (GitHub issue #338) — one independent point-set per floor, built from every floor's own `FloorFieldConfig` in `floors` order (`buildGenerateConfig`'s `level_fields`, `generateConfigBuilder.ts`). There is no separate level-count field on the wire; the number of levels generated is `level_fields.length`. `tessellation` (kind/orientation) remains the single maze-wide value. Everything downstream of the initial field build (QC/repair/routing, post-edit, analytics) still only ever operates on floor 0 regardless — see `Specs/floors.md`'s Non-goals and GitHub issue #355.
 
+Any change to a floor's shape, custom points, field mode, copied field, or tessellation orientation asks for confirmation when generation or post-edit results exist; only confirmation invalidates the generated graph and those results (GitHub issue #608). Preset connections and other preset inputs are preserved so the user can regenerate with the revised field.
+
 ## Camera behavior
 
 - Card opens in default mode → camera centers on shape centroid (screen-space average of all cells)

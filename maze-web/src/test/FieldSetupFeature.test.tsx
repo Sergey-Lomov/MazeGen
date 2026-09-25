@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { FieldSetupFeature, fieldSetupSubtitle } from "../components/features/FieldSetupFeature";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
@@ -9,6 +9,18 @@ beforeEach(() => {
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("shows a confirmation before changing a field with generation results", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      mazeDirty: true,
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ hexShape: "parallelogram" }) },
+    });
+    render(<FieldSetupFeature />);
+    fireEvent.change(screen.getByDisplayValue("Parallelogram"), { target: { value: "hexagon" } });
+    expect(screen.getByText("Changing the field resets the current generation and post-edit results. Continue?")).toBeInTheDocument();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].hexShape).toBe("parallelogram");
+  });
+
   it("is hidden with a single floor", () => {
     render(<FieldSetupFeature />);
     expect(screen.queryByText("Copy floor")).not.toBeInTheDocument();
