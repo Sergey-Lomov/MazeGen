@@ -211,7 +211,32 @@ export interface PostEditState {
    * confirmed nodes in snapshot order (index 0 = the point's original node — see
    * `PostEditController.buildNodeMap`); an unconfirmed split slot has no real id yet and is not
    * offered, same as the pre-#474 no-op on an unconfirmed active split node. `null` when no
-   * prompt is open. Never persisted (ephemeral placement state). */
+   * prompt is open. Never persisted (ephemeral placement state).
+   *
+   * `queue`/`picks` extend the original single-point prompt for GitHub issue #567: dragging an
+   * existing teleport/vertical-passage/elevator endpoint onto a split tile needs the same "which
+   * node?" prompt, but so does placing a brand-NEW vertical passage/elevator whose target floor
+   * happens to already be split (issue #567 second follow-up — `resolveActiveNodeIdAt`'s
+   * active/first-node default silently picked a node there too, same class of bug as the drag
+   * case). Either way, more than one split point can be touched at once — a vertical passage's
+   * OTHER end (GitHub issue #566 moves both ends together) can independently land on a split tile
+   * too, and an elevator's drag or fresh placement can touch a split tile on several floors
+   * simultaneously. Rather than one dialog with several independent pickers, every affected split
+   * point is resolved by its own `PostEditSplitTargetDialog` in sequence: `picks` is a fixed-length
+   * array (one slot per target the deferred action needs, in that action's own order — see each
+   * `move_*`/`place_*` variant's doc comment for what "target" means for it), pre-seeded with
+   * `nodeEndpoint(...)` for every target that ISN'T split (resolved for free, no prompt needed) and
+   * left `undefined` for every target that IS. `queue` holds one entry per still-`undefined` slot,
+   * `targetIndex` naming which one, in ascending order — `queue[0]` is always the point CURRENTLY
+   * on screen, mirrored into the top-level `point`/`level`/`nodeIds` fields for the dialog to read
+   * directly (both are kept in sync, `queue` is never pre-shifted past the current entry). Picking
+   * a node writes the resolved endpoint into `picks[queue[0].targetIndex]`, drops `queue[0]`, and —
+   * if any entries remain — shifts the new `queue[0]` into `point`/`level`/`nodeIds` too (dialog
+   * stays open, re-rendered for the new point); once `queue` is empty every slot in `picks` is
+   * filled and the deferred action dispatches. Absent/empty for every plain-placement action
+   * (set_start/set_finish/teleport placement, and the "no split target" fast path of vertical-
+   * passage/elevator placement), which only ever touch one point and need no `picks` array — those
+   * read `nodeIds`/the picked id directly, unchanged since GitHub issue #474. */
   postEditSplitTargetPrompt:
     | {
         point: [number, number];
@@ -221,7 +246,39 @@ export interface PostEditState {
           | { tool: "set_start" | "set_finish" }
           | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
           | { tool: "elevator" }
-          | { tool: "teleport_one_way" | "teleport_two_way" };
+          | { tool: "teleport_one_way" | "teleport_two_way" }
+          /** Deferred commit of a teleport-endpoint drag (GitHub issue #567) — `id`/`end` identify
+           * the dragged endpoint, mirroring `PostEditDragOverride`'s `teleportEndpoint` variant.
+           * `picks` has exactly one slot: the dragged endpoint's own new target. */
+          | { tool: "move_teleport_endpoint"; id: string; end: "from" | "to" }
+          /** Deferred commit of a vertical-passage-endpoint drag (GitHub issue #567/#566) — `id`/
+           * `end` identify the dragged endpoint. `picks` has two slots: `[0]` the dragged end's own
+           * new target (the point the drag actually landed on), `[1]` the OTHER end's own new
+           * target on its own floor (GitHub issue #566 moves both ends to the same (x, y)) —
+           * resolved from this instead of `resolveVerticalPassageMove`'s plain `findNodeAt`, which
+           * would otherwise silently take that floor's first (original) node regardless of split. */
+          | { tool: "move_vertical_passage_endpoint"; id: string; end: "from" | "to" }
+          /** Deferred commit of an elevator-endpoint drag (GitHub issue #567/#566) — `id` identifies
+           * the dragged entry, `levels` is every floor the drag re-targets (dragged floor first,
+           * then every OTHER floor ascending — mirrors `resolveElevatorMove`'s own ordering).
+           * `picks[i]` is `levels[i]`'s own new target. */
+          | { tool: "move_elevator_endpoint"; id: string; levels: number[] }
+          /** Deferred commit of a FRESH vertical-passage placement (GitHub issue #567 second
+           * follow-up) — `origin`/`tool`/`direction` are exactly `commitPostEditVerticalPassage`'s
+           * own params; only the `to` end (the target floor's own point, which can independently be
+           * split) needed resolving, so `picks` has exactly one slot. Distinct from
+           * `move_vertical_passage_endpoint`: this is a brand-new entity, not an existing one being
+           * dragged — `origin` was already resolved (possibly through this very dialog, if the
+           * origin point was itself split) before this action was built, never re-resolved here. */
+          | { tool: "place_vertical_passage"; origin: PostEditEndpoint; passageTool: "vertical_passage_one_way" | "vertical_passage_two_way"; direction: "up" | "down" }
+          /** Deferred commit of a FRESH elevator placement (GitHub issue #567 second follow-up) —
+           * `origin`/`levels`/`editingId` are exactly `confirmPostEditElevatorPlacement`'s own
+           * params (`levels` ascending, matching `pending.floors`' own sort order). Any subset of
+           * `levels` can independently be split, so — like `move_elevator_endpoint` — every split
+           * floor gets its own queued dialog; `picks[i]` is `levels[i]`'s own resolved target. */
+          | { tool: "place_elevator"; origin: PostEditEndpoint; levels: number[]; editingId?: string };
+        queue?: { targetIndex: number; point: [number, number]; level?: number; nodeIds: number[] }[];
+        picks?: (PostEditEndpoint | undefined)[];
       }
     | null;
   /** In-progress entity-delete prompt (GitHub issue #550, mirroring the preset-side dialog from
@@ -389,8 +446,11 @@ export interface PostEditActions {
   /** Moves BOTH ends of the passage so the dragged end lands on `endpoint` (GitHub issue #566) —
    *  see `movePostEditVerticalPassageEndpoint` (postEditVerticalUtils.ts)'s own doc comment. Sets
    *  `postEditDragFailureMessage` and leaves `postEditDraftVerticalPassages` unchanged when the
-   *  other end's floor has no node at the dragged endpoint's new `(x, y)`. */
-  movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
+   *  other end's floor has no node at the dragged endpoint's new `(x, y)`. `otherEndpoint` (GitHub
+   *  issue #567) is the user's own `PostEditSplitTargetDialog` pick for the OTHER end's own landing
+   *  point when that point is ALSO split — omitted when it isn't, falling back to the plain
+   *  `findNodeAt` resolution `resolveVerticalPassageMove` always used before this issue. */
+  movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint, otherEndpoint?: PostEditEndpoint) => void;
   startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
   togglePostEditElevatorFloor: (floorIndex: number) => void;
   confirmPostEditElevatorPlacement: () => void;
@@ -399,16 +459,26 @@ export interface PostEditActions {
   /** Moves EVERY floor endpoint of the elevator so the dragged floor's endpoint lands on `endpoint`
    *  (GitHub issue #566) — see `movePostEditElevatorEndpoint` (postEditVerticalUtils.ts)'s own doc
    *  comment. `level` is the dragged marker's own floor. Sets `postEditDragFailureMessage` and
-   *  leaves `postEditDraftElevators` unchanged when one of the OTHER floors has no node there. */
-  movePostEditElevatorEndpoint: (id: string, level: number, endpoint: PostEditEndpoint) => void;
+   *  leaves `postEditDraftElevators` unchanged when one of the OTHER floors has no node there.
+   *  `otherEndpoints` (GitHub issue #567) are the user's own `PostEditSplitTargetDialog` picks for
+   *  whichever OTHER floors ALSO turned out split, one `{ level, endpoint }` per such floor —
+   *  omitted (or a floor left out of it) falls back to the plain `findNodeAt` resolution
+   *  `resolveElevatorMove` always used before this issue. */
+  movePostEditElevatorEndpoint: (id: string, level: number, endpoint: PostEditEndpoint, otherEndpoints?: { level: number; endpoint: PostEditEndpoint }[]) => void;
   /** Closes the drag-failure `AlertModal` rendered in `PostEditFeature` (its own OK button). */
   dismissPostEditDragFailureMessage: () => void;
   /** Opens the "which split node?" prompt (GitHub issue #474). Called by `PostEditController` when
    * a vertex tool is used on a split point instead of dispatching the tool directly. */
   requestPostEditSplitTarget: (prompt: NonNullable<PostEditState["postEditSplitTargetPrompt"]>) => void;
-  /** Resolves an open `postEditSplitTargetPrompt` against the picked node id, dispatching the
-   * deferred vertex tool (start/finish, vertical passage, elevator, teleport) to that node.
-   * No-op if no prompt is open. */
+  /** Resolves an open `postEditSplitTargetPrompt` against the picked node id. For a plain
+   * placement action (start/finish, vertical passage, elevator, teleport) dispatches the deferred
+   * tool to that node directly, same as before GitHub issue #567. For a `move_*` action (a drag
+   * landing on a split tile), appends the resolved endpoint to `picks`; if `queue` still has more
+   * points to ask about, shifts the next one in and re-opens the dialog for it (the prompt stays
+   * open, `PostEditSplitTargetDialog` just re-renders for the new point) — once `queue` is empty,
+   * dispatches the deferred move (`movePostEditTeleportEndpoint`/`movePostEditVerticalPassageEndpoint`/
+   * `movePostEditElevatorEndpoint`) with every picked endpoint and clears the prompt. No-op if no
+   * prompt is open. */
   applyPostEditSplitTargetPick: (nodeId: number) => void;
   /** Dismisses an open `postEditSplitTargetPrompt` without placing anything. */
   cancelPostEditSplitTarget: () => void;

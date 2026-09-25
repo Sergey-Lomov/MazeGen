@@ -5,6 +5,9 @@ import { Button } from "../Button";
 import { Switch } from "../Switch";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
+import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitPointShapeName } from "../../pixi/splitNodeNames";
+import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -27,18 +30,39 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const pending = useMazeStore((s) => s.postEditElevatorPending);
   const toggleFloor = useMazeStore((s) => s.togglePostEditElevatorFloor);
   const confirm = useMazeStore((s) => s.confirmPostEditElevatorPlacement);
+  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
+  const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
+  const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
 
   const resolveFieldAt = useMemo(
     () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
     [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
   );
 
-  if (!pending || pending.origin.kind !== "node") return null;
-  const originId = pending.origin.id;
-  const originNode = nodes.find((n) => n.id === originId);
-  if (!originNode) return null;
+  const origin = pending?.origin;
+  const originNode = origin?.kind === "node" ? nodes.find((n) => n.id === origin.id) : undefined;
+  const point: [number, number] | null = originNode ? [originNode.x, originNode.y] : null;
+
+  // Per-floor split-shape name, for the row label (GitHub issue #567 follow-up): a floor whose own
+  // `(point, index)` resolves to more than one node is split, and — same recognition
+  // `PostEditSplitTargetDialog`'s preview uses — may match a named shape (bridge, diagonal, ...).
+  // Built once per floor set change rather than inline per row, since it needs each floor's own
+  // node/edge slice.
+  const splitNameByFloor = useMemo(() => {
+    if (!point) return new Map<number, string>();
+    const result = new Map<number, string>();
+    for (let index = 0; index < floors.length; index++) {
+      const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, cfg);
+      if (!geometry) continue;
+      const kind = detectSplitSpecialShapeKind(geometry.faceKindsByNode);
+      result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
+    }
+    return result;
+  }, [point, floors.length, nodes, cfg, draftEdges, draftTeleports, splitPoints]);
+
+  if (!pending || pending.origin.kind !== "node" || !originNode || !point) return null;
   const originLevel = originNode.level ?? 0;
-  const point: [number, number] = [originNode.x, originNode.y];
   const canConfirm = pending.floors.size >= 2;
 
   const statusOf = (index: number): FloorRowStatus => {
@@ -60,10 +84,12 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
           const status = statusOf(index);
           const checked = pending.floors.has(index);
           const disabled = status !== "available";
+          const splitName = splitNameByFloor.get(index);
+          const statusText = splitName ? `${statusLabel[status]}, ${splitName}` : statusLabel[status];
           return (
             <div key={floor.id} style={styles.item}>
               <span style={styles.itemLabel}>
-                {`${index + 1}: ${floor.title}`} <span style={styles.itemStatus}>({statusLabel[status]})</span>
+                {`${index + 1}: ${floor.title}`} <span style={styles.itemStatus}>({statusText})</span>
               </span>
               <Switch checked={checked} disabled={disabled} onChange={() => !disabled && toggleFloor(index)} />
             </div>

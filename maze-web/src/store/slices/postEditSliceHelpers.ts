@@ -22,6 +22,36 @@ import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 
+/** GitHub issue #567: resolves every target of a teleport/vertical-passage/elevator drag OR fresh
+ * placement against the maze-wide confirmed node snapshot, in `targets` order. A point with exactly
+ * one confirmed node (not split) resolves silently to that node, same as before this issue — its
+ * endpoint lands straight in `picks`, as a plain `nodeEndpoint(id)` (none of these targets are ever
+ * split-addressed themselves; only the LANDING/target point can be split, never the dragged/origin
+ * entity's own pre-existing endpoint identity). A point with more than one confirmed node needs the
+ * user to pick via `PostEditSplitTargetDialog`, so it's left `undefined` in `picks` and instead
+ * queued (`queue`, carrying its own `targetIndex` so `applyPostEditSplitTargetPick` can slot the
+ * eventual pick back into the right position once the dialog resolves it). `queue` empty means
+ * every target was plain — the caller then has every endpoint already in `picks` and should commit
+ * directly, no dialog. */
+export function resolveDragTargets(
+  targets: { point: [number, number]; level?: number }[],
+  pointNodeMap: Map<string, number[]>,
+): { picks: (PostEditEndpoint | undefined)[]; queue: { targetIndex: number; point: [number, number]; level?: number; nodeIds: number[] }[] } {
+  const picks: (PostEditEndpoint | undefined)[] = [];
+  const queue: { targetIndex: number; point: [number, number]; level?: number; nodeIds: number[] }[] = [];
+  targets.forEach((t, targetIndex) => {
+    const key = t.level === undefined || t.level === 0 ? `${t.point[0]},${t.point[1]}` : `${t.point[0]},${t.point[1]}@${t.level}`;
+    const nodeIds = pointNodeMap.get(key) ?? [];
+    if (nodeIds.length > 1) {
+      picks.push(undefined);
+      queue.push({ targetIndex, point: t.point, level: t.level, nodeIds });
+    } else {
+      picks.push(nodeIds[0] !== undefined ? nodeEndpoint(nodeIds[0]) : undefined);
+    }
+  });
+  return { picks, queue };
+}
+
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
  * grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`) must operate on one at a time,
@@ -616,13 +646,21 @@ export function removePostEditSplitSlots(
  * mirrors `commitPresetVerticalPassage` in `presetConnectionsSlice.ts`) — `origin` is always
  * `from`; `direction` ("up"/"down", already resolved as available by
  * `startPostEditVerticalPassagePlacement`/the dialog) picks `to`'s floor by resolving that floor's
- * own original node at `origin`'s `(x, y)`. */
+ * own original node at `origin`'s `(x, y)`.
+ *
+ * `toOverride` (GitHub issue #567 second follow-up) is the user's own pick from
+ * `PostEditSplitTargetDialog`, already resolved via `applyPostEditSplitTargetPick` — when present it
+ * short-circuits the plain `resolveActiveNodeIdAt` lookup below entirely, same override pattern
+ * `resolveVerticalPassageMove`'s `ownEndpoint`/`otherEndpoint` use. Callers only ever pass it once
+ * `tryCommitPostEditVerticalPassage` has already confirmed `to`'s point isn't split (or the dialog
+ * resolved it) — this function itself never re-checks split-ness. */
 export function commitPostEditVerticalPassage(
   get: () => MazeStore,
   set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
   origin: PostEditEndpoint,
   tool: "vertical_passage_one_way" | "vertical_passage_two_way",
   direction: "up" | "down",
+  toOverride?: PostEditEndpoint,
 ): void {
   // `origin` can be a `split`-kind endpoint (GitHub issue #550 ninth follow-up) — a plain
   // `origin.kind !== "node"` guard here used to silently drop every placement started from a split
@@ -634,20 +672,25 @@ export function commitPostEditVerticalPassage(
   const point: [number, number] = origin.kind === "node" ? [originNode!.x, originNode!.y] : origin.point;
   const originLevel = origin.kind === "node" ? (originNode!.level ?? 0) : (origin.level ?? 0);
   const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-  // A split `to` point resolves to whichever node the user last picked there (GitHub issue #546
-  // fifth follow-up), not always its original node — same `postEditActiveSplitNode` map the edge
-  // tools already read (`PostEditController.resolveActiveEndpointAt`), so a placement whose
-  // destination cell was already disambiguated (by an earlier edge/teleport click, or a previous
-  // placement into the same split point) lands on the correct node instead of silently defaulting.
-  // The RESULT is resolved through `resolveNodeIdToEndpoint` (GitHub issue #550 ninth/tenth
-  // follow-up), not a bare `nodeEndpoint(toNodeId)` — a destination that's actually a split point's
-  // numbered slot must be recorded as `splitEndpoint(...)`, matching what a confirmed round-trip
-  // already produces (`extractPostEditVerticalPassages`), or the entity silently drops out of the
-  // delete dialog's slot rows the same way GitHub issue #550's teleport bug did.
-  const toNodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel).map((n) => n.id);
-  const toNodeId = resolveActiveNodeIdAt(point, toNodeIds, state.postEditActiveSplitNode, toLevel === 0 ? undefined : toLevel);
-  if (toNodeId === undefined) return;
-  const to = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, toNodeId);
+  let to: PostEditEndpoint;
+  if (toOverride) {
+    to = toOverride;
+  } else {
+    // A split `to` point resolves to whichever node the user last picked there (GitHub issue #546
+    // fifth follow-up), not always its original node — same `postEditActiveSplitNode` map the edge
+    // tools already read (`PostEditController.resolveActiveEndpointAt`), so a placement whose
+    // destination cell was already disambiguated (by an earlier edge/teleport click, or a previous
+    // placement into the same split point) lands on the correct node instead of silently defaulting.
+    // The RESULT is resolved through `resolveNodeIdToEndpoint` (GitHub issue #550 ninth/tenth
+    // follow-up), not a bare `nodeEndpoint(toNodeId)` — a destination that's actually a split point's
+    // numbered slot must be recorded as `splitEndpoint(...)`, matching what a confirmed round-trip
+    // already produces (`extractPostEditVerticalPassages`), or the entity silently drops out of the
+    // delete dialog's slot rows the same way GitHub issue #550's teleport bug did.
+    const toNodeIds = state.nodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel).map((n) => n.id);
+    const toNodeId = resolveActiveNodeIdAt(point, toNodeIds, state.postEditActiveSplitNode, toLevel === 0 ? undefined : toLevel);
+    if (toNodeId === undefined) return;
+    to = resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, toNodeId);
+  }
   const id = formatPostEditId("verticalPassage", state._nextPostEditVerticalPassageId);
   const applied = appendPostEditCommand(get, set, {
     kind: "addVerticalPassage", id, from: origin, to,
@@ -658,6 +701,72 @@ export function commitPostEditVerticalPassage(
       _nextPostEditVerticalPassageId: state._nextPostEditVerticalPassageId + 1,
       postEditVerticalPassagePending: null,
     }));
+  }
+  if (get().postEditAutoConfirm) {
+    void get().confirmPostEdit();
+  }
+}
+
+/** Entry point for a FRESH vertical-passage placement (GitHub issue #567 second follow-up) —
+ * wraps `commitPostEditVerticalPassage` with the same split-tile check
+ * `PostEditController`'s drag-commit path already runs: the `to` floor's own point is looked up in
+ * a maze-wide `pointNodeMap` and, if split (more than one confirmed node there), the commit is
+ * deferred through `PostEditSplitTargetDialog` (`action.tool: "place_vertical_passage"`) instead of
+ * silently taking `resolveActiveNodeIdAt`'s active-or-first-node default. Before this fix, only a
+ * drag onto an EXISTING endpoint prompted — placing a brand-new passage whose target floor happened
+ * to already be split never did, even though the same "which node?" ambiguity applies. An unsplit
+ * `to` point commits exactly as before (single confirmed node or none — `commitPostEditVerticalPassage`
+ * itself still no-ops on the latter). */
+export function tryCommitPostEditVerticalPassage(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  origin: PostEditEndpoint,
+  tool: "vertical_passage_one_way" | "vertical_passage_two_way",
+  direction: "up" | "down",
+): void {
+  const state = get();
+  const originNode = origin.kind === "node" ? state.nodes.find((n) => n.id === origin.id) : undefined;
+  if (origin.kind === "node" && !originNode) return;
+  const point: [number, number] = origin.kind === "node" ? [originNode!.x, originNode!.y] : origin.point;
+  const originLevel = origin.kind === "node" ? (originNode!.level ?? 0) : (origin.level ?? 0);
+  const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+  const pointNodeMap = buildMultiFloorPointNodeMap(state.nodes);
+  const { picks, queue } = resolveDragTargets([{ point, level: toLevel === 0 ? undefined : toLevel }], pointNodeMap);
+  if (queue.length === 0) {
+    commitPostEditVerticalPassage(get, set, origin, tool, direction, picks[0]);
+    return;
+  }
+  const first = queue[0];
+  set({
+    postEditSplitTargetPrompt: {
+      point: first.point, level: first.level, nodeIds: first.nodeIds,
+      action: { tool: "place_vertical_passage", origin, passageTool: tool, direction },
+      queue, picks,
+    },
+  });
+}
+
+/** Appends the `addElevator`/`updateElevatorFloors` command for a resolved `floors` list (GitHub
+ * issue #567 second follow-up) — the tail end of `confirmPostEditElevatorPlacement`, factored out
+ * so `applyPostEditSplitTargetPick`'s `place_elevator` branch can call it too once every queued
+ * split floor has been resolved through the dialog. `editingId` set → edits that existing draft
+ * entry (GitHub issue #564: a generation-baked elevator is a full baseline draft entry with its own
+ * id, same as a user-placed one); unset → places a fresh one, minting the next elevator id. */
+export function dispatchPostEditElevatorPlacement(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  editingId: string | undefined,
+  floors: PostEditEndpoint[],
+): void {
+  const state = get();
+  const applied = editingId !== undefined
+    ? appendPostEditCommand(get, set, { kind: "updateElevatorFloors", id: editingId, floors })
+    : appendPostEditCommand(get, set, { kind: "addElevator", id: formatPostEditId("elevator", state._nextPostEditElevatorId), floors });
+  if (applied) {
+    if (editingId === undefined) {
+      set((state) => ({ _nextPostEditElevatorId: state._nextPostEditElevatorId + 1 }));
+    }
+    set({ postEditElevatorPending: null });
   }
   if (get().postEditAutoConfirm) {
     void get().confirmPostEdit();

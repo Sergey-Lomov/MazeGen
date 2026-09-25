@@ -517,8 +517,16 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // bookkeeping needed — a draft entity always wins). `resolveNodeLevel`/`verticalPairs` still
     // need the *unscoped* node/edge set, same reason `selectVerticalPassagePairSet`'s own doc
     // comment gives (a floor-scoped edge list is missing the reverse-direction edge of a
-    // bidirectional passage, whose own `from` lives on the other floor).
-    const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, overrideElevators, resolveSplit);
+    // bidirectional passage, whose own `from` lives on the other floor). Must resolve against
+    // `unscopedResolveSplit`, not the floor-scoped `resolveSplit` above — a vertical passage/
+    // elevator endpoint CAN be `split`-kind now (GitHub issue #567) and, being inherently
+    // cross-floor, its `to`/other-floor endpoints routinely address a split point on a DIFFERENT
+    // floor than the active one; `resolveSplit`'s `pointNodeMap` only covers the active floor's own
+    // nodes, so any such endpoint silently failed to resolve (`resolveEndpoint` → `undefined`),
+    // dropping the WHOLE edge out of `draftVerticalEdges` — no marker on either floor, even though
+    // the entity round-trips fine through the "Changes"/link-bubble UI (which already reads through
+    // an unscoped resolver).
+    const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, overrideElevators, unscopedResolveSplit);
     const allVerticalEdges = draftVerticalEdges;
     // Positioning split-node vertical markers also needs the ordinary directed graph edges so
     // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate
