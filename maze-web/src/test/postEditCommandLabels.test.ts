@@ -25,7 +25,7 @@ const splitCtxFor = (allNodes: NodeDto[], splitPoints: Record<string, number[]>)
   splitPoints,
   activeSplitNode: {},
   draftEdges: null,
-  cfg: { type: "square", width: 10, height: 10 },
+  cfgAt: () => ({ type: "square", width: 10, height: 10 }),
   inFieldCellsAt: () => new Set(),
 });
 
@@ -315,12 +315,55 @@ describe("postEditCommandLabel", () => {
         splitPoints: { "5,5": [0] },
         activeSplitNode: {},
         draftEdges,
-        cfg: { type: "square", width: 10, height: 10 },
+        cfgAt: () => ({ type: "square", width: 10, height: 10 }),
         inFieldCellsAt: () => new Set(["5,5", "6,5", "4,5", "5,6", "5,4"]),
       };
       const command: PostEditCommand = { kind: "setEdge", edge: es(originalEp, slotEp, "wall") };
       const label = postEditCommandLabel(command, buildNodeByIdMap(allNodes), false, splitCtx);
       expect(label.bubbles.map((b) => b.text)).toEqual(["5:5 (Cor)", "5:5 (Brg)"]);
+    });
+
+    it("resolves each floor's split-node topology through that floor's OWN `cfgAt(level)` config, not a shared one (GitHub issue #611's bug class)", () => {
+      // Same "bridge" node/edge layout as the previous test (right/left through corridor on the
+      // original node, up/down crossing on the slot), duplicated onto floor 1 with the SAME (x, y)
+      // and edges — but `cfgAt` returns a triangle config for floor 1 instead of square. A square
+      // field's 4 offsets recognize this layout as "bridge" (2 opposite face pairs);
+      // `detectSplitSpecialShapeKind` only ever recognizes degree 4 or 6 (a triangle field's degree-3
+      // tile never matches either), so it returns null there and the label falls back to plain slot
+      // numbering instead. If `facesOf` ignored `level` and always resolved through one shared
+      // config (the pre-fix bug), floor 1 would wrongly get the same "bridge" semantic name floor 0
+      // has.
+      const original = n(0, 5, 5, 1, 0);
+      const slot = n(1, 5, 5, 1, 1);
+      const right = n(2, 6, 5, 1);
+      const left = n(3, 4, 5, 1);
+      const down = n(4, 5, 6, 1);
+      const up = n(5, 5, 4, 1);
+      const allNodes = [original, slot, right, left, down, up];
+      const originalEp = nodeEndpoint(0);
+      const slotEp = nodeEndpoint(1);
+      const rightEp = nodeEndpoint(2);
+      const leftEp = nodeEndpoint(3);
+      const downEp = nodeEndpoint(4);
+      const upEp = nodeEndpoint(5);
+      const slotSplitEp = splitEndpoint([5, 5], 0, 1);
+      const draftEdges: SplitLabelContext["draftEdges"] = {
+        [edgeKey(originalEp, rightEp)]: { from: originalEp, to: rightEp, kind: "basic" },
+        [edgeKey(originalEp, leftEp)]: { from: originalEp, to: leftEp, kind: "basic" },
+        [edgeKey(slotSplitEp, downEp)]: { from: slotSplitEp, to: downEp, kind: "basic" },
+        [edgeKey(slotSplitEp, upEp)]: { from: slotSplitEp, to: upEp, kind: "basic" },
+      };
+      const splitCtx: SplitLabelContext = {
+        allNodes,
+        splitPoints: { "5,5@1": [0] },
+        activeSplitNode: {},
+        draftEdges,
+        cfgAt: (level) => (level === 1 ? { type: "triangle_rect", cols: 10, rows: 10 } : { type: "square", width: 10, height: 10 }),
+        inFieldCellsAt: () => new Set(["5,5", "6,5", "4,5", "5,6", "5,4"]),
+      };
+      const command: PostEditCommand = { kind: "setEdge", edge: es(originalEp, slotEp, "wall") };
+      const label = postEditCommandLabel(command, buildNodeByIdMap(allNodes), true, splitCtx);
+      expect(label.bubbles.map((b) => b.text)).toEqual(["L2 5:5 (N1)", "L2 5:5 (N2)"]);
     });
 
     it("shows the suffix for a floor-0 node whose NodeDto.level is a real 0, not undefined (GitHub issue #546 ninth follow-up)", () => {

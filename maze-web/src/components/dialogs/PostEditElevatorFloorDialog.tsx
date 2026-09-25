@@ -30,7 +30,6 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
   const pending = useMazeStore((s) => s.postEditElevatorPending);
   const toggleFloor = useMazeStore((s) => s.togglePostEditElevatorFloor);
   const confirm = useMazeStore((s) => s.confirmPostEditElevatorPlacement);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
@@ -53,13 +52,16 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
     if (!point) return new Map<number, string>();
     const result = new Map<number, string>();
     for (let index = 0; index < floors.length; index++) {
-      const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, cfg);
+      // Each row's own floor config (GitHub issue #611's bug class) — a shared active-floor config
+      // would mis-resolve face topology for every floor row other than the currently active one.
+      const rowCfg = floorFields[floors[index].id].tessellationConfig;
+      const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, rowCfg);
       if (!geometry) continue;
       const kind = detectSplitSpecialShapeKind(geometry.faceKindsByNode);
       result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
     }
     return result;
-  }, [point, floors.length, nodes, cfg, draftEdges, draftTeleports, splitPoints]);
+  }, [point, floors, floorFields, nodes, draftEdges, draftTeleports, splitPoints]);
 
   if (!pending || pending.origin.kind !== "node" || !originNode || !point) return null;
   const originLevel = originNode.level ?? 0;
