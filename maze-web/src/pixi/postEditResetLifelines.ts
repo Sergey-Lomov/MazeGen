@@ -26,6 +26,8 @@ import type { SplitLabelContext } from "./postEditSplitLabels";
 export interface PostEditResetLifelineDescriptor {
   keys: string[];
   commandIndex: number;
+  /** Snapshot of the command represented by this row when the dialog was opened. */
+  command: PostEditCommand;
   label: PostEditCommandLabel;
 }
 
@@ -68,7 +70,12 @@ export function buildPostEditResetLifelines(
 
   const rows: PostEditResetLifelineDescriptor[] = [];
   for (const [commandIndex, keys] of keysByIndex) {
-    rows.push({ keys, commandIndex, label: postEditCommandLabel(commands[commandIndex], nodeById, multiFloor, splitCtx) });
+    rows.push({
+      keys,
+      commandIndex,
+      command: commands[commandIndex],
+      label: postEditCommandLabel(commands[commandIndex], nodeById, multiFloor, splitCtx),
+    });
   }
   // Sort by log order (a row's position follows its own command's position), same reading order
   // the "Changes" panel's own oldest-to-newest indices give.

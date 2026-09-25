@@ -27,6 +27,7 @@ import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
+import { emptyPostEditHoverState, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -78,6 +79,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
    *  (`hoveredIssueLoopEdges`/`hoveredIssueRegionGroups`), so no post-edit-specific wiring needed
    *  beyond owning this instance and re-rendering it on the same triggers as everything else. */
   private readonly issueHighlight: IssueHighlightOverlay;
+
+  // Store the pointer hover independently from the PIXI display objects. `redrawAll` rebuilds
+  // those objects after every post-edit command; retaining the input lets the same hover survive
+  // a Reset/Delete click without requiring another pointermove (GitHub issue #592).
+  private hoverState: PostEditHoverState = emptyPostEditHoverState();
 
   constructor(container: Container) {
     super();
@@ -159,6 +165,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * `canvas.fieldEditor.danger` (red) instead of the ordinary hover color — signals a destructive
    * tool the same way the Management section's red Reset button does. */
   updateHover(edge: FieldEdge | null, danger = false): void {
+    this.hoverState.edge = edge;
+    this.hoverState.edgeDanger = danger;
     if (!this.cfg) return;
     const highlights = buildHoverEdgeHighlight(edge, this.cfg, danger ? canvas.fieldEditor.danger : undefined);
     this.hover.render({ highlights });
@@ -169,6 +177,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * #221's follow-up: highlighting a wall there was misleading about what a click would do).
    * `danger` — see `updateHover`'s doc comment. */
   updateCellHover(cell: [number, number] | null, danger = false): void {
+    this.hoverState.cell = cell;
+    this.hoverState.cellDanger = danger;
     if (!this.cfg) return;
     this.cellHover.render({ cells: cell ? [cell] : [], color: danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
@@ -199,6 +209,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.activeFloorId !== prev.activeFloorId ||
       state.postEditTool !== prev.postEditTool
     ) {
+      const clearsHover = shouldClearPostEditHover(state, prev);
+      // A changed tool or floor invalidates the old hit target. Draft edits redraw the derived
+      // graph under the cursor, so keep the hover for issue #592.
+      if (clearsHover) this.hoverState = emptyPostEditHoverState();
       this.redrawAll(state);
     } else if (state.postEditHoveredEntity !== prev.postEditHoveredEntity) {
       this.redrawHoveredEntity(state);
@@ -553,8 +567,18 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.markers.render({ markers: markerData });
 
-    this.hover.render({ highlights: [] });
-    this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.hover.render({
+      highlights: buildHoverEdgeHighlight(
+        this.hoverState.edge,
+        cfg,
+        this.hoverState.edgeDanger ? canvas.fieldEditor.danger : undefined,
+      ),
+    });
+    this.cellHover.render({
+      cells: this.hoverState.cell ? [this.hoverState.cell] : [],
+      color: this.hoverState.cellDanger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover,
+      alpha: 0.35,
+    }, cfg);
     this.redrawHoveredEntity(state);
     this.redrawIssueHighlight(state);
   }
@@ -562,6 +586,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   protected clearAll(): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
+    this.hoverState = emptyPostEditHoverState();
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);

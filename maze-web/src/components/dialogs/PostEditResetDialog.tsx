@@ -1,8 +1,7 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
-import { buildPostEditResetLifelinesAt } from "../../store/slices/postEditSliceHelpers";
 import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -20,39 +19,13 @@ interface Props {
  * would reset both). "Reset all" resets every lifeline touching the point at once, all the way back
  * to generation state (same as a plain `resetPostEditPoint` call, and what held-Shift does without
  * opening this dialog at all).
- * The row list is rebuilt from live store state on every render (never cached at open time), so it
- * stays correct as rows disappear one click at a time; the dialog auto-closes once the point has no
- * affected lifelines left. Row assembly itself is `buildPostEditResetLifelinesAt` — this component
- * only subscribes to the individual store fields it needs (for render reactivity) and passes them
- * straight through, same convention the delete dialog uses. */
+ * The row list is snapshotted when the dialog opens. Clicking a row may remove that row, but never
+ * promotes an older command from the same entity into a new row while the dialog remains open. */
 export function PostEditResetDialog({ onClose }: Props) {
   const prompt = useMazeStore((s) => s.postEditResetPrompt);
   const resetOne = useMazeStore((s) => s.resetPostEditPointLifeline);
   const resetAll = useMazeStore((s) => s.resetAllPostEditPointLifelines);
-  const nodes = useMazeStore((s) => s.nodes);
-  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const postEditActiveSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
-  const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
-  const postEditBaseline = useMazeStore((s) => s.postEditBaseline);
-  const postEditCommands = useMazeStore((s) => s.postEditCommands);
-  const floors = useMazeStore((s) => s.floors);
-  const activeTessellationConfig = useMazeStore((s) => s.activeTessellationConfig);
-  const floorFields = useMazeStore((s) => s.floorFields);
-
-  const lifelines = useMemo(() => {
-    if (!prompt) return [];
-    return buildPostEditResetLifelinesAt(
-      {
-        nodes, postEditDraftSplitPoints, postEditActiveSplitNode, floors, floorFields, activeTessellationConfig,
-        postEditBaseline, postEditCommands, postEditDraftEdges,
-      },
-      prompt.point,
-      prompt.level,
-    );
-  }, [
-    prompt, nodes, postEditDraftSplitPoints, postEditActiveSplitNode, floors, floorFields, activeTessellationConfig,
-    postEditBaseline, postEditCommands, postEditDraftEdges,
-  ]);
+  const lifelines = prompt?.lifelines ?? [];
 
   if (!prompt) return null;
   if (lifelines.length === 0) {
@@ -70,7 +43,7 @@ export function PostEditResetDialog({ onClose }: Props) {
             key={l.commandIndex}
             variant="secondary"
             layoutStyle={styles.item}
-            onClick={() => resetOne(l.commandIndex)}
+            onClick={() => resetOne(l.commandIndex, l.command, l.keys)}
           >
             <span style={styles.action}>{l.label.action}</span>
             {l.label.entityId !== undefined && <span style={styles.idBubble}>id: {l.label.entityId}</span>}

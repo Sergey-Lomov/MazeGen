@@ -10,6 +10,7 @@ export abstract class BaseController {
   private vpStart = { x: 0, y: 0 };
 
   private dragActive = false;
+  private dragKind: "edge" | "cell" | null = null;
   private dragVisited = new Set<string>();
 
   protected draggingMarker: "set_start" | "set_finish" | null = null;
@@ -54,11 +55,12 @@ export abstract class BaseController {
    * Callers own the store action and any visual update via `onNewEdge`. */
   protected beginEdgeDrag(edgeKey: string): void {
     this.dragActive = true;
+    this.dragKind = "edge";
     this.dragVisited = new Set([edgeKey]);
   }
 
   protected continueEdgeDrag(edge: FieldEdge | null, onNewEdge: (edge: FieldEdge) => void): void {
-    if (this.dragActive && edge && !this.dragVisited.has(edge.key)) {
+    if (this.dragActive && this.dragKind === "edge" && edge && !this.dragVisited.has(edge.key)) {
       this.dragVisited.add(edge.key);
       onNewEdge(edge);
     }
@@ -77,6 +79,7 @@ export abstract class BaseController {
    * `edgeKey` above — callers own the store action via `onNewCell`. */
   protected beginCellDrag(point: [number, number]): void {
     this.dragActive = true;
+    this.dragKind = "cell";
     this.dragVisited = new Set([BaseController.cellDragKey(point)]);
   }
 
@@ -84,7 +87,7 @@ export abstract class BaseController {
     point: [number, number] | null,
     onNewCell: (point: [number, number]) => void,
   ): void {
-    if (!this.dragActive || point === null) return;
+    if (!this.dragActive || this.dragKind !== "cell" || point === null) return;
     const key = BaseController.cellDragKey(point);
     if (this.dragVisited.has(key)) return;
     this.dragVisited.add(key);
@@ -97,11 +100,20 @@ export abstract class BaseController {
    * Covers both edge and cell drags (shared bookkeeping). */
   protected endEdgeDrag(): void {
     this.dragActive = false;
+    this.dragKind = null;
     this.dragVisited.clear();
   }
 
   protected get isDragActive(): boolean {
     return this.dragActive;
+  }
+
+  protected get isEdgeDrag(): boolean {
+    return this.dragActive && this.dragKind === "edge";
+  }
+
+  protected get isCellDrag(): boolean {
+    return this.dragActive && this.dragKind === "cell";
   }
 
   /** Marker drag and teleport-endpoint drag (the latter only in PresetConnectionsController) are

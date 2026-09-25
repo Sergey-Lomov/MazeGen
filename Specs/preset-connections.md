@@ -272,6 +272,7 @@ Changing `defaultEdgeState` also triggers `_recomputeAutoLock` if auto-lock is e
 Tools `wall`, `passage`, and `reset` support drag with LMB held. While dragging:
 - `beginEdgeDrag(edgeKey)` (on `BaseController`, shared with `PostEditController`) sets `dragActive` and seeds `dragVisited` on `pointerdown`
 - `continueEdgeDrag(edge, onNewEdge)` deduplicates edges within one drag session via `dragVisited: Set<string>` and invokes `onNewEdge` for each newly-entered edge; the callback applies the current tool via `applyPresetConnectionsTool` (`wall`/`passage`) or `applyPresetConnectionsToolAt("reset", ...)` (the `reset`/Clear-tool drag path, GitHub issue #433 — needs `from`/`to` to rebuild the level-aware key itself, not just the bare edge key) — the helper itself never touches the store
+- The drag kind is locked by the branch selected at `pointerdown`: a clear/reset gesture that starts on a cell remains cell-targeted even if a later move hits an edge, and an edge gesture remains edge-targeted.
 - `endEdgeDrag()` clears `dragActive`/`dragVisited` on `pointerup` (LMB only)
 
 One-way and lock/gen-source tools do not support drag.

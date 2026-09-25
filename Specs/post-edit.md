@@ -1212,7 +1212,10 @@ hover uses):
   (`removeSplitPoint`, whose `removedSlotIds` can span multiple slots) collapses its lifelines into a
   single row, since resetting it resets all of them together. Each row is labeled via the same
   `postEditCommandLabel` vocabulary the "Changes" panel rows use, built from that command,
-  `commandIndex` being its own oldest-to-newest log index. The dialog carries a "Reset all" button.
+  `commandIndex` being its own oldest-to-newest log index. The dialog snapshots this row list when
+  it opens: after one row is reset, only that row is removed; an older command exposed by the reset
+  is not promoted into a new row until the dialog is closed and opened again. The dialog carries a
+  "Reset all" button.
   Clicking a row resets only that ONE command, not any lifeline's whole history — `resetPostEditPointLifeline` is a thin
   wrapper over `deletePostEditCommand(commandIndex)` (GitHub issue #547's existing per-row Delete
   action): a plain move/direction-change/removal collapses away leaving the rest of the lifeline's
@@ -1228,7 +1231,11 @@ hover uses):
   to generation-time state — every edge/teleport/vertical-passage/elevator/start-finish command
   touching any of the point's current *or past* nodes (original plus every split slot ever added
   there, including one added via `addSplitNode` and never confirmed) is dropped, so the derived
-  state falls back to `postEditBaseline.derived` for that lifeline. This is the only way to reset a
+  state falls back to `postEditBaseline.derived` for that lifeline. When the reset removes an entity
+  created only during post-edit, its creation command is retained and a matching localized `remove*`
+  command is appended to the log, so the Changes/event log records the deletion while replay still
+  ends at the generation state. Generation-backed entities are restored without a synthetic removal
+  event. This is the only way to reset a
   split connection — the edge branch refuses it.
 
   A count>1 request that opens the dialog mid-drag ends the gesture right there (same `endEdgeDrag()`
@@ -1241,9 +1248,10 @@ hover uses):
   `beginEdgeDrag`/`continueEdgeDrag`) drive it — they share the one `dragVisited` set and the
   `endEdgeDrag`/`isDragActive` teardown with the edge drag, keyed through a private
   `cell:x,y`-prefixed helper so a cell key can never collide with a `FieldEdge` key (a gesture is
-  only ever one or the other, since the active tool is fixed for its duration). The near-edge zone
-  still hands off to the edge branch mid-drag, so a stroke that grazes an edge resets that grain
-  instead of the point there. In auto-confirm mode each painted cell schedules a debounced
+  only ever one or the other, since the drag kind is locked by the branch selected at pointerdown).
+  The near-edge hit test may change hover presentation during a gesture, but it cannot switch the
+  mutation branch: a cell-started stroke remains a cell reset and an edge-started stroke remains an
+  edge reset. In auto-confirm mode each painted cell schedules a debounced
   reconfirm on pointer-up, identical to the edge branch.
 
   Post-edit itself isn't multi-floor-aware (`Specs/floors.md`'s "Non-goals") even though generation
@@ -1254,6 +1262,11 @@ hover uses):
 - Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
 
 **Danger styling:** the Reset icon button uses the `btn-tool-icon-selected-danger` class (red border + inset shadow when selected, `base.error`) instead of the accent `btn-tool-icon-selected` — `reset` is in `PostEditFeature`'s `DANGER_TOOLS` set. Its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click. (`delete` is styled the same way — also in `DANGER_TOOLS`.)
+
+After a Reset/Delete action changes the derived post-edit graph, `PostEditRenderer` preserves the
+current edge or cell hover until the pointer moves, so the destructive target remains visible.
+Changing the active tool or floor clears that cached hover because the hit target may no longer
+be valid (GitHub issue #592).
 
 ### `delete` Tool Detail (GitHub issue #386, multi-entity picker + split slots added by #550)
 
