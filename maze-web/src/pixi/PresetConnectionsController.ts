@@ -88,7 +88,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingMarker) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell or vanishing for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const coords: [number, number] = [cell.x, cell.y];
       if (this.draggingMarker === "set_start") useMazeStore.getState().setPresetStart(coords);
       else useMazeStore.getState().setPresetFinish(coords);
@@ -98,7 +102,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingTeleportEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const teleport = state.presetTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
       if (!teleport) return;
       const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
@@ -123,7 +131,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingVerticalPassageEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const passage = state.presetVerticalPassages.find(p => p.id === this.draggingVerticalPassageEndpoint!.id);
       if (!passage) return;
       const hit = this.draggingVerticalPassageEndpoint;
@@ -147,7 +159,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingElevatorEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const hit = this.draggingElevatorEndpoint;
       const elevator = state.presetElevators.find(e => e.id === hit.id);
       if (!elevator) return;
@@ -377,10 +393,12 @@ export class PresetConnectionsController extends BaseController {
 
       if (onStart) {
         this.armMarkerDrag("set_start");
+        this.renderer.updateCellHover(null);
         return;
       }
       if (onFinish) {
         this.armMarkerDrag("set_finish");
+        this.renderer.updateCellHover(null);
         return;
       }
       if (teleportHit) {

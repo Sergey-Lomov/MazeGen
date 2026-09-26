@@ -168,6 +168,10 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell or vanishing for the whole gesture. `endpoint === null` already means "not in field"
+      // (`resolveActiveEndpointAt`'s own doc comment), so no separate membership check is needed.
+      this.renderer.updateCellHover(endpoint !== null ? [cell.x, cell.y] : null);
       // Live preview only (GitHub issue #545) — no command appended per move, so a drag that never
       // ends on a different node costs nothing to have started. Origin comparison lives in
       // `onPointerUp`, which is the sole place that appends the command.
@@ -184,6 +188,9 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture. `endpoint === null` already means "not in field".
+      this.renderer.updateCellHover(endpoint !== null ? [cell.x, cell.y] : null);
       if (endpoint === null) return;
       const floorNodeIds = new Set(floorNodes.map((n) => n.id));
       const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
@@ -220,6 +227,10 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture. A vertical-passage endpoint only accepts a plain node, same
+      // condition as the early-return below.
+      this.renderer.updateCellHover(endpoint !== null && endpoint.kind === "node" ? [cell.x, cell.y] : null);
       if (endpoint === null || endpoint.kind !== "node") return;
       const hit = this.draggingVerticalPassageEndpoint;
       const { current, other } = this.verticalPassageDragOrigin;
@@ -244,6 +255,10 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture. An elevator endpoint only accepts a plain node, same condition
+      // as the early-return below.
+      this.renderer.updateCellHover(endpoint !== null && endpoint.kind === "node" ? [cell.x, cell.y] : null);
       if (endpoint === null || endpoint.kind !== "node") return;
       const hit = this.draggingElevatorEndpoint;
       const currentId = this.elevatorDragOrigin.kind === "node" ? this.elevatorDragOrigin.id : undefined;
@@ -510,6 +525,7 @@ export class PostEditController extends BaseController {
       if (markerUnderCursor) {
         this.armMarkerDrag(markerUnderCursor === "start" ? "set_start" : "set_finish");
         this.markerDragOrigin = markerUnderCursor === "start" ? meta.start : meta.finish;
+        this.renderer.updateCellHover(null);
         return;
       }
       if (teleportHit) {
