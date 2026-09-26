@@ -159,11 +159,12 @@ export interface PresetConnectionsState {
   presetEntityDeletePrompt:
     | { point: [number, number]; level?: number; scope: PresetPointEntityScope }
     | null;
-  /** Live drag preview for a preset vertical-passage/elevator endpoint (GitHub issue #566) — set by
-   *  `PresetConnectionsController` on every pointermove while such a drag is armed, cleared on
-   *  pointerup. Purely visual, mirrors post-edit's own `postEditDragOverride`: nothing here is
-   *  committed to `presetVerticalPassages`/`presetElevators` until release, so an intermediate cell
-   *  the cursor passes over never gets written even transiently. Not persisted. */
+  /** Live drag preview for a preset vertical-passage/elevator endpoint (GitHub issue #566) or a
+   *  start/finish marker (GitHub issue #613) — set by `PresetConnectionsController` on every
+   *  pointermove while such a drag is armed, cleared on pointerup. Purely visual, mirrors
+   *  post-edit's own `postEditDragOverride`: nothing here is committed to
+   *  `presetVerticalPassages`/`presetElevators`/`presetStart`/`presetFinish` until release, so an
+   *  intermediate cell the cursor passes over never gets written even transiently. Not persisted. */
   presetDragOverride: PresetDragOverride | null;
   /** Set when a vertical-passage/elevator drag is released over a point that doesn't exist on one
    *  of the entity's OTHER floors (GitHub issue #566) — the whole drag is reverted (see
@@ -177,7 +178,12 @@ export interface PresetConnectionsState {
 /** See `PresetConnectionsState.presetDragOverride`. */
 export type PresetDragOverride =
   | { kind: "verticalPassageEndpoint"; id: number; end: "from" | "to"; point: [number, number] }
-  | { kind: "elevatorEndpoint"; id: number; level: number; point: [number, number] };
+  | { kind: "elevatorEndpoint"; id: number; level: number; point: [number, number] }
+  /** Live preview for a start/finish marker drag (GitHub issue #613) — mirrors post-edit's own
+   *  `postEditDragOverride`'s `marker` variant: nothing is written to `presetStart`/`presetFinish`
+   *  until pointerup, so a fast drag no longer forces a full store update (and canvas redraw) on
+   *  every pointermove. */
+  | { kind: "marker"; marker: "start" | "finish"; point: [number, number] };
 
 /** See `PresetConnectionsState.presetDragFailureMessage`. `entityKind` picks the message wording
  *  ("passage" vs. "stop") — `level` is 0-based, `PresetConnectionsFeature` formats it 1-based

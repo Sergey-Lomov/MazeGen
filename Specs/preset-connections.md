@@ -84,8 +84,8 @@ Both live in the single Tools section (GitHub issue #456 — see "## Tools" belo
 
 All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_two_way`) share one editing mode: whichever vertex tool is active, drag-to-move and right-click-to-delete apply uniformly to the start marker, the finish marker, and every teleport endpoint — not just the element type matching the active tool.
 
-- **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker live.
-- **Left press-drag starting on the finish marker's cell**, while any vertex tool is active → moves the finish marker live.
+- **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker. Live preview only (`presetDragOverride`'s `marker` variant, GitHub issue #613): the pointermove handler writes the drag's current cell to `presetDragOverride` instead of calling `setPresetStart` on every move — `PresetConnectionsRenderer` substitutes it in place of the committed `presetStart` while it's set. Nothing is written to `presetStart` until pointerup, and only if the cursor actually left the origin cell; a plain click that never moved stays a no-op.
+- **Left press-drag starting on the finish marker's cell**, while any vertex tool is active → moves the finish marker the same way, via `presetDragOverride`/`setPresetFinish` on release.
 - **Left press-drag starting on an existing teleport endpoint**, while any vertex tool is active → moves that endpoint live (see "Editing existing teleports" below).
 - **Right-click on the start marker's cell**, while any vertex tool is active → clears the start marker (`setPresetStart(null)`).
 - **Right-click on the finish marker's cell**, while any vertex tool is active → clears the finish marker (`setPresetFinish(null)`).
