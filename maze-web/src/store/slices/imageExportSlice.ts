@@ -63,7 +63,16 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setDigitalFixedSize: (width, height) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, fixedWidth: width, fixedHeight: height } } })),
   setPrintDensity: (density) =>
-    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, density } } })),
+    set((s) => {
+      const print = s.pngExportSettings.print;
+      const oldDpi = DPI_BY_DENSITY[print.density];
+      const newDpi = DPI_BY_DENSITY[density];
+      // `scale` is a pixel-space value, while the user-facing print size is physical. Keep
+      // the latter stable when a manually selected DPI changes (GitHub issue #620). Auto-fit
+      // will recompute its own scale from the sheet/content ratio, which is DPI-independent.
+      const scale = print.scaleAutoFit ? print.scale : print.scale * newDpi / oldDpi;
+      return { pngExportSettings: { ...s.pngExportSettings, print: { ...print, density, scale } } };
+    }),
   setPrintPaperSize: (size) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, paperSize: size } } })),
   setPrintCustomSize: (widthMm, heightMm) =>
