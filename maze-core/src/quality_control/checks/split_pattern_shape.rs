@@ -47,16 +47,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitPatternShapeCheck
             return;
         }
 
-        let mut seen_points = std::collections::HashSet::new();
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .split_points()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    return None;
-                }
                 if split_tile_matches_any(&maze.graph, &maze.field, nodes, &self.patterns) {
                     return None;
                 }

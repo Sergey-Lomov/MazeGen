@@ -1,6 +1,6 @@
 use crate::Maze;
-use crate::graph::distance_map::min_optional_distance;
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::waypoint_distance_core::{Waypoint, WaypointDistances};
 use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
 use crate::space::Tessellation;
@@ -11,14 +11,7 @@ pub const SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON: Comparison = Comparis
 
 /// Which waypoint(s) a `SplitDistanceFromWaypointCheck` instance measures distance against —
 /// same shape as `TeleportWaypoint`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SplitWaypoint {
-    Start,
-    Finish,
-    /// Both — the check uses whichever of the two is closer (`min`), same "closest wins"
-    /// reduction `TeleportWaypoint::Any` uses.
-    Any,
-}
+pub type SplitWaypoint = Waypoint;
 
 /// Flags an extra split node (`Field::add_node_at`'s minted node, never a point's slot-0
 /// original) whose point sits too close to/far from a waypoint (start/finish) in progression
@@ -60,75 +53,21 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
-        let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
-        let (need_start, need_finish) = match self.waypoint {
-            SplitWaypoint::Start => (true, false),
-            SplitWaypoint::Finish => (false, true),
-            SplitWaypoint::Any => (true, true),
-        };
         // Silently skip if the maze doesn't have the waypoint(s) this instance needs set —
         // covered by MissingEndpointsCheck, same rationale as the loop/teleport distance checks.
-        if need_start && dist_from_start.is_none() {
+        let Some(distances) = WaypointDistances::new(maze, self.waypoint) else {
             return;
-        }
-        if need_finish && dist_from_finish.is_none() {
-            return;
-        }
-
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-
-        let waypoint_distance = |node_id: crate::ids::NodeId| -> Option<usize> {
-            // A split node is very often exactly the plain-corridor shape (one edge in, one edge
-            // out) `NavGraph` compresses into some other nav-edge's interior `path` — `nav_node_for`
-            // alone returns `None` for it (see GitHub issue #248's original bug report: this made
-            // the check silently never fire for the common split-node shape). Falls back to
-            // `corridor_index`, same resolution `routing::resolve_nav_node` already uses for a
-            // route's own interior nodes — this is the nav node at the *end* of the corridor
-            // segment the node sits on, an approximation (off by however many tiles remain in that
-            // segment) accepted here for the same progression-space-proximity purpose routing.rs
-            // already uses it for, not an exact tile count.
-            let nav_id = nav
-                .nav_node_for(node_id)
-                .or_else(|| nav.corridor_index.get(&node_id).copied())?;
-            let mut best: Option<usize> = None;
-            if need_start {
-                best = min_optional_distance(
-                    best,
-                    dist_from_start
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            if need_finish {
-                best = min_optional_distance(
-                    best,
-                    dist_from_finish
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            best
         };
 
-        // `Field::all_points()` yields one entry per `NodeId` (sorted, then mapped back to its
-        // point) — a split point's several nodes all resolve to the same point, so iterating it
-        // directly would visit that point once per extra node instead of once overall. Dedup via
-        // a seen-points set instead (order doesn't matter here — every point is only ever
-        // resolved into `invalid` via its own `nodes_at`, never compared across points).
-        let mut seen_points = std::collections::HashSet::new();
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .split_points()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    return None;
-                }
-                let point_distance = nodes.iter().filter_map(|&n| waypoint_distance(n)).min()?;
+                let point_distance = nodes
+                    .iter()
+                    .filter_map(|&n| distances.distance_to_with_corridor_fallback(n))
+                    .min()?;
                 if !self
                     .comparison
                     .compare(point_distance as u32, self.distance)

@@ -1,6 +1,6 @@
 use crate::ids::{IdGenerator, NodeId};
 use crate::space::{Field, Tessellation};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Stable identifier for one level (floor) inside a `MultiLevelField`. Never an index into any
 /// `Vec` — never reused, never renumbered when other levels are added/removed/reordered (GitHub
@@ -333,6 +333,26 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.level_order
             .iter()
             .flat_map(move |&level| self.levels[&level].all_points().map(move |p| (level, p)))
+    }
+
+    /// Every split tile across every level — a point carrying >= 2 nodes — as `(LevelId,
+    /// T::Point)` pairs, each appearing exactly once. GitHub issue #614: shared replacement for
+    /// the ~14 call sites (QC checks, `cross_element`, `split_topology`, repair-strategy tests)
+    /// that used to each independently filter `all_points_with_level()` down to split tiles,
+    /// repeating both the dedup (`all_points_with_level` yields a split point once per its own
+    /// node, not once overall — see `Field::all_points`'s doc comment) and the `nodes_at(...).len()
+    /// >= 2` check.
+    pub fn split_points(&self) -> impl Iterator<Item = (LevelId, T::Point)> + '_ {
+        let mut seen_points = HashSet::new();
+        self.all_points_with_level()
+            .filter(move |&(level, point)| seen_points.insert((level, point)))
+            .filter(move |&(level, point)| self.nodes_at(level, point).len() >= 2)
+    }
+
+    /// True if `point` on `level` is a split tile (>= 2 nodes). `false` if `level`/`point` don't
+    /// exist — mirrors `nodes_at`'s own "unknown -> empty" contract rather than panicking.
+    pub fn is_split_point(&self, level: LevelId, point: T::Point) -> bool {
+        self.nodes_at(level, point).len() >= 2
     }
 }
 

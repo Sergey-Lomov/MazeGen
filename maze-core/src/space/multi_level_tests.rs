@@ -277,6 +277,54 @@ fn clone_is_independent_of_the_original() {
 }
 
 #[test]
+fn split_points_dedups_a_split_tile_and_skips_unsplit_points() {
+    let (mut mf, mut ids) = single(3, 1);
+    let level = mf.single_level_id();
+    mf.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
+
+    let points: Vec<_> = mf.split_points().collect();
+    assert_eq!(
+        points,
+        vec![(level, SquarePoint { x: 1, y: 0 })],
+        "the split point appears exactly once, unsplit points are excluded"
+    );
+}
+
+#[test]
+fn split_points_is_scoped_per_level() {
+    let mut ids = IdGenerator::new();
+    let field_a = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
+    let field_b = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
+    let mut mf = MultiLevelField::<SquareTessellation>::new([field_a]);
+    let level_a = mf.single_level_id();
+    let level_b = mf.add_level(field_b);
+    mf.add_node_at(level_a, SquarePoint { x: 0, y: 0 }, &mut ids);
+    mf.add_node_at(level_b, SquarePoint { x: 1, y: 0 }, &mut ids);
+
+    let points: std::collections::HashSet<_> = mf.split_points().collect();
+    assert_eq!(
+        points,
+        std::collections::HashSet::from([
+            (level_a, SquarePoint { x: 0, y: 0 }),
+            (level_b, SquarePoint { x: 1, y: 0 }),
+        ]),
+        "each level's own split tile is reported against its own level"
+    );
+}
+
+#[test]
+fn is_split_point_matches_split_points() {
+    let (mut mf, mut ids) = single(2, 1);
+    let level = mf.single_level_id();
+    let split = SquarePoint { x: 0, y: 0 };
+    let plain = SquarePoint { x: 1, y: 0 };
+    mf.add_node_at(level, split, &mut ids);
+
+    assert!(mf.is_split_point(level, split));
+    assert!(!mf.is_split_point(level, plain));
+}
+
+#[test]
 fn all_points_with_level_covers_every_level_in_order() {
     let mut ids = IdGenerator::new();
     let mut mf = MultiLevelField::<SquareTessellation>::new([]);

@@ -106,17 +106,15 @@ fn matching_split_tile_points<'a, T: Tessellation>(
     maze: &'a Maze<T>,
     patterns: &'a [SplitPattern],
 ) -> impl Iterator<Item = (LevelId, T::Point)> + 'a {
-    let mut seen_points = std::collections::HashSet::new();
-    maze.field
-        .all_points_with_level()
-        .filter(move |&(level, point)| seen_points.insert((level, point)))
-        .filter(move |&(level, point)| {
-            let nodes = maze.field.nodes_at(level, point);
-            if nodes.len() < 2 {
-                return false;
-            }
-            patterns.is_empty() || split_tile_matches_any(&maze.graph, &maze.field, nodes, patterns)
-        })
+    maze.field.split_points().filter(move |&(level, point)| {
+        patterns.is_empty()
+            || split_tile_matches_any(
+                &maze.graph,
+                &maze.field,
+                maze.field.nodes_at(level, point),
+                patterns,
+            )
+    })
 }
 
 #[cfg(test)]

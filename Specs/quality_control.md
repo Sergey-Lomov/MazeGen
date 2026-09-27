@@ -796,6 +796,36 @@ For every `Teleport` edge in `maze.graph`, checks whether a `Basic` edge exists 
 
 `protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
+### waypoint_distance_core — shared waypoint-distance engine
+
+`quality_control::checks::waypoint_distance_core` (`maze-core/src/quality_control/checks/waypoint_distance_core.rs`). See GitHub issue #616.
+
+```rust
+pub enum Waypoint { Start, Finish, Any }
+
+pub struct WaypointDistances { /* opaque */ }
+
+impl WaypointDistances {
+    pub fn new<T: Tessellation>(maze: &Maze<T>, waypoint: Waypoint) -> Option<Self>;
+    pub fn distance_to(&self, node_id: NodeId) -> Option<usize>;
+    pub fn distance_to_with_corridor_fallback(&self, node_id: NodeId) -> Option<usize>;
+}
+
+pub fn waypoint_distance_matches(
+    distances: impl IntoIterator<Item = Option<usize>>,
+    comparison: Comparison,
+    threshold: u32,
+) -> bool;
+```
+
+Shared by `TeleportWaypointDistanceCheck`, `OneWayWaypointDistanceCheck`, and `SplitDistanceFromWaypointCheck` — all three flag a candidate (a teleport edge, a one-way edge, a split tile) whose distance to a waypoint (start/finish) in progression space compares against a threshold, and previously duplicated the same `Waypoint`-shaped enum, the same `need_start`/`need_finish` resolution and early-skip, and the same per-node `waypoint_distance` closure. Each check's own `TeleportWaypoint`/`OneWayWaypoint`/`SplitWaypoint` is now a type alias for the shared `Waypoint` (kept as distinct names per check for call-site readability and because `check_factory.rs`/wire-level code already names them individually).
+
+`WaypointDistances::new` builds the distance map(s) `waypoint` needs (via `MazeAnalysis::distance_from_start`/`distance_from_finish`) and returns `None` when the maze lacks a waypoint this instance needs set (`meta.start` for `Start`/`Any`, `meta.finish` for `Finish`/`Any`) — covered by `MissingEndpointsCheck`; every caller returns early on `None`, same skip behavior as before this engine existed.
+
+`distance_to` resolves a node via `NavGraph::nav_node_for` only (used by the teleport/one-way checks, whose candidates are always genuine nav-nodes). `distance_to_with_corridor_fallback` additionally falls back to `NavGraph::corridor_index` when the node has no `NavNodeId` of its own (used by `SplitDistanceFromWaypointCheck`, whose extra split node very often sits on a plain-corridor tile compressed into some other nav-edge's interior `path` — see GitHub issue #248's original bug report). Both reduce to the **minimum** distance across whichever of `distance_from_start`/`distance_from_finish` the instance's `waypoint` requires, treating an unreachable/absent map entry as no defined distance rather than `0` — the same "unreachable means no defined distance" rule `LoopDistanceFromStartCheck` already follows.
+
+`waypoint_distance_matches` is the shared "reduce this candidate's own per-endpoint distances to their minimum, then compare" step (a teleport's `from`/`to`, a one-way's `from`/`to`, or — for the split check, which folds its own `nodes.iter()` minimum itself before calling `comparison.compare` directly, since its candidate is a variable-length node list rather than a fixed pair).
+
 ### TeleportWaypointDistanceCheck
 
 ```rust

@@ -35,17 +35,10 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeGroupIssue> for MaxSplitTileNodeC
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let mut seen_points = std::collections::HashSet::new();
         let mut groups: Vec<(Vec<NodeId>, u32)> = Vec::new();
 
-        for (level, point) in maze.field.all_points_with_level() {
-            if !seen_points.insert((level, point)) {
-                continue;
-            }
+        for (level, point) in maze.field.split_points() {
             let nodes = maze.field.nodes_at(level, point);
-            if nodes.len() < 2 {
-                continue; // not a split point.
-            }
             let node_count = nodes.len() as u32;
             if node_count <= self.max {
                 continue;

@@ -133,27 +133,10 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeIssue> for SplitNodeConnectionCou
     ) {
         let counts = ConnectionCounts::build(maze);
 
-        // `Field::all_points()` yields one entry per `NodeId` (a split point's several nodes all
-        // resolve to the same point) -- iterate the field's nodes directly instead: this check
-        // flags individual nodes, not points, so no point-level dedup is needed here (unlike
-        // SplitDistanceFromWaypointCheck, which flags the whole tile as one unit).
-        let mut seen_points = std::collections::HashSet::new();
         let invalid: Vec<NodeId> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .split_points()
             .flat_map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
-            .filter(|&node| {
-                let level = maze
-                    .field
-                    .level_of(node)
-                    .expect("node resolved from field.nodes_at");
-                let point = maze
-                    .field
-                    .point_of(node)
-                    .expect("node resolved from field.nodes_at");
-                maze.field.nodes_at(level, point).len() >= 2
-            })
             .filter(|&node| {
                 let count = counts.count(node, self.direction);
                 self.comparison.compare(count, self.count)

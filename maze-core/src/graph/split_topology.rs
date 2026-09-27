@@ -79,9 +79,8 @@ pub fn canonical_split_topology<T: Tessellation>(
 ///   equality, mapped to how many tiles share it. A tile whose topology can't be canonicalized
 ///   (degenerate tessellation) is still counted in the two totals above but has no group entry.
 ///
-/// Iterates via `Field::all_points`, deduped per point (a split point appears once per its own
-/// node count in `all_points`'s NodeId-domain iteration — see its doc comment) — same dedup
-/// shape as `build_analytics_snapshot`'s node listing (GitHub issue #223).
+/// Iterates via `MultiLevelField::split_points()` (GitHub issue #614), which already dedups a
+/// split point down to one entry (see its own doc comment).
 pub fn split_totals<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
@@ -100,19 +99,11 @@ pub fn split_totals_scoped<T: Tessellation>(
     let mut node_count = 0usize;
     let mut groups: HashMap<SplitTopology, usize> = HashMap::new();
 
-    let mut seen_points: std::collections::HashSet<(crate::space::LevelId, T::Point)> =
-        std::collections::HashSet::new();
-    for (point_level, point) in field.all_points_with_level() {
+    for (point_level, point) in field.split_points() {
         if level.is_some_and(|l| l != point_level) {
             continue;
         }
-        if !seen_points.insert((point_level, point)) {
-            continue;
-        }
         let nodes = field.nodes_at(point_level, point);
-        if nodes.len() < 2 {
-            continue;
-        }
         tile_count += 1;
         node_count += nodes.len();
         if let Some(topology) = canonical_split_topology(graph, field, nodes) {

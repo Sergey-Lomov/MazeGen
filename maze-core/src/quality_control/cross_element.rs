@@ -274,15 +274,8 @@ pub fn cross_element_occurrences<T: Tessellation>(
     }
 
     if set.split {
-        let mut seen_points: HashSet<(crate::space::LevelId, T::Point)> = HashSet::new();
-        for (level, point) in maze.field.all_points_with_level() {
-            if !seen_points.insert((level, point)) {
-                continue;
-            }
+        for (level, point) in maze.field.split_points() {
             let nodes = maze.field.nodes_at(level, point);
-            if nodes.len() < 2 {
-                continue;
-            }
             let element = CrossElement::Split(SplitTileNodes::new(nodes.to_vec()));
             // One occurrence per node of the tile. They all share the same point/level, so the
             // geometric metric sees no difference and aggregation collapses the duplicates; the
