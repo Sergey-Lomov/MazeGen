@@ -26,6 +26,7 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
         <span style={{ ...sharedStyles.sliderRowLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
         <input
           type="range"
+          name={label}
           className="maze-slider"
           style={{ flex: 1 }}
           min={min}

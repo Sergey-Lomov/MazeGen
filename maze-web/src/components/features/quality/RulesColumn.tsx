@@ -168,6 +168,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 {isRenamingStage ? (
                   <input
                     style={styles.stageHeaderInput}
+                    name="quality-stage-title"
                     value={renameStageDraft}
                     autoFocus
                     onChange={(e) => setRenameStageDraft(e.target.value)}
@@ -254,6 +255,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                         {isRenaming ? (
                           <input
                             style={styles.ruleCardTitleInput}
+                            name="quality-rule-title"
                             value={renameDraft}
                             autoFocus
                             onChange={(e) => setRenameDraft(e.target.value)}

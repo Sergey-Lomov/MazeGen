@@ -64,6 +64,7 @@ export function RgbModelEditor({ color, onChange }: Props) {
           />
           <input
             type="number"
+            name={`rgb-${key}`}
             min={0}
             max={255}
             step={1}

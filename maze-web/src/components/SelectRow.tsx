@@ -31,6 +31,7 @@ export function SelectRow<T extends string>({
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
       <select
+        name={label}
         style={sharedStyles.selectSm}
         value={value}
         disabled={disabled}

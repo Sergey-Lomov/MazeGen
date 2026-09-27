@@ -14,6 +14,8 @@ interface Props {
    * the value on blur. A float field only clamps. */
   integer?: boolean;
   disabled?: boolean;
+  name?: string;
+  id?: string;
   style?: React.CSSProperties;
   /** Forwarded to the underlying input (callers stop row-level click propagation with this). */
   onClick?: (e: React.MouseEvent<HTMLInputElement>) => void;
@@ -32,7 +34,7 @@ function isParseable(raw: string): boolean {
 // reports the last valid value upward; on blur an empty/unparseable field is restored to that
 // last valid value. Integer fields additionally block the decimal separator and round+clamp on
 // blur; float fields only clamp.
-export function NumberInput({ value, onChange, min, max, integer, disabled, style, onClick, onBlurCommit }: Props) {
+export function NumberInput({ value, onChange, min, max, integer, disabled, name = "number-input", id, style, onClick, onBlurCommit }: Props) {
   // Local display string — decoupled from `value` while the field is focused so the user can
   // clear it and type a new number without the prop snapping it back mid-edit.
   const [draft, setDraft] = useState(value);
@@ -101,6 +103,8 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, styl
   return (
     <input
       type="number"
+      name={name}
+      id={id}
       style={style}
       value={draft}
       min={min}

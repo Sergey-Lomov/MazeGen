@@ -45,6 +45,7 @@ export function GradientSlider({
     <input
       type="range"
       className="gradient-slider"
+      name={ariaLabel ?? "gradient-slider"}
       min={min}
       max={max}
       step={step}

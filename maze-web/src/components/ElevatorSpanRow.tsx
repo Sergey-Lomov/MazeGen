@@ -20,6 +20,7 @@ export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled }
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{m["generation.elevator_span"]()}</span>
       <input
         type="number"
+        name="elevator-span-min"
         min={1}
         style={{ ...sharedStyles.input, width: 56, height: controlRowHeight, boxSizing: "border-box" }}
         value={min}
@@ -32,6 +33,7 @@ export function ElevatorSpanRow({ min, max, onMinChange, onMaxChange, disabled }
       <span style={styles.dash}>–</span>
       <input
         type="number"
+        name="elevator-span-max"
         min={1}
         style={{ ...sharedStyles.input, width: 56, height: controlRowHeight, boxSizing: "border-box" }}
         value={max}

@@ -440,6 +440,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         <input
           ref={fileInputRef}
           type="file"
+          name="project-file"
           accept=".json"
           style={{ display: "none" }}
           onChange={handleFileChange}

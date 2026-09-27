@@ -125,6 +125,7 @@ export function DebugPanel() {
         {/* Delay */}
         <input
           type="text"
+          name="debug-delay-ms"
           style={styles.delayInput}
           value={delayDraft}
           title={m["debug.delay_ms"]()}

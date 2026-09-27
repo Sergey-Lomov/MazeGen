@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Application, RendererType } from "pixi.js";
+import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
@@ -65,16 +65,6 @@ export function App() {
 
     app
       .init({ resizeTo: canvasRef.current, background: canvas.stage.background, antialias: true })
-      .then(() => {
-        const rendererType = app.renderer.type === RendererType.WEBGL
-          ? "WebGL"
-          : app.renderer.type === RendererType.WEBGPU
-            ? "WebGPU"
-            : app.renderer.type === RendererType.CANVAS
-              ? "Canvas"
-              : `Unknown (${app.renderer.type})`;
-        console.info("[PixiJS] default renderer:", rendererType, app.renderer.constructor.name);
-      })
       // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
       // later page load free. Blocking `setReady` on it avoids a flash of missing labels.

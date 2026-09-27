@@ -50,6 +50,7 @@ export function BasicConfigFeature() {
       <label style={styles.label}>
         {m["tessellation.title"]()}
         <select
+          name="preview-tessellation"
           style={styles.select}
           value={previewKind}
           onChange={(e) => setPreviewKind(e.target.value as TessellationKind)}
@@ -63,6 +64,7 @@ export function BasicConfigFeature() {
         <label style={styles.label}>
           {m["tessellation.orientation"]()}
           <select
+            name="preview-hex-orientation"
             style={styles.select}
             value={previewHexOrientation}
             onChange={(e) => setPreviewHexOrientation(e.target.value as HexOrientation)}
@@ -76,6 +78,7 @@ export function BasicConfigFeature() {
         <label style={styles.label}>
           {m["tessellation.orientation"]()}
           <select
+            name="preview-triangle-orientation"
             style={styles.select}
             value={previewTriOrientation}
             onChange={(e) => setPreviewTriOrientation(e.target.value as TriOrientation)}

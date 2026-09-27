@@ -240,6 +240,8 @@ describe("RulesColumn", () => {
       params: {}, nestedStrategies: [{ slotId: "merge_target", strategy: nestedStrategy, params: [], nested: [] }], collapsed: false,
     }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
+    const weightInput = screen.getByRole("textbox");
+    expect(screen.getByText("Weight")).toHaveAttribute("for", weightInput.id);
     fireEvent.click(screen.getByText("Region expansion via passage"));
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "merge_target", index: 0 }] });
   });

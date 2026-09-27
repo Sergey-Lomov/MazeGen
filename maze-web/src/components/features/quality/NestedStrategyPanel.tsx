@@ -107,7 +107,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
     <div style={styles.entriesGap}>
       {entries.length === 0 && (
         <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-          <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</label>
+          <span style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</span>
           <span style={styles.placeholder}>{m["quality.nested_strategy.placeholder"]()}</span>
         </Inline>
       )}
@@ -187,6 +187,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
   const [dialogOpen, setDialogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.type === "nested_strategy" && selection.ruleId === ruleId && pathsEqual(selection.path, path);
+  const weightInputId = `nested-strategy-weight-${ruleId}-${path.map((p) => `${p.slotId}-${p.index}`).join("-")}`;
 
   const { values, onChange, flushRef } = useParamEditor({
     // Includes `node.strategy.id` — this row's `path` stays the same across a strategy swap
@@ -207,9 +208,11 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
     <div style={{ ...styles.entryStack, marginLeft: (depth - 1) * indent.tree }}>
       {showWeight && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
-          <label style={styles.weightLabel}>{m["quality.nested_strategy.weight_label"]()}</label>
+          <label htmlFor={weightInputId} style={styles.weightLabel}>{m["quality.nested_strategy.weight_label"]()}</label>
           <input
             type="text"
+            id={weightInputId}
+            name={weightInputId}
             inputMode="decimal"
             style={styles.weightInput}
             value={rawNested?.params[NESTED_STRATEGY_WEIGHT_PARAM_ID] ?? "1"}
@@ -230,7 +233,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
       )}
       {showPriority && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
-          <label style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</label>
+          <span style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</span>
           <button
             className="hoverable"
             style={styles.reorderBtn}
@@ -284,7 +287,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           }}
         >
           <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-            <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</label>
+            <span style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</span>
             <span style={styles.strategyName}>
               {resolveStrategyLabel(node.strategy.id)}
             </span>

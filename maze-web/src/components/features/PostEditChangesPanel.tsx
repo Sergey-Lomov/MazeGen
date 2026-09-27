@@ -158,6 +158,7 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
       <div style={styles.filterRow}>
         <input
           type="text"
+          name="post-edit-entity-filter"
           value={entityFilter ?? ""}
           onChange={(e) => setEntityFilter(e.target.value.trim() === "" ? null : e.target.value.trim())}
           placeholder={m["post_edit.changes_filter_placeholder"]()}

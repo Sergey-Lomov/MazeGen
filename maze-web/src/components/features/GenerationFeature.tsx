@@ -70,6 +70,7 @@ export function GenerationFeature({ canGenerate }: Props) {
           <span style={styles.algorithmLabel}>{m["generation.seed_value"]()}</span>
           <input
             type="number"
+            name="generation-seed"
             style={{ ...sharedStyles.input, width: 110, minWidth: 0, opacity: randomSeed ? 0.4 : 1 }}
             value={seedDraft}
             readOnly={randomSeed}

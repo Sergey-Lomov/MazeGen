@@ -134,6 +134,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                     <span style={styles.label}>{m["generation.split_pattern_weight"]()}</span>
                     <input
                       type="number"
+                      name={`split-pattern-${i}-weight`}
                       style={sharedStyles.inputSm}
                       value={pattern.weight ?? 1.0}
                       min={0}
