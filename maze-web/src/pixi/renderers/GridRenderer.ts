@@ -14,7 +14,11 @@ export class GridRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { viewport: Viewport; color?: number }, cfg: TessellationConfig): void {
+  render(
+    data: { viewport: Viewport; color?: number },
+    cfg: TessellationConfig,
+    cells?: readonly [number, number][],
+  ): void {
     this.g.clear();
     const { x, y, w, h, scale } = data.viewport;
     const proj = makeProjection(cfg);
@@ -22,12 +26,20 @@ export class GridRenderer {
 
     this.g.setStrokeStyle({ width: 1 / scale, color: data.color ?? canvas.grid.line, alpha: GRID_LINE_ALPHA });
 
-    for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
-      for (let yi = bounds.minY; yi <= bounds.maxY; yi++) {
-        const verts = getCellVertices(xi, yi, cfg);
-        if (!verts) continue;
-        this.g.moveTo(verts[verts.length - 1].x, verts[verts.length - 1].y);
-        for (const v of verts) this.g.lineTo(v.x, v.y);
+    const drawCell = (xi: number, yi: number): void => {
+      const verts = getCellVertices(xi, yi, cfg);
+      if (!verts) return;
+      this.g.moveTo(verts[verts.length - 1].x, verts[verts.length - 1].y);
+      for (const v of verts) this.g.lineTo(v.x, v.y);
+    };
+
+    if (cells) {
+      // Export renderers can supply the actual maze cells so the optional grid does not bleed
+      // into the viewport/export margin around an irregular field.
+      for (const [xi, yi] of cells) drawCell(xi, yi);
+    } else {
+      for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
+        for (let yi = bounds.minY; yi <= bounds.maxY; yi++) drawCell(xi, yi);
       }
     }
     this.g.stroke();

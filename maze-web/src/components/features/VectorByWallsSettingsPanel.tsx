@@ -27,7 +27,8 @@ import * as m from "~/paraglide/messages";
  * settings panel (GitHub issue #289 for background, #290/#291 for floor/wall settings — folded
  * into one "Tiles" section since both draw on the maze's cells/tiles, unlike background/grid which
  * draw on the viewport — #296 for start/finish markers — #292 for one-ways — all part of #288's
- * epic). Background covers background color, grid visibility, grid color. Tiles covers the floor's
+ * epic). Background covers background color, the original behind-maze grid visibility/color, and
+ * the independent inside-maze grid visibility/color. Tiles covers the floor's
  * fill color, wall color, corners & ends (round/miter join, paired with a round/square cap) and
  * wall thickness — wall settings applied via `WallStyleOverride` to solid walls, split-junction
  * wall faces and closed-cells fill only (see `renderers/types.ts`), never the faint/background wall
@@ -53,6 +54,8 @@ export function VectorByWallsSettingsPanel() {
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
   const setShowGrid = useMazeStore((s) => s.setVectorByWallsShowGrid);
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
+  const setShowInnerGrid = useMazeStore((s) => s.setVectorByWallsShowInnerGrid);
+  const setInnerGridColor = useMazeStore((s) => s.setVectorByWallsInnerGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
   const setWallColor = useMazeStore((s) => s.setVectorByWallsWallColor);
   const setRandomWallColorMode = useMazeStore((s) => s.setVectorByWallsRandomWallColorMode);
@@ -308,7 +311,7 @@ export function VectorByWallsSettingsPanel() {
             onChange={setBackground}
             defaultColor={D.background}
             fieldName={PC.bgFill.name()}
-            priorityColors={[PC.bgGrid.at(settings.gridColor), floor, wall]}
+            priorityColors={[PC.bgGrid.at(settings.gridColor), PC.innerGrid.at(settings.innerGridColor), floor, wall]}
           />
           <ToggleRow label={m["image_export.vector_by_walls.show_grid"]()} checked={settings.showGrid} onChange={setShowGrid} />
           <ColorRow
@@ -318,7 +321,17 @@ export function VectorByWallsSettingsPanel() {
             disabled={!settings.showGrid}
             defaultColor={D.gridColor}
             fieldName={PC.bgGrid.name()}
-            priorityColors={[background, wall]}
+            priorityColors={[background, PC.innerGrid.at(settings.innerGridColor), wall]}
+          />
+          <ToggleRow label={m["image_export.vector_by_walls.show_inner_grid"]()} checked={settings.showInnerGrid} onChange={setShowInnerGrid} />
+          <ColorRow
+            label={m["image_export.vector_by_walls.inner_grid_color"]()}
+            color={settings.innerGridColor}
+            onChange={setInnerGridColor}
+            disabled={!settings.showInnerGrid}
+            defaultColor={D.innerGridColor}
+            fieldName={PC.innerGrid.name()}
+            priorityColors={[floor, wall, background, PC.bgGrid.at(settings.gridColor)]}
           />
         </div>
       )}

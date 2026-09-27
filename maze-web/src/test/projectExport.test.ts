@@ -701,6 +701,15 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     expect(reparsed.imageExport).toEqual(serialized.imageExport);
   });
 
+  it("defaults the optional inner grid for projects saved before it existed", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport.vectorByWallsSettings.showInnerGrid;
+    delete raw.imageExport.vectorByWallsSettings.innerGridColor;
+    const settings = parseAndValidate(raw).imageExport.vectorByWallsSettings;
+    expect(settings.showInnerGrid).toBe(false);
+    expect(settings.innerGridColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.innerGridColor);
+  });
+
   it("falls back per-field to defaults when vectorByWallsSettings is malformed, without throwing", () => {
     const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
     raw.imageExport.vectorByWallsSettings = {

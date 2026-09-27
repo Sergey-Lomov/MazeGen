@@ -28,6 +28,8 @@ beforeEach(() => {
       background: canvas.stage.background,
       showGrid: true,
       gridColor: canvas.grid.line,
+      showInnerGrid: false,
+      innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
       wallColor: canvas.wall.default,
       randomWallColorMode: "off",
@@ -154,12 +156,14 @@ describe("mazeStore image export", () => {
 });
 
 describe("mazeStore vectorByWallsSettings", () => {
-  it("starts with defaults matching the editor's own canvas/grid colors, grid shown", () => {
+  it("starts with editor-matching background-grid defaults and the inner grid disabled", () => {
     const s = useMazeStore.getState();
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
       gridColor: canvas.grid.line,
+      showInnerGrid: false,
+      innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
       wallColor: canvas.wall.default,
       randomWallColorMode: "off",
@@ -218,6 +222,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.gridColor).toBe(0xabcdef);
     expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("keeps the inner-grid toggle and color independent from the original background grid", () => {
+    useMazeStore.getState().setVectorByWallsShowInnerGrid(true);
+    useMazeStore.getState().setVectorByWallsInnerGridColor(0xabcdef);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.showInnerGrid).toBe(true);
+    expect(settings.innerGridColor).toBe(0xabcdef);
+    expect(settings.showGrid).toBe(true);
+    expect(settings.gridColor).toBe(canvas.grid.line);
   });
 
   it("setVectorByWallsFloorColor updates only the floor color field", () => {

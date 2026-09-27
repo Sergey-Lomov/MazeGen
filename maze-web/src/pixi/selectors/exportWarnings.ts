@@ -89,6 +89,8 @@ export type ExportWarningId =
   | "teleport_connector_low_contrast_wall"
   | "split_low_contrast_floor"
   | "grid_low_contrast_background"
+  | "inner_grid_low_contrast_floor"
+  | "inner_grid_low_contrast_wall"
   | "marker_fill_low_contrast"
   | "marker_border_low_contrast"
   | "marker_fill_low_contrast_corridor"
@@ -123,7 +125,7 @@ export type ExportWarningId =
   | "elevator_line_low_contrast_floor";
 
 export type ExportWarningColorRole =
-  | "background" | "grid" | "corridor" | "floor" | "wall"
+  | "background" | "grid" | "inner_grid" | "corridor" | "floor" | "wall"
   | "one_way" | "split" | "marker_fill" | "marker_border" | "label_text" | "label_background"
   | "teleport_connector" | "teleport_badge_border" | "teleport_badge_fill" | "teleport_badge_text"
   | "vertical_two_way_fill" | "vertical_two_way_border" | "vertical_two_way_arrow"
@@ -138,6 +140,7 @@ const COLOR_ROLES_BY_WARNING_ID: Partial<Record<ExportWarningId, [ExportWarningC
   split_low_contrast_corridor: ["split", "corridor"], teleport_connector_low_contrast_floor: ["teleport_connector", "floor"],
   teleport_connector_low_contrast_wall: ["teleport_connector", "wall"], split_low_contrast_floor: ["split", "floor"],
   split_low_contrast_background: ["split", "background"], grid_low_contrast_background: ["grid", "background"],
+  inner_grid_low_contrast_floor: ["inner_grid", "floor"], inner_grid_low_contrast_wall: ["inner_grid", "wall"],
   marker_fill_low_contrast: ["marker_fill", "floor"], marker_border_low_contrast: ["marker_border", "floor"],
   marker_fill_low_contrast_corridor: ["marker_fill", "corridor"], marker_fill_low_contrast_floor: ["marker_fill", "floor"],
   marker_border_low_contrast_corridor: ["marker_border", "corridor"], marker_border_low_contrast_floor: ["marker_border", "floor"],
@@ -700,6 +703,13 @@ function addCommonContrastWarnings(
   const elevator = edges.filter((edge) => edge.kind === "elevator");
   const teleport = edges.filter((edge) => edge.kind === "teleport");
   if (showGrid) pushContrastWarning(warnings, "grid_low_contrast_background", [[settings.gridColor, background]]);
+  if ("showInnerGrid" in settings && settings.showInnerGrid) {
+    pushContrastWarning(warnings, "inner_grid_low_contrast_floor", [[settings.innerGridColor, baseColor]]);
+    if (surfaceKind === "floor") {
+      const wallsSettings = settings as VectorByWallsSettings;
+      pushContrastWarning(warnings, "inner_grid_low_contrast_wall", [[settings.innerGridColor, wallsSettings.wallColor]]);
+    }
+  }
 
   const fillEntries: ContrastEntry[] = [];
   const borderEntries: ContrastEntry[] = [];

@@ -39,6 +39,8 @@ beforeEach(() => {
       background: 0x1a1a1a,
       showGrid: true,
       gridColor: 0xffffff,
+      showInnerGrid: false,
+      innerGridColor: 0xffffff,
       floorColor: 0x2a2a2a,
       wallColor: 0x0a0a0a,
       randomWallColorMode: "off",
@@ -121,6 +123,8 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(screen.getByText(m["image_export.vector_by_walls.background_color"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.show_grid"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.grid_color"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.show_inner_grid"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.inner_grid_color"]())).toBeInTheDocument();
   });
 
   it("collapsing the section header hides its fields", () => {
@@ -137,10 +141,19 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.showGrid).toBe(false);
   });
 
+  it("toggling 'show inner grid' updates only the inner-grid setting", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const label = screen.getByText(m["image_export.vector_by_walls.show_inner_grid"]());
+    const checkbox = label.parentElement!.parentElement!.querySelector('input[type="checkbox"]')!;
+    fireEvent.click(checkbox);
+    expect(useMazeStore.getState().vectorByWallsSettings.showInnerGrid).toBe(true);
+    expect(useMazeStore.getState().vectorByWallsSettings.showGrid).toBe(true);
+  });
+
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
-        background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
+        background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
         finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
@@ -200,7 +213,8 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("toggles random wall colors and maps the displayed modes to their requested behavior", () => {
     render(<VectorByWallsSettingsPanel />);
-    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    const toggle = screen.getByText(m["image_export.vector_by_walls.random_wall_colors"]());
+    fireEvent.click(toggle.parentElement!.parentElement!.querySelector('input[type="checkbox"]')!);
     expect(screen.queryByText(m["image_export.vector_by_walls.wall_color"]())).not.toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.random_wall_color_mode"]())).toBeInTheDocument();
     expect(useMazeStore.getState().vectorByWallsSettings.randomWallColorMode).toBe("per_pass");

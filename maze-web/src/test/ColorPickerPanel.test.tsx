@@ -26,7 +26,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0x000000, showGrid: true, gridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
+    background: 0x000000, showGrid: true, gridColor: 0x000000, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
@@ -75,6 +75,22 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
     );
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
     expect(screen.getByText(m["image_export.warning.grid_low_contrast_background"]())).toBeInTheDocument();
+  });
+
+  it("maps the inner-grid field to its floor-contrast warning role", () => {
+    useMazeStore.setState({
+      vectorByWallsSettings: baseWallsSettings({ showGrid: false, showInnerGrid: true, innerGridColor: 0x000000, floorColor: 0x000000, wallColor: 0xffffff }),
+    });
+    render(
+      <ColorPickerPanel
+        color={0x000000}
+        onApply={noop}
+        onClose={noop}
+        fieldName={PC.innerGrid.name()}
+      />,
+    );
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+    expect(screen.getByText(m["image_export.warning.inner_grid_low_contrast_floor"]())).toBeInTheDocument();
   });
 
   it("shows no warning for a field whose name does not map to the fired warning's color role (colorRoleForField mismatch)", () => {
