@@ -74,16 +74,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
             }
         };
 
-        let mut seen_points = HashSet::new();
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .split_points()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    return None;
-                }
                 if !nodes.iter().any(|&n| node_matches(n)) {
                     return None;
                 }

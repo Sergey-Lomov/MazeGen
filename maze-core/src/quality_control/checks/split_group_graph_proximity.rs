@@ -43,19 +43,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let mut seen_points = std::collections::HashSet::new();
         let tiles: Vec<(T::Point, Vec<NodeId>)> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
-            .filter_map(|(level, point)| {
-                let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    None
-                } else {
-                    Some((point, nodes.to_vec()))
-                }
-            })
+            .split_points()
+            .map(|(level, point)| (point, maze.field.nodes_at(level, point).to_vec()))
             .collect();
         if tiles.len() < 2 {
             return;

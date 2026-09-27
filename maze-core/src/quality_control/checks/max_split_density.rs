@@ -35,18 +35,12 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let mut seen_points = std::collections::HashSet::new();
         let tiles: Vec<(LevelId, SplitTileNodes)> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
-            .filter_map(|(level, point)| {
+            .split_points()
+            .map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    None
-                } else {
-                    Some((level, SplitTileNodes::new(nodes.to_vec())))
-                }
+                (level, SplitTileNodes::new(nodes.to_vec()))
             })
             .collect();
 

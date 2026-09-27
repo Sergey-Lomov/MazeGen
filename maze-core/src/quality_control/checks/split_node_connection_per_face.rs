@@ -42,13 +42,8 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let mut seen_points = std::collections::HashSet::new();
-        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze
-            .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
-            .filter(|&(level, point)| maze.field.nodes_at(level, point).len() >= 2)
-            .collect();
+        let split_points: Vec<(crate::space::LevelId, T::Point)> =
+            maze.field.split_points().collect();
         if split_points.is_empty() {
             return;
         }

@@ -113,21 +113,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
             best
         };
 
-        // `Field::all_points()` yields one entry per `NodeId` (sorted, then mapped back to its
-        // point) — a split point's several nodes all resolve to the same point, so iterating it
-        // directly would visit that point once per extra node instead of once overall. Dedup via
-        // a seen-points set instead (order doesn't matter here — every point is only ever
-        // resolved into `invalid` via its own `nodes_at`, never compared across points).
-        let mut seen_points = std::collections::HashSet::new();
         let invalid: Vec<SplitTileNodes> = maze
             .field
-            .all_points_with_level()
-            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .split_points()
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 {
-                    return None;
-                }
                 let point_distance = nodes.iter().filter_map(|&n| waypoint_distance(n)).min()?;
                 if !self
                     .comparison

@@ -94,6 +94,8 @@ Operations addressing an existing node take only `NodeId` — the level is resol
 - `max_node_id() -> Option<NodeId>`, `node_count() -> usize`
 - `point_count() -> usize` — total distinct field cells (points) across every level, summed. Ratio/density QC checks normalizing "per 100 field cells" use this, not `node_count()` (inflated by split tiles) and not any single level's own `point_count()`.
 - `all_points_with_level() -> impl Iterator<Item = (LevelId, T::Point)>` — every point across every level, grouped by level in `levels_ordered()` order, each level's own points in that level's `Field::all_points()` order. For single-level or level-agnostic callers, prefer `field_of(level).all_points()` instead — this is for genuinely level-aware code (multi-level UI/QC, split-topology aggregates that are conceptually maze-wide).
+- `split_points() -> impl Iterator<Item = (LevelId, T::Point)>` (GitHub issue #614) — every split tile (a point with `nodes_at(level, point).len() >= 2`) across every level, each appearing exactly once. Shared replacement for the `all_points_with_level()` + dedup + node-count-filter pattern QC checks, `cross_element`, and `split_topology` used to each repeat independently.
+- `is_split_point(level, point) -> bool` — `true` if that point carries `>= 2` nodes; `false` (not a panic) if `level`/`point` don't exist, mirroring `nodes_at`'s own contract. Used where only a single point's split status matters (e.g. `routing`'s per-node split counting), not a full enumeration.
 
 ### Constructors
 
