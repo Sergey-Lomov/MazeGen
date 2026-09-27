@@ -1,7 +1,6 @@
-use super::proximity_scan_core::pairwise_graph_proximity_scan;
+use super::proximity_scan_core::{ScanAnchor, pairwise_graph_proximity_scan};
 use super::vertical_passage_count_core::vertical_passage_proximity_candidates;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::ids::{EdgeId, NodeId};
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidVerticalPassageGroupIssue, VerticalPassageType};
@@ -12,31 +11,38 @@ use std::collections::HashSet;
 pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
 pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE: VerticalPassageType =
     VerticalPassageType::Any;
+pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING: bool = true;
 
 /// Flags a pair of `EdgeKind::VerticalPassage` entries too close to each other topologically
 /// (tile-hops via the shared nav-graph distance map) — see GitHub issue #343. Mirrors
 /// `TeleportGroupProximityCheck`'s pairwise-scan shape, one candidate per scan-worthy entry (see
-/// `vertical_passage_proximity_candidates`) — a two-way passage's two ends both participate; a
-/// one-way passage contributes only its `from` end. Unlike the geometric proximity check, there is
-/// no `count_incoming` here: a one-way passage's `to` end is not a meaningfully different
-/// topological position from its `from` end — whether or not it's itself a scan candidate, any
-/// shortest path to a nearby passage still runs through it, so hiding it as a candidate would not
-/// hide the proximity it represents.
+/// `vertical_passage_proximity_candidates`) — a two-way passage's two ends always both participate;
+/// a one-way passage's `to` end joins its `from` end as a second candidate only when
+/// `count_incoming` is set, same as the geometric proximity check.
 ///
-/// Distance excludes hops through any `VerticalPassage` edge (own or otherwise) from the
-/// traversal, same "measures pedestrian proximity, not by-passage reachability" rationale
-/// `TeleportGroupProximityCheck` uses for teleport hops. Unlike `Teleport`, `NavEdge` carries no
+/// A one-way passage's `to` end is topologically its own distinct position, not merely a detour
+/// through its `from` end — two one-way passages whose *entries* sit far apart but whose *exits*
+/// sit close together (e.g. two `OneWayDown` passages descending to nearby tiles on the lower
+/// floor from unrelated, distant entries) are only caught by measuring from the `to` end, which
+/// `count_incoming: false` never scans (GitHub issue #619 regression report — this could never fire
+/// against such a pair).
+///
+/// Distance excludes hops through the scanned entry's *own* passage only (GitHub issue #512) — an
+/// unrelated vertical passage elsewhere in the maze is traversed like an ordinary nav hop, so a
+/// genuinely close pair on its far side is still reported as close, rather than the whole
+/// `VerticalPassage` kind being a traversal blind spot. Unlike `Teleport`, `NavEdge` carries no
 /// dedicated `is_vertical_passage` flag (GitHub issue #197 only disambiguated `Teleport`), so the
-/// exclusion set is built explicitly from every `VerticalPassage` edge's own `(from, to)` pair and
-/// matched against each single-hop `NavEdge`'s `path`.
+/// exclusion set is built explicitly from the scanned entry's own passage `(from, to)` pair (both
+/// directions) and matched against each single-hop `NavEdge`'s `path`.
 ///
-/// `passage_type`/`same_type_only` mirror `VerticalPassageGroupGeometricProximityCheck`'s own
-/// parameters exactly.
+/// `passage_type`/`same_type_only`/`count_incoming` mirror
+/// `VerticalPassageGroupGeometricProximityCheck`'s own parameters exactly.
 pub struct VerticalPassageGroupGraphProximityCheck {
     pub instance_id: String,
     pub distance: u32,
     pub passage_type: VerticalPassageType,
     pub same_type_only: bool,
+    pub count_incoming: bool,
 }
 
 impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
@@ -54,31 +60,37 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
         _requirement: (),
     ) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let vertical_passage_pairs: HashSet<(NodeId, NodeId)> = maze
-            .graph
-            .edges()
-            .filter(|e| e.kind == EdgeKind::VerticalPassage)
-            .map(|e| (e.from, e.to))
-            .collect();
 
-        let candidates: Vec<(EdgeId, crate::graph::nav::NavNodeId, VerticalPassageType)> =
-            vertical_passage_proximity_candidates(maze, self.passage_type, false)
+        let candidates: Vec<(EdgeId, NodeId, VerticalPassageType)> =
+            vertical_passage_proximity_candidates(maze, self.passage_type, self.count_incoming)
                 .into_iter()
-                .filter_map(|c| {
-                    let nav_node = nav.nav_node_for(c.node)?;
-                    Some((c.canonical_edge, nav_node, c.passage_type))
-                })
+                .map(|c| (c.canonical_edge, c.node, c.passage_type))
                 .collect();
         if candidates.len() < 2 {
             return;
         }
 
+        // Per-entry hop-exclusion set (GitHub issue #512): only the scanned entry's own passage
+        // (both directions) is excluded from its traversal. `NavEdge` carries no dedicated
+        // `is_vertical_passage` flag (unlike `Teleport`'s `is_teleport` — see the check's own doc
+        // comment), so this matches on `path` alone, same as before (no `own_hop_kind_guard`).
+        let own_hop_pairs = |&(canonical_edge, ..): &(EdgeId, NodeId, VerticalPassageType)| -> HashSet<(NodeId, NodeId)> {
+            maze.graph
+                .edge(canonical_edge)
+                .map(|e| HashSet::from([(e.from, e.to), (e.to, e.from)]))
+                .unwrap_or_default()
+        };
+
         let groups = pairwise_graph_proximity_scan(
             &nav,
             &candidates,
-            self.distance,
-            &vertical_passage_pairs,
-            |&(_, nav_node, _)| nav_node,
+            self.distance as usize,
+            false,
+            own_hop_pairs,
+            |_, _| true,
+            |&(_, node, _)| ScanAnchor::Single(node),
+            |&(_, node, _)| ScanAnchor::Single(node),
+            |dist| (dist as u32) < self.distance,
             |&(own_id, _, own_type), &(other_id, _, other_type)| {
                 other_id == own_id || (self.same_type_only && own_type != other_type)
             },
@@ -145,6 +157,7 @@ mod tests {
             distance,
             passage_type,
             same_type_only,
+            count_incoming: false,
         }
     }
 
@@ -269,6 +282,80 @@ mod tests {
             issues.len(),
             1,
             "both from-ends are close and scan -- a one-way passage's to-end never contributes a separate candidate"
+        );
+    }
+
+    #[test]
+    fn count_incoming_off_ignores_a_close_pair_of_to_ends() {
+        // Two OneWayDown passages descending from unrelated, far-apart entries (t0, t9) on the top
+        // floor into two adjacent tiles (b0, b1) on the bottom floor -- the *entries* are far apart,
+        // only the *exits* are close (GitHub issue #619 regression report). With count_incoming off,
+        // neither to-end is ever a scan candidate, so this close pair goes undetected.
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let b = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+        let t = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
+        for i in 0..9 {
+            g.add_bidirectional_edge(t(i), t(i + 1), EdgeKind::Basic);
+        }
+        g.add_edge(t(0), b(0), EdgeKind::VerticalPassage); // down, far entry, exit b(0)
+        g.add_edge(t(9), b(1), EdgeKind::VerticalPassage); // down, far entry, exit b(1)
+        let maze = Maze::new(mf, g);
+
+        let mut issues = Vec::new();
+        check(5, VerticalPassageType::Any, false).repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(
+            issues.is_empty(),
+            "count_incoming off never scans the to-ends, so the close exits go unseen"
+        );
+    }
+
+    #[test]
+    fn count_incoming_on_flags_a_close_pair_of_to_ends() {
+        // Same maze as `count_incoming_off_ignores_a_close_pair_of_to_ends`, but with
+        // count_incoming on -- the to-ends (b0, b1, 1 tile-hop apart) now scan as their own
+        // candidates and must be caught.
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let top =
+            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() {
+            g.add_node(node);
+        }
+        let b = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+        let t = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
+        for i in 0..9 {
+            g.add_bidirectional_edge(t(i), t(i + 1), EdgeKind::Basic);
+        }
+        g.add_bidirectional_edge(b(0), b(1), EdgeKind::Basic);
+        g.add_edge(t(0), b(0), EdgeKind::VerticalPassage); // down, far entry, exit b(0)
+        g.add_edge(t(9), b(1), EdgeKind::VerticalPassage); // down, far entry, exit b(1)
+        let maze = Maze::new(mf, g);
+
+        let mut issues = Vec::new();
+        let check = VerticalPassageGroupGraphProximityCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5,
+            passage_type: VerticalPassageType::Any,
+            same_type_only: false,
+            count_incoming: true,
+        };
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(
+            issues.len(),
+            1,
+            "count_incoming on scans the to-ends too, catching the close exits"
         );
     }
 

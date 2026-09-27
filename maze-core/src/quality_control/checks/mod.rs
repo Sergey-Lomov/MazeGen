@@ -292,6 +292,7 @@ pub use vertical_passage_group_geometric_proximity::{
     VerticalPassageGroupGeometricProximityCheck,
 };
 pub use vertical_passage_group_graph_proximity::{
+    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     VerticalPassageGroupGraphProximityCheck,

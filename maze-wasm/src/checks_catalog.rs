@@ -80,6 +80,7 @@ use maze_core::quality_control::{
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE,
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
 };
@@ -1288,7 +1289,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
         CheckDescriptor {
             id: "vertical_passage_group_graph_proximity",
             label: "Vertical passage group graph proximity",
-            description: "Fires if a pair of vertical passage edges' entries sit topologically closer to each other than the required minimum.",
+            description: "Fires if a pair of vertical passage edges sit topologically closer to each other than the required minimum.",
             issue_kinds: vec![kind_str(INVALID_VERTICAL_PASSAGE_GROUP)],
             params: vec![
                 ParamDescriptor {
@@ -1303,6 +1304,9 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 vertical_passage_type_param(VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE),
                 vertical_passage_same_type_only_param(),
+                vertical_passage_count_incoming_param(
+                    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
+                ),
             ],
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },

@@ -216,12 +216,16 @@ fn protect_route_skips_a_fully_protected_pair_and_still_finds_a_farther_unprotec
 }
 
 #[test]
-fn a_teleport_hop_is_never_used_as_a_shortcut_when_measuring_proximity() {
+fn scanning_teleport_b_may_ride_teleport_a_since_a_is_not_bs_own_hop() {
     // entry_a(0) -> exit_a(1) [teleport a]. exit_a is 1 hop (basic) from entry_b(2), which in
     // turn has its own teleport b. entry_a itself has NO basic connection to anything -- the
-    // only edge out of it is the teleport. Before GitHub issue #190's fix, Dijkstra could ride
-    // teleport a (1 hop) then the basic corridor (1 hop) to reach entry_b, reporting dist=2.
-    // With teleport hops excluded from the traversal, entry_a has no path to entry_b at all.
+    // only edge out of it is the teleport. GitHub issue #512 (superseding #190's blanket
+    // exclusion): only the *scanned* teleport's own hop is excluded from its own traversal, so
+    // while entry_a (own=a) still has no path to entry_b (a's own hop is excluded and it has no
+    // other edge), entry_b (own=b) CAN reach entry_a: b's own hop (entry_b->exit_b) is excluded,
+    // but riding teleport a (a foreign hop from b's perspective) plus the basic edge is a genuine
+    // pedestrian route, distance 2 (entry_b -> exit_a via basic, reverse through teleport a's own
+    // hop -> entry_a). The pair fires.
     let (field, mut g) = bootstrap_row(4);
     let field_level = field.single_level_id();
     let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
@@ -242,9 +246,10 @@ fn a_teleport_hop_is_never_used_as_a_shortcut_when_measuring_proximity() {
         TeleportProximityEdge::Entry,
     )
     .repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(
-        issues.is_empty(),
-        "riding through a's own teleport hop must not count as pedestrian proximity to b"
+    assert_eq!(
+        issues.len(),
+        1,
+        "b's own hop is excluded, but riding a's hop (foreign to b) plus the basic edge reaches entry_a in 2 hops"
     );
 }
 
@@ -282,13 +287,15 @@ fn a_basic_edge_running_parallel_to_a_teleport_still_counts_as_pedestrian_proxim
 }
 
 #[test]
-fn a_third_unrelated_teleport_is_never_used_as_a_shortcut_when_measuring_proximity() {
+fn a_third_unrelated_teleport_is_traversed_as_a_genuine_pedestrian_shortcut() {
     // entry_a(0) -> far_a(1) [teleport a] -- far_a is otherwise isolated except for teleport c.
     // far_a -> entry_c(2) [teleport c] -- entry_c is 1 basic hop from entry_b(3), which has its
-    // own teleport b. Before the fix, Dijkstra from entry_a could ride teleport a, then teleport
-    // c, then the basic hop, to reach entry_b (dist=3) -- none of that is real pedestrian
-    // proximity, it's three teleport-assisted jumps. With ALL teleport hops excluded (not just
-    // a's own), entry_a has no path to entry_b at all: it has no basic edges whatsoever.
+    // own teleport b. GitHub issue #512: only the teleport being scanned (own's own pair) is
+    // excluded from its own traversal, not every teleport hop in the graph -- an unrelated third
+    // teleport (c here) is itself a legitimate candidate this check scans on its own turn, so
+    // riding it while measuring teleport a's proximity to teleport b is not a "cheat": teleport a
+    // and teleport b really are 3 hops apart via that route (a's own hop excluded, c's not), so
+    // the pair must fire.
     let (field, mut g) = bootstrap_row(6);
     let field_level = field.single_level_id();
     let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
@@ -311,8 +318,10 @@ fn a_third_unrelated_teleport_is_never_used_as_a_shortcut_when_measuring_proximi
         TeleportProximityEdge::Entry,
     )
     .repair_check(&maze, &mut issues, &mut rng, ());
-    assert!(
-        issues.is_empty(),
-        "riding through an unrelated third teleport must not count as pedestrian proximity to b either"
+    assert_eq!(
+        issues.len(),
+        1,
+        "teleport a's own hop is excluded, but teleport c's hop is a genuine pedestrian option, \
+         so entry_a reaches entry_b in 2 hops (via c, then the basic edge)"
     );
 }

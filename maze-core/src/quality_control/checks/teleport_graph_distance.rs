@@ -38,10 +38,11 @@ pub struct TeleportGraphDistanceCheck {
 /// A nav-edge is traversable for this check's Dijkstra pass unless it's the single-hop transition
 /// between the teleport's own `from`/`to` that can *only* be the teleport ride being measured
 /// itself — the distance is computed "as if the teleport edge itself were absent" (GitHub issue
-/// #191), so only that specific edge is excluded, not every teleport hop in the graph (unlike
-/// `TeleportGroupProximityCheck`, which excludes all teleport hops since it measures purely
-/// pedestrian proximity). `NavEdge::is_teleport` (GitHub issue #197) already disambiguates this
-/// from a coexisting Basic-backed `NavEdge` over the same `path`, so no `Graph` lookup is needed.
+/// #191), so only that specific edge is excluded, not every teleport hop in the graph (mirrors
+/// `TeleportGroupProximityCheck`'s own per-teleport exclusion since GitHub issue #512 — neither
+/// check excludes an *unrelated* teleport's hop). `NavEdge::is_teleport` (GitHub issue #197)
+/// already disambiguates this from a coexisting Basic-backed `NavEdge` over the same `path`, so no
+/// `Graph` lookup is needed.
 fn is_not_this_teleport(edge: &NavEdge, from: crate::ids::NodeId, to: crate::ids::NodeId) -> bool {
     !(edge.is_teleport && edge.path[0] == from && edge.path[1] == to)
 }
