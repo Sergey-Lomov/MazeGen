@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import type { ParamDescriptor, EntityVisibility, SplitPattern } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
@@ -128,6 +128,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   const floorCount = useMazeStore((s) => s.floors.length);
   const visibleParams = params.filter((p) => isEntityVisible(p.visibility, floorCount));
   const containerRef = useRef<HTMLDivElement>(null);
+  const instanceId = useId();
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
   const [openSplitConfigParam, setOpenSplitConfigParam] = useState<string | null>(null);
@@ -237,6 +238,11 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
       {visibleParams.map((p) => {
         const description = displayDescription(p);
         const selected = onSelectParam && selectedParamId === p.id;
+        const fieldId = `${instanceId}-${p.id}`;
+        const labelTargetId = p.kind.type === "interval" ? `${fieldId}-min` : fieldId;
+        const hasLabelTarget = p.kind.type !== "pattern_list"
+          && p.kind.type !== "split_generation_config"
+          && !(p.kind.type === "add_split_config" && Boolean(addSplitPatternsOverride?.length));
         return (
           <div
             key={p.id}
@@ -253,7 +259,9 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
           >
             <Inline gap="rowGap" justify="space-between">
               <span style={styles.labelWrap}>
-                <label style={styles.label}>{displayLabel(p)}</label>
+                {hasLabelTarget
+                  ? <label htmlFor={labelTargetId} style={styles.label}>{displayLabel(p)}</label>
+                  : <span style={styles.label}>{displayLabel(p)}</span>}
               </span>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
@@ -263,6 +271,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <span style={styles.percentSliderWrap} onClick={(e) => e.stopPropagation()}>
                   <input
                     type="range"
+                    id={fieldId}
+                    name={p.id}
                     className="maze-slider"
                     style={styles.percentSlider}
                     min={p.kind.min}
@@ -279,6 +289,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <span style={styles.percentSliderWrap} onClick={(e) => e.stopPropagation()}>
                   <input
                     type="range"
+                    id={fieldId}
+                    name={p.id}
                     className="maze-slider"
                     style={styles.percentSlider}
                     min={p.kind.min * 100}
@@ -295,6 +307,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 !PERCENT_SLIDER_PARAM_IDS.has(p.id) &&
                 !PERCENT_FRACTION_SLIDER_PARAM_IDS.has(p.id) && (
                   <NumberInput
+                    id={fieldId}
+                    name={p.id}
                     style={styles.input}
                     value={get(p)}
                     min={p.kind.min}
@@ -313,6 +327,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                     return (
                       <>
                         <NumberInput
+                          id={`${fieldId}-min`}
+                          name={`${p.id}-min`}
                           style={styles.input}
                           value={lo}
                           min={kind.min}
@@ -335,6 +351,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                         />
                         <span style={styles.intervalSeparator}>–</span>
                         <NumberInput
+                          id={`${fieldId}-max`}
+                          name={`${p.id}-max`}
                           style={styles.input}
                           value={hi}
                           min={kind.min}
@@ -358,6 +376,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               {p.kind.type === "bool" && (
                 <span style={styles.switchWrap} onClick={(e) => e.stopPropagation()}>
                   <Switch
+                    id={fieldId}
                     checked={get(p) === "true"}
                     disabled={isDisabled(p)}
                     onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
@@ -366,6 +385,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               )}
               {p.kind.type === "enum" && (
                 <select
+                  id={fieldId}
+                  name={p.id}
                   style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
                   disabled={isDisabled(p)}
@@ -379,6 +400,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               )}
               {p.kind.type === "priority" && (
                 <select
+                  id={fieldId}
+                  name={p.id}
                   style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
                   disabled={isDisabled(p)}
@@ -412,6 +435,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               )}
               {p.kind.type === "add_split_config" && !addSplitPatternsOverride?.length && (
                 <NumberInput
+                  id={fieldId}
+                  name={p.id}
                   style={styles.input}
                   value={getMaxSplitNodes(p)}
                   min={1}

@@ -279,6 +279,7 @@ export function OklchModelEditor({ color, onChange }: Props) {
           />
           <input
             type="number"
+            name={`oklch-${key}`}
             min={0}
             max={max}
             step={step}

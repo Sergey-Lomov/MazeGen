@@ -72,6 +72,7 @@ export function QualityFeature() {
           <span style={styles.limitLabel}>{m["quality.repair_max_iterations_label"]()}</span>
           <input
             type="number"
+            name="repair-max-iterations"
             style={styles.limitInput}
             disabled={repairMaxIterations == null}
             min={1}
@@ -87,6 +88,7 @@ export function QualityFeature() {
           <span style={styles.limitLabel}>{m["quality.repair_time_budget_label"]()}</span>
           <input
             type="number"
+            name="repair-time-budget-seconds"
             style={styles.limitInput}
             disabled={repairTimeBudgetSecs == null}
             min={0.1}

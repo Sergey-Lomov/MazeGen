@@ -127,6 +127,13 @@ describe("ParamFields", () => {
       expect(inputs[1].value).toBe("10");
     });
 
+    it("associates the parameter label with the interval's first field", () => {
+      render(<ParamFields params={[intervalParam]} values={{ desired_length: "3,10" }} onChange={vi.fn()} />);
+      const label = screen.getByText("Desired graph length");
+      const [minInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[];
+      expect(label).toHaveAttribute("for", minInput.id);
+    });
+
     it("onChange fires immediately on keystroke without clamping against the other half", () => {
       const onChange = vi.fn();
       render(<ParamFields params={[intervalParam]} values={{ desired_length: "3,10" }} onChange={onChange} />);

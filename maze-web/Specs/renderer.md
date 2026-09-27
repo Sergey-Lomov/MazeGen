@@ -119,6 +119,7 @@ Every canvas text label is drawn as a **multi-channel signed distance field** `B
 
 **Runtime** (`pixi/renderers/msdfFont.ts`):
 - `loadMsdfFont()` — loads both `.fnt` atlases via `Assets.load`, idempotent, awaited once at app startup in `App.tsx` before `setReady` (so there's no flash of missing labels). The init chain has a `.catch` that logs a failed WebGL/font init rather than hanging silently on the loading screen.
+- Successful renderer initialization is silent; `App.tsx` does not log Pixi's selected renderer. Initialization failures remain reported by the existing `.catch` above.
 - `msdfFontFamily(weight)` — resolves a `LabelFontWeight` (`"regular"`/`"bold"`) to the atlas `face` name (`"Roboto-Regular"`/`"Roboto-Bold"`). `MSDF_FONT_FAMILY` is the regular-weight name, for call sites with a single fixed weight.
 - `makeCenteredLabel(text, fontFamily, fontSize, fill)` — builds a `BitmapText`, sets `anchor.set(0.5)`, and folds a vertical correction into `pivot.y` so the label is centered on its **glyph ink**, not the font line box (`anchor` alone centers the line box, leaving descender-less labels — digits, roman numerals, uppercase — sitting low). The correction is computed from the installed atlas's own metrics (`yOffset`, glyph height, `lineHeight`, `baseLineOffset`, `baseMeasurementFontSize`), matching pixi's own `getBitmapTextLayout` + `BitmapText.updateBounds` math — no hand-tuned constant. Returns `pivot.y = 0` if the font isn't installed or no glyph in `text` carries metrics.
 

@@ -5,13 +5,17 @@ interface Props {
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  name?: string;
+  id?: string;
 }
 
-export function Switch({ checked, onChange, disabled }: Props) {
+export function Switch({ checked, onChange, disabled, name = "switch", id }: Props) {
   return (
     <label style={{ ...styles.wrap, ...(disabled ? styles.wrapDisabled : {}) }}>
       <input
         type="checkbox"
+        name={name}
+        id={id}
         style={styles.input}
         checked={checked}
         disabled={disabled}

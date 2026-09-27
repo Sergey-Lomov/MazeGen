@@ -229,6 +229,7 @@ export function PngExportSettingsPanel() {
                 <span style={styles.label}>{m["image_export.format.png.digital.margin"]()}</span>
                 <input
                   type="number"
+                  name="png-digital-margin"
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
                   value={digital.marginValue}
                   onChange={(e) => setDigitalMarginValue(Number(e.target.value))}
@@ -241,6 +242,7 @@ export function PngExportSettingsPanel() {
                 <span style={styles.label}>{m["image_export.format.png.digital.width"]()}</span>
                 <input
                   type="number"
+                  name="png-digital-width"
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
                   value={digital.fixedWidth}
                   onChange={(e) => setDigitalFixedSize(Number(e.target.value), digital.fixedHeight)}
@@ -248,6 +250,7 @@ export function PngExportSettingsPanel() {
                 <span style={styles.label}>{m["image_export.format.png.digital.height"]()}</span>
                 <input
                   type="number"
+                  name="png-digital-height"
                   style={{ ...sharedStyles.input, ...styles.control, width: 90 }}
                   value={digital.fixedHeight}
                   onChange={(e) => setDigitalFixedSize(digital.fixedWidth, Number(e.target.value))}
@@ -308,6 +311,7 @@ export function PngExportSettingsPanel() {
                   </span>
                   <input
                     type="number"
+                    name="png-print-width"
                     style={{
                       ...sharedStyles.input, ...styles.control, width: 70,
                       ...(print.paperSize !== "custom" ? styles.inputDisabled : {}),
@@ -323,6 +327,7 @@ export function PngExportSettingsPanel() {
                   </span>
                   <input
                     type="number"
+                    name="png-print-height"
                     style={{
                       ...sharedStyles.input, ...styles.control, width: 70,
                       ...(print.paperSize !== "custom" ? styles.inputDisabled : {}),
@@ -364,6 +369,7 @@ export function PngExportSettingsPanel() {
                   <span style={styles.shortLabel}>{m["image_export.format.png.print.margin_h_short"]()}</span>
                   <input
                     type="number"
+                    name="png-print-margin-horizontal"
                     style={{ ...sharedStyles.input, ...styles.control, width: 70 }}
                     value={print.marginHMm}
                     onChange={(e) => setPrintMargins(Number(e.target.value), print.marginVMm)}
@@ -373,6 +379,7 @@ export function PngExportSettingsPanel() {
                   <span style={styles.shortLabel}>{m["image_export.format.png.print.margin_v_short"]()}</span>
                   <input
                     type="number"
+                    name="png-print-margin-vertical"
                     style={{ ...sharedStyles.input, ...styles.control, width: 70 }}
                     value={print.marginVMm}
                     onChange={(e) => setPrintMargins(print.marginHMm, Number(e.target.value))}
@@ -393,6 +400,7 @@ export function PngExportSettingsPanel() {
               <span style={{ ...styles.label, ...(print.scaleAutoFit ? styles.labelDisabled : {}) }}>{m["image_export.format.png.print.scale"]()}</span>
               <input
                 type="number"
+                name="png-print-scale"
                 step="0.01"
                 style={{
                   ...sharedStyles.input, ...styles.control, width: 90,

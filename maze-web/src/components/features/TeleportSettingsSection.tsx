@@ -173,6 +173,7 @@ function TeleportGroupRow({
       </span>
       <span style={styles.groupRowSpacer} />
       <select
+        name={`teleport-group-${index}-shape`}
         title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
         style={sharedStyles.selectSm}
         value={override?.shape ?? "__default__"}

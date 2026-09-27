@@ -32,6 +32,7 @@ export function TextFieldRow({
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
       <input
         type="text"
+        name={label}
         style={{ ...sharedStyles.textFieldSm, ...(invalid ? styles.invalid : null), width: inputWidth, flexShrink: 0 }}
         value={value}
         disabled={disabled}

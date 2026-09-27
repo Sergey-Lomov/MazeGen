@@ -207,6 +207,7 @@ export function HslModelEditor({ color, onChange }: Props) {
           />
           <input
             type="number"
+            name={`hsl-${key}`}
             min={0}
             max={max}
             step={1}

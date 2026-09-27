@@ -195,7 +195,7 @@ function NumberInputRow({ label, value, suffix, onChange }: { label: string; val
     <Inline gap="itemGap" justify="space-between">
       <span style={styles.label}>{label}</span>
       <Inline gap="elementsGap">
-        <input type="number" min={0} step="0.1" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input type="number" name={label} min={0} step="0.1" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
         {suffix && <span style={typography.caption}>{suffix}</span>}
       </Inline>
     </Inline>
@@ -226,7 +226,7 @@ function NumberInput({ label, value, disabled, onChange }: { label: string; valu
   return (
     <Inline gap="elementsGap">
       <span style={{ ...styles.shortLabel, ...(disabled ? styles.disabled : {}) }}>{label}</span>
-      <input type="number" min={0} step="0.1" disabled={disabled} style={{ ...styles.input, ...(disabled ? styles.inputDisabled : {}) }} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input type="number" name={label} min={0} step="0.1" disabled={disabled} style={{ ...styles.input, ...(disabled ? styles.inputDisabled : {}) }} value={value} onChange={(e) => onChange(e.target.value)} />
     </Inline>
   );
 }

@@ -23,6 +23,7 @@ export function SliderParam({ label, value, onChange, variant = "secondary", min
       <input
         className="maze-slider"
         type="range"
+        name={label}
         min={min}
         max={max}
         step={step}

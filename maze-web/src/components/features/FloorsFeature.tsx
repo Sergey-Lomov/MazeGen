@@ -101,6 +101,7 @@ export function FloorsFeature() {
             {isRenaming ? (
               <input
                 style={styles.titleInput}
+                name="floor-title"
                 value={renameDraft}
                 autoFocus
                 onChange={(e) => setRenameDraft(e.target.value)}

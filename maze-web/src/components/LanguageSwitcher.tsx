@@ -7,6 +7,7 @@ export function LanguageSwitcher() {
   const { locale, setLocale, availableLocales } = useLocale();
   return (
     <select
+      name="language"
       value={locale}
       onChange={(e) => setLocale(e.target.value as Locale)}
       style={styles.select}

@@ -38,6 +38,7 @@ function SizeParam({ label, value, min, max, onCommit }: SizeParamProps) {
       <input
         style={styles.input}
         type="number"
+        name={label}
         min={min}
         max={max}
         value={local}
@@ -114,6 +115,7 @@ export function FieldSetupFeature() {
         <label style={styles.label}>
           {m["field.shape"]()}
           <select style={styles.select} value={squareShape}
+            name="field-square-shape"
             onChange={(e) => setSquareShape(e.target.value as SquareShape)}>
             <option value="rect">{m["field.shape.rect"]()}</option>
           </select>
@@ -125,6 +127,7 @@ export function FieldSetupFeature() {
         <label style={styles.label}>
           {m["field.shape"]()}
           <select style={styles.select} value={hexShape}
+            name="field-hex-shape"
             onChange={(e) => setHexShape(e.target.value as HexShape)}>
             <option value="parallelogram">{m["field.shape.parallelogram"]()}</option>
             <option value="hexagon">{m["field.shape.hexagon"]()}</option>
@@ -136,6 +139,7 @@ export function FieldSetupFeature() {
       <label style={styles.label}>
         {m["field.shape"]()}
         <select style={styles.select} value={triangleShape}
+          name="field-triangle-shape"
           onChange={(e) => setTriangleShape(e.target.value as TriangleShape)}>
           <option value="rect">{m["field.shape.rect"]()}</option>
           <option value="triangle">{m["field.shape.triangle"]()}</option>

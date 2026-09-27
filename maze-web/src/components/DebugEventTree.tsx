@@ -470,6 +470,7 @@ export function DebugEventTree() {
       <div style={styles.searchRow}>
         <input
           type="text"
+          name="debug-search"
           value={debugSearchQuery}
           onChange={(e) => setDebugSearchQuery(e.target.value)}
           onKeyDown={(e) => {

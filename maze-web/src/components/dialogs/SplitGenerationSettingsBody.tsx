@@ -36,6 +36,7 @@ export function SplitGenerationSettingsBody({ value, onChange }: Props) {
           <span style={styles.label}>{m["generation.split_max_nodes"]()}</span>
           <input
             type="number"
+            name="split-max-nodes"
             style={sharedStyles.inputSm}
             value={value.max_split_nodes}
             min={1}

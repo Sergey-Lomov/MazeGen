@@ -64,6 +64,7 @@ export function StepSlider({ value, max, style, onChange, onChangeEnd }: Props) 
   return (
     <input
       type="range"
+      name="debug-step"
       className="maze-slider"
       style={style}
       min={0}
