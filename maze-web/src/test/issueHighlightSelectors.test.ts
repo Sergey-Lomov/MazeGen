@@ -78,6 +78,31 @@ describe("buildRegionGeometry", () => {
     expect(perimeterSegments).toEqual([]);
   });
 
+  it("keeps corner-touching triangles as two separate contours instead of one self-intersecting shape (GitHub issue #618)", () => {
+    const triangleCfg: TessellationConfig = { type: "triangle_rect", cols: 5, rows: 5 };
+    // (0,0) and (1,1) are both "up" triangles (parity even) that touch only at one apex vertex --
+    // not tessellation neighbors, so they must trace as independent contours.
+    const nodes = [node(0, 0, 0), node(1, 1, 1)];
+    const { perimeterSegments } = buildRegionGeometry([0, 1], nodes, triangleCfg);
+    const contours = buildRegionContours(perimeterSegments);
+    expect(contours).toHaveLength(2);
+    expect(contours[0]).toHaveLength(3);
+    expect(contours[1]).toHaveLength(3);
+  });
+
+  it("keeps a ring's hole nested while a separate corner-touching cell stays its own contour", () => {
+    // A 3x3 ring (center cell excluded) is one edge-connected component with an outer + inner
+    // contour (a hole); a 4th cell diagonally adjacent to one ring corner only touches at a point,
+    // so it must land in a second component and render as its own single contour, not merge into
+    // the ring's hole-nesting pair.
+    const ringCells: [number, number][] = [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]];
+    const nodes = ringCells.map(([x, y], i) => node(i, x, y));
+    nodes.push(node(100, 3, 3));
+    const { perimeterSegments } = buildRegionGeometry([...ringCells.map((_, i) => i), 100], nodes, cfg);
+    const contours = buildRegionContours(perimeterSegments);
+    expect(contours).toHaveLength(3);
+  });
+
   it("dedups cells sharing one coordinate -- e.g. a split tile's several node ids -- to one fill+perimeter", () => {
     // Ids 10 and 11 both sit at (0, 0), like a split tile's slot-0 and an extra node -- must
     // collapse to a single cell/perimeter, not double-draw (GitHub issue #249 regression: the

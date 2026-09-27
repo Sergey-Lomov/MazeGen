@@ -50,8 +50,26 @@ function simplifyContour(points: { x: number; y: number }[]): { x: number; y: nu
 }
 
 /** Turns the exposed cell sides into one or more closed loops. Shared sides never appear here, so
- * adjacent region cells become one silhouette (including L-shaped and stepped regions). */
-export function buildRegionContours(segments: { v0: { x: number; y: number }; v1: { x: number; y: number } }[]): { x: number; y: number }[][] {
+ * adjacent region cells become one silhouette (including L-shaped and stepped regions).
+ *
+ * Segments are traced per `component` (GitHub issue #618): two cells that touch only at a corner
+ * point are not edge-adjacent, so `buildRegionGeometry` puts them in different components even
+ * though a vertex can coincide. Tracing them together would let the turn-angle rule cross from
+ * one cell's boundary into the other's at that shared point, producing a self-intersecting
+ * "bowtie" contour instead of two separate ones. */
+export function buildRegionContours(segments: { v0: { x: number; y: number }; v1: { x: number; y: number }; component: number }[]): { x: number; y: number }[][] {
+  const contours: { x: number; y: number }[][] = [];
+  const byComponent = new Map<number, typeof segments>();
+  for (const seg of segments) {
+    const group = byComponent.get(seg.component) ?? [];
+    group.push(seg);
+    byComponent.set(seg.component, group);
+  }
+  for (const group of byComponent.values()) contours.push(...traceContours(group));
+  return contours;
+}
+
+function traceContours(segments: { v0: { x: number; y: number }; v1: { x: number; y: number } }[]): { x: number; y: number }[][] {
   // Keep the boundary as an undirected geometric graph. The old tracer indexed only `v0`, which
   // happened to work for square cells because every exposed side was oriented consistently. Hex
   // and triangle cells can expose the same vertex with the opposite segment orientation, so that
