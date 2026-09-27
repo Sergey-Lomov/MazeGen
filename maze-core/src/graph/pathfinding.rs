@@ -61,6 +61,105 @@ where
     dist
 }
 
+/// Like `dijkstra_forward_filtered_bounded`, but instead of returning a full distance map, calls
+/// `on_edge` once for every nav-edge relaxed during the traversal (i.e. every edge leaving a node
+/// whose shortest distance is already known to be within `max_dist`), passing the exact edge and
+/// the already-known distance to its `from` end (`edge.path.len() - 1` further hops reach `to`,
+/// with every intermediate tile in `edge.path` at its own exact offset in between).
+///
+/// This is the hook a caller needs to find the *nearest* of several targets sprinkled both on
+/// nav-nodes (an edge's own `from`/`to`) and on corridor-interior tiles (any other position in an
+/// edge's `path`, e.g. a `Split` occurrence) without either building the whole bounded distance
+/// map up front (wasted work once the nearest target is known) or resolving each target with its
+/// own separate traversal (`pairwise_graph_proximity_scan`'s pre-optimization shape, GitHub issue
+/// #512 follow-up) — one traversal, one edge callback, every reachable tile seen exactly where
+/// Dijkstra would have expanded it, in non-decreasing distance order across *nodes* (though not
+/// perfectly across the interior of a single long edge — see the caller's own doc comment on how
+/// it resolves that). The traversal stops the same way `dijkstra_generic_bounded` does: once the
+/// popped cost exceeds `max_dist`, or `on_edge` itself returns `false` (a caller-driven early
+/// exit, e.g. once it already knows further nodes can only be farther).
+pub(crate) fn dijkstra_forward_visit_edges_bounded(
+    nav: &NavGraph,
+    source: NavNodeId,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: Option<usize>,
+    mut on_edge: impl FnMut(&NavEdge, usize) -> bool,
+) {
+    let n = nav.nodes.len();
+    let mut dist = vec![usize::MAX; n];
+    let mut heap: BinaryHeap<Reverse<(usize, NavNodeId)>> = BinaryHeap::new();
+
+    dist[source] = 0;
+    heap.push(Reverse((0, source)));
+
+    while let Some(Reverse((cost, u))) = heap.pop() {
+        if dist[u] < cost {
+            continue;
+        }
+        if let Some(max) = max_dist
+            && cost > max
+        {
+            break;
+        }
+        for edge in nav.outgoing_edges(u).filter(|e| edge_filter(e)) {
+            if !on_edge(edge, cost) {
+                return;
+            }
+            let weight = edge.path.len().saturating_sub(1);
+            let next_cost = cost + weight;
+            if next_cost < dist[edge.to] {
+                dist[edge.to] = next_cost;
+                heap.push(Reverse((next_cost, edge.to)));
+            }
+        }
+    }
+}
+
+/// Like `dijkstra_forward_visit_edges_bounded`, but follows incoming edges instead — for a caller
+/// resolving "how close is X to something that can reach it" (reverse-direction proximity, e.g.
+/// `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck`'s own directed `min(forward,
+/// reverse)` reduction) via the same single-pass nearest-candidate-tracking shape. `on_edge` is
+/// called once per relaxed incoming edge, passing the edge and the already-known distance to its
+/// `to` end (`source`'s side gets closer as the edge's `path` is walked backward from `to` toward
+/// `from`) — a caller inspecting `edge.path` for a corridor-interior candidate must therefore
+/// index from the end, not the start, unlike the forward variant.
+pub(crate) fn dijkstra_reverse_visit_edges_bounded(
+    nav: &NavGraph,
+    source: NavNodeId,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: Option<usize>,
+    mut on_edge: impl FnMut(&NavEdge, usize) -> bool,
+) {
+    let n = nav.nodes.len();
+    let mut dist = vec![usize::MAX; n];
+    let mut heap: BinaryHeap<Reverse<(usize, NavNodeId)>> = BinaryHeap::new();
+
+    dist[source] = 0;
+    heap.push(Reverse((0, source)));
+
+    while let Some(Reverse((cost, u))) = heap.pop() {
+        if dist[u] < cost {
+            continue;
+        }
+        if let Some(max) = max_dist
+            && cost > max
+        {
+            break;
+        }
+        for edge in nav.incoming_edges(u).filter(|e| edge_filter(e)) {
+            if !on_edge(edge, cost) {
+                return;
+            }
+            let weight = edge.path.len().saturating_sub(1);
+            let next_cost = cost + weight;
+            if next_cost < dist[edge.from] {
+                dist[edge.from] = next_cost;
+                heap.push(Reverse((next_cost, edge.from)));
+            }
+        }
+    }
+}
+
 /// Forward Dijkstra: distances from `source` following outgoing edges.
 pub(crate) fn dijkstra_forward(nav: &NavGraph, source: NavNodeId) -> Vec<usize> {
     dijkstra_generic(nav, source, |nav, u| {
@@ -440,6 +539,126 @@ mod tests {
         assert_eq!(
             unbounded[far], 10,
             "sanity check: without a bound the same traversal does reach node 10"
+        );
+    }
+
+    #[test]
+    fn dijkstra_forward_visit_edges_bounded_visits_every_edge_in_non_decreasing_distance_order() {
+        // Diamond: 0->1, 0->2, 1->3, 2->3. Edges leaving a node are visited only once that node's
+        // own shortest distance is known, so the two edges out of 0 (distance 0) are seen before
+        // the two edges out of 1/2 (distance 1) -- direct proof of the function's own "visits an
+        // edge with the already-known distance to its `from` end" contract, and that it reaches
+        // every edge in the graph rather than stopping early.
+        let mut g = Graph::new();
+        for id in [0u64, 1, 2, 3] {
+            g.add_node(id);
+        }
+        g.add_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(0, 2, EdgeKind::Basic);
+        g.add_edge(1, 3, EdgeKind::Basic);
+        g.add_edge(2, 3, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[0, 1, 2, 3]));
+        let source = nav.nav_node_for(0).unwrap();
+
+        let mut seen: Vec<(NodeId, NodeId, usize)> = Vec::new();
+        dijkstra_forward_visit_edges_bounded(&nav, source, |_| true, None, |edge, dist| {
+            let from_id = nav.nodes[edge.from].node_id;
+            let to_id = nav.nodes[edge.to].node_id;
+            seen.push((from_id, to_id, dist));
+            true
+        });
+
+        assert_eq!(seen.len(), 4, "every edge in the diamond must be visited exactly once");
+        assert!(
+            seen.iter().all(|&(from, _, dist)| (from == 0) == (dist == 0)),
+            "an edge leaving node 0 must be visited at distance 0, no other edge at distance 0: {seen:?}"
+        );
+        assert!(
+            seen.iter()
+                .any(|&(from, to, dist)| from == 1 && to == 3 && dist == 1),
+            "edge 1->3 must be visited once node 1's own distance (1) is known: {seen:?}"
+        );
+    }
+
+    #[test]
+    fn dijkstra_forward_visit_edges_bounded_stops_early_when_on_edge_returns_false() {
+        let mut g = Graph::new();
+        for id in [0u64, 1, 2] {
+            g.add_node(id);
+        }
+        g.add_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(1, 2, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[0, 1, 2]));
+        let source = nav.nav_node_for(0).unwrap();
+
+        let mut visits = 0;
+        dijkstra_forward_visit_edges_bounded(&nav, source, |_| true, None, |_, _| {
+            visits += 1;
+            false // stop right after the first edge
+        });
+        assert_eq!(visits, 1, "on_edge returning false must end the traversal immediately");
+    }
+
+    #[test]
+    fn dijkstra_reverse_visit_edges_bounded_visits_incoming_edges_with_distance_to_their_to_end() {
+        // Chain 0->1->2 (one-way). Scanning in reverse from 2 must visit edge 1->2 first (distance
+        // 0 to 2, its own `to` end), then edge 0->1 (distance 1, once node 1's own distance from 2
+        // is known) -- proves it follows `incoming_edges` and relaxes toward `edge.from`, the
+        // mirror image of the forward variant's own contract.
+        let mut g = Graph::new();
+        for id in [0u64, 1, 2] {
+            g.add_node(id);
+        }
+        g.add_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(1, 2, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[0, 1, 2]));
+        let target = nav.nav_node_for(2).unwrap();
+
+        let mut seen: Vec<(NodeId, NodeId, usize)> = Vec::new();
+        dijkstra_reverse_visit_edges_bounded(&nav, target, |_| true, None, |edge, dist| {
+            let from_id = nav.nodes[edge.from].node_id;
+            let to_id = nav.nodes[edge.to].node_id;
+            seen.push((from_id, to_id, dist));
+            true
+        });
+
+        assert_eq!(seen.len(), 2, "both edges on the chain must be visited");
+        assert_eq!(
+            seen[0],
+            (1, 2, 0),
+            "edge 1->2 must be visited first, at distance 0 (its own `to` end is the source)"
+        );
+        assert_eq!(
+            seen[1],
+            (0, 1, 1),
+            "edge 0->1 must be visited once node 1's own distance to the target (1) is known"
+        );
+    }
+
+    #[test]
+    fn dijkstra_reverse_visit_edges_bounded_respects_max_dist() {
+        // Chain 0->1->2->3. Scanning in reverse from 3 with max_dist=1 must not visit edge 0->1
+        // (distance 2 to the target), only 2->3 (distance 0) and 1->2 (distance 1).
+        let mut g = Graph::new();
+        for id in [0u64, 1, 2, 3] {
+            g.add_node(id);
+        }
+        g.add_edge(0, 1, EdgeKind::Basic);
+        g.add_edge(1, 2, EdgeKind::Basic);
+        g.add_edge(2, 3, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[0, 1, 2, 3]));
+        let target = nav.nav_node_for(3).unwrap();
+
+        let mut seen: Vec<(NodeId, NodeId)> = Vec::new();
+        dijkstra_reverse_visit_edges_bounded(&nav, target, |_| true, Some(1), |edge, _| {
+            seen.push((nav.nodes[edge.from].node_id, nav.nodes[edge.to].node_id));
+            true
+        });
+
+        assert_eq!(
+            seen,
+            vec![(2, 3), (1, 2)],
+            "edge 0->1 (distance 2 to the target) must never be visited when max_dist is 1"
         );
     }
 

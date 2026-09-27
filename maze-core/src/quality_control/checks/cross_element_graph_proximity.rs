@@ -1,15 +1,13 @@
 use super::cross_element_geometric_proximity::{
     RawClosePair, aggregate_pairs, elevator_of_stop, route_protected_elements, same_elevator_pair,
 };
-use super::proximity_scan_core::pairwise_graph_proximity_scan;
+use super::proximity_scan_core::{ScanAnchor, pairwise_graph_proximity_scan};
 use crate::Maze;
-use crate::graph::EdgeKind;
-use crate::graph::nav::NavNodeId;
 use crate::ids::NodeId;
 use crate::quality_control::InvalidCrossElementGroupIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::cross_element::{
-    CrossElement, CrossElementSet, cross_element_occurrences,
+    CrossElement, CrossElementSet, cross_element_edges, cross_element_occurrences,
 };
 use crate::space::Tessellation;
 use rand::RngCore;
@@ -23,11 +21,18 @@ pub const CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 1;
 /// same complete-graph-over-the-enabled-types semantics, same occurrence model, same silent
 /// no-op only when zero types are enabled (one type is a valid same-type scan).
 ///
-/// Distance excludes hops through `Teleport` / `VerticalPassage` / `Elevator` edges (own or
-/// otherwise) — those model instant relocation, not pedestrian proximity, mirroring
-/// `TeleportGroupProximityCheck`'s and `VerticalPassageGroupGraphProximityCheck`'s own hop
-/// exclusion. Each occurrence carries one `NavNodeId`; a pair is flagged if any of one element's
-/// occurrence nav-nodes is within the threshold of any of the other's.
+/// Distance excludes hops through the scanned occurrence's *own* element only (GitHub issue
+/// #512) — a `Teleport`/`VerticalPassage`/`Elevator` edge belonging to some *other* element is
+/// traversed like an ordinary nav hop, so a genuinely close pair on its far side is still reported
+/// as close. `cross_element_edges` already gives each element's own owned edges (both directions
+/// for a two-way teleport/passage, every fan edge for an elevator stop, the single directed edge
+/// for a one-way); `Split`/`Start`/`Finish` own no edge at all, so their exclusion set is empty.
+/// Each occurrence carries one maze `NodeId`; a pair is flagged if any of one element's occurrence
+/// nodes is within the threshold of any of the other's. Distance is measured via
+/// `pairwise_graph_proximity_scan`, which correctly resolves a corridor-interior occurrence node
+/// with no `NavNodeId` of its own — a `Split`
+/// occurrence sitting on an otherwise-plain 2-degree tile is the common case — instead of silently
+/// dropping it from the scan (GitHub issue #512 follow-up).
 ///
 /// `protect_route` behaves as on [`CrossElementGeometricProximityCheck`](super::cross_element_geometric_proximity::CrossElementGeometricProximityCheck):
 /// a pair whose both elements are route-protected is not flagged.
@@ -55,44 +60,43 @@ impl<T: Tessellation> Check<T, InvalidCrossElementGroupIssue> for CrossElementGr
         }
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
 
-        // Instant-relocation edges are excluded from the traversal — proximity here means "close
-        // on foot", not "reachable by teleport/passage/elevator".
-        let hop_pairs: HashSet<(NodeId, NodeId)> = maze
-            .graph
-            .edges()
-            .filter(|e| {
-                matches!(
-                    e.kind,
-                    EdgeKind::Teleport | EdgeKind::VerticalPassage | EdgeKind::Elevator
-                )
-            })
-            .map(|e| (e.from, e.to))
-            .collect();
-
         let occurrences = cross_element_occurrences(maze, &self.set, &nav);
         let route_protected = route_protected_elements(maze, &occurrences, self.protect_route);
         let elevator_of_stop = elevator_of_stop(maze, &occurrences);
 
-        let candidates: Vec<(CrossElement, NodeId, NavNodeId)> = occurrences
+        let candidates: Vec<(CrossElement, NodeId)> = occurrences
             .into_iter()
-            .filter_map(|o| Some((o.element, o.node, o.nav_node?)))
+            .map(|o| (o.element, o.node))
             .collect();
         if candidates.len() < 2 {
             return;
         }
 
+        // Per-element hop-exclusion set (GitHub issue #512): only the scanned occurrence's own
+        // element's own edges are excluded from its traversal.
+        let own_hop_pairs = |own: &(CrossElement, NodeId)| -> HashSet<(NodeId, NodeId)> {
+            cross_element_edges(maze, &own.0)
+                .into_iter()
+                .filter_map(|id| maze.graph.edge(id))
+                .flat_map(|e| [(e.from, e.to), (e.to, e.from)])
+                .collect()
+        };
         let raw = pairwise_graph_proximity_scan(
             &nav,
             &candidates,
-            self.distance,
-            &hop_pairs,
-            |&(_, _, nav_node)| nav_node,
-            |(own_el, _, _), (other_el, _, _)| {
+            self.distance as usize,
+            false,
+            own_hop_pairs,
+            |_, _| true,
+            |&(_, node)| ScanAnchor::Single(node),
+            |&(_, node)| ScanAnchor::Single(node),
+            |dist| (dist as u32) < self.distance,
+            |(own_el, _), (other_el, _)| {
                 own_el == other_el
                     || (route_protected.contains(own_el) && route_protected.contains(other_el))
                     || same_elevator_pair(&elevator_of_stop, own_el, other_el)
             },
-            |(own_el, own_node, _), (other_el, other_node, _)| {
+            |(own_el, own_node), (other_el, other_node)| {
                 (
                     vec![RawClosePair {
                         own_element: own_el.clone(),
@@ -346,6 +350,52 @@ mod tests {
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "without protection the close pair fires");
+    }
+
+    #[test]
+    fn a_corridor_interior_split_node_still_participates_in_the_graph_scan() {
+        // A split tile at x=2 whose *only* node (p(2)) is a plain 2-degree corridor-interior node
+        // (neighbors p(1)/p(3), nothing else) -- unlike `a_split_tile_occurrence_participates_in_the_graph_scan`,
+        // there is no junction-shaped alternate node to fall back on, so the scan only succeeds if
+        // a corridor-interior occurrence node with no `NavNodeId` of its own is still resolved by
+        // `pairwise_graph_proximity_scan` (GitHub issue #512 follow-up), not silently dropped.
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let level = mf.single_level_id();
+        mf.add_node_at(level, SquarePoint { x: 2, y: 0 }, &mut ids); // second node at the split tile
+        let mut g = Graph::new();
+        for n in mf.all_node_ids() {
+            g.add_node(n);
+        }
+        let p = |x: i32| mf.node_at(level, SquarePoint { x, y: 0 }).unwrap();
+        for x in 0..4 {
+            g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
+        }
+        // The second split node is a dead end (no edges at all) -- it never resolves to a
+        // NavNodeId either, but it also never matters here: p(2) itself is the corridor-interior
+        // node under test.
+        g.add_edge(p(0), p(4), EdgeKind::Teleport);
+        g.add_edge(p(4), p(0), EdgeKind::Teleport);
+        let maze = Maze::new(mf, g);
+
+        let set = CrossElementSet {
+            teleport: true,
+            one_way: false,
+            vertical_passage: false,
+            elevator_stop: false,
+            split: true,
+            start: false,
+            finish: false,
+        };
+        let mut issues = Vec::new();
+        check(3, set).repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(
+            issues.len(),
+            1,
+            "the teleport end at x=0 is within 3 hops of the corridor-interior split tile at x=2"
+        );
+        assert_eq!(issues[0].groups().len(), 1);
     }
 
     #[test]

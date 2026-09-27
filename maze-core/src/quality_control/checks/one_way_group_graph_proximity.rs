@@ -1,8 +1,5 @@
+use super::proximity_scan_core::{ScanAnchor, pairwise_graph_proximity_scan};
 use crate::Maze;
-use crate::graph::distance_map::{
-    DistanceDirection, compute_distance_map_filtered_bounded, min_optional_distance,
-};
-use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_edge_on_route;
 use crate::ids::EdgeId;
 use crate::quality_control::InvalidOneWayGroupIssue;
@@ -10,7 +7,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::space::Tessellation;
 use rand::RngCore;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub const ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -32,72 +29,22 @@ pub const ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 /// tiles as distance 2 (not the raw 1). The +1 offset is applied once, to the final `min` across
 /// every endpoint combination, not to each individual `dist_cache.distance()` call — equivalent
 /// for the `min` itself, but keeps the cache's own values as plain tile-hop counts.
+///
+/// Traversal excludes only the scanned edge's *own* directed hop (GitHub issue #512) — a one-way
+/// owns no fast-travel connection, so unlike `TeleportGroupProximityCheck`/
+/// `ElevatorStopGroupGraphProximityCheck` there is no multi-end/multi-stop over-pressuring problem
+/// to solve here; every other hop (including through a `Teleport`/`VerticalPassage`/`Elevator`
+/// elsewhere in the maze) is a genuine pedestrian option. This exclusion never changes a reported
+/// pair: without it, scanning from `own_from` would walk straight across the one-way to `own_to`
+/// and only ever reach any `other` one hop farther than a scan from `own_to` already does, and the
+/// `min` across both endpoints (below) always keeps `own_to`'s shorter number. It exists purely to
+/// skip that redundant, always-discarded Dijkstra work.
 pub struct OneWayGroupGraphProximityCheck {
     pub instance_id: String,
     /// Tile-hop threshold — `f64` (not `u32`) so a fractional value (e.g. `1.5`) can cleanly
     /// separate an integer tile-hop count without off-by-one ambiguity.
     pub distance: f64,
     pub protect_route: bool,
-}
-
-/// Per-node distance maps, recomputed lazily and cached for one scan's duration — mirrors
-/// `TeleportGroupProximityCheck`'s own `DirectedDistanceCache`.
-struct DirectedDistanceCache<'a> {
-    nav: &'a crate::graph::nav::NavGraph,
-    max_dist: usize,
-    forward: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
-    reverse: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
-}
-
-impl<'a> DirectedDistanceCache<'a> {
-    fn new(nav: &'a crate::graph::nav::NavGraph, max_dist: usize) -> Self {
-        Self {
-            nav,
-            max_dist,
-            forward: HashMap::new(),
-            reverse: HashMap::new(),
-        }
-    }
-
-    fn is_not_teleport_hop(edge: &NavEdge) -> bool {
-        !edge.is_teleport
-    }
-
-    fn distance(&mut self, a: NavNodeId, b: NavNodeId) -> Option<usize> {
-        if a == b {
-            return Some(0);
-        }
-        let max_dist = self.max_dist;
-        let fwd = self
-            .forward
-            .entry(a)
-            .or_insert_with(|| {
-                compute_distance_map_filtered_bounded(
-                    self.nav,
-                    a,
-                    DistanceDirection::Forward,
-                    Self::is_not_teleport_hop,
-                    max_dist,
-                )
-            })
-            .get(&b)
-            .copied();
-        let rev = self
-            .reverse
-            .entry(a)
-            .or_insert_with(|| {
-                compute_distance_map_filtered_bounded(
-                    self.nav,
-                    a,
-                    DistanceDirection::Reverse,
-                    Self::is_not_teleport_hop,
-                    max_dist,
-                )
-            })
-            .get(&b)
-            .copied();
-        min_optional_distance(fwd, rev)
-    }
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProximityCheck {
@@ -123,51 +70,33 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
         // than without the +1 offset (see the check's own doc comment), since a raw distance one
         // hop farther now already crosses the threshold.
         let max_dist = (self.distance.ceil() as isize - 2).max(0) as usize;
-        let mut dist_cache = DirectedDistanceCache::new(&nav, max_dist);
-        let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
-        for &(own_id, own_from, own_to) in &one_ways {
-            let own_navs: Vec<NavNodeId> = [own_from, own_to]
-                .into_iter()
-                .filter_map(|n| nav.nav_node_for(n))
-                .collect();
-            if own_navs.is_empty() {
-                continue;
-            }
+        // Excludes only the scanned one-way's own directed hop (`own_from` -> `own_to`) — every
+        // other hop, including the reverse direction (which a one-way can't traverse anyway) and
+        // any other element's fast-travel connection, is a genuine pedestrian option (GitHub
+        // issue #512).
+        let own_hop_pairs = |&(_, own_from, own_to): &(EdgeId, crate::ids::NodeId, crate::ids::NodeId)| {
+            HashSet::from([(own_from, own_to)])
+        };
 
-            for &(other_id, other_from, other_to) in &one_ways {
-                if other_id == own_id {
-                    continue;
-                }
-                let other_navs: Vec<NavNodeId> = [other_from, other_to]
-                    .into_iter()
-                    .filter_map(|n| nav.nav_node_for(n))
-                    .collect();
-                if other_navs.is_empty() {
-                    continue;
-                }
-
-                let closest = own_navs
-                    .iter()
-                    .flat_map(|&a| other_navs.iter().map(move |&b| (a, b)))
-                    .filter_map(|(a, b)| dist_cache.distance(a, b))
-                    .min();
-
-                if let Some(dist) = closest {
-                    // +1 offset — see the check's doc comment.
-                    if ((dist + 1) as f64) < self.distance {
-                        let both_route_protected = self.protect_route
-                            && is_edge_on_route(maze, own_id)
-                            && is_edge_on_route(maze, other_id);
-                        if !both_route_protected {
-                            // Fixing either edge in the pair breaks the pair -- one fix resolves it.
-                            groups.push((vec![own_id, other_id], 1));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        let groups = pairwise_graph_proximity_scan(
+            &nav,
+            &one_ways,
+            max_dist,
+            true, // directed: min(forward, reverse), see the check's own doc comment.
+            own_hop_pairs,
+            |_, _| true,
+            |&(_, from, to)| ScanAnchor::Endpoints(from, to),
+            |&(_, from, to)| ScanAnchor::Endpoints(from, to),
+            |dist| ((dist + 1) as f64) < self.distance, // +1 offset -- see the check's doc comment.
+            |&(own_id, ..), &(other_id, ..)| {
+                own_id == other_id
+                    || (self.protect_route
+                        && is_edge_on_route(maze, own_id)
+                        && is_edge_on_route(maze, other_id))
+            },
+            |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
+        );
 
         if groups.is_empty() {
             return;

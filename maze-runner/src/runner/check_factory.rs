@@ -109,6 +109,7 @@ use maze_core::{
         VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE,
         VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+        VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
         VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
         VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         VerticalPassageGroupGeometricProximityCheck, VerticalPassageGroupGraphProximityCheck,
@@ -1421,11 +1422,16 @@ pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(
                 VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
             );
             let same_type_only = parse_same_type_only(instance.params.get("same_type_only"));
+            let count_incoming = parse_count_incoming(
+                instance.params.get("count_incoming"),
+                VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_COUNT_INCOMING,
+            );
             Some(Box::new(VerticalPassageGroupGraphProximityCheck {
                 instance_id,
                 distance,
                 passage_type,
                 same_type_only,
+                count_incoming,
             }))
         }
         _ => None,

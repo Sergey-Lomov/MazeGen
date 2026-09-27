@@ -1,10 +1,11 @@
+use super::proximity_scan_core::{ScanAnchor, pairwise_graph_proximity_scan};
 use crate::Maze;
-use crate::graph::distance_map::{exact_tile_distance, min_optional_distance};
 use crate::ids::NodeId;
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
 use crate::space::Tessellation;
 use rand::RngCore;
+use std::collections::HashSet;
 
 pub const SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -18,9 +19,9 @@ pub const SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 /// `OneWayGroupGraphProximityCheck` use) over every combination of the two tiles' own nodes
 /// (slot-0 included, same rationale `SplitDistanceFromWaypointCheck` uses for waypoint distance —
 /// a split point is one physical tile, so its progression-space position is shared by all its
-/// nodes). Uses `exact_tile_distance`, which accounts for a node's exact offset within a
-/// compressed corridor segment rather than snapping it to the segment's nav-node endpoint (see
-/// that function's doc comment) — this check compares the distance value itself against a
+/// nodes, anchored via `ScanAnchor::Multi`). Uses `pairwise_graph_proximity_scan`, which accounts
+/// for a node's exact offset within a compressed corridor segment rather than snapping it to the
+/// segment's nav-node endpoint — this check compares the distance value itself against a
 /// threshold, so the coarse approximation `SplitDistanceFromWaypointCheck` accepts for picking a
 /// search starting point would silently under-report distance between two corridor-interior split
 /// nodes here.
@@ -61,40 +62,34 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let max_dist = self.distance.ceil().max(0.0) as usize;
-        let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = Vec::new();
+        // Largest raw tile-hop count `(dist as f64) < self.distance` can ever accept -- see
+        // `pairwise_graph_proximity_scan`'s own doc comment on `max_dist`.
+        let max_dist = (self.distance.ceil() as isize - 1).max(0) as usize;
 
-        for (own_point, own_nodes) in &tiles {
-            for (other_point, other_nodes) in &tiles {
-                if other_point == own_point {
-                    continue;
-                }
-
-                let closest = own_nodes
-                    .iter()
-                    .flat_map(|&a| other_nodes.iter().map(move |&b| (a, b)))
-                    .filter_map(|(a, b)| {
-                        min_optional_distance(
-                            exact_tile_distance(&nav, a, b, Some(max_dist)),
-                            exact_tile_distance(&nav, b, a, Some(max_dist)),
-                        )
-                    })
-                    .min();
-
-                if let Some(dist) = closest
-                    && (dist as f64) < self.distance
-                {
-                    groups.push((
-                        vec![
-                            SplitTileNodes::new(own_nodes.clone()),
-                            SplitTileNodes::new(other_nodes.clone()),
-                        ],
-                        1,
-                    ));
-                    break;
-                }
-            }
-        }
+        // A split tile owns no fast-travel hop of its own (GitHub issue #512's exclusion doesn't
+        // apply here) -- every hop, including through the split tile's own nodes, is genuine
+        // pedestrian distance.
+        let groups = pairwise_graph_proximity_scan(
+            &nav,
+            &tiles,
+            max_dist,
+            true, // directed: min(forward, reverse), see the check's own doc comment.
+            |_: &(T::Point, Vec<NodeId>)| HashSet::new(),
+            |_, _| true,
+            |(_, nodes)| ScanAnchor::Multi(nodes.clone()),
+            |(_, nodes)| ScanAnchor::Multi(nodes.clone()),
+            |dist| (dist as f64) < self.distance,
+            |(own_point, _), (other_point, _)| own_point == other_point,
+            |(_, own_nodes), (_, other_nodes)| {
+                (
+                    vec![
+                        SplitTileNodes::new(own_nodes.clone()),
+                        SplitTileNodes::new(other_nodes.clone()),
+                    ],
+                    1,
+                )
+            },
+        );
 
         if groups.is_empty() {
             return;
