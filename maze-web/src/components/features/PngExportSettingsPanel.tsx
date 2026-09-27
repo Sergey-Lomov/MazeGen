@@ -11,7 +11,7 @@ import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, resolveSheetSizeMm, DPI_BY_DENSITY, pxToMm, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, resolveSheetSizeMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
 import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
@@ -175,7 +175,7 @@ export function PngExportSettingsPanel() {
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];
-  const printCellSizeMm = pxToMm(TILE_SIZE * print.scale, printDpi);
+  const printCellSizeMm = printCellMeasureMm(cfg, print.scale, printDpi);
 
   return (
     <div style={styles.root}>
@@ -422,7 +422,11 @@ export function PngExportSettingsPanel() {
                     })}
                   </span>
                   <span style={typography.caption}>
-                    {m["image_export.format.png.result.cell_size_mm"]({ size: printCellSizeMm.toFixed(2) })}
+                    {(cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom"
+                      || cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom"
+                      ? m["image_export.format.png.result.cell_size_mm_diameter"]
+                      : m["image_export.format.png.result.cell_size_mm_side"]
+                    )({ size: printCellSizeMm.toFixed(2) })}
                   </span>
                 </Stack>
               </>

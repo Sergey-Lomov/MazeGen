@@ -8,6 +8,7 @@ import type {
   SharedStyleField,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
+import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageExport/printFit";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import {
   applyVectorByWallsSharedStyle,
@@ -71,6 +72,29 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, orientation } } })),
   setPrintMargins: (marginHMm, marginVMm) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, marginHMm, marginVMm } } })),
+  setPrintFieldSizing: (input, config) =>
+    set((s) => {
+      const print = s.pngExportSettings.print;
+      const dpi = DPI_BY_DENSITY[print.density];
+      const scale = mmToPx(input.cellSizeMm, dpi) / cellMeasureWorldUnits(config);
+      return {
+        pngExportSettings: {
+          ...s.pngExportSettings,
+          print: {
+            ...print,
+            paperSize: input.paperSize,
+            customWidthMm: input.customWidthMm,
+            customHeightMm: input.customHeightMm,
+            orientation: input.orientation,
+            marginHMm: input.marginHMm,
+            marginVMm: input.marginVMm,
+            scale,
+            // A manually requested physical cell size must win over the panel's auto-fit effect.
+            scaleAutoFit: false,
+          },
+        },
+      };
+    }),
   setPrintScale: (scale) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale } } })),
   setPrintScaleAutoFit: (autoFit) =>

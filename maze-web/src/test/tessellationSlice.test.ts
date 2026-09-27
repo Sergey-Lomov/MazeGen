@@ -161,6 +161,19 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(s.floorFields[otherFloorId].tessellationConfig.type).toBe("square");
   });
 
+  it("resets the print cell size after changing tessellation kind", () => {
+    useMazeStore.setState({
+      pngExportSettings: {
+        ...useMazeStore.getState().pngExportSettings,
+        print: { ...useMazeStore.getState().pngExportSettings.print, scaleAutoFit: false },
+      },
+    });
+
+    useMazeStore.getState().setTessellationKind("hex");
+
+    expect(useMazeStore.getState().pngExportSettings.print.scaleAutoFit).toBe(true);
+  });
+
   it("setHexShape to hexagon sets hexShape and hex_hexagon config type", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
     setActiveField({ hexShape: "parallelogram", tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" } });

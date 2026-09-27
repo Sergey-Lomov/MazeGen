@@ -7,7 +7,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   getCartesian: (x: number, y: number): [number, number] => [x, y],
 }));
 
-const { computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
+const { cellMeasureWorldUnits, computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, printMeasureToCellSideMm, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 
 const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -41,6 +41,14 @@ describe("pxToMm", () => {
 
   it("converts pixels to millimeters at the given DPI", () => {
     expect(pxToMm(96, 96)).toBeCloseTo(25.4);
+  });
+});
+
+describe("print cell measure", () => {
+  it("uses circumcircle diameter for hexagons and triangles", () => {
+    expect(printMeasureToCellSideMm({ type: "hex_hexagon" }, 10)).toBeCloseTo(5);
+    expect(printMeasureToCellSideMm({ type: "triangle_triangle" }, 10)).toBeCloseTo(10 * Math.sqrt(3) / 2);
+    expect(cellMeasureWorldUnits({ type: "square" })).toBe(40);
   });
 });
 

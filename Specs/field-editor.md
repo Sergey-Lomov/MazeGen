@@ -20,6 +20,49 @@ Two sub-modes toggled inside the card:
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
+### Calculate for print (GitHub issue #615)
+
+Default mode's **Calculate for print** button opens a one-shot dialog. It accepts a paper format
+(A0-A5, Letter, Legal, Tabloid, or custom dimensions), portrait/landscape orientation, desired
+cell measure in millimeters, and horizontal/vertical print margins. For squares the measure is the
+side length; for regular hexagons and triangles it is the diameter of the circumscribed circle.
+Standard paper sizes reuse
+the print export catalog. Margins are per side and default to 5 mm, matching PNG Print settings.
+
+The usable area is:
+
+```text
+usable_width  = paper_width  - 2 * horizontal_margin
+usable_height = paper_height - 2 * vertical_margin
+```
+
+The dialog calculates the largest predefined field that fits this area, rounding cell counts down,
+then applies the resulting ordinary `tessellationConfig` through `setTessellationConfig`. No
+physical-size settings are added to the generation or WASM config, and the dialog's inputs are not
+persisted separately. Square/rectangular forms calculate independent column/row counts. Radial
+forms (`hexagon`, `triangle`, `triangle_hexagon`) calculate the largest fitting radius; because a
+single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
+field footprint before confirmation. The result describes rectangular forms by field size, radial
+forms by field radius, and triangular forms by field side. Invalid input or a cell too large for the printable area
+disables confirmation.
+
+The dialog is synchronized with the PNG Print settings (`pngExportSettings.print`). When opened,
+its paper format, custom dimensions, orientation, and margins are initialized from the current
+print settings. When `print.scaleAutoFit` is enabled, the cell measure starts at 10 mm; otherwise it
+is derived from `print.scale` and the selected print DPI. On
+confirmation, those values are written back to the print settings, with the requested cell measure
+converted back to `print.scale` using the selected tessellation's geometry and `scaleAutoFit`
+disabled so the panel's automatic-fit effect does not immediately replace the user's physical
+size. The print panel's reported physical cell size uses the same geometry-aware conversion.
+
+When multiple floors exist, the dialog also offers **Apply to all floors**, enabled by default.
+Confirmation applies the calculated predefined configuration to every floor in standard editing
+mode and leaves custom-mode floors unchanged. The dialog labels the exception below the switch.
+
+Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
+enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
+physical size was tied to the old tessellation geometry.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:

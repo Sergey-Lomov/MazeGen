@@ -120,6 +120,10 @@ describe("mazeStore preview/confirm flow", () => {
       edges: [{ from: 0, to: 0, kind: "basic" }],
       start: 0,
       finish: 0,
+      pngExportSettings: {
+        ...useMazeStore.getState().pngExportSettings,
+        print: { ...useMazeStore.getState().pngExportSettings.print, scaleAutoFit: false },
+      },
     });
     useMazeStore.getState().confirmTessellation();
     const s = useMazeStore.getState();
@@ -127,6 +131,7 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.edges).toHaveLength(0);
     expect(s.start).toBeNull();
     expect(s.finish).toBeNull();
+    expect(s.pngExportSettings.print.scaleAutoFit).toBe(true);
   });
 
   it("confirmTessellation with different kind clears all incompatible presets", () => {
