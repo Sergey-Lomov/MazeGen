@@ -169,6 +169,10 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         .flat() ?? null
     : null;
   const crossElementOneWayEntries = crossElementEntries?.filter((e) => e.kind === "one_way") ?? null;
+  // Kept as one group per non-`one_way` member (not one merged group across every member of every
+  // pair) -- two flagged pairs, or two members of the same pair, must never merge into one contour
+  // just because they're both part of the same bubble, even when they happen to sit right next to
+  // each other (that's exactly the "too close" fact a proximity check reports, GitHub issue #619).
   const crossElementRegionEntries = crossElementEntries?.filter((e) => e.kind !== "one_way") ?? null;
   const palette = notificationPalette(severity);
 
@@ -243,17 +247,35 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? [Array.from(new Set(missingStopGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())))]
     : null;
   // No per-element `visibleGroup` filter here -- `crossElementEntries` above already dropped whole
-  // pairs whose every member is preset-locked, and a surviving pair shows all its members.
+  // pairs whose every member is preset-locked, and a surviving pair shows all its members. Every
+  // `split` member merges into one deduplicated group with the outward split inset (GitHub issue
+  // #619 -- splits always merge with each other, same as a plain `invalid_split_tile` bubble); each
+  // other, non-split member keeps its own separate group so two distinct flagged elements (e.g. a
+  // teleport and a vertical passage) never merge into one contour just because they're both part of
+  // the same flagged pair.
+  const crossElementSplitEntries = crossElementRegionEntries?.filter((e) => e.kind === "split") ?? null;
+  const crossElementOtherRegionEntries = crossElementRegionEntries?.filter((e) => e.kind !== "split") ?? null;
   const crossElementCellNodes = crossElementRegionEntries != null && crossElementRegionEntries.length > 0
-    ? [Array.from(new Set(crossElementRegionEntries.flatMap((e) => [...e.edges.flat(), ...e.nodes, ...(e.tile?.nodes ?? [])])))]
+    ? [
+        ...(crossElementOtherRegionEntries ?? []).map((e) => ({
+          nodes: Array.from(new Set([...e.edges.flat(), ...e.nodes])),
+          isSplit: false,
+        })),
+        ...(crossElementSplitEntries != null && crossElementSplitEntries.length > 0
+          ? [{ nodes: Array.from(new Set(crossElementSplitEntries.flatMap((e) => e.tile?.nodes ?? []))), isSplit: true }]
+          : []),
+      ]
     : null;
   // Same wall-edge rendering as `oneWayEdges` above -- see the doc comment on
   // `crossElementOneWayEntries`.
   const crossElementOneWayEdges = crossElementOneWayEntries != null && crossElementOneWayEntries.length > 0
     ? asHighlightEdges(crossElementOneWayEntries.flatMap((e) => e.edges), true)
     : null;
-  // The visible tiles keep their own lock/filtering granularity, but are sent as one region
-  // group so adjacent tiles can share a contour and merge exactly like ordinary regions.
+  // The visible tiles keep their own lock/filtering granularity, but are sent as one region group
+  // so adjacent tiles can share a contour and merge exactly like ordinary regions -- unlike
+  // `invalid_cross_element_group` (GitHub issue #619), a plain `invalid_split_tile` bubble has no
+  // "these two are a flagged pair" semantics to protect: it's just a list of flagged tiles, and
+  // two of them sitting next to each other should read as one merged region same as any other.
   const splitTileNodes = splitGroups != null
     ? (() => {
         const tiles = splitGroups.flatMap((g) =>
@@ -289,9 +311,16 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // (a one-way member drawn as a wall alongside other members drawn as region squares), so both are
   // set together rather than picking just the first match.
   const highlightEdges = loopEdges ?? oneWayEdges ?? splitRouteHighlightEdges ?? crossElementOneWayEdges;
-  const highlightRegionGroups = visibleRegionGroups ?? splitTileNodes ?? teleportCellNodes ?? verticalPassageCellNodes ?? elevatorCellNodes
-    ?? elevatorStopCellNodes ?? (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0 ? areaDeficitCellNodes : null)
-    ?? missingStopCellNodes ?? crossElementCellNodes;
+  const asRegionGroups = (groups: number[][], isSplit: boolean) => groups.map((nodes) => ({ nodes, isSplit }));
+  const highlightRegionGroups = visibleRegionGroups != null ? asRegionGroups(visibleRegionGroups, false)
+    : splitTileNodes != null ? asRegionGroups(splitTileNodes, true)
+    : teleportCellNodes != null ? asRegionGroups(teleportCellNodes, false)
+    : verticalPassageCellNodes != null ? asRegionGroups(verticalPassageCellNodes, false)
+    : elevatorCellNodes != null ? asRegionGroups(elevatorCellNodes, false)
+    : elevatorStopCellNodes != null ? asRegionGroups(elevatorStopCellNodes, false)
+    : (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0) ? asRegionGroups(areaDeficitCellNodes, false)
+    : missingStopCellNodes != null ? asRegionGroups(missingStopCellNodes, false)
+    : crossElementCellNodes;
   const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
     ? () => {
         if (highlightEdges != null) setHoveredIssueLoopEdges(highlightEdges);
@@ -331,7 +360,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const touchedNodeIds = [
     ...(loopEdges ?? []),
     ...(crossElementOneWayEdges ?? []),
-  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (teleportCellNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flat());
+  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (teleportCellNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flatMap((g) => g.nodes));
 
   return (
     <>

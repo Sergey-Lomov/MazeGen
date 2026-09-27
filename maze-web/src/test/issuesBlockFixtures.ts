@@ -109,8 +109,11 @@ export function invalidCrossElementGroupIssue(
           entries.map((e) => ({
             kind: e.kind,
             edges: e.edges ?? [],
-            nodes: e.nodes ?? [],
-            tile: null,
+            // Matches the Rust resolver's own wire shape (`resolve_cross_element_payload_entry`):
+            // only the geometry field matching `kind` is populated -- a `split` member's cells live
+            // in `tile`, never `nodes` (see `CrossElementEntry`'s doc comment).
+            nodes: e.kind === "split" ? [] : e.nodes ?? [],
+            tile: e.kind === "split" && e.nodes != null ? { nodes: e.nodes, preset_locked: e.preset_locked ?? false } : null,
             removable: true,
             preset_locked: e.preset_locked ?? false,
           })),

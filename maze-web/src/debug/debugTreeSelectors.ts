@@ -369,11 +369,14 @@ export function resolveBubbleFloor(
       return singleFloorOf(target.edges.flatMap(([f, t]) => [f, t]));
     case "region":
       return singleFloorOf(target.nodes);
-    case "issue":
+    case "issue": {
       if (!target.target) return null;
-      return target.target.kind === "cycle"
-        ? singleFloorOf(target.target.edges.flatMap(([f, t]) => [f, t]))
-        : singleFloorOf(target.target.nodes);
+      const ids = [
+        ...(target.target.cycle?.edges.flatMap(([f, t]) => [f, t]) ?? []),
+        ...(target.target.region?.groups.flatMap((group) => group.nodes) ?? []),
+      ];
+      return singleFloorOf(ids);
+    }
   }
 }
 
@@ -389,9 +392,10 @@ export function resolveIssueBubbleFloors(
   coords: (id: bigint) => { level: number } | null,
 ): number[] {
   if (target.kind !== "issue" || !target.target) return [];
-  const ids = target.target.kind === "cycle"
-    ? target.target.edges.flatMap(([f, t]) => [f, t])
-    : target.target.nodes;
+  const ids = [
+    ...(target.target.cycle?.edges.flatMap(([f, t]) => [f, t]) ?? []),
+    ...(target.target.region?.groups.flatMap((group) => group.nodes) ?? []),
+  ];
   const levels = new Set<number>();
   for (const id of ids) {
     const level = coords(id)?.level;

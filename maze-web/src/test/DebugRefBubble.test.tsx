@@ -37,7 +37,7 @@ describe("DebugRefBubble", () => {
   it("an issue target with a highlight target is hoverable", () => {
     const target: HoveredDebugRef = {
       kind: "issue", issueKind: "invalid_loop",
-      target: { kind: "cycle", edges: [[1n, 2n]], asWall: false }, reasons: ["Loop shorter than 10 tiles"],
+      target: { cycle: { edges: [[1n, 2n]], asWall: false }, region: null }, reasons: ["Loop shorter than 10 tiles"],
     };
     render(<DebugRefBubble target={target} label="Loop validation" />);
 

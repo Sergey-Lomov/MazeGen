@@ -46,8 +46,11 @@ export interface AnalyticsOverlayState {
   /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
    * node ids — kept as separate groups (not one flat list) so adjacent-in-id-space but disjoint
    * regions don't merge into one shared outline. The renderer derives each region's perimeter
-   * client-side from its node set. */
-  hoveredIssueRegionGroups: number[][] | null;
+   * client-side from its node set. `isSplit` (GitHub issue #619) picks the outward "split" inset
+   * instead of the normal inward one — set explicitly by `IssuesBlock.tsx` from the payload kind
+   * that produced the group, never guessed from the group's own geometry (a multi-cell split tile
+   * has no duplicate node/cell to detect that way). */
+  hoveredIssueRegionGroups: { nodes: number[]; isSplit: boolean }[] | null;
   /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
   analyticsSectionsExpanded: Record<string, boolean>;
   /** Whether to show issue bubbles whose every flagged element is preset-locked (GitHub issue
@@ -68,7 +71,7 @@ export interface AnalyticsOverlayActions {
   setShowRegionClassesOverlay: (v: boolean) => void;
   setRegionClassLegendOpen: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: IssueHighlightEdge[] | null) => void;
-  setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
+  setHoveredIssueRegionGroups: (groups: { nodes: number[]; isSplit: boolean }[] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowFullyPresetLockedIssues: (v: boolean) => void;
 }

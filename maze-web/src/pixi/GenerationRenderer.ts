@@ -19,6 +19,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorTokens";
 import { resolveDebugValueColor } from "./debugValueColors";
+import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { oneWayIndicatorSpan } from "./renderers/wallUtils";
 
 
 export class GenerationRenderer {
@@ -322,6 +324,7 @@ export class GenerationRenderer {
           return node ? [node.x, node.y] : undefined;
         },
         activeFloorIndex: Math.max(activeFloorIndex, 0),
+        oneWayBoundaryWidth: oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay),
       });
     } else {
       this.debugRefHighlight.clear();

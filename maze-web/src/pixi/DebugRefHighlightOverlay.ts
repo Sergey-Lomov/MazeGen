@@ -6,6 +6,7 @@ import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
+import { splitWallAndLineEdges } from "./renderers/wallUtils";
 import { buildNodePositions } from "./tessellationGeometry";
 import type { Pos } from "./tessellationGeometry";
 import { buildCrossFloorMarkers, drawCrossFloorMarkers, type NodeCellResolver } from "./BaseGraphRenderer";
@@ -31,6 +32,10 @@ export interface DebugRefHighlightData {
   resolveNodeLevel?: (id: number) => number | undefined;
   resolveNodeCell?: NodeCellResolver;
   activeFloorIndex?: number;
+  /** Width of the studio renderer's wall one-way marker (GitHub issue #377/#619) — same value
+   *  Analytics' `IssueHighlightOverlay` uses, so an `issue`-kind ref's wall highlight matches its
+   *  span exactly. When omitted, a boundary highlight uses the full cell-to-cell distance. */
+  oneWayBoundaryWidth?: number;
 }
 
 /** Directed endpoint pairs represented by an edge/cycle debug ref. A bidirectional edge bubble
@@ -41,8 +46,8 @@ export function debugRefEdgePairs(ref: HoveredDebugRef): { from: number; to: num
     return ref.bidirectional ? [pair, { from: pair.to, to: pair.from }] : [pair];
   }
   if (ref.kind === "cycle") return ref.edges.map(([from, to]) => ({ from: Number(from), to: Number(to) }));
-  if (ref.kind === "issue" && ref.target?.kind === "cycle") {
-    return ref.target.edges.map(([from, to]) => ({ from: Number(from), to: Number(to) }));
+  if (ref.kind === "issue" && ref.target?.cycle) {
+    return ref.target.cycle.edges.map(([from, to]) => ({ from: Number(from), to: Number(to) }));
   }
   return [];
 }
@@ -63,6 +68,7 @@ export function debugRefEdgePairs(ref: HoveredDebugRef): { from: number; to: num
  *  cleared. */
 export class DebugRefHighlightOverlay {
   private readonly edgeContainer: Container;
+  private readonly wallContainer: Container;
   private readonly regionContainer: Container;
   private readonly crossFloorEdgesContainer: Container;
   private readonly crossFloorNodesContainer: Container;
@@ -72,10 +78,12 @@ export class DebugRefHighlightOverlay {
 
   constructor(container: Container) {
     this.edgeContainer = new Container();
+    this.wallContainer = new Container();
     this.regionContainer = new Container();
     this.crossFloorEdgesContainer = new Container();
     this.crossFloorNodesContainer = new Container();
     container.addChild(this.edgeContainer);
+    container.addChild(this.wallContainer);
     container.addChild(this.regionContainer);
     container.addChild(this.crossFloorEdgesContainer);
     container.addChild(this.crossFloorNodesContainer);
@@ -85,9 +93,10 @@ export class DebugRefHighlightOverlay {
   }
 
   render(data: DebugRefHighlightData): void {
-    const { nodes, allNodes, edges, ref, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { nodes, allNodes, edges, ref, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, oneWayBoundaryWidth } = data;
     this.crossFloorEdgesContainer.removeChildren().forEach((child) => child.destroy());
     this.crossFloorNodesContainer.removeChildren().forEach((child) => child.destroy());
+    this.wallContainer.removeChildren().forEach((child) => child.destroy());
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
@@ -156,28 +165,52 @@ export class DebugRefHighlightOverlay {
         break;
       }
       case "issue": {
-        // No structural target (most issue kinds — see `IssuePayload::None`): nothing to
-        // highlight, same as the no-`ref` branch above.
-        if (!ref.target) {
+        // `cycle`/`region` are independent, not mutually exclusive (GitHub issue #619) -- an
+        // `invalid_cross_element_group` pair mixing a one-way member (wall) with a split/region
+        // member needs both drawn at once, mirroring Analytics' own
+        // `highlightEdges`/`highlightRegionGroups` split in `IssuesBlock.tsx`.
+        if (!ref.target?.cycle) {
           this.edgeRenderer.render([]);
-          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
-          break;
-        }
-        if (ref.target.kind === "cycle") {
+        } else {
           // A single flagged one-way (GitHub issue #377, `asWall`) draws as the shared wall
-          // Debug issue references stay on the graph-highlight path. Boundary highlighting is
-          // reserved for analytics/post-edit wall entities; debug walls/passages/one-ways must
-          // not switch to the boundary style.
-          const lineEdges: [bigint, bigint][] = [];
-          lineEdges.push(...ref.target.edges);
+          // between its two cells (small inset rect + fill), same as Analytics'
+          // `IssueHighlightOverlay` — not as a plain line between node centers.
+          const { asWall, edges: cycleEdges } = ref.target.cycle;
+          const nodeById = new Map(nodes.map((node) => [node.id, node]));
+          const cellOf = (id: bigint): [number, number] | undefined => {
+            const node = nodeById.get(Number(id));
+            return node ? [node.x, node.y] : undefined;
+          };
+          const wallG = new Graphics();
+          const wallEdges = cycleEdges.map(([from, to]) => ({ from, to, asWall }));
+          const lineEdges = splitWallAndLineEdges(wallG, wallEdges, cellOf, cfg, canvas.debug.issueHighlight, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth)
+            .map(({ from, to }) => [from, to] as [bigint, bigint]);
+          this.wallContainer.addChild(wallG);
           const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render(highlights);
           renderCrossFloorRef(ref, canvas.debug.issueHighlight);
+        }
+        if (!ref.target?.region) {
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
         } else {
-          this.edgeRenderer.render([]);
-          const regionNodeIds = ref.target.nodes.map((id) => Number(id));
-          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
+          // Each group picks its own inset direction from its own `isSplit` flag (GitHub issue
+          // #619), same as Analytics' `IssueHighlightOverlay` -- a split-tile group draws with the
+          // outward "split" inset, every other group with the normal inward one.
+          const insetGroups = ref.target.region.groups.filter((group) => !group.isSplit).map((group) => group.nodes.map((id) => Number(id)));
+          const outsetGroups = ref.target.region.groups.filter((group) => group.isSplit).map((group) => group.nodes.map((id) => Number(id)));
+          this.regionRenderer.render({
+            nodes,
+            regionGroups: [],
+            color: canvas.debug.issueHighlight,
+            width: HIGHLIGHT_WIDTH,
+            alpha: HIGHLIGHT_ALPHA,
+            cfg,
+            skipPerimeter: true,
+            groups: [
+              { regionGroups: insetGroups, color: canvas.debug.issueHighlight, insetMode: "inset" },
+              { regionGroups: outsetGroups, color: canvas.debug.issueHighlight, insetMode: "outset" },
+            ],
+          });
         }
         break;
       }

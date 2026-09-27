@@ -112,7 +112,7 @@ describe("IssueBubble", () => {
     const bubble = screen.getByText("Teleport validation");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [3], isSplit: false }, { nodes: [4], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
@@ -135,7 +135,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Vertical passage validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [3], isSplit: false }, { nodes: [4], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
@@ -152,7 +152,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Vertical passage validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3], [4], [5]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [3], isSplit: false }, { nodes: [4], isSplit: false }, { nodes: [5], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
@@ -163,7 +163,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Region expansion");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[5, 6]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [5, 6], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
@@ -174,27 +174,29 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Elevator stop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[5], [6]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [5], isSplit: false }, { nodes: [6], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
-  it("hovering an invalid_split_tile bubble sets hoveredIssueRegionGroups to a single group of every flagged node (shared region-highlight path); leaving clears it", () => {
-    // The payload is a flat node list (no group structure of its own) -- IssueBubble wraps every
-    // flagged node into one group so it reuses RegionHighlightRenderer's per-point dedup: two
-    // flagged nodes sharing the same split tile merge into one fill+perimeter instead of each
-    // drawing its own overlapping border (GitHub issue #249 regression report).
+  it("hovering an invalid_split_tile bubble sets hoveredIssueRegionGroups to one merged split group; leaving clears it", () => {
+    // Flagged tiles merge into one region group with the outward split inset (GitHub issue #249
+    // regression report; `isSplit: true` picks that inset explicitly, GitHub issue #619) --
+    // adjacent flagged tiles read as one merged split area, same as any other region.
     const issue = invalidSplitTileIssue("split_distance_from_waypoint");
     render(<IssueBubble issue={issue} sourceCheck="split_distance_from_waypoint" />);
 
     const bubble = screen.getByText("Split tile validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7, 8]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [7, 8], isSplit: true }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
-  it("hovering an invalid_cross_element_group bubble with a teleport+split pair sets hoveredIssueRegionGroups to both members' cells; leaving clears it", () => {
+  it("hovering an invalid_cross_element_group bubble with a teleport+split pair sets hoveredIssueRegionGroups to one group per member, not merged; leaving clears it", () => {
+    // Each pair member keeps its own group (GitHub issue #619) -- the teleport's cell and the
+    // split's cells never merge into one contour just because they're both part of the same
+    // flagged pair, even when tessellation-adjacent.
     const issue = invalidCrossElementGroupIssue("cross_element_geometric_proximity", [
       { kind: "teleport", nodes: [1] },
       { kind: "split", nodes: [7, 8] },
@@ -203,7 +205,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Elements too close");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[1, 7, 8]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [1], isSplit: false }, { nodes: [7, 8], isSplit: true }]);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
@@ -219,7 +221,7 @@ describe("IssueBubble", () => {
     const bubble = screen.getByText("Elements too close");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: true }]);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7, 8]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [7, 8], isSplit: true }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
@@ -231,7 +233,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Split node group validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[9]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [9], isSplit: true }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });

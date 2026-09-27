@@ -41,12 +41,24 @@ export type Token =
   | { kind: "issue"; issueKind: string; target: IssueHighlightTarget | null; reasons: string[] };
 
 /** Structural highlight data an `issue` token carries, when the underlying `IssuePayload` (see
- *  `eventTape.ts`) resolved to one — `null` for the majority of issue kinds with no structural
- *  edge/node data (mirrors `IssuePayload::None`). Reuses the same shape `cycle`/`region` tokens
- *  already carry rather than inventing a third representation. */
-export type IssueHighlightTarget =
-  | { kind: "cycle"; edges: [bigint, bigint][]; asWall: boolean }
-  | { kind: "region"; nodes: bigint[] };
+ *  `eventTape.ts`) resolved to one — both fields `null` for the majority of issue kinds with no
+ *  structural edge/node data (mirrors `IssuePayload::None`). `cycle`/`region` are independent, not
+ *  mutually exclusive (mirrors Analytics' own two independent store fields,
+ *  `hoveredIssueLoopEdges`/`hoveredIssueRegionGroups` in `postEditFullTypes.ts`) -- an
+ *  `InvalidCrossElementGroup` pair mixing a one-way member (wall) with a split/region member needs
+ *  both drawn at once, same as `IssueBubble`'s own `highlightEdges`/`highlightRegionGroups` split.
+ *  `region`'s `groups` carries one group of node ids per flagged element (tile/region/passage/etc)
+ *  rather than one flat node list — two different flagged elements must never merge into one
+ *  contour just because they're both part of the same issue token, even when they happen to sit
+ *  right next to each other (e.g. a `*_group_graph_proximity`/`*_group_geometric_proximity` pair
+ *  flagging two distinct, adjacent elements as too close: GitHub issue #619) -- except split tiles,
+ *  which always merge with each other regardless of source. `isSplit` picks the outward "split"
+ *  inset instead of the normal inward one, set explicitly per group rather than guessed from its
+ *  geometry (same rationale as Analytics'). */
+export interface IssueHighlightTarget {
+  cycle: { edges: [bigint, bigint][]; asWall: boolean } | null;
+  region: { groups: { nodes: bigint[]; isSplit: boolean }[] } | null;
+}
 
 /** Flattens an `IssuePayload` (per-source-check-keyed) into one combined highlight target — used
  *  for the debug tree's own issue bubble, which (unlike Analytics' `IssueBubble`) has no per-check
@@ -58,39 +70,39 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       return null;
     case "InvalidLoop": {
       const edges = [...payload.edges.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
+      return edges.length > 0 ? { cycle: { edges, asWall: false }, region: null } : null;
     }
     case "RegionNeedsExpansion":
     case "RegionNeedsShrink": {
       const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: false }] } } : null;
     }
     case "InvalidTeleport": {
       // Reuses the "cycle" shape — a teleport group's edges are highlighted exactly like a
       // cycle's edges (see `IssueHighlightTarget`'s doc comment).
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
+      return edges.length > 0 ? { cycle: { edges, asWall: false }, region: null } : null;
     }
     case "InvalidOneWay": {
       // Each flagged one-way is an independent single-edge problem between two adjacent cells
       // (GitHub issue #377) — highlighted as the wall between them rather than a line.
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: true } : null;
+      return edges.length > 0 ? { cycle: { edges, asWall: true }, region: null } : null;
     }
     case "InvalidSplitTile": {
-      // Reuses the "region" shape — `RegionHighlightRenderer`'s per-group perimeter reads as a
-      // border around each individual flagged cell regardless of whether the group's cells are
-      // actually connected, so a flat split-tile node list draws correctly here even though it
-      // has no region structure of its own (unlike RegionNeedsExpansion's real SCC regions).
-      const nodes = [...payload.groups.values()].flat().flatMap((group) => group.tiles).flatMap((tile) => tile.nodes);
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      // Reuses the "region" shape, one merged split group (mirrors Analytics' `splitTileNodes` in
+      // `IssuesBlock.tsx`) -- flagged split tiles always merge with each other, drawn with the
+      // outward split inset (GitHub issue #619).
+      const tiles = [...payload.groups.values()].flat().flatMap((group) => group.tiles);
+      const nodes = Array.from(new Set(tiles.flatMap((tile) => tile.nodes)));
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: true }] } } : null;
     }
     case "InvalidSplitRoute": {
       // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above — the
       // route's own edge order and per-edge split-tile flag only matter to the repair strategy's
       // candidate filtering, not to highlighting the whole path on hover.
       const edges = [...payload.routes.values()].flat(2).map(([from, to]) => [from, to] as [bigint, bigint]);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
+      return edges.length > 0 ? { cycle: { edges, asWall: false }, region: null } : null;
     }
     case "ExcessiveSccCount":
       // No structural highlight data — this issue never points at specific regions on the canvas.
@@ -101,25 +113,25 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // a stray diagonal rather than "these cells have a problem" (GitHub issue #466). Matches
       // Analytics' `verticalPassageCellNodes` in `IssuesBlock.tsx`.
       const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: false }] } } : null;
     }
     case "InvalidElevator": {
       // Reuses the "region" shape over the elevator's fan-edge endpoint cells -- a flagged
       // elevator's edges span multiple floors, so a line-per-edge highlight would read as stray
       // diagonals (GitHub issue #466). Matches Analytics' `elevatorCellNodes` in `IssuesBlock.tsx`.
       const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: false }] } } : null;
     }
     case "InvalidElevatorStop": {
       const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: false }] } } : null;
     }
     case "MissingElevatorStopCount": {
       // GitHub issue #402 — reuses the "region" shape over each group's real elevator fan edges
       // only (same as Analytics' `missingStopCellNodes` in `IssuesBlock.tsx`). Excludes each
       // group's `available` candidate floor nodes -- those aren't part of the elevator yet.
       const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      return nodes.length > 0 ? { cycle: null, region: { groups: [{ nodes, isSplit: false }] } } : null;
     }
     case "AreaDeficit":
       // No structural highlight data — a floor-level deficit has no specific node/edge set to
@@ -127,16 +139,30 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // `areaDeficitCellNodes` in `IssuesBlock.tsx`, which resolves the floor separately).
       return null;
     case "InvalidCrossElementGroup": {
-      // Reuses the "region" shape over each flagged element's problematic cells -- a cross-element
-      // group mixes edge elements (teleport/one-way/vertical passage/elevator) spanning multiple
-      // floors with point elements (split/start/finish), so a line-per-edge highlight would read
-      // as stray diagonals (same rationale as `InvalidElevator`/`InvalidVerticalPassage`). The
-      // payload has already been narrowed by the resolver to just the occurrence(s) actually
-      // within the proximity threshold (GitHub issue #376 follow-up), so a teleport near one end
-      // lights up that end only, not both.
+      // A cross-element pair can mix a one-way member (wall) with region-shaped members (split/
+      // teleport/vertical passage/elevator/start/finish) -- both are drawn at once (mirrors
+      // Analytics' `highlightEdges`/`highlightRegionGroups` split in `IssuesBlock.tsx`), not one or
+      // the other. The payload has already been narrowed by the resolver to just the occurrence(s)
+      // actually within the proximity threshold (GitHub issue #376 follow-up), so a teleport near
+      // one end lights up that end only, not both. Every `split` member merges into one deduplicated
+      // group (splits always merge with each other, mirrors Analytics' `crossElementCellNodes`);
+      // every other region-shaped member keeps its own separate group so two distinct flagged
+      // elements never merge into one contour just for sharing the same pair (GitHub issue #619).
       const entries = [...payload.groups.values()].flat(2);
-      const nodes = entries.flatMap((entry) => [...entry.edges.flat(), ...entry.nodes, ...(entry.tile?.nodes ?? [])]);
-      return nodes.length > 0 ? { kind: "region", nodes } : null;
+      const oneWayEntries = entries.filter((entry) => entry.kind === "one_way");
+      const splitEntries = entries.filter((entry) => entry.kind === "split");
+      const otherRegionEntries = entries.filter((entry) => entry.kind !== "one_way" && entry.kind !== "split");
+      const groups = [
+        ...otherRegionEntries.map((entry) => ({ nodes: [...entry.edges.flat(), ...entry.nodes], isSplit: false })),
+        ...(splitEntries.length > 0
+          ? [{ nodes: Array.from(new Set(splitEntries.flatMap((entry) => entry.tile?.nodes ?? []))), isSplit: true }]
+          : []),
+      ];
+      const cycle = oneWayEntries.length > 0
+        ? { edges: oneWayEntries.flatMap((entry) => entry.edges), asWall: true }
+        : null;
+      const region = groups.length > 0 ? { groups } : null;
+      return cycle != null || region != null ? { cycle, region } : null;
     }
   }
 }

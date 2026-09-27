@@ -99,7 +99,7 @@ describe("IssuesBlock", () => {
     const bubble = screen.getByText("Region expansion");
     expect(bubble).toBeInTheDocument();
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[1, 2], [5, 6]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [1, 2], isSplit: false }, { nodes: [5, 6], isSplit: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
 
@@ -306,7 +306,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Split tile validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[8]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([{ nodes: [8], isSplit: true }]);
     fireEvent.mouseLeave(bubble);
 
     useMazeStore.getState().setShowFullyPresetLockedIssues(true);

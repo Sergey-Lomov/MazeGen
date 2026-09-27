@@ -101,7 +101,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_loop", target: { kind: "cycle", edges: [[1n, 2n]], asWall: false }, reasons: ["Loop validation"] },
+      { kind: "issue", issueKind: "invalid_loop", target: { cycle: { edges: [[1n, 2n]], asWall: false }, region: null }, reasons: ["Loop validation"] },
     ]);
   });
 
@@ -112,7 +112,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region expansion"] },
+      { kind: "issue", issueKind: "region_needs_expansion", target: { cycle: null, region: { groups: [{ nodes: [5n, 6n], isSplit: false }] } }, reasons: ["Region expansion"] },
     ]);
   });
 
@@ -123,7 +123,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "region_needs_shrink", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region split"] },
+      { kind: "issue", issueKind: "region_needs_shrink", target: { cycle: null, region: { groups: [{ nodes: [5n, 6n], isSplit: false }] } }, reasons: ["Region split"] },
     ]);
   });
 
@@ -136,7 +136,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_teleport", target: { kind: "cycle", edges: [[1n, 2n]], asWall: false }, reasons: ["Teleport validation"] },
+      { kind: "issue", issueKind: "invalid_teleport", target: { cycle: { edges: [[1n, 2n]], asWall: false }, region: null }, reasons: ["Teleport validation"] },
     ]);
   });
 
@@ -160,7 +160,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_one_way", target: { kind: "cycle", edges: [[1n, 2n]], asWall: true }, reasons: ["One-way validation"] },
+      { kind: "issue", issueKind: "invalid_one_way", target: { cycle: { edges: [[1n, 2n]], asWall: true }, region: null }, reasons: ["One-way validation"] },
     ]);
   });
 
@@ -175,14 +175,32 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     ]);
   });
 
-  it("CheckRan with an InvalidSplitTile payload carries a region-shaped highlight target, one singleton-cell group per flagged node, flattened across every contributing check", () => {
+  it("CheckRan with an InvalidSplitTile payload carries a region-shaped highlight target, one group per flagged tile", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
       issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", groups: new Map([["check1", [{ tiles: [{ nodes: [5n, 6n], presetLocked: false }], presetLocked: false }]]]) }, details: new Map([["distance", "3"]]) },
     }, { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: () => "split_distance_from_waypoint" });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "Distance from waypoint": issue found ' },
-      { kind: "issue", issueKind: "invalid_split_tile", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Split node closer than 3 tiles to a waypoint"] },
+      { kind: "issue", issueKind: "invalid_split_tile", target: { cycle: null, region: { groups: [{ nodes: [5n, 6n], isSplit: true }] } }, reasons: ["Split node closer than 3 tiles to a waypoint"] },
+    ]);
+  });
+
+  it("CheckRan with an InvalidSplitTile payload naming two distinct tiles merges them into one split group (GitHub issue #619)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: {
+        issueKind: "invalid_split_tile",
+        payload: {
+          kind: "InvalidSplitTile",
+          groups: new Map([["check1", [{ tiles: [{ nodes: [5n, 6n], presetLocked: false }, { nodes: [7n], presetLocked: false }], presetLocked: false }]]]),
+        },
+        details: new Map(),
+      },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_split_tile", target: { cycle: null, region: { groups: [{ nodes: [5n, 6n, 7n], isSplit: true }] } }, reasons: ["Split tile validation"] },
     ]);
   });
 
@@ -206,7 +224,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_vertical_passage", target: { kind: "region", nodes: [1n, 2n] }, reasons: ["Vertical passage validation"] },
+      { kind: "issue", issueKind: "invalid_vertical_passage", target: { cycle: null, region: { groups: [{ nodes: [1n, 2n], isSplit: false }] } }, reasons: ["Vertical passage validation"] },
     ]);
   });
 
@@ -228,7 +246,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_elevator", target: { kind: "region", nodes: [1n, 2n, 1n, 3n] }, reasons: ["Elevator validation"] },
+      { kind: "issue", issueKind: "invalid_elevator", target: { cycle: null, region: { groups: [{ nodes: [1n, 2n, 1n, 3n], isSplit: false }] } }, reasons: ["Elevator validation"] },
     ]);
   });
 
@@ -240,6 +258,42 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
       { kind: "issue", issueKind: "invalid_elevator", target: null, reasons: ["Elevator validation"] },
+    ]);
+  });
+
+  it("CheckRan with an InvalidCrossElementGroup payload mixing a one-way member (wall) and a split member carries both a cycle and a region highlight target at once (GitHub issue #619)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: {
+        issueKind: "invalid_cross_element_group",
+        payload: {
+          kind: "InvalidCrossElementGroup",
+          groups: new Map([["check1", [[
+            { kind: "one_way", edges: [[3n, 4n]], nodes: [], tile: null, removable: true, presetLocked: false },
+            { kind: "split", edges: [], nodes: [], tile: { nodes: [7n, 8n], presetLocked: false }, removable: true, presetLocked: false },
+          ]]]]),
+        },
+        details: new Map(),
+      },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      {
+        kind: "issue", issueKind: "invalid_cross_element_group",
+        target: { cycle: { edges: [[3n, 4n]], asWall: true }, region: { groups: [{ nodes: [7n, 8n], isSplit: true }] } },
+        reasons: ["Elements too close"],
+      },
+    ]);
+  });
+
+  it("an InvalidCrossElementGroup payload with no actual groups (empty map) resolves to a null highlight target, not an empty-array target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_cross_element_group", payload: { kind: "InvalidCrossElementGroup", groups: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_cross_element_group", target: null, reasons: ["Elements too close"] },
     ]);
   });
 

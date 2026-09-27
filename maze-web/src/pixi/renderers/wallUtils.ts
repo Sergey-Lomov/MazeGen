@@ -229,6 +229,47 @@ export function drawCellBoundaryHighlight(
   return true;
 }
 
+/** Splits `edges` into wall-drawn ones (GitHub issue #377's `asWall`, e.g. a flagged
+ *  `invalid_one_way`) and line-drawn ones, drawing every wall edge as the shared boundary rect
+ *  between its two cells into `g` — shared by `IssueHighlightOverlay` (Analytics) and
+ *  `DebugRefHighlightOverlay` (debug-tree, GitHub issue #619 follow-up) so both draw the exact
+ *  same wall style instead of two independently-drifting copies. A wall edge whose endpoints
+ *  aren't tessellation-adjacent (no shared boundary to draw, e.g. a cross-floor edge) falls back
+ *  to a line, same as a non-wall edge. Returns the edges that still need line rendering, in the
+ *  same shape as `edges` (generic over the id type — `number` for Analytics, `bigint` for
+ *  debug-tree). */
+export function splitWallAndLineEdges<TId>(
+  g: Graphics,
+  edges: { from: TId; to: TId; asWall: boolean }[],
+  cellOf: (id: TId) => [number, number] | undefined,
+  cfg: TessellationConfig,
+  color: number,
+  fillAlpha = 0.25,
+  borderWidth = 3,
+  spanWidth?: number,
+): { from: TId; to: TId }[] {
+  const lineEdges: { from: TId; to: TId }[] = [];
+  const drawnBoundaryEdges = new Set<string>();
+  for (const edge of edges) {
+    if (!edge.asWall) {
+      lineEdges.push(edge);
+      continue;
+    }
+    const fromCell = cellOf(edge.from);
+    const toCell = cellOf(edge.to);
+    if (!fromCell || !toCell) {
+      lineEdges.push(edge);
+      continue;
+    }
+    const key = cellBoundaryKey(fromCell, toCell);
+    if (drawnBoundaryEdges.has(key)) continue;
+    const drew = drawCellBoundaryHighlight(g, fromCell, toCell, cfg, color, fillAlpha, borderWidth, spanWidth);
+    if (drew) drawnBoundaryEdges.add(key);
+    else lineEdges.push(edge);
+  }
+  return lineEdges;
+}
+
 // Draws a "chevron" one-way indicator (two open strokes forming a shallow `>` shape) centered at
 // (cx, cy), pointing in (dx, dy) direction — an outline alternative to the filled
 // `drawOneWayTriangle`. A wider gap pass is drawn first (when gapWidth is set), the main
