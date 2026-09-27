@@ -395,6 +395,8 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
+    showInnerGrid: optBool(obj, "showInnerGrid", d.showInnerGrid),
+    innerGridColor: optNumber(obj, "innerGridColor", d.innerGridColor),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),

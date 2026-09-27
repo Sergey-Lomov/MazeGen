@@ -71,6 +71,20 @@ describe("selectActiveProfileColors", () => {
     expect(selectActiveProfileColors(withGrid).map((c) => c.name)).toContain(PC.bgGrid.name());
   });
 
+  it("hides the inner-grid color until its independent toggle is on", () => {
+    const withoutInnerGrid = makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, showInnerGrid: false },
+    });
+    expect(selectActiveProfileColors(withoutInnerGrid).map((c) => c.name)).not.toContain(PC.innerGrid.name());
+
+    const withInnerGrid = makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, showInnerGrid: true },
+    });
+    expect(selectActiveProfileColors(withInnerGrid).map((c) => c.name)).toContain(PC.innerGrid.name());
+  });
+
   it("hides teleport colors entirely when the maze has no teleport edges", () => {
     const state = makeState({
       openRenderModeSettings: "vector_by_walls",
@@ -301,6 +315,15 @@ describe("overrideActiveProfileColor", () => {
     expect(overridden?.gridColor).toBe(original.gridColor);
     expect(state.vectorByWallsSettings).toBe(original);
     expect(original.background).not.toBe(0x123456);
+  });
+
+  it("overrides only the inner-grid color", () => {
+    const state = makeState({ openRenderModeSettings: "vector_by_walls" });
+    const original = state.vectorByWallsSettings;
+    const overridden = overrideActiveProfileColor(state, PC.innerGrid.name(), 0x123456);
+    if (!overridden || !("innerGridColor" in overridden)) throw new Error("Expected vector-by-walls settings");
+    expect(overridden.innerGridColor).toBe(0x123456);
+    expect(overridden?.gridColor).toBe(original.gridColor);
   });
 
   it("overrides the active decorative field when its name overlaps the abstract field", () => {

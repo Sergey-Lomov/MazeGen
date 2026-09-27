@@ -5,7 +5,7 @@ import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
-import { mmToPx } from "../pixi/imageExport/printFit";
+import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
 import { TRI_TILE_SIZE } from "../pixi/triGeometry";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -28,6 +28,8 @@ beforeEach(() => {
       background: canvas.stage.background,
       showGrid: true,
       gridColor: canvas.grid.line,
+      showInnerGrid: false,
+      innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
       wallColor: canvas.wall.default,
       randomWallColorMode: "off",
@@ -91,6 +93,37 @@ describe("mazeStore image export", () => {
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TRI_TILE_SIZE * 2) / Math.sqrt(3)));
   });
 
+  it("keeps the physical cell size stable when manually scaled print density changes", () => {
+    const scale = 12.5;
+    useMazeStore.setState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, density: "print_300", scale, scaleAutoFit: false },
+      },
+    });
+    const beforeMm = printCellMeasureMm({ type: "square" }, scale, DPI_BY_DENSITY.print_300);
+
+    useMazeStore.getState().setPrintDensity("high_600");
+
+    const print = useMazeStore.getState().pngExportSettings.print;
+    expect(print.scale).toBeCloseTo(scale * DPI_BY_DENSITY.high_600 / DPI_BY_DENSITY.print_300);
+    expect(printCellMeasureMm({ type: "square" }, print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
+  });
+
+  it("does not rescale the auto-fit print scale when density changes", () => {
+    const scale = 12.5;
+    useMazeStore.setState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, density: "print_300", scale, scaleAutoFit: true },
+      },
+    });
+
+    useMazeStore.getState().setPrintDensity("high_600");
+
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBe(scale);
+  });
+
   it("starts with no active render mode and no open settings panel", () => {
     const s = useMazeStore.getState();
     expect(s.activeRenderMode).toBeNull();
@@ -123,12 +156,14 @@ describe("mazeStore image export", () => {
 });
 
 describe("mazeStore vectorByWallsSettings", () => {
-  it("starts with defaults matching the editor's own canvas/grid colors, grid shown", () => {
+  it("starts with editor-matching background-grid defaults and the inner grid disabled", () => {
     const s = useMazeStore.getState();
     expect(s.vectorByWallsSettings).toEqual({
       background: canvas.stage.background,
       showGrid: true,
       gridColor: canvas.grid.line,
+      showInnerGrid: false,
+      innerGridColor: 0x3a3a3a,
       floorColor: canvas.floor.default,
       wallColor: canvas.wall.default,
       randomWallColorMode: "off",
@@ -187,6 +222,16 @@ describe("mazeStore vectorByWallsSettings", () => {
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.gridColor).toBe(0xabcdef);
     expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("keeps the inner-grid toggle and color independent from the original background grid", () => {
+    useMazeStore.getState().setVectorByWallsShowInnerGrid(true);
+    useMazeStore.getState().setVectorByWallsInnerGridColor(0xabcdef);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.showInnerGrid).toBe(true);
+    expect(settings.innerGridColor).toBe(0xabcdef);
+    expect(settings.showGrid).toBe(true);
+    expect(settings.gridColor).toBe(canvas.grid.line);
   });
 
   it("setVectorByWallsFloorColor updates only the floor color field", () => {

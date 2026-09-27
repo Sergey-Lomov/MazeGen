@@ -19,6 +19,7 @@ interface SectionVisibility {
   grid: boolean;
   /** `wallColor` — hidden when the random-wall-color palette replaces the single wall color. */
   wall: boolean;
+  innerGrid: boolean;
   oneWayIndicator: boolean;
   teleports: boolean;
   crossFloorTeleports: boolean;
@@ -58,6 +59,7 @@ function sectionVisibility(state: MazeState, s: VectorByWallsSettings | VectorBy
   const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(state, s.replaceTwoFloorElevatorsWithStairs);
   return {
     grid: s.showGrid,
+    innerGrid: "showInnerGrid" in s && s.showInnerGrid,
     wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
     oneWayIndicator: hasDirectionalBasicEdge(state.edges),
     teleports: state.edges.some((e) => e.kind === "teleport"),
@@ -99,6 +101,7 @@ type SectionKey =
 type RoleKey =
   | "fill"
   | "grid"
+  | "inner_grid"
   | "floor"
   | "wall"
   | "one_way_line"
@@ -135,6 +138,7 @@ const sectionLabel: Record<SectionKey, () => string> = {
 const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   fill: m["color_picker.entry.role.fill"],
   grid: m["color_picker.entry.role.grid"],
+  inner_grid: m["color_picker.entry.role.inner_grid"],
   floor: m["color_picker.entry.role.floor"],
   wall: m["color_picker.entry.role.wall"],
   one_way_line: m["color_picker.entry.role.one_way_line"],
@@ -179,6 +183,7 @@ function field(sections: SectionKey[], role: Exclude<RoleKey, "split_node">): Co
 export const PC = {
   bgFill: field(["background"], "fill"),
   bgGrid: field(["background"], "grid"),
+  innerGrid: field(["background"], "inner_grid"),
 
   corridorFill: field(["corridor"], "fill"),
 
@@ -361,6 +366,7 @@ function vectorByWallsColors(state: MazeState, s: VectorByWallsSettings, slotCou
   return [
     PC.bgFill.at(s.background),
     ...(vis.grid ? [PC.bgGrid.at(s.gridColor)] : []),
+    ...(vis.innerGrid ? [PC.innerGrid.at(s.innerGridColor)] : []),
     PC.tilesFloor.at(s.floorColor),
     ...(vis.wall ? [PC.tilesWall.at(s.wallColor)] : []),
     ...(vis.oneWayIndicator ? [PC.oneWaysMarker.at(s.oneWayColor)] : []),
@@ -435,6 +441,7 @@ export function overrideActiveProfileColor(
         set(PC.decorArrowOneWay, (v) => { settings.decorativeStairsOneWayArrowColor = v; })) return settings;
   }
   if (set(PC.bgFill, (v) => { settings.background = v; }) || set(PC.bgGrid, (v) => { settings.gridColor = v; }) ||
+      set(PC.innerGrid, (v) => { if ("innerGridColor" in settings) settings.innerGridColor = v; }) ||
       set(PC.corridorFill, (v) => { if ("color" in settings) settings.color = v; }) ||
       set(PC.tilesFloor, (v) => { if ("floorColor" in settings) settings.floorColor = v; }) ||
       set(PC.tilesWall, (v) => { if ("wallColor" in settings) settings.wallColor = v; }) ||

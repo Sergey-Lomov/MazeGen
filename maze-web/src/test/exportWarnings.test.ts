@@ -24,7 +24,7 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
+    background: 0, showGrid: true, gridColor: 0x808080, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 0.3, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
@@ -115,6 +115,22 @@ describe("elevator_indistinguishable (GitHub issue #471)", () => {
 });
 
 describe("computeVectorByWallsWarnings", () => {
+  describe("inner grid contrast", () => {
+    it("checks the independent inner-grid color against both floor and wall surfaces", () => {
+      const settings = baseSettings({ showInnerGrid: true, innerGridColor: 0, floorColor: 0, wallColor: 0 });
+      const warnings = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null);
+      expect(warnings.map((warning) => warning.id)).toEqual(expect.arrayContaining([
+        "inner_grid_low_contrast_floor", "inner_grid_low_contrast_wall",
+      ]));
+    });
+
+    it("does not check the inner-grid color when its independent toggle is off", () => {
+      const settings = baseSettings({ showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0 });
+      const warnings = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, null, null);
+      expect(warnings.some((warning) => warning.id.startsWith("inner_grid_low_contrast"))).toBe(false);
+    });
+  });
+
   describe("teleport_marker_invisible", () => {
     it("flags a one-way teleport's exit endpoint when border width is 0 (its fill mirrors floor color)", () => {
       const nodes = [n(0, 0, 0), n(1, 3, 3)];

@@ -156,7 +156,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 const {
-  VectorByWallsRenderer,
+  VectorByWallsRenderer, BackgroundGridLayer,
   viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle, resolveEffectiveEndpoints,
 } = await import("../pixi/imageExport/VectorByWallsRenderer");
 
@@ -166,6 +166,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     background: 0x111111,
     showGrid: true,
     gridColor: 0x222222,
+    showInnerGrid: false,
+    innerGridColor: 0x222222,
     floorColor: 0x333333,
     wallColor: 0x444444,
     randomWallColorMode: "off",
@@ -417,6 +419,36 @@ describe("resolveEffectiveEndpoints", () => {
 });
 
 describe("VectorByWallsRenderer", () => {
+  it("keeps the original background grid separate from the optional inner grid", () => {
+    const nodes: NodeDto[] = [
+      { id: 10, x: 0, y: 0, i: 0 },
+      { id: 11, x: 2, y: -1, i: 0 },
+    ];
+    currentState = baseState({ nodes });
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    const asAny = renderer as unknown as {
+      backgroundGrid: InstanceType<typeof BackgroundGridLayer>;
+      innerGrid: { render: ReturnType<typeof vi.fn> };
+    };
+    const backgroundGrid = asAny.backgroundGrid;
+    const background = (backgroundGrid as unknown as { grid: { render: ReturnType<typeof vi.fn> } }).grid;
+
+    expect(background.render).toHaveBeenCalledWith(
+      { viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 }, color: baseSettings().gridColor },
+      stableCfg,
+    );
+    expect(asAny.innerGrid.render).not.toHaveBeenCalled();
+
+    currentState = baseState({ nodes, vectorByWallsSettings: baseSettings({ showInnerGrid: true, innerGridColor: 0xabcdef }) });
+    const innerRenderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    const innerGrid = (innerRenderer as unknown as { innerGrid: { render: ReturnType<typeof vi.fn> } }).innerGrid;
+    expect(innerGrid.render).toHaveBeenCalledWith(
+      { viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 }, color: 0xabcdef },
+      stableCfg,
+      [[0, 0], [2, -1]],
+    );
+  });
+
   it("getRequiredExportMargin returns zero margin when this maze has no nodes (nothing drawn)", () => {
     currentState = baseState();
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);

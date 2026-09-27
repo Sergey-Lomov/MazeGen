@@ -26,6 +26,8 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_connector_low_contrast_wall: m["image_export.warning.teleport_connector_low_contrast_wall"],
   split_low_contrast_floor: m["image_export.warning.split_low_contrast_floor"],
   grid_low_contrast_background: m["image_export.warning.grid_low_contrast_background"],
+  inner_grid_low_contrast_floor: m["image_export.warning.inner_grid_low_contrast_floor"],
+  inner_grid_low_contrast_wall: m["image_export.warning.inner_grid_low_contrast_wall"],
   marker_fill_low_contrast: m["image_export.warning.marker_fill_low_contrast"],
   marker_border_low_contrast: m["image_export.warning.marker_border_low_contrast"],
   marker_fill_low_contrast_corridor: m["image_export.warning.marker_fill_low_contrast_corridor"],
@@ -81,6 +83,8 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_connector_low_contrast_wall: m["image_export.warning.teleport_connector_low_contrast_wall_description"],
   split_low_contrast_floor: m["image_export.warning.split_low_contrast_floor_description"],
   grid_low_contrast_background: m["image_export.warning.grid_low_contrast_background_description"],
+  inner_grid_low_contrast_floor: m["image_export.warning.inner_grid_low_contrast_floor_description"],
+  inner_grid_low_contrast_wall: m["image_export.warning.inner_grid_low_contrast_wall_description"],
   marker_fill_low_contrast: m["image_export.warning.marker_fill_low_contrast_description"],
   marker_border_low_contrast: m["image_export.warning.marker_border_low_contrast_description"],
   marker_fill_low_contrast_corridor: m["image_export.warning.marker_fill_low_contrast_corridor_description"],
@@ -120,7 +124,7 @@ export function resolveExportWarningMessage(id: ExportWarningId): string {
 }
 
 const COLOR_ROLE_LABELS: Record<ExportWarningColorRole, () => string> = {
-  background: m["image_export.color_role.background"], grid: m["image_export.color_role.grid"], corridor: m["image_export.color_role.corridor"],
+  background: m["image_export.color_role.background"], grid: m["image_export.color_role.grid"], inner_grid: m["image_export.color_role.inner_grid"], corridor: m["image_export.color_role.corridor"],
   floor: m["image_export.color_role.floor"], wall: m["image_export.color_role.wall"], one_way: m["image_export.color_role.one_way"],
   split: m["image_export.color_role.split"], marker_fill: m["image_export.color_role.marker_fill"], marker_border: m["image_export.color_role.marker_border"],
   label_text: m["image_export.color_role.label_text"], label_background: m["image_export.color_role.label_background"],

@@ -223,6 +223,8 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
     showGrid: DEFAULT_MAZE_RENDER_STYLE.grid.visible,
     gridColor: DEFAULT_MAZE_RENDER_STYLE.grid.color,
+    showInnerGrid: false,
+    innerGridColor: 0x3a3a3a,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
     randomWallColorMode: "off",

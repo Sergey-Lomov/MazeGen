@@ -250,6 +250,10 @@ export class VectorByWallsRenderer {
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
   private readonly warningHighlightContainer: Container;
+  /** Optional grid overlay inside the filled maze cells, below walls and markers. */
+  private readonly innerGridContainer: Container;
+  private readonly innerGrid: GridRenderer;
+  private innerGridCells: readonly [number, number][] = [];
 
   private readonly backgroundGrid: BackgroundGridLayer<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
   private readonly floor: CellFillRenderer;
@@ -301,6 +305,7 @@ export class VectorByWallsRenderer {
 
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
+    this.innerGridContainer = new Container();
     this.wallsContainer = new Container();
     this.splitJunctionContainer = new Container();
     this.teleportContainer = new Container();
@@ -311,6 +316,7 @@ export class VectorByWallsRenderer {
 
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
+    container.addChild(this.innerGridContainer);
     container.addChild(this.wallsContainer);
     container.addChild(this.splitJunctionContainer);
     container.addChild(this.markerIndexGapContainer);
@@ -323,6 +329,7 @@ export class VectorByWallsRenderer {
 
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
+    this.innerGrid = new GridRenderer(this.innerGridContainer);
     this.walls = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
@@ -374,6 +381,7 @@ export class VectorByWallsRenderer {
     this.backgroundGrid.setVisible(visible);
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
+    this.innerGridContainer.visible = visible && state.vectorByWallsSettings.showInnerGrid;
     this.wallsContainer.visible = visible;
     this.splitJunctionContainer.visible = visible;
     this.teleportContainer.visible = visible;
@@ -391,6 +399,14 @@ export class VectorByWallsRenderer {
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
       this.backgroundGrid.render(state.vectorByWallsSettings, state.activeTessellationConfig);
+      this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
+      if (state.vectorByWallsSettings.showInnerGrid) {
+        this.innerGrid.render(
+          { viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor },
+          state.activeTessellationConfig,
+          this.innerGridCells,
+        );
+      }
     }
   }
 
@@ -438,7 +454,6 @@ export class VectorByWallsRenderer {
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.activeTessellationConfig;
-    this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
 
     // Scoped to `activeFloorId` (GitHub issue #347) — `state.nodes`/`state.edges` can span every
     // floor once generation is multi-level-aware (GitHub issue #337); every selector below assumes
@@ -450,6 +465,12 @@ export class VectorByWallsRenderer {
     const { nodes, edges, start, finish } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
+    this.innerGridCells = nodes.map((node): [number, number] => [node.x, node.y]);
+    this.innerGridContainer.visible = state.vectorByWallsSettings.showInnerGrid;
+    if (state.vectorByWallsSettings.showInnerGrid) {
+      this.innerGrid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.innerGridColor }, cfg, this.innerGridCells);
+    }
+    this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
     // Resolves a `vertical_passage`/`elevator` edge's `to` node's own floor (GitHub issue #347) —
     // built from the *unscoped* node list, since `to` never survives the floor-scoping above.
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
@@ -626,6 +647,7 @@ export class VectorByWallsRenderer {
     this.backgroundGrid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
+    this.innerGrid.destroy();
     this.walls.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
@@ -635,6 +657,7 @@ export class VectorByWallsRenderer {
     this.warningHighlight.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
+    this.innerGridContainer.destroy();
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();

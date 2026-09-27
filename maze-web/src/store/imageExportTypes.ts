@@ -523,8 +523,12 @@ export interface MarkerIndexCoverage {
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
 export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields {
   background: number;
+  /** Original viewport grid, drawn behind the maze. */
   showGrid: boolean;
   gridColor: number;
+  /** Optional grid overlay drawn over the active floor's maze cells. */
+  showInnerGrid: boolean;
+  innerGridColor: number;
   floorColor: number;
   /** Applied to every "wall"-colored stroke (solid walls, split-junction wall faces, closed-cells
    *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
@@ -879,6 +883,8 @@ export interface ImageExportActions {
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
+  setVectorByWallsShowInnerGrid: (v: boolean) => void;
+  setVectorByWallsInnerGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;

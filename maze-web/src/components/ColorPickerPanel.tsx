@@ -28,7 +28,7 @@ type ColorModel = "rgb" | "hsl" | "oklch";
 
 function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
   const roles: [ExportWarningColorRole, string][] = [
-    ["background", PC.bgFill.name()], ["grid", PC.bgGrid.name()], ["corridor", PC.corridorFill.name()],
+    ["background", PC.bgFill.name()], ["grid", PC.bgGrid.name()], ["inner_grid", PC.innerGrid.name()], ["corridor", PC.corridorFill.name()],
     ["floor", PC.tilesFloor.name()], ["wall", PC.tilesWall.name()], ["one_way", PC.oneWaysMarker.name()],
     ["marker_fill", PC.startFill.name()], ["marker_fill", PC.finishFill.name()],
     ["marker_border", PC.startBorder.name()], ["marker_border", PC.finishBorder.name()],
