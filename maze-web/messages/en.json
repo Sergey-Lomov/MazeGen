@@ -518,6 +518,8 @@
   "field.radius": "Radius",
   "field.side": "Side",
   "field.shape.point": "Point",
+  "field.shape.circle": "Circle",
+  "field.shape.rectangle": "Rectangle",
   "field.shape.rect": "Rect",
   "field.shape.parallelogram": "Parallelogram",
   "field.shape.hexagon": "Hexagon",

@@ -1,12 +1,20 @@
-import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
+import { triTriangleRaw, triHexagonRaw, triCircleRaw, triCenterOffset } from "./triShapeHelpers";
+import { squareCircleRaw, squareTriangleRaw } from "./squareShapeHelpers";
+import { hexCircleRaw, hexRectangleRaw } from "./hexShapeHelpers";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
   switch (cfg.type) {
     case "square":
       return { ox: Math.floor(cfg.width / 2), oy: Math.floor(cfg.height / 2) };
+    case "square_circle":
+    case "square_triangle": return { ox: 0, oy: 0 };
+    case "hex_rectangle": return { ox: 0, oy: 0 };
     case "hex_parallelogram":
       return { ox: Math.floor(cfg.cols / 2), oy: Math.floor(cfg.rows / 2) };
+    case "hex_circle": return { ox: 0, oy: 0 };
+    case "hex_hexagon":
+      return { ox: 0, oy: 0 };
     case "triangle_rect": {
       let ox = Math.floor(cfg.cols / 2);
       let oy = Math.floor(cfg.rows / 2);
@@ -17,16 +25,14 @@ export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: n
       const { ox, oy } = triCenterOffset(triTriangleRaw(cfg.side));
       return { ox, oy };
     }
+    case "triangle_circle": return { ox: 0, oy: 0 };
     case "triangle_hexagon": {
       const { ox, oy } = triCenterOffset(triHexagonRaw(cfg.radius));
       return { ox, oy };
     }
-    // hex_hexagon and *_custom already use centered coords
-    case "hex_hexagon":
     case "square_custom":
     case "hex_custom":
-    case "tri_custom":
-      return { ox: 0, oy: 0 };
+    case "tri_custom": return { ox: 0, oy: 0 };
   }
 }
 
@@ -41,6 +47,15 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
           cells.push([x - ox, y - oy]);
       return cells;
     }
+    case "square_circle": {
+      return squareCircleRaw(cfg.radius);
+    }
+    case "square_triangle": {
+      return squareTriangleRaw(cfg.side);
+    }
+    case "hex_rectangle": {
+      return hexRectangleRaw(cfg.cols, cfg.rows, cfg.orientation);
+    }
     case "hex_parallelogram": {
       const ox = Math.floor(cfg.cols / 2);
       const oy = Math.floor(cfg.rows / 2);
@@ -50,12 +65,14 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
           cells.push([x - ox, y - oy]);
       return cells;
     }
+    case "hex_circle": {
+      return hexCircleRaw(cfg.radius, cfg.orientation);
+    }
     case "hex_hexagon": {
-      const r = cfg.radius;
       const cells: [number, number][] = [];
-      for (let x = -r; x <= r; x++)
-        for (let y = -r; y <= r; y++)
-          if (Math.abs(x + y) <= r) cells.push([x, y]);
+      for (let x = -cfg.radius; x <= cfg.radius; x++)
+        for (let y = -cfg.radius; y <= cfg.radius; y++)
+          if (Math.abs(x + y) <= cfg.radius) cells.push([x, y]);
       return cells;
     }
     case "triangle_rect": {
@@ -72,6 +89,9 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
       const raw = triTriangleRaw(cfg.side);
       const { ox, oy } = triCenterOffset(raw);
       return raw.map(([x, y]) => [x - ox, y - oy]);
+    }
+    case "triangle_circle": {
+      return triCircleRaw(cfg.radius);
     }
     case "triangle_hexagon": {
       const raw = triHexagonRaw(cfg.radius);

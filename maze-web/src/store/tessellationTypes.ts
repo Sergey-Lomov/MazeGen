@@ -1,12 +1,12 @@
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export type TessellationKind = "square" | "hex" | "triangle";
-export type SquareShape = "rect" | "free";
-export type HexShape = "parallelogram" | "hexagon" | "free";
-export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
+export type SquareShape = "rect" | "circle" | "triangle" | "free";
+export type HexShape = "rectangle" | "circle" | "parallelogram" | "hexagon" | "free";
+export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
-export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
+export type FieldPrimitive = "point" | "square_rect" | "square_circle" | "square_triangle" | "hex_parallelogram" | "hex_hexagon" | "hex_rectangle" | "hex_circle" | "tri_rect" | "tri_triangle" | "tri_hexagon" | "tri_circle";
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =

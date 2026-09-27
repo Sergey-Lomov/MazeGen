@@ -234,11 +234,17 @@ function NumberInput({ label, value, disabled, onChange }: { label: string; valu
 export function configSizeDescription(config: FieldConfig): string {
   switch (config.type) {
     case "square": return m["field.print_sizing.result_size"]({ size: `${config.width} × ${config.height}` });
-    case "hex_parallelogram":
-    case "triangle_rect": return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
+    case "square_circle":
+    case "hex_circle":
+    case "triangle_circle":
     case "hex_hexagon":
     case "triangle_hexagon": return m["field.print_sizing.result_radius"]({ size: String(config.radius) });
+    case "hex_rectangle":
+    case "triangle_rect":
+    case "hex_parallelogram":
+      return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
     case "triangle_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
+    case "square_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
     case "square_custom":
     case "hex_custom":
     case "tri_custom": return "";

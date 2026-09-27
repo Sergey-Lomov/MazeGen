@@ -15,14 +15,19 @@ let cachedKind: "square" | "hex" | "tri" | null = null;
 function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return "square";
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom":
       return "hex";
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom":
       return "tri";

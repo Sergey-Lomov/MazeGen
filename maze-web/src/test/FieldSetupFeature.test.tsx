@@ -15,6 +15,10 @@ beforeEach(() => {
 describe("FieldSetupFeature — Copy floor button", () => {
   const descriptionCases: [FieldConfig, string][] = [
     [{ type: "square", width: 20, height: 28 }, "Field size: 20 × 28 cells"],
+    [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],
+    [{ type: "hex_rectangle", cols: 10, rows: 8, orientation: "flat_top" }, "Field size: 10 × 8 cells"],
+    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
+    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
     [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
     [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
   ];

@@ -1,4 +1,6 @@
-import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
+import { triTriangleRaw, triHexagonRaw, triCircleRaw, triCenterOffset } from "./triShapeHelpers";
+import { squareCircleRaw, squareTriangleRaw } from "./squareShapeHelpers";
+import { hexCircleRaw, hexRectangleRaw } from "./hexShapeHelpers";
 import type { FieldPrimitive, TessellationKind } from "../store/mazeStore";
 
 export type { TessellationKind };
@@ -24,6 +26,14 @@ function squareRectCells(ctx: PrimitiveContext): [number, number][] {
   return cells;
 }
 
+function squareCircleCells(ctx: PrimitiveContext): [number, number][] {
+  return squareCircleRaw(ctx.gridRadius).map(([x, y]) => [x + ctx.startGrid.x, y + ctx.startGrid.y]);
+}
+
+function squareTriangleCells(ctx: PrimitiveContext): [number, number][] {
+  return squareTriangleRaw(ctx.gridRadius).map(([x, y]) => [x + ctx.startGrid.x, y + ctx.startGrid.y]);
+}
+
 function hexParallelogramCells(ctx: PrimitiveContext): [number, number][] {
   const minQ = Math.min(ctx.startGrid.x, ctx.endGrid.x);
   const maxQ = Math.max(ctx.startGrid.x, ctx.endGrid.x);
@@ -34,6 +44,12 @@ function hexParallelogramCells(ctx: PrimitiveContext): [number, number][] {
     for (let r = minR; r <= maxR; r++)
       cells.push([q, r]);
   return cells;
+}
+
+function hexRectangleCells(ctx: PrimitiveContext): [number, number][] {
+  const width = Math.max(1, Math.abs(ctx.endGrid.x - ctx.startGrid.x) + 1);
+  const height = Math.max(1, Math.abs(ctx.endGrid.y - ctx.startGrid.y) + 1);
+  return hexRectangleRaw(width, height).map(([x, y]) => [x + ctx.startGrid.x, y + ctx.startGrid.y]);
 }
 
 function hexHexagonCells(ctx: PrimitiveContext): [number, number][] {
@@ -48,6 +64,10 @@ function hexHexagonCells(ctx: PrimitiveContext): [number, number][] {
     }
   }
   return cells;
+}
+
+function hexCircleCells(ctx: PrimitiveContext): [number, number][] {
+  return hexCircleRaw(ctx.gridRadius).map(([x, y]) => [x + ctx.startGrid.x, y + ctx.startGrid.y]);
 }
 
 function triRectCells(ctx: PrimitiveContext): [number, number][] {
@@ -80,12 +100,22 @@ function triHexagonCells(ctx: PrimitiveContext): [number, number][] {
   return raw.map(([x, y]) => [x - ox + offsetX, y - oy + offsetY]);
 }
 
+function triCircleCells(ctx: PrimitiveContext): [number, number][] {
+  const offsetY = (ctx.startGrid.x + ctx.startGrid.y) % 2 === 0 ? ctx.startGrid.y : ctx.startGrid.y - 1;
+  return triCircleRaw(ctx.gridRadius).map(([x, y]) => [x + ctx.startGrid.x, y + offsetY]);
+}
+
 const primitiveFns: Record<ShapePrimitive, (ctx: PrimitiveContext) => [number, number][]> = {
   square_rect:       squareRectCells,
+  square_circle:      squareCircleCells,
+  square_triangle:   squareTriangleCells,
+  hex_rectangle:     hexRectangleCells,
+  hex_circle:        hexCircleCells,
   hex_parallelogram: hexParallelogramCells,
   hex_hexagon:       hexHexagonCells,
   tri_rect:          triRectCells,
   tri_triangle:      triTriangleCells,
+  tri_circle:        triCircleCells,
   tri_hexagon:       triHexagonCells,
 };
 

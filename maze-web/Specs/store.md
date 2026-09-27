@@ -18,9 +18,9 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `previewHexOrientation` | `HexOrientation` | Preview hex orientation |
 | `previewTriOrientation` | `TriOrientation` | Preview tri orientation |
 | `previewTessellationConfig` | `TessellationConfig` | Drives canvas grid during field setup |
-| `squareShape` | `"rect" \| "free"` | Active square shape |
-| `hexShape` | `"parallelogram" \| "hexagon" \| "free"` | Active hex shape |
-| `triangleShape` | `"rect" \| "triangle" \| "hexagon" \| "free"` | Active triangle shape |
+| `squareShape` | `"rect" \| "circle" \| "triangle" \| "free"` | Active square shape |
+| `hexShape` | `"rectangle" \| "circle" \| "parallelogram" \| "hexagon" \| "free"` | Active hex shape |
+| `triangleShape` | `"rect" \| "triangle" \| "circle" \| "hexagon" \| "free"` | Active triangle shape |
 | `savedConfigs` | `Partial<Record<type, TessellationConfig>>` | Saved config per type, survives shape switches |
 | `tessellationConfig` | `TessellationConfig` | Active config for field setup |
 | `activeTessellationConfig` | `TessellationConfig` | Config that was active at last generation |

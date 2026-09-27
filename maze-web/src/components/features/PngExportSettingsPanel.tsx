@@ -430,8 +430,8 @@ export function PngExportSettingsPanel() {
                     })}
                   </span>
                   <span style={typography.caption}>
-                    {(cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom"
-                      || cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom"
+                    {(cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom"
+                      || cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom"
                       ? m["image_export.format.png.result.cell_size_mm_diameter"]
                       : m["image_export.format.png.result.cell_size_mm_side"]
                     )({ size: printCellSizeMm.toFixed(2) })}

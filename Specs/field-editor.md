@@ -20,6 +20,22 @@ Two sub-modes toggled inside the card:
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
+### Available predefined shapes
+
+The field-shape selector exposes these additional shapes:
+
+| Tessellation | Shape | Config type | Parameters |
+|---|---|---|---|
+| Square | Circle | `square_circle` | radius |
+| Square | Triangle | `square_triangle` | side |
+| Hexagonal | Rectangle | `hex_rectangle` | columns, rows |
+| Hexagonal | Circle | `hex_circle` | radius |
+| Triangular | Circle | `triangle_circle` | radius |
+
+The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Each
+predefined config type owns its size parameters, so switching shapes does not overwrite another
+shape's saved dimensions.
+
 ### Calculate for print (GitHub issue #615)
 
 Default mode's **Calculate for print** button opens a one-shot dialog. It accepts a paper format
@@ -40,7 +56,8 @@ The dialog calculates the largest predefined field that fits this area, rounding
 then applies the resulting ordinary `tessellationConfig` through `setTessellationConfig`. No
 physical-size settings are added to the generation or WASM config, and the dialog's inputs are not
 persisted separately. Square/rectangular forms calculate independent column/row counts. Radial
-forms (`hexagon`, `triangle`, `triangle_hexagon`) calculate the largest fitting radius; because a
+forms (`square_circle`, `hex_circle`, `triangle_circle`, `hexagon`, `triangle`, `triangle_hexagon`)
+calculate the largest fitting radius; because a
 single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
 field footprint before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side. Invalid input or a cell too large for the printable area
@@ -89,7 +106,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_hexagon"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"square_circle"` \| `"hex_rectangle"` \| `"hex_circle"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_circle"` \| `"tri_hexagon"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
@@ -129,11 +146,16 @@ When centering a triangle shape, the coordinate offset `(ox, oy)` must satisfy `
 | Config type | Cell count | Centering |
 |---|---|---|
 | `square` | `width × height` | offset by `floor(w/2), floor(h/2)` |
+| `square_circle` | cells with `x² + y² < r²` | naturally centered |
+| `square_triangle` | `side × (side + 1) / 2` | centered by its bounding box |
+| `hex_rectangle` | all complete hexagons fitting inside the centered rectangle | naturally centered |
 | `hex_parallelogram` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
+| `hex_circle` | cells whose centers fit the Euclidean radius | naturally centered |
 | `hex_hexagon` | `3r² + 3r + 1` | naturally centered (generated around origin) |
 | `triangle_rect` | `cols × rows` | parity-safe offset |
 | `triangle_triangle` | `n²` | bbox center, parity-safe offset |
 | `triangle_hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
+| `triangle_circle` | cells whose triangle centers lie within radius `r` | naturally centered |
 
 ## Primitive brushes (custom mode)
 
@@ -148,11 +170,16 @@ Custom mode supports two drawing modes controlled by `fieldPrimitive`:
 | Primitive | Tessellation | Drag semantics |
 |---|---|---|
 | `square_rect` | square | corner-to-corner rectangle |
+| `square_circle` | square | center = mousedown, radius grows with drag distance |
+| `square_triangle` | square | center = mousedown, triangular shape grows with drag distance |
+| `hex_rectangle` | hex | corner-to-corner axial rectangle |
+| `hex_circle` | hex | center = mousedown, radius grows with drag distance |
 | `hex_parallelogram` | hex | corner-to-corner parallelogram (axial coords) |
 | `hex_hexagon` | hex | center = mousedown, radius grows with drag distance |
 | `tri_rect` | triangle | corner-to-corner rectangle (all parities included) |
 | `tri_triangle` | triangle | center = mousedown, triangular shape grows with drag distance |
 | `tri_hexagon` | triangle | center = mousedown, hexagonal tri-grid shape grows with drag distance |
+| `tri_circle` | triangle | center = mousedown, circular tri-grid shape grows with drag distance |
 
 **Corner-to-corner** shapes use `startGrid` and `endGrid` as opposite corners.
 

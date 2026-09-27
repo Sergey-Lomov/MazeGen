@@ -530,6 +530,8 @@
   "field.radius": "Радиус",
   "field.side": "Сторона",
   "field.shape.point": "Точка",
+  "field.shape.circle": "Круг",
+  "field.shape.rectangle": "Прямоугольник",
   "field.shape.rect": "Прямоугольник",
   "field.shape.parallelogram": "Параллелограмм",
   "field.shape.hexagon": "Шестиугольник",

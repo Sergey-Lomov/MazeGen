@@ -11,6 +11,8 @@ import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { Switch } from "../Switch";
 import { Stack, Inline, Grid } from "../Layout";
 import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
+import { triCircleRaw } from "../../pixi/triShapeHelpers";
+import { configAllCells } from "../../pixi/tessellationCells";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -118,6 +120,8 @@ export function FieldSetupFeature() {
             name="field-square-shape"
             onChange={(e) => setSquareShape(e.target.value as SquareShape)}>
             <option value="rect">{m["field.shape.rect"]()}</option>
+            <option value="circle">{m["field.shape.circle"]()}</option>
+            <option value="triangle">{m["field.shape.triangle"]()}</option>
           </select>
         </label>
       );
@@ -129,6 +133,8 @@ export function FieldSetupFeature() {
           <select style={styles.select} value={hexShape}
             name="field-hex-shape"
             onChange={(e) => setHexShape(e.target.value as HexShape)}>
+            <option value="rectangle">{m["field.shape.rectangle"]()}</option>
+            <option value="circle">{m["field.shape.circle"]()}</option>
             <option value="parallelogram">{m["field.shape.parallelogram"]()}</option>
             <option value="hexagon">{m["field.shape.hexagon"]()}</option>
           </select>
@@ -143,6 +149,7 @@ export function FieldSetupFeature() {
           onChange={(e) => setTriangleShape(e.target.value as TriangleShape)}>
           <option value="rect">{m["field.shape.rect"]()}</option>
           <option value="triangle">{m["field.shape.triangle"]()}</option>
+          <option value="circle">{m["field.shape.circle"]()}</option>
           <option value="hexagon">{m["field.shape.hexagon"]()}</option>
         </select>
       </label>
@@ -158,7 +165,13 @@ export function FieldSetupFeature() {
         </>
       );
     }
-    if (tessellationConfig.type === "hex_parallelogram") {
+    if (tessellationConfig.type === "square_circle") {
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={100} onCommit={(v) => setField("radius", v)} />;
+    }
+    if (tessellationConfig.type === "square_triangle") {
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} onCommit={(v) => setField("side", v)} />;
+    }
+    if (tessellationConfig.type === "hex_rectangle" || tessellationConfig.type === "hex_parallelogram") {
       return (
         <>
           <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
@@ -166,7 +179,7 @@ export function FieldSetupFeature() {
         </>
       );
     }
-    if (tessellationConfig.type === "hex_hexagon") {
+    if (tessellationConfig.type === "hex_circle" || tessellationConfig.type === "hex_hexagon") {
       return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} onCommit={(v) => setField("radius", v)} />;
     }
     if (tessellationConfig.type === "triangle_rect") {
@@ -180,7 +193,7 @@ export function FieldSetupFeature() {
     if (tessellationConfig.type === "triangle_triangle") {
       return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={30} onCommit={(v) => setField("side", v)} />;
     }
-    if (tessellationConfig.type === "triangle_hexagon") {
+    if (tessellationConfig.type === "triangle_circle" || tessellationConfig.type === "triangle_hexagon") {
       return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={15} onCommit={(v) => setField("radius", v)} />;
     }
     return null;
@@ -289,20 +302,40 @@ export function FieldSetupFeature() {
 }
 
 function primitivesForKind(kind: TessellationKind): [string, string][] {
-  if (kind === "square") return [["point", m["field.shape.point"]()], ["square_rect", m["field.shape.rect"]()]];
-  if (kind === "hex") return [["point", m["field.shape.point"]()], ["hex_parallelogram", m["field.shape.parallelogram"]()], ["hex_hexagon", m["field.shape.hexagon"]()]];
-  return [["point", m["field.shape.point"]()], ["tri_rect", m["field.shape.rect"]()], ["tri_triangle", m["field.shape.triangle"]()], ["tri_hexagon", m["field.shape.hexagon"]()]];
+  if (kind === "square") return [["point", m["field.shape.point"]()], ["square_rect", m["field.shape.rect"]()], ["square_circle", m["field.shape.circle"]()], ["square_triangle", m["field.shape.triangle"]()]];
+  if (kind === "hex") return [
+    ["point", m["field.shape.point"]()],
+    ["hex_rectangle", m["field.shape.rectangle"]()],
+    ["hex_circle", m["field.shape.circle"]()],
+    ["hex_parallelogram", m["field.shape.parallelogram"]()],
+    ["hex_hexagon", m["field.shape.hexagon"]()],
+  ];
+  return [
+    ["point", m["field.shape.point"]()],
+    ["tri_rect", m["field.shape.rect"]()],
+    ["tri_triangle", m["field.shape.triangle"]()],
+    ["tri_circle", m["field.shape.circle"]()],
+    ["tri_hexagon", m["field.shape.hexagon"]()],
+  ];
 }
 
 function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: HexShape, triangleShape: TriangleShape): string {
-  if (kind === "square") return squareShape === "rect" ? m["field.shape.rect"]() : "Free";
+  if (kind === "square") {
+    if (squareShape === "rect") return m["field.shape.rect"]();
+    if (squareShape === "circle") return m["field.shape.circle"]();
+    if (squareShape === "triangle") return m["field.shape.triangle"]();
+    return "Free";
+  }
   if (kind === "hex") {
+    if (hexShape === "rectangle") return m["field.shape.rectangle"]();
+    if (hexShape === "circle") return m["field.shape.circle"]();
     if (hexShape === "parallelogram") return m["field.shape.parallelogram"]();
     if (hexShape === "hexagon") return m["field.shape.hexagon"]();
     return "Free";
   }
   if (triangleShape === "rect") return m["field.shape.rect"]();
   if (triangleShape === "triangle") return m["field.shape.triangle"]();
+  if (triangleShape === "circle") return m["field.shape.circle"]();
   if (triangleShape === "hexagon") return m["field.shape.hexagon"]();
   return "Free";
 }
@@ -342,26 +375,31 @@ export function fieldSetupSubtitle(kind: TessellationKind, floorFields: FloorFie
 
 export function configCellCount(cfg: TessellationConfig): number {
   if (cfg.type === "square") return cfg.width * cfg.height;
+  if (cfg.type === "square_circle" || cfg.type === "square_triangle" || cfg.type === "hex_rectangle" || cfg.type === "hex_circle") return configAllCells(cfg).length;
   if (cfg.type === "hex_parallelogram" || cfg.type === "triangle_rect") return cfg.cols * cfg.rows;
   if (cfg.type === "hex_hexagon") { const r = cfg.radius; return 3 * r * r + 3 * r + 1; }
   if (cfg.type === "triangle_triangle") { const n = cfg.side; return n * n; }
-  if (cfg.type === "triangle_hexagon") {
-    const r = cfg.radius;
-    let count = 0;
-    for (let row = 0; row < 2 * r; row++) {
-      const k = Math.min(row, 2 * r - 1 - row);
-      count += 2 * (k + r) + 1;
-    }
-    return count;
+  if (cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon") {
+    return cfg.type === "triangle_circle" ? triCircleRaw(cfg.radius).length : triangleHexagonCellCount(cfg.radius);
   }
   return 0;
 }
 
+function triangleHexagonCellCount(radius: number): number {
+  let count = 0;
+  for (let row = 0; row < 2 * radius; row++) {
+    const k = Math.min(row, 2 * radius - 1 - row);
+    count += 2 * (k + radius) + 1;
+  }
+  return count;
+}
+
 function configSizeLabel(cfg: TessellationConfig): string {
   if (cfg.type === "square") return `${cfg.width}×${cfg.height}`;
-  if (cfg.type === "hex_parallelogram" || cfg.type === "triangle_rect") return `${cfg.cols}×${cfg.rows}`;
-  if (cfg.type === "hex_hexagon" || cfg.type === "triangle_hexagon") return `r${cfg.radius}`;
-  if (cfg.type === "triangle_triangle") return `s${cfg.side}`;
+  if (cfg.type === "square_circle") return `radius ${cfg.radius}`;
+  if (cfg.type === "hex_rectangle" || cfg.type === "hex_parallelogram" || cfg.type === "triangle_rect") return `${cfg.cols}×${cfg.rows}`;
+  if (cfg.type === "hex_circle" || cfg.type === "hex_hexagon" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon") return `radius ${cfg.radius}`;
+  if (cfg.type === "square_triangle" || cfg.type === "triangle_triangle") return `side ${cfg.side}`;
   return "";
 }
 

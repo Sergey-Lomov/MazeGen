@@ -34,8 +34,12 @@ const AXES_30_90_150: Axis[] = [axisFromDeg(30), axisFromDeg(90), axisFromDeg(15
 export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return SQUARE_AXES;
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -44,6 +48,7 @@ export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom":
       return AXES_0_60_120;

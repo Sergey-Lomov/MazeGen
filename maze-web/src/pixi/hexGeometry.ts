@@ -29,11 +29,11 @@ export function hexCenter(q: number, r: number, orientation: "flat_top" | "point
 }
 
 export function cellCenter(node: { x: number; y: number }, cfg: TessellationConfig): Pos {
-  if (cfg.type === "square" || cfg.type === "square_custom") {
+  if (cfg.type === "square" || cfg.type === "square_circle" || cfg.type === "square_triangle" || cfg.type === "square_custom") {
     return squareCenter(node.x, node.y, cfg);
-  } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+  } else if (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
     return hexCenter(node.x, node.y, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top", cfg);
-  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
+  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
     return triCenter(node.x, node.y, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0", cfg);
   } else {
     cfg satisfies never;

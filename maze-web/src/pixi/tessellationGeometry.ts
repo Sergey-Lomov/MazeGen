@@ -27,14 +27,19 @@ export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
 export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return 45;
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom":
       return 30;
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom":
       return 60;
@@ -55,10 +60,14 @@ export {
 export function getCellVertices(x: number, y: number, cfg: TessellationConfig): Pos[] | null {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom": {
       const c = squareCenter(x, y, cfg);
       return squareVertices(c.x, c.y);
     }
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -68,6 +77,7 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom": {
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
@@ -122,8 +132,12 @@ export function cellCenterBounds(nodes: { x: number; y: number; id: number }[], 
 export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Pos {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return squareCenter(x, y, cfg);
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -132,6 +146,7 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom": {
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
@@ -251,8 +266,12 @@ export function nearestCellCoord(worldX: number, worldY: number, cfg: Tessellati
 function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return nearestSquareCoord(worldX, worldY);
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -261,6 +280,7 @@ function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationCo
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom": {
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
@@ -279,8 +299,12 @@ export function getNeighborData(
 ): { offsets: [number, number][]; edgeVerts: [number, number][] } {
   switch (cfg.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
     case "square_custom":
       return { offsets: SQUARE_NEIGHBOR_OFFSETS, edgeVerts: SQUARE_EDGE_VERTS };
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -292,6 +316,7 @@ export function getNeighborData(
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon":
     case "tri_custom": {
       const up = (x + y) % 2 === 0;
