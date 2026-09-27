@@ -1,9 +1,11 @@
 use crate::Maze;
-use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::quality_control::InvalidOneWayIssue;
 use crate::quality_control::check::Check;
 use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
+use crate::quality_control::checks::waypoint_distance_core::{
+    Waypoint, WaypointDistances, waypoint_distance_matches,
+};
 use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
@@ -13,13 +15,7 @@ pub const ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison:
 
 /// Which waypoint(s) an `OneWayWaypointDistanceCheck` instance measures distance against — mirrors
 /// `TeleportWaypoint`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OneWayWaypoint {
-    Start,
-    Finish,
-    /// Both — the check uses whichever of the two is closer (`min`).
-    Any,
-}
+pub type OneWayWaypoint = Waypoint;
 
 /// Flags a one-way passage edge (`EdgeKind::Basic`, single direction) placed too close to a
 /// waypoint (start/finish) in progression space — see GitHub issue #198. Multiple instances may
@@ -59,55 +55,18 @@ impl<T: Tessellation> Check<T, InvalidOneWayIssue> for OneWayWaypointDistanceChe
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
-        let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
-        let (need_start, need_finish) = match self.waypoint {
-            OneWayWaypoint::Start => (true, false),
-            OneWayWaypoint::Finish => (false, true),
-            OneWayWaypoint::Any => (true, true),
-        };
         // Silently skip if the maze doesn't have the waypoint(s) this instance needs set —
         // covered by MissingEndpointsCheck, same rationale as the teleport waypoint-distance check.
-        if need_start && dist_from_start.is_none() {
+        let Some(distances) = WaypointDistances::new(maze, self.waypoint) else {
             return;
-        }
-        if need_finish && dist_from_finish.is_none() {
-            return;
-        }
-
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-
-        let waypoint_distance = |node_id: crate::ids::NodeId| -> Option<usize> {
-            let nav_id = nav.nav_node_for(node_id)?;
-            let mut best: Option<usize> = None;
-            if need_start {
-                best = min_optional_distance(
-                    best,
-                    dist_from_start
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            if need_finish {
-                best = min_optional_distance(
-                    best,
-                    dist_from_finish
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            best
         };
 
         let invalid: Vec<_> = one_way_edges_with_endpoints(maze)
             .into_iter()
             .filter(|&(_, from, to)| {
-                let from_dist = waypoint_distance(from);
-                let to_dist = waypoint_distance(to);
-                min_optional_distance(from_dist, to_dist)
-                    .is_some_and(|d| self.comparison.compare(d as u32, self.distance))
+                let from_dist = distances.distance_to(from);
+                let to_dist = distances.distance_to(to);
+                waypoint_distance_matches([from_dist, to_dist], self.comparison, self.distance)
             })
             .filter(|&(id, ..)| !self.protect_route || !is_edge_on_route(maze, id))
             .map(|(id, ..)| id)

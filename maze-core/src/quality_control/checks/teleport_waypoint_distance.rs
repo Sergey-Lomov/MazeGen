@@ -1,9 +1,11 @@
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::quality_control::InvalidTeleportIssue;
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::waypoint_distance_core::{
+    Waypoint, WaypointDistances, waypoint_distance_matches,
+};
 use crate::quality_control::comparison::Comparison;
 use crate::space::Tessellation;
 use rand::RngCore;
@@ -12,14 +14,7 @@ pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
 
 /// Which waypoint(s) a `TeleportWaypointDistanceCheck` instance measures distance against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TeleportWaypoint {
-    Start,
-    Finish,
-    /// Both — the check uses whichever of the two is closer (`min`), so a teleport too close to
-    /// *either* waypoint is flagged, same "closest wins" reduction `Any` scoring uses elsewhere.
-    Any,
-}
+pub type TeleportWaypoint = Waypoint;
 
 /// Which end(s) of a teleport edge a `TeleportWaypointDistanceCheck` instance measures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,48 +59,10 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
         _rng: &mut dyn RngCore,
         _requirement: (),
     ) {
-        let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
-        let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
-        let (need_start, need_finish) = match self.waypoint {
-            TeleportWaypoint::Start => (true, false),
-            TeleportWaypoint::Finish => (false, true),
-            TeleportWaypoint::Any => (true, true),
-        };
         // Silently skip if the maze doesn't have the waypoint(s) this instance needs set —
         // covered by MissingEndpointsCheck, same rationale as the loop-distance checks.
-        if need_start && dist_from_start.is_none() {
+        let Some(distances) = WaypointDistances::new(maze, self.waypoint) else {
             return;
-        }
-        if need_finish && dist_from_finish.is_none() {
-            return;
-        }
-
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-
-        // A node's distance to the closest relevant waypoint, or None if unreachable from every
-        // waypoint this instance cares about.
-        let waypoint_distance = |node_id: crate::ids::NodeId| -> Option<usize> {
-            let nav_id = nav.nav_node_for(node_id)?;
-            let mut best: Option<usize> = None;
-            if need_start {
-                best = min_optional_distance(
-                    best,
-                    dist_from_start
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            if need_finish {
-                best = min_optional_distance(
-                    best,
-                    dist_from_finish
-                        .as_ref()
-                        .and_then(|m| m.get(&nav_id))
-                        .copied(),
-                );
-            }
-            best
         };
 
         let invalid: Vec<_> = maze
@@ -113,13 +70,12 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
             .edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|t| {
-                let entry_dist = waypoint_distance(t.from);
+                let entry_dist = distances.distance_to(t.from);
                 let exit_dist = match self.edge {
                     TeleportEdgeSelector::EntryOnly => None,
-                    TeleportEdgeSelector::EntryOrExit => waypoint_distance(t.to),
+                    TeleportEdgeSelector::EntryOrExit => distances.distance_to(t.to),
                 };
-                min_optional_distance(entry_dist, exit_dist)
-                    .is_some_and(|d| self.comparison.compare(d as u32, self.distance))
+                waypoint_distance_matches([entry_dist, exit_dist], self.comparison, self.distance)
             })
             .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
