@@ -60,6 +60,13 @@ stepped shapes, holes, and square, hexagonal, and triangular tessellations.
 Holes are represented by nested contours: outer contours are filled and inner contours
 are cut out. The inset sign is reversed for holes so the wall gap remains consistent.
 
+Cells that touch only at a corner point (e.g. two triangles arranged diagonally with a
+gap between them) are never merged, even if they end up in the same region group: they
+are only tessellation neighbors if they share a full edge, so a corner-only touch is
+traced as two independent contours instead of one self-intersecting shape (GitHub issue
+#618). Contour tracing groups a region's cells into edge-adjacency connected components
+first and traces each component separately.
+
 Implementation: `RegionHighlightRenderer` with multiple node ids in one region group.
 
 Used by:
@@ -371,7 +378,9 @@ boundary highlighting.
 
 1. A cell cursor always uses a full cell with no inset and no border.
 2. A singleton marker highlight does not pass neighboring cells as one region group.
-3. A region highlight passes neighboring cells as one group and supports holes.
+3. A region highlight passes neighboring cells as one group and supports holes. Cells that
+   only touch at a corner, not a shared edge, must trace as separate contours, never one
+   merged shape.
 4. A split highlight always uses a merged outward-inset region.
 5. A boundary highlight is reserved for entities that are actual shared cell boundaries.
 6. An Analytics teleport issue must not draw a direct connector line.

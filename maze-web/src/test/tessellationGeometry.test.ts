@@ -80,6 +80,26 @@ describe("getTileDiagram side direction matches getSharedEdgeSegment", () => {
   });
 });
 
+describe("getSharedEdgeSegment returns null for a non-neighbor offset", () => {
+  // `getSharedEdgeSegment` looks up `dx,dy` in the lower cell's own `offsets`/`edgeVerts` tables
+  // (`getNeighborData`); an offset that isn't one of that tessellation's real neighbor directions
+  // has no entry and must return null rather than throw or return a bogus segment. This guards
+  // callers like `issueHighlightSelectors.buildRegionGeometry`, which skips a null segment — a
+  // newly added tessellation whose `offsets`/`edgeVerts` tables fall out of sync would otherwise
+  // surface as a silent missing perimeter side instead of a caught test failure here.
+  it("square: a two-step offset is not a real neighbor direction", () => {
+    expect(getSharedEdgeSegment([0, 0], [2, 0], { type: "square", width: 5, height: 5 })).toBeNull();
+  });
+
+  it("hex: a diagonal offset outside the 6 neighbor directions", () => {
+    expect(getSharedEdgeSegment([0, 0], [1, 1], { type: "hex_hexagon", radius: 3, orientation: "flat_top" })).toBeNull();
+  });
+
+  it("triangle: cells that only touch at a corner, not a real neighbor direction", () => {
+    expect(getSharedEdgeSegment([0, 0], [1, 1], { type: "triangle_hexagon", radius: 3 })).toBeNull();
+  });
+});
+
 describe("getSplitCircleRotationDeg", () => {
   it("returns 45 for square tessellations (halfway between its 4 edge directions)", () => {
     expect(getSplitCircleRotationDeg({ type: "square", width: 5, height: 5 })).toBe(45);

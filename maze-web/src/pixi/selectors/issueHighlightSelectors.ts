@@ -7,8 +7,10 @@ import { buildCellSet } from "./sharedSelectors";
 export interface RegionGeometry {
   /** This region's cells, for fill rendering. */
   cells: [number, number][];
-  /** Shared-wall pixel segments on this region's boundary, for perimeter rendering. */
-  perimeterSegments: { v0: Pos; v1: Pos }[];
+  /** Shared-wall pixel segments on this region's boundary, for perimeter rendering. Tagged with
+   *  the edge-connected component (GitHub issue #618) so contour tracing never crosses between
+   *  cells that only touch at a corner point, not a shared edge. */
+  perimeterSegments: { v0: Pos; v1: Pos; component: number }[];
 }
 
 /** Resolves one region's maze node ids to its cell coordinates and boundary segments — same
@@ -40,10 +42,47 @@ export function buildRegionGeometry(
   if (cells.length === 0) return { cells, perimeterSegments: [] };
 
   const cellSet = buildCellSet(cells);
+
+  // Group cells into edge-adjacency connected components first. Two cells that only touch at a
+  // single corner point (GitHub issue #618) are not tessellation neighbors, so they land in
+  // separate components even though their shared vertex coincides -- this keeps contour tracing
+  // from crossing between them and rendering a self-intersecting "bowtie" shape.
+  const cellKey = (x: number, y: number) => `${x},${y}`;
+  // Cache each cell's own neighbor offsets from this pass -- the perimeter loop below needs the
+  // same lookup per cell, and `getNeighborData` is a per-call switch, not a cached table.
+  const offsetsByCell = new Map<string, [number, number][]>();
+  const componentByCell = new Map<string, number>();
+  let nextComponent = 0;
+  for (const [x, y] of cells) {
+    const key = cellKey(x, y);
+    if (componentByCell.has(key)) continue;
+    const component = nextComponent++;
+    const stack: [number, number][] = [[x, y]];
+    componentByCell.set(key, component);
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop()!;
+      // Each cell is pushed exactly once (guarded by `componentByCell.has` below), so this cache
+      // is always a fresh entry, never a repeat lookup.
+      const offsets = getNeighborData(cfg, cx, cy).offsets;
+      offsetsByCell.set(cellKey(cx, cy), offsets);
+      for (const [dx, dy] of offsets) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const nKey = cellKey(nx, ny);
+        if (!cellSet.has(nKey) || componentByCell.has(nKey)) continue;
+        componentByCell.set(nKey, component);
+        stack.push([nx, ny]);
+      }
+    }
+  }
+
   const perimeterSegments: RegionGeometry["perimeterSegments"] = [];
 
   for (const [x, y] of cells) {
-    const { offsets } = getNeighborData(cfg, x, y);
+    const key = cellKey(x, y);
+    const component = componentByCell.get(key)!;
+    // Every cell in `cells` got a self-entry during the BFS above, so this is always cached.
+    const offsets = offsetsByCell.get(key)!;
     for (const [dx, dy] of offsets) {
       const nx = x + dx;
       const ny = y + dy;
@@ -54,7 +93,7 @@ export function buildRegionGeometry(
         // tracing deterministic at pinch points where an inner opening touches the outer boundary.
         const center = getCellCenter(x, y, cfg);
         const cross = (seg.v1.x - seg.v0.x) * (center.y - seg.v0.y) - (seg.v1.y - seg.v0.y) * (center.x - seg.v0.x);
-        perimeterSegments.push(cross >= 0 ? seg : { v0: seg.v1, v1: seg.v0 });
+        perimeterSegments.push({ ...(cross >= 0 ? seg : { v0: seg.v1, v1: seg.v0 }), component });
       }
     }
   }
