@@ -331,10 +331,17 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
         return { ...e, floors: e.floors.map((f) => ((f.level ?? 0) === override.level ? presetEndpoint(override.point, undefined, f.level) : f)) };
       });
     // Markers must resolve against a level-less endpoint (GitHub issue #589) — see `withoutLevel`.
-    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0))
-      ? withoutLevel(state.presetStart) : null;
-    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0))
-      ? withoutLevel(state.presetFinish) : null;
+    // Live marker-drag override (GitHub issue #613) — while a start/finish marker drag is live,
+    // nothing is committed to `presetStart`/`presetFinish` yet (see `presetDragOverride`'s own doc
+    // comment), so the dragged marker's on-screen position is substituted here.
+    const presetStart = override?.kind === "marker" && override.marker === "start"
+      ? withoutLevel(presetEndpoint(override.point))
+      : (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0))
+        ? withoutLevel(state.presetStart) : null;
+    const presetFinish = override?.kind === "marker" && override.marker === "finish"
+      ? withoutLevel(presetEndpoint(override.point))
+      : (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0))
+        ? withoutLevel(state.presetFinish) : null;
     const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
 
     this.grid.render({ viewport: this.viewport }, cfg);

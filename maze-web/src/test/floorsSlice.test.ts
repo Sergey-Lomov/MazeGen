@@ -21,6 +21,28 @@ describe("floorsSlice", () => {
   });
 
   describe("addFloor", () => {
+    it("clears generation and post-edit results but preserves presets", () => {
+      const preset = useMazeStore.getState().presetConnections;
+      useMazeStore.setState({
+        nodes: [{ id: 1, x: 0, y: 0, i: 0 }],
+        edges: [{ from: 1, to: 1, kind: "basic" }],
+        statistics: {} as never,
+        mazeDirty: true,
+        postEditDirty: true,
+        postEditAnalytics: {} as never,
+        presetConnections: new Map([["keep", { from: { point: [0, 0] }, to: { point: [1, 0] }, state: "passage", source: "user" }]]),
+      });
+      useMazeStore.getState().addFloor();
+      const state = useMazeStore.getState();
+      expect(state.nodes).toEqual([]);
+      expect(state.edges).toEqual([]);
+      expect(state.postEditAnalytics).toBeNull();
+      expect(state.mazeDirty).toBe(false);
+      expect(state.postEditDirty).toBe(false);
+      expect(state.presetConnections).not.toBe(preset);
+      expect(state.presetConnections.has("keep")).toBe(true);
+    });
+
     it("appends a new floor at the end with the next default title", () => {
       useMazeStore.getState().addFloor();
       const { floors, nextFloorNumber } = useMazeStore.getState();

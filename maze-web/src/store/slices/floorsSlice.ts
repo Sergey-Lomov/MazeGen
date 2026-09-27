@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, FloorsState, FloorsActions, FloorState, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
-import { defaultFloorFieldConfig, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock } from "../storeHelpers";
+import { defaultFloorFieldConfig, remapPresetLevelsOnFloorSwap, dropPresetLevelOnFloorRemove, recomputeAutoLock, buildResetDownstreamState } from "../storeHelpers";
 
 export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
@@ -26,6 +26,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const belowFloor = state.floors[state.floors.length - 1];
     const belowField = state.floorFields[belowFloor.id];
     return {
+      ...buildResetDownstreamState(),
       floors: [...state.floors, floor],
       nextFloorNumber: state.nextFloorNumber + 1,
       floorFields: { ...state.floorFields, [floor.id]: { ...belowField } },
@@ -46,6 +47,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     // issue #340) — mirrors `nextFloorFields` deleting the removed id's own entry above.
     const dropped = dropPresetLevelOnFloorRemove(state, removedLevel);
     set({
+      ...buildResetDownstreamState(),
       floors: next,
       floorFields: nextFloorFields,
       // The active floor may be the one just removed — fall back to the bottom floor rather than
@@ -78,6 +80,7 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     // array slot (GitHub issue #340).
     const remapped = remapPresetLevelsOnFloorSwap(state, [index, targetIndex]);
     set({
+      ...buildResetDownstreamState(),
       floors: next,
       ...remapped,
       autoLockedNodes: recomputeAutoLock({ ...state, ...remapped }),

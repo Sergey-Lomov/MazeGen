@@ -227,4 +227,15 @@ describe("BaseController marker drag", () => {
     c.onPointerUp(1);
     expect(c.getDraggingMarker()).toBe("set_start");
   });
+
+  it("cancelPointerGesture clears marker and edge-drag state without committing", () => {
+    const c = new TestController();
+    c.armMarkerDrag("set_start");
+    c.beginEdgeDrag("start");
+
+    c.cancelPointerGesture();
+
+    expect(c.getDraggingMarker()).toBeNull();
+    expect(c.isDragActive).toBe(false);
+  });
 });

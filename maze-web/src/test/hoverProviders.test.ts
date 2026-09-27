@@ -117,4 +117,45 @@ describe("zoom reset controls", () => {
 
     interaction.destroy();
   });
+
+  it("cancels the active pointer gesture outside the canvas and on window blur", () => {
+    const stageHandlers: Record<string, () => void> = {};
+    const cancelPointerGesture = vi.fn();
+    const onPointerUp = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: () => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+        },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: { x: 0, y: 0, scale: { x: 1, y: 1 } } as any,
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({
+        onPointerDown: vi.fn(),
+        onPointerMove: vi.fn(),
+        onPointerUp,
+        cancelPointerGesture,
+      }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointerupoutside();
+    window.dispatchEvent(new Event("blur"));
+
+    expect(cancelPointerGesture).toHaveBeenCalledTimes(2);
+    expect(onPointerUp).not.toHaveBeenCalled();
+    interaction.destroy();
+  });
 });

@@ -183,6 +183,13 @@ export class FieldEditController {
     this.lastGridY = NaN;
   }
 
+  cancelPointerGesture(): void {
+    if (this.gestureActive && (this.spaceHeld || this.gestureButton === 1)) {
+      this.panCallbacks.endPan();
+    }
+    this.cancelGesture();
+  }
+
   onPointerUp(): void {
     if (!this.gestureActive) return;
 
@@ -231,4 +238,3 @@ export class FieldEditController {
     window.removeEventListener("keyup", this.onKeyUp);
   }
 }
-

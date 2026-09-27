@@ -602,12 +602,19 @@ short name, falling back to `splitNodeLabelShort` when the topology isn't a name
 builder in `postEditCommandLabels.ts` (`endpointBubble`, `splitSlotBubble`) now takes a
 `splitCtx: SplitLabelContext | null` parameter (threaded from `postEditCommandLabel`'s own new,
 defaulted-to-`null` parameter) instead of computing the suffix from `NodeDto.i`/a bare `slotId`
-directly. `PostEditChangesPanel.tsx` builds the real context once per render from the store's own
-`nodes`/`postEditDraftSplitPoints`/`postEditActiveSplitNode`/`postEditDraftEdges`/
-`activeTessellationConfig`/`floorFields`, with `inFieldCellsAt` computing (and caching) each floor's
-in-field cell set from `buildActiveCells`/`buildCellSet` lazily per level, since a single row's
-bubbles can span several floors (an elevator/vertical passage) each potentially needing a different
-floor's own field shape.
+directly. `SplitLabelContext.cfgAt(level)` resolves each floor's own `tessellationConfig`
+(`state.floorFields[floor.id]`), not a single maze-wide config — a non-active floor's own field
+shape/size can differ from the active floor's (GitHub issue #611), so a shared config would
+misclassify that floor's split-node topology (e.g. wrongly/never recognizing a "bridge"/"corridor"
+shape). `PostEditChangesPanel.tsx` builds the real context once per render from the store's own
+`nodes`/`postEditDraftSplitPoints`/`postEditActiveSplitNode`/`postEditDraftEdges`/`floors`/
+`floorFields` (falling back to `activeTessellationConfig` only when a given level has no floor
+entry), with `inFieldCellsAt` computing (and caching) each floor's in-field cell set from
+`buildActiveCells`/`buildCellSet` lazily per level, since a single row's bubbles can span several
+floors (an elevator/vertical passage) each potentially needing a different floor's own field shape.
+`buildPostEditPointEntitiesAt`/`buildPostEditResetLifelinesAt` (`postEditSliceHelpers.ts`) and
+`ManageSplitNodesDialog`/`PostEditElevatorFloorDialog` build their own `cfgAt`/per-row config lookup
+the same way.
 
 GitHub issue #546 ninth follow-up fixed a regression the eighth follow-up itself introduced:
 `resolveSplitNodeShortLabel` built its `"x,y"`/`"x,y@level"` lookup key straight from whatever
@@ -1442,11 +1449,11 @@ Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport c
 | 7 | `hoverContainer` | `EdgeHighlightRenderer` — hover highlight |
 | 8 | `teleportPreviewContainer` | `Graphics` — pending teleport placement preview (fixed-endpoint marker + connector line to cursor), drawn by the shared `drawTeleportPreview` (`pixi/renderers/teleportPreviewGlyph.ts`) — same helper `PresetConnectionsRenderer` uses |
 
-Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `activeTessellationConfig` change. Used by `PostEditController` for edge picking.
+Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt whenever `getActiveConfig`'s return identity changes. Used by `PostEditController` for edge picking.
 
 `updateTeleportPreview(pendingFrom, cursorViewportX, cursorViewportY)` takes `pendingFrom` already resolved to viewport coordinates (the controller resolves node id → screen via `nodeById` before calling in, since the renderer has no node lookup of its own) — unlike `PresetConnectionsRenderer`'s version, which takes a cell coordinate and projects it internally. Both then delegate the actual drawing to the shared `drawTeleportPreview`: the preview marker uses the real `DEFAULT_MAZE_RENDER_STYLE.teleport` shape / size / corner style / border / gap ring at 50% alpha (not a hardcoded 16px square — that was the pre-#456 look), and the connector clips to the marker's full outer footprint (`size*TILE_SIZE + borderWidth + edgeGapWidth`). Unit-tested in `teleportPreviewGlyph.test.ts`.
 
-`PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`activeTessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleports/nodes/meta comparison above, plus clearing the teleport preview when `postEditTool`/`postEditTeleportPendingFrom` changes and no placement is pending), and `destroyChildren`.
+`PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`state.floorFields[state.activeFloorId].tessellationConfig` — the active floor's own config, not `activeTessellationConfig`, so the cache/hit-testing use the right geometry when floors have different field shapes, GitHub issue #611), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleports/nodes/meta comparison above, plus clearing the teleport preview when `postEditTool`/`postEditTeleportPendingFrom` changes and no placement is pending), and `destroyChildren`.
 
 ## Controller — PostEditController
 

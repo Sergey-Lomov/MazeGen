@@ -152,7 +152,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.activeTessellationConfig;
+    return state.floorFields[state.activeFloorId].tessellationConfig;
   }
 
   protected setRootVisible(visible: boolean): void {

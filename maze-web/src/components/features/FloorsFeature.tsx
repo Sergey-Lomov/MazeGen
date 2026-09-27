@@ -10,6 +10,7 @@ import { Button } from "../Button";
 import * as m from "~/paraglide/messages";
 
 type PendingAction =
+  | { kind: "add" }
   | { kind: "remove"; floorId: string; message: string }
   | { kind: "move"; floorId: string; direction: "up" | "down" };
 
@@ -62,6 +63,11 @@ export function FloorsFeature() {
     }
   }
 
+  function handleAddClick() {
+    if (lossGen) setPending({ kind: "add" });
+    else addFloor();
+  }
+
   function handleConfirm() {
     if (!pending) return;
     // Confirming here always means the generation/post-edit warning was showing (the field-only
@@ -70,7 +76,8 @@ export function FloorsFeature() {
     // `mazeDirty` flag. `reset()` wipes nodes/edges/analytics/post-edit state the same way the
     // "Generate" panel's own reset does.
     if (lossGen) reset();
-    if (pending.kind === "remove") removeFloor(pending.floorId);
+    if (pending.kind === "add") addFloor();
+    else if (pending.kind === "remove") removeFloor(pending.floorId);
     else moveFloor(pending.floorId, pending.direction);
     setPending(null);
   }
@@ -139,12 +146,12 @@ export function FloorsFeature() {
           </div>
         );
       })}
-      <Button variant="primary" layoutStyle={styles.addFloorBtn} onClick={() => addFloor()}>
+      <Button variant="primary" layoutStyle={styles.addFloorBtn} onClick={handleAddClick}>
         {m["floors.add_floor"]()}
       </Button>
       {pending !== null && (
         <ConfirmModal
-          message={pending.kind === "remove" ? pending.message : m["floors.confirm_reorder"]()}
+          message={pending.kind === "remove" ? pending.message : pending.kind === "add" ? m["floors.confirm_add_generation"]() : m["floors.confirm_reorder"]()}
           onConfirm={handleConfirm}
           onCancel={() => setPending(null)}
         />

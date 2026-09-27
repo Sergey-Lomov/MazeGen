@@ -240,6 +240,11 @@ also do not receive a highlight perimeter.
 Cell tools (`lock_in`, `lock_out`, `full_lock`, `gen_source`, and point tools) highlight
 the cell under the cursor. Edge tools highlight the edge.
 
+While a start/finish marker, teleport endpoint, vertical-passage endpoint, or elevator endpoint is
+being dragged (GitHub issue #612), the cell cursor highlight follows the cursor for the whole
+gesture — it is set to the origin cell when the drag begins and updated on every pointer move,
+rather than staying fixed on the origin cell or being cleared until the drag ends.
+
 ### 3.3. Post-edit
 
 `PostEditRenderer` contains:
@@ -256,6 +261,10 @@ the cell under the cursor. Edge tools highlight the edge.
 - `teleportPreview`: temporary line from the fixed teleport endpoint to the cursor;
   this is preview geometry, not an issue highlight;
 - `issueHighlight`: issue-bubble highlighting shared with Analytics.
+
+`cellHover` follows the cursor while a start/finish marker, teleport endpoint, vertical-passage
+endpoint, or elevator endpoint is being dragged, the same behavior as Preset Connections (see
+3.2, GitHub issue #612).
 
 Post-edit issue bubbles use:
 

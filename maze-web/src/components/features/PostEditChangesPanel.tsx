@@ -84,13 +84,22 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const activeSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const floorFields = useMazeStore((s) => s.floorFields);
   const nodeById = useMemo(() => buildNodeByIdMap(nodes), [nodes]);
   const multiFloor = floors.length > 1;
   // One `SplitLabelContext` per render, shared by every row/bubble — resolves a split point's node
   // to its exact link-bubble label (semantic short name or `splitNodeLabelShort`), the same
   // resolution `ManageSplitNodesDialog`'s own link bubbles use (GitHub issue #546 eighth follow-up).
+  // Each floor's own `tessellationConfig` (GitHub issue #611's bug class) — a single row's bubbles
+  // can span several floors (an elevator/vertical passage), each potentially needing a different
+  // floor's own field shape, not one maze-wide snapshot.
+  const cfgByLevel = useMemo(() => {
+    return (level: number | undefined) => {
+      const index = level ?? 0;
+      const floor = floors[index];
+      return floor ? floorFields[floor.id].tessellationConfig : floorFields[floors[0].id].tessellationConfig;
+    };
+  }, [floors, floorFields]);
   const inFieldCellsByLevel = useMemo(() => {
     const cache = new Map<number, ReadonlySet<string>>();
     return (level: number | undefined) => {
@@ -99,14 +108,14 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
       if (cached) return cached;
       const floor = floors[index];
       const field = floor ? floorFields[floor.id] : undefined;
-      const cells = field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, cfg)) : new Set<string>();
+      const cells = field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
       cache.set(index, cells);
       return cells;
     };
-  }, [floors, floorFields, cfg]);
+  }, [floors, floorFields]);
   const splitCtx: SplitLabelContext = useMemo(
-    () => ({ allNodes: nodes, splitPoints, activeSplitNode, draftEdges, cfg, inFieldCellsAt: inFieldCellsByLevel }),
-    [nodes, splitPoints, activeSplitNode, draftEdges, cfg, inFieldCellsByLevel],
+    () => ({ allNodes: nodes, splitPoints, activeSplitNode, draftEdges, cfgAt: cfgByLevel, inFieldCellsAt: inFieldCellsByLevel }),
+    [nodes, splitPoints, activeSplitNode, draftEdges, cfgByLevel, inFieldCellsByLevel],
   );
   // Newest first — the log itself is append-only oldest-to-newest, reversed only for display.
   // The entity-id filter (GitHub issue #574) matches a command's own associated id (`entityIdOf`)

@@ -9,6 +9,19 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
+export type PendingFieldEdit =
+  | { kind: "setSquareShape"; shape: SquareShape }
+  | { kind: "setHexShape"; shape: HexShape }
+  | { kind: "setTriangleShape"; shape: TriangleShape }
+  | { kind: "setTessellationConfig"; config: TessellationConfig }
+  | { kind: "addFieldPoint"; x: number; y: number }
+  | { kind: "removeFieldPoint"; x: number; y: number }
+  | { kind: "addFieldPoints"; cells: [number, number][] }
+  | { kind: "removeFieldPoints"; cells: [number, number][] }
+  | { kind: "clearFieldPoints" }
+  | { kind: "setFieldEditMode"; mode: "default" | "custom" }
+  | { kind: "copyFloorField"; sourceFloorId: string };
+
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 export const DEFAULT_TRI_ORI: TriOrientation = "r0";
 
@@ -85,6 +98,7 @@ export interface FloorFieldsState {
   /** One FloorFieldConfig per floor id — always has an entry for every id in `floors` (see
    * floorsSlice.ts's addFloor/removeFloor, which keep this map in sync). */
   floorFields: Record<string, FloorFieldConfig>;
+  fieldEditConfirmation: PendingFieldEdit | null;
 }
 
 export interface FloorFieldsActions {
@@ -102,4 +116,6 @@ export interface FloorFieldsActions {
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;
+  confirmFieldEdit: () => void;
+  cancelFieldEdit: () => void;
 }

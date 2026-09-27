@@ -55,7 +55,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // dialog's own point-keyed lookups (`pointNodeMap`, `originalNodeId`, `resolveActiveAt`) are
   // scoped to the active floor's own nodes first, same as `PostEditController`'s `getFloorNodes`.
   const nodes = useMemo(() => allNodes.filter((n) => (n.level ?? 0) === (level ?? 0)), [allNodes, level]);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -85,7 +85,10 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     splitPoints,
     activeSplitNode,
     draftEdges: draftEdges ?? null,
-    cfg,
+    cfgAt: (rawLevel) => {
+      const floor = floorFields[floors[rawLevel ?? 0]?.id ?? ""];
+      return floor ? floor.tessellationConfig : cfg;
+    },
     inFieldCellsAt: (rawLevel) => {
       const floor = floorFields[floors[rawLevel ?? 0]?.id ?? ""];
       if (!floor) return inFieldCells;

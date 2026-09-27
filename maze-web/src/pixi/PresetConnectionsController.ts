@@ -45,6 +45,9 @@ export class PresetConnectionsController extends BaseController {
   private verticalPassageDragMoved = false;
   private draggingElevatorEndpoint: PresetElevatorEndpointHit | null = null;
   private elevatorDragMoved = false;
+  // Whether a start/finish marker drag (GitHub issue #613) actually moved to a different cell —
+  // mirrors `teleportDragMoved`/`verticalPassageDragMoved`/`elevatorDragMoved` above.
+  private markerDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
   // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
   // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
@@ -88,17 +91,38 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingMarker) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell or vanishing for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const coords: [number, number] = [cell.x, cell.y];
-      if (this.draggingMarker === "set_start") useMazeStore.getState().setPresetStart(coords);
-      else useMazeStore.getState().setPresetFinish(coords);
+      const origin = this.draggingMarker === "set_start" ? state.presetStart : state.presetFinish;
+      const originLevel = activeFloorLevel(state);
+      const onOrigin = origin !== null && (origin.level ?? 0) === (originLevel ?? 0)
+        && origin.point[0] === coords[0] && origin.point[1] === coords[1];
+      // Live preview only (GitHub issue #613) — nothing is committed to `presetStart`/`presetFinish`
+      // until pointerup, so a fast drag no longer forces a full store update per move. Commit
+      // happens in `onPointerUp`, and only if the cursor actually left the origin cell (mirrors
+      // `teleportDragMoved`/`verticalPassageDragMoved`/`elevatorDragMoved` below) — otherwise a
+      // plain click (no movement) keeps costing nothing, same as before this change.
+      if (!onOrigin) {
+        this.markerDragMoved = true;
+        useMazeStore.getState().setPresetDragOverride({
+          kind: "marker", marker: this.draggingMarker === "set_start" ? "start" : "finish", point: coords,
+        });
+      }
       return;
     }
 
     if (this.draggingTeleportEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const teleport = state.presetTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
       if (!teleport) return;
       const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
@@ -123,7 +147,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingVerticalPassageEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const passage = state.presetVerticalPassages.find(p => p.id === this.draggingVerticalPassageEndpoint!.id);
       if (!passage) return;
       const hit = this.draggingVerticalPassageEndpoint;
@@ -147,7 +175,11 @@ export class PresetConnectionsController extends BaseController {
     if (this.draggingElevatorEndpoint) {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
+      // cell for the whole gesture.
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      if (!inField) return;
       const hit = this.draggingElevatorEndpoint;
       const elevator = state.presetElevators.find(e => e.id === hit.id);
       if (!elevator) return;
@@ -377,10 +409,12 @@ export class PresetConnectionsController extends BaseController {
 
       if (onStart) {
         this.armMarkerDrag("set_start");
+        this.renderer.updateCellHover(null);
         return;
       }
       if (onFinish) {
         this.armMarkerDrag("set_finish");
+        this.renderer.updateCellHover(null);
         return;
       }
       if (teleportHit) {
@@ -529,6 +563,22 @@ export class PresetConnectionsController extends BaseController {
   }
 
   onPointerUp(button: number): void {
+    // Marker drag commits here, before `super.onPointerUp` clears `draggingMarker` (GitHub issue
+    // #613) — only one `setPresetStart`/`setPresetFinish` for the whole gesture, and only if the
+    // drag actually moved to a different cell (a plain click on an already-placed marker must stay
+    // a no-op, same as before this change).
+    if (button === 0 && this.draggingMarker) {
+      const marker = this.draggingMarker;
+      if (this.markerDragMoved) {
+        const override = useMazeStore.getState().presetDragOverride;
+        if (override?.kind === "marker") {
+          if (marker === "set_start") useMazeStore.getState().setPresetStart(override.point);
+          else useMazeStore.getState().setPresetFinish(override.point);
+        }
+      }
+      useMazeStore.getState().setPresetDragOverride(null);
+      this.markerDragMoved = false;
+    }
     super.onPointerUp(button);
     if (button === 0) {
       this.endEdgeDrag();
@@ -590,6 +640,26 @@ export class PresetConnectionsController extends BaseController {
         this.draggingElevatorEndpoint = null;
         this.elevatorDragMoved = false;
       }
+    }
+  }
+
+  cancelPointerGesture(): void {
+    const gestureActive = this.isDragActive
+      || this.draggingMarker !== null
+      || this.draggingTeleportEndpoint !== null
+      || this.draggingVerticalPassageEndpoint !== null
+      || this.draggingElevatorEndpoint !== null;
+    super.cancelPointerGesture();
+    this.draggingTeleportEndpoint = null;
+    this.teleportDragMoved = false;
+    this.draggingVerticalPassageEndpoint = null;
+    this.verticalPassageDragMoved = false;
+    this.draggingElevatorEndpoint = null;
+    this.elevatorDragMoved = false;
+    this.markerDragMoved = false;
+    this.bulkDelete = false;
+    if (gestureActive) {
+      useMazeStore.getState().setPresetDragOverride(null);
     }
   }
 

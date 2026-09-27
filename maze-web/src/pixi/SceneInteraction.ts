@@ -38,9 +38,11 @@ export class SceneInteraction {
   };
 
   private onBlur = () => {
-    this.defaultPan.end();
     const st = useMazeStore.getState();
-    this.deps.getController(st)?.clearHover?.();
+    const controller = this.deps.getController(st);
+    this.defaultPan.end();
+    controller?.cancelPointerGesture();
+    controller?.clearHover?.();
     this.deps.onHoverChanged(null);
   };
 
@@ -104,7 +106,7 @@ export class SceneInteraction {
     stage.on("pointerupoutside", () => {
       const st = useMazeStore.getState();
       const controller = getController(st);
-      controller?.onPointerUp(1);
+      controller?.cancelPointerGesture();
       controller?.clearHover?.();
       onHoverChanged(null);
       if (st.openCard === "field_setup") {

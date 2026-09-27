@@ -28,10 +28,12 @@ export interface SplitLabelContext {
   splitPoints: Record<string, number[]>;
   activeSplitNode: Record<string, PostEditEndpoint>;
   draftEdges: Record<string, PostEditEdge> | null;
-  cfg: TessellationConfig;
-  /** A floor's in-field cell set (`"x,y"` keys) — post-edit's tessellation shape is maze-wide
-   *  (`cfg` above), but which cells actually exist is per-floor, so this is looked up by `level`
-   *  (`undefined` = floor 0) rather than a single fixed set. */
+  /** A floor's own tessellation config — field shape/size is per-floor (GitHub issue #611), so this
+   *  is looked up by `level` (`undefined` = floor 0) rather than a single maze-wide config, same as
+   *  `inFieldCellsAt` below. */
+  cfgAt: (level: number | undefined) => TessellationConfig;
+  /** A floor's in-field cell set (`"x,y"` keys) — looked up by `level` (`undefined` = floor 0)
+   *  rather than a single fixed set, same reasoning as `cfgAt` above. */
   inFieldCellsAt: (level: number | undefined) => ReadonlySet<string>;
 }
 
@@ -76,7 +78,7 @@ function facesOf(
   point: [number, number],
   endpoint: PostEditEndpoint,
 ): TileFace[] {
-  const { offsets } = getNeighborData(ctx.cfg, point[0], point[1]);
+  const { offsets } = getNeighborData(ctx.cfgAt(level), point[0], point[1]);
   const inFieldCells = ctx.inFieldCellsAt(level);
   return offsets.map(([dx, dy]) => {
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];

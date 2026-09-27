@@ -486,14 +486,19 @@ export function buildPostEditPointEntitiesAt(
   const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig)) : new Set<string>();
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
+  };
+  const cfgAt = (lvl: number | undefined): typeof state.activeTessellationConfig => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? field.tessellationConfig : state.activeTessellationConfig;
   };
   const splitCtx: SplitLabelContext = {
     allNodes: state.nodes,
     splitPoints: state.postEditDraftSplitPoints,
     activeSplitNode: state.postEditActiveSplitNode,
     draftEdges: state.postEditDraftEdges,
-    cfg: state.activeTessellationConfig,
+    cfgAt,
     inFieldCellsAt,
   };
   return buildPostEditPointEntities(nodesHere, slotIds, {
@@ -531,14 +536,19 @@ export function buildPostEditResetLifelinesAt(
   const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig)) : new Set<string>();
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
+  };
+  const cfgAt = (lvl: number | undefined): typeof state.activeTessellationConfig => {
+    const floor = state.floors[lvl ?? 0];
+    const field = floor ? state.floorFields[floor.id] : undefined;
+    return field ? field.tessellationConfig : state.activeTessellationConfig;
   };
   const splitCtx: SplitLabelContext = {
     allNodes: state.nodes,
     splitPoints: state.postEditDraftSplitPoints,
     activeSplitNode: state.postEditActiveSplitNode,
     draftEdges: state.postEditDraftEdges,
-    cfg: state.activeTessellationConfig,
+    cfgAt,
     inFieldCellsAt,
   };
   return buildPostEditResetLifelines(state.postEditBaseline, state.postEditCommands, point, level, nodeById, multiFloor, splitCtx);

@@ -4,7 +4,7 @@ import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
 import type { NodeLockKind, SplitPattern } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
-import { buildPreviewState, debugStaleOf, buildResetMazeState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { buildPreviewState, debugStaleOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
@@ -60,7 +60,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       ...buildPreviewState(kind, hexOrientation, triOrientation),
       floorFields,
       ...(clearMaze ? {
-        ...buildResetMazeState(),
+        ...buildResetDownstreamState(),
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
         lockedNodes: new Map<string, NodeLockKind>(),
@@ -113,7 +113,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     return {
       tessellationKind: kind,
       floorFields,
-      ...buildResetMazeState(),
+      ...buildResetDownstreamState(),
       error: null,
       debugArena: null, debugStep: 0, debugStale: false,
       presetTeleports: [],

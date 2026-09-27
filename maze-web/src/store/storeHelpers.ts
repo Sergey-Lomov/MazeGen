@@ -421,6 +421,30 @@ export function buildResetMazeState() {
   };
 }
 
+/** Clear results derived from generation/post-edit while preserving presets and inputs. */
+export function buildResetDownstreamState() {
+  return {
+    ...buildResetMazeState(),
+    error: null,
+    generationStatus: "idle" as const,
+    fieldEditConfirmation: null,
+    debugArena: null, debugStep: 0, debugStale: false,
+    postEditCommands: [], postEditBaseline: null, postEditDerived: null,
+    postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null,
+    _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null,
+    postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null,
+    postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null,
+    postEditDraftSplitPoints: {},
+    postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null,
+    _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null,
+    _nextPostEditElevatorId: 1, postEditSplitTargetPrompt: null, _nextSplitSlotId: {},
+    postEditActiveSplitNode: {}, postEditDraftSplitPointIds: {}, _nextPostEditSplitPointId: 1,
+    postEditFocusedPoint: null, postEditHoveredEntity: null, postEditEntityDeletePrompt: null,
+    postEditResetPrompt: null, postEditChangesOpen: false, postEditChangesEntityFilter: null,
+    postEditDragOverride: null, postEditDragFailureMessage: null,
+  };
+}
+
 /** Derive kind/shape/orientation/freeFieldPoints/savedConfigs from a TessellationConfig for the
  * active floor — shared by setTessellationConfig and loadProject. */
 export function deriveTessellationFromConfig(
@@ -466,6 +490,7 @@ export function makeShapeSetter<K extends "squareShape" | "hexShape" | "triangle
       : buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs);
     return {
       ...withActiveFloorField(state, { [fieldKey]: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true } as Partial<FloorFieldConfig>),
+      ...buildResetDownstreamState(),
       error: null,
       debugStale: debugStaleOf(state),
     };
@@ -478,7 +503,7 @@ export function makeShapeSetter<K extends "squareShape" | "hexShape" | "triangle
 export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexOrientation" | "triOrientation") {
   return (orientation: HexOrientation | TriOrientation) => (state: MazeState): Partial<MazeState> => {
     if (orientation === state[field]) return {};
-    if (state.tessellationKind !== axisKind) return { [field]: orientation } as Partial<MazeState>;
+    if (state.tessellationKind !== axisKind) return { ...buildResetDownstreamState(), [field]: orientation } as Partial<MazeState>;
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const [floorId, f] of Object.entries(state.floorFields)) {
       const tessellationConfig = mergeOrientation(f.tessellationConfig, orientation);
@@ -490,7 +515,8 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
     return {
-      [field]: orientation, floorFields, activeTessellationConfig, error: null, debugStale: debugStaleOf(state),
+      [field]: orientation, floorFields, activeTessellationConfig,
+      ...buildResetDownstreamState(),
       // A rotation changes which geometric face each offset index means (GitHub issue #235
       // follow-up) — a split-node panel left open across the flip would keep addressing faces
       // that no longer mean what its tile diagram was drawn for. Closing it is the same

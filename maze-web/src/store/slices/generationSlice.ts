@@ -3,7 +3,7 @@ import { getAvailableChecks, getAvailableStrategies, getAvailableRuleParams } fr
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig } from "../../wasm/types";
 import type { MazeStore, GenerationState, GenerationActions, QcRuleState } from "../storeTypes";
-import { debugStaleOf, buildResetMazeState } from "../storeHelpers";
+import { debugStaleOf, buildResetDownstreamState } from "../storeHelpers";
 import { resolveCheckKind, defaultParamsFor, newRule, newStage } from "./generationSliceHelpers";
 import { generateWithSeed } from "./generateConfigBuilder";
 import { createGenerationRulesSlice } from "./generationSliceRules";
@@ -187,7 +187,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       : {}),
   })),
 
-  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditCommands: [], postEditBaseline: null, postEditDerived: null, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null, postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null, _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null, _nextPostEditElevatorId: 1, postEditSplitTargetPrompt: null, _nextSplitSlotId: {}, postEditActiveSplitNode: {}, postEditDraftSplitPointIds: {}, _nextPostEditSplitPointId: 1, postEditChangesEntityFilter: null }),
+  reset: () => set(buildResetDownstreamState()),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
