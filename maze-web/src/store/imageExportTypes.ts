@@ -1,5 +1,6 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
+import type { FieldConfig } from "../fieldConfig";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -55,6 +56,19 @@ export interface PrintExportSettings {
    * fixed anchor positions. Ignored by `computePrintExportFit` for every other anchor value. */
   offsetXMm: number;
   offsetYMm: number;
+}
+
+/** Physical field-sizing inputs shared by Field Setup's print calculator and the PNG Print
+ * settings. `cellSizeMm` is the square side or regular-polygon circumcircle diameter, and is
+ * converted to `PrintExportSettings.scale` using the current print DPI. */
+export interface PrintFieldSizingInput {
+  paperSize: PaperSize;
+  customWidthMm: number;
+  customHeightMm: number;
+  orientation: PaperOrientation;
+  cellSizeMm: number;
+  marginHMm: number;
+  marginVMm: number;
 }
 
 /** PNG export settings — two independent output-mode branches (`digital`/`print`), only one
@@ -746,6 +760,7 @@ export interface ImageExportActions {
   setPrintCustomSize: (widthMm: number, heightMm: number) => void;
   setPrintOrientation: (orientation: PaperOrientation) => void;
   setPrintMargins: (marginHMm: number, marginVMm: number) => void;
+  setPrintFieldSizing: (input: PrintFieldSizingInput, config: Pick<FieldConfig, "type">) => void;
   setPrintScale: (scale: number) => void;
   setPrintScaleAutoFit: (autoFit: boolean) => void;
   setPrintAnchor: (anchor: PrintAnchor) => void;

@@ -61,6 +61,10 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       floorFields,
       ...(clearMaze ? {
         ...buildResetDownstreamState(),
+        pngExportSettings: {
+          ...state.pngExportSettings,
+          print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+        },
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
         lockedNodes: new Map<string, NodeLockKind>(),
@@ -113,6 +117,10 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     return {
       tessellationKind: kind,
       floorFields,
+      pngExportSettings: {
+        ...state.pngExportSettings,
+        print: { ...state.pngExportSettings.print, scaleAutoFit: true },
+      },
       ...buildResetDownstreamState(),
       error: null,
       debugArena: null, debugStep: 0, debugStale: false,

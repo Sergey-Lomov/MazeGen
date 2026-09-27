@@ -14,6 +14,7 @@ export type PendingFieldEdit =
   | { kind: "setHexShape"; shape: HexShape }
   | { kind: "setTriangleShape"; shape: TriangleShape }
   | { kind: "setTessellationConfig"; config: TessellationConfig }
+  | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
   | { kind: "addFieldPoint"; x: number; y: number }
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
@@ -106,6 +107,7 @@ export interface FloorFieldsActions {
   setHexShape: (shape: HexShape) => void;
   setTriangleShape: (shape: TriangleShape) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
+  setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;

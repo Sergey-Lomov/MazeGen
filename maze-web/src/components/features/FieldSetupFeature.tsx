@@ -7,8 +7,10 @@ import { Button } from "../Button";
 import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
+import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
 import { Switch } from "../Switch";
 import { Stack, Inline, Grid } from "../Layout";
+import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -61,7 +63,9 @@ export function FieldSetupFeature() {
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
+  const setTessellationConfigForFloors = useMazeStore((s) => s.setTessellationConfigForFloors);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
+  const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
@@ -74,9 +78,13 @@ export function FieldSetupFeature() {
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
   const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
+  const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
+  const printableConfig = !isCustom && isPredefinedFieldConfig(tessellationConfig)
+    ? tessellationConfig
+    : null;
 
   function setField(field: string, value: number) {
     setTessellationConfig({ ...tessellationConfig, [field]: value } as TessellationConfig);
@@ -199,6 +207,13 @@ export function FieldSetupFeature() {
         <>
           {renderShapeSelect()}
           {renderParams()}
+          <Button
+            variant="secondary"
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
+            onClick={() => setPrintSizingDialogOpen(true)}
+          >
+            {m["field.print_sizing.open"]()}
+          </Button>
         </>
       )}
       {isCustom && (
@@ -230,7 +245,7 @@ export function FieldSetupFeature() {
       )}
       {floorCount > 1 && (
         <Button
-          variant="toggle"
+          variant="secondary"
           layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
           onClick={() => setCopyFloorDialogOpen(true)}
         >
@@ -253,6 +268,17 @@ export function FieldSetupFeature() {
       )}
       {copyFloorDialogOpen && (
         <CopyFloorDialog onClose={() => setCopyFloorDialogOpen(false)} />
+      )}
+      {printSizingDialogOpen && printableConfig && (
+        <FieldPrintSizingDialog
+          config={printableConfig}
+          hasMultipleFloors={floorCount > 1}
+          onApply={(config, printSizing, applyToAllStandardFloors) => {
+            setTessellationConfigForFloors(config, applyToAllStandardFloors);
+            setPrintFieldSizing(printSizing, config);
+          }}
+          onClose={() => setPrintSizingDialogOpen(false)}
+        />
       )}
     </Stack>
   );

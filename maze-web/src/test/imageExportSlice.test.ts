@@ -4,7 +4,9 @@ import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
 import { splitSlotColor } from "../pixi/colorUtils";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { mmToPx } from "../pixi/imageExport/printFit";
+import { TRI_TILE_SIZE } from "../pixi/triGeometry";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -68,6 +70,27 @@ beforeEach(() => {
 });
 
 describe("mazeStore image export", () => {
+  it("converts a requested triangle side length using the triangle geometry", () => {
+    useMazeStore.setState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, density: "print_300" },
+      },
+    });
+
+    useMazeStore.getState().setPrintFieldSizing({
+      paperSize: "a4",
+      customWidthMm: 210,
+      customHeightMm: 297,
+      orientation: "portrait",
+      cellSizeMm: 10,
+      marginHMm: 5,
+      marginVMm: 5,
+    }, { type: "triangle_rect" });
+
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TRI_TILE_SIZE * 2) / Math.sqrt(3)));
+  });
+
   it("starts with no active render mode and no open settings panel", () => {
     const s = useMazeStore.getState();
     expect(s.activeRenderMode).toBeNull();

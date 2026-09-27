@@ -4,9 +4,11 @@ import type { ExportMargin } from "./exportMargins";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import { PAPER_SIZES_MM } from "./paperSizes";
 import { placeInBox } from "./exportFit";
-import { VIEWPORT_FIT_PADDING } from "../constants";
+import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../constants";
+import { TRI_TILE_SIZE } from "../triGeometry";
 
 const MM_PER_INCH = 25.4;
+const SQRT_3 = Math.sqrt(3);
 
 export const DPI_BY_DENSITY: Record<PrintExportSettings["density"], number> = {
   screen_96: 96,
@@ -35,6 +37,40 @@ export function computePhysicalOneToOneViewportScale(
 
 export function pxToMm(px: number, dpi: number): number {
   return (px / dpi) * MM_PER_INCH;
+}
+
+/** World-space length of the print-sizing measure at scale 1: square side, or circumcircle
+ * diameter for regular hexagons and triangles. */
+export function cellMeasureWorldUnits(config: Pick<TessellationConfig, "type">): number {
+  if (config.type === "hex_parallelogram" || config.type === "hex_hexagon" || config.type === "hex_custom") {
+    return TILE_SIZE * 2;
+  }
+  if (config.type === "triangle_rect" || config.type === "triangle_triangle" || config.type === "triangle_hexagon" || config.type === "tri_custom") {
+    return (TRI_TILE_SIZE * 2) / SQRT_3;
+  }
+  return TILE_SIZE;
+}
+
+/** World-space length of one geometric cell side at scale 1. Hexagons use TILE_SIZE as their
+ * circumradius/side length, while triangles use TRI_TILE_SIZE as their side length. */
+export function cellSideWorldUnits(config: Pick<TessellationConfig, "type">): number {
+  return config.type === "triangle_rect"
+    || config.type === "triangle_triangle"
+    || config.type === "triangle_hexagon"
+    || config.type === "tri_custom"
+    ? TRI_TILE_SIZE
+    : TILE_SIZE;
+}
+
+/** Converts the print-sizing measure (square side or polygon circumcircle diameter) to a
+ * geometric cell side in millimeters. */
+export function printMeasureToCellSideMm(config: Pick<TessellationConfig, "type">, measureMm: number): number {
+  return measureMm * cellSideWorldUnits(config) / cellMeasureWorldUnits(config);
+}
+
+/** Physical print-sizing measure represented by a print scale. */
+export function printCellMeasureMm(config: Pick<TessellationConfig, "type">, scale: number, dpi: number): number {
+  return pxToMm(cellMeasureWorldUnits(config) * scale, dpi);
 }
 
 /** Resolves the sheet's physical size in millimeters (portrait-normalized, then swapped for
