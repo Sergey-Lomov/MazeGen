@@ -98,7 +98,21 @@ export function PresetSplitPointPixiPreview({
       const wallRenderer = new WallRenderer(wallsLayer);
       const splitRenderer = new SplitJunctionRenderer(splitLayer);
 
-      const { passages, wallFaces, specialShapes } = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, {}, cells);
+      // Only THIS point's own split renders — a split neighbor's own geometry must not appear at
+      // all, even the small sliver `clipToTile`'s margin lets through (GitHub issue #632 follow-up).
+      // `buildPresetSplitPassages` resolves every declared split point's geometry off the *full*
+      // `presetSplitPoints`/`presetConnections` (a neighbor's real connecting slot must stay
+      // resolvable, or a real connection to a non-original slot would silently misread as
+      // undecided), so filtering happens on the *output* instead: `passages`/`specialShapes` both
+      // carry their own `pointKey`, keep only this point's. `wallFaces` has no such tag, but a
+      // neighbor's own all-wall face sits exactly on the shared boundary with ours — the same
+      // segment our own point already draws for that face — so leaving it unfiltered just redraws
+      // an identical line, not a visible leak.
+      const ownPointKey = `${point[0]},${point[1]}`;
+      const built = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, {}, cells);
+      const passages = built.passages.filter((p) => p.pointKey === ownPointKey);
+      const { wallFaces } = built;
+      const specialShapes = built.specialShapes.filter((s) => s.pointKey === ownPointKey);
       // Only the split's own geometry — no neighbouring cells' shared walls.
       const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(wallFaces, specialShapes);
       wallRenderer.render({ edges: [] }, cfg, undefined, undefined, extraWalls, noCapPoints);

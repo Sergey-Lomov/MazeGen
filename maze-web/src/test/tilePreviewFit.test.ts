@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Container, Graphics } from "pixi.js";
-import { fitTileToWorld, clipToTile } from "../pixi/tilePreviewFit";
+import { fitTileToWorld, clipToTile, expandConvexPolygon } from "../pixi/tilePreviewFit";
+import { WALL_THICKNESS } from "../pixi/renderConstants";
 
 describe("fitTileToWorld", () => {
   it("scales a square tile's vertex bbox to fill the canvas", () => {
@@ -49,6 +50,52 @@ describe("fitTileToWorld", () => {
 
     // bbox becomes 50x50 (0..50 on both axes) -> scale 2.
     expect(scale).toBeCloseTo(2);
+  });
+});
+
+describe("expandConvexPolygon", () => {
+  it("expands an axis-aligned (counter-clockwise) square's corners by exactly half a wall stroke (GitHub issue #632)", () => {
+    const verts = [{ x: -10, y: -10 }, { x: 10, y: -10 }, { x: 10, y: 10 }, { x: -10, y: 10 }];
+    const expanded = expandConvexPolygon(verts, WALL_THICKNESS / 2);
+
+    const expected = 10 + WALL_THICKNESS / 2;
+    for (const v of expanded) {
+      expect(Math.abs(v.x)).toBeCloseTo(expected);
+      expect(Math.abs(v.y)).toBeCloseTo(expected);
+    }
+  });
+
+  it("expands outward for a clockwise-wound polygon too (GitHub issue #632 follow-up — hex winds opposite to square/tri)", () => {
+    // Same square as above but vertices listed in reverse (clockwise) order — must still expand
+    // OUTWARD, not inward, regardless of winding direction.
+    const verts = [{ x: -10, y: -10 }, { x: -10, y: 10 }, { x: 10, y: 10 }, { x: 10, y: -10 }];
+    const expanded = expandConvexPolygon(verts, WALL_THICKNESS / 2);
+
+    const expected = 10 + WALL_THICKNESS / 2;
+    for (const v of expanded) {
+      expect(Math.abs(v.x)).toBeCloseTo(expected);
+      expect(Math.abs(v.y)).toBeCloseTo(expected);
+    }
+  });
+
+  it("expands a regular hexagon's edges outward by exactly `dist` (non-right-angle vertices exercise the cosHalf scale correction)", () => {
+    // Regular hexagon, circumradius 10, centered at origin — every interior angle is 120°, so the
+    // averaged-normal length at each vertex is cos(30°), a non-trivial scale-correction case that
+    // an axis-aligned square (90° angles) never exercises.
+    const R = 10;
+    const dist = WALL_THICKNESS / 2;
+    const verts = Array.from({ length: 6 }, (_, i) => {
+      const a = (Math.PI / 3) * i;
+      return { x: R * Math.cos(a), y: R * Math.sin(a) };
+    });
+    const expanded = expandConvexPolygon(verts, dist);
+
+    // Each expanded vertex must sit at distance R / cos(30°) + ... from center — i.e. the
+    // polygon's *edges* (apothem), not just its vertices, shift outward by exactly `dist`.
+    const expectedDist = R + dist / Math.cos(Math.PI / 6);
+    for (const v of expanded) {
+      expect(Math.hypot(v.x, v.y)).toBeCloseTo(expectedDist, 4);
+    }
   });
 });
 
