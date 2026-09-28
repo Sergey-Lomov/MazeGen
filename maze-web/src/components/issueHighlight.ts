@@ -10,32 +10,32 @@
  *  Generic over `Id` (`number` for Analytics, `bigint` for the debug tree) so both callers get a
  *  fully-typed result without either laundering through `unknown`/`any`. */
 
-/** One flagged cycle/group's edges paired with whether it's preset-locked — normalized shape of
- *  both `IssueEdgeGroupPayload` (DTO) and `EdgeGroup` (`eventTape`). */
+/** One flagged cycle/group's edges — normalized shape of both `IssueEdgeGroupPayload` (DTO) and
+ *  `EdgeGroup` (`eventTape`). Preset-lock filtering happens upstream of normalization on both call
+ *  sites (`IssuesBlock.tsx`'s `visibleGroup`, `algorithmRegistry.ts`), so the normalized shape
+ *  carries no `presetLocked` field of its own (GitHub issue #624). */
 export interface NormalizedEdgeGroup<Id> {
   edges: [Id, Id][];
-  presetLocked: boolean;
 }
 
 /** One flagged region's member node ids — normalized shape of both `IssueRegionPayload` (DTO) and
- *  `RegionGroup` (`eventTape`). */
+ *  `RegionGroup` (`eventTape`). See `NormalizedEdgeGroup`'s doc comment on preset-lock filtering. */
 export interface NormalizedRegionGroup<Id> {
   nodes: Id[];
-  presetLocked: boolean;
 }
 
 /** One tile's own node list inside a flagged split element — normalized shape of both
- *  `IssueSplitTilePayload` (DTO) and `SplitTile` (`eventTape`). */
+ *  `IssueSplitTilePayload` (DTO) and `SplitTile` (`eventTape`). See `NormalizedEdgeGroup`'s doc
+ *  comment on preset-lock filtering. */
 export interface NormalizedSplitTile<Id> {
   nodes: Id[];
-  presetLocked: boolean;
 }
 
 /** One flagged split-tile "instance" (a single tile or a genuine multi-tile group) — normalized
- *  shape of both `IssueSplitGroupPayload` (DTO) and `SplitGroup` (`eventTape`). */
+ *  shape of both `IssueSplitGroupPayload` (DTO) and `SplitGroup` (`eventTape`). See
+ *  `NormalizedEdgeGroup`'s doc comment on preset-lock filtering. */
 export interface NormalizedSplitGroup<Id> {
   tiles: NormalizedSplitTile<Id>[];
-  presetLocked: boolean;
 }
 
 /** One logical element of a flagged cross-element proximity pair — normalized shape of both

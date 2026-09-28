@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { resolveIssueHighlight, type NormalizedIssuePayload } from "../components/issueHighlight";
 
-function edgeGroup(edges: [number, number][], presetLocked = false) {
-  return { edges, presetLocked };
+function edgeGroup(edges: [number, number][]) {
+  return { edges };
 }
-function regionGroup(nodes: number[], presetLocked = false) {
-  return { nodes, presetLocked };
+function regionGroup(nodes: number[]) {
+  return { nodes };
 }
 
 describe("resolveIssueHighlight", () => {
@@ -67,8 +67,8 @@ describe("resolveIssueHighlight", () => {
     const payload: NormalizedIssuePayload<number> = {
       kind: "invalidSplitTile",
       groups: [
-        { tiles: [{ nodes: [1, 2], presetLocked: false }], presetLocked: false },
-        { tiles: [{ nodes: [2, 3], presetLocked: false }], presetLocked: false },
+        { tiles: [{ nodes: [1, 2] }] },
+        { tiles: [{ nodes: [2, 3] }] },
       ],
     };
     expect(resolveIssueHighlight(payload)).toEqual({ cycle: null, region: { groups: [{ nodes: [1, 2, 3], isSplit: true }] } });
@@ -84,7 +84,7 @@ describe("resolveIssueHighlight", () => {
       kind: "invalidCrossElementGroup",
       entries: [
         { kind: "one_way", edges: [[1, 2]], nodes: [], tile: null },
-        { kind: "split", edges: [], nodes: [], tile: { nodes: [3, 4], presetLocked: false } },
+        { kind: "split", edges: [], nodes: [], tile: { nodes: [3, 4] } },
       ],
     };
     expect(resolveIssueHighlight(payload)).toEqual({

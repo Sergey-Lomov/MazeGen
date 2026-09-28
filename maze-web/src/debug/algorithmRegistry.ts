@@ -97,7 +97,7 @@ function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePayload<bi
     case "MissingElevatorStopCount":
       // `available` candidate floor nodes are intentionally dropped here — only the elevator's real
       // fan edges participate in the highlight (GitHub issue #402).
-      return { kind: "missingElevatorStopCount", groups: [...payload.groups.values()].flat().map((g) => ({ edges: g.edges, presetLocked: g.presetLocked })) };
+      return { kind: "missingElevatorStopCount", groups: [...payload.groups.values()].flat().map((g) => ({ edges: g.edges })) };
     case "InvalidCrossElementGroup":
       return {
         kind: "invalidCrossElementGroup",
@@ -105,22 +105,22 @@ function normalizeIssuePayload(payload: IssuePayload): NormalizedIssuePayload<bi
           kind: entry.kind,
           edges: entry.edges,
           nodes: entry.nodes,
-          tile: entry.tile != null ? { nodes: entry.tile.nodes, presetLocked: entry.tile.presetLocked } : null,
+          tile: entry.tile != null ? { nodes: entry.tile.nodes } : null,
         })),
       };
   }
 }
 
-function normalizeEdgeGroup(group: { edges: [bigint, bigint][]; presetLocked: boolean }) {
-  return { edges: group.edges, presetLocked: group.presetLocked };
+function normalizeEdgeGroup(group: { edges: [bigint, bigint][] }) {
+  return { edges: group.edges };
 }
 
-function normalizeRegionGroup(group: { region: bigint[]; presetLocked: boolean }) {
-  return { nodes: group.region, presetLocked: group.presetLocked };
+function normalizeRegionGroup(group: { region: bigint[] }) {
+  return { nodes: group.region };
 }
 
-function normalizeSplitGroup(group: { tiles: { nodes: bigint[]; presetLocked: boolean }[]; presetLocked: boolean }) {
-  return { tiles: group.tiles.map((t) => ({ nodes: t.nodes, presetLocked: t.presetLocked })), presetLocked: group.presetLocked };
+function normalizeSplitGroup(group: { tiles: { nodes: bigint[] }[] }) {
+  return { tiles: group.tiles.map((t) => ({ nodes: t.nodes })) };
 }
 
 /** Resolves an `IssuePayload` into the debug tree's own `IssueHighlightTarget` shape — `null` when

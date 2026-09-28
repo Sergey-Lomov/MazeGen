@@ -50,10 +50,10 @@ function dedupTeleportGroups(groups: IssueEdgeGroupPayload[]): IssueEdgeGroupPay
 /// Normalizes one `IssueEdgeGroupPayload`/`IssueRegionPayload` (DTO's snake_case shape) into
 /// `resolveIssueHighlight`'s shared input shape (GitHub issue #623).
 function toEdgeGroup(g: IssueEdgeGroupPayload): NormalizedEdgeGroup<number> {
-  return { edges: g.edges, presetLocked: g.preset_locked };
+  return { edges: g.edges };
 }
 function toRegionGroup(g: { region: number[]; preset_locked: boolean }): NormalizedRegionGroup<number> {
-  return { nodes: g.region, presetLocked: g.preset_locked };
+  return { nodes: g.region };
 }
 
 export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
@@ -175,7 +175,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         const tiles = groups.flatMap((g) =>
           TILE_GRANULARITY_CHECKS.has(typeId) ? g.tiles.filter(visibleGroup) : visibleGroup(g) ? g.tiles : []
         );
-        return { kind: "invalidSplitTile" as const, groups: [{ tiles: tiles.map((t) => ({ nodes: t.nodes, presetLocked: t.preset_locked })), presetLocked: tiles.every((t) => t.preset_locked) }] };
+        return { kind: "invalidSplitTile" as const, groups: [{ tiles: tiles.map((t) => ({ nodes: t.nodes })) }] };
       }
       case "invalid_split_route": {
         const routes = payload.routes[sourceCheck] ?? null;
@@ -193,7 +193,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           .flat() ?? null;
         return entries == null ? null : {
           kind: "invalidCrossElementGroup" as const,
-          entries: entries.map((e) => ({ kind: e.kind, edges: e.edges, nodes: e.nodes, tile: e.tile != null ? { nodes: e.tile.nodes, presetLocked: e.tile.preset_locked } : null })),
+          entries: entries.map((e) => ({ kind: e.kind, edges: e.edges, nodes: e.nodes, tile: e.tile != null ? { nodes: e.tile.nodes } : null })),
         };
       }
       default:
