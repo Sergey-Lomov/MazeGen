@@ -608,6 +608,7 @@ fn score_path_adds_teleport_count_times_weight() {
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_one_teleport, 7.0);
 
@@ -624,6 +625,7 @@ fn score_path_adds_teleport_count_times_weight() {
         2,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(
         score_both_edges, 7.0,
@@ -643,6 +645,7 @@ fn score_path_adds_teleport_count_times_weight() {
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_no_teleport, 0.0);
 }
@@ -698,6 +701,7 @@ fn score_path_adds_cross_floor_count_times_weight_for_vertical_and_elevator_hops
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_vertical, 6.0);
 
@@ -714,6 +718,7 @@ fn score_path_adds_cross_floor_count_times_weight_for_vertical_and_elevator_hops
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_elevator, 6.0);
 
@@ -730,6 +735,7 @@ fn score_path_adds_cross_floor_count_times_weight_for_vertical_and_elevator_hops
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_basic, 0.0);
 
@@ -746,6 +752,7 @@ fn score_path_adds_cross_floor_count_times_weight_for_vertical_and_elevator_hops
         3,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_all, 12.0);
 }
@@ -867,6 +874,7 @@ fn score_path_adds_split_count_times_weight() {
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(score_one_edge, 4.0);
 
@@ -883,6 +891,7 @@ fn score_path_adds_split_count_times_weight() {
         3,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(
         score_both_edges, 12.0,
@@ -938,6 +947,7 @@ fn score_path_counts_the_routes_own_start_node_as_a_split_too() {
         1,
         &weights,
         &mut HashMap::new(),
+        &mut Vec::new(),
     );
     assert_eq!(
         score, 10.0,

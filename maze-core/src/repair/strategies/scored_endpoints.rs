@@ -2,7 +2,7 @@ use crate::Maze;
 use crate::generation::PresetState;
 use crate::graph::nav::{NavEdge, NavGraph, NavNodeId};
 use crate::graph::pathfinding::{
-    build_outgoing_index, dijkstra_with_prev, route_aware_junction_flags,
+    DijkstraScratch, OutgoingIndex, dijkstra_with_prev_into, route_aware_junction_flags,
 };
 use crate::graph::{EdgeKind, Graph};
 use crate::ids::NodeId;
@@ -305,7 +305,7 @@ struct ScoredPathContext<'a> {
     /// passage, so it contributes 0; each additional stop beyond 2 adds one more unit. Zero for
     /// every non-elevator edge.
     elevator_stop_counts: Vec<usize>,
-    outgoing_by_node: Vec<Vec<usize>>,
+    outgoing_by_node: OutgoingIndex,
 }
 
 impl<'a> ScoredPathContext<'a> {
@@ -314,6 +314,7 @@ impl<'a> ScoredPathContext<'a> {
         field: &MultiLevelField<T>,
         graph: &Graph,
     ) -> Self {
+        crate::diag_log!("[perf bench] version: No deadends optimization"); // DIAG
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
         let oneway_flags = oneway_flags(&edges);
         let cross_floor_flags = cross_floor_flags(&edges);
@@ -321,7 +322,7 @@ impl<'a> ScoredPathContext<'a> {
         let split_counts = split_counts(&edges, field);
         let split_flags = nav_node_split_flags(nav, field);
         let elevator_stop_counts = elevator_stop_counts(&edges, graph, field);
-        let outgoing_by_node = build_outgoing_index(nav, &edges);
+        let outgoing_by_node = OutgoingIndex::build(nav, &edges);
         Self {
             edges,
             oneway_flags,
@@ -355,15 +356,31 @@ impl<'a> ScoredPathContext<'a> {
         // recomputing it once per candidate (GitHub issue #535 follow-up).
         let mut elevator_group_cache = HashMap::new();
 
+        // Built once outside the `starts` loop (not per-`s`) -- its contents never depend on `s`,
+        // so re-collecting `0..n` into a fresh `Vec` on every outer iteration was pure O(n) waste
+        // repeated n times.
+        let finishes: Vec<NavNodeId> = match fixed_finish {
+            Some(f) => vec![f],
+            None => (0..n).collect(),
+        };
+
+        // Reused across every candidate pair below instead of allocating a fresh `Vec` per pair --
+        // both are cleared (not reallocated) each iteration, so their backing storage grows once
+        // to the longest path seen and is then reused for every shorter one.
+        let mut path_edges: Vec<usize> = Vec::new();
+        let mut nav_nodes_on_path: Vec<NavNodeId> = Vec::new();
+        // Reused across every one of the `starts.len()` Dijkstra runs below instead of each one
+        // allocating its own `dist`/`prev_edge` `Vec`s and `BinaryHeap` from scratch -- this is
+        // the dominant cost in `best_pair`'s O(n) Dijkstra calls, so avoiding O(n) full-size
+        // allocations per call matters far more here than the same trick applied to the much
+        // smaller per-pair buffers above.
+        let mut dijkstra_scratch = DijkstraScratch::new(n);
+
         for &s in &starts {
-            let (dist, prev_edge) = dijkstra_with_prev(nav, s, &self.edges, &self.outgoing_by_node);
+            let (dist, prev_edge) =
+                dijkstra_with_prev_into(s, &self.edges, &self.outgoing_by_node, &mut dijkstra_scratch);
 
-            let finishes: Vec<NavNodeId> = match fixed_finish {
-                Some(f) => vec![f],
-                None => (0..n).collect(),
-            };
-
-            for f in finishes {
+            for &f in &finishes {
                 if f == s {
                     continue;
                 }
@@ -371,7 +388,7 @@ impl<'a> ScoredPathContext<'a> {
                     continue;
                 }
 
-                let path_edges = reconstruct_path_edges(&self.edges, &prev_edge, s, f);
+                reconstruct_path_edges_into(&self.edges, prev_edge, s, f, &mut path_edges);
                 let score = score_path(
                     nav,
                     &self.oneway_flags,
@@ -385,6 +402,7 @@ impl<'a> ScoredPathContext<'a> {
                     dist[f],
                     weights,
                     &mut elevator_group_cache,
+                    &mut nav_nodes_on_path,
                 );
 
                 if best_score.is_none_or(|b| score > b) {
@@ -547,12 +565,15 @@ fn score_path(
         NavNodeId,
         std::rc::Rc<std::collections::HashSet<NavNodeId>>,
     >,
+    // Reused across every call in `best_pair`'s O(n^2) loop instead of allocating a fresh `Vec`
+    // per candidate pair -- cleared (not reallocated) on every call.
+    nav_nodes_on_path: &mut Vec<NavNodeId>,
 ) -> f64 {
     if path_edge_indices.is_empty() {
         return 0.0;
     }
 
-    let mut nav_nodes_on_path: Vec<NavNodeId> = Vec::new();
+    nav_nodes_on_path.clear();
     for (i, &ei) in path_edge_indices.iter().enumerate() {
         if i == 0 {
             nav_nodes_on_path.push(edges[ei].from);
@@ -562,7 +583,7 @@ fn score_path(
 
     let junction_count = route_aware_junction_flags(
         nav,
-        &nav_nodes_on_path,
+        nav_nodes_on_path,
         path_edge_indices,
         edges,
         elevator_group_cache,
@@ -571,67 +592,69 @@ fn score_path(
     .filter(|&j| j)
     .count() as f64;
 
-    let oneway_count = path_edge_indices
-        .iter()
-        .filter(|&&ei| oneway_flags[ei])
-        .count() as f64;
-
-    let cross_floor_count = path_edge_indices
-        .iter()
-        .filter(|&&ei| cross_floor_flags[ei])
-        .count() as f64;
-
-    let teleport_count = path_edge_indices
-        .iter()
-        .filter(|&&ei| teleport_flags[ei])
-        .count() as f64;
-
+    // Single pass over the path's edges instead of five separate filter/map/sum passes -- same
+    // per-edge flags/counts, just accumulated together to avoid re-walking `path_edge_indices`
+    // (and re-touching each `*_flags`/`*_counts` slice) once per weight category.
+    let mut oneway_count = 0usize;
+    let mut cross_floor_count = 0usize;
+    let mut teleport_count = 0usize;
+    let mut split_count = 0usize;
+    let mut elevator_stop_count = 0usize;
+    for &ei in path_edge_indices {
+        if oneway_flags[ei] {
+            oneway_count += 1;
+        }
+        if cross_floor_flags[ei] {
+            cross_floor_count += 1;
+        }
+        if teleport_flags[ei] {
+            teleport_count += 1;
+        }
+        split_count += split_counts[ei];
+        elevator_stop_count += elevator_stop_counts[ei];
+    }
     // split_counts covers every edge's own tiles except its `from` node (see split_counts' doc
     // comment) -- the route's very first node (nav_nodes_on_path[0], i.e. edge 0's `from`) is
     // added separately via split_flags, mirroring how nav_nodes_on_path itself includes it above.
-    let split_count = path_edge_indices
-        .iter()
-        .map(|&ei| split_counts[ei])
-        .sum::<usize>() as f64
-        + if split_flags[nav_nodes_on_path[0]] {
-            1.0
-        } else {
-            0.0
-        };
-
-    let elevator_stop_count = path_edge_indices
-        .iter()
-        .map(|&ei| elevator_stop_counts[ei])
-        .sum::<usize>() as f64;
+    if split_flags[nav_nodes_on_path[0]] {
+        split_count += 1;
+    }
 
     path_tiles as f64 * weights.path_weight
         + junction_count * weights.junction_weight
-        + split_count * weights.split_weight
-        + oneway_count * weights.oneway_weight
-        + cross_floor_count * weights.cross_floor_weight
-        + teleport_count * weights.teleport_weight
-        + elevator_stop_count * weights.elevator_stop_weight
+        + split_count as f64 * weights.split_weight
+        + oneway_count as f64 * weights.oneway_weight
+        + cross_floor_count as f64 * weights.cross_floor_weight
+        + teleport_count as f64 * weights.teleport_weight
+        + elevator_stop_count as f64 * weights.elevator_stop_weight
 }
 
-fn reconstruct_path_edges(
+/// Like the old `reconstruct_path_edges`, but writes into a caller-owned buffer instead of
+/// allocating a fresh `Vec` per call -- `best_pair` calls this once per candidate pair (up to
+/// `O(n^2)` times), so reusing one buffer across all of them avoids `O(n^2)` short-lived
+/// allocations. Always clears `out` first, including on the "no path" case.
+fn reconstruct_path_edges_into(
     edges: &[&NavEdge],
     prev_edge: &[Option<usize>],
     source: NavNodeId,
     target: NavNodeId,
-) -> Vec<usize> {
-    let mut result = Vec::new();
+    out: &mut Vec<usize>,
+) {
+    out.clear();
     let mut cur = target;
     while cur != source {
         match prev_edge[cur] {
-            None => return vec![],
+            None => {
+                out.clear();
+                return;
+            }
             Some(ei) => {
-                result.push(ei);
+                out.push(ei);
                 cur = edges[ei].from;
             }
         }
     }
-    result.reverse();
-    result
+    out.reverse();
 }
 
 #[cfg(test)]
