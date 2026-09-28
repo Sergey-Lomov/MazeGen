@@ -14,6 +14,7 @@ import type { PostEditCommand } from "../store/postEditCommandTypes";
 export {
   extractPostEditTeleports,
   postEditTeleportsToDto,
+  floorScopedTeleportEdges,
   cyclePostEditTeleportDirection,
   removePostEditTeleport,
   movePostEditTeleportEndpoint,

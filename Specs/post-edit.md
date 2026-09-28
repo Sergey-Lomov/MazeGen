@@ -1446,7 +1446,7 @@ Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport c
 | 2 | `floorContainer` | `CellFillRenderer` — all nodes in `FLOOR_COLOR` |
 | 3 | `closedCellsContainer` | `CellFillRenderer` — isolated nodes (no edges) in `WALL_COLOR` |
 | 4 | `wallsContainer` | `WallRenderer` — walls and one-way arrows |
-| 5 | `teleportContainer` | `TeleportRenderer` — teleport markers/line, built from `postEditDraftEdges` concatenated with `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) |
+| 5 | `teleportContainer` | `TeleportRenderer` — teleport markers/line, built from `postEditDraftEdges` concatenated with the departure-side teleport edges (`postEditDraftTeleports`, resolved unscoped via `postEditTeleportsToDto` then floor-scoped via `floorScopedTeleportEdges`, GitHub issue #633) |
 | 6 | `markersContainer` | `WaypointsRenderer` — start/finish from `postEditDraftMeta` |
 | 7 | `hoverContainer` | `EdgeHighlightRenderer` — hover highlight |
 | 8 | `teleportPreviewContainer` | `Graphics` — pending teleport placement preview (fixed-endpoint marker + connector line to cursor), drawn by the shared `drawTeleportPreview` (`pixi/renderers/teleportPreviewGlyph.ts`) — same helper `PresetConnectionsRenderer` uses |
@@ -1496,7 +1496,15 @@ alongside `buildPostEditDraftEdgesFromGenerated` (same call sites as above). Fil
 
 ## `postEditTeleportsToDto`
 
-Shared function in `postEditUtils.ts`: `(teleports: PostEditTeleportEntry[], resolveSplit) => EdgeDto[]`. Converts `PostEditTeleportEntry[]` to `EdgeDto[]` at the WASM-call/render boundary: `"forward"` → one edge `from→to`; `"backward"` → one edge `to→from` (actual passage direction, mirrors `PresetConnectionState::TeleportBackward`); `"two_way"` → both directions. Each endpoint is resolved via `resolveEndpoint`/`resolveSplit` first — an entry with an endpoint that doesn't resolve yet (unconfirmed split node) is silently dropped. Used by `confirmPostEdit` (building the confirmed `postEditTeleportEdges` snapshot and the WASM request) and `PostEditRenderer` (building the edges fed to `TeleportRenderer`/`buildTeleportEdges`).
+Shared function in `postEditUtils.ts`: `(teleports: PostEditTeleportEntry[], resolveSplit) => EdgeDto[]`. Converts `PostEditTeleportEntry[]` to `EdgeDto[]` at the WASM-call/render boundary: `"forward"` → one edge `from→to`; `"backward"` → one edge `to→from` (actual passage direction, mirrors `PresetConnectionState::TeleportBackward`); `"two_way"` → both directions. Each endpoint is resolved via `resolveEndpoint`/`resolveSplit` first — an entry with an endpoint that doesn't resolve yet (unconfirmed split node) is silently dropped, and this drop is all-or-nothing for the whole entry (both directions of a `"two_way"` one), not per-direction. Used by `confirmPostEdit` (building the confirmed `postEditTeleportEdges` snapshot and the WASM request) and `PostEditRenderer` (building the edges fed to `TeleportRenderer`/`buildTeleportEdges`, see `floorScopedTeleportEdges` below).
+
+## `floorScopedTeleportEdges` (GitHub issue #633)
+
+Shared function in `postEditTeleportUtils.ts`: `(unscopedTeleportEdges: EdgeDto[], floorNodeIds: ReadonlySet<number>) => EdgeDto[]`. Filters an already-resolved `postEditTeleportsToDto` result down to the entries whose `from` lands on the given floor's own node id set — the departure-side edge of each pair, mirroring `PostEditRenderer`'s existing `draftVerticalEdges`/`floorScopedVerticalEdges` split for vertical passages/elevators (see "Cross-floor rendering" in `Specs/floors.md`).
+
+The caller must resolve `unscopedTeleportEdges` against an **unscoped** (all-floor) `resolveSplit`, not `PostEditRenderer`'s own floor-scoped one — resolving against a floor-scoped map fails whenever a cross-floor teleport's `to` end is itself an *additional* split slot on the OTHER floor (unresolvable against this floor's bare `pointNodeMap`), even though the departure end resolves fine. Since `postEditTeleportsToDto` drops a whole entry once either endpoint fails to resolve, resolving floor-scoped first silently dropped the departure-side edge too, along with the unresolvable arrival-side one — leaving only the separate arrival-only cross-floor badge pass (`buildTeleportEdges`'s own `unscopedEdges` scan, `Specs/floors.md`) to draw *both* ends of a two-way pair as an "exit" badge with an arrow, instead of one real departure marker plus one arrival badge. `floorScopedTeleportEdges` sidesteps this by filtering the fully-resolved result afterward instead of resolving floor-scoped in the first place.
+
+`PostEditRenderer.redrawAll` computes `unscopedTeleportEdges` once (via `unscopedResolveSplit`, already needed for `unscopedActiveEdges`'s own cross-floor badge context) and reuses it for both `activeEdges` (via `floorScopedTeleportEdges`) and `unscopedActiveEdges` — no separate floor-scoped teleport resolution remains in that function.
 
 ## `pickPostEditTeleportEndpointAt`
 

@@ -74,6 +74,24 @@ export function postEditTeleportsToDto(
   return result;
 }
 
+/** Keeps only the `postEditTeleportsToDto` result entries whose `from` lands on the given floor
+ * (GitHub issue #633) — the caller must resolve `teleports` against an *unscoped* (all-floor)
+ * `resolveSplit`, not a floor-scoped one: resolving against a floor-scoped map would drop a
+ * cross-floor teleport's departure-side edge entirely whenever its `to` end is itself an
+ * additional split slot on the OTHER floor (unresolvable there), even though the departure end
+ * resolves fine — `postEditTeleportsToDto` drops a whole entry (both directions of a two-way one)
+ * once either endpoint fails to resolve. Filtering afterwards, on the fully-resolved result, keeps
+ * exactly the departure-side edge per floor without losing it to that all-or-nothing drop; the
+ * arrival-only side is picked up separately by the caller's own cross-floor badge pass. Mirrors
+ * `PostEditRenderer`'s existing `draftVerticalEdges`/`floorScopedVerticalEdges` split for vertical
+ * passages/elevators. */
+export function floorScopedTeleportEdges(
+  unscopedTeleportEdges: EdgeDto[],
+  floorNodeIds: ReadonlySet<number>,
+): EdgeDto[] {
+  return unscopedTeleportEdges.filter((e) => floorNodeIds.has(e.from));
+}
+
 export function cyclePostEditTeleportDirection(
   teleports: PostEditTeleportEntry[],
   id: string,
