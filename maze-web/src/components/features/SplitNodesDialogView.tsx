@@ -154,6 +154,10 @@ interface Props<E> {
   /** Applies `blueprint` (already rotated to fit the point's boundary, see `fittingRotation`) —
    *  a full replace of the point's current nodes/connections. */
   onApplyBlueprint?: (blueprint: SplitNodeBlueprint) => void;
+  /** Forwarded straight to the underlying `SidePanel.onTopChange` (GitHub issue #629 follow-up) —
+   *  lets an adapter react to this dialog being covered by another `SidePanel` (or uncovered
+   *  again), e.g. `ManageSplitNodesDialog` clearing its on-canvas cell outline while covered. */
+  onTopChange?: (isTop: boolean) => void;
 }
 
 /** Exported for `AbstractPatternEditorDialog` (GitHub issue #222) — the pattern editor doesn't
@@ -189,6 +193,7 @@ export function SplitNodesDialogView<E>({
   title, point, cfg, currentLevel, rows, tileNodes, availableKinds, activeKind, onKindChange,
   onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onRotate, wouldBreakNeighborShape,
   onHoverLink, onUnhoverLink, onHoverElement, onUnhoverElement, onEntityIdClick, blueprints, onApplyBlueprint,
+  onTopChange,
 }: Props<E>) {
   const [pendingRemove, setPendingRemove] = useState<SplitNodesRow<E> | null>(null);
   const [pendingBlueprint, setPendingBlueprint] = useState<SplitNodeBlueprint | null>(null);
@@ -234,7 +239,7 @@ export function SplitNodesDialogView<E>({
 
   return (
     <>
-    <SidePanel title={title} onClose={onClose} warnings={warnings}>
+    <SidePanel title={title} onClose={onClose} warnings={warnings} onTopChange={onTopChange}>
       <div style={styles.tileArea}>
         {blueprints && blueprints.length > 0 && (
           <Stack gap="itemGap">

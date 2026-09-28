@@ -4,6 +4,7 @@ import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, presetLockElementsFor, TILE_GRANULARITY_CHECKS } from "./issueRegistry";
+import { resolveIssueHighlight, type NormalizedIssuePayload, type NormalizedEdgeGroup, type NormalizedRegionGroup } from "./issueHighlight";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
@@ -46,6 +47,15 @@ function dedupTeleportGroups(groups: IssueEdgeGroupPayload[]): IssueEdgeGroupPay
   }));
 }
 
+/// Normalizes one `IssueEdgeGroupPayload`/`IssueRegionPayload` (DTO's snake_case shape) into
+/// `resolveIssueHighlight`'s shared input shape (GitHub issue #623).
+function toEdgeGroup(g: IssueEdgeGroupPayload): NormalizedEdgeGroup<number> {
+  return { edges: g.edges };
+}
+function toRegionGroup(g: { region: number[]; preset_locked: boolean }): NormalizedRegionGroup<number> {
+  return { nodes: g.region };
+}
+
 export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
@@ -67,109 +77,20 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // Per-check description override (GitHub issue #257's teleport_split_intersection, whose
   // behavior diverges from invalid_teleport's generic wording) — same rationale as `label` above.
   const description = resolveIssueSourceDescription(issue.kind, typeId, details);
-  // Only this bubble's own source check's cycles — not every contributing check's cycles
-  // combined (see `IssuePayloadDto`'s doc comment). Each element also carries `preset_locked`
-  // (GitHub issue #245) — whether every edge of that specific cycle/group is a user-placed
-  // preset connection, so repair can never fix it.
-  const loopGroups = sourceCheck != null && issue.payload.kind === "invalid_loop"
-    ? issue.payload.edges[sourceCheck] ?? null
-    : null;
-  // `invalid_teleport`/`invalid_teleport_group` share the same `invalid_teleport` payload shape
-  // (a single flagged teleport is a group of size one — see `IssuePayloadDto`'s doc comment) —
-  // flattened and rendered through the same edge-highlight path as `loopGroups`, no dedicated
-  // renderer needed.
-  const teleportGroups = sourceCheck != null && issue.payload.kind === "invalid_teleport"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // `invalid_one_way`/`invalid_one_way_group`/`invalid_split_node_connection_group` share the
-  // same `invalid_one_way` payload shape (a single flagged one-way is a group of size one, and
-  // `invalid_split_node_connection_group` reuses this wire variant too — see `IssuePayloadDto`'s
-  // doc comment; narrowing is on `payload.kind`, not `issue.kind`, so this branch already covers
-  // all three) — flattened and rendered through the same edge-highlight path as
-  // `loopGroups`/`teleportGroups`, no dedicated renderer needed.
-  const oneWayGroups = sourceCheck != null && issue.payload.kind === "invalid_one_way"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // `invalid_vertical_passage`/`invalid_vertical_passage_group` share the same
-  // `invalid_vertical_passage` payload shape (a single flagged edge is a group of size one — see
-  // `IssuePayloadDto`'s doc comment) — flattened and rendered through the same edge-highlight path
-  // as `teleportGroups`/`oneWayGroups`, no dedicated renderer needed.
-  const verticalPassageGroups = sourceCheck != null && issue.payload.kind === "invalid_vertical_passage"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // `invalid_elevator` (GitHub issue #397) reuses the same edge-group payload shape as
-  // `invalid_vertical_passage` and highlights the same way -- a flagged elevator's fan edges span
-  // multiple floors, so a line-per-edge highlight would read as stray diagonals; rendered as
-  // region squares over the elevator's own stop nodes instead (see `verticalPassageCellNodes`).
-  const elevatorGroups = sourceCheck != null && issue.payload.kind === "invalid_elevator"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // `invalid_elevator_stop`/`invalid_elevator_stop_group` (GitHub issue #399) share the same
-  // single-node "region" payload shape as `region_needs_expansion`/`region_needs_shrink` -- each
-  // flagged stop (or, for a group, each stop in the group) highlights as its own independent
-  // single-node region square, not a merged multi-node region.
-  const elevatorStopNodes = sourceCheck != null && issue.payload.kind === "invalid_elevator_stop"
-    ? issue.payload.nodes[sourceCheck] ?? null
-    : null;
-  // `missing_elevator_stop_count` (GitHub issue #402) reuses `elevatorGroups`' own highlight shape
-  // -- only the elevator's own real fan edges, drawn as region squares like `elevatorCellNodes`.
-  // Deliberately excludes each group's `available` floor nodes (candidate stops the repair
-  // strategy could add) -- those aren't part of the elevator yet, so highlighting them on hover
-  // would read as "the elevator stops here", which is false. `missing_elevator_height`/
-  // `excessive_elevator_stop_gap` reuse `InvalidElevator`'s payload shape instead and highlight
-  // via `elevatorGroups` above.
-  const missingStopGroups = sourceCheck != null && issue.payload.kind === "missing_elevator_stop_count"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // Same per-check isolation as `loopGroups` above — only this bubble's own source check's
-  // flagged regions, not every contributing check's regions combined. Covers both
-  // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
-  // the same way, just flagged for opposite reasons.
-  const regionNodes = sourceCheck != null && (issue.payload.kind === "region_needs_expansion" || issue.payload.kind === "region_needs_shrink")
-    ? issue.payload.nodes[sourceCheck] ?? null
-    : null;
-  // `invalid_split_tile`'s payload is one entry per flagged "instance" (a single tile, or a
-  // genuine multi-tile group for proximity/count/density checks — see `IssueSplitGroupPayload`'s
-  // doc comment on the Rust side).
-  const splitGroups = sourceCheck != null && issue.payload.kind === "invalid_split_tile"
-    ? issue.payload.groups[sourceCheck] ?? null
-    : null;
-  // `invalid_split_route`'s payload is one entry per route, each carrying its own ordered
-  // {from, to, is_split_edge} edge list plus a route-level `preset_locked`.
-  const splitRoutePayload = sourceCheck != null && issue.payload.kind === "invalid_split_route"
-    ? issue.payload.routes[sourceCheck] ?? null
-    : null;
   // `area_deficit` (hover-highlight follow-up to GitHub issue #408) — a floor-level deficit, not a
-  // specific node/edge set. `Some(levelIndex)` entries resolve to "every cell on that floor";
-  // `null` (`RepairArea::WholeMaze`, e.g. `missing_elevators`'s only scope) has no specific floor
-  // to highlight and contributes nothing here, same "no per-element highlight" precedent as
-  // `excessive_scc_count` above.
+  // specific node/edge set, resolved from `mazeNodes` rather than `resolveIssueHighlight` (that
+  // helper has no maze-node lookup of its own). `Some(levelIndex)` entries resolve to "every cell
+  // on that floor"; `null` (`RepairArea::WholeMaze`, e.g. `missing_elevators`'s only scope) has no
+  // specific floor to highlight and contributes nothing here, same "no per-element highlight"
+  // precedent as `excessive_scc_count`.
   const areaDeficitEntries = sourceCheck != null && issue.payload.kind === "area_deficit"
     ? issue.payload.areas[sourceCheck] ?? null
     : null;
-  // `invalid_cross_element_group` (GitHub issue #376) -- one entry per flagged pair member, mixing
-  // edge elements (teleport/one-way/vertical passage/elevator) with point elements
-  // (split/start/finish). Most kinds highlight as region squares over each member's cells (same
-  // rationale as `verticalPassageCellNodes`/`elevatorCellNodes` -- a node shared by two members
-  // would otherwise double-fill/stroke), but `one_way` is split out below and highlighted as a
-  // wall like every other one-way highlight (`oneWayEdges`) instead -- a one-way is a single edge
-  // between two adjacent cells, and filling both cells as a region reads as "these two cells", not
-  // "this directed connection between them". The maze-core resolver has already narrowed each
-  // member to just the occurrence(s) within the proximity threshold (issue #376 follow-up point
-  // 4), so a teleport close to the other element by one end highlights that end only.
-  //
-  // Preset visibility (issue #376 follow-up point 5) is all-or-nothing PER PAIR, not per element:
-  // a pair is hidden only when every one of its members is preset_locked; a pair with at least one
-  // unlocked member shows ALL its members, including the preset-locked one. So the toggle filter
-  // is applied here at pair granularity, then the surviving pairs are flattened -- the per-element
-  // `visibleGroup` filter used by every other kind is deliberately NOT applied to these entries.
-  const crossElementEntries = sourceCheck != null && issue.payload.kind === "invalid_cross_element_group"
-    ? issue.payload.groups[sourceCheck]
-        ?.filter((pair) => showFullyPresetLockedIssues || pair.some((e) => !e.preset_locked))
-        .flat() ?? null
+  const areaDeficitCellNodes = areaDeficitEntries != null
+    ? areaDeficitEntries
+        .filter((level): level is number => level !== null)
+        .map((level) => selectNodeIdsForLevel(mazeNodes, level))
     : null;
-  const crossElementOneWayEntries = crossElementEntries?.filter((e) => e.kind === "one_way") ?? null;
-  const crossElementRegionEntries = crossElementEntries?.filter((e) => e.kind !== "one_way") ?? null;
   const palette = notificationPalette(severity);
 
   // GitHub issue #245: this bubble's own source-check slice of the payload, reduced to just the
@@ -177,9 +98,9 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // no per-element highlight data of their own, like `excessive_scc_count`, wrapped by
   // `presetLockElementsFor` as a one-element array). Single source of truth for "hide this bubble"
   // (`fullyPresetLocked` below) and "how many are locked" (`presetLockedCount` below) --
-  // deliberately NOT re-derived per payload kind the way `loopGroups`/`teleportGroups`/etc. above
-  // are (those exist only for their own highlight-specific shape), so a newly added payload kind
-  // only needs a branch in `presetLockElementsFor` itself to participate correctly in both.
+  // deliberately NOT re-derived from `normalizedPayload` below (that exists only for its own
+  // highlight-specific shape), so a newly added payload kind only needs a branch in
+  // `presetLockElementsFor` itself to participate correctly in both.
   const presetLockedElements = sourceCheck != null ? presetLockElementsFor(issue, sourceCheck) : null;
 
   // Hide a bubble only when every one of its own preset-lockable elements is preset_locked (the
@@ -198,100 +119,108 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // asymmetry). `RegionHighlightRenderer` draws each group independently with no positional
   // contract, so filtering out locked regions before mapping to `.region` is safe.
   const visibleGroup = (e: { preset_locked: boolean }) => showFullyPresetLockedIssues || !e.preset_locked;
-  const asHighlightEdges = (pairs: [number, number][], asWall: boolean): IssueHighlightEdge[] =>
-    pairs.map(([from, to]) => ({ from, to, asWall }));
-  // Loop edges form a cycle -- drawn as connected lines, never as walls (see
-  // `IssueHighlightEdge`'s doc comment).
-  const loopEdges = loopGroups != null
-    ? asHighlightEdges(loopGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
-    : null;
-  // A teleport warning describes the two endpoint cells, not a traversable on-field segment.
-  // Highlight both ends as one region group and never draw the geometric line between them.
-  // Keeping one deduplicated group also prevents a shared endpoint from being filled/stroked
-  // several times when a warning contains multiple teleport pairs.
-  const teleportCellNodes = teleportGroups != null
-    ? (() => {
-        const nodes = Array.from(new Set(teleportGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())));
-        return nodes.map((id) => [id]);
-      })()
-    : null;
-  const oneWayEdges = oneWayGroups != null
-    ? asHighlightEdges(oneWayGroups.filter(visibleGroup).flatMap((g) => g.edges), true)
-    : null;
-  // Unlike teleport/one-way (thin directed edges, highlighted as lines), a vertical passage
-  // connects two floors at the same x-y point -- a line between its endpoints reads as a stray
-  // diagonal rather than "these cells". Highlighted as region squares instead, one flat
-  // deduplicated group (not one group per edge) -- `RegionHighlightRenderer` fills each group
-  // independently, so a node shared by two flagged edges (e.g. two proximity pairs through the
-  // same passage) would otherwise get double-filled/double-stroked.
-  const verticalPassageCellNodes = verticalPassageGroups != null
-    ? Array.from(new Set(verticalPassageGroups.filter(visibleGroup).flatMap((g) => g.edges).flat())).map((id) => [id])
-    : null;
-  const elevatorCellNodes = elevatorGroups != null
-    ? Array.from(new Set(elevatorGroups.filter(visibleGroup).flatMap((g) => g.edges).flat())).map((id) => [id])
-    : null;
-  // One region-highlight group per flagged stop (not one merged group) -- mirrors
-  // `visibleRegionGroups` below but keeps each stop independently toggleable/highlightable, since
-  // stops in a group aren't necessarily adjacent the way a region's member cells are.
-  const elevatorStopCellNodes = elevatorStopNodes != null
-    ? elevatorStopNodes.filter(visibleGroup).map((n) => n.region)
-    : null;
-  // Elevator fan edges only (same shape as `elevatorCellNodes`) -- one flat deduplicated group,
-  // same rationale as `verticalPassageCellNodes` (a node touched by two groups would otherwise
-  // double-fill/stroke). `available` candidate floor nodes are excluded, see `missingStopGroups`.
-  const missingStopCellNodes = missingStopGroups != null
-    ? [Array.from(new Set(missingStopGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())))]
-    : null;
-  // No per-element `visibleGroup` filter here -- `crossElementEntries` above already dropped whole
-  // pairs whose every member is preset-locked, and a surviving pair shows all its members.
-  const crossElementCellNodes = crossElementRegionEntries != null && crossElementRegionEntries.length > 0
-    ? [Array.from(new Set(crossElementRegionEntries.flatMap((e) => [...e.edges.flat(), ...e.nodes, ...(e.tile?.nodes ?? [])])))]
-    : null;
-  // Same wall-edge rendering as `oneWayEdges` above -- see the doc comment on
-  // `crossElementOneWayEntries`.
-  const crossElementOneWayEdges = crossElementOneWayEntries != null && crossElementOneWayEntries.length > 0
-    ? asHighlightEdges(crossElementOneWayEntries.flatMap((e) => e.edges), true)
-    : null;
-  // The visible tiles keep their own lock/filtering granularity, but are sent as one region
-  // group so adjacent tiles can share a contour and merge exactly like ordinary regions.
-  const splitTileNodes = splitGroups != null
-    ? (() => {
-        const tiles = splitGroups.flatMap((g) =>
-          TILE_GRANULARITY_CHECKS.has(typeId)
-            ? g.tiles.filter(visibleGroup)
-            : visibleGroup(g) ? g.tiles : []
+
+  // Normalizes this bubble's own source-check slice of `issue.payload` into
+  // `resolveIssueHighlight`'s shared input shape (GitHub issue #623) -- the toggle filter above is
+  // applied here, per-kind, at the same granularity the old bespoke code used (e.g. cross-element
+  // pairs filtered at pair granularity, split tiles filtered at tile granularity for
+  // `TILE_GRANULARITY_CHECKS`), before handing normalized groups to the shared resolver.
+  const normalizedPayload: NormalizedIssuePayload<number> | null = sourceCheck == null ? null : (() => {
+    const payload = issue.payload;
+    switch (payload.kind) {
+      case "invalid_loop": {
+        const groups = payload.edges[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "invalidLoop" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "invalid_teleport": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "invalidTeleport" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "invalid_one_way": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "invalidOneWay" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "invalid_vertical_passage": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "invalidVerticalPassage" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "invalid_elevator": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "invalidElevator" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "missing_elevator_stop_count": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        return groups == null ? null : { kind: "missingElevatorStopCount" as const, groups: groups.filter(visibleGroup).map(toEdgeGroup) };
+      }
+      case "region_needs_expansion": {
+        const nodes = payload.nodes[sourceCheck] ?? null;
+        return nodes == null ? null : { kind: "regionNeedsExpansion" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
+      }
+      case "region_needs_shrink": {
+        const nodes = payload.nodes[sourceCheck] ?? null;
+        return nodes == null ? null : { kind: "regionNeedsShrink" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
+      }
+      case "invalid_elevator_stop": {
+        const nodes = payload.nodes[sourceCheck] ?? null;
+        return nodes == null ? null : { kind: "invalidElevatorStop" as const, groups: nodes.filter(visibleGroup).map(toRegionGroup) };
+      }
+      case "invalid_split_tile": {
+        const groups = payload.groups[sourceCheck] ?? null;
+        if (groups == null) return null;
+        // `invalid_split_tile`'s payload is one entry per flagged "instance" (a single tile, or a
+        // genuine multi-tile group for proximity/count/density checks — see
+        // `IssueSplitGroupPayload`'s doc comment on the Rust side). `TILE_GRANULARITY_CHECKS`
+        // filters at tile granularity instead of group granularity (see that constant's doc
+        // comment).
+        const tiles = groups.flatMap((g) =>
+          TILE_GRANULARITY_CHECKS.has(typeId) ? g.tiles.filter(visibleGroup) : visibleGroup(g) ? g.tiles : []
         );
-        const nodes = Array.from(new Set(tiles.flatMap((tile) => tile.nodes)));
-        return nodes.length > 0 ? [nodes] : [];
-      })()
-    : null;
-  const splitRouteEdges = splitRoutePayload != null
-    ? [splitRoutePayload.filter(visibleGroup).flatMap((r) => r.edges).map((e) => [e.from, e.to] as [number, number])]
-    : null;
-  const splitRouteHighlightEdges = splitRouteEdges != null
-    ? asHighlightEdges(splitRouteEdges.flat(), false)
-    : null;
-  const visibleRegionGroups = regionNodes != null
-    ? regionNodes.filter(visibleGroup).map((r) => r.region)
-    : null;
-  // One region-highlight group per floor-scoped deficit entry -- `null` entries (whole-maze
-  // deficits) are dropped, not highlighted as a fallback (no per-element highlight data for them,
-  // same as `excessive_scc_count`).
-  const areaDeficitCellNodes = areaDeficitEntries != null
-    ? areaDeficitEntries
-        .filter((level): level is number => level !== null)
-        .map((level) => selectNodeIdsForLevel(mazeNodes, level))
-    : null;
+        return { kind: "invalidSplitTile" as const, groups: [{ tiles: tiles.map((t) => ({ nodes: t.nodes })) }] };
+      }
+      case "invalid_split_route": {
+        const routes = payload.routes[sourceCheck] ?? null;
+        return routes == null ? null : { kind: "invalidSplitRoute" as const, edges: routes.filter(visibleGroup).flatMap((r) => r.edges).map((e) => [e.from, e.to] as [number, number]) };
+      }
+      case "invalid_cross_element_group": {
+        // Preset visibility (issue #376 follow-up point 5) is all-or-nothing PER PAIR, not per
+        // element: a pair is hidden only when every one of its members is preset_locked; a pair
+        // with at least one unlocked member shows ALL its members, including the preset-locked one.
+        // So the toggle filter is applied here at pair granularity, before flattening -- the
+        // per-element `visibleGroup` filter used by every other kind is deliberately NOT applied to
+        // these entries.
+        const entries = payload.groups[sourceCheck]
+          ?.filter((pair) => showFullyPresetLockedIssues || pair.some((e) => !e.preset_locked))
+          .flat() ?? null;
+        return entries == null ? null : {
+          kind: "invalidCrossElementGroup" as const,
+          entries: entries.map((e) => ({ kind: e.kind, edges: e.edges, nodes: e.nodes, tile: e.tile != null ? { nodes: e.tile.nodes } : null })),
+        };
+      }
+      default:
+        return null;
+    }
+  })();
+  const resolved = normalizedPayload != null ? resolveIssueHighlight(normalizedPayload) : null;
 
   // Wall/line edges (`setHoveredIssueLoopEdges`) and region-square cells
   // (`setHoveredIssueRegionGroups`) are independent overlay states -- normally a bubble only ever
   // populates one of the two families, but `invalid_cross_element_group` can populate both at once
   // (a one-way member drawn as a wall alongside other members drawn as region squares), so both are
-  // set together rather than picking just the first match.
-  const highlightEdges = loopEdges ?? oneWayEdges ?? splitRouteHighlightEdges ?? crossElementOneWayEdges;
-  const highlightRegionGroups = visibleRegionGroups ?? splitTileNodes ?? teleportCellNodes ?? verticalPassageCellNodes ?? elevatorCellNodes
-    ?? elevatorStopCellNodes ?? (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0 ? areaDeficitCellNodes : null)
-    ?? missingStopCellNodes ?? crossElementCellNodes;
+  // set together rather than picking just the first match. A teleport/vertical-passage/elevator/
+  // elevator-stop/missing-stop-count issue resolves to a `region`, not a `cycle`, from
+  // `resolveIssueHighlight` (its endpoint cells are highlighted as squares, not a connector line —
+  // see that function's own doc comments), matching the old bespoke code's behavior exactly.
+  const highlightEdges: IssueHighlightEdge[] | null = resolved?.cycle != null
+    ? resolved.cycle.edges.map(([from, to]) => ({ from, to, asWall: resolved.cycle!.asWall }))
+    : null;
+  // `areaDeficitCellNodes` has no `resolveIssueHighlight` counterpart (resolved from `mazeNodes`,
+  // see that variable's own doc comment above) -- folded in here as a fallback, same priority
+  // position the old bespoke code gave it.
+  const highlightRegionGroups: { nodes: number[]; isSplit: boolean }[] | null = resolved?.region != null
+    ? resolved.region.groups
+    : (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0)
+      ? areaDeficitCellNodes.map((nodes) => ({ nodes, isSplit: false }))
+      : null;
   const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
     ? () => {
         if (highlightEdges != null) setHoveredIssueLoopEdges(highlightEdges);
@@ -311,27 +240,29 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // tried first but read as noisy busywork once a bubble carried more than a couple of elements —
   // the user only needs to know how many, not enumerate every single one.
   //
-  // `teleportGroups` needs a dedup pass before counting: a two-way teleport is two directed
+  // `invalid_teleport` needs a dedup pass before counting: a two-way teleport is two directed
   // `EdgeKind::Teleport` edges in the base graph (`resolve_single_edge_map` on the Rust side
   // treats every directed edge as its own group), so it arrives here as two separate one-edge
   // groups — the *same* teleport counted twice. Collapsed by unordered endpoint pair, same
   // rationale as `buildTeleportEdges`'s own opposite-direction dedup (`mazeSelectors.ts`). Every
   // other kind's elements are already one logical unit per element, never split across two
   // directions, so `presetLockedElements` (computed above) is used as-is for the rest.
-  const dedupedElements = teleportGroups != null
-    ? dedupTeleportGroups(teleportGroups)
+  const teleportGroupsForCount = sourceCheck != null && issue.payload.kind === "invalid_teleport"
+    ? issue.payload.groups[sourceCheck] ?? null
+    : null;
+  const dedupedElements = teleportGroupsForCount != null
+    ? dedupTeleportGroups(teleportGroupsForCount)
     : presetLockedElements;
   const presetLockedCount = dedupedElements?.filter((el) => el.preset_locked).length ?? 0;
 
-  // GitHub issue #365: every maze node id this bubble's own visible elements touch, across
-  // whichever payload shape is in play -- union of the same edge/group sources `handleMouseEnter`
-  // above already isolates per bubble (only this source check's visible elements, not every
-  // contributing check's combined). Used only to find which *floors* the bubble spans; the actual
-  // hover highlight is unaffected by this.
+  // GitHub issue #365: every maze node id this bubble's own visible elements touch -- union of the
+  // same resolved edge/region data `handleMouseEnter` above already isolates per bubble (only this
+  // source check's visible elements, not every contributing check's combined). Used only to find
+  // which *floors* the bubble spans; the actual hover highlight is unaffected by this.
   const touchedNodeIds = [
-    ...(loopEdges ?? []),
-    ...(crossElementOneWayEdges ?? []),
-  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (teleportCellNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flat());
+    ...(highlightEdges ?? []).flatMap((e) => [e.from, e.to]),
+    ...(highlightRegionGroups ?? []).flatMap((g) => g.nodes),
+  ];
 
   return (
     <>

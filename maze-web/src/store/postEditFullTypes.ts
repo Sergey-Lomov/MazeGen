@@ -46,8 +46,11 @@ export interface AnalyticsOverlayState {
   /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
    * node ids — kept as separate groups (not one flat list) so adjacent-in-id-space but disjoint
    * regions don't merge into one shared outline. The renderer derives each region's perimeter
-   * client-side from its node set. */
-  hoveredIssueRegionGroups: number[][] | null;
+   * client-side from its node set. `isSplit` (GitHub issue #619) picks the outward "split" inset
+   * instead of the normal inward one — set explicitly by `IssuesBlock.tsx` from the payload kind
+   * that produced the group, never guessed from the group's own geometry (a multi-cell split tile
+   * has no duplicate node/cell to detect that way). */
+  hoveredIssueRegionGroups: { nodes: number[]; isSplit: boolean }[] | null;
   /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
   analyticsSectionsExpanded: Record<string, boolean>;
   /** Whether to show issue bubbles whose every flagged element is preset-locked (GitHub issue
@@ -68,7 +71,7 @@ export interface AnalyticsOverlayActions {
   setShowRegionClassesOverlay: (v: boolean) => void;
   setRegionClassLegendOpen: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: IssueHighlightEdge[] | null) => void;
-  setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
+  setHoveredIssueRegionGroups: (groups: { nodes: number[]; isSplit: boolean }[] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowFullyPresetLockedIssues: (v: boolean) => void;
 }
@@ -157,6 +160,13 @@ export interface PostEditState {
    * active, cleared by an ordinary click elsewhere, closing the dialog, or leaving the post-edit
    * card. Not hover — doesn't change on mere cursor movement. */
   postEditFocusedPoint: [number, number] | null;
+  /** True while the "Manage split nodes" dialog (`postEditFocusedPoint` non-null) is covered by
+   * another `SidePanel` stacked on top of it (GitHub issue #629 follow-up) — the dialog itself is
+   * still open (`postEditFocusedPoint` unchanged), just not the visible panel. Driven by
+   * `ManageSplitNodesDialog`'s `SidePanel.onTopChange`. `PostEditRenderer`'s on-canvas cell outline
+   * for the point being edited reads this alongside `postEditFocusedPoint` — the outline would
+   * otherwise keep highlighting a cell for a dialog the user can no longer see or act on. */
+  postEditFocusedPointCovered: boolean;
   /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
   postEditEdges: Record<string, PostEditEdge> | null;
   /** Confirmed snapshot of postEditDraftTeleportEdges. Read by AnalyticsRenderer. */
@@ -299,8 +309,8 @@ export interface PostEditState {
   postEditResetPrompt: { point: [number, number]; level?: number; lifelines: PostEditResetLifelineDescriptor[] } | null;
   /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
    *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
-   *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
-   *  node panel and vice versa, since both dock to the same `SidePanel` slot). Not persisted. */
+   *  nodes" panel — both may be open at once; `SidePanel`'s own mount-order stack (GitHub issue
+   *  #629) decides which one is actually shown, since both dock to the same slot. */
   postEditChangesOpen: boolean;
   /** Entity id the "Changes" panel's log is narrowed to (GitHub issue #574), or `null` for no
    *  filter (every row shown). Matches a command's own `entityIdOf` result exactly (`"o5"`, `"t3"`,
@@ -425,6 +435,7 @@ export interface PostEditActions {
   cycleActiveSplitNode: (point: [number, number]) => void;
   setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
+  setPostEditFocusedPointCovered: (covered: boolean) => void;
   setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotateSplitPointNodes` (postEditUtils.ts). No-op if it would
@@ -482,8 +493,8 @@ export interface PostEditActions {
   applyPostEditSplitTargetPick: (nodeId: number) => void;
   /** Dismisses an open `postEditSplitTargetPrompt` without placing anything. */
   cancelPostEditSplitTarget: () => void;
-  /** Opens/closes the "Changes" panel (GitHub issue #545). Opening it closes the "Manage split
-   *  nodes" panel (`postEditFocusedPoint`), since both dock to the same `SidePanel` slot. */
+  /** Opens/closes the "Changes" panel (GitHub issue #545). Independent of `postEditFocusedPoint`'s
+   *  "Manage split nodes" panel — see `postEditChangesOpen`'s doc comment. */
   setPostEditChangesOpen: (open: boolean) => void;
   /** Sets/clears the "Changes" panel's entity-id filter (GitHub issue #574). `null` clears it back
    *  to the full log — same effect as the panel's own clear (×) button. */

@@ -179,8 +179,23 @@ export function drawOneWayWallHighlight(
   return true;
 }
 
+/** Clamps a boundary highlight's tangential inset to `[0, edgeLength / 2 - 1]` — never negative (an
+ *  outward inset isn't supported by this style, see GitHub issue #627) and never past the edge's
+ *  own midpoint (leaves at least 2px of span so the quad can't collapse or cross over itself on a
+ *  short edge). Exported standalone so the clamp math is unit-testable without reconstructing a
+ *  `Graphics` mock's draw calls. */
+export function clampBoundaryInset(inset: number, edgeLength: number): number {
+  return Math.max(0, Math.min(inset, edgeLength / 2 - 1));
+}
+
 /** Draws a filled quad centred on a shared cell boundary. Its span can follow the rendered marker,
- * while the same construction still works for square, hexagonal and triangular tiles. */
+ * while the same construction still works for square, hexagonal and triangular tiles.
+ *
+ * `inset` (GitHub issue #627) shrinks the quad along the edge's own tangent only — the
+ * perpendicular span (`spanWidth`) is untouched — so the highlight pulls back from the two
+ * corners where this boundary meets its neighbors, matching the inward gap cell/region
+ * highlights already use, without narrowing the highlight across the wall. Clamped so it never
+ * collapses the quad to zero or negative length. */
 export function drawCellBoundaryHighlight(
   g: Graphics,
   from: [number, number],
@@ -190,6 +205,7 @@ export function drawCellBoundaryHighlight(
   fillAlpha = 0.25,
   borderWidth = 3,
   spanWidth?: number,
+  inset = 0,
 ): boolean {
   const seg = getSharedEdgeSegment(from, to, cfg);
   if (!seg) return false;
@@ -213,13 +229,17 @@ export function drawCellBoundaryHighlight(
     ny = -ny;
   }
   const halfWidth = (spanWidth ?? centerDistance) / 2;
+  const clampedInset = clampBoundaryInset(inset, edgeLength);
+  const v0x = seg.v0.x + tx * clampedInset, v0y = seg.v0.y + ty * clampedInset;
+  const v1x = seg.v1.x - tx * clampedInset, v1y = seg.v1.y - ty * clampedInset;
+  const insetLength = Math.hypot(v1x - v0x, v1y - v0y);
   const points = [
-    seg.v0.x + nx * halfWidth, seg.v0.y + ny * halfWidth,
-    seg.v1.x + nx * halfWidth, seg.v1.y + ny * halfWidth,
-    seg.v1.x - nx * halfWidth, seg.v1.y - ny * halfWidth,
-    seg.v0.x - nx * halfWidth, seg.v0.y - ny * halfWidth,
+    v0x + nx * halfWidth, v0y + ny * halfWidth,
+    v1x + nx * halfWidth, v1y + ny * halfWidth,
+    v1x - nx * halfWidth, v1y - ny * halfWidth,
+    v0x - nx * halfWidth, v0y - ny * halfWidth,
   ];
-  const cornerRadius = Math.min(edgeLength, centerDistance) * 0.18;
+  const cornerRadius = Math.min(insetLength, centerDistance) * 0.18;
   drawRoundedPolygon(g, points, cornerRadius);
   g.fill({ color, alpha: fillAlpha });
   if (borderWidth > 0) {
@@ -227,6 +247,48 @@ export function drawCellBoundaryHighlight(
     g.stroke({ color, alpha: 1, width: borderWidth, join: "round" });
   }
   return true;
+}
+
+/** Splits `edges` into wall-drawn ones (GitHub issue #377's `asWall`, e.g. a flagged
+ *  `invalid_one_way`) and line-drawn ones, drawing every wall edge as the shared boundary rect
+ *  between its two cells into `g` — shared by `IssueHighlightOverlay` (Analytics) and
+ *  `DebugRefHighlightOverlay` (debug-tree, GitHub issue #619 follow-up) so both draw the exact
+ *  same wall style instead of two independently-drifting copies. A wall edge whose endpoints
+ *  aren't tessellation-adjacent (no shared boundary to draw, e.g. a cross-floor edge) falls back
+ *  to a line, same as a non-wall edge. Returns the edges that still need line rendering, in the
+ *  same shape as `edges` (generic over the id type — `number` for Analytics, `bigint` for
+ *  debug-tree). */
+export function splitWallAndLineEdges<TId>(
+  g: Graphics,
+  edges: { from: TId; to: TId; asWall: boolean }[],
+  cellOf: (id: TId) => [number, number] | undefined,
+  cfg: TessellationConfig,
+  color: number,
+  fillAlpha = 0.25,
+  borderWidth = 3,
+  spanWidth?: number,
+  inset = 0,
+): { from: TId; to: TId }[] {
+  const lineEdges: { from: TId; to: TId }[] = [];
+  const drawnBoundaryEdges = new Set<string>();
+  for (const edge of edges) {
+    if (!edge.asWall) {
+      lineEdges.push(edge);
+      continue;
+    }
+    const fromCell = cellOf(edge.from);
+    const toCell = cellOf(edge.to);
+    if (!fromCell || !toCell) {
+      lineEdges.push(edge);
+      continue;
+    }
+    const key = cellBoundaryKey(fromCell, toCell);
+    if (drawnBoundaryEdges.has(key)) continue;
+    const drew = drawCellBoundaryHighlight(g, fromCell, toCell, cfg, color, fillAlpha, borderWidth, spanWidth, inset);
+    if (drew) drawnBoundaryEdges.add(key);
+    else lineEdges.push(edge);
+  }
+  return lineEdges;
 }
 
 // Draws a "chevron" one-way indicator (two open strokes forming a shallow `>` shape) centered at

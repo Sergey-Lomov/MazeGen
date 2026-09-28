@@ -4,7 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
-import { cellBoundaryKey, drawCellBoundaryHighlight, drawDirectionArrow } from "./renderers/wallUtils";
+import { drawDirectionArrow, splitWallAndLineEdges } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { TILE_SIZE } from "./constants";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
@@ -27,12 +28,14 @@ export interface IssueHighlightData {
    *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
    *  doc comment. `[]` falls back to the generic hub position. */
   allEdges: EdgeDto[];
-  /** SCC regions to highlight, each as its own list of maze node ids — typically the undersized
-   * regions of a hovered issue. Kept as separate groups (not one flat list) so each region gets
+  /** SCC regions to highlight, each as its own list of maze node ids plus its own split-vs-region
+   * inset style (GitHub issue #619 — set by the caller from the payload kind, never guessed from
+   * the group's own geometry). Kept as separate groups (not one flat list) so each region gets
    * its own perimeter/fill, instead of two adjacent-in-id-space-but-disjoint regions merging into
-   * one outline. Mutually exclusive with `edges` in practice (one hover shows one or the other),
-   * but both are rendered independently if both happen to be set. */
-  regionGroups: number[][] | null;
+   * one outline. Independent of `edges`, not mutually exclusive: a mixed `invalid_cross_element_group`
+   * pair (a one-way member alongside a split/region member, GitHub issue #619) sets both at once,
+   * and both are rendered independently. */
+  regionGroups: { nodes: number[]; isSplit: boolean }[] | null;
   cfg: TessellationConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a highlighted edge whose other endpoint crosses to another floor
@@ -74,23 +77,26 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
     if (hasRegions) {
-      const nodeById = new Map(nodes.map((node) => [node.id, node]));
-      const hasSplitGroup = regionGroups.some((group) => {
-        const cells = new Set(group.map((id) => {
-          const node = nodeById.get(id);
-          return node ? `${node.x},${node.y}` : "";
-        }));
-        return cells.size < group.length;
-      });
+      // Each group picks its own inset direction from its own `isSplit` flag (GitHub issue #619) --
+      // deciding this globally for the whole `regionGroups` list meant one split group anywhere in
+      // the list flipped every *other* group -- e.g. an unrelated region member of the same
+      // `invalid_cross_element_group` pair -- to the outward style too. Guessing it from the
+      // group's own geometry (duplicate node/cell) doesn't work either: a multi-cell split tile has
+      // no duplicate to detect.
+      const insetGroups = regionGroups.filter((group) => !group.isSplit).map((group) => group.nodes);
+      const outsetGroups = regionGroups.filter((group) => group.isSplit).map((group) => group.nodes);
       this.regionRenderer.render({
         nodes,
-        regionGroups,
+        regionGroups: [],
         color: HIGHLIGHT_COLOR,
         width: HIGHLIGHT_WIDTH,
         alpha: HIGHLIGHT_ALPHA,
         cfg,
         skipPerimeter: true,
-        insetMode: hasSplitGroup ? "outset" : "inset",
+        groups: [
+          { regionGroups: insetGroups, color: HIGHLIGHT_COLOR, insetMode: "inset" },
+          { regionGroups: outsetGroups, color: HIGHLIGHT_COLOR, insetMode: "outset" },
+        ],
       });
     } else {
       this.regionRenderer.clear();
@@ -105,29 +111,13 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     // endpoint isn't resolvable to a cell here).
     const nodeById = new Map<number, NodeDto>();
     for (const node of nodes) nodeById.set(node.id, node);
+    const cellOf = (id: number): [number, number] | undefined => {
+      const node = nodeById.get(id);
+      return node ? [node.x, node.y] : undefined;
+    };
 
     const wallG = new Graphics();
-    const lineEdges: IssueHighlightEdge[] = [];
-    const drawnBoundaryEdges = new Set<string>();
-    for (const edge of edges) {
-      if (!edge.asWall) {
-        lineEdges.push(edge);
-        continue;
-      }
-      const from = nodeById.get(edge.from);
-      const to = nodeById.get(edge.to);
-      if (!from || !to) {
-        lineEdges.push(edge);
-        continue;
-      }
-      const fromCell: [number, number] = [from.x, from.y];
-      const toCell: [number, number] = [to.x, to.y];
-      const key = cellBoundaryKey(fromCell, toCell);
-      if (drawnBoundaryEdges.has(key)) continue;
-      const drew = drawCellBoundaryHighlight(wallG, fromCell, toCell, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth);
-      if (drew) drawnBoundaryEdges.add(key);
-      if (!drew) lineEdges.push(edge);
-    }
+    const lineEdges = splitWallAndLineEdges(wallG, edges, cellOf, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset());
     this.edgesContainer.addChild(wallG);
 
     if (lineEdges.length === 0) return;

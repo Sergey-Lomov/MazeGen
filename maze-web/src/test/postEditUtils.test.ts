@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto,
+  floorScopedTeleportEdges,
   rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
   findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
@@ -147,6 +148,34 @@ describe("postEditTeleportsToDto", () => {
   it("resolves a split endpoint via resolveSplit", () => {
     const teleports = [{ id: "t1", from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
     expect(postEditTeleportsToDto(teleports, () => 42)).toEqual([{ from: 42, to: 1, kind: "teleport" }]);
+  });
+});
+
+// --- floorScopedTeleportEdges (GitHub issue #633) ---
+
+describe("floorScopedTeleportEdges", () => {
+  it("keeps a same-floor two-way teleport's both directions", () => {
+    const edges = postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" }], noSplits);
+    expect(floorScopedTeleportEdges(edges, new Set([0, 1]))).toEqual([
+      { from: 0, to: 1, kind: "teleport" },
+      { from: 1, to: 0, kind: "teleport" },
+    ]);
+  });
+
+  it("keeps only the departure-side edge of a cross-floor two-way teleport, dropping the arrival-side one", () => {
+    // Node 1 lives on the other floor (not in floorNodeIds) — resolved fully here (both real ids,
+    // e.g. via an unscoped/all-floor resolveSplit), same as PostEditRenderer feeds this function.
+    const edges = postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" }], noSplits);
+    expect(floorScopedTeleportEdges(edges, new Set([0]))).toEqual([{ from: 0, to: 1, kind: "teleport" }]);
+  });
+
+  it("drops a one-way teleport entirely when its departure end is on the other floor", () => {
+    const edges = postEditTeleportsToDto([{ id: "t1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" }], noSplits);
+    expect(floorScopedTeleportEdges(edges, new Set([1]))).toEqual([]);
+  });
+
+  it("empty input returns empty array", () => {
+    expect(floorScopedTeleportEdges([], new Set([0]))).toEqual([]);
   });
 });
 

@@ -19,6 +19,10 @@ function setBaseState(overrides: Record<string, unknown> = {}) {
     ...baseStoreState(),
     openCard: "image_export",
     openExportFormatSettings: "png",
+    // Explicit default (not part of `baseStoreState()`) — `useMazeStore.setState` merges rather
+    // than replacing, so without this a prior test's `exportFormatSettingsCovered: true` override
+    // would otherwise leak into every test after it.
+    exportFormatSettingsCovered: false,
     activeRenderMode: "vector_by_walls",
     vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
@@ -148,6 +152,20 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
 
   it("is a no-op when the print frame is not active (export panel closed)", () => {
     printState({ openCard: null });
+    const { overlay, setViewportTransform } = makeOverlay();
+    setViewportTransform.mockClear();
+
+    overlay.applyViewportScaleAroundFrameCentre(2.0);
+
+    expect(setViewportTransform).not.toHaveBeenCalled();
+  });
+
+  // GitHub issue #629 follow-up: another `SidePanel` (e.g. the color picker) stacked on top of the
+  // PNG settings panel covers it without closing it (`openExportFormatSettings` stays "png") — the
+  // frame overlay must still treat the panel as not-open, same as the "export panel closed" case
+  // above, rather than keep drawing/dimming for a panel the user can no longer see or act on.
+  it("is a no-op when the PNG settings panel is covered by another SidePanel", () => {
+    printState({ exportFormatSettingsCovered: true });
     const { overlay, setViewportTransform } = makeOverlay();
     setViewportTransform.mockClear();
 

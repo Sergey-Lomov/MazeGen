@@ -45,7 +45,11 @@ export function buildSplitFloorGeometry(
     const list = bareNodeMap.get(k);
     if (list) list.push(n.id); else bareNodeMap.set(k, [n.id]);
   }
-  const resolveSplit = buildSplitNodeResolver(bareNodeMap, recordOnLevel(splitPoints, level));
+  // `recordOnLevel` only matches "x,y@N" keys for a defined level, and floor 0 is stored unsuffixed
+  // ("undefined = floor 0" convention, see `splitEndpoint`'s doc comment) — passing the literal `0`
+  // here looks for "x,y@0" keys that don't exist, silently emptying the map for the common floor-0
+  // case and dropping every split-slot edge (GitHub issue #632).
+  const resolveSplit = buildSplitNodeResolver(bareNodeMap, recordOnLevel(splitPoints, level === 0 ? undefined : level));
   const edges: EdgeDto[] = [];
   for (const e of Object.values(draftEdges ?? {})) {
     if (e.kind === "wall") continue;

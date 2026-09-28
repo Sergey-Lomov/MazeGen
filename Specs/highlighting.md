@@ -106,26 +106,55 @@ calls cannot merge adjacent split cells.
 This style renders the actual shared tessellation edge, not a cell and not a line between
 cell centers. It consists of a translucent strip and an opaque rounded border.
 
+The quad is also inset from the shared edge's two endpoints along the edge's own tangent (GitHub
+issue #627), using the same magnitude as the cell/region inward inset
+(`getCellHighlightInset()`); the perpendicular span is untouched. This keeps the highlight from
+reaching the corners where the boundary meets its neighbors, matching how inward-inset cell/region
+highlights already pull back from walls. `clampBoundaryInset` (`wallUtils.ts`) clamps this inset to
+`[0, edgeLength / 2 - 1]`, so it never goes negative (no outward variant of this style) and never
+crosses the edge's own midpoint on a short edge.
+
 The transverse span is derived from the entity geometry:
 
+- The wall-vs-region/cycle merge logic for every `IssuePayload`/`IssuePayloadDto` kind (loop,
+  teleport, one-way, split tile/route, region, vertical passage, elevator, elevator stop, missing
+  elevator stops, cross-element group) lives in one place, `resolveIssueHighlight` in
+  `maze-web/src/components/issueHighlight.ts` (GitHub issue #623) -- generic over `Id`
+  (`number`/`bigint`) so Analytics' `IssuesBlock.tsx` (number/snake_case DTO) and the debug tree's
+  `algorithmRegistry.ts` (bigint/EventLog `IssuePayload`, via `IssueHighlightTarget`) each normalize
+  their own wire shape into a shared input type and call the same resolver, instead of maintaining
+  two independently-drifting `switch` statements (the root cause of the #619 highlighting bugs).
+  Each side still owns its own preset-lock (`showFullyPresetLockedIssues`) filtering before
+  normalizing, since that's a per-check, per-payload-kind granularity concern unrelated to
+  merge/inset/wall-vs-region shape.
 - Analytics/Post-edit one-way issues use `oneWayIndicatorSpan(...)`, based on the active
   one-way renderer settings;
 - Post-edit walls and passages use `WALL_HIGHLIGHT_SPAN`, which is the wall thickness
   plus the shared padding on both sides;
 - the shared padding is `BOUNDARY_HIGHLIGHT_PADDING = 5 px` per side.
 
-Implementation: `drawCellBoundaryHighlight` in `renderers/wallUtils.ts`.
+Implementation: `drawCellBoundaryHighlight` in `renderers/wallUtils.ts`. The wall-vs-line
+split for a list of `{from, to, asWall}` edges (draw wall-style for `asWall` edges,
+fall back to a line when the two endpoints aren't tessellation-adjacent, pass every
+other edge through unchanged) is the shared `splitWallAndLineEdges` helper in the same
+file — used by both `IssueHighlightOverlay` (Analytics) and `DebugRefHighlightOverlay`
+(debug-tree `issue` refs) so the two draw identical wall geometry/thickness for a
+one-way issue instead of two independently-drifting copies (GitHub issue #619 follow-up).
 
 Used for:
 
 - horizontal one-way issue warnings in Analytics;
 - horizontal one-way entities in Post-edit;
 - walls and passages in Post-edit;
-- boundary warnings in Vector by Walls export rendering.
+- boundary warnings in Vector by Walls export rendering;
+- a debug `issue` token's own one-way (`cycle.asWall`) member.
 
 Vector by Corridors does not use this style for its one-way export warnings; it uses
-style 1.3 on the `from/to` endpoint cells instead. Debug walls, passages, and one-way
-references also do not use this boundary style.
+style 1.3 on the `from/to` endpoint cells instead. Plain debug walls, passages, and
+one-way edge/cycle references (not wrapped in an `issue` token) do not use this boundary
+style — they use style 1.7 instead. A debug `issue` token's own `cycle.asWall` flag
+(GitHub issue #377/#619 follow-up) does use this boundary style, matching Analytics'
+`IssueHighlightOverlay` exactly (shared via `splitWallAndLineEdges` in `wallUtils.ts`).
 
 ### 1.6. Graph line between points or nodes
 
@@ -302,6 +331,17 @@ Post-edit issue bubbles use:
 The Analytics region issue warnings are specifically `region_needs_expansion` and
 `region_needs_shrink`. `excessive_scc_count` does not highlight a particular region.
 
+A region highlight's outward-vs-inward inset is set explicitly per group by the caller
+(`isSplit`, GitHub issue #619), from the payload kind that produced the group, never
+guessed from the group's own geometry — a duplicate-node/cell heuristic can't detect a
+multi-cell split tile with no literal duplicate. `hoveredIssueLoopEdges` and
+`hoveredIssueRegionGroups` are independent, not mutually exclusive: an
+`invalid_cross_element_group` bubble mixing a one-way member (wall) with a split/region
+member sets both at once, and `IssueHighlightOverlay` renders them independently in the
+same pass. The debug-tree `issue` token mirrors this exactly (`IssueHighlightTarget`'s
+`cycle`/`region` fields in `algorithmRegistry.ts`, rendered by
+`DebugRefHighlightOverlay`) so an issue reads identically in both views.
+
 ### 3.5. Image Export warnings
 
 `ExportWarningHighlight` is shared by `VectorByWallsRenderer` and
@@ -361,6 +401,7 @@ boundary highlighting.
 | Full/single cell fill | `maze-web/src/pixi/renderers/CellFillRenderer.ts` |
 | Merged regions, holes, inset/outset, borders | `maze-web/src/pixi/renderers/RegionHighlightRenderer.ts` |
 | Shared boundary geometry | `maze-web/src/pixi/renderers/wallUtils.ts` |
+| Shared issue-payload highlight resolution | `maze-web/src/components/issueHighlight.ts` |
 | Plain graph line | `maze-web/src/pixi/renderers/EdgeHighlightRenderer.ts` |
 | Line plus endpoint circles | `maze-web/src/pixi/renderers/NodeEdgeHighlightRenderer.ts` |
 | Debug values | `maze-web/src/pixi/DebugValueHighlightOverlay.ts` |
@@ -384,7 +425,9 @@ boundary highlighting.
 4. A split highlight always uses a merged outward-inset region.
 5. A boundary highlight is reserved for entities that are actual shared cell boundaries.
 6. An Analytics teleport issue must not draw a direct connector line.
-7. Debug walls, passages, and one-way references must not use boundary highlighting.
+7. Plain debug walls, passages, and one-way edge/cycle references (not wrapped in an
+   `issue` token) must not use boundary highlighting. A debug `issue` token's own wall
+   member (`cycle.asWall`) does use boundary highlighting, matching Analytics.
 8. Renderer settings must determine marker/one-way highlight geometry whenever the
    highlight mirrors the normal renderer.
 9. Each feature owns its Pixi renderer instance; only pure geometry/selectors/primitives

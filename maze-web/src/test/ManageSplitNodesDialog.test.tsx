@@ -9,6 +9,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ManageSplitNodesDialog } from "../components/features/ManageSplitNodesDialog";
+import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, postEditStatePatch } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
@@ -238,5 +239,25 @@ describe("ManageSplitNodesDialog", () => {
     faceGroups.forEach((g) => fireEvent.click(g));
     expect(applyPostEditToolAt).toHaveBeenCalled();
     expect(applyPostEditToolAt.mock.calls.every(([tool]) => tool === "wall")).toBe(true);
+  });
+
+  // GitHub issue #629 follow-up: another `SidePanel` (e.g. the color picker) stacked on top of
+  // this dialog covers it without unmounting it — `postEditFocusedPointCovered` must flip so
+  // `PostEditRenderer`'s on-canvas cell outline stops highlighting a cell for a dialog the user can
+  // no longer see, and flip back once uncovered.
+  it("marks postEditFocusedPointCovered while another SidePanel is stacked on top, clears it when uncovered", () => {
+    const { rerender } = render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    expect(useMazeStore.getState().postEditFocusedPointCovered).toBe(false);
+
+    rerender(
+      <>
+        <ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />
+        <SidePanel title="Overlay" onClose={vi.fn()} overlay>overlay content</SidePanel>
+      </>,
+    );
+    expect(useMazeStore.getState().postEditFocusedPointCovered).toBe(true);
+
+    rerender(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    expect(useMazeStore.getState().postEditFocusedPointCovered).toBe(false);
   });
 });

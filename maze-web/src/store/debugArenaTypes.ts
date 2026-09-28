@@ -1,6 +1,7 @@
 import type { NodeDto } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
+import type { IssueHighlightTarget } from "../debug/algorithmRegistry";
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
@@ -84,8 +85,9 @@ export type HoveredDebugRef =
   | { kind: "region"; nodes: bigint[] }
   | {
       kind: "issue"; issueKind: string;
-      /** `cycle.asWall` (GitHub issue #377) picks line-vs-wall drawing in `DebugRefHighlightOverlay`
-       *  — see `IssueHighlightEdge` in `postEditFullTypes.ts`. */
-      target: { kind: "cycle"; edges: [bigint, bigint][]; asWall: boolean } | { kind: "region"; nodes: bigint[] } | null;
+      /** Mirrors `algorithmRegistry.ts`'s `Token`'s own `issue` variant one-to-one — see
+       *  `IssueHighlightTarget`'s doc comment there for `cycle`/`region`'s independent-not-exclusive
+       *  shape (GitHub issue #619). */
+      target: IssueHighlightTarget | null;
       reasons: string[];
     };

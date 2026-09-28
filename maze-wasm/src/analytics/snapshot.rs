@@ -47,9 +47,12 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
     // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
     // position within `nodes_at(point)` (the default every call site but `run_compute_analytics`
-    // passes) already equals its real `i`. `run_compute_analytics` instead passes a lookup built
-    // from the client's own `cfg.nodes`, since post-edit's removal history can leave a hole in the
-    // `i` sequence that a freshly recomputed position would wrongly compact away.
+    // passes) already equals its real `i`. `run_compute_analytics` instead passes a lookup that
+    // prefers the client's own `cfg.nodes` (post-edit's removal history can leave a hole in the
+    // `i` sequence that a freshly recomputed position would wrongly compact away), falling back to
+    // `split_map` (GitHub issue #626) for a node this exact call just minted via
+    // `apply_split_points` — never to raw position, since a re-added slot's `slot_id` can exceed
+    // the point's current node count once an earlier sibling was removed.
     index_of: impl Fn(maze_core::ids::NodeId, T::Point, usize) -> u32,
     // The project's configured `scored_endpoints` weights, if that strategy is configured on any
     // rule (GitHub issue #532) — used to compute `route_info.score` directly from the current

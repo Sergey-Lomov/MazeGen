@@ -188,6 +188,13 @@ input[type="number"]::-webkit-inner-spin-button {
   background: #282828; /* darken(#2d2d2d, 0.12) */
 }
 
+/* Same base as `.hoverable` (explicit transparent background, overriding any inline value)
+   but without the `:hover`/`:active` highlight — for a clickable control that must not look
+   interactive right now (e.g. a feature card header while already expanded, GitHub issue #628). */
+.hoverable-off {
+  background: transparent;
+}
+
 .hoverable-accent:hover {
   background: #4c83c1;
 }

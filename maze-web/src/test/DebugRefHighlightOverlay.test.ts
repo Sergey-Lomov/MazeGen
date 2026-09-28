@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const graphSpies = vi.hoisted(() => ({
   buildCrossFloorMarkers: vi.fn(() => [{
@@ -10,6 +10,13 @@ const graphSpies = vi.hoisted(() => ({
   }]),
   drawCrossFloorMarkers: vi.fn(),
 }));
+
+const regionRenderSpy = vi.hoisted(() => vi.fn());
+const edgeRenderSpy = vi.hoisted(() => vi.fn());
+const splitWallAndLineEdgesSpy = vi.hoisted(() =>
+  vi.fn((_g: unknown, edges: { from: unknown; to: unknown; asWall: boolean }[]) =>
+    edges.filter((e) => !e.asWall).map(({ from, to }) => ({ from, to }))),
+);
 
 vi.mock("pixi.js", () => {
   class FakeContainer {
@@ -33,12 +40,15 @@ vi.mock("../pixi/tessellationGeometry", () => ({
   buildNodePositions: () => new Map([[1, { x: 10, y: 20 }]]),
 }));
 vi.mock("../pixi/renderers/NodeEdgeHighlightRenderer", () => ({
-  NodeEdgeHighlightRenderer: class { render() {} clear() {} destroy() {} },
+  NodeEdgeHighlightRenderer: class { render(...args: unknown[]) { edgeRenderSpy(...args); } clear() {} destroy() {} },
 }));
 vi.mock("../pixi/renderers/RegionHighlightRenderer", () => ({
-  RegionHighlightRenderer: class { render() {} clear() {} destroy() {} },
+  RegionHighlightRenderer: class { render(...args: unknown[]) { regionRenderSpy(...args); } clear() {} destroy() {} },
 }));
-vi.mock("../pixi/renderers/wallUtils", () => ({ drawCellBoundaryHighlight: vi.fn(() => false) }));
+vi.mock("../pixi/renderers/wallUtils", () => ({
+  drawCellBoundaryHighlight: vi.fn(() => false),
+  splitWallAndLineEdges: splitWallAndLineEdgesSpy,
+}));
 
 import { Container, Graphics } from "pixi.js";
 import { DebugRefHighlightOverlay } from "../pixi/DebugRefHighlightOverlay";
@@ -71,15 +81,122 @@ describe("DebugRefHighlightOverlay cross-floor refs (GitHub issue #449)", () => 
       0, expect.objectContaining({ type: "square" }), NODE_RADIUS,
     );
     expect(graphSpies.drawCrossFloorMarkers).toHaveBeenCalledWith(
-      root.children[2], root.children[3], expect.any(Array), NODE_RADIUS,
+      root.children[3], root.children[4], expect.any(Array), NODE_RADIUS,
       canvas.debug.refHighlight, canvas.debug.refHighlight, canvas.debug.refHighlight, 3, 1,
     );
 
-    const nodeLayer = root.children[3] as FakeContainer;
+    const nodeLayer = root.children[4] as FakeContainer;
     const nodeMarker = nodeLayer.children[0] as FakeGraphics;
     expect(nodeMarker.calls).toContainEqual({ fn: "circle", args: [10, 20, NODE_RADIUS] });
     expect(nodeMarker.calls).toContainEqual({
       fn: "fill", args: [{ color: canvas.debug.refHighlight, alpha: 1 }],
     });
+  });
+});
+
+describe("DebugRefHighlightOverlay issue refs (GitHub issue #619)", () => {
+  beforeEach(() => {
+    regionRenderSpy.mockClear();
+    edgeRenderSpy.mockClear();
+    splitWallAndLineEdgesSpy.mockClear();
+  });
+
+  const baseData = {
+    nodes: [{ id: 1, i: 0, x: 0, y: 0, level: 0 }, { id: 2, i: 1, x: 1, y: 0, level: 0 }],
+    allNodes: [],
+    edges: [],
+    cfg: { type: "square" as const, width: 2, height: 2 },
+  };
+
+  it("a null target renders neither edges nor a region", () => {
+    const overlay = new DebugRefHighlightOverlay(new Container() as never);
+    overlay.render({
+      ...baseData,
+      ref: { kind: "issue", issueKind: "excessive_scc_count", target: null, reasons: [] },
+    });
+
+    expect(edgeRenderSpy).toHaveBeenCalledWith([]);
+    expect(regionRenderSpy).toHaveBeenCalledWith(expect.objectContaining({ regionGroups: [] }));
+    expect(splitWallAndLineEdgesSpy).not.toHaveBeenCalled();
+  });
+
+  it("a cycle-only target with asWall draws the wall/line split via the shared splitWallAndLineEdges helper and renders no region", () => {
+    const overlay = new DebugRefHighlightOverlay(new Container() as never);
+    overlay.render({
+      ...baseData,
+      ref: {
+        kind: "issue", issueKind: "invalid_one_way",
+        target: { cycle: { edges: [[1n, 2n]], asWall: true }, region: null },
+        reasons: [],
+      },
+    });
+
+    expect(splitWallAndLineEdgesSpy).toHaveBeenCalledTimes(1);
+    const [, wallEdges] = splitWallAndLineEdgesSpy.mock.calls[0];
+    expect(wallEdges).toEqual([{ from: 1n, to: 2n, asWall: true }]);
+    expect(regionRenderSpy).toHaveBeenCalledWith(expect.objectContaining({ regionGroups: [] }));
+  });
+
+  it("a cycle-only target without asWall passes every edge straight through as a line, none as a wall", () => {
+    const overlay = new DebugRefHighlightOverlay(new Container() as never);
+    overlay.render({
+      ...baseData,
+      ref: {
+        kind: "issue", issueKind: "invalid_loop",
+        target: { cycle: { edges: [[1n, 2n]], asWall: false }, region: null },
+        reasons: [],
+      },
+    });
+
+    const [, wallEdges] = splitWallAndLineEdgesSpy.mock.calls[0];
+    expect(wallEdges).toEqual([{ from: 1n, to: 2n, asWall: false }]);
+    // The mocked `buildNodePositions` only resolves node 1's position (see the module mock above),
+    // so this edge's other endpoint (node 2) has no resolvable position and is dropped -- this
+    // asserts `splitWallAndLineEdges`'s line-edges were fed into `edgeHighlightsFor` at all, not
+    // the position-lookup behavior itself (already covered by the cross-floor describe block).
+    expect(edgeRenderSpy).toHaveBeenCalledWith([]);
+  });
+
+  it("a region-only target splits groups into inset (isSplit: false) and outset (isSplit: true) batches and renders no edges", () => {
+    const overlay = new DebugRefHighlightOverlay(new Container() as never);
+    overlay.render({
+      ...baseData,
+      ref: {
+        kind: "issue", issueKind: "invalid_cross_element_group",
+        target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [1n, 2n], isSplit: true }] } },
+        reasons: [],
+      },
+    });
+
+    expect(edgeRenderSpy).toHaveBeenCalledWith([]);
+    expect(regionRenderSpy).toHaveBeenCalledWith(expect.objectContaining({
+      groups: [
+        { regionGroups: [[1]], color: canvas.debug.issueHighlight, insetMode: "inset" },
+        { regionGroups: [[1, 2]], color: canvas.debug.issueHighlight, insetMode: "outset" },
+      ],
+    }));
+  });
+
+  it("a mixed cycle+region target (e.g. a one-way member paired with a split member) renders both independently, not one or the other", () => {
+    const overlay = new DebugRefHighlightOverlay(new Container() as never);
+    overlay.render({
+      ...baseData,
+      ref: {
+        kind: "issue", issueKind: "invalid_cross_element_group",
+        target: {
+          cycle: { edges: [[1n, 2n]], asWall: true },
+          region: { groups: [{ nodes: [1n, 2n], isSplit: true }] },
+        },
+        reasons: [],
+      },
+    });
+
+    expect(splitWallAndLineEdgesSpy).toHaveBeenCalledTimes(1);
+    expect(regionRenderSpy).toHaveBeenCalledWith(expect.objectContaining({
+      groups: [
+        { regionGroups: [], color: canvas.debug.issueHighlight, insetMode: "inset" },
+        { regionGroups: [[1, 2]], color: canvas.debug.issueHighlight, insetMode: "outset" },
+      ],
+    }));
   });
 });

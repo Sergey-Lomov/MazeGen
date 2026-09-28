@@ -66,6 +66,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
   const setPostEditChangesEntityFilter = useMazeStore((s) => s.setPostEditChangesEntityFilter);
   const applySplitBlueprint = useMazeStore((s) => s.applySplitBlueprint);
+  const setPostEditFocusedPointCovered = useMazeStore((s) => s.setPostEditFocusedPointCovered);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -378,6 +379,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       }}
       blueprints={blueprints}
       onApplyBlueprint={(blueprint) => applySplitBlueprint(point, blueprint)}
+      onTopChange={(isTop) => setPostEditFocusedPointCovered(!isTop)}
     />
   );
 }

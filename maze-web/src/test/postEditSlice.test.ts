@@ -76,6 +76,7 @@ beforeEach(() => {
     postEditElevatorPending: null,
     postEditSplitTargetPrompt: null,
     error: null,
+    postEditFocusedPoint: null,
   });
   // The shared default scenario: generation produced a single directed 0->1 `basic` edge (so a
   // `reset`/`resetPostEdit` restores it as `one_way_forward`), which the user has since upgraded
@@ -2100,6 +2101,281 @@ describe("mazeStore split-node actions", () => {
     expect(s.postEditDraftEdges?.[edgeKey(n(0), sibling)]).toBeDefined();
   });
 
+  it("removing a generation-baked split's last slot redirects its bridge onto a still-split neighbor instead of reverting to the generation-time wall (GitHub issue #625)", () => {
+    // P0 = (0,0): a GENERATION-BAKED split (original node0 + baked slot0 = node1), no generation
+    // edges at all (both faces started as wall). P1 = (1,0): a plain generated node (node2).
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 1 }, { id: 2, x: 1, y: 0, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        // The post-edit bridge across the former wall was wired onto P0's SLOT (not its original
+        // node) ...
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        // ... then P1 was split in post-edit, and its own new slot took over that same bridge from
+        // the neighbor's side (its face now names P0's slot, not P0's original node).
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+      ],
+    }, { postEditTool: "passage" });
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    useMazeStore.getState().applyPostEditTool(edgeKey(p1Slot0, p0Slot0), p1Slot0, p0Slot0);
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeDefined();
+
+    // Removing P0's only (generation-baked) slot un-splits P0 entirely. P1 is still a split point —
+    // its slot's own face must survive, redirected onto P0's surviving original node, not silently
+    // reverted to the generation-time wall between P0 and P1.
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), p1Slot0)]).toEqual({ from: n(0), to: p1Slot0, kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(0))]).toEqual({ from: p1Slot0, to: n(0), kind: "basic" });
+    // The stale references to P0's removed slot must be gone.
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, p1Slot0)]).toBeUndefined();
+  });
+
+  it("removing a generation-baked split's last slot redirects its bridge onto a still-split neighbor whose ORIGINAL node held the connection (GitHub issue #625)", () => {
+    // Same as the previous test, but the bridge is held on P1's ORIGINAL node (n(2)), not on a
+    // slot of P1 -- P1 becomes split AFTER the bridge already exists, via a slot that gets some
+    // OTHER face, while its original node keeps the P0-facing bridge untouched.
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 1 }, { id: 2, x: 1, y: 0, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        // Bridge across the former wall, held on P0's slot <-> P1's ORIGINAL node.
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        // P1 later gets split too (its own bridge elsewhere), but its original node's own face
+        // toward P0 is untouched -- still the bridge above.
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+      ],
+    });
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeDefined();
+
+    // Removing P0's only (generation-baked) slot un-splits P0 entirely. P1 is still a split point —
+    // its ORIGINAL node's own bridge face must survive, redirected onto P0's surviving original
+    // node, not silently reverted to the generation-time wall between P0 and P1.
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(2))]).toEqual({ from: n(0), to: n(2), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), n(0))]).toEqual({ from: n(2), to: n(0), kind: "basic" });
+    // The stale reference to P0's removed slot must be gone.
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, n(2))]).toBeUndefined();
+    void p1Slot0;
+  });
+
+  it("removing a POST-EDIT-CREATED split's last slot redirects a still-split neighbor's own face onto the original node (GitHub issue #625)", () => {
+    // P0 = (0,0) was a plain node, split entirely in POST-EDIT (addSplitNode, no baseline slot at
+    // all) — removal goes through the CASCADE path, not the explicit `removeSplitPoint` path the
+    // two tests above cover. P1 = (1,0) is itself split in post-edit too, and its own slot's face
+    // (recorded via its OWN `updateSplitNodeFaces` command) names P0's original node directly.
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 1, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+        // Bridge across the former wall, held on P0's slot <-> P0's original node's neighbor P1.
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+        // P1's own slot is the one actually wired to P0's slot (its OWN face command, own lifeline).
+        { kind: "updateSplitNodeFaces", point: [1, 0], slotId: 0, pointId: "s2", faces: [{ neighbor: p0Slot0, toNeighbor: es(p1Slot0, p0Slot0, "basic"), fromNeighbor: es(p0Slot0, p1Slot0, "basic") }] },
+      ],
+    });
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeDefined();
+
+    // Removing P0's only (post-edit-created) slot cascades its own creation/face commands out of
+    // the log entirely. P1 is still split — its slot's face must be redirected onto P0's ORIGINAL
+    // node (its one permanent node), not left naming the now-nonexistent p0Slot0.
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), p1Slot0)]).toEqual({ from: n(0), to: p1Slot0, kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(0))]).toEqual({ from: p1Slot0, to: n(0), kind: "basic" });
+    // The stale reference to P0's removed slot must be gone.
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, p1Slot0)]).toBeUndefined();
+  });
+
+  it("removing a POST-EDIT-CREATED split's last slot redirects a still-split neighbor's ORIGINAL-node face onto the original node (GitHub issue #625)", () => {
+    // Same as the previous test, but the bridge is held on P1's ORIGINAL node (n(2)), not on a
+    // slot of P1 -- mirrors the generation-baked "ORIGINAL node held the connection" test above,
+    // but for the CASCADE path (P0 split entirely in post-edit).
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 1, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+        // Bridge across the former wall, held on P0's slot <-> P1's ORIGINAL node.
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        // P1 later gets split too (its own bridge elsewhere), but its original node's own face
+        // toward P0 is untouched -- still the bridge above.
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+      ],
+    });
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeDefined();
+
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(2))]).toEqual({ from: n(0), to: n(2), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), n(0))]).toEqual({ from: n(2), to: n(0), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, n(2))]).toBeUndefined();
+  });
+
+  it("removing a POST-EDIT-CREATED split's last slot redirects a still-split neighbor's own face onto the original node even when the neighbor's shape was set via rotateSplitPoint (GitHub issue #625)", () => {
+    // P1's whole shape (both its original node and its slot) is carried by ONE `rotateSplitPoint`
+    // command, whose own lifeline is `point:1,0` -- covering the WHOLE point in one command, unlike
+    // `updateSplitNodeFaces`'s per-slot lifeline. One of P1 slot0's faces names P0's (post-edit-
+    // created) slot. Removing P0's slot must redirect that one face onto P0's original node without
+    // cascading P1's entire `rotateSplitPoint` lifeline away (which would erase P1's whole shape).
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 1, y: 0, i: 0 }, { id: 3, x: 2, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: p1Slot0, toNeighbor: es(p0Slot0, p1Slot0, "basic"), fromNeighbor: es(p1Slot0, p0Slot0, "basic") }] },
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+        {
+          kind: "rotateSplitPoint", point: [1, 0],
+          nodes: [
+            { faces: [{ neighbor: p0Slot0, toNeighbor: es(n(2), p0Slot0, "basic"), fromNeighbor: es(p0Slot0, n(2), "basic") }] },
+            { slotId: 0, faces: [
+              { neighbor: p0Slot0, toNeighbor: es(p1Slot0, p0Slot0, "basic"), fromNeighbor: es(p0Slot0, p1Slot0, "basic") },
+              { neighbor: n(3), toNeighbor: es(p1Slot0, n(3), "basic"), fromNeighbor: es(n(3), p1Slot0, "basic") },
+            ] },
+          ],
+        },
+      ],
+    });
+    expect(useMazeStore.getState().postEditDraftSplitPoints["1,0"]).toEqual([0]);
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeDefined();
+
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), p1Slot0)]).toEqual({ from: n(0), to: p1Slot0, kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(0))]).toEqual({ from: p1Slot0, to: n(0), kind: "basic" });
+    // P1 slot0's OTHER face (toward n(3), unrelated to P0) must survive untouched.
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(3))]).toEqual({ from: p1Slot0, to: n(3), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, p1Slot0)]).toBeUndefined();
+  });
+
+  it("removing a POST-EDIT-CREATED split's last slot redirects the neighbor's ORIGINAL-node face even when the neighbor's OWN SLOT shows a wall on the same face (GitHub issue #625)", () => {
+    // P1's original node holds a LIVE basic connection to P0's vanishing slot, while P1's own slot0
+    // independently shows a WALL toward that exact same vanishing slot (both nodes of P1 face P0's
+    // point, but only one of them is actually connected). `buildNeighborRedirectCommands` used to
+    // collapse both of P1's nodes into a single "one entry per neighbor POINT" map entry, so
+    // whichever node was iterated last silently overwrote the other -- if that was the wall-holding
+    // slot, the redirect got built for it (a no-op) while the real live connection on P1's original
+    // node was dropped entirely, then swept away by the cascade with no redirect to save it.
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 1, y: 0, i: 0 }, { id: 3, x: 2, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+        // P0's slot connects to P1's ORIGINAL node (n(2)) -- the one live connection.
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+        {
+          kind: "rotateSplitPoint", point: [1, 0],
+          nodes: [
+            // Original node: LIVE basic connection to P0's vanishing slot.
+            { faces: [{ neighbor: p0Slot0, toNeighbor: es(n(2), p0Slot0, "basic"), fromNeighbor: es(p0Slot0, n(2), "basic") }] },
+            // Slot0: WALL on the very same face, plus an unrelated live connection to n(3).
+            { slotId: 0, faces: [
+              { neighbor: p0Slot0, toNeighbor: es(p1Slot0, p0Slot0, "wall"), fromNeighbor: es(p0Slot0, p1Slot0, "wall") },
+              { neighbor: n(3), toNeighbor: es(p1Slot0, n(3), "basic"), fromNeighbor: es(n(3), p1Slot0, "basic") },
+            ] },
+          ],
+        },
+      ],
+    });
+    expect(useMazeStore.getState().postEditDraftSplitPoints["1,0"]).toEqual([0]);
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeDefined();
+
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    // The live connection, redirected from P0's slot onto P0's surviving original node.
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(2))]).toEqual({ from: n(0), to: n(2), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), n(0))]).toEqual({ from: n(2), to: n(0), kind: "basic" });
+    // P1 slot0's unrelated face (toward n(3)) survives untouched.
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(3))]).toEqual({ from: p1Slot0, to: n(3), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, n(2))]).toBeUndefined();
+  });
+
+  it("removing a POST-EDIT-CREATED split's last slot redirects a still-split neighbor's face even when the neighbor's node carries an EXPLICIT level:0 (GitHub issue #625)", () => {
+    // `NodeDto.level` is a plain `number` from WASM, always `0` (never `undefined`) for a
+    // single-floor maze -- unlike this test file's usual node fixtures, which omit `level` entirely
+    // (leaving it `undefined` in JS). `endpointFieldPoint` used to pass a node's raw `level` straight
+    // through, so a node with `level: 0` built a "x,y@0" split-point key that never matched the
+    // "x,y" key `splitPoints`/`splitPointIds` actually use for level 0 -- silently failing to
+    // recognize the neighbor as split at all, building NO redirect, and letting the cascade below
+    // sweep the neighbor's whole shape away with nothing to save it.
+    const p0Slot0 = splitEndpoint([0, 0], 0);
+    const p1Slot0 = splitEndpoint([1, 0], 0);
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 2, x: 1, y: 0, i: 0, level: 0 }, { id: 3, x: 2, y: 0, i: 0, level: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
+        { kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0, pointId: "s1", faces: [{ neighbor: n(2), toNeighbor: es(p0Slot0, n(2), "basic"), fromNeighbor: es(n(2), p0Slot0, "basic") }] },
+        { kind: "addSplitNode", point: [1, 0], slotId: 0, pointId: "s2" },
+        {
+          kind: "rotateSplitPoint", point: [1, 0],
+          nodes: [
+            { faces: [{ neighbor: p0Slot0, toNeighbor: es(n(2), p0Slot0, "basic"), fromNeighbor: es(p0Slot0, n(2), "basic") }] },
+            { slotId: 0, faces: [{ neighbor: n(3), toNeighbor: es(p1Slot0, n(3), "basic"), fromNeighbor: es(n(3), p1Slot0, "basic") }] },
+          ],
+        },
+      ],
+    });
+    expect(useMazeStore.getState().postEditDraftSplitPoints["1,0"]).toEqual([0]);
+    expect(useMazeStore.getState().postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeDefined();
+
+    useMazeStore.getState().removeSplitNode([0, 0], 0);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftSplitPoints["1,0"]).toEqual([0]); // P1's split shape survives untouched
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(2))]).toEqual({ from: n(0), to: n(2), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), n(0))]).toEqual({ from: n(2), to: n(0), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(p1Slot0, n(3))]).toEqual({ from: p1Slot0, to: n(3), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(2), p0Slot0)]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(p0Slot0, n(2))]).toBeUndefined();
+  });
+
   it("cycleActiveSplitNode cycles original -> slot0 -> slot1 -> original", () => {
     seedPostEdit({
       commands: [
@@ -2146,6 +2422,17 @@ describe("mazeStore split-node actions", () => {
     expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
     useMazeStore.getState().setPostEditFocusedPoint(null);
     expect(useMazeStore.getState().postEditFocusedPoint).toBeNull();
+  });
+
+  // GitHub issue #629: `postEditFocusedPoint` ("Manage split nodes") and `postEditChangesOpen`
+  // ("Changes") are independent toggles — either setter used to force-clear the other so only one
+  // could ever be true. Now both may be open at once; which panel is actually visible is decided
+  // by `SidePanel`'s own mount-order stack (`SidePanel.test.tsx`), not by this store coupling.
+  it("setPostEditFocusedPoint and setPostEditChangesOpen no longer clobber each other", () => {
+    useMazeStore.getState().setPostEditFocusedPoint([1, 1]);
+    useMazeStore.getState().setPostEditChangesOpen(true);
+    expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
+    expect(useMazeStore.getState().postEditChangesOpen).toBe(true);
   });
 
   // Reproduces the reported flow (GitHub issue #548 rotate/compaction follow-up): create a split

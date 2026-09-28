@@ -538,23 +538,47 @@ function isSlotLifeline(key: string): { point: [number, number]; level: number |
   return { point: [Number(m[1]), Number(m[2])], level: m[3] === undefined ? undefined : Number(m[3]), slotId: Number(m[4]) };
 }
 
-/** Expands an already-collected `toRemove` lifeline-key set with every OTHER command that
- * references one of the removed set's own slot lifelines (plan section 9 step 4's "cascade in one
- * pass" rule) — shared by `collectAffectedLifelines` (point-reset) and `collectLifelinesFor`
- * (single-command delete/reset, GitHub issue #547), both of which only differ in how `toRemove` is
- * first seeded. Mutates `toRemove` in place. */
-function expandSlotReferenceCascade(commands: PostEditCommand[], toRemove: Set<string>): void {
+/** True if `face`'s own declared edge (`toNeighbor`, or `fromNeighbor` when `toNeighbor` is a wall —
+ * a wall carries no id and can't be looked up as a distinct edge on its own) still matches what's
+ * actually stored in `liveEdges` at that same key. False once a LATER command has overwritten that
+ * exact edge slot (a redirect superseding a neighbor's own stale face, GitHub issue #625) — the
+ * face's mention of a removed slot no longer describes anything replay still honors. */
+function faceStillLive(face: { toNeighbor: PostEditEdge; fromNeighbor: PostEditEdge }, liveEdges: Record<string, PostEditEdge>): boolean {
+  const edge = face.toNeighbor.kind === "wall" ? face.fromNeighbor : face.toNeighbor;
+  if (edge.kind === "wall") return false; // both sides walls: no edge to have ever gone stale
+  const live = liveEdges[edgeKey(edge.from, edge.to)];
+  return live !== undefined && live.kind === edge.kind
+    && endpointsEqual(live.from, edge.from) && endpointsEqual(live.to, edge.to);
+}
+
+function expandSlotReferenceCascade(
+  commands: PostEditCommand[],
+  toRemove: Set<string>,
+  liveEdges?: Record<string, PostEditEdge>,
+): void {
   const removedSlotKeys = new Set([...toRemove].map(isSlotLifeline).filter((s): s is NonNullable<typeof s> => s !== undefined)
     .map((s) => endpointKey(splitEndpoint(s.point, s.slotId, s.level))));
   if (removedSlotKeys.size === 0) return;
-  for (const command of commands) {
+  commands.forEach((command) => {
     const keys = lifelineKeysOf(command);
-    if (keys.some((k) => toRemove.has(k))) continue;
-    const refs = endpointsReferencedBy(command);
-    if (refs.some((ep) => ep.kind === "split" && removedSlotKeys.has(endpointKey(ep)))) {
+    if (keys.some((k) => toRemove.has(k))) return;
+    // `updateSplitNodeFaces`/`rotateSplitPoint` name a removed slot through a specific FACE, each with
+    // its own declared edge — check that face's own edge for staleness (GitHub issue #625) rather than
+    // just the bare endpoint mention, since a later command (a neighbor's redirect) can supersede one
+    // face's edge while leaving the rest of the same command's other faces, and the command's own
+    // textual payload, untouched. Every other command kind references a split endpoint directly (no
+    // per-reference edge to check), so it always counts, exactly as before `liveEdges` existed.
+    const hasLiveReference = liveEdges === undefined
+      ? endpointsReferencedBy(command).some((ep) => ep.kind === "split" && removedSlotKeys.has(endpointKey(ep)))
+      : command.kind === "updateSplitNodeFaces"
+        ? command.faces.some((f) => f.neighbor.kind === "split" && removedSlotKeys.has(endpointKey(f.neighbor)) && faceStillLive(f, liveEdges))
+        : command.kind === "rotateSplitPoint"
+          ? command.nodes.some((n) => n.faces.some((f) => f.neighbor.kind === "split" && removedSlotKeys.has(endpointKey(f.neighbor)) && faceStillLive(f, liveEdges)))
+          : endpointsReferencedBy(command).some((ep) => ep.kind === "split" && removedSlotKeys.has(endpointKey(ep)));
+    if (hasLiveReference) {
       for (const key of keys) toRemove.add(key);
     }
-  }
+  });
 }
 
 /** One iteration of affected-lifeline collection (plan section 9 step 1-4) — the caller
@@ -709,11 +733,11 @@ export function renormalizeCommand(before: PostEditDerivedState, command: PostEd
  * same fixed-point/cascade shape as `filterCommandsForPoint`'s own loop, but seeded directly from a
  * set of lifeline keys instead of "whatever touches this point". Shared by `affectedIndicesForDelete`
  * (create-command cascade) and, through it, `deleteCommandAt`. */
-function cascadeLifelineKeys(commands: PostEditCommand[], seedKeys: Set<string>): Set<string> {
+function cascadeLifelineKeys(commands: PostEditCommand[], seedKeys: Set<string>, liveEdges?: Record<string, PostEditEdge>): Set<string> {
   let toRemove = new Set(seedKeys);
   for (;;) {
     const next = new Set(toRemove);
-    expandSlotReferenceCascade(commands, next);
+    expandSlotReferenceCascade(commands, next, liveEdges);
     if (next.size === toRemove.size) return toRemove;
     toRemove = next;
   }
@@ -734,7 +758,12 @@ export function cascadeRemoveLifelines(
   seedKeys: Set<string>,
 ): PostEditCommand[] {
   if (seedKeys.size === 0) return commands;
-  const toRemove = cascadeLifelineKeys(commands, seedKeys);
+  // Live edges reflect every command already applied, INCLUDING any redirect the caller appended
+  // ahead of the seeds it's asking to remove (GitHub issue #625) — so a stale textual reference a
+  // redirect has already superseded doesn't drag its whole (possibly unrelated) lifeline into the
+  // cascade too (see `expandSlotReferenceCascade`'s own doc comment).
+  const liveEdges = replayPostEditCommands(baseline, commands).edges;
+  const toRemove = cascadeLifelineKeys(commands, seedKeys, liveEdges);
   const withoutTarget = commands.filter((cmd) => !lifelineKeysOf(cmd).some((k) => toRemove.has(k)));
   if (withoutTarget.length === commands.length) return commands;
 

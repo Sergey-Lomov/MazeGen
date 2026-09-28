@@ -15,7 +15,7 @@ import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJ
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildHoveredEntityHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
-import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
+import { postEditTeleportsToDto, floorScopedTeleportEdges, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
@@ -27,6 +27,7 @@ import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { emptyPostEditHoverState, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -212,6 +213,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
       state.postEditFocusedPoint !== prev.postEditFocusedPoint ||
+      state.postEditFocusedPointCovered !== prev.postEditFocusedPointCovered ||
       state.activeFloorId !== prev.activeFloorId ||
       state.postEditTool !== prev.postEditTool
     ) {
@@ -408,7 +410,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       const span = boundary.style === "one_way"
         ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
         : WALL_HIGHLIGHT_SPAN;
-      drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span);
+      drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span, getCellHighlightInset());
     }
     this.entityHighlight.render({
       nodes: state.nodes, regionGroups, color: state.postEditHoveredEntity?.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,
@@ -422,7 +424,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
+    const { nodes, postEditDraftEdges, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
     const { postEditDraftTeleports: overrideTeleportsUnscoped, postEditDraftVerticalPassages: overrideVerticalPassages, postEditDraftElevators: overrideElevators } = this.dragOverrideFields(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
@@ -438,9 +440,21 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     const start = postEditDraftMeta?.start != null ? resolveEndpoint(postEditDraftMeta.start, resolveSplit) ?? null : null;
     const finish = postEditDraftMeta?.finish != null ? resolveEndpoint(postEditDraftMeta.finish, resolveSplit) ?? null : null;
+    // Teleports resolve against the *unscoped* (all-floor) split map, then keep only the entries
+    // whose `from` lands on this floor — mirroring `draftVerticalEdges`/`floorScopedVerticalEdges`
+    // below. Resolving `postEditDraftTeleports` (floor-scoped, `resolveSplit`) directly would drop
+    // a cross-floor teleport's departure-side edge entirely whenever its `to` end is itself an
+    // ADDITIONAL split slot on the other floor (so it never resolves against this floor's bare
+    // `pointNodeMap`), even though the departure end resolves fine — `postEditTeleportsToDto` drops
+    // a whole entry (both directions of a two-way one) once either endpoint fails to resolve. That
+    // silently left only the arrival-only cross-floor pass below to draw *both* ends of the pair as
+    // an "exit" badge with an arrow, instead of one real departure marker plus one arrival badge.
+    const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
+    const floorNodeIds = new Set(nodes.map((n) => n.id));
+    const unscopedTeleportEdges = postEditTeleportsToDto(overrideTeleportsUnscoped, unscopedResolveSplit);
     const activeEdges = [
       ...postEditEdgesToDto(postEditDraftEdges, resolveSplit),
-      ...postEditTeleportsToDto(postEditDraftTeleports, resolveSplit),
+      ...floorScopedTeleportEdges(unscopedTeleportEdges, floorNodeIds),
     ];
 
     // A split node carrying a start/finish marker or a teleport endpoint always keeps its hub
@@ -493,10 +507,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // first one, unlike the vertical-passage confirmed-mirror bug this resembles — there's no
     // confirmed-graph fallback for teleports, this was purely two different reads of the draft
     // disagreeing on which one was current).
-    const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
     const unscopedActiveEdges = [
       ...postEditEdgesToDto(state.postEditDraftEdges ?? {}, unscopedResolveSplit),
-      ...postEditTeleportsToDto(overrideTeleportsUnscoped, unscopedResolveSplit),
+      ...unscopedTeleportEdges,
     ];
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
@@ -586,7 +599,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
       alpha: 0.35,
     }, cfg);
     this.splitPanelTarget.render({
-      cells: state.postEditFocusedPoint ? [state.postEditFocusedPoint] : [],
+      // Hidden while another `SidePanel` covers the "Manage split nodes" dialog (GitHub issue #629
+      // follow-up) — the outline would otherwise keep highlighting a cell for a dialog the user can
+      // no longer see or act on.
+      cells: state.postEditFocusedPoint && !state.postEditFocusedPointCovered ? [state.postEditFocusedPoint] : [],
       color: canvas.fieldEditor.panelTarget,
       alpha: 0,
       inset: 0,

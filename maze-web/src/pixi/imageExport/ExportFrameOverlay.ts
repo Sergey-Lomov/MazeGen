@@ -130,6 +130,10 @@ export class ExportFrameOverlay implements ViewportListener {
   private isExportPanelOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
     return state.openCard === "image_export"
       && state.openExportFormatSettings === "png"
+      // Hidden while another `SidePanel` covers the PNG settings panel (GitHub issue #629
+      // follow-up) — the frame/dimming would otherwise keep showing for a panel the user can no
+      // longer see or act on.
+      && !state.exportFormatSettingsCovered
       && state.activeRenderMode !== null
       && state.nodes.length > 0;
   }

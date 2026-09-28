@@ -536,21 +536,21 @@ describe("resolveBubbleFloor", () => {
 
   it("issue target with a region payload resolves that region's floor", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [3n, 4n] }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: null, region: { groups: [{ nodes: [3n, 4n], isSplit: false }] } }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBe(1);
   });
 
   it("issue target with a cycle payload resolves the shared floor of every endpoint", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 2n], [2n, 1n]], asWall: false }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: { edges: [[1n, 2n], [2n, 1n]], asWall: false }, region: null }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
   });
 
   it("issue target with a cycle payload spanning floors stays put", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n]], asWall: false }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: { edges: [[1n, 3n]], asWall: false }, region: null }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
   });
@@ -562,21 +562,21 @@ describe("resolveIssueBubbleFloors (GitHub issue #467)", () => {
 
   it("returns every distinct floor a region payload touches, deduplicated and sorted ascending", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [5n, 1n, 3n, 1n] }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: null, region: { groups: [{ nodes: [5n, 1n], isSplit: false }, { nodes: [3n, 1n], isSplit: false }] } }, reasons: [],
     };
     expect(resolveIssueBubbleFloors(target, coords)).toEqual([0, 1, 2]);
   });
 
   it("returns every distinct floor a cycle payload's endpoints touch", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n], [3n, 5n]], asWall: false }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: { edges: [[1n, 3n], [3n, 5n]], asWall: false }, region: null }, reasons: [],
     };
     expect(resolveIssueBubbleFloors(target, coords)).toEqual([0, 1, 2]);
   });
 
   it("skips ids that don't resolve", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [1n, 99n] }, reasons: [],
+      kind: "issue", issueKind: "x", target: { cycle: null, region: { groups: [{ nodes: [1n, 99n], isSplit: false }] } }, reasons: [],
     };
     expect(resolveIssueBubbleFloors(target, coords)).toEqual([0]);
   });
