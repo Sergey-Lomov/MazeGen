@@ -108,6 +108,17 @@ cell centers. It consists of a translucent strip and an opaque rounded border.
 
 The transverse span is derived from the entity geometry:
 
+- The wall-vs-region/cycle merge logic for every `IssuePayload`/`IssuePayloadDto` kind (loop,
+  teleport, one-way, split tile/route, region, vertical passage, elevator, elevator stop, missing
+  elevator stops, cross-element group) lives in one place, `resolveIssueHighlight` in
+  `maze-web/src/components/issueHighlight.ts` (GitHub issue #623) -- generic over `Id`
+  (`number`/`bigint`) so Analytics' `IssuesBlock.tsx` (number/snake_case DTO) and the debug tree's
+  `algorithmRegistry.ts` (bigint/EventLog `IssuePayload`, via `IssueHighlightTarget`) each normalize
+  their own wire shape into a shared input type and call the same resolver, instead of maintaining
+  two independently-drifting `switch` statements (the root cause of the #619 highlighting bugs).
+  Each side still owns its own preset-lock (`showFullyPresetLockedIssues`) filtering before
+  normalizing, since that's a per-check, per-payload-kind granularity concern unrelated to
+  merge/inset/wall-vs-region shape.
 - Analytics/Post-edit one-way issues use `oneWayIndicatorSpan(...)`, based on the active
   one-way renderer settings;
 - Post-edit walls and passages use `WALL_HIGHLIGHT_SPAN`, which is the wall thickness
@@ -382,6 +393,7 @@ boundary highlighting.
 | Full/single cell fill | `maze-web/src/pixi/renderers/CellFillRenderer.ts` |
 | Merged regions, holes, inset/outset, borders | `maze-web/src/pixi/renderers/RegionHighlightRenderer.ts` |
 | Shared boundary geometry | `maze-web/src/pixi/renderers/wallUtils.ts` |
+| Shared issue-payload highlight resolution | `maze-web/src/components/issueHighlight.ts` |
 | Plain graph line | `maze-web/src/pixi/renderers/EdgeHighlightRenderer.ts` |
 | Line plus endpoint circles | `maze-web/src/pixi/renderers/NodeEdgeHighlightRenderer.ts` |
 | Debug values | `maze-web/src/pixi/DebugValueHighlightOverlay.ts` |

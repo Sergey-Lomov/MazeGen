@@ -127,16 +127,16 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     ]);
   });
 
-  it("CheckRan with an InvalidTeleport payload carries a cycle-shaped highlight target, flattened across every contributing check", () => {
-    // A single flagged teleport (a group of size one) reuses the "cycle" target shape -- same
-    // rendering path as a real cycle, see `issueHighlightTarget`'s doc comment.
+  it("CheckRan with an InvalidTeleport payload carries a region-shaped highlight target over the endpoint cells (GitHub issue #623), not a cycle-shaped one", () => {
+    // A teleport warning describes the two endpoint cells, not a traversable on-field segment --
+    // no connector line, matching Analytics' IssuesBlock and `Specs/highlighting.md`'s invariant #6.
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
       issue: { issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_teleport", target: { cycle: { edges: [[1n, 2n]], asWall: false }, region: null }, reasons: ["Teleport validation"] },
+      { kind: "issue", issueKind: "invalid_teleport", target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [2n], isSplit: false }] } }, reasons: ["Teleport validation"] },
     ]);
   });
 
@@ -224,7 +224,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_vertical_passage", target: { cycle: null, region: { groups: [{ nodes: [1n, 2n], isSplit: false }] } }, reasons: ["Vertical passage validation"] },
+      { kind: "issue", issueKind: "invalid_vertical_passage", target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [2n], isSplit: false }] } }, reasons: ["Vertical passage validation"] },
     ]);
   });
 
@@ -239,14 +239,14 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     ]);
   });
 
-  it("CheckRan with an InvalidElevator payload carries a region-shaped highlight target over the elevator's fan-edge endpoint cells (GitHub issue #466), not a cycle-shaped one", () => {
+  it("CheckRan with an InvalidElevator payload carries a region-shaped highlight target over the elevator's fan-edge endpoint cells (GitHub issue #466), not a cycle-shaped one, deduplicated (GitHub issue #623)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
       issue: { issueKind: "invalid_elevator", payload: { kind: "InvalidElevator", groups: new Map([["check1", [{ edges: [[1n, 2n], [1n, 3n]], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_elevator", target: { cycle: null, region: { groups: [{ nodes: [1n, 2n, 1n, 3n], isSplit: false }] } }, reasons: ["Elevator validation"] },
+      { kind: "issue", issueKind: "invalid_elevator", target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [2n], isSplit: false }, { nodes: [3n], isSplit: false }] } }, reasons: ["Elevator validation"] },
     ]);
   });
 
@@ -295,6 +295,79 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
       { kind: "text", text: 'Check "check1": issue found ' },
       { kind: "issue", issueKind: "invalid_cross_element_group", target: null, reasons: ["Elements too close"] },
     ]);
+  });
+
+  it("CheckRan with an InvalidSplitRoute payload carries a non-wall cycle highlight target over the route's own edges", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_split_route", payload: { kind: "InvalidSplitRoute", routes: new Map([["check1", [[[1n, 2n, false], [2n, 3n, false]]]]]) }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({
+      kind: "issue", issueKind: "invalid_split_route",
+      target: { cycle: { edges: [[1n, 2n], [2n, 3n]], asWall: false }, region: null },
+    });
+  });
+
+  it("an InvalidSplitRoute payload with no actual routes (empty map) resolves to a null highlight target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_split_route", payload: { kind: "InvalidSplitRoute", routes: new Map() }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "invalid_split_route", target: null });
+  });
+
+  it("CheckRan with an ExcessiveSccCount payload resolves to a null highlight target (no structural highlight data)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "excessive_scc_count", payload: { kind: "ExcessiveSccCount" }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "excessive_scc_count", target: null });
+  });
+
+  it("CheckRan with an AreaDeficit payload resolves to a null highlight target (no structural highlight data)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "area_deficit", payload: { kind: "AreaDeficit", areas: new Map([["check1", [0n]]]) }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "area_deficit", target: null });
+  });
+
+  it("CheckRan with an InvalidElevatorStop payload carries one region highlight group per flagged stop, never merged", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_elevator_stop", payload: { kind: "InvalidElevatorStop", nodes: new Map([["check1", [{ region: [1n, 2n], presetLocked: false }, { region: [3n], presetLocked: false }]]]) }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({
+      kind: "issue", issueKind: "invalid_elevator_stop",
+      target: { cycle: null, region: { groups: [{ nodes: [1n, 2n], isSplit: false }, { nodes: [3n], isSplit: false }] } },
+    });
+  });
+
+  it("an InvalidElevatorStop payload with no actual nodes (empty map) resolves to a null highlight target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_elevator_stop", payload: { kind: "InvalidElevatorStop", nodes: new Map() }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "invalid_elevator_stop", target: null });
+  });
+
+  it("CheckRan with a MissingElevatorStopCount payload carries a region-shaped highlight target over the elevator's own fan-edge endpoint cells, not its available candidate floor nodes (GitHub issue #402)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "missing_elevator_stop_count", payload: { kind: "MissingElevatorStopCount", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false, available: [9n, 10n] }]]]) }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({
+      kind: "issue", issueKind: "missing_elevator_stop_count",
+      target: { cycle: null, region: { groups: [{ nodes: [1n], isSplit: false }, { nodes: [2n], isSplit: false }] } },
+    });
+  });
+
+  it("a MissingElevatorStopCount payload with no actual groups (empty map) resolves to a null highlight target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "missing_elevator_stop_count", payload: { kind: "MissingElevatorStopCount", groups: new Map() }, details: new Map() },
+    });
+    expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "missing_elevator_stop_count", target: null });
   });
 
   it("StrategyFailed narrates the strategy's resolved display label", () => {
