@@ -45,7 +45,7 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onOpen
   return (
     <div style={{ ...styles.card, ...(expanded && canExpand ? styles.cardExpanded : {}) }}>
       <button
-        className={canExpand ? "hoverable" : undefined}
+        className={canExpand ? (expanded ? "hoverable-off" : "hoverable") : undefined}
         style={{ ...styles.header, ...(canExpand ? styles.headerClickable : styles.headerDisabled) }}
         onClick={canExpand ? onOpen : undefined}
         disabled={!canExpand}
