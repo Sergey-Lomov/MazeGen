@@ -154,6 +154,8 @@ brushes. Their configuration values are converted into a world-space primitive s
 through the same primitive rasterization. Lattice-aligned triangular shapes use complete discrete
 layers so the world-space triangle aspect ratio cannot distort their boundaries. A predefined
 shape must not maintain a separate cell-coordinate implementation for the same geometry.
+Once resolved to cells, a predefined shape uses the tessellation family of its cells for adjacency,
+wall, and shared-edge geometry; the shape variant only determines which cells belong to the field.
 
 | Config type | Cell count | Centering |
 |---|---|---|
