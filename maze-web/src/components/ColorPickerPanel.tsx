@@ -270,7 +270,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
       <div
         style={styles.body}
         tabIndex={-1}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); cancel(); } }}
+        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } }}
       >
         <div style={styles.content}>
           <div style={{ ...styles.preview, background: colorToHex(working) }} data-testid="color-picker-preview" />

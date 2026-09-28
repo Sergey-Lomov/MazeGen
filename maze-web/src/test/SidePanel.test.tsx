@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { StrictMode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SidePanel } from "../components/SidePanel";
+import { ConfirmModal } from "../components/ConfirmModal";
 
 // GitHub issue #629: independently-toggled features (e.g. `DebugPanel` and
 // `VertexBasedSettingsPanel`, or the post-edit "Changes" and "Manage split nodes" panels) may each
@@ -128,5 +129,75 @@ describe("SidePanel mount-order stack (GitHub issue #629)", () => {
     // own `width` keeps sizing the slot; it's merely not painted (`visibility: hidden`).
     expect(basePanel).not.toHaveStyle({ display: "none" });
     expect(basePanel).toHaveStyle({ visibility: "hidden" });
+  });
+});
+
+// GitHub issue #631: Escape closes the topmost SidePanel, but a Modal dialog stacked on top of it
+// must take precedence — Escape then closes only the dialog, leaving the panel open.
+describe("SidePanel Escape-to-close (GitHub issue #631)", () => {
+  it("closes the panel on Escape", () => {
+    const onClose = vi.fn();
+    render(<SidePanel title="Panel" onClose={onClose}>content</SidePanel>);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close on other keys", () => {
+    const onClose = vi.fn();
+    render(<SidePanel title="Panel" onClose={onClose}>content</SidePanel>);
+
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closes only the topmost panel when several are stacked, not the one underneath", () => {
+    const onCloseFirst = vi.fn();
+    const onCloseSecond = vi.fn();
+    render(
+      <>
+        <SidePanel title="First" onClose={onCloseFirst}>first content</SidePanel>
+        <SidePanel title="Second" onClose={onCloseSecond}>second content</SidePanel>
+      </>,
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onCloseSecond).toHaveBeenCalledTimes(1);
+    expect(onCloseFirst).not.toHaveBeenCalled();
+  });
+
+  it("defers to an open Modal — Escape closes the dialog, not the panel underneath", () => {
+    const onClosePanel = vi.fn();
+    const onCancelModal = vi.fn();
+    render(
+      <>
+        <SidePanel title="Panel" onClose={onClosePanel}>content</SidePanel>
+        <ConfirmModal message="Discard?" onConfirm={vi.fn()} onCancel={onCancelModal} />
+      </>,
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onCancelModal).toHaveBeenCalledTimes(1);
+    expect(onClosePanel).not.toHaveBeenCalled();
+  });
+
+  it("resumes closing on Escape once the Modal on top of it closes", () => {
+    const onClosePanel = vi.fn();
+    const onCancelModal = vi.fn();
+    const { rerender } = render(
+      <>
+        <SidePanel title="Panel" onClose={onClosePanel}>content</SidePanel>
+        <ConfirmModal message="Discard?" onConfirm={vi.fn()} onCancel={onCancelModal} />
+      </>,
+    );
+
+    rerender(<SidePanel title="Panel" onClose={onClosePanel}>content</SidePanel>);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClosePanel).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,6 +10,12 @@ type DialogSizeKey = keyof typeof dialogSize;
  *  Lets Esc close only the topmost modal when several are stacked. */
 const openModalStack: string[] = [];
 
+/** True while at least one `Modal` is currently mounted — lets other Escape-handling UI (e.g.
+ *  `SidePanel`, GitHub issue #631) defer to a dialog stacked on top of it instead of also closing. */
+export function hasOpenModal(): boolean {
+  return openModalStack.length > 0;
+}
+
 interface Props {
   title: string;
   size?: DialogSizeKey;

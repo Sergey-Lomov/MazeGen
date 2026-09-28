@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { ui, typography, spacing, inset } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
+import { hasOpenModal } from "./Modal";
 import type React from "react";
 
 const MIN_PANEL_WIDTH = 360;
@@ -166,6 +167,26 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
   onTopChangeRef.current = onTopChange;
   useEffect(() => {
     onTopChangeRef.current?.(isTop);
+  }, [isTop]);
+
+  // Escape closes this panel only when it's the topmost SidePanel and no Modal dialog is open on
+  // top of it (GitHub issue #631) — a dialog's own Escape handler (Modal.tsx) must take precedence.
+  // `defaultPrevented` also lets content nested inside this panel (e.g. `ColorPickerPanel`, itself
+  // an overlay `SidePanel`) claim Escape for its own narrower cancel behavior instead of double-
+  // firing this panel's `onClose` too — React's `stopPropagation` alone wouldn't reach this native
+  // `window` listener, since it isn't part of React's synthetic event tree.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isTop) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (e.defaultPrevented) return;
+      if (hasOpenModal()) return;
+      onCloseRef.current();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isTop]);
 
   useEffect(() => {

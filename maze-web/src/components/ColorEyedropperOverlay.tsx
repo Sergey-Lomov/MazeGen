@@ -85,11 +85,14 @@ export function ColorEyedropperOverlay({ onPick, onCancel }: Props) {
 
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("click", handleClick, true);
-    window.addEventListener("keydown", handleKeyDown);
+    // Capture phase so this fires (and sets `defaultPrevented`) before `SidePanel`'s own bubble-
+    // phase Escape listener (GitHub issue #631), regardless of which mounted first — sampling mode
+    // must cancel on its own without also closing the still-open `ColorPickerPanel` behind it.
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("click", handleClick, true);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [onPick, onCancel]);
 
