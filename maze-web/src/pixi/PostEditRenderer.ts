@@ -27,6 +27,7 @@ import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { emptyPostEditHoverState, shouldClearPostEditHover, type PostEditHoverState } from "./postEditHoverState";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -408,7 +409,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       const span = boundary.style === "one_way"
         ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
         : WALL_HIGHLIGHT_SPAN;
-      drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span);
+      drawCellBoundaryHighlight(this.boundaryHover, boundary.from.point, boundary.to.point, this.cfg, color, 0.25, WALL_THICKNESS, span, getCellHighlightInset());
     }
     this.entityHighlight.render({
       nodes: state.nodes, regionGroups, color: state.postEditHoveredEntity?.danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1.0, cfg: this.cfg, skipPerimeter: true,

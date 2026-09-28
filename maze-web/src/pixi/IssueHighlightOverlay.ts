@@ -5,6 +5,7 @@ import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
 import { drawDirectionArrow, splitWallAndLineEdges } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { TILE_SIZE } from "./constants";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
@@ -116,7 +117,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     };
 
     const wallG = new Graphics();
-    const lineEdges = splitWallAndLineEdges(wallG, edges, cellOf, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth);
+    const lineEdges = splitWallAndLineEdges(wallG, edges, cellOf, cfg, HIGHLIGHT_COLOR, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset());
     this.edgesContainer.addChild(wallG);
 
     if (lineEdges.length === 0) return;

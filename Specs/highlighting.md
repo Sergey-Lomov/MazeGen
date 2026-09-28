@@ -106,6 +106,14 @@ calls cannot merge adjacent split cells.
 This style renders the actual shared tessellation edge, not a cell and not a line between
 cell centers. It consists of a translucent strip and an opaque rounded border.
 
+The quad is also inset from the shared edge's two endpoints along the edge's own tangent (GitHub
+issue #627), using the same magnitude as the cell/region inward inset
+(`getCellHighlightInset()`); the perpendicular span is untouched. This keeps the highlight from
+reaching the corners where the boundary meets its neighbors, matching how inward-inset cell/region
+highlights already pull back from walls. `clampBoundaryInset` (`wallUtils.ts`) clamps this inset to
+`[0, edgeLength / 2 - 1]`, so it never goes negative (no outward variant of this style) and never
+crosses the edge's own midpoint on a short edge.
+
 The transverse span is derived from the entity geometry:
 
 - The wall-vs-region/cycle merge logic for every `IssuePayload`/`IssuePayloadDto` kind (loop,

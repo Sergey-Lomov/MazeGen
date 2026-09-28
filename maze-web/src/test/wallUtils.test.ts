@@ -22,7 +22,7 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, drawCellBoundaryHighlight, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, drawCellBoundaryHighlight, clampBoundaryInset, cellBoundaryKey, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -307,5 +307,40 @@ describe("drawCellBoundaryHighlight", () => {
     expect(drawCellBoundaryHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 0.4, 0)).toBe(true);
     expect(g.calls.find((call) => call.fn === "fill")!.args[0]).toEqual({ color: 0xff0000, alpha: 0.4 });
     expect(g.calls.find((call) => call.fn === "stroke")).toBeUndefined();
+  });
+
+  it("shrinks the quad along the edge's own tangent when inset is set (GitHub issue #627)", () => {
+    const plain = newG();
+    drawCellBoundaryHighlight(plain, [0, 0], [1, 0], cfg, 0xff0000, 1, 0);
+    const inset = newG();
+    drawCellBoundaryHighlight(inset, [0, 0], [1, 0], cfg, 0xff0000, 1, 0, undefined, 0.3);
+
+    const startOf = (g: FakeG) => g.calls.find((call) => call.fn === "moveTo")!.args as [number, number];
+    const [plainX, plainY] = startOf(plain);
+    const [insetX, insetY] = startOf(inset);
+    // The shared edge for two horizontally adjacent square cells is vertical, so the tangent
+    // shift is along y; the perpendicular (x) span must stay untouched.
+    expect(insetX).toBeCloseTo(plainX, 5);
+    expect(Math.abs(insetY)).toBeLessThan(Math.abs(plainY));
+  });
+
+});
+
+describe("clampBoundaryInset", () => {
+  it("passes a small inset through unchanged", () => {
+    expect(clampBoundaryInset(3, 40)).toBe(3);
+  });
+
+  it("never goes negative for a short edge, even though edgeLength / 2 - 1 is itself negative", () => {
+    // A naive `min(max(inset, 0), edgeLength / 2 - 1)` clamp order fails here: the upper bound
+    // `edgeLength / 2 - 1` evaluates to -0.5 for edgeLength=1, so `max(inset, 0)` (>= 0) clamped
+    // against a negative upper bound goes negative — flipping the tangent-inset direction instead
+    // of shrinking to zero (GitHub issue #627 follow-up).
+    expect(clampBoundaryInset(5, 1)).toBe(0);
+    expect(clampBoundaryInset(0, 1)).toBe(0);
+  });
+
+  it("caps at half the edge length minus 1px so the quad never collapses or crosses over", () => {
+    expect(clampBoundaryInset(1000, 40)).toBe(19);
   });
 });

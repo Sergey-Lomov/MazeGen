@@ -7,6 +7,7 @@ import { canvas } from "./colorTokens";
 import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { splitWallAndLineEdges } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
 import type { Pos } from "./tessellationGeometry";
 import { buildCrossFloorMarkers, drawCrossFloorMarkers, type NodeCellResolver } from "./BaseGraphRenderer";
@@ -183,7 +184,7 @@ export class DebugRefHighlightOverlay {
           };
           const wallG = new Graphics();
           const wallEdges = cycleEdges.map(([from, to]) => ({ from, to, asWall }));
-          const lineEdges = splitWallAndLineEdges(wallG, wallEdges, cellOf, cfg, canvas.debug.issueHighlight, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth)
+          const lineEdges = splitWallAndLineEdges(wallG, wallEdges, cellOf, cfg, canvas.debug.issueHighlight, 0.25, HIGHLIGHT_WIDTH, oneWayBoundaryWidth, getCellHighlightInset())
             .map(({ from, to }) => [from, to] as [bigint, bigint]);
           this.wallContainer.addChild(wallG);
           const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
