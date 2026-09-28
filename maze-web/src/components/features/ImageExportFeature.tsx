@@ -27,11 +27,9 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       setActiveRenderMode(mode);
       setOpenRenderModeSettings(mode);
     }
-    setOpenExportFormatSettings(null);
   }
 
   function handleFormatGearClick(format: ExportFormatId) {
-    setOpenRenderModeSettings(null);
     setOpenExportFormatSettings(openExportFormatSettings === format ? null : format);
   }
 

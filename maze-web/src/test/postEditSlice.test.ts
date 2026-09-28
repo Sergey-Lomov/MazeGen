@@ -76,6 +76,7 @@ beforeEach(() => {
     postEditElevatorPending: null,
     postEditSplitTargetPrompt: null,
     error: null,
+    postEditFocusedPoint: null,
   });
   // The shared default scenario: generation produced a single directed 0->1 `basic` edge (so a
   // `reset`/`resetPostEdit` restores it as `one_way_forward`), which the user has since upgraded
@@ -2421,6 +2422,17 @@ describe("mazeStore split-node actions", () => {
     expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
     useMazeStore.getState().setPostEditFocusedPoint(null);
     expect(useMazeStore.getState().postEditFocusedPoint).toBeNull();
+  });
+
+  // GitHub issue #629: `postEditFocusedPoint` ("Manage split nodes") and `postEditChangesOpen`
+  // ("Changes") are independent toggles — either setter used to force-clear the other so only one
+  // could ever be true. Now both may be open at once; which panel is actually visible is decided
+  // by `SidePanel`'s own mount-order stack (`SidePanel.test.tsx`), not by this store coupling.
+  it("setPostEditFocusedPoint and setPostEditChangesOpen no longer clobber each other", () => {
+    useMazeStore.getState().setPostEditFocusedPoint([1, 1]);
+    useMazeStore.getState().setPostEditChangesOpen(true);
+    expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
+    expect(useMazeStore.getState().postEditChangesOpen).toBe(true);
   });
 
   // Reproduces the reported flow (GitHub issue #548 rotate/compaction follow-up): create a split

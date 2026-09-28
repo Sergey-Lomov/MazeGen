@@ -992,7 +992,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }));
   },
 
-  setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point, postEditChangesOpen: point !== null ? false : get().postEditChangesOpen }),
+  setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point }),
   setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => set({ postEditHoveredEntity: entity }),
 
   rotateSplitPoint: (point, direction) => {
@@ -1522,7 +1522,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
-  setPostEditChangesOpen: (open) => set({ postEditChangesOpen: open, postEditFocusedPoint: open ? null : get().postEditFocusedPoint }),
+  setPostEditChangesOpen: (open) => set({ postEditChangesOpen: open }),
 
   setPostEditChangesEntityFilter: (id) => set({ postEditChangesEntityFilter: id }),
 

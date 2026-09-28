@@ -16,7 +16,13 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 
 beforeEach(() => {
-  useMazeStore.setState({ ...baseStoreState(), activeRenderMode: null, openRenderModeSettings: null });
+  // `openExportFormatSettings` reset alongside the render-mode fields (GitHub issue #629's tests
+  // added a case that sets it and never explicitly clears it — without resetting it here too, a
+  // later test would inherit that leftover "png" and misread its own gear click as a close-toggle
+  // instead of an open).
+  useMazeStore.setState({
+    ...baseStoreState(), activeRenderMode: null, openRenderModeSettings: null, openExportFormatSettings: null,
+  });
 });
 
 describe("ImageExportFeature", () => {
@@ -58,19 +64,46 @@ describe("ImageExportFeature", () => {
     expect(onExportPng).toHaveBeenCalledWith(useMazeStore.getState().pngExportSettings);
   });
 
-  it("clicking the PNG format's gear opens its settings panel and closes the render-mode one", () => {
+  // GitHub issue #629: opening one settings panel no longer clears the other — both may stay open
+  // at once, and `SidePanel`'s own mount-order stack decides which is shown. Closing the top one
+  // (PNG format settings here) must reveal the render-mode panel underneath, not leave it cleared.
+  it("clicking the PNG format's gear opens its settings panel without clearing the render-mode one", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     fireEvent.click(screen.getByTitle(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
     expect(useMazeStore.getState().openExportFormatSettings).toBe("png");
-    expect(useMazeStore.getState().openRenderModeSettings).toBeNull();
+    expect(useMazeStore.getState().openRenderModeSettings).toBe("vector_by_walls");
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeInTheDocument();
   });
 
-  it("clicking a render mode's switcher item closes an open format settings panel", () => {
+  it("clicking a render mode's switcher item does not clear an open format settings panel", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openExportFormatSettings: "png" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     fireEvent.click(screen.getByRole("button", { name: m["image_export.mode.vector_by_walls.label"]() }));
-    expect(useMazeStore.getState().openExportFormatSettings).toBeNull();
+    expect(useMazeStore.getState().openExportFormatSettings).toBe("png");
+  });
+
+  // GitHub issue #629 end-to-end: with both panels mounted, the PNG format settings panel (opened
+  // later) sits on top; closing it via its own header ✕ must reveal the render-mode panel
+  // underneath again, not leave the slot empty. Exercises `SidePanel`'s mount-order stack through
+  // a real DOM close-button click, not just store-state assertions.
+  it("closing the PNG format panel reveals the render-mode panel underneath", () => {
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
+    render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+
+    fireEvent.click(screen.getByTitle(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
+    const wallsBackground = screen.getByText(m["image_export.vector_by_walls.section_background"]());
+    expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeVisible();
+    expect(wallsBackground).not.toBeVisible();
+
+    // Close via the PNG panel's own header ✕ button, same as a real user closing the top panel —
+    // not by calling `setOpenExportFormatSettings` directly. Both `SidePanel`s share the same
+    // portal slot and render in mount order, so the PNG panel (opened after the render-mode one)
+    // is the last one in the DOM; its close button is the last "✕"-labelled button rendered.
+    const closeButtons = screen.getAllByRole("button", { name: "" }).filter((btn) => btn.querySelector("svg.lucide-x"));
+    fireEvent.click(closeButtons[closeButtons.length - 1]);
+
+    expect(screen.queryByText(m["image_export.format.png.digital.scale"]())).not.toBeInTheDocument();
+    expect(wallsBackground).toBeVisible();
   });
 });

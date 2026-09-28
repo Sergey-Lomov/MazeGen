@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ui, typography, spacing, inset } from "../styles/theme";
@@ -7,6 +7,48 @@ import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotifi
 import type React from "react";
 
 const MIN_PANEL_WIDTH = 360;
+
+/** Module-level mount-order stack (GitHub issue #629) — every live `SidePanel` instance (in either
+ *  mode) pushes its own id here on mount and pops it on unmount, regardless of which feature owns
+ *  it. Several `SidePanel`s can be mounted at once (e.g. `DebugPanel` and `VertexBasedSettingsPanel`
+ *  both live under `openCard === "generation"`, independently toggled) since nothing here stops a
+ *  second feature from opening its own panel while another is already up — only the most recently
+ *  mounted one is shown (absolutely positioned, filling the slot); the rest stay mounted but hidden
+ *  so their own internal state (scroll position, drafts, ...) survives underneath. Unmounting the
+ *  top one (closing it) drops it from the stack and the next-most-recent becomes visible again,
+ *  without any feature needing to know about another's open/closed state. A plain module array +
+ *  listener set rather than a React context: `SidePanel` instances mount across unrelated,
+ *  non-nested component trees (portal target aside), so no single context provider could wrap
+ *  all of them. */
+let panelStack: symbol[] = [];
+const panelStackListeners = new Set<() => void>();
+
+function notifyPanelStackChange() {
+  for (const listener of panelStackListeners) listener();
+}
+
+function pushPanel(id: symbol) {
+  panelStack = [...panelStack, id];
+  notifyPanelStackChange();
+}
+
+function popPanel(id: symbol) {
+  panelStack = panelStack.filter((p) => p !== id);
+  notifyPanelStackChange();
+}
+
+function subscribePanelStack(listener: () => void) {
+  panelStackListeners.add(listener);
+  return () => { panelStackListeners.delete(listener); };
+}
+
+/** True while `id` is the topmost (most recently mounted, still-live) entry in `panelStack`. */
+function useIsTopPanel(id: symbol): boolean {
+  return useSyncExternalStore(
+    subscribePanelStack,
+    () => panelStack.length > 0 && panelStack[panelStack.length - 1] === id,
+  );
+}
 
 /** DOM id of `App.tsx`'s slot beside the canvas column — every `SidePanel` portals here
  *  regardless of where in the component tree it's triggered from (GitHub issue #237), so it
@@ -24,7 +66,10 @@ interface Props {
   warnings?: string[];
   /** Render as a full-cover overlay (`position: absolute; inset: 0`) inside `#side-panel-slot`
    *  instead of a normal in-flow panel — used by `ColorPickerPanel` (GitHub issue #499) to sit on
-   *  top of whatever `SidePanel` content is already shown and reveal it again on close. */
+   *  top of whatever `SidePanel` content is already shown, sized to the slot rather than its own
+   *  `width` state. Which panel is actually visible when several are mounted at once (overlay or
+   *  not) is decided separately by the shared mount-order stack (GitHub issue #629) — this prop
+   *  only picks this panel's own box model, not its stacking. */
   overlay?: boolean;
   children: React.ReactNode;
 }
@@ -34,11 +79,42 @@ interface Props {
  *  management panels (post-edit, preset, pattern editor) and `DebugPanel` (GitHub issue #607) so
  *  editing a node's connections reads as directly manipulating the canvas rather than a modal
  *  dialog floating over it — every click's effect on the maze is visible immediately behind the
- *  panel. */
+ *  panel.
+ *
+ *  Independent features may each keep their own panel mounted at once (e.g. `DebugPanel` and
+ *  `VertexBasedSettingsPanel` under the generation card, or the post-edit "Changes" panel and
+ *  "Manage split nodes" panel) with no coordination between them — every mounted instance shares
+ *  one module-level stack (GitHub issue #629) keyed by mount order, and only the most recently
+ *  mounted one is actually shown. Closing it unmounts that instance and pops it off the stack, so
+ *  the next one down becomes visible again — restoring what was underneath rather than clearing
+ *  the whole slot. */
 export function SidePanel({ title, subtitle, onClose, warnings, overlay, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
+
+  // Register this instance on the shared mount-order stack for the panel's whole lifetime (GitHub
+  // issue #629) — a stable id (not `useId`, which isn't guaranteed unique across independently
+  // portal-mounted trees the way a fresh `Symbol` is) survives whatever the caller's own open-state
+  // does, so a re-render doesn't create a new stack entry. Pushed eagerly during render (guarded by
+  // `panelIdRef.current === null`, so a re-render never pushes twice — the ref, not module state,
+  // is what makes this idempotent per instance) rather than in a `useEffect`: when two `SidePanel`s
+  // mount in the same
+  // commit (e.g. `DebugPanel` and `VertexBasedSettingsPanel` opening together), waiting for effects
+  // would have both read `panelStack` as empty on that first render and paint with neither one
+  // visible for a frame — pushing during render makes the second one's very first paint already see
+  // the first one on the stack. `popPanel` still only happens in the matching cleanup effect, since
+  // unmounting has no earlier hook to run it from.
+  const panelIdRef = useRef<symbol | null>(null);
+  if (panelIdRef.current === null) {
+    panelIdRef.current = Symbol("side-panel");
+    pushPanel(panelIdRef.current);
+  }
+  const panelId = panelIdRef.current;
+  useEffect(() => {
+    return () => popPanel(panelId);
+  }, [panelId]);
+  const isTop = useIsTopPanel(panelId);
 
   useEffect(() => {
     function handleMouseMove(e: MouseEvent) {
@@ -68,8 +144,8 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, childre
   return createPortal(
     <div
       style={overlay
-        ? { ...styles.panel, ...styles.panelOverlay }
-        : { ...styles.panel, width, minWidth: MIN_PANEL_WIDTH }}
+        ? { ...styles.panel, ...styles.panelOverlay, ...(isTop ? {} : styles.panelHidden) }
+        : { ...styles.panel, width, minWidth: MIN_PANEL_WIDTH, ...(isTop ? {} : styles.panelHidden) }}
     >
       {/* Overlay mode stretches to fill the slot (`panelOverlay`), so there is no width to drag. */}
       {!overlay && (
@@ -115,6 +191,13 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     flexShrink: 0,
     position: "relative",
+  },
+  // Not the topmost entry on `panelStack` (GitHub issue #629) — stays mounted (its own internal
+  // state, e.g. scroll position or a draft, survives underneath) but contributes nothing to layout
+  // or paint: `display: none` rather than `visibility: hidden`/`opacity: 0` so a hidden non-overlay
+  // panel doesn't keep pushing the canvas narrower via its own `width`.
+  panelHidden: {
+    display: "none",
   },
   // Overlay mode: fully cover the slot's currently-shown panel rather than dock beside it. The
   // slot (`App.tsx`) is `position: relative` so `inset: 0` resolves against it. `left: 0` as well

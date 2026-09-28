@@ -4,6 +4,8 @@
 
 Reusable modal dialog system for the web client. Provides a base `Modal` component, a `ConfirmModal` shortcut for yes/no prompts, and a design-token layer that keeps all dialog dimensions and spacing consistent.
 
+See also [SidePanel](#sidepanel) below — the canvas-docked counterpart to these overlay `Modal`s, used for split-node management, debug, generation/export settings, and the color picker.
+
 ## Components
 
 ### Modal
@@ -123,3 +125,28 @@ All dialog tokens live in `src/styles/theme.ts`.
 | `FieldSetupFeature` | Switch Default↔Custom when custom field has cells | "Switch to standard shapes? Your custom field will be replaced." |
 | `FieldSetupFeature` | Clear button in custom mode | "Clear all field cells?" |
 | `PresetConnectionsFeature` | Reset all button | "Reset all preset connections?" |
+
+## SidePanel
+
+`src/components/SidePanel.tsx`
+
+Canvas-docked counterpart to `Modal` (GitHub issue #237): a resizable panel anchored to the canvas's right edge instead of a fullscreen overlay, so editing reads as directly manipulating the canvas rather than a dialog floating over it. Renders via `createPortal` into `#side-panel-slot` (`SIDE_PANEL_SLOT_ID`, a `position: relative` div `App.tsx` places beside the canvas column) — every `SidePanel` portals there regardless of where in the component tree it's triggered from, so it always docks next to the canvas rather than wherever its owning feature lives in the left features panel.
+
+**Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `string` | required | Header text |
+| `subtitle` | `string` | — | Optional header subtitle |
+| `onClose` | `() => void` | required | Close-button handler |
+| `warnings` | `string[]` | — | Diagnostic strip under the header, dismissible, re-opens whenever the message set changes |
+| `overlay` | `boolean` | `false` | Full-cover box model (`position: absolute; inset: 0`, sized to the slot) instead of the normal in-flow, drag-resizable one (own `width` state, drag handle on its left edge). Used by `ColorPickerPanel`. |
+| `children` | `ReactNode` | — | Panel body, scrollable |
+
+**Used by:** `DebugPanel`, `VertexBasedSettingsPanel`, `ColorPickerPanel` (`overlay`), the post-edit "Changes" panel and "Manage split nodes" dialog, the preset-stage split-node dialog, the pattern editor, render-mode and PNG-export settings (`ImageExportFeature`), `AnalyticsFeature`.
+
+### Side panel stacking (GitHub issue #629)
+
+Every feature keeps its own open/closed state for its own `SidePanel` (a store boolean, a local `useState`, whatever fits that feature) with **no coordination between features** — a feature never has to close another feature's panel before opening its own. Several `SidePanel`s can legitimately be mounted at once: `DebugPanel` and `VertexBasedSettingsPanel` both live under the generation card, independently toggled; the post-edit "Changes" panel and "Manage split nodes" dialog are independently toggled; a render mode's settings and the PNG format's settings are independently toggled; `ColorPickerPanel` (`overlay`) opens on top of whatever settings panel a color swatch lives in.
+
+Which one is actually visible is decided entirely inside `SidePanel.tsx` itself, via a module-level mount-order stack: every live instance (either box model) pushes its own id on mount and pops it on unmount. Only the topmost (most recently mounted) instance renders visibly (`display` normal); every other mounted instance gets `display: none` — still mounted, so its own internal state (scroll position, an in-progress draft, `useState`) survives underneath, just not shown or laid out. Closing the top panel unmounts that instance (the owning feature drops it from the tree via its own `onClose`), which pops it off the stack — the next-most-recently-mounted instance becomes visible again automatically. No feature-level code participates in this beyond mounting/unmounting its own panel normally; there is no shared "active panel" id in `mazeStore`, and a feature's own open/closed boolean is never clobbered by another feature opening its panel (before GitHub issue #629, several features did exactly that — e.g. `ImageExportFeature` clearing `openRenderModeSettings` when opening PNG format settings, or `postEditSlice`'s `setPostEditChangesOpen`/`setPostEditFocusedPoint` each clearing the other — that coupling is gone; see `image-export.md`'s "Switcher" section and `PNG export` section for the current independent-toggle behavior).

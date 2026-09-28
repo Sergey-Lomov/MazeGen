@@ -302,8 +302,8 @@ export interface PostEditState {
   postEditResetPrompt: { point: [number, number]; level?: number; lifelines: PostEditResetLifelineDescriptor[] } | null;
   /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
    *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
-   *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
-   *  node panel and vice versa, since both dock to the same `SidePanel` slot). Not persisted. */
+   *  nodes" panel — both may be open at once; `SidePanel`'s own mount-order stack (GitHub issue
+   *  #629) decides which one is actually shown, since both dock to the same slot. */
   postEditChangesOpen: boolean;
   /** Entity id the "Changes" panel's log is narrowed to (GitHub issue #574), or `null` for no
    *  filter (every row shown). Matches a command's own `entityIdOf` result exactly (`"o5"`, `"t3"`,
@@ -485,8 +485,8 @@ export interface PostEditActions {
   applyPostEditSplitTargetPick: (nodeId: number) => void;
   /** Dismisses an open `postEditSplitTargetPrompt` without placing anything. */
   cancelPostEditSplitTarget: () => void;
-  /** Opens/closes the "Changes" panel (GitHub issue #545). Opening it closes the "Manage split
-   *  nodes" panel (`postEditFocusedPoint`), since both dock to the same `SidePanel` slot. */
+  /** Opens/closes the "Changes" panel (GitHub issue #545). Independent of `postEditFocusedPoint`'s
+   *  "Manage split nodes" panel — see `postEditChangesOpen`'s doc comment. */
   setPostEditChangesOpen: (open: boolean) => void;
   /** Sets/clears the "Changes" panel's entity-id filter (GitHub issue #574). `null` clears it back
    *  to the full log — same effect as the panel's own clear (×) button. */
