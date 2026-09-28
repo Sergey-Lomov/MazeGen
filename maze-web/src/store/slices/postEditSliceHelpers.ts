@@ -4,7 +4,7 @@ import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver 
 import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds,
-  extractPostEditVerticalPassages, extractPostEditElevators, currentSplitNodeFaces,
+  extractPostEditVerticalPassages, extractPostEditElevators, buildRestoredOriginalFaces, buildNeighborRedirectCommands,
 } from "../../pixi/postEditUtils";
 import type {
   PostEditBaseline, PostEditDerivedState, PostEditReplayContext,
@@ -575,11 +575,13 @@ export function buildPostEditResetLifelinesAt(
  *   (`expandSlotReferenceCascade`), not everything at the point.
  * - A **generation-baked** slot (already in the baseline) has no creation command to cascade away —
  *   removing it needs an explicit `removeSplitPoint` command instead. When it's the point's LAST
- *   remaining slot afterward, that command also restores the original node's own generation-time face
- *   list (`currentSplitNodeFaces` read against `baseline.derived.edges`), so the point ends up wired
- *   exactly as generation left it, not merged from whichever slot happened to carry which face most
- *   recently; removing a generation-baked slot while OTHER slots remain leaves the original node's
- *   wiring alone (nothing to "un-split" back to yet).
+ *   remaining slot afterward, that command also restores the original node's own face list
+ *   (`buildRestoredOriginalFaces` — GitHub issue #625): generation-time wiring
+ *   (`baseline.derived.edges`) for every neighbor that ISN'T currently split, but the point's own
+ *   LIVE connection (whichever of its nodes actually held it) redirected onto the original node for
+ *   every neighbor that IS currently split — a still-split neighbor must never end up with a face
+ *   pointing at a node this removal just deleted. Removing a generation-baked slot while OTHER slots
+ *   remain leaves the original node's own wiring alone (nothing to "un-split" back to yet).
  *
  * A call spanning both kinds of slot runs both steps — cascade first (so the `removeSplitPoint`
  * command built afterward only has to look at what's LEFT: post-edit-created slots have already
@@ -604,7 +606,48 @@ export function removePostEditSplitSlots(
   const postEditCreatedTargets = targeted.filter((id) => !baselineSlotIds.has(id));
   const emptiesPoint = targeted.length === currentSlotIds.length;
 
-  // Step 1: cascade away every targeted post-edit-created slot's own creation lifeline. Only seed the
+  // GitHub issue #625: whichever of `targeted`'s own slots is about to disappear, a still-split
+  // NEIGHBOR's own face pointing at one of them must be redirected onto this point's original node
+  // instead of being left dangling — computed up front, against the PRE-removal live state (before
+  // either the cascade or the `removeSplitPoint` command below strip these slots' own edges), since
+  // this is the only place that still has both "which slot held which connection" and "who the
+  // neighbor's own connecting node is" in hand. Independent of whether the point ends up fully
+  // un-split (`emptiesPoint`) or just loses one of several slots — either way, the original node is
+  // this point's one permanent node, the only sound redirect target.
+  const originalNode = postEditBaseline.context.nodes.find(
+    (n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0),
+  );
+  const neighborRedirectCommands = originalNode
+    ? buildNeighborRedirectCommands(
+        postEditBaseline.context.nodes,
+        postEditDerived.edges,
+        postEditDerived.splitPoints,
+        postEditDerived.splitPointIds,
+        nodeEndpoint(originalNode.id),
+        targeted.map((slotId) => splitEndpoint(point, slotId, level)),
+      )
+    : [];
+
+  // Step 1: apply every neighbor redirect computed up front (GitHub issue #625) BEFORE the cascade
+  // below runs. A still-split neighbor's own face command currently references one of the vanishing
+  // slot endpoints — if the cascade scanned the log first, `expandSlotReferenceCascade` would see that
+  // stale reference and sweep the neighbor's ENTIRE slot lifeline away too (its `addSplitNode` shares
+  // the same `slot:point:slotId` lifeline key as its own `updateSplitNodeFaces`), destroying the
+  // neighbor's split outright instead of just retargeting one face. Redirecting first rewrites the
+  // neighbor's face command to point at `originalEndpoint` instead, so by the time the cascade scans
+  // the log there is no longer any live reference to the vanishing slot for it to chase.
+  let preCascadeCommands = postEditCommands;
+  let derivedAfterRedirect: PostEditDerivedState | undefined;
+  for (const redirect of neighborRedirectCommands) {
+    derivedAfterRedirect ??= postEditDerived;
+    const result = applyPostEditCommand(postEditBaseline.context, derivedAfterRedirect, redirect);
+    if (result.applied) {
+      preCascadeCommands = [...preCascadeCommands, redirect];
+      derivedAfterRedirect = result.state;
+    }
+  }
+
+  // Step 2: cascade away every targeted post-edit-created slot's own creation lifeline. Only seed the
   // original node's own split-related wiring lifeline (`originalNode:point` — touched exclusively by
   // `updateSplitNodeFaces`/`applySplitBlueprint`'s `originalFaces`, both cascade-eligible; a plain
   // `setEdge`/`setEdgePair` there has its own `edge:`/`oneWay:` lifeline, untouched either way) when
@@ -612,10 +655,12 @@ export function removePostEditSplitSlots(
   // node's own wiring exactly as it was, nothing to un-split back to yet.
   const seedKeys = new Set<string>(postEditCreatedTargets.map((slotId) => `slot:${key}:${slotId}`));
   if (emptiesPoint) seedKeys.add(`originalNode:${key}`);
-  const afterCascade = seedKeys.size > 0 ? cascadeRemoveLifelines(postEditBaseline, postEditCommands, seedKeys) : postEditCommands;
-  const derivedAfterCascade = afterCascade === postEditCommands ? postEditDerived : replayPostEditCommands(postEditBaseline, afterCascade);
+  const afterCascade = seedKeys.size > 0 ? cascadeRemoveLifelines(postEditBaseline, preCascadeCommands, seedKeys) : preCascadeCommands;
+  const derivedAfterCascade = afterCascade === preCascadeCommands
+    ? (derivedAfterRedirect ?? postEditDerived)
+    : replayPostEditCommands(postEditBaseline, afterCascade);
 
-  // Step 2: whichever targeted slots the cascade didn't remove are generation-baked (no creation
+  // Step 3: whichever targeted slots the cascade didn't remove are generation-baked (no creation
   // command to cascade away) — drop them explicitly. `pointId` is read back from the post-cascade
   // derived state (unaffected by the cascade, since a generation-baked point's id is a baseline value
   // no command in this log ever cascades away).
@@ -625,11 +670,15 @@ export function removePostEditSplitSlots(
     const pointId = derivedAfterCascade.splitPointIds[key];
     if (pointId !== undefined) {
       const stillEmptiesPoint = (derivedAfterCascade.splitPoints[key] ?? []).length === remainingTargets.length;
-      const originalNode = postEditBaseline.context.nodes.find(
-        (n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0),
-      );
       const restoredOriginalFaces = stillEmptiesPoint && originalNode
-        ? currentSplitNodeFaces(postEditBaseline.derived.edges, nodeEndpoint(originalNode.id))
+        ? buildRestoredOriginalFaces(
+            postEditBaseline.context.nodes,
+            postEditBaseline.derived.edges,
+            derivedAfterCascade.edges,
+            derivedAfterCascade.splitPoints,
+            nodeEndpoint(originalNode.id),
+            [nodeEndpoint(originalNode.id), ...remainingTargets.map((slotId) => splitEndpoint(point, slotId, level))],
+          )
         : undefined;
       const command: PostEditCommand = {
         kind: "removeSplitPoint", point, level, pointId, removedSlotIds: remainingTargets, restoredOriginalFaces,
