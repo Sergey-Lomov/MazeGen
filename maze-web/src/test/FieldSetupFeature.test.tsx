@@ -18,6 +18,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],
     [{ type: "hex_rectangle", cols: 10, rows: 8, orientation: "flat_top" }, "Field size: 10 × 8 cells"],
     [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
+    [{ type: "hex_triangle", side: 6, orientation: "flat_top" }, "Field side: 6 cells"],
     [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
     [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
     [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
@@ -136,6 +137,20 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
     expect(screen.getByText("Copy floor")).toBeInTheDocument();
+  });
+
+  it("describes primitive smoothing and its always-on isolated-cell cleanup", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByText(/works only with primitives/)).toBeInTheDocument();
+    expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {

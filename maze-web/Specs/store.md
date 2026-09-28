@@ -33,7 +33,7 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 | `isEditingField` | `boolean` | True when shape is "free" or fieldEditMode is "custom" |
 | `fieldPoints` | `Set<number>` | Active custom cell set (encoded points) |
 | `fieldEditMode` | `"default" \| "custom"` | Card-based edit mode |
-| `fieldPrimitive` | `FieldPrimitive` | Active draw primitive for free editing |
+| `fieldPrimitive` | `"point" \| "rectangle" \| "circle" \| "triangle" \| "equilateral_triangle" \| "hexagon" \| "parallelogram"` | Active draw primitive for free editing |
 | `showFieldOverlay` | `boolean` | Whether field overlay is visible |
 | `showFieldOrigin` | `boolean` | Whether field origin crosshair is shown |
 

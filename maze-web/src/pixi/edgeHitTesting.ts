@@ -53,7 +53,7 @@ export function pickEdgeAtPosition(
 
   const isTriangle = cfg.type === "triangle_rect" || cfg.type === "triangle_triangle"
     || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom";
-  const isHex = cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
+  const isHex = cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
   // Cell-center-to-nearest-side distance, as a fraction of the tile's own edge-length scale, is
   // much smaller for triangles/hexagons (incenter-to-side ≈ 0.29 * side for an equilateral
   // triangle; hexagon center-to-side is the apothem, ≈ 0.87 * (side/2) ≈ 0.43 * side) than for a
@@ -129,7 +129,7 @@ export function isInEdgeVertexDeadZone(
 
   const isTriangle = cfg.type === "triangle_rect" || cfg.type === "triangle_triangle"
     || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom";
-  const isHex = cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
+  const isHex = cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
   const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
   const thresholdSq = threshold * threshold;
 

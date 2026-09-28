@@ -241,19 +241,25 @@ describe("mazeStore tessellation kind/shape actions", () => {
   it("supports the new square circle shape", () => {
     useMazeStore.setState({ tessellationKind: "square" });
     useMazeStore.getState().setSquareShape("circle");
-    expect(activeField().tessellationConfig).toEqual({ type: "square_circle", radius: 5 });
+    expect(activeField().tessellationConfig).toEqual({ type: "square_circle", radius: 10 });
   });
 
   it("supports the new square triangle shape", () => {
     useMazeStore.setState({ tessellationKind: "square" });
     useMazeStore.getState().setSquareShape("triangle");
-    expect(activeField().tessellationConfig).toEqual({ type: "square_triangle", side: 7 });
+    expect(activeField().tessellationConfig).toEqual({ type: "square_triangle", side: 20 });
+  });
+
+  it("supports the new hex triangle shape", () => {
+    useMazeStore.setState({ tessellationKind: "hex" });
+    useMazeStore.getState().setHexShape("triangle");
+    expect(activeField().tessellationConfig).toEqual({ type: "hex_triangle", side: 20, orientation: "flat_top" });
   });
 
   it("supports the new triangle circle shape", () => {
     useMazeStore.setState({ tessellationKind: "triangle" });
     useMazeStore.getState().setTriangleShape("circle");
-    expect(activeField().tessellationConfig).toEqual({ type: "triangle_circle", radius: 4, orientation: "r0" });
+    expect(activeField().tessellationConfig).toEqual({ type: "triangle_circle", radius: 10, orientation: "r0" });
   });
 
   it("setTriangleShape to free sets isEditingField", () => {

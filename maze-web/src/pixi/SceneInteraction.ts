@@ -71,6 +71,9 @@ export class SceneInteraction {
       const controller = getController(st);
       if (controller) {
         controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey);
+        if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
+          fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
+        }
         return;
       }
       this.defaultPan.begin(e.globalX, e.globalY);
@@ -83,7 +86,7 @@ export class SceneInteraction {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const hoverCell = fieldEditController.getHoverCell(e.globalX, e.globalY);
-        fieldEditorOverlay.updateHover(hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
+        fieldEditorOverlay.updateHover(fieldEditController.isGestureActive() ? null : hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
         return;
       }
       const controller = getController(st);

@@ -33,6 +33,7 @@ export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
       return 45;
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom":
@@ -68,6 +69,7 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
     }
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -138,6 +140,7 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
       return squareCenter(x, y, cfg);
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
@@ -272,6 +275,7 @@ function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationCo
       return nearestSquareCoord(worldX, worldY);
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {

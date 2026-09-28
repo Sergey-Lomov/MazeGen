@@ -247,8 +247,8 @@ describe("mazeStore tessellation misc actions", () => {
   });
 
   it("setFieldPrimitive updates primitive", () => {
-    useMazeStore.getState().setFieldPrimitive("hex_hexagon");
-    expect(activeField().fieldPrimitive).toBe("hex_hexagon");
+    useMazeStore.getState().setFieldPrimitive("hexagon");
+    expect(activeField().fieldPrimitive).toBe("hexagon");
   });
 
   it("setFieldEditMode('custom') derives fieldPoints from predefined config cells", () => {

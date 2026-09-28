@@ -194,6 +194,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       showPresetLocks: file.ui.showPresetLocks,
       showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
+      showPrimitiveFrame: true,
+      smoothPrimitives: true,
       openCard: file.ui.openCard,
       // clear transient UI flags
       highlightInvalidPresets: false,

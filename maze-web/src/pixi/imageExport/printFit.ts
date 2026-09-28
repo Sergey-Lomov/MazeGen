@@ -42,7 +42,7 @@ export function pxToMm(px: number, dpi: number): number {
 /** World-space length of the print-sizing measure at scale 1: square side, or circumcircle
  * diameter for regular hexagons and triangles. */
 export function cellMeasureWorldUnits(config: Pick<TessellationConfig, "type">): number {
-  if (config.type === "hex_rectangle" || config.type === "hex_circle" || config.type === "hex_parallelogram" || config.type === "hex_hexagon" || config.type === "hex_custom") {
+  if (config.type === "hex_rectangle" || config.type === "hex_circle" || config.type === "hex_triangle" || config.type === "hex_parallelogram" || config.type === "hex_hexagon" || config.type === "hex_custom") {
     return TILE_SIZE * 2;
   }
   if (config.type === "triangle_rect" || config.type === "triangle_triangle" || config.type === "triangle_circle" || config.type === "triangle_hexagon" || config.type === "tri_custom") {

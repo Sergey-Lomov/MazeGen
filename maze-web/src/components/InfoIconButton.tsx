@@ -9,6 +9,7 @@ export function InfoIconButton({ onClick }: { onClick: () => void }) {
     <span
       role="button"
       tabIndex={0}
+      aria-label="Info"
       className="hoverable"
       style={styles.infoIcon}
       onClick={onClick}

@@ -170,6 +170,7 @@ export function makeProjection(cfg: TessellationConfig): TessellationProjection 
       return new SquareProjection();
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom":

@@ -1,6 +1,8 @@
-import { triTriangleRaw, triHexagonRaw, triCircleRaw, triCenterOffset } from "./triShapeHelpers";
-import { squareCircleRaw, squareTriangleRaw } from "./squareShapeHelpers";
-import { hexCircleRaw, hexRectangleRaw } from "./hexShapeHelpers";
+import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
+import { cellsInsideShape, shapeForPrimitive, type ShapeOrigin } from "./shapeSelection";
+import { primitiveCells } from "./primitiveGeometry";
+import { makeProjection } from "./tessellationProjection";
+import { TILE_SIZE } from "./constants";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
@@ -13,13 +15,12 @@ export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: n
     case "hex_parallelogram":
       return { ox: Math.floor(cfg.cols / 2), oy: Math.floor(cfg.rows / 2) };
     case "hex_circle": return { ox: 0, oy: 0 };
+    case "hex_triangle": return { ox: 0, oy: 0 };
     case "hex_hexagon":
       return { ox: 0, oy: 0 };
     case "triangle_rect": {
-      let ox = Math.floor(cfg.cols / 2);
-      let oy = Math.floor(cfg.rows / 2);
-      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
-      return { ox, oy };
+      // Each configured column contains two adjacent opposite-orientation triangles.
+      return { ox: cfg.cols, oy: Math.floor(cfg.rows / 2) };
     }
     case "triangle_triangle": {
       const { ox, oy } = triCenterOffset(triTriangleRaw(cfg.side));
@@ -39,68 +40,152 @@ export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: n
 export function configAllCells(cfg: TessellationConfig): [number, number][] {
   switch (cfg.type) {
     case "square": {
-      const ox = Math.floor(cfg.width / 2);
-      const oy = Math.floor(cfg.height / 2);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.width; x++)
-        for (let y = 0; y < cfg.height; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
+      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("rectangle", base, { width: cfg.width, height: cfg.height }), "center", centeredOrigin(base, cfg.width, cfg.height));
     }
     case "square_circle": {
-      return squareCircleRaw(cfg.radius);
+      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
     }
     case "square_triangle": {
-      return squareTriangleRaw(cfg.side);
+      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
     }
     case "hex_rectangle": {
-      return hexRectangleRaw(cfg.cols, cfg.rows, cfg.orientation);
+      return hexRectangleCells(cfg.cols, cfg.rows, cfg.orientation ?? "flat_top");
     }
     case "hex_parallelogram": {
-      const ox = Math.floor(cfg.cols / 2);
-      const oy = Math.floor(cfg.rows / 2);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.cols; x++)
-        for (let y = 0; y < cfg.rows; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
+      return axialRectangleCells(cfg.cols, cfg.rows);
     }
     case "hex_circle": {
-      return hexCircleRaw(cfg.radius, cfg.orientation);
+      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
+    }
+    case "hex_triangle": {
+      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
     }
     case "hex_hexagon": {
-      const cells: [number, number][] = [];
-      for (let x = -cfg.radius; x <= cfg.radius; x++)
-        for (let y = -cfg.radius; y <= cfg.radius; y++)
-          if (Math.abs(x + y) <= cfg.radius) cells.push([x, y]);
-      return cells;
+      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
+      const frameSide = cfg.radius * 4;
+      const dragDistance = Math.max(0, (frameSide - 1) * TILE_SIZE / 2);
+      return primitiveCells("hexagon", {
+        startGrid: { x: 0, y: 0 },
+        endGrid: { x: 0, y: 0 },
+        startWorld: { x: 0, y: 0 },
+        endWorld: { x: dragDistance, y: dragDistance },
+        gridRadius: cfg.radius,
+        kind: "hex",
+        config: base,
+        latticeRadius: cfg.radius,
+        symmetric: true,
+        constrainSquare: true,
+      });
     }
     case "triangle_rect": {
-      let ox = Math.floor(cfg.cols / 2);
-      let oy = Math.floor(cfg.rows / 2);
-      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.cols; x++)
-        for (let y = 0; y < cfg.rows; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
+      return triangularRectangleCells(cfg.cols, cfg.rows);
     }
     case "triangle_triangle": {
-      const raw = triTriangleRaw(cfg.side);
-      const { ox, oy } = triCenterOffset(raw);
-      return raw.map(([x, y]) => [x - ox, y - oy]);
+      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
+      return primitiveCells("equilateral_triangle", {
+        startGrid: { x: 0, y: 0 },
+        endGrid: { x: 0, y: 0 },
+        gridRadius: cfg.side,
+        kind: "triangle",
+        config: base,
+        latticeSide: cfg.side,
+      });
     }
     case "triangle_circle": {
-      return triCircleRaw(cfg.radius);
+      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
+      return primitiveCells("circle", {
+        startGrid: { x: 0, y: 0 },
+        endGrid: { x: 0, y: 0 },
+        gridRadius: cfg.radius,
+        kind: "triangle",
+        config: base,
+        latticeRadius: cfg.radius,
+        symmetric: true,
+      });
     }
     case "triangle_hexagon": {
-      const raw = triHexagonRaw(cfg.radius);
-      const { ox, oy } = triCenterOffset(raw);
-      return raw.map(([x, y]) => [x - ox, y - oy]);
+      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
+      const frameSide = cfg.radius * 4;
+      const dragDistance = Math.max(0, (frameSide - 1) * TILE_SIZE / 2);
+      return primitiveCells("hexagon", {
+        startGrid: { x: 0, y: 0 },
+        endGrid: { x: 0, y: 0 },
+        startWorld: { x: 0, y: 0 },
+        endWorld: { x: dragDistance, y: dragDistance },
+        gridRadius: cfg.radius,
+        kind: "triangle",
+        config: base,
+        latticeRadius: cfg.radius,
+        symmetric: true,
+        constrainSquare: true,
+      });
     }
     case "square_custom":
     case "hex_custom":
     case "tri_custom":
       return cfg.points.map(([x, y]) => [x, y]);
   }
+}
+
+/** A rectangular triangle-tessellation field is made from complete horizontal pairs of opposite
+ * triangles. Each configured column spans two triangle cells, while rows remain visual rows. */
+function triangularRectangleCells(cols: number, rows: number): [number, number][] {
+  const cellCols = cols * 2;
+  const cellRows = rows;
+  const originRow = Math.floor(rows / 2);
+  const cells: [number, number][] = [];
+  for (let row = 0; row < cellRows; row++) {
+    for (let col = 0; col < cellCols; col++) {
+      cells.push([col - cols, row - originRow]);
+    }
+  }
+  return cells;
+}
+
+/** A hex-grid parallelogram is an axial rectangle: each parameter controls one grid axis. */
+function axialRectangleCells(cols: number, rows: number): [number, number][] {
+  const originX = Math.floor(cols / 2);
+  const originY = Math.floor(rows / 2);
+  const cells: [number, number][] = [];
+  for (let x = 0; x < cols; x++) {
+    for (let y = 0; y < rows; y++) {
+      cells.push([x - originX, y - originY]);
+    }
+  }
+  return cells;
+}
+
+/** A hex-grid rectangle has exact dimensions while preserving screen-aligned sides. The half-cell
+ * offset alternates between neighboring columns/rows, so this is distinct from an axial
+ * parallelogram and every increment adds a complete layer. */
+function hexRectangleCells(cols: number, rows: number, orientation: "flat_top" | "pointy_top"): [number, number][] {
+  const originCol = Math.floor(cols / 2);
+  const originRow = Math.floor(rows / 2);
+  const cells: [number, number][] = [];
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < rows; row++) {
+      if (orientation === "flat_top") {
+        const q = col - originCol;
+        cells.push([q, row - originRow - Math.floor(q / 2)]);
+      } else {
+        const r = row - originRow;
+        cells.push([col - originCol - Math.floor(r / 2), r]);
+      }
+    }
+  }
+  return cells;
+}
+
+function centeredOrigin(cfg: TessellationConfig, width: number, height: number): ShapeOrigin {
+  const projection = makeProjection(cfg);
+  const center = projection.gridToScreen(0, 0);
+  return {
+    x: center.x - (width % 2 === 0 ? TILE_SIZE / 2 : 0),
+    y: -center.y - (height % 2 === 0 ? TILE_SIZE / 2 : 0),
+  };
 }

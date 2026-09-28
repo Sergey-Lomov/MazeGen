@@ -40,6 +40,7 @@ export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
       return SQUARE_AXES;
     case "hex_rectangle":
     case "hex_circle":
+    case "hex_triangle":
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {

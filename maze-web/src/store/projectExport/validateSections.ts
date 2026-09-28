@@ -51,6 +51,10 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       assertNumber(obj.radius, `${path}.radius`);
       assertHexOrientation(obj.orientation, `${path}.orientation`);
       return obj as unknown as TessellationConfig;
+    case "hex_triangle":
+      assertNumber(obj.side, `${path}.side`);
+      assertHexOrientation(obj.orientation, `${path}.orientation`);
+      return obj as unknown as TessellationConfig;
     case "triangle_rect":
       assertNumber(obj.cols, `${path}.cols`);
       assertNumber(obj.rows, `${path}.rows`);

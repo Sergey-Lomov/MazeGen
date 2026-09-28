@@ -239,6 +239,7 @@ export function configSizeDescription(config: FieldConfig): string {
     case "triangle_circle":
     case "hex_hexagon":
     case "triangle_hexagon": return m["field.print_sizing.result_radius"]({ size: String(config.radius) });
+    case "hex_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
     case "hex_rectangle":
     case "triangle_rect":
     case "hex_parallelogram":

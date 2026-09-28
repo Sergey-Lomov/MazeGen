@@ -30,6 +30,7 @@ The field-shape selector exposes these additional shapes:
 | Square | Triangle | `square_triangle` | side |
 | Hexagonal | Rectangle | `hex_rectangle` | columns, rows |
 | Hexagonal | Circle | `hex_circle` | radius |
+| Hexagonal | Triangle | `hex_triangle` | side |
 | Triangular | Circle | `triangle_circle` | radius |
 
 The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Each
@@ -93,6 +94,11 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
 including teleports, vertical passages, and elevators.
 
+Predefined circle and hexagon configurations use a default radius of `10` cells when no saved
+radius exists, except `hex_circle` and `hex_hexagon` on hexagonal tessellations, which default
+to `8` cells. The default side of the predefined triangular field is `12` cells. Existing saved
+size values are preserved.
+
 ## State fields (mazeStore)
 
 Tessellation kind and orientation (`tessellationKind`, `hexOrientation`, `triOrientation`) are
@@ -106,7 +112,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"square_circle"` \| `"hex_rectangle"` \| `"hex_circle"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_circle"` \| `"tri_hexagon"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
@@ -143,19 +149,26 @@ When centering a triangle shape, the coordinate offset `(ox, oy)` must satisfy `
 
 ## Predefined shape cell sets
 
+Predefined shapes are instances of the same primitive shape definitions used by custom-mode
+brushes. Their configuration values are converted into a world-space primitive size, then passed
+through the same primitive rasterization. Lattice-aligned triangular shapes use complete discrete
+layers so the world-space triangle aspect ratio cannot distort their boundaries. A predefined
+shape must not maintain a separate cell-coordinate implementation for the same geometry.
+
 | Config type | Cell count | Centering |
 |---|---|---|
 | `square` | `width × height` | offset by `floor(w/2), floor(h/2)` |
 | `square_circle` | cells with `x² + y² < r²` | naturally centered |
 | `square_triangle` | `side × (side + 1) / 2` | centered by its bounding box |
-| `hex_rectangle` | all complete hexagons fitting inside the centered rectangle | naturally centered |
+| `hex_triangle` | cells whose centers fit the configured triangle | naturally centered |
+| `hex_rectangle` | `cols × rows` cells in a screen-aligned rectangle with alternating half-cell offsets | naturally centered |
 | `hex_parallelogram` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
 | `hex_circle` | cells whose centers fit the Euclidean radius | naturally centered |
-| `hex_hexagon` | `3r² + 3r + 1` | naturally centered (generated around origin) |
-| `triangle_rect` | `cols × rows` | parity-safe offset |
+| `hex_hexagon` | `3r² + 3r + 1` cells from the axial hex-distance rule | naturally centered on the origin cell |
+| `triangle_rect` | `(2 × cols) × rows` triangle cells; each configured column supplies the complete opposite-orientation pair | centered complete coordinate block |
 | `triangle_triangle` | `n²` | bbox center, parity-safe offset |
 | `triangle_hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
-| `triangle_circle` | cells whose triangle centers lie within radius `r` | naturally centered |
+| `triangle_circle` | cells whose complete triangles lie within radius `r` | naturally centered, without isolated edge spikes |
 
 ## Primitive brushes (custom mode)
 
@@ -169,31 +182,54 @@ Custom mode supports two drawing modes controlled by `fieldPrimitive`:
 
 | Primitive | Tessellation | Drag semantics |
 |---|---|---|
-| `square_rect` | square | corner-to-corner rectangle |
-| `square_circle` | square | center = mousedown, radius grows with drag distance |
-| `square_triangle` | square | center = mousedown, triangular shape grows with drag distance |
-| `hex_rectangle` | hex | corner-to-corner axial rectangle |
-| `hex_circle` | hex | center = mousedown, radius grows with drag distance |
-| `hex_parallelogram` | hex | corner-to-corner parallelogram (axial coords) |
-| `hex_hexagon` | hex | center = mousedown, radius grows with drag distance |
-| `tri_rect` | triangle | corner-to-corner rectangle (all parities included) |
-| `tri_triangle` | triangle | center = mousedown, triangular shape grows with drag distance |
-| `tri_hexagon` | triangle | center = mousedown, hexagonal tri-grid shape grows with drag distance |
-| `tri_circle` | triangle | center = mousedown, circular tri-grid shape grows with drag distance |
+| `rectangle` | all | rectangular drag area |
+| `circle` | all | ellipse fitted to the drag area, or symmetric ellipse with Shift |
+| `triangle` | all | right triangle formed by the drag rectangle's diagonal, or centered directional triangle with Shift |
+| `equilateral_triangle` | all | equilateral triangle fitted to the drag frame and oriented with the triangle tessellation; on a triangular tessellation its apex softly snaps to one of six normals of the three edge families |
+| `hexagon` | all | hexagon fitted to the drag area in the orientation opposite to the tessellation, or centered hexagon with Shift |
+| `parallelogram` | all | world-space parallelogram fitted to the drag area, with a fixed hex-grid axis angle and the drag start on a frame vertex |
 
-**Corner-to-corner** shapes use `startGrid` and `endGrid` as opposite corners.
+Without Shift, shapes use `startGrid` and `endGrid` as the shared normalized drag frame. The frame
+is at least one cell wide and high, and the shape is centered in it; the circle is an ellipse when
+the frame is not square. The triangle uses one half of that frame along its drag-directed
+diagonal. The start cell selects the corresponding frame corner in normal mode; with Shift it
+remains the center of the frame. Primitive-specific code only defines the shape inside the frame;
+it does not recalculate drag dimensions.
+The current drag point is measured in world coordinates, not snapped to a cell center. It
+determines the directions and lengths of the frame, so sub-cell movement remains continuous even
+on hexagonal and triangular tessellations. Reversing or changing the drag direction mirrors the
+triangle instead of always selecting the same upper-left half.
 
-**Center-radius** shapes use `startGrid` as center. `gridRadius` is computed from drag distance:
+With Shift held, every shape uses `startGrid` as its center while preserving the drag rectangle's
+width and height independently. The distance from start to current is mirrored on each axis; the
+result is therefore a symmetric rectangle, not a forced square. All dimensions are derived from
+the world-space center of the start cell and the current pointer position. The start is therefore
+stable regardless of where inside the cell the pointer went down; cell centers are used only when
+testing which cells lie inside the resulting shape.
 ```
 gridRadius = max(1, round(screenPixelDistance / (TILE_SIZE × viewportScale)))
 ```
 Zoom-dependent by design: same pixel drag → same number of cells regardless of zoom level. Minimum radius is 1 (a click-without-drag yields the minimal shape).
+
+With Ctrl held, the frame's width and height are constrained to the same value. Ctrl therefore
+restores square proportions; Shift+Ctrl makes that square grow symmetrically from the start cell.
+For `parallelogram`, Ctrl uses a primitive-specific constraint instead: the frame is adjusted so
+the parallelogram's adjacent sides are equal while its axis angle remains fixed.
 
 ### Preview overlay
 
 While dragging, a semi-transparent overlay shows the pending shape:
 - Left button (add): blue `0x4488ff`, alpha 0.5
 - Right button (remove): red `0xff4444`, alpha 0.5
+
+Custom mode also provides a `Primitive frame` switch. When enabled, a thin outline shows the
+ideal world-space primitive behind the tile preview; it is visual only and does not affect the
+committed cells. Hover highlighting is hidden for the duration of a drag so it cannot obscure the
+primitive preview.
+
+Primitive results always remove cells that have no edge-adjacent neighbor. With `Smoothing` enabled,
+one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
+Smoothing affects primitive tools only; point-by-point editing is unchanged.
 
 Preview is RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
 
