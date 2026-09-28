@@ -48,11 +48,15 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   selectedTeleportGroupKey: null,
   hoveredExportWarningKey: null,
   openExportFormatSettings: null,
+  exportFormatSettingsCovered: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
-  setOpenExportFormatSettings: (format) => set({ openExportFormatSettings: format }),
+  // A newly (re)opened panel is never covered on open — reset here rather than left stale from
+  // whatever the previously open format's covered state happened to be.
+  setOpenExportFormatSettings: (format) => set({ openExportFormatSettings: format, exportFormatSettingsCovered: false }),
+  setExportFormatSettingsCovered: (covered) => set({ exportFormatSettingsCovered: covered }),
   setPngOutputMode: (mode) => set((s) => ({ pngExportSettings: { ...s.pngExportSettings, outputMode: mode } })),
   setDigitalScale: (scale) =>
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, scale } } })),

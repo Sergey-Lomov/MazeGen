@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { StrictMode } from "react";
 import { render, screen } from "@testing-library/react";
 import { SidePanel } from "../components/SidePanel";
 
@@ -85,5 +86,47 @@ describe("SidePanel mount-order stack (GitHub issue #629)", () => {
       <SidePanel title="Base" onClose={vi.fn()}>base content</SidePanel>,
     );
     expect(screen.getByText("Base")).toBeVisible();
+  });
+
+  // Regression: registering the stack via a render-time push paired with an effect-time-only pop
+  // desyncs under `StrictMode`'s mount-cleanup-mount effect cycle — the first cleanup pops the id
+  // with nothing to push it back, leaving even a lone panel stuck reading as non-top (hidden). Push
+  // and pop now both live in the same `useLayoutEffect`, which stays balanced under that cycle.
+  it("stays visible under StrictMode's double effect invocation", () => {
+    render(
+      <StrictMode>
+        <SidePanel title="Only" onClose={vi.fn()}>only content</SidePanel>
+      </StrictMode>,
+    );
+
+    expect(screen.getByText("Only")).toBeVisible();
+  });
+
+  // Regression: an overlay panel takes no width of its own (`position: absolute`), so it relies on
+  // whatever's underneath it in the slot to size the slot's width. The base panel below it used to
+  // get `display: none` like any other non-topmost entry — dropping it out of flow entirely — which
+  // left the slot with nothing to size itself by, collapsing it to zero width and taking the
+  // overlay's `inset: 0` down with it (looked like the whole side-panel area vanishing). The base
+  // panel must stay in flow (contributing its `width`) while only overlays sit above it.
+  it("base panel keeps its width in flow under an overlay, so the slot doesn't collapse", () => {
+    const { rerender } = render(
+      <SidePanel title="Base" onClose={vi.fn()}>base content</SidePanel>,
+    );
+    // "Base"'s title span -> header div -> the panel's own root div (the one carrying `width`,
+    // `display`, `visibility`).
+    const basePanel = screen.getByText("Base").parentElement!.parentElement!;
+
+    rerender(
+      <>
+        <SidePanel title="Base" onClose={vi.fn()}>base content</SidePanel>
+        <SidePanel title="Overlay" onClose={vi.fn()} overlay>overlay content</SidePanel>
+      </>,
+    );
+
+    expect(screen.getByText("Overlay")).toBeVisible();
+    // Not `display: none` — the base panel must stay laid out (`display` still a flex value) so its
+    // own `width` keeps sizing the slot; it's merely not painted (`visibility: hidden`).
+    expect(basePanel).not.toHaveStyle({ display: "none" });
+    expect(basePanel).toHaveStyle({ visibility: "hidden" });
   });
 });

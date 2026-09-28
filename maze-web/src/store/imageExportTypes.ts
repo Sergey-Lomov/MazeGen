@@ -747,6 +747,13 @@ export interface ImageExportState {
    * it. Independent state: opening one closes the other, since both share the same `SidePanel`
    * portal slot (`ImageExportFeature.tsx`). */
   openExportFormatSettings: ExportFormatId | null;
+  /** True while `openExportFormatSettings`'s `SidePanel` is covered by another `SidePanel` stacked
+   * on top of it (GitHub issue #629 follow-up) — the format settings panel is still logically open
+   * (`openExportFormatSettings` unchanged), just not the visible panel. Driven by
+   * `ImageExportFeature`'s `SidePanel.onTopChange`. `ExportFrameOverlay`'s on-canvas print-frame
+   * overlay reads this alongside `openExportFormatSettings === "png"` — it would otherwise keep
+   * drawing the frame/dimming for a panel the user can no longer see or act on. */
+  exportFormatSettingsCovered: boolean;
   pngExportSettings: PngExportSettings;
 }
 
@@ -754,6 +761,7 @@ export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
+  setExportFormatSettingsCovered: (covered: boolean) => void;
   setPngOutputMode: (mode: PngExportOutputMode) => void;
   setDigitalScale: (scale: number) => void;
   setDigitalCanvasMode: (mode: PngCanvasMode) => void;

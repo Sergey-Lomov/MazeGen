@@ -18,6 +18,7 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const setOpenRenderModeSettings = useMazeStore((s) => s.setOpenRenderModeSettings);
   const openExportFormatSettings = useMazeStore((s) => s.openExportFormatSettings);
   const setOpenExportFormatSettings = useMazeStore((s) => s.setOpenExportFormatSettings);
+  const setExportFormatSettingsCovered = useMazeStore((s) => s.setExportFormatSettingsCovered);
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
 
   function handleClick(mode: RenderModeId) {
@@ -88,7 +89,11 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
       )}
 
       {openFormat && (
-        <SidePanel title={openFormat.label()} onClose={() => setOpenExportFormatSettings(null)}>
+        <SidePanel
+          title={openFormat.label()}
+          onClose={() => setOpenExportFormatSettings(null)}
+          onTopChange={(isTop) => setExportFormatSettingsCovered(!isTop)}
+        >
           {openFormat.SettingsPanel ? <openFormat.SettingsPanel /> : (
             <span>{m["image_export.settings_empty"]()}</span>
           )}

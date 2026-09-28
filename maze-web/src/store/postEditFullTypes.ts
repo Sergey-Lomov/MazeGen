@@ -160,6 +160,13 @@ export interface PostEditState {
    * active, cleared by an ordinary click elsewhere, closing the dialog, or leaving the post-edit
    * card. Not hover — doesn't change on mere cursor movement. */
   postEditFocusedPoint: [number, number] | null;
+  /** True while the "Manage split nodes" dialog (`postEditFocusedPoint` non-null) is covered by
+   * another `SidePanel` stacked on top of it (GitHub issue #629 follow-up) — the dialog itself is
+   * still open (`postEditFocusedPoint` unchanged), just not the visible panel. Driven by
+   * `ManageSplitNodesDialog`'s `SidePanel.onTopChange`. `PostEditRenderer`'s on-canvas cell outline
+   * for the point being edited reads this alongside `postEditFocusedPoint` — the outline would
+   * otherwise keep highlighting a cell for a dialog the user can no longer see or act on. */
+  postEditFocusedPointCovered: boolean;
   /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
   postEditEdges: Record<string, PostEditEdge> | null;
   /** Confirmed snapshot of postEditDraftTeleportEdges. Read by AnalyticsRenderer. */
@@ -428,6 +435,7 @@ export interface PostEditActions {
   cycleActiveSplitNode: (point: [number, number]) => void;
   setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
+  setPostEditFocusedPointCovered: (covered: boolean) => void;
   setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotateSplitPointNodes` (postEditUtils.ts). No-op if it would

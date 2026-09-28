@@ -213,6 +213,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
       state.postEditFocusedPoint !== prev.postEditFocusedPoint ||
+      state.postEditFocusedPointCovered !== prev.postEditFocusedPointCovered ||
       state.activeFloorId !== prev.activeFloorId ||
       state.postEditTool !== prev.postEditTool
     ) {
@@ -587,7 +588,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
       alpha: 0.35,
     }, cfg);
     this.splitPanelTarget.render({
-      cells: state.postEditFocusedPoint ? [state.postEditFocusedPoint] : [],
+      // Hidden while another `SidePanel` covers the "Manage split nodes" dialog (GitHub issue #629
+      // follow-up) — the outline would otherwise keep highlighting a cell for a dialog the user can
+      // no longer see or act on.
+      cells: state.postEditFocusedPoint && !state.postEditFocusedPointCovered ? [state.postEditFocusedPoint] : [],
       color: canvas.fieldEditor.panelTarget,
       alpha: 0,
       inset: 0,

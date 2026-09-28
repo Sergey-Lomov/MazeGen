@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ImageExportFeature } from "../components/features/ImageExportFeature";
+import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
@@ -22,6 +23,8 @@ beforeEach(() => {
   // instead of an open).
   useMazeStore.setState({
     ...baseStoreState(), activeRenderMode: null, openRenderModeSettings: null, openExportFormatSettings: null,
+    // Same leftover-state hazard as `openExportFormatSettings` above (GitHub issue #629 follow-up).
+    exportFormatSettingsCovered: false,
   });
 });
 
@@ -105,5 +108,25 @@ describe("ImageExportFeature", () => {
 
     expect(screen.queryByText(m["image_export.format.png.digital.scale"]())).not.toBeInTheDocument();
     expect(wallsBackground).toBeVisible();
+  });
+
+  // GitHub issue #629 follow-up: the PNG format panel's on-canvas frame overlay must know when
+  // it's covered by another SidePanel (e.g. the color picker), not just when it's closed — driven
+  // by `SidePanel.onTopChange` into `exportFormatSettingsCovered`.
+  it("marks exportFormatSettingsCovered while another SidePanel opens on top of the PNG panel", () => {
+    useMazeStore.setState({ activeRenderMode: "vector_by_walls", openExportFormatSettings: "png" });
+    const { rerender } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    expect(useMazeStore.getState().exportFormatSettingsCovered).toBe(false);
+
+    rerender(
+      <>
+        <ImageExportFeature onExportPng={() => Promise.resolve(null)} />
+        <SidePanel title="Overlay" onClose={() => {}} overlay>overlay content</SidePanel>
+      </>,
+    );
+    expect(useMazeStore.getState().exportFormatSettingsCovered).toBe(true);
+
+    rerender(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+    expect(useMazeStore.getState().exportFormatSettingsCovered).toBe(false);
   });
 });

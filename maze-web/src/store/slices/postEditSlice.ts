@@ -157,6 +157,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _nextPostEditSplitPointId: 1,
   postEditActiveSplitNode: {},
   postEditFocusedPoint: null,
+  postEditFocusedPointCovered: false,
   postEditHoveredEntity: null,
   postEditEdges: null,
   postEditTeleportEdges: [],
@@ -591,6 +592,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         _nextSplitSlotId: nextSplitSlots,
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
+        postEditFocusedPointCovered: false,
         postEditEdges: null,
         postEditTeleportEdges: [],
         postEditMeta: null,
@@ -992,7 +994,11 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }));
   },
 
-  setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point }),
+  // A newly (re)opened dialog is never covered on open — `postEditFocusedPointCovered` reset here
+  // rather than left stale from whatever the previously focused point's covered state happened to
+  // be (e.g. reopening the dialog for a different point right after it was covered).
+  setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point, postEditFocusedPointCovered: false }),
+  setPostEditFocusedPointCovered: (covered) => set({ postEditFocusedPointCovered: covered }),
   setPostEditHoveredEntity: (entity: PostEditHoveredEntity | null) => set({ postEditHoveredEntity: entity }),
 
   rotateSplitPoint: (point, direction) => {
