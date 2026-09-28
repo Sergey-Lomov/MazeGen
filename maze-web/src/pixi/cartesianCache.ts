@@ -1,5 +1,5 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { configAllCells } from "./tessellationCells";
+import { tessellationFamily, type Tessellation as TessellationConfig } from "../fieldConfig";
+import { resolveFieldConfig } from "./tessellationCells";
 import { getCartesianCoords } from "../wasm/mazeService";
 
 /// Cache of canonical (unrotated, unit-tile-scale) Cartesian projections, keyed by "x,y" -- the
@@ -13,26 +13,8 @@ const cache = new Map<string, [number, number]>();
 let cachedKind: "square" | "hex" | "tri" | null = null;
 
 function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" {
-  switch (cfg.type) {
-    case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
-      return "square";
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom":
-      return "hex";
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom":
-      return "tri";
-  }
+  const family = tessellationFamily(cfg);
+  return family === "triangle" ? "tri" : family;
 }
 
 function cellKey(x: number, y: number): string {
@@ -48,7 +30,8 @@ export function warmCartesianCache(cfg: TessellationConfig): void {
   const kind = toWasmKind(cfg);
   cache.clear();
   cachedKind = kind;
-  const points = configAllCells(cfg);
+  const field = "kind" in cfg ? cfg : resolveFieldConfig(cfg);
+  const points = field.cells;
   if (points.length === 0) return;
   const coords = getCartesianCoords({ tessellation_type: kind, points });
   for (let i = 0; i < points.length; i++) {

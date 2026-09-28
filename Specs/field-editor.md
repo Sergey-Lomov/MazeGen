@@ -157,6 +157,12 @@ shape must not maintain a separate cell-coordinate implementation for the same g
 Once resolved to cells, a predefined shape uses the tessellation family of its cells for adjacency,
 wall, and shared-edge geometry; the shape variant only determines which cells belong to the field.
 
+The generated maze's active runtime field is normalized to `kind` (`square`, `hex`, or
+`triangle`), the family orientation where applicable, and the resolved cell set. Field setup,
+project serialization/restoration, and resolution retain the detailed `FieldConfig.type` value.
+Adding a preset shape therefore does not require a generated-maze runtime consumer to support its
+shape variant.
+
 | Config type | Cell count | Centering |
 |---|---|---|
 | `square` | `width × height` | offset by `floor(w/2), floor(h/2)` |

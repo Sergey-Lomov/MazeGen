@@ -1,7 +1,7 @@
 import { TILE_SIZE } from "./constants";
 import { INRADIUS } from "./hexGeometry";
 import { TRI_TILE_SIZE } from "./triGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { tessellationFamily, type Tessellation as TessellationConfig } from "../fieldConfig";
 
 export interface TessellationProjection {
   // viewport-space coords (after viewport transform) → grid coords
@@ -162,24 +162,13 @@ class TriProjection implements TessellationProjection {
 }
 
 export function makeProjection(cfg: TessellationConfig): TessellationProjection {
-  switch (cfg.type) {
+  const kind = tessellationFamily(cfg);
+  switch (kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return new SquareProjection();
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom":
-      return new HexProjection((cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top");
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom":
-      return new TriProjection((cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0");
+    case "hex":
+      return new HexProjection(("orientation" in cfg ? cfg.orientation : undefined) as "flat_top" | "pointy_top" ?? "flat_top");
+    case "triangle":
+      return new TriProjection(("orientation" in cfg ? cfg.orientation : undefined) as "r0" | "r90" | "r180" | "r270" ?? "r0");
   }
 }

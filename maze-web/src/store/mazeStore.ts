@@ -12,6 +12,7 @@ import { createFloorsSlice } from "./slices/floorsSlice";
 import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
+import { resolveFieldConfig } from "../pixi/tessellationCells";
 import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
 import { derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./slices/postEditSliceHelpers";
 
@@ -93,7 +94,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       hexOrientation,
       triOrientation,
       floorFields,
-      activeTessellationConfig: cfg,
+      activeTessellationConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,
       // generation settings (seed used below for generate call)

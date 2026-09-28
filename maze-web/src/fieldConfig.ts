@@ -14,3 +14,23 @@ export type FieldConfig =
   | { type: "square_custom"; points: [number, number][] }
   | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
   | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" };
+
+/**
+ * The field after its editor-only shape definition has been resolved. Runtime consumers must use
+ * this form: a new preset shape changes only the resolver, never geometry, rendering, or export.
+ */
+export type ResolvedField =
+  | { type: "square"; width: 0; height: 0; kind: "square"; cells: [number, number][] }
+  | { type: "hex_parallelogram"; cols: 0; rows: 0; kind: "hex"; orientation: "flat_top" | "pointy_top"; cells: [number, number][] }
+  | { type: "triangle_rect"; cols: 0; rows: 0; kind: "triangle"; orientation: "r0" | "r90" | "r180" | "r270"; cells: [number, number][] };
+
+/** Accept legacy editor configurations at the field-configuration boundary only. */
+export type Tessellation = FieldConfig | ResolvedField;
+
+/** Family lookup safe for hot paths: it never resolves the field's cells. */
+export function tessellationFamily(config: Tessellation): "square" | "hex" | "triangle" {
+  if ("kind" in config) return config.kind;
+  return config.type.startsWith("square") ? "square"
+    : config.type.startsWith("hex") ? "hex"
+      : "triangle";
+}

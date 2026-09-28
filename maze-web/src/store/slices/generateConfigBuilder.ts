@@ -3,7 +3,7 @@ import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
-import { configAllCells } from "../../pixi/tessellationCells";
+import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
 import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters, nextSplitSlotIdCounters } from "./postEditSliceHelpers";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
@@ -337,7 +337,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       selectedNode: null,
       issues: snapshot.issues,
       error: null,
-      activeTessellationConfig: activeTessellation,
+      activeTessellationConfig: resolveFieldConfig(activeTessellation),
       routeInfo: snapshot.route_info,
       timing: snapshot.timing,
       generationStatus: "done",

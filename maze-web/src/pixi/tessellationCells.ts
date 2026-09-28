@@ -3,7 +3,7 @@ import { cellsInsideShape, shapeForPrimitive, type ShapeOrigin } from "./shapeSe
 import { primitiveCells } from "./primitiveGeometry";
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig as TessellationConfig, ResolvedField } from "../fieldConfig";
 
 export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
   switch (cfg.type) {
@@ -130,6 +130,19 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
     case "tri_custom":
       return cfg.points.map(([x, y]) => [x, y]);
   }
+}
+
+/**
+ * Converts the editor's detailed shape configuration into the only representation runtime code
+ * needs. Keep all `*_circle`/`*_triangle`/`*_custom` knowledge in this module.
+ */
+export function resolveFieldConfig(cfg: TessellationConfig): ResolvedField {
+  const cells = configAllCells(cfg);
+  if (cfg.type.startsWith("square")) return { type: "square", width: 0, height: 0, kind: "square", cells };
+  if (cfg.type.startsWith("hex")) {
+    return { type: "hex_parallelogram", cols: 0, rows: 0, kind: "hex", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "flat_top") as "flat_top" | "pointy_top", cells };
+  }
+  return { type: "triangle_rect", cols: 0, rows: 0, kind: "triangle", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "r0") as "r0" | "r90" | "r180" | "r270", cells };
 }
 
 /** A rectangular triangle-tessellation field is made from complete horizontal pairs of opposite
