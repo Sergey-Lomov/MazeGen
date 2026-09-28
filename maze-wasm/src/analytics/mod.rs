@@ -18,6 +18,7 @@ use post_edit::{
     resolve_preset_nodes_for_post_edit, restore_vertical_edges,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -202,10 +203,20 @@ where
     let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)?;
 
     // Reuses each node's real `i` from the client's own `cfg.nodes` where known (GitHub issue
-    // #236) — falls back to position only for a node not in `cfg.nodes` at all, i.e. a split node
-    // this exact call just minted via `apply_split_points`, which by construction sits at the
-    // point's next free position (no hole possible for a node that never existed before this call).
-    //
+    // #236). A node this exact call just minted via `apply_split_points` isn't in `cfg.nodes` yet
+    // — its `i` comes from `split_map` instead (`slot_id + 1`, the same `i` `apply_split_points`
+    // itself resolved/minted the node against), never from its position among the point's nodes:
+    // once an earlier-created sibling has been removed client-side, a freshly (re-)minted slot's
+    // `slot_id` can exceed the point's current node count (GitHub issue #626 — a fresh `slot_id`
+    // never reuses a removed one, see `_nextSplitSlotId`'s "never reuse" contract in
+    // `Specs/post-edit.md`), so its position-among-nodes and its real `i` (`slot_id + 1`) can
+    // differ. Reporting the position instead desyncs `existing_by_index` on the very next confirm
+    // (it now looks up `slot_id + 1`, no longer matching the position-derived `i` reported here),
+    // making `apply_split_points` mint yet another duplicate node for the same slot every confirm.
+    let index_by_split_map: HashMap<u64, u32> = split_map
+        .iter()
+        .map(|(&(_, slot_id, _), &id)| (id, slot_id + 1))
+        .collect();
     // Post-edit rebuilds `Field`/`Graph` straight from the client's node/edge list, never from
     // `PresetConnection`s, so there is no `PresetState` to reuse from generation — but the
     // project's preset connections (`cfg.preset_connections`) are still sent alongside precisely
@@ -243,7 +254,13 @@ where
         &check_types,
         &preset_state,
         point_to_xy,
-        |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32),
+        |id, _, pos| {
+            index_by_node
+                .get(&id)
+                .or_else(|| index_by_split_map.get(&id))
+                .copied()
+                .unwrap_or(pos as u32)
+        },
         score_weights.as_ref(),
     )
 }
@@ -322,6 +339,100 @@ mod tests {
 
         fn run(cfg: ComputeAnalyticsConfig) -> Result<MazeSnapshot, String> {
             run_compute_analytics_core::<SquareTessellation>(cfg, point_to_xy, xy_to_point)
+        }
+
+        // GitHub issue #626 regression: re-adding a split slot at a point whose only prior slot was
+        // removed must not desync `NodeDto.i` from the newly-minted node's real slot id. Mirrors
+        // the client's actual round-trip: each call's `cfg.nodes` is the PREVIOUS call's own
+        // `snapshot.nodes` (post-edit's `confirmPostEdit` always feeds the last snapshot back in,
+        // never a hand-rebuilt list), and `_nextSplitSlotId` never reuses a removed slot id (see
+        // `Specs/post-edit.md`), so slot 0 is created then removed, and the SECOND add mints slot 1
+        // — one past the point's current (empty) node count, not "the next position".
+        #[test]
+        fn readding_a_split_slot_after_removing_the_only_prior_one_does_not_desync_node_i() {
+            // Call 1: add slot 0 at (0,0) — mints a fresh node past the two base nodes.
+            let mut cfg = base_cfg();
+            cfg.split_points = vec![([0, 0], 0, 0)];
+            let snapshot1 = run(cfg).expect("call 1 (add slot 0) must succeed");
+            assert_eq!(snapshot1.nodes.len(), 3, "call 1 must mint exactly one split node");
+            let slot0_node = snapshot1
+                .nodes
+                .iter()
+                .find(|n| n.x == 0 && n.y == 0 && n.i == 1)
+                .expect("call 1's minted node must report i == slot_id + 1 == 1");
+
+            // Call 2: slot 0 removed client-side (GitHub issue #550 follow-up's whole-point
+            // removal) — the client prunes the removed node from `cfg.nodes` and sends no
+            // split_points for this point at all, exactly as `pruneRemovedSplitNodes` does.
+            let mut cfg2 = base_cfg();
+            cfg2.nodes = snapshot1
+                .nodes
+                .iter()
+                .filter(|n| n.id != slot0_node.id)
+                .map(|n| NodeDto {
+                    id: n.id,
+                    x: n.x,
+                    y: n.y,
+                    i: n.i,
+                    level: n.level,
+                })
+                .collect();
+            let snapshot2 = run(cfg2).expect("call 2 (remove slot 0) must succeed");
+            assert_eq!(
+                snapshot2.nodes.len(),
+                2,
+                "call 2 must leave only the two original nodes"
+            );
+
+            // Call 3: re-add at the SAME point — `_nextSplitSlotId` never reuses id 0, so this is
+            // slot 1, even though the point currently has zero extra nodes (position 1, not 0).
+            let mut cfg3 = base_cfg();
+            cfg3.nodes = snapshot2
+                .nodes
+                .iter()
+                .map(|n| NodeDto {
+                    id: n.id,
+                    x: n.x,
+                    y: n.y,
+                    i: n.i,
+                    level: n.level,
+                })
+                .collect();
+            cfg3.split_points = vec![([0, 0], 1, 0)];
+            let snapshot3 = run(cfg3).expect("call 3 (re-add as slot 1) must succeed");
+            assert_eq!(snapshot3.nodes.len(), 3, "call 3 must mint exactly one split node");
+            let slot1_node = snapshot3
+                .nodes
+                .iter()
+                .find(|n| n.x == 0 && n.y == 0 && n.i != 0)
+                .expect("call 3 must have minted a split node at (0,0)");
+            assert_eq!(
+                slot1_node.i, 2,
+                "the re-added node must report i == slot_id + 1 == 2, not its bare position (1)"
+            );
+
+            // Call 4: confirm again with NO change — reproduces the "next confirm" step. If call
+            // 3 had reported the wrong `i`, this call's `existing_by_index` lookup for
+            // `(point, slot_id + 1 = 2, level)` would miss and mint a SECOND duplicate node here.
+            let mut cfg4 = base_cfg();
+            cfg4.nodes = snapshot3
+                .nodes
+                .iter()
+                .map(|n| NodeDto {
+                    id: n.id,
+                    x: n.x,
+                    y: n.y,
+                    i: n.i,
+                    level: n.level,
+                })
+                .collect();
+            cfg4.split_points = vec![([0, 0], 1, 0)];
+            let snapshot4 = run(cfg4).expect("call 4 (re-confirm, no change) must succeed");
+            assert_eq!(
+                snapshot4.nodes.len(),
+                3,
+                "re-confirming with no change must not mint a duplicate split node"
+            );
         }
 
         #[test]
