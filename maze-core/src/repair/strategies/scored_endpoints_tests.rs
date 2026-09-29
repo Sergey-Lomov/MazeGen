@@ -1042,3 +1042,202 @@ fn apply_is_deterministic_for_fixed_seed() {
     assert_eq!(maze_a.meta.start, maze_b.meta.start);
     assert_eq!(maze_a.meta.finish, maze_b.meta.finish);
 }
+
+#[test]
+fn apply_picks_deepest_leaf_across_a_branching_tree_of_plain_dead_end_tails() {
+    // A 3-way junction at (0,0) with three plain dead-end tails hanging off it, of different
+    // depths (1, 2, and 3 hops), plus a further branch partway down the depth-3 tail (so pruning
+    // must peel a whole nested subtree, not just single-hop tails). With path_weight the only
+    // nonzero weight, the winning pair must be the two deepest reachable leaves: the tips of the
+    // depth-2 and depth-3 tails (the depth-1 tail and the depth-3 tail's own shallow side branch
+    // are strictly shallower and must lose) -- this is exactly the "peel dominated dead-end tails"
+    // optimization's target shape (GitHub issue #634 follow-up).
+    let mut ids = IdGenerator::new();
+    let field = MultiLevelField::single_level(square_rect(4, 4), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let mut graph = Graph::new();
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
+    let at = |x: i32, y: i32| field.node_at(level, SquarePoint { x, y }).unwrap();
+    let bidir = |g: &mut Graph, a, b| g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+
+    // Junction at (0,0). Tail A: depth 1 -> (1,0). Tail B: depth 2 -> (0,1)-(0,2). Tail C: depth 3
+    // -> (2,0)-(2,1)-(2,2), with a depth-1 side branch off (2,1) -> (3,1).
+    bidir(&mut graph, at(0, 0), at(1, 0));
+    bidir(&mut graph, at(0, 0), at(0, 1));
+    bidir(&mut graph, at(0, 1), at(0, 2));
+    bidir(&mut graph, at(0, 0), at(2, 0));
+    bidir(&mut graph, at(2, 0), at(2, 1));
+    bidir(&mut graph, at(2, 1), at(2, 2));
+    bidir(&mut graph, at(2, 1), at(3, 1));
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
+            &ScoredEndpointsStrategy,
+        ),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(
+        &ScoredEndpointsStrategy,
+        &issue(true, true),
+        &mut maze,
+        &mut rng(),
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let (a, b) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
+    let deep_b = maze
+        .field
+        .node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 2 })
+        .unwrap();
+    let deep_c = maze
+        .field
+        .node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 2 })
+        .unwrap();
+    assert!(
+        (a == deep_b && b == deep_c) || (a == deep_c && b == deep_b),
+        "winning pair must be the two deepest leaves (0,2) and (2,2), got start={a} finish={b}",
+    );
+}
+
+#[test]
+fn apply_does_not_prune_when_path_weight_is_zero() {
+    // Same junction-with-three-tails shape as
+    // `apply_picks_deepest_leaf_across_a_branching_tree_of_plain_dead_end_tails`, but with
+    // `path_weight` at 0 and `junction_weight` the only nonzero weight instead. The dominance proof
+    // pruning relies on requires strict growth of `path_weight`'s contribution (see
+    // `ScoredPathContext::build`'s doc comment) -- at `path_weight <= 0.0` that growth disappears, so
+    // pruning must be disabled and every node, including the depth-1 tail tip normally dominated
+    // away, must remain a `best_pair` candidate. With junction_weight as the only nonzero weight,
+    // every leaf ties on junction_count (all three tails end one hop past the junction's own
+    // junction node), so the depth-1 tail tip winning here can only happen if it was never pruned
+    // from the candidate list in the first place (GitHub issue #634 follow-up).
+    let mut ids = IdGenerator::new();
+    let field = MultiLevelField::single_level(square_rect(4, 4), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let mut graph = Graph::new();
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
+    let at = |x: i32, y: i32| field.node_at(level, SquarePoint { x, y }).unwrap();
+    let bidir = |g: &mut Graph, a, b| g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+
+    // Junction at (0,0). Tail A: depth 1 -> (1,0). Tail B: depth 2 -> (0,1)-(0,2). Tail C: depth 3
+    // -> (2,0)-(2,1)-(2,2).
+    bidir(&mut graph, at(0, 0), at(1, 0));
+    bidir(&mut graph, at(0, 0), at(0, 1));
+    bidir(&mut graph, at(0, 1), at(0, 2));
+    bidir(&mut graph, at(0, 0), at(2, 0));
+    bidir(&mut graph, at(2, 0), at(2, 1));
+    bidir(&mut graph, at(2, 1), at(2, 2));
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
+            &ScoredEndpointsStrategy,
+        ),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(
+        &ScoredEndpointsStrategy,
+        &issue(true, true),
+        &mut maze,
+        &mut rng(),
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let (a, b) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
+    let shallow_a = maze
+        .field
+        .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 0 })
+        .unwrap();
+    assert!(
+        a == shallow_a || b == shallow_a,
+        "depth-1 tail tip (1,0), normally pruned away, must survive as a candidate when \
+         path_weight is 0, got start={a} finish={b}",
+    );
+}
+
+#[test]
+fn apply_keeps_a_plain_fork_as_a_candidate_when_two_of_its_branches_are_a_loop() {
+    // A 3-way plain fork at (1,1): two of its branches are opposite sides of a plain 4-cycle
+    // ((1,1)-(0,1)-(0,0)-(1,0)-(1,1)), and the third is a genuine dead-end tail ((1,1)-(2,1)-(3,1)).
+    // The fork can't be proven dominated by any single branch here -- unlike a fork whose branches
+    // are *all* dead-end tails, two of this fork's branches loop back into the rest of the graph, so
+    // there's no single "outside" leaf to compare the loop's two sides against. The fork must
+    // therefore survive pruning as its own candidate (GitHub issue #634 follow-up: a fork must only
+    // be dropped when at most one of its original branches leads back into the rest of the graph).
+    let mut ids = IdGenerator::new();
+    let field = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let mut graph = Graph::new();
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
+    let at = |x: i32, y: i32| field.node_at(level, SquarePoint { x, y }).unwrap();
+    let bidir = |g: &mut Graph, a, b| g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+
+    bidir(&mut graph, at(1, 1), at(0, 1));
+    bidir(&mut graph, at(0, 1), at(0, 0));
+    bidir(&mut graph, at(0, 0), at(1, 0));
+    bidir(&mut graph, at(1, 0), at(1, 1));
+    bidir(&mut graph, at(1, 1), at(2, 1));
+    bidir(&mut graph, at(2, 1), at(3, 1));
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(
+            &ScoredEndpointsStrategy,
+        ),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(
+        &ScoredEndpointsStrategy,
+        &issue(true, true),
+        &mut maze,
+        &mut rng(),
+        &params,
+        &PresetState::empty(),
+        &[],
+    );
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let (a, b) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
+    let fork = maze
+        .field
+        .node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 })
+        .unwrap();
+    let deep_tail = maze
+        .field
+        .node_at(maze.field.single_level_id(), SquarePoint { x: 3, y: 1 })
+        .unwrap();
+    // What this regression test actually checks is that the fork survived pruning as a candidate:
+    // with path_weight the only nonzero weight, the fork is one endpoint of the longest simple path
+    // in this graph (dead-end tail tip, through the fork, around one side of the loop), so it can
+    // only win here if it wasn't wrongly dropped from the candidate list.
+    assert!(
+        a == fork || b == fork,
+        "fork at (1,1) must survive pruning as a candidate, got start={a} finish={b}",
+    );
+    assert!(
+        a == deep_tail || b == deep_tail,
+        "dead-end tail tip (3,1) must be the other endpoint, got start={a} finish={b}",
+    );
+}

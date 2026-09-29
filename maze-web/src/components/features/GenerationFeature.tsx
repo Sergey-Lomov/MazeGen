@@ -11,10 +11,6 @@ import { ui, radius, typography, muted, spacing, inset, indent } from "../../sty
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
-// DIAG: temporary perf test bench (issue #634) -- remove before commit
-import { buildGenerateConfig } from "../../store/slices/generateConfigBuilder";
-import { generateMaze } from "../../wasm/mazeService";
-import type { TimingNodeDto } from "../../wasm/generated/dto";
 
 interface Props {
   canGenerate: boolean;
@@ -52,32 +48,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
 
-  // DIAG: temporary perf test bench (issue #634) -- remove before commit
-  function sumQcMs(nodes: TimingNodeDto[]): number {
-    return nodes.reduce((acc, n) => acc + n.total_ms + sumQcMs(n.children), 0);
-  }
-
   function handleGenerate() {
-    // DIAG: temporary perf test bench (issue #634) -- runs 25 generations with different seeds
-    // and logs the average QC time instead of the normal single generate.
-    const state = useMazeStore.getState();
-    const config = buildGenerateConfig(state);
-    if (!config) return;
-    const RUNS = 100;
-    const qcMsSamples: number[] = [];
-    for (let i = 0; i < RUNS; i++) {
-      const seed = Math.floor(Math.random() * 1_000_000);
-      const { snapshot } = generateMaze(seed, config);
-      const qcMs = snapshot.timing ? sumQcMs(snapshot.timing.qc) : 0;
-      qcMsSamples.push(qcMs);
-      console.log(`[DIAG perf bench] ${i + 1}/${RUNS}`); // DIAG
-    }
-    const avg = qcMsSamples.reduce((a, b) => a + b, 0) / qcMsSamples.length;
-    console.log(`[DIAG perf bench] QC ms per run: ${qcMsSamples.map((v) => v.toFixed(2)).join(", ")}`); // DIAG
-    console.log(`[DIAG perf bench] average QC ms over ${RUNS} runs: ${avg.toFixed(2)}`); // DIAG
-    return;
-
-    // eslint-disable-next-line no-unreachable
     if (postEditDirty) { setPendingAction("generate"); return; }
     generate();
   }
