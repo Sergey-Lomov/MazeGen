@@ -19,8 +19,9 @@ Base component for all overlay dialogs. Renders via `createPortal` into `documen
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `title` | `string` | required | Header text |
-| `size` | `"approve" \| "info" \| "complex"` | `"info"` | Semantic size — see Size tokens below |
-| `onClose` | `() => void` | required | Called on overlay click or close button |
+| `size` | `keyof typeof dialogSize` | `"info"` | Semantic size — see Size tokens below |
+| `onClose` | `() => void` | required | Called on overlay click, close button, or Escape |
+| `onConfirm` | `() => void` | — | Enter/Space confirmation shortcut (GitHub issue #638). Omit for dialogs with no confirmation action (informational dialogs, or ones where picking a row confirms and closes immediately) |
 | `children` | `ReactNode` | — | Rendered inside the padded scrollable body |
 | `rawBody` | `ReactNode` | — | Replaces `children` with a full-bleed container (no padding, overflow hidden). Use when the content manages its own internal layout (e.g. split-pane dialogs). `children` is ignored when `rawBody` is provided. |
 
@@ -28,7 +29,7 @@ Base component for all overlay dialogs. Renders via `createPortal` into `documen
 
 ```
 overlay (fixed fullscreen, semi-transparent)
-  modal (flex column, sized by token)
+  modal (flex column, sized by token, tabIndex=-1, focused on mount)
     header (title + close button)
     body | bodyRaw
 ```
@@ -37,6 +38,7 @@ overlay (fixed fullscreen, semi-transparent)
 - Click inside modal → propagation stopped
 - Close button (✕) → `onClose`
 - `Escape` key → `onClose` (same path as ✕; when multiple modals are stacked, only the topmost responds)
+- `Enter`/`Space` → `onConfirm`, when provided (same topmost-only rule as Escape). The modal box grabs DOM focus on mount so the shortcut works immediately, without first needing a click inside the dialog. The keydown listener runs in the capture phase on `window`, ahead of any focused element's own native activation (a button re-clicking itself, a slider nudging its value) — so the shortcut always reaches `onConfirm` instead of re-triggering whatever inside the dialog happens to hold keyboard focus. Two exceptions where the key keeps its native meaning instead: `Space` in a text-entry control (`<input>` of a text-like type, `<textarea>`, or contentEditable) types a literal space; `Enter` in a `<textarea>` inserts a newline. Enter in a single-line text `<input>` still confirms (standard form behavior).
 - `body`: `overflowY: auto`, padded, flex column with gap
 - `bodyRaw`: no padding, `overflow: hidden`, flex column — consumer is responsible for internal scroll
 
@@ -51,8 +53,8 @@ Wraps `Modal size="approve"` with a fixed footer containing **Cancel** and **Ok*
 | Prop | Type | Description |
 |------|------|-------------|
 | `message` | `string` | Question text shown in the body |
-| `onConfirm` | `() => void` | Called when user clicks Ok |
-| `onCancel` | `() => void` | Called when user clicks Cancel or closes overlay |
+| `onConfirm` | `() => void` | Called when user clicks Ok, or presses Enter/Space |
+| `onCancel` | `() => void` | Called when user clicks Cancel, closes overlay, or presses Escape |
 
 **Usage pattern** — keep dialog state local to the feature component:
 
@@ -116,6 +118,12 @@ All dialog tokens live in `src/styles/theme.ts`.
 | `StrategyParamsModal` | `info` | Strategy param editing |
 | `CheckDetailsDialog` (edit mode) | `info` | Check details + param editing |
 | `CheckDetailsDialog` (add mode) | `complex` | Check list + detail split pane, uses `rawBody` |
+
+### Enter/Space confirmation coverage (GitHub issue #638)
+
+`onConfirm` is wired — matching the visible confirm button's own handler and `disabled`/enabled guard — on: `ConfirmModal`, `AlertModal` (OK), `ScreenDpiCalibrationModal`, `FieldPrintSizingDialog`, `PostEditElevatorFloorDialog`, `PresetElevatorFloorDialog`, `CopyFloorDialog`, and `ItemSelectDialog`'s consumers that have a confirm action of their own (`StrategySelectDialog`, `NewRuleStrategyDialog`, `NestedStrategySelectDialog`, `CheckSelectDialog`, `AddCheckToRuleDialog`, `IssueSelectDialog`, `AlgorithmSelectDialog`).
+
+Deliberately left without `onConfirm` — no confirmation action of their own, per this issue's "informational dialogs" exclusion: `SeedHistoryDialog`, `PostEditSplitTargetDialog`, `PresetSplitTargetDialog` (row click picks and applies immediately, no separate confirm step), `PostEditResetDialog`, `PostEditEntityDeleteDialog`, `PresetEntityDeleteDialog` (their primary action is a destructive "Reset/Delete all", not a generic confirm), `PresetVerticalDirectionDialog`, `PostEditVerticalDirectionDialog` (each option applies immediately on click), every purely informational dialog with no confirm button (`AnalyticsModals.tsx`'s legend/stats/report modals, `IssuesBlock`'s issue-info bubble, `DebugRefBubble`, `PostEditModals`'s info modals, `ExportWarningBubble`, `CategoryInfoModal`, `PngOverflowWarningBubble`, `FieldSetupFeature`'s smoothing-info modal), and the live-editing dialogs whose changes commit immediately via `onChange` rather than a confirm step (`ParamFields`'s inline editors, `SplitSettingsDialog`).
 
 ## Confirm dialogs by feature
 

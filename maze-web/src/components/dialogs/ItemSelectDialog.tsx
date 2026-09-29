@@ -22,9 +22,12 @@ interface Props {
   rightPanel: React.ReactNode;
   footer: React.ReactNode;
   onClose: () => void;
+  /** Enter/Space confirmation shortcut (GitHub issue #638) — omit when the caller has no
+   *  confirm action (e.g. the item's own row selection isn't followed by an explicit confirm). */
+  onConfirm?: () => void;
 }
 
-export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose }: Props) {
+export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose, onConfirm }: Props) {
   const sections = groupBySection(items);
 
   const renderItem = (item: Item) => (
@@ -67,7 +70,7 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPa
     </div>
   );
 
-  return <Modal title={title} size="complex" rawBody={body} onClose={onClose} />;
+  return <Modal title={title} size="complex" rawBody={body} onClose={onClose} onConfirm={onConfirm} />;
 }
 
 /** Splits items into contiguous runs by `section`, in first-seen order. An item with no

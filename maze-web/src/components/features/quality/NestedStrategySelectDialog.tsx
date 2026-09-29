@@ -110,6 +110,7 @@ export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStra
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={handleSelect}
     />
   );
 }

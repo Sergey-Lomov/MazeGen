@@ -1,4 +1,4 @@
-import React, { useEffect, useId } from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
@@ -16,18 +16,52 @@ export function hasOpenModal(): boolean {
   return openModalStack.length > 0;
 }
 
+/** True while `target` is a field where Space must type a literal space instead of confirming —
+ *  a text-entry control (`<textarea>`, or an `<input>` of a text-like type, or a contentEditable
+ *  element). Excludes non-text inputs (`checkbox`, `range`, ...), which have no use for a literal
+ *  space and should confirm like everything else. */
+function isSpaceTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target.tagName === "TEXTAREA") return true;
+  if (target instanceof HTMLInputElement) {
+    return !["checkbox", "radio", "range", "button", "submit", "reset", "color", "file"].includes(target.type);
+  }
+  return false;
+}
+
+/** True only for `<textarea>` — the one control where Enter must insert a newline instead of
+ *  confirming. A single-line text `<input>` has no such use for Enter (submitting on Enter is the
+ *  standard, expected behavior of a text field inside a form-like dialog). */
+function isNewlineTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.tagName === "TEXTAREA";
+}
+
 interface Props {
   title: string;
   size?: DialogSizeKey;
   /** Replaces the padded body with a raw full-bleed container. Use when the content manages its own layout (e.g. split-pane dialogs). */
   rawBody?: React.ReactNode;
   onClose: () => void;
+  /** Enter/Space confirmation shortcut (GitHub issue #638) — omit for dialogs with no confirmation
+   *  action (informational dialogs, or ones where picking a row confirms and closes immediately). */
+  onConfirm?: () => void;
   children?: React.ReactNode;
 }
 
-export function Modal({ title, size = "info", rawBody, onClose, children }: Props) {
+export function Modal({ title, size = "info", rawBody, onClose, onConfirm, children }: Props) {
   const sizeTokens = dialogSize[size];
   const id = useId();
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Move focus into the dialog on mount (GitHub issue #638 follow-up) — otherwise the button that
+  // opened it stays focused, so Space re-activates that trigger (native button behavior) instead
+  // of reaching this modal's own Enter/Space confirm shortcut, and only a mouse click inside fixes
+  // it. `tabIndex={-1}` on the modal box makes it focusable programmatically without joining the
+  // Tab order.
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     openModalStack.push(id);
@@ -39,19 +73,40 @@ export function Modal({ title, size = "info", rawBody, onClose, children }: Prop
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
       if (openModalStack[openModalStack.length - 1] !== id) return;
-      onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (!onConfirm) return;
+      if (e.key === "Enter" && !isNewlineTarget(e.target)) {
+        e.preventDefault();
+        onConfirm();
+        return;
+      }
+      if (e.key === " " && !isSpaceTypingTarget(e.target)) {
+        e.preventDefault();
+        onConfirm();
+      }
     }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [id, onClose]);
+    // Capture phase (GitHub issue #638 follow-up): a button/item-row/slider inside the dialog can
+    // hold keyboard focus (clicked earlier, or focused via Tab) — in the bubble phase its own
+    // native Enter/Space activation (re-clicking that element) would already have happened by the
+    // time this listener runs. Capturing on `window` intercepts the key before it reaches that
+    // focused element, so Enter/Space always confirms the dialog instead of re-activating whatever
+    // happens to be focused.
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [id, onClose, onConfirm]);
 
   return createPortal(
     <div style={styles.overlay} onClick={onClose}>
       <div
+        ref={modalRef}
+        tabIndex={-1}
         style={{
           ...styles.modal,
+          outline: "none",
           minWidth: sizeTokens.minWidth,
           maxWidth: sizeTokens.maxWidth,
           ...("width" in sizeTokens ? { width: sizeTokens.width } : {}),

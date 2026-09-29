@@ -125,7 +125,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   }
 
   return (
-    <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose}>
+    <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose} onConfirm={canConfirm ? handleApply : undefined}>
       <Stack gap="itemGap">
         <SelectRow<PaperSize>
           label={m["field.print_sizing.paper"]()}

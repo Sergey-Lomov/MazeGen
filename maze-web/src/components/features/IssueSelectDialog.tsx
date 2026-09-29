@@ -91,6 +91,7 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={selectedKind ? () => onSelect(selectedKind) : undefined}
     />
   );
 }

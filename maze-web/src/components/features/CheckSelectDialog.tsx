@@ -116,6 +116,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={canProceed ? handleNext : undefined}
     />
   );
 }

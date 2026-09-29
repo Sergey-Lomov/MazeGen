@@ -12,7 +12,7 @@ interface Props {
 
 export function AlertModal({ message, onClose, title }: Props) {
   return (
-    <Modal title={title ?? m["common.notice"]()} size="approve" onClose={onClose}>
+    <Modal title={title ?? m["common.notice"]()} size="approve" onClose={onClose} onConfirm={onClose}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
         <Button variant="primary" layoutStyle={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</Button>

@@ -13,7 +13,7 @@ interface Props {
 
 export function ConfirmModal({ title = m["common.confirm"](), message, onConfirm, onCancel }: Props) {
   return (
-    <Modal title={title} size="approve" onClose={onCancel}>
+    <Modal title={title} size="approve" onClose={onCancel} onConfirm={onConfirm}>
       {message && <div style={styles.message}>{message}</div>}
       <div style={{ ...styles.footer, ...(message ? styles.footerWithMessage : {}) }}>
         <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</Button>

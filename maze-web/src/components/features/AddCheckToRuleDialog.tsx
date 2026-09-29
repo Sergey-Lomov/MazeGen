@@ -116,6 +116,7 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={selectedId ? handleAdd : undefined}
     />
   );
 }

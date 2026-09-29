@@ -91,7 +91,7 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
   };
 
   return (
-    <Modal title={m["preset.elevator_floor_dialog_title"]()} size="approve" onClose={onClose}>
+    <Modal title={m["preset.elevator_floor_dialog_title"]()} size="approve" onClose={onClose} onConfirm={canConfirm ? () => { confirm(); onClose(); } : undefined}>
       <p style={styles.hint}>{m["preset.elevator_floor_dialog_hint"]()}</p>
       <div style={styles.list}>
         {floors.map((_, index) => index).reverse().map((index) => {

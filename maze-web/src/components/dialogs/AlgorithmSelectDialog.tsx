@@ -84,6 +84,7 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={handleSelect}
     />
   );
 }

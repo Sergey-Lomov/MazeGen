@@ -39,7 +39,7 @@ export function ScreenDpiCalibrationModal({ onClose }: Props) {
   }
 
   return (
-    <Modal title={m["image_export.calibration.title"]()} size="complex" onClose={onClose}>
+    <Modal title={m["image_export.calibration.title"]()} size="complex" onClose={onClose} onConfirm={handleApply}>
       <Stack gap="itemGap">
         <span style={typography.body}>{m["image_export.calibration.instruction"]()}</span>
 
