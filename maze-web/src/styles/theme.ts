@@ -92,6 +92,7 @@ export const spacing = {
   rowGap: 8,      // horizontal gap inside a single label/control row (same value as groupGap, distinct role)
   groupGap: 8,    // block within a section
   sectionGap: 16, // independent sub-section / param-with-description spacing
+  tableColumnsGap: 32, // horizontal gap between columns in compact data tables
 } as const;
 
 // Fixed height every param-row control (color swatch, toggle switch, select) shares, so rows with
@@ -225,6 +226,7 @@ export const dialogSize = {
   approveWide: { minWidth: 260, maxWidth: 640 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
+  printSizing: { minWidth: 520, maxWidth: 720 },
   // The pattern editor (`AbstractPatternEditorDialog`) — its tile diagram and node-card list stack
   // vertically, not side-by-side (GitHub issue #237 follow-up: post-edit/preset moved to a
   // `SidePanel`, leaving this the only `wide` caller), so it no longer needs `complex`'s width,

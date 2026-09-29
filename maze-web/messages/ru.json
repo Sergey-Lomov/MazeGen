@@ -563,6 +563,7 @@
   "field.print_sizing.result_size": "Размер поля: {size} клеток",
   "field.print_sizing.result_radius": "Радиус поля: {size} клеток",
   "field.print_sizing.result_side": "Сторона поля: {size} клеток",
+  "field.print_sizing.result_cell_count": "Количество ячеек: {count}",
   "field.print_sizing.result_physical": "Размер поля: {width} × {height} мм",
   "field.print_sizing.result_area": "Доступная область: {width} × {height} мм",
   "field.print_sizing.invalid": "Выбранный размер клетки и отступы не помещаются на эту бумагу.",
@@ -2291,8 +2292,9 @@
   "field.print_sizing.cell_size_side": "Размер ячейки (сторона)",
   "field.print_sizing.cell_size_diameter": "Размер ячейки (диаметр)",
   "field.print_sizing.invalid_cell_size": "Введите корректный размер ячейки больше нуля.",
-  "field.print_sizing.apply_all_floors": "Применить ко всем этажам",
-  "field.print_sizing.apply_all_floors_note": "Кроме этажей с нестандартной формой",
+  "field.print_sizing.apply_all_floors": "Применить ко всем этажам со стандартной формой",
+  "field.print_sizing.floor_non_standard": "Нестандартная форма",
+  "field.print_sizing.floor_total": "Итого: {count}",
   "image_export.format.png.result.cell_size_mm_side": "Размер ячейки (сторона): {size} мм",
   "image_export.format.png.result.cell_size_mm_diameter": "Размер ячейки (диаметр): {size} мм"
 }

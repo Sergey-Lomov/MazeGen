@@ -69,3 +69,30 @@ describe("copyFloorField", () => {
     expect(useMazeStore.getState().floorFields).toBe(before);
   });
 });
+
+describe("setTessellationConfigsForFloors", () => {
+  it("preserves per-floor configs when the dirty-edit confirmation is accepted", () => {
+    useMazeStore.setState({
+      mazeDirty: true,
+      postEditDirty: true,
+    });
+
+    const configs = {
+      [TEST_FLOOR_ID]: { type: "square", width: 12, height: 14 } as const,
+      [OTHER_FLOOR_ID]: { type: "square", width: 5, height: 6 } as const,
+    };
+    useMazeStore.getState().setTessellationConfigsForFloors(configs, true);
+
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({
+      kind: "setTessellationConfigsForFloors",
+      configs,
+      applyToAllStandardFloors: true,
+    });
+
+    useMazeStore.getState().confirmFieldEdit();
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual(configs[TEST_FLOOR_ID]);
+    expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].tessellationConfig).toEqual(configs[OTHER_FLOOR_ID]);
+    expect(useMazeStore.getState().fieldEditConfirmation).toBeNull();
+  });
+});

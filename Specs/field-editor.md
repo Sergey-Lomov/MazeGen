@@ -54,13 +54,15 @@ usable_height = paper_height - 2 * vertical_margin
 ```
 
 The dialog calculates the largest predefined field that fits this area, rounding cell counts down,
-then applies the resulting ordinary `tessellationConfig` through `setTessellationConfig`. No
+then applies the resulting ordinary `tessellationConfig`. With multiple floors and the “apply to
+all” switch enabled, each standard floor is recalculated from its own shape and receives its own
+resulting configuration; custom-mode floors are left unchanged. No
 physical-size settings are added to the generation or WASM config, and the dialog's inputs are not
 persisted separately. Square/rectangular forms calculate independent column/row counts. Radial
 forms (`square_circle`, `hex_circle`, `triangle_circle`, `hexagon`, `triangle`, `triangle_hexagon`)
 calculate the largest fitting radius; because a
 single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
-field footprint before confirmation. The result describes rectangular forms by field size, radial
+field dimensions before confirmation. The result describes rectangular forms by field size, radial
 forms by field radius, and triangular forms by field side. Invalid input or a cell too large for the printable area
 disables confirmation.
 
@@ -73,9 +75,13 @@ converted back to `print.scale` using the selected tessellation's geometry and `
 disabled so the panel's automatic-fit effect does not immediately replace the user's physical
 size. The print panel's reported physical cell size uses the same geometry-aware conversion.
 
-When multiple floors exist, the dialog also offers **Apply to all floors**, enabled by default.
-Confirmation applies the calculated predefined configuration to every floor in standard editing
-mode and leaves custom-mode floors unchanged. The dialog labels the exception below the switch.
+When multiple floors exist, the dialog also offers **Apply to all floors with standard shape**, enabled
+by default. The result section lists floors from top to bottom while numbering them with the same
+`N: title` format as the floor switcher. It uses a headerless four-column table: title, shape, dimensions,
+and cell count (for example, `Rectangle | 11 × 11 | 121 cells`). Custom-mode floors show
+`Non-standard shape`, use `—` in the dimensions cell, and still report
+their cell count. A total cell count is shown below the rows. With one floor, the result shows
+the calculated field dimensions only.
 
 Changing the confirmed tessellation kind resets the print sizing override (`print.scaleAutoFit` is
 enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous

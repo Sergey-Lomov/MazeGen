@@ -16,6 +16,7 @@ export type PendingFieldEdit =
   | { kind: "setTriangleShape"; shape: TriangleShape }
   | { kind: "setTessellationConfig"; config: TessellationConfig }
   | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
+  | { kind: "setTessellationConfigsForFloors"; configs: Record<string, TessellationConfig>; applyToAllStandardFloors: boolean }
   | { kind: "addFieldPoint"; x: number; y: number }
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
@@ -113,6 +114,7 @@ export interface FloorFieldsActions {
   setTriangleShape: (shape: TriangleShape) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
   setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
+  setTessellationConfigsForFloors: (configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;

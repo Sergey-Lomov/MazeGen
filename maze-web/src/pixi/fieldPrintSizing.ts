@@ -11,7 +11,11 @@ const SQRT_3 = Math.sqrt(3);
 
 export type { PrintFieldSizingInput } from "../store/imageExportTypes";
 
-export type PredefinedFieldConfig = Exclude<FieldConfig, { type: "square_custom" | "hex_custom" | "tri_custom" }>;
+export type PredefinedFieldConfig = Exclude<FieldConfig,
+  { type: "square_custom"; points: [number, number][] }
+  | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
+  | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" }
+>;
 
 export interface PrintFieldSizingResult {
   config: FieldConfig;

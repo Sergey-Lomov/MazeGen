@@ -73,7 +73,7 @@ export function FieldSetupFeature() {
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
-  const setTessellationConfigForFloors = useMazeStore((s) => s.setTessellationConfigForFloors);
+  const setTessellationConfigsForFloors = useMazeStore((s) => s.setTessellationConfigsForFloors);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
@@ -318,8 +318,8 @@ export function FieldSetupFeature() {
         <FieldPrintSizingDialog
           config={printableConfig}
           hasMultipleFloors={floorCount > 1}
-          onApply={(config, printSizing, applyToAllStandardFloors) => {
-            setTessellationConfigForFloors(config, applyToAllStandardFloors);
+          onApply={(config, printSizing, applyToAllStandardFloors, configsByFloor) => {
+            setTessellationConfigsForFloors(configsByFloor, applyToAllStandardFloors);
             setPrintFieldSizing(printSizing, config);
           }}
           onClose={() => setPrintSizingDialogOpen(false)}
