@@ -65,6 +65,26 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
+  it("normalizes the generated field for runtime consumers", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    const config = { type: "hex_triangle" as const, side: 4, orientation: "pointy_top" as const };
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: config }) },
+      rules: [],
+    });
+
+    useMazeStore.getState().generate();
+
+    expect(useMazeStore.getState().activeTessellationConfig).toEqual({
+      type: "hex_parallelogram",
+      cols: 0,
+      rows: 0,
+      kind: "hex",
+      orientation: "pointy_top",
+      cells: configAllCells(config),
+    });
+  });
+
   it("derives postEditDraftSplitPoints from a snapshot with an auto-split point (GitHub issue #222)", () => {
     vi.mocked(generateMaze).mockReturnValue({
       snapshot: {

@@ -3,12 +3,14 @@ import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { TessellationKind } from "./primitiveGeometry";
+import type { PrimitiveWorldGeometry, TessellationKind } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
 
 const ADD_COLOR = canvas.debug.active;
 const REMOVE_COLOR = 0xff4444;
 const PREVIEW_ALPHA = 0.5;
+const FRAME_ALPHA = 0.9;
+const FRAME_WIDTH = 1.25;
 
 export class PrimitivePreviewOverlay {
   private readonly root: Container;
@@ -18,6 +20,8 @@ export class PrimitivePreviewOverlay {
   private pendingButton = 0;
   private pendingKind: TessellationKind = "square";
   private pendingCfg: TessellationConfig | null = null;
+  private pendingGeometry: PrimitiveWorldGeometry | null = null;
+  private frameVisible = true;
 
   constructor(container: Container) {
     this.root = container;
@@ -25,21 +29,29 @@ export class PrimitivePreviewOverlay {
     this.root.addChild(this.layer);
   }
 
-  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig): void {
+  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
     this.pendingCells = cells;
     this.pendingButton = button;
     this.pendingKind = kind;
     this.pendingCfg = cfg;
+    this.pendingGeometry = geometry;
     if (!this.rafPending) {
       this.rafPending = true;
       requestAnimationFrame(() => {
         this.rafPending = false;
-        if (this.pendingCells && this.pendingCfg) this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg);
+        if (this.pendingCells && this.pendingCfg && this.pendingGeometry) this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
       });
     }
   }
 
-  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig): void {
+  setFrameVisible(visible: boolean): void {
+    this.frameVisible = visible;
+    if (this.pendingCells && this.pendingCfg && this.pendingGeometry) {
+      this.redraw(this.pendingCells, this.pendingButton, this.pendingKind, this.pendingCfg, this.pendingGeometry);
+    }
+  }
+
+  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
     const color = button === 0 ? ADD_COLOR : REMOVE_COLOR;
@@ -49,10 +61,20 @@ export class PrimitivePreviewOverlay {
       g.poly(verts.flatMap(v => [v.x, v.y]));
       g.fill({ color, alpha: PREVIEW_ALPHA });
     }
+    if (this.frameVisible) {
+      const frameColor = button === 0 ? ADD_COLOR : REMOVE_COLOR;
+      if (geometry.kind === "ellipse") {
+        g.ellipse(geometry.center.x, -geometry.center.y, geometry.width / 2, geometry.height / 2);
+      } else {
+        g.poly(geometry.points.flatMap((point) => [point.x, -point.y]));
+      }
+      g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+    }
   }
 
   clear(): void {
     this.pendingCells = null;
+    this.pendingGeometry = null;
     this.layer.clear();
   }
 
@@ -87,4 +109,3 @@ function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: Tess
     }
   }
 }
-

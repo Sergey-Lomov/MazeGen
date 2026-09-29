@@ -27,6 +27,12 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       assertNumber(obj.width, `${path}.width`);
       assertNumber(obj.height, `${path}.height`);
       return obj as unknown as TessellationConfig;
+    case "square_circle":
+      assertNumber(obj.radius, `${path}.radius`);
+      return obj as unknown as TessellationConfig;
+    case "square_triangle":
+      assertNumber(obj.side, `${path}.side`);
+      return obj as unknown as TessellationConfig;
     case "hex_parallelogram":
       assertNumber(obj.cols, `${path}.cols`);
       assertNumber(obj.rows, `${path}.rows`);
@@ -34,6 +40,19 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       return obj as unknown as TessellationConfig;
     case "hex_hexagon":
       assertNumber(obj.radius, `${path}.radius`);
+      assertHexOrientation(obj.orientation, `${path}.orientation`);
+      return obj as unknown as TessellationConfig;
+    case "hex_rectangle":
+      assertNumber(obj.cols, `${path}.cols`);
+      assertNumber(obj.rows, `${path}.rows`);
+      assertHexOrientation(obj.orientation, `${path}.orientation`);
+      return obj as unknown as TessellationConfig;
+    case "hex_circle":
+      assertNumber(obj.radius, `${path}.radius`);
+      assertHexOrientation(obj.orientation, `${path}.orientation`);
+      return obj as unknown as TessellationConfig;
+    case "hex_triangle":
+      assertNumber(obj.side, `${path}.side`);
       assertHexOrientation(obj.orientation, `${path}.orientation`);
       return obj as unknown as TessellationConfig;
     case "triangle_rect":
@@ -46,6 +65,10 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       assertTriOrientation(obj.orientation, `${path}.orientation`);
       return obj as unknown as TessellationConfig;
     case "triangle_hexagon":
+      assertNumber(obj.radius, `${path}.radius`);
+      assertTriOrientation(obj.orientation, `${path}.orientation`);
+      return obj as unknown as TessellationConfig;
+    case "triangle_circle":
       assertNumber(obj.radius, `${path}.radius`);
       assertTriOrientation(obj.orientation, `${path}.orientation`);
       return obj as unknown as TessellationConfig;

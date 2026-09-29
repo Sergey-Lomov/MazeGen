@@ -188,8 +188,8 @@ export class MazeScene {
         endPan: () => this.interaction.defaultPan.end(),
       },
       {
-        onPreviewUpdate: (cells, btn, kind, cfg) => {
-          this.primitivePreviewOverlay.update(cells, btn, kind, cfg);
+        onPreviewUpdate: (cells, btn, kind, cfg, geometry) => {
+          this.primitivePreviewOverlay.update(cells, btn, kind, cfg, geometry);
         },
         onPreviewClear: () => {
           this.primitivePreviewOverlay.clear();
@@ -342,13 +342,18 @@ export class MazeScene {
     const initial = useMazeStore.getState();
     let prevCard = initial.openCard;
     let prevMode = initial.floorFields[initial.activeFloorId].fieldEditMode;
+    let prevFrameVisible = initial.showPrimitiveFrame;
+    this.primitivePreviewOverlay.setFrameVisible(initial.showPrimitiveFrame);
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
       const field = state.floorFields[state.activeFloorId];
       const isFieldSetup = state.openCard === "field_setup";
       const openChanged = state.openCard !== prevCard;
       const modeChanged = field.fieldEditMode !== prevMode;
+      const frameVisibilityChanged = state.showPrimitiveFrame !== prevFrameVisible;
       prevCard = state.openCard;
       prevMode = field.fieldEditMode;
+      prevFrameVisible = state.showPrimitiveFrame;
+      if (frameVisibilityChanged) this.primitivePreviewOverlay.setFrameVisible(state.showPrimitiveFrame);
       if (!isFieldSetup) {
         if (openChanged) this.primitivePreviewOverlay.clear();
         return;

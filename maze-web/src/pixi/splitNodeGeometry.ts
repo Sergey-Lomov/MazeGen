@@ -73,7 +73,7 @@ export function specialSplitNodePoint(
   slotIndex: number,
   allFaces?: number[][],
 ): Pos | null {
-  if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+  if (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
     const vertices = getCellVertices(0, 0, cfg);
     const { edgeVerts } = getNeighborData(cfg, 0, 0);
     if (!vertices) return null;

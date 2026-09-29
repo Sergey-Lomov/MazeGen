@@ -231,6 +231,15 @@ describe("buildMazeWalls", () => {
     // Node 1 at (1,0) has a boundary wall to (2,0) (not in the field) — unaffected by (0,0) being split.
     expect(walls.some(w => w.a[0] === 1 && w.a[1] === 0 && w.b[0] === 2 && w.b[1] === 0)).toBe(true);
   });
+
+  it("treats hex_triangle as a hex grid when finding shared walls", () => {
+    const cfg: TessellationConfig = { type: "hex_triangle", side: 20, orientation: "flat_top" };
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const walls = buildMazeWalls(nodes, [], cfg);
+    expect(walls.some(w =>
+      w.a[0] === 0 && w.a[1] === 0 && w.b[0] === 1 && w.b[1] === 0 && w.kind === "none",
+    )).toBe(true);
+  });
 });
 
 // --- buildOneWayWallIndicatorPositions (GitHub issue #518) ---

@@ -1,12 +1,13 @@
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export type TessellationKind = "square" | "hex" | "triangle";
-export type SquareShape = "rect" | "free";
-export type HexShape = "parallelogram" | "hexagon" | "free";
-export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
+export type SquareShape = "rect" | "circle" | "triangle" | "free";
+export type HexShape = "rectangle" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
+export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
-export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
+export type FieldPrimitive =
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram";
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
@@ -15,6 +16,7 @@ export type PendingFieldEdit =
   | { kind: "setTriangleShape"; shape: TriangleShape }
   | { kind: "setTessellationConfig"; config: TessellationConfig }
   | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
+  | { kind: "setTessellationConfigsForFloors"; configs: Record<string, TessellationConfig>; applyToAllStandardFloors: boolean }
   | { kind: "addFieldPoint"; x: number; y: number }
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
@@ -45,6 +47,8 @@ export interface TessellationState {
   activeTessellationConfig: TessellationConfig;
   showFieldOverlay: boolean;
   showFieldOrigin: boolean;
+  showPrimitiveFrame: boolean;
+  smoothPrimitives: boolean;
 }
 
 export interface TessellationActions {
@@ -62,6 +66,8 @@ export interface TessellationActions {
   setTriOrientation: (orientation: TriOrientation) => void;
   setShowFieldOverlay: (show: boolean) => void;
   setShowFieldOrigin: (show: boolean) => void;
+  setShowPrimitiveFrame: (show: boolean) => void;
+  setSmoothPrimitives: (smooth: boolean) => void;
 }
 
 /** Per-floor field-shape state — GitHub issue #338. Everything about "what cells make up this
@@ -108,6 +114,7 @@ export interface FloorFieldsActions {
   setTriangleShape: (shape: TriangleShape) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
   setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
+  setTessellationConfigsForFloors: (configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;

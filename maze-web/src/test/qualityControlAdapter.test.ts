@@ -319,7 +319,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with an ExcessiveSccCount payload resolves to a null highlight target (no structural highlight data)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "excessive_scc_count", payload: { kind: "ExcessiveSccCount" }, details: new Map() },
+      issue: { issueKind: "excessive_scc_count", payload: { kind: "ExcessiveSccCount", presetLocked: new Map() }, details: new Map() },
     });
     expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "excessive_scc_count", target: null });
   });
@@ -327,7 +327,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with an AreaDeficit payload resolves to a null highlight target (no structural highlight data)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "area_deficit", payload: { kind: "AreaDeficit", areas: new Map([["check1", [0n]]]) }, details: new Map() },
+      issue: { issueKind: "area_deficit", payload: { kind: "AreaDeficit", areas: new Map([["check1", [0]]]) }, details: new Map() },
     });
     expect(tokens[1]).toMatchObject({ kind: "issue", issueKind: "area_deficit", target: null });
   });
@@ -354,7 +354,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with a MissingElevatorStopCount payload carries a region-shaped highlight target over the elevator's own fan-edge endpoint cells, not its available candidate floor nodes (GitHub issue #402)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "missing_elevator_stop_count", payload: { kind: "MissingElevatorStopCount", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false, available: [9n, 10n] }]]]) }, details: new Map() },
+      issue: { issueKind: "missing_elevator_stop_count", payload: { kind: "MissingElevatorStopCount", groups: new Map([["check1", [{ edges: [[1n, 2n]], missing: 1, presetLocked: false, available: [9n, 10n] }]]]) }, details: new Map() },
     });
     expect(tokens[1]).toMatchObject({
       kind: "issue", issueKind: "missing_elevator_stop_count",

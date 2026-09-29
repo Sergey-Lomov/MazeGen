@@ -23,6 +23,7 @@ export function ToolIconButton({ selected, title, onClick, children, disabled, d
       className={selected ? (danger ? "btn-tool-icon-selected-danger" : "btn-tool-icon-selected") : "btn-tool-icon"}
       style={styles.button}
       title={title}
+      aria-label={title}
       onClick={onClick}
       disabled={disabled}
     >

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { FieldSetupFeature, fieldSetupSubtitle } from "../components/features/FieldSetupFeature";
 import { configSizeDescription } from "../components/dialogs/FieldPrintSizingDialog";
 import type { FieldConfig } from "../fieldConfig";
@@ -15,6 +15,11 @@ beforeEach(() => {
 describe("FieldSetupFeature — Copy floor button", () => {
   const descriptionCases: [FieldConfig, string][] = [
     [{ type: "square", width: 20, height: 28 }, "Field size: 20 × 28 cells"],
+    [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],
+    [{ type: "hex_rectangle", cols: 10, rows: 8, orientation: "flat_top" }, "Field size: 10 × 8 cells"],
+    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
+    [{ type: "hex_triangle", side: 6, orientation: "flat_top" }, "Field side: 6 cells"],
+    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
     [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
     [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
   ];
@@ -48,6 +53,17 @@ describe("FieldSetupFeature — Copy floor button", () => {
       scaleAutoFit: false,
     });
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / 40);
+  });
+
+  it("shows only the field size in the single-floor result", () => {
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(screen.getByText("Field size: 20 × 28 cells")).toBeInTheDocument();
+    expect(screen.getByText("Cell count: 560")).toBeInTheDocument();
+    expect(screen.queryByText(/Field footprint:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Usable area:/)).not.toBeInTheDocument();
   });
 
   it("opens with the current print settings", () => {
@@ -134,6 +150,20 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByText("Copy floor")).toBeInTheDocument();
   });
 
+  it("describes primitive smoothing and its always-on isolated-cell cleanup", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByText("Smoothing")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByText(/works only with primitives/)).toBeInTheDocument();
+    expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
+  });
+
   it("applies print sizing to standard floors but preserves custom floors", () => {
     useMazeStore.setState({
       floors: [
@@ -143,7 +173,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
       ],
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig(),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 4, height: 4 } }),
+        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square_triangle", side: 4 } }),
         floor_3: baseFloorFieldConfig({
           fieldEditMode: "custom",
           isEditingField: true,
@@ -174,8 +204,59 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({ type: "square", width: 20, height: 28 });
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig).toEqual({ type: "square", width: 20, height: 28 });
+    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig.type).toBe("square_triangle");
+    expect((useMazeStore.getState().floorFields.floor_2.tessellationConfig as { side: number }).side).toBeGreaterThan(0);
     expect(useMazeStore.getState().floorFields.floor_3.tessellationConfig).toEqual({ type: "square_custom", points: [[0, 0]] });
+  });
+
+  it("recalculates every standard floor when print parameters change", async () => {
+    useMazeStore.setState({
+      floors: [
+        { id: TEST_FLOOR_ID, title: "Ground floor" },
+        { id: "floor_2", title: "Upper floor" },
+        { id: "floor_3", title: "Custom floor" },
+      ],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 11, height: 11 } }),
+        floor_2: baseFloorFieldConfig({
+          tessellationConfig: { type: "square_triangle", side: 5 },
+        }),
+        floor_3: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0]),
+          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(screen.getByText("Floors")).toBeInTheDocument();
+    const groundRow = screen.getByText("1: Ground floor").parentElement!;
+    const upperRow = screen.getByText("2: Upper floor").parentElement!;
+    const customRow = screen.getByText("3: Custom floor").parentElement!;
+    expect(upperRow.compareDocumentPosition(groundRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(groundRow).getByText("Rectangle")).toBeInTheDocument();
+    expect(within(groundRow).getByText("20 × 28")).toBeInTheDocument();
+    expect(within(groundRow).getByText("560 cells")).toBeInTheDocument();
+    expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
+    expect(within(customRow).getByText("Non-standard shape")).toBeInTheDocument();
+    expect(within(customRow).getByText("—")).toBeInTheDocument();
+    expect(within(customRow).getByText("1 cell")).toBeInTheDocument();
+    expect(screen.getByText(/^Total:/)).toBeInTheDocument();
+    expect(screen.getByText("Apply to all floors with standard shape")).toBeInTheDocument();
+
+    const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
+    const cellInput = within(dialog!).getAllByRole("spinbutton")[2] as HTMLInputElement;
+    fireEvent.change(cellInput, { target: { value: "5" } });
+
+    await waitFor(() => {
+      expect(within(groundRow).getByText("40 × 57")).toBeInTheDocument();
+      expect(within(groundRow).getByText("2280 cells")).toBeInTheDocument();
+      expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
+    });
   });
 });
 

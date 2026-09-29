@@ -45,6 +45,24 @@ describe("field print sizing", () => {
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });
 
+  it.each([
+    [{ type: "square_circle", radius: 5 }, "square_circle"],
+    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "hex_circle"],
+    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "triangle_circle"],
+  ] as const)("keeps the new circle config type when fitting %s", (config, type) => {
+    const result = calculatePrintFieldConfig(config, printInput);
+    expect(result?.config.type).toBe(type);
+    expect(result?.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result?.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  });
+
+  it("calculates the new hex rectangle shape", () => {
+    const result = calculatePrintFieldConfig({ type: "hex_rectangle", cols: 5, rows: 5, orientation: "flat_top" }, printInput);
+    expect(result?.config.type).toBe("hex_rectangle");
+    expect((result?.config as { cols: number; rows: number }).cols).toBeGreaterThan(0);
+    expect((result?.config as { cols: number; rows: number }).rows).toBeGreaterThan(0);
+  });
+
   it("rejects a cell size that cannot fit inside the printable area", () => {
     expect(calculatePrintFieldConfig({ type: "square", width: 1, height: 1 }, {
       ...printInput,

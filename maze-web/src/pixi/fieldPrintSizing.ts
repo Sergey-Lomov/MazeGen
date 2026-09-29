@@ -11,7 +11,11 @@ const SQRT_3 = Math.sqrt(3);
 
 export type { PrintFieldSizingInput } from "../store/imageExportTypes";
 
-export type PredefinedFieldConfig = Exclude<FieldConfig, { type: "square_custom" | "hex_custom" | "tri_custom" }>;
+export type PredefinedFieldConfig = Exclude<FieldConfig,
+  { type: "square_custom"; points: [number, number][] }
+  | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
+  | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" }
+>;
 
 export interface PrintFieldSizingResult {
   config: FieldConfig;
@@ -86,11 +90,17 @@ function calculateConfig(
       const height = Math.floor(usableHeightMm / cellSizeMm);
       return width >= 1 && height >= 1 ? { ...current, width, height } : null;
     }
-    case "hex_parallelogram":
+    case "hex_rectangle":
     case "triangle_rect":
+    case "hex_parallelogram":
       return calculateBestRectConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
-    case "hex_hexagon":
+    case "square_circle":
+    case "square_triangle":
+    case "hex_circle":
+    case "hex_triangle":
     case "triangle_triangle":
+    case "hex_hexagon":
+    case "triangle_circle":
     case "triangle_hexagon": {
       return calculateBestRadialConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
     }
@@ -101,7 +111,7 @@ function calculateConfig(
 }
 
 function calculateBestRectConfig(
-  current: Extract<FieldConfig, { type: "hex_parallelogram" | "triangle_rect" }>,
+  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" }>,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -129,6 +139,10 @@ function calculateBestRectConfig(
 
     const candidate = { ...current, cols, rows };
     const bounds = boundsInCellSides(candidate);
+    // The geometric rectangle is evaluated by the shared selector.  During this search only the
+    // ordering matters; materializing every hex cell for every binary-search candidate turns a
+    // harmless sizing dialog into an O(n^3) operation.  The final selected config is materialized
+    // once by the caller.
     const cellCount = cols * rows;
     const fill = (bounds.width * cellSizeMm) / usableWidthMm + (bounds.height * cellSizeMm) / usableHeightMm;
     if (cellCount > bestCellCount || (cellCount === bestCellCount && fill > bestFill)) {
@@ -142,7 +156,7 @@ function calculateBestRectConfig(
 }
 
 function calculateBestRadialConfig(
-  current: Extract<FieldConfig, { type: "hex_hexagon" | "triangle_triangle" | "triangle_hexagon" }>,
+  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" }>,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -179,15 +193,15 @@ function calculateBestRadialConfig(
 }
 
 function radialCandidate(
-  current: Extract<FieldConfig, { type: "hex_hexagon" | "triangle_triangle" | "triangle_hexagon" }>,
+  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" }>,
   radius: number,
 ): FieldConfig {
-  if (current.type === "triangle_triangle") return { ...current, side: radius };
+  if (current.type === "triangle_triangle" || current.type === "square_triangle" || current.type === "hex_triangle") return { ...current, side: radius };
   return { ...current, radius };
 }
 
 function maxFittingRectDimension(
-  current: Extract<FieldConfig, { type: "hex_parallelogram" | "triangle_rect" }>,
+  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" }>,
   dimension: "cols" | "rows",
   usableWidthMm: number,
   usableHeightMm: number,
@@ -245,21 +259,36 @@ function boundsInCellSides(config: FieldConfig): Bounds {
 }
 
 function boundaryCells(config: FieldConfig): [number, number][] {
-  if (config.type === "hex_hexagon") {
+  if (config.type === "hex_rectangle") {
+    return hexRectangleBoundaryCells(config.cols, config.rows, config.orientation ?? "flat_top");
+  }
+  if (config.type === "square_circle") {
+    return squareCircleBoundaryCells(config.radius);
+  }
+  if (config.type === "square_triangle") {
+    return configAllCells(config);
+  }
+  if (config.type === "hex_triangle") {
+    return configAllCells(config);
+  }
+  if (config.type === "hex_circle" || config.type === "hex_hexagon") {
     return hexagonBoundaryCells(config.radius);
   }
   if (config.type === "triangle_triangle") {
     return triangleTriangleBoundaryCells(config.side);
   }
+  if (config.type === "triangle_circle") {
+    return configAllCells(config);
+  }
   if (config.type === "triangle_hexagon") {
     return triangleHexagonBoundaryCells(config.radius);
   }
-  if (config.type !== "square" && config.type !== "hex_parallelogram" && config.type !== "triangle_rect") {
+  if (config.type !== "square" && config.type !== "triangle_rect" && config.type !== "hex_parallelogram") {
     return configAllCells(config);
   }
 
-  const cols = config.type === "square" ? config.width : config.cols;
-  const rows = config.type === "square" ? config.height : config.rows;
+  const cols = config.type === "square" ? config.width : config.type === "triangle_rect" ? config.cols * 2 : config.cols;
+    const rows = config.type === "square" ? config.height : config.rows;
   // Cell vertices are affine in the row/column coordinates. Therefore extrema of a rectangular
   // field are reached at corners; the one-cell halo also covers both triangle parities. Keeping
   // this set bounded avoids walking an entire 1000×1000 boundary during every keystroke.
@@ -274,6 +303,29 @@ function boundaryCells(config: FieldConfig): [number, number][] {
     }
   }
   return cells;
+}
+
+function hexRectangleBoundaryCells(cols: number, rows: number, orientation: "flat_top" | "pointy_top"): [number, number][] {
+  const originCol = Math.floor(cols / 2);
+  const originRow = Math.floor(rows / 2);
+  const boundary: [number, number][] = [];
+  for (const col of new Set([0, cols - 1])) {
+    for (const row of new Set([0, rows - 1])) {
+      if (orientation === "flat_top") {
+        const q = col - originCol;
+        boundary.push([q, row - originRow - Math.floor(q / 2)]);
+      } else {
+        const r = row - originRow;
+        boundary.push([col - originCol - Math.floor(r / 2), r]);
+      }
+    }
+  }
+  return boundary;
+}
+
+function squareCircleBoundaryCells(radius: number): [number, number][] {
+  const edge = Math.max(0, radius - 1);
+  return [[edge, 0], [-edge, 0], [0, edge], [0, -edge]];
 }
 
 function hexagonBoundaryCells(radius: number): [number, number][] {
@@ -326,14 +378,19 @@ function centerBoundaryCells(raw: [number, number][]): [number, number][] {
 function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
   switch (config.type) {
     case "square":
+    case "square_circle":
+    case "square_triangle":
       return [
         { x: x, y: y },
         { x: x + 1, y: y },
         { x: x + 1, y: y + 1 },
         { x: x, y: y + 1 },
       ];
+    case "hex_rectangle":
+    case "hex_circle":
     case "hex_parallelogram":
-    case "hex_hexagon": {
+    case "hex_hexagon":
+    case "hex_triangle": {
       const orientation = config.orientation ?? "flat_top";
       const angle = orientation === "pointy_top" ? Math.PI / 6 : 0;
       const center = rotate(
@@ -349,6 +406,7 @@ function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
     }
     case "triangle_rect":
     case "triangle_triangle":
+    case "triangle_circle":
     case "triangle_hexagon": {
       const orientation = config.orientation ?? "r0";
       const side = 1;

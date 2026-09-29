@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
+import { resolveFieldConfig } from "../../pixi/tessellationCells";
 import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
 import type { NodeLockKind, SplitPattern } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfig } from "../storeTypes";
@@ -16,9 +17,11 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   previewHexOrientation: DEFAULT_HEX_ORI,
   previewTriOrientation: DEFAULT_TRI_ORI,
   previewTessellationConfig: { type: "square", width: 11, height: 11 },
-  activeTessellationConfig: { type: "square", width: 11, height: 11 },
+  activeTessellationConfig: resolveFieldConfig({ type: "square", width: 11, height: 11 }),
   showFieldOverlay: true,
   showFieldOrigin: true,
+  showPrimitiveFrame: true,
+  smoothPrimitives: true,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
@@ -141,4 +144,6 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
   setShowFieldOrigin: (show) => set({ showFieldOrigin: show }),
+  setShowPrimitiveFrame: (show) => set({ showPrimitiveFrame: show }),
+  setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
 });

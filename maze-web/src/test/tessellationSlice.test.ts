@@ -183,6 +183,14 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(field.tessellationConfig.type).toBe("hex_hexagon");
   });
 
+  it("supports the new hex rectangle and circle shapes", () => {
+    useMazeStore.setState({ tessellationKind: "hex" });
+    useMazeStore.getState().setHexShape("rectangle");
+    expect(activeField().tessellationConfig.type).toBe("hex_rectangle");
+    useMazeStore.getState().setHexShape("circle");
+    expect(activeField().tessellationConfig.type).toBe("hex_circle");
+  });
+
   it("setHexShape preserves hex orientation", () => {
     useMazeStore.setState({ tessellationKind: "hex", hexOrientation: "pointy_top" });
     setActiveField({ hexShape: "parallelogram", tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" } });
@@ -228,6 +236,30 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(field.squareShape).toBe("free");
     expect(field.isEditingField).toBe(true);
     expect(field.tessellationConfig.type).toBe("square_custom");
+  });
+
+  it("supports the new square circle shape", () => {
+    useMazeStore.setState({ tessellationKind: "square" });
+    useMazeStore.getState().setSquareShape("circle");
+    expect(activeField().tessellationConfig).toEqual({ type: "square_circle", radius: 10 });
+  });
+
+  it("supports the new square triangle shape", () => {
+    useMazeStore.setState({ tessellationKind: "square" });
+    useMazeStore.getState().setSquareShape("triangle");
+    expect(activeField().tessellationConfig).toEqual({ type: "square_triangle", side: 20 });
+  });
+
+  it("supports the new hex triangle shape", () => {
+    useMazeStore.setState({ tessellationKind: "hex" });
+    useMazeStore.getState().setHexShape("triangle");
+    expect(activeField().tessellationConfig).toEqual({ type: "hex_triangle", side: 20, orientation: "flat_top" });
+  });
+
+  it("supports the new triangle circle shape", () => {
+    useMazeStore.setState({ tessellationKind: "triangle" });
+    useMazeStore.getState().setTriangleShape("circle");
+    expect(activeField().tessellationConfig).toEqual({ type: "triangle_circle", radius: 10, orientation: "r0" });
   });
 
   it("setTriangleShape to free sets isEditingField", () => {
