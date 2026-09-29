@@ -70,7 +70,7 @@ export class SceneInteraction {
       const st = useMazeStore.getState();
       const controller = getController(st);
       if (controller) {
-        controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey);
+        controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey, e.detail);
         if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
           fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
         }
@@ -85,7 +85,9 @@ export class SceneInteraction {
       if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
-        const hoverCell = fieldEditController.getHoverCell(e.globalX, e.globalY);
+        const hoverCell = st.floorFields[st.activeFloorId].fieldPrimitive === "polygon"
+          ? null
+          : fieldEditController.getHoverCell(e.globalX, e.globalY);
         fieldEditorOverlay.updateHover(fieldEditController.isGestureActive() ? null : hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
         return;
       }
@@ -95,6 +97,16 @@ export class SceneInteraction {
         return;
       }
       this.defaultPan.move(e.globalX, e.globalY);
+    });
+
+    stage.on("pointertap", (e) => {
+      if (e.detail < 2) return;
+      const st = useMazeStore.getState();
+      const field = st.floorFields[st.activeFloorId];
+      if (!(st.openCard === "field_setup"
+        && field.fieldEditMode === "custom"
+        && field.fieldPrimitive === "polygon")) return;
+      getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
     });
 
     stage.on("pointerup", (e) => {

@@ -341,28 +341,37 @@ export class MazeScene {
   private subscribeToEditField(): void {
     const initial = useMazeStore.getState();
     let prevCard = initial.openCard;
+    let prevFloorId = initial.activeFloorId;
     let prevMode = initial.floorFields[initial.activeFloorId].fieldEditMode;
+    let prevPrimitive = initial.floorFields[initial.activeFloorId].fieldPrimitive;
+    let prevConfig = initial.floorFields[initial.activeFloorId].tessellationConfig;
     let prevFrameVisible = initial.showPrimitiveFrame;
     this.primitivePreviewOverlay.setFrameVisible(initial.showPrimitiveFrame);
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
       const field = state.floorFields[state.activeFloorId];
       const isFieldSetup = state.openCard === "field_setup";
       const openChanged = state.openCard !== prevCard;
+      const floorChanged = state.activeFloorId !== prevFloorId;
       const modeChanged = field.fieldEditMode !== prevMode;
+      const primitiveChanged = field.fieldPrimitive !== prevPrimitive;
+      const configChanged = field.tessellationConfig !== prevConfig;
       const frameVisibilityChanged = state.showPrimitiveFrame !== prevFrameVisible;
       prevCard = state.openCard;
+      prevFloorId = state.activeFloorId;
       prevMode = field.fieldEditMode;
+      prevPrimitive = field.fieldPrimitive;
+      prevConfig = field.tessellationConfig;
       prevFrameVisible = state.showPrimitiveFrame;
       if (frameVisibilityChanged) this.primitivePreviewOverlay.setFrameVisible(state.showPrimitiveFrame);
-      if (!isFieldSetup) {
-        if (openChanged) this.primitivePreviewOverlay.clear();
-        return;
-      }
-      if (openChanged) return;
-      if (modeChanged && field.fieldEditMode === "default") {
+      if (openChanged || floorChanged || modeChanged || primitiveChanged || configChanged) {
+        this.fieldEditController.cancelPointerGesture();
         this.primitivePreviewOverlay.clear();
         this.fieldEditorOverlay.updateHover(null, field.tessellationConfig);
       }
+      if (!isFieldSetup) {
+        return;
+      }
+      if (openChanged) return;
     });
   }
 

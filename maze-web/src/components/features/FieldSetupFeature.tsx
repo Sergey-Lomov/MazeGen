@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Circle, Hexagon, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
+import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive, PolygonOperation } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
@@ -16,7 +16,7 @@ import { InfoIconButton } from "../InfoIconButton";
 import { Modal } from "../Modal";
 import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
-import { canvas } from "../../pixi/colorTokens";
+import { canvas, FIELD_EDITOR_PREVIEW_COLORS } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { colorToHex } from "../colorFormat";
@@ -69,6 +69,7 @@ export function FieldSetupFeature() {
   const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
+  const polygonOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].polygonOperation ?? "add");
   const setSquareShape = useMazeStore((s) => s.setSquareShape);
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
@@ -77,6 +78,7 @@ export function FieldSetupFeature() {
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
+  const setPolygonOperation = useMazeStore((s) => s.setPolygonOperation);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const fieldEditConfirmation = useMazeStore((s) => s.fieldEditConfirmation);
@@ -253,14 +255,20 @@ export function FieldSetupFeature() {
         <>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <Inline gap="itemGap" style={{ ...styles.nestedContent, flexWrap: "wrap" }}>
-          {primitivesForKind(tessellationKind).map(([p, label]) => (
+          {primitivesForKind(tessellationKind).map((tool) => (
             <ToolIconButton
-              key={p}
-              selected={fieldPrimitive === p}
-              title={label}
-              onClick={() => setFieldPrimitive(p as FieldPrimitive)}
+              key={tool.key}
+              selected={fieldPrimitive === tool.primitive
+                && (tool.polygonOperation === undefined || polygonOperation === tool.polygonOperation)}
+              title={tool.primitive === "polygon"
+                ? `${tool.label}\n${m["field.polygon.shift_tooltip"]()}`
+                : tool.label}
+              onClick={() => {
+                setFieldPrimitive(tool.primitive);
+                if (tool.polygonOperation) setPolygonOperation(tool.polygonOperation);
+              }}
             >
-              {primitiveIcon(p as FieldPrimitive)}
+              {primitiveIcon(tool.primitive, tool.polygonOperation)}
             </ToolIconButton>
           ))}
           </Inline>
@@ -338,20 +346,29 @@ export function FieldSetupFeature() {
   );
 }
 
-function primitivesForKind(_kind: TessellationKind): [string, string][] {
-  const primitives: [string, string][] = [
-    ["point", m["field.shape.point"]()],
-    ["rectangle", m["field.shape.rectangle"]()],
-    ["circle", m["field.shape.circle"]()],
-    ["triangle", m["field.shape.right_triangle"]()],
-    ["equilateral_triangle", m["field.shape.equilateral_triangle"]()],
-    ["hexagon", m["field.shape.hexagon"]()],
-    ["parallelogram", m["field.shape.parallelogram"]()],
-  ];
-  return _kind === "square" ? primitives.filter(([primitive]) => primitive !== "parallelogram") : primitives;
+interface PrimitiveToolOption {
+  key: string;
+  primitive: FieldPrimitive;
+  label: string;
+  polygonOperation?: PolygonOperation;
 }
 
-function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
+function primitivesForKind(_kind: TessellationKind): PrimitiveToolOption[] {
+  const primitives: PrimitiveToolOption[] = [
+    { key: "point", primitive: "point", label: m["field.shape.point"]() },
+    { key: "rectangle", primitive: "rectangle", label: m["field.shape.rectangle"]() },
+    { key: "circle", primitive: "circle", label: m["field.shape.circle"]() },
+    { key: "triangle", primitive: "triangle", label: m["field.shape.right_triangle"]() },
+    { key: "equilateral_triangle", primitive: "equilateral_triangle", label: m["field.shape.equilateral_triangle"]() },
+    { key: "hexagon", primitive: "hexagon", label: m["field.shape.hexagon"]() },
+    { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
+    { key: "polygon-add", primitive: "polygon", label: m["field.polygon.add_tool"](), polygonOperation: "add" },
+    { key: "polygon-remove", primitive: "polygon", label: m["field.polygon.remove_tool"](), polygonOperation: "remove" },
+  ];
+  return _kind === "square" ? primitives.filter((tool) => tool.primitive !== "parallelogram") : primitives;
+}
+
+function primitiveIcon(primitive: FieldPrimitive, polygonOperation?: PolygonOperation): React.ReactNode {
   const iconSize = TILE_SIZE * 0.8;
   const wallStyle = DEFAULT_MAZE_RENDER_STYLE.wall;
   const wallColor = colorToHex(canvas.wall.default);
@@ -397,7 +414,35 @@ function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
           />
         </svg>
       );
+    case "polygon":
+      return (
+        <svg width={iconSize} height={iconSize} viewBox={`0 0 ${iconSize} ${iconSize}`} fill="none" aria-hidden="true">
+          <path
+            d={`M${iconSize * 0.18} ${iconSize * 0.72}L${iconSize * 0.3} ${iconSize * 0.2}L${iconSize * 0.78} ${iconSize * 0.14}L${iconSize * 0.86} ${iconSize * 0.68}L${iconSize * 0.52} ${iconSize * 0.86}Z`}
+            stroke={wallColor}
+            strokeWidth={wallStyle.width}
+            strokeLinecap={wallStyle.cap}
+            strokeLinejoin={wallStyle.join}
+          />
+          {polygonOperation && <PolygonOperationSymbol operation={polygonOperation} size={iconSize} color={wallColor} />}
+        </svg>
+      );
   }
+}
+
+function PolygonOperationSymbol({ operation, size, color }: { operation: PolygonOperation; size: number; color: string }) {
+  const cx = size * 0.77;
+  const cy = size * 0.77;
+  const arm = size * 0.1;
+  const path = operation === "add"
+    ? `M${cx - arm} ${cy}H${cx + arm}M${cx} ${cy - arm}V${cy + arm}`
+    : `M${cx - arm} ${cy}H${cx + arm}`;
+  return (
+    <>
+      <path d={path} stroke={FIELD_EDITOR_PREVIEW_COLORS.background} strokeWidth={size * 0.23} strokeLinecap="round" />
+      <path d={path} stroke={color} strokeWidth={size * 0.1} strokeLinecap="round" />
+    </>
+  );
 }
 
 function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: HexShape, triangleShape: TriangleShape): string {

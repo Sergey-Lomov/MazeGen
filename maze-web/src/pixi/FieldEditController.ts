@@ -4,6 +4,8 @@ import type { Container } from "pixi.js";
 import { TILE_SIZE } from "./constants";
 import { normalizePrimitiveCells, primitiveCells, primitiveWorldGeometry, cfgKind } from "./primitiveGeometry";
 import type { ShapePrimitive, TessellationKind } from "./primitiveGeometry";
+import { cellsInsidePolygon, polygonWorldGeometry } from "./polygonGeometry";
+import type { PolygonPoint } from "./polygonGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
@@ -44,6 +46,14 @@ export class FieldEditController {
   private lastGridRadius = 0;
   private lastEndGrid: { x: number; y: number } | null = null;
   private lastEndWorld: { x: number; y: number } | null = null;
+  private polygonPoints: PolygonPoint[] = [];
+  private polygonGridPoints: { x: number; y: number }[] = [];
+  private polygonCursorPoint: PolygonPoint | null = null;
+  private draggedPolygonIndex: number | null = null;
+  private polygonDragStartCanvas: { x: number; y: number } | null = null;
+  private polygonDragOriginalPoint: PolygonPoint | null = null;
+  private polygonCloseCandidate = false;
+  private lastPointerCanvas: { x: number; y: number } | null = null;
 
   private canvas: HTMLCanvasElement;
   private getProjection: () => TessellationProjection | null;
@@ -57,14 +67,35 @@ export class FieldEditController {
     // listener would otherwise do globally via `window`, regardless of focus.
     if (isTypingTarget(e.target)) return;
     if (e.code === "Space") { e.preventDefault(); this.spaceHeld = true; }
-    if (e.key === "Shift") this.shiftHeld = true;
-    if (e.key === "Control") this.controlHeld = true;
+    if (e.key === "Shift") {
+      this.shiftHeld = true;
+      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
+        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+      }
+    }
+    if (e.key === "Control") {
+      this.controlHeld = true;
+      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
+        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+      }
+    }
     if (e.code === "Escape") this.cancelGesture();
+    if (e.code === "Enter") this.commitPolygon();
   };
   private onKeyUp = (e: KeyboardEvent) => {
     if (e.code === "Space") this.spaceHeld = false;
-    if (e.key === "Shift") this.shiftHeld = false;
-    if (e.key === "Control") this.controlHeld = false;
+    if (e.key === "Shift") {
+      this.shiftHeld = false;
+      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
+        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+      }
+    }
+    if (e.key === "Control") {
+      this.controlHeld = false;
+      if (this.lastPointerCanvas && this.polygonPoints.length > 0) {
+        this.updatePolygonCursor(this.lastPointerCanvas.x, this.lastPointerCanvas.y);
+      }
+    }
   };
   private onContextMenu = (e: Event) => { e.preventDefault(); };
 
@@ -86,7 +117,8 @@ export class FieldEditController {
     window.addEventListener("keyup", this.onKeyUp);
   }
 
-  onPointerDown(canvasX: number, canvasY: number, button: number): void {
+  onPointerDown(canvasX: number, canvasY: number, button: number, _shiftKey?: boolean, clickCount = 1): void {
+    this.lastPointerCanvas = { x: canvasX, y: canvasY };
     const s = useMazeStore.getState();
     const field = s.floorFields[s.activeFloorId];
     if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
@@ -96,6 +128,8 @@ export class FieldEditController {
     this.gestureActive = true;
     this.gestureButton = button;
     this.activePrimitive = field.fieldPrimitive;
+
+    if (this.polygonPoints.length > 0 && this.activePrimitive !== "polygon") this.clearPolygon();
 
     if (this.spaceHeld || button === 1) {
       this.panCallbacks.startPan(canvasX, canvasY);
@@ -110,6 +144,46 @@ export class FieldEditController {
       this.applyEdit(grid.x, grid.y, button);
       this.lastGridX = grid.x;
       this.lastGridY = grid.y;
+    } else if (this.activePrimitive === "polygon") {
+      if (button === 2) {
+        this.cancelGesture();
+        return;
+      }
+      if (button !== 0) return;
+      const grid = this.toGrid(canvasX, canvasY);
+      if (!grid) return;
+
+      const nodeIndex = this.findPolygonNode(canvasX, canvasY);
+      const lastIndex = this.polygonPoints.length - 1;
+      const isLastPoint = nodeIndex === lastIndex
+        || (this.polygonGridPoints.length > 0
+          && grid.x === this.polygonGridPoints[lastIndex]?.x
+          && grid.y === this.polygonGridPoints[lastIndex]?.y);
+      if (clickCount >= 2 && this.polygonPoints.length >= 3 && isLastPoint) {
+        this.commitPolygon();
+        return;
+      }
+      if (nodeIndex !== null) {
+        this.draggedPolygonIndex = nodeIndex;
+        this.polygonDragStartCanvas = { x: canvasX, y: canvasY };
+        this.polygonDragOriginalPoint = { ...this.polygonPoints[nodeIndex] };
+        this.polygonCloseCandidate = nodeIndex === 0 && this.polygonPoints.length >= 3;
+        this.polygonCursorPoint = null;
+        this.updatePolygonPreview();
+        return;
+      }
+      if (this.polygonGridPoints.length >= 3
+        && grid.x === this.polygonGridPoints[0].x
+        && grid.y === this.polygonGridPoints[0].y) {
+        this.commitPolygon();
+        return;
+      }
+      const previous = this.polygonGridPoints[this.polygonGridPoints.length - 1];
+      if (previous?.x === grid.x && previous.y === grid.y) return;
+      this.polygonGridPoints.push(grid);
+      this.polygonPoints.push(this.inputWorldPoint(canvasX, canvasY, grid));
+      this.polygonCursorPoint = null;
+      this.updatePolygonPreview();
     } else {
       const grid = this.toGrid(canvasX, canvasY);
       if (!grid) return;
@@ -134,14 +208,23 @@ export class FieldEditController {
   }
 
   onPointerMove(canvasX: number, canvasY: number, buttons = 0xffff): void {
-    if (!this.gestureActive) return;
+    this.lastPointerCanvas = { x: canvasX, y: canvasY };
     // Windows/Chrome doesn't fire pointerup for RMB; detect release via buttons mask.
-    if (this.gestureButton === 2 && (buttons & 2) === 0) {
+    if (this.gestureActive && this.gestureButton === 2 && (buttons & 2) === 0) {
       this.onPointerUp();
       return;
     }
     const s = useMazeStore.getState();
-    if (!(s.openCard === "field_setup" && s.floorFields[s.activeFloorId].fieldEditMode === "custom")) return;
+    const field = s.floorFields[s.activeFloorId];
+    if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
+
+    if (!this.gestureActive) {
+      if (field.fieldPrimitive === "polygon" && this.polygonPoints.length > 0) {
+        this.activePrimitive = "polygon";
+        this.updatePolygonCursor(canvasX, canvasY);
+      }
+      return;
+    }
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.movePan(canvasX, canvasY);
@@ -155,6 +238,24 @@ export class FieldEditController {
       this.applyEdit(grid.x, grid.y, this.gestureButton);
       this.lastGridX = grid.x;
       this.lastGridY = grid.y;
+    } else if (this.activePrimitive === "polygon") {
+      if (this.draggedPolygonIndex !== null && this.polygonDragStartCanvas) {
+        const moved = Math.hypot(
+          canvasX - this.polygonDragStartCanvas.x,
+          canvasY - this.polygonDragStartCanvas.y,
+        ) >= 3;
+        if (moved) {
+          this.polygonCloseCandidate = false;
+          const grid = this.toGrid(canvasX, canvasY);
+          if (grid) {
+            this.polygonPoints[this.draggedPolygonIndex] = this.inputWorldPoint(canvasX, canvasY, grid);
+            this.polygonGridPoints[this.draggedPolygonIndex] = grid;
+            this.polygonCursorPoint = null;
+            this.updatePolygonPreview();
+          }
+        }
+      }
+      return;
     } else if (this.primitiveStartGrid && this.primitiveStartWorld && this.primitiveStartCanvas && this.activeShapePrimitive) {
       const currentGrid = this.toGrid(canvasX, canvasY);
       if (!currentGrid) return;
@@ -183,7 +284,45 @@ export class FieldEditController {
     }
   }
 
+  /** Commits the polygon after Pixi's `pointertap` reports a double-click. */
+  onDoubleClick(canvasX: number, canvasY: number, button = 0): void {
+    if (button !== 0) return;
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    if (!(state.openCard === "field_setup"
+      && field.fieldEditMode === "custom"
+      && field.fieldPrimitive === "polygon"
+      && this.polygonPoints.length >= 3)) return;
+
+    const grid = this.toGrid(canvasX, canvasY);
+    const lastIndex = this.polygonPoints.length - 1;
+    const nodeIndex = grid ? this.findPolygonNode(canvasX, canvasY) : null;
+    const isLastPoint = nodeIndex === lastIndex
+      || (grid !== null
+        && grid.x === this.polygonGridPoints[lastIndex]?.x
+        && grid.y === this.polygonGridPoints[lastIndex]?.y);
+    if (isLastPoint) this.commitPolygon();
+  }
+
   private cancelGesture(): void {
+    if (this.draggedPolygonIndex !== null) {
+      if (this.polygonDragOriginalPoint) {
+        this.polygonPoints[this.draggedPolygonIndex] = this.polygonDragOriginalPoint;
+        const restoredGrid = this.toGridPoint(this.polygonDragOriginalPoint);
+        if (restoredGrid) this.polygonGridPoints[this.draggedPolygonIndex] = restoredGrid;
+      }
+      this.clearPolygonDragState();
+      this.updatePolygonPreview();
+      this.gestureActive = false;
+      return;
+    }
+    if (this.polygonPoints.length > 0) {
+      this.clearPolygon();
+      this.gestureActive = false;
+      this.lastGridX = NaN;
+      this.lastGridY = NaN;
+      return;
+    }
     if (!this.gestureActive) return;
     // Point streak commits cells on each move — no batch to cancel.
     // Escape only cancels shape-primitive gestures (preview cleared, nothing committed).
@@ -215,6 +354,17 @@ export class FieldEditController {
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.endPan();
+    } else if (this.activePrimitive === "polygon") {
+      if (this.draggedPolygonIndex !== null) {
+        if (this.polygonCloseCandidate) {
+          this.clearPolygonDragState();
+          this.commitPolygon();
+          return;
+        }
+        this.clearPolygonDragState();
+        this.updatePolygonPreview();
+      }
+      // The polygon remains active between clicks until it is closed or confirmed with Enter.
     } else if (this.activeShapePrimitive !== null && this.primitiveStartGrid !== null) {
       this.primitiveCallbacks.onPreviewClear();
       this.primitiveCallbacks.onPrimitiveCommit(this.lastPreviewCells, this.gestureButton);
@@ -262,6 +412,111 @@ export class FieldEditController {
     if (!projection) return { x: 0, y: 0 };
     const screen = projection.gridToScreen(grid.x, grid.y);
     return { x: screen.x, y: -screen.y };
+  }
+
+  private updatePolygonPreview(): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const cfg = field.tessellationConfig;
+    const kind = cfgKind(cfg.type);
+    const previewPoints = this.polygonCursorPoint
+      ? [...this.polygonPoints, this.polygonCursorPoint]
+      : [...this.polygonPoints];
+    this.lastPreviewCells = previewPoints.length >= 3 ? cellsInsidePolygon(previewPoints, cfg) : [];
+    this.primitiveCallbacks.onPreviewUpdate(
+      this.lastPreviewCells,
+      field.polygonOperation === "remove" ? 2 : 0,
+      kind,
+      cfg,
+      polygonWorldGeometry(previewPoints, {
+        vertexCount: this.polygonPoints.length,
+        dashedClosing: this.polygonPoints.length >= 2,
+      }),
+    );
+  }
+
+  private updatePolygonCursor(canvasX: number, canvasY: number): void {
+    if (this.polygonPoints.length === 0 || this.draggedPolygonIndex !== null) return;
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return;
+    this.polygonCursorPoint = this.inputWorldPoint(canvasX, canvasY, grid);
+    this.updatePolygonPreview();
+  }
+
+  private commitPolygon(): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    if (!(state.openCard === "field_setup"
+      && field.fieldEditMode === "custom"
+      && field.fieldPrimitive === "polygon"
+      && this.polygonPoints.length >= 3)) return;
+    const committedCells = cellsInsidePolygon(this.polygonPoints, field.tessellationConfig);
+    this.primitiveCallbacks.onPreviewClear();
+    if (committedCells.length > 0) {
+      this.primitiveCallbacks.onPrimitiveCommit(
+        committedCells,
+        field.polygonOperation === "remove" ? 2 : 0,
+      );
+    }
+    this.clearPolygonState();
+    this.gestureActive = false;
+  }
+
+  private clearPolygon(): void {
+    this.primitiveCallbacks.onPreviewClear();
+    this.clearPolygonState();
+  }
+
+  private clearPolygonState(): void {
+    this.polygonPoints = [];
+    this.polygonGridPoints = [];
+    this.polygonCursorPoint = null;
+    this.clearPolygonDragState();
+    this.lastPreviewCells = [];
+  }
+
+  private clearPolygonDragState(): void {
+    this.draggedPolygonIndex = null;
+    this.polygonDragStartCanvas = null;
+    this.polygonDragOriginalPoint = null;
+    this.polygonCloseCandidate = false;
+  }
+
+  private inputWorldPoint(
+    canvasX: number,
+    canvasY: number,
+    grid: { x: number; y: number },
+  ): PolygonPoint {
+    return this.shiftHeld ? this.toWorld(canvasX, canvasY) : this.gridToWorld(grid);
+  }
+
+  private toGridPoint(point: PolygonPoint): { x: number; y: number } | null {
+    const viewport = this.getViewport();
+    const projection = this.getProjection();
+    if (!projection) return null;
+    return canvasToGrid(
+      viewport.x + point.x * viewport.scale.x,
+      viewport.y - point.y * viewport.scale.y,
+      viewport,
+      projection,
+    );
+  }
+
+  private findPolygonNode(canvasX: number, canvasY: number): number | null {
+    const viewport = this.getViewport();
+    const hitRadius = 12;
+    let nearest: number | null = null;
+    let nearestDistance = hitRadius;
+    this.polygonPoints.forEach((point, index) => {
+      const nodeX = viewport.x + point.x * viewport.scale.x;
+      const nodeY = viewport.y - point.y * viewport.scale.y;
+      const distance = Math.hypot(canvasX - nodeX, canvasY - nodeY);
+      if (distance <= nearestDistance) {
+        nearest = index;
+        nearestDistance = distance;
+      }
+    });
+    return nearest;
   }
 
   private applyEdit(x: number, y: number, button: number): void {

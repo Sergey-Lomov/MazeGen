@@ -344,6 +344,7 @@ export function defaultFloorFieldConfig(kind: TessellationKind, hexOrientation: 
     fieldPoints: new Set<number>(),
     fieldEditMode: "default",
     fieldPrimitive: "point",
+    polygonOperation: "add",
     fieldDirty: false,
   };
 }

@@ -28,6 +28,7 @@ export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}):
     fieldPoints: new Set<number>(),
     fieldEditMode: "default",
     fieldPrimitive: "point",
+    polygonOperation: "add",
     fieldDirty: false,
     ...overrides,
   };

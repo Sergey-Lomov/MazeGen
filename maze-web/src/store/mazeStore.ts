@@ -22,7 +22,7 @@ export type {
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
-  FieldPrimitive, FeatureId, RenderModeId, ExportFormatId, MazeState,
+  FieldPrimitive, PolygonOperation, FeatureId, RenderModeId, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
   DigitalExportSettings, PrintExportSettings, PngExportSettings, FloorState,
 } from "./storeTypes";
@@ -65,6 +65,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         fieldPoints,
         fieldEditMode: ff.fieldEditMode,
         fieldPrimitive: "point",
+        polygonOperation: "add",
         fieldDirty: file.dirtyFlags.field,
       };
     }

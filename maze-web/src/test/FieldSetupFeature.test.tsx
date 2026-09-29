@@ -164,6 +164,22 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
   });
 
+  it("offers separate add/remove polygon tools with a Shift tooltip", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const addTool = screen.getByRole("button", { name: /Add polygon/ });
+    expect(addTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
+    fireEvent.click(addTool);
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].polygonOperation).toBe("add");
+    fireEvent.click(screen.getByRole("button", { name: /Subtract polygon/ }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].polygonOperation).toBe("remove");
+  });
+
   it("applies print sizing to standard floors but preserves custom floors", () => {
     useMazeStore.setState({
       floors: [

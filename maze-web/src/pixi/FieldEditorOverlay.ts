@@ -74,6 +74,10 @@ export class FieldEditorOverlay {
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
       }
 
+      if (isOpen && field.fieldPrimitive !== prevField.fieldPrimitive) {
+        this.updateHover(null, field.tessellationConfig);
+      }
+
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
       }
