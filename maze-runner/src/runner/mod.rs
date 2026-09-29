@@ -8,12 +8,15 @@ mod tests;
 
 use crate::config::{
     GenerateConfig, PresetEndpointDto, TessellationType, build_generation_config,
-    build_repair_limits,
+    build_generation_source_mode, build_repair_limits,
 };
 use maze_core::{
     GenerationTiming, RegionClass,
     event_log::{DebugTape, EventLog},
-    generation::{GenerationConfig, PresetEndpoint, build_preset_state, generate_maze},
+    generation::{
+        GenerationConfig, PresetEndpoint, build_preset_state, generate_maze,
+        resolve_generation_start,
+    },
     graph::Graph,
     ids::IdGenerator,
     quality_control::{Issue, QcEvent},
@@ -44,30 +47,22 @@ pub struct MazeRunResult {
     pub qc_tape: Option<DebugTape<QcEvent>>,
 }
 
-pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
-    let n = points.len() as i32;
-    let cx = points.iter().map(|&p| to_xy(p).0).sum::<i32>() / n;
-    let cy = points.iter().map(|&p| to_xy(p).1).sum::<i32>() / n;
-    *points
-        .iter()
-        .min_by_key(|&&p| {
-            let (x, y) = to_xy(p);
-            (x - cx) * (x - cx) + (y - cy) * (y - cy)
-        })
-        .unwrap()
-}
-
+/// Resolves the geometric fallback start point (GitHub issue #640) — a pin matching
+/// `gen_source_xy` wins if present, otherwise falls back to `mode` (default centroid-nearest, or
+/// seeded-random). Thin wrapper over `maze_core::generation::resolve_generation_start` that keeps
+/// this crate's coordinate-match pin lookup, matching `maze-wasm::tessellation_dispatch`'s
+/// equivalent wrapper.
 pub fn resolve_start<P: Copy>(
     pts: &[P],
     gen_source_xy: Option<[i32; 2]>,
+    mode: maze_core::generation::GenerationSourceMode,
+    seed: u64,
     to_xy: impl Fn(P) -> (i32, i32),
 ) -> P {
-    if let Some([px, py]) = gen_source_xy
-        && let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py))
-    {
-        return p;
-    }
-    pick_start(pts, to_xy)
+    let pinned = gen_source_xy.and_then(|[px, py]| {
+        pts.iter().copied().find(|&p| to_xy(p) == (px, py))
+    });
+    resolve_generation_start(pts, pinned, mode, seed, to_xy)
 }
 
 fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
@@ -214,6 +209,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
     let gen_config = build_generation_config(config);
 
     let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
+    let gen_source_mode = build_generation_source_mode(&config.generation_source_mode);
 
     if config.level_fields.is_empty() {
         return Err("level_fields must not be empty".to_string());
@@ -229,7 +225,8 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if first_pts.is_empty() {
                 return Err("level_fields[0] must not be empty".to_string());
             }
-            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.x, p.y));
+            let start =
+                resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| (p.x, p.y));
             let mut field =
                 MultiLevelField::<SquareTessellation>::single_level(first_pts, &mut ids)
                     .map_err(|e| e.to_string())?;
@@ -255,7 +252,8 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if first_pts.is_empty() {
                 return Err("level_fields[0] must not be empty".to_string());
             }
-            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.q, p.r));
+            let start =
+                resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| (p.q, p.r));
             let mut field = MultiLevelField::<HexTessellation>::single_level(first_pts, &mut ids)
                 .map_err(|e| e.to_string())?;
             for raw in &config.level_fields[1..] {
@@ -282,7 +280,9 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if first_pts.is_empty() {
                 return Err("level_fields[0] must not be empty".to_string());
             }
-            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.col, p.row));
+            let start = resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| {
+                (p.col, p.row)
+            });
             let mut field = MultiLevelField::<TriTessellation>::single_level(first_pts, &mut ids)
                 .map_err(|e| e.to_string())?;
             for raw in &config.level_fields[1..] {

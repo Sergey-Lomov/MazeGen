@@ -27,6 +27,8 @@ export function GenerationFeature({ canGenerate }: Props) {
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const qcExperiment = useMazeStore((s) => s.qcExperiment);
   const vertexSettingsPanelOpen = useMazeStore((s) => s.vertexSettingsPanelOpen);
+  const presetGenSource = useMazeStore((s) => s.presetGenSource);
+  const generationSourceMode = useMazeStore((s) => s.generationSourceMode);
 
   const setSeed = useMazeStore((s) => s.setSeed);
   const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
@@ -34,6 +36,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const seedHistoryForward = useMazeStore((s) => s.seedHistoryForward);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
+  const setGenerationSourceMode = useMazeStore((s) => s.setGenerationSourceMode);
   const setVertexSettingsPanelOpen = useMazeStore((s) => s.setVertexSettingsPanelOpen);
   const generate = useMazeStore((s) => s.generate);
   const postEditDirty = useMazeStore(selectPostEditDirty);
@@ -156,6 +159,23 @@ export function GenerationFeature({ canGenerate }: Props) {
         </div>
       </div>
 
+      {/* Random generation source toggle */}
+      <div
+        style={styles.row}
+        title={presetGenSource ? m["generation.random_source_disabled_tooltip"]() : undefined}
+      >
+        <span style={{ ...styles.switchLabel, ...(presetGenSource ? styles.disabledLabel : {}) }}>
+          {m["generation.random_source"]()}
+        </span>
+        <div style={styles.switchRight}>
+          <Switch
+            checked={generationSourceMode === "random"}
+            disabled={presetGenSource !== null}
+            onChange={(checked) => setGenerationSourceMode(checked ? "random" : "default")}
+          />
+        </div>
+      </div>
+
       {/* Action buttons */}
       <div style={styles.btnRow}>
         <Button
@@ -199,6 +219,9 @@ const styles: Record<string, React.CSSProperties> = {
   switchLabel: {
     ...muted(typography.body),
     flexShrink: 0,
+  },
+  disabledLabel: {
+    opacity: 0.4,
   },
   switchRight: {
     marginLeft: "auto",

@@ -2,6 +2,7 @@ use crate::generation_config::{GenerateConfig, TessellationType};
 use crate::result::GenerateResult;
 use crate::runner::run_generate;
 use maze_core::{
+    generation::resolve_generation_start,
     ids::IdGenerator,
     space::{
         Field, HexPoint, HexTessellation, MultiLevelField, SquarePoint, SquareTessellation,
@@ -10,30 +11,21 @@ use maze_core::{
 };
 use wasm_bindgen::prelude::*;
 
-pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
-    let n = points.len() as i32;
-    let cx: i32 = points.iter().map(|&p| to_xy(p).0).sum::<i32>() / n;
-    let cy: i32 = points.iter().map(|&p| to_xy(p).1).sum::<i32>() / n;
-    *points
-        .iter()
-        .min_by_key(|&&p| {
-            let (x, y) = to_xy(p);
-            (x - cx) * (x - cx) + (y - cy) * (y - cy)
-        })
-        .unwrap()
-}
-
+/// Resolves the geometric fallback start point (GitHub issue #640) — a pin matching
+/// `gen_source_xy` wins if present, otherwise falls back to `mode` (default centroid-nearest, or
+/// seeded-random). Thin wrapper over `maze_core::generation::resolve_generation_start` that keeps
+/// this crate's coordinate-match pin lookup, matching `maze-runner`'s equivalent wrapper.
 fn resolve_start<P: Copy>(
     pts: &[P],
     gen_source_xy: Option<[i32; 2]>,
+    mode: maze_core::generation::GenerationSourceMode,
+    seed: u64,
     to_xy: impl Fn(P) -> (i32, i32),
 ) -> P {
-    if let Some([px, py]) = gen_source_xy
-        && let Some(&p) = pts.iter().find(|&&p| to_xy(p) == (px, py))
-    {
-        return p;
-    }
-    pick_start(pts, to_xy)
+    let pinned = gen_source_xy.and_then(|[px, py]| {
+        pts.iter().copied().find(|&p| to_xy(p) == (px, py))
+    });
+    resolve_generation_start(pts, pinned, mode, seed, to_xy)
 }
 
 /// Builds a `level_fields.len()`-level field, each level's own point set (GitHub issue #338 —
@@ -56,6 +48,8 @@ fn build_multi_level_field<T: Tessellation>(
 pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateResult, JsValue> {
     let mut ids = IdGenerator::new();
     let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
+    let gen_source_mode =
+        crate::generation_config::build_generation_source_mode(&config.generation_source_mode);
     if config.level_fields.is_empty() {
         return Err(JsValue::from_str("level_fields must not be empty"));
     }
@@ -69,7 +63,9 @@ pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateR
             if level_points.iter().any(|pts| pts.is_empty()) {
                 return Err(JsValue::from_str("level_fields entry must not be empty"));
             }
-            let start = resolve_start(&level_points[0], gen_source_xy, |p| (p.x, p.y));
+            let start = resolve_start(&level_points[0], gen_source_xy, gen_source_mode, seed, |p| {
+                (p.x, p.y)
+            });
             let field = build_multi_level_field::<SquareTessellation>(level_points, &mut ids)?;
             run_generate(
                 seed,
@@ -90,7 +86,9 @@ pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateR
             if level_points.iter().any(|pts| pts.is_empty()) {
                 return Err(JsValue::from_str("level_fields entry must not be empty"));
             }
-            let start = resolve_start(&level_points[0], gen_source_xy, |p| (p.q, p.r));
+            let start = resolve_start(&level_points[0], gen_source_xy, gen_source_mode, seed, |p| {
+                (p.q, p.r)
+            });
             let field = build_multi_level_field::<HexTessellation>(level_points, &mut ids)?;
             run_generate(
                 seed,
@@ -115,7 +113,9 @@ pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateR
             if level_points.iter().any(|pts| pts.is_empty()) {
                 return Err(JsValue::from_str("level_fields entry must not be empty"));
             }
-            let start = resolve_start(&level_points[0], gen_source_xy, |p| (p.col, p.row));
+            let start = resolve_start(&level_points[0], gen_source_xy, gen_source_mode, seed, |p| {
+                (p.col, p.row)
+            });
             let field = build_multi_level_field::<TriTessellation>(level_points, &mut ids)?;
             run_generate(
                 seed,

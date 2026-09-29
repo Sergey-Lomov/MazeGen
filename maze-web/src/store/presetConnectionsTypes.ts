@@ -21,6 +21,11 @@ export interface PresetConnectionsState {
   presetStart: PresetEndpoint | null;
   presetFinish: PresetEndpoint | null;
   presetGenSource: PresetEndpoint | null;
+  /** Geometric fallback mode for the generation start point when `presetGenSource` is unset
+   * (GitHub issue #640) — persisted per project. `"default"` is the long-standing centroid-nearest
+   * behavior; `"random"` seeds from a uniformly random field point, deterministic per generation
+   * seed. Has no effect once `presetGenSource` is set — the pin always wins regardless of mode. */
+  generationSourceMode: "default" | "random";
   highlightInvalidPresets: boolean;
   highlightIsolatedNodes: boolean;
   /** Whether the "N split node(s) unused" warning bubble is currently hovered (GitHub issue #420) —
@@ -221,6 +226,7 @@ export interface PresetConnectionsActions {
    * assign the generation source to a *specific* node of a split point picked in
    * `PresetSplitTargetDialog`, independent of which node happens to be globally active. */
   setPresetGenSourceEndpoint: (endpoint: PresetEndpoint | null) => void;
+  setGenerationSourceMode: (mode: "default" | "random") => void;
   setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
   setHighlightIsolatedNodes: (highlight: boolean) => void;

@@ -19,6 +19,8 @@ beforeEach(() => {
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
     postEditDirty: false,
+    presetGenSource: null,
+    generationSourceMode: "default",
   });
 });
 
@@ -65,6 +67,45 @@ describe("GenerationFeature — QC Only toggle", () => {
 
     expect(generate).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — random generation source toggle", () => {
+  function toggle() {
+    return screen.getByText(m["generation.random_source"]())
+      .closest("div")!
+      .querySelector("input[type=checkbox]") as HTMLInputElement;
+  }
+
+  it("reflects the store's generationSourceMode value", () => {
+    useMazeStore.setState({ generationSourceMode: "random" });
+    render(<GenerationFeature canGenerate={true} />);
+    expect(toggle().checked).toBe(true);
+  });
+
+  it("calls setGenerationSourceMode when toggled", () => {
+    const setGenerationSourceMode = vi.fn();
+    useMazeStore.setState({ setGenerationSourceMode });
+    render(<GenerationFeature canGenerate={true} />);
+    fireEvent.click(toggle());
+    expect(setGenerationSourceMode).toHaveBeenCalledWith("random");
+  });
+
+  it("is disabled when a preset generation-source pin is set", () => {
+    useMazeStore.setState({ presetGenSource: { point: [1, 1] } });
+    render(<GenerationFeature canGenerate={true} />);
+    expect(toggle().disabled).toBe(true);
+  });
+
+  it("keeps showing the real generationSourceMode (not forced checked) while disabled by a pin (GitHub issue #640 regression)", () => {
+    useMazeStore.setState({
+      presetGenSource: { point: [1, 1] },
+      generationSourceMode: "default",
+    });
+    render(<GenerationFeature canGenerate={true} />);
+    const checkbox = toggle();
+    expect(checkbox.disabled).toBe(true);
+    expect(checkbox.checked).toBe(false);
   });
 });
 

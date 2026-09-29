@@ -324,6 +324,10 @@ export interface GenerateConfig {
   preset_start?: PresetEndpointDto;
   preset_finish?: PresetEndpointDto;
   preset_gen_source?: PresetEndpointDto;
+  /** Geometric fallback mode for the generation start point when `preset_gen_source` is absent
+   * (GitHub issue #640) — has no effect once `preset_gen_source` is set, the pin always wins.
+   * `undefined` deserializes as `"default"` on the Rust side (today's centroid-nearest behavior). */
+  generation_source_mode?: "default" | "random";
   /** Extra nodes to create at declared points before any preset above is resolved (GitHub issue
    * #231) — `[[x, y], slotId, level]` triples; `level` added by GitHub issue #340 (0-based
    * `level_fields` index). Mirrors Rust's `GenerateConfig.split_points`. */

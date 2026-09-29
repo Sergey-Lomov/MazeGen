@@ -71,6 +71,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       start: state.presetStart,
       finish: state.presetFinish,
       genSource: state.presetGenSource,
+      generationSourceMode: state.generationSourceMode,
       teleports: state.presetTeleports,
       verticalPassages: state.presetVerticalPassages,
       elevators: state.presetElevators,

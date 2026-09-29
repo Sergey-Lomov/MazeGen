@@ -147,6 +147,10 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const presetStart = presetsObj.start == null ? null : validatePresetEndpoint(presetsObj.start, "presets.start");
   const presetFinish = presetsObj.finish == null ? null : validatePresetEndpoint(presetsObj.finish, "presets.finish");
   const genSource = presetsObj.genSource == null ? null : validatePresetEndpoint(presetsObj.genSource, "presets.genSource");
+  // Optional — absent in project files saved before GitHub issue #640. Defaults to "default"
+  // (today's centroid-nearest behavior), never "random", so opening an old project never silently
+  // changes its reproducibility.
+  const generationSourceMode = presetsObj.generationSourceMode === "random" ? "random" : "default";
   // Optional — absent in project files saved before preset teleports existed.
   const teleports = presetsObj.teleports != null
     ? assertArray(presetsObj.teleports, "presets.teleports").map((v, i) => validatePresetTeleportEntry(v, `presets.teleports[${i}]`))
@@ -244,6 +248,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       start: presetStart,
       finish: presetFinish,
       genSource,
+      generationSourceMode,
       teleports,
       verticalPassages,
       elevators,

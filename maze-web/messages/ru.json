@@ -214,6 +214,8 @@
   "generation.generate": "Сгенерировать",
   "generation.qc_experiment": "QC Only",
   "generation.qc_experiment_tooltip": "Пропустить генерацию и запустить QC/repair прямо по пресет-настройке",
+  "generation.random_source": "Случайный источник",
+  "generation.random_source_disabled_tooltip": "Источник генерации задан в предустановках",
   "generation.save_debug_config": "Сохранить отладочный конфиг",
   "generation.save_debug_config_tooltip": "Скачать точный seed/config, который был отправлен в ядро в последний раз — для баг-репортов",
   "generation.debug_mode": "Режим отладки",
