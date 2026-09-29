@@ -120,6 +120,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={handleSelect}
     />
   );
 }

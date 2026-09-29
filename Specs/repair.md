@@ -758,7 +758,7 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `path_weight` | Float | 1.0 | [0, 100] | Weight applied to path tile count |
+| `path_weight` | Float | 2.0 | [0, 100] | Weight applied to path tile count |
 | `junction_weight` | Float | 3.0 | [0, 100] | Weight applied to number of junction nav nodes on path |
 | `oneway_weight` | Float | 5.0 | [0, 100] | Weight applied to number of one-way nav edges on path |
 | `cross_floor_weight` | Float | 5.0 | [0, 100] | Weight applied to number of floor-crossing (`VerticalPassage`/`Elevator`-kind) hops crossed on path |
@@ -787,6 +787,15 @@ Behavior per case:
 - **Only finish set**: fixes finish, searches for best start.
 - No reachable path found: returns `Failed`.
 - Best-scoring pair's score is below `min_score`: returns `Failed` instead of committing that pair — no waypoints are added, even when a reachable candidate pair exists (GitHub issue #538).
+
+**Free-endpoint candidate pruning (GitHub issue #634)**: when `path_weight > 0`, a free (non-fixed) start/finish endpoint is only searched over `prune_dominated_tail_nodes`'s output instead of every nav node, cutting `best_pair`'s `O(nav_nodes^2)` cost on mazes riddled with dead-end branches (typical maze-editor output). A fixed endpoint (already pinned by the issue) is always used as-is, pruned or not.
+
+- Along any plain dead-end tail (every hop a plain bidirectional `Basic` edge — not one-way, not cross-floor/elevator/teleport, no split tile), going one hop deeper strictly increases `path_weight`'s contribution while never decreasing any other score component, so the shallower node can never win over the tail's own deepest point and is dropped from the search. Peeling is iterative: once a node's only remaining plain neighbor is peeled away, it can itself become a new dead end and get peeled on a later pass, collapsing a whole plain subtree down to its single deepest leaf.
+- A node touched by any non-plain edge, or sitting on a split tile, is a "true anchor" and is never peeled.
+- A genuine plain branch point (original plain-degree ≥ 3) stays structurally in place while peeling runs through it, collapsing each dead-end branch to one leaf — but the branch point itself is only dropped from the candidate list if all but at most one of its original branches resolved to a dead-end tail. If 2 or more branches instead lead back into the rest of the graph (e.g. two sides of a loop meeting at the fork), there's no single dead-end leaf to compare against and the fork stays a candidate.
+- A connected component of plain-only edges with no true anchor and no branch point anywhere (a bare straight line, dead end at both ends) is left untouched — collapsing it to one node would wrongly merge its two genuine dead ends.
+- This pruning only ever removes nodes that cannot win — `best_pair`'s result is identical with or without it.
+- Disabled entirely when `path_weight <= 0.0` (the only non-positive value reachable, since every `ScoreWeights` field clamps to ≥ 0.0): the dominance proof depends on `path_weight`'s contribution strictly growing one hop deeper, which no longer holds, so a dominated node could tie instead of strictly lose. Every nav node is searched in that case, same as before this optimization existed.
 
 ### InvalidLoopRandomStrategy
 

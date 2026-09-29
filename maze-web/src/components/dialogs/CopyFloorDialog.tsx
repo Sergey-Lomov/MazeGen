@@ -23,7 +23,7 @@ export function CopyFloorDialog({ onClose }: Props) {
   }
 
   return (
-    <Modal title={m["field.copy_floor_title"]()} size="approve" onClose={onClose}>
+    <Modal title={m["field.copy_floor_title"]()} size="approve" onClose={onClose} onConfirm={selectedId ? handleConfirm : undefined}>
       <div style={styles.list}>
         {[...floors].reverse().map((floor) => {
           const disabled = floor.id === activeFloorId;

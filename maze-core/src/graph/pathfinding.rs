@@ -267,6 +267,106 @@ pub(crate) fn build_outgoing_index(
     out
 }
 
+/// Flat (CSR-style) equivalent of `build_outgoing_index`'s `Vec<Vec<usize>>` -- one contiguous
+/// `Vec<usize>` of edge indices plus a per-node `[start, end)` range into it, instead of one
+/// separate heap allocation per node. Built once per `ScoredPathContext` and then read by every
+/// one of `best_pair`'s `O(n)` `dijkstra_with_prev_into` calls, so the flat layout also means
+/// those repeated reads stay close together in memory instead of chasing a pointer per node.
+pub(crate) struct OutgoingIndex {
+    starts: Vec<usize>,
+    edge_indices: Vec<usize>,
+}
+
+impl OutgoingIndex {
+    pub(crate) fn build(nav: &NavGraph, edges: &[&super::nav::NavEdge]) -> Self {
+        let n = nav.nodes.len();
+        let mut counts = vec![0usize; n + 1];
+        for e in edges {
+            counts[e.from + 1] += 1;
+        }
+        for i in 0..n {
+            counts[i + 1] += counts[i];
+        }
+        let starts = counts.clone();
+        let mut cursor = counts;
+        let mut edge_indices = vec![0usize; edges.len()];
+        for (ei, e) in edges.iter().enumerate() {
+            edge_indices[cursor[e.from]] = ei;
+            cursor[e.from] += 1;
+        }
+        Self {
+            starts,
+            edge_indices,
+        }
+    }
+
+    #[inline]
+    fn outgoing(&self, node: NavNodeId) -> &[usize] {
+        &self.edge_indices[self.starts[node]..self.starts[node + 1]]
+    }
+}
+
+/// Scratch buffers for `dijkstra_with_prev_into`, reused across `best_pair`'s `O(n)` Dijkstra
+/// calls instead of each call allocating its own `dist`/`prev_edge` `Vec`s and `BinaryHeap` from
+/// scratch. `reset` clears them for the next source node while keeping the backing storage (heap
+/// capacity in particular tends to stabilize after the first few calls on a given graph).
+pub(crate) struct DijkstraScratch {
+    dist: Vec<usize>,
+    prev_edge: Vec<Option<usize>>,
+    heap: BinaryHeap<Reverse<(usize, NavNodeId)>>,
+}
+
+impl DijkstraScratch {
+    pub(crate) fn new(n: usize) -> Self {
+        Self {
+            dist: vec![usize::MAX; n],
+            prev_edge: vec![None; n],
+            heap: BinaryHeap::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.dist.fill(usize::MAX);
+        self.prev_edge.fill(None);
+        self.heap.clear();
+    }
+}
+
+/// Like `dijkstra_with_prev`, but takes a `DijkstraScratch` to reuse across repeated calls (e.g.
+/// `best_pair`'s one-Dijkstra-per-candidate-start loop) instead of allocating a fresh `dist`/
+/// `prev_edge`/heap every time, and reads edges via `OutgoingIndex`'s flat layout instead of a
+/// `Vec<Vec<usize>>`. Returns borrows into `scratch` rather than owned `Vec`s -- valid until the
+/// next call that mutates `scratch` (i.e. the next `dijkstra_with_prev_into` call reusing it).
+pub(crate) fn dijkstra_with_prev_into<'s>(
+    source: NavNodeId,
+    edges: &[&super::nav::NavEdge],
+    outgoing: &OutgoingIndex,
+    scratch: &'s mut DijkstraScratch,
+) -> (&'s [usize], &'s [Option<usize>]) {
+    scratch.reset();
+
+    scratch.dist[source] = 0;
+    scratch.heap.push(Reverse((0, source)));
+
+    while let Some(Reverse((cost, u))) = scratch.heap.pop() {
+        if scratch.dist[u] < cost {
+            continue;
+        }
+        for &ei in outgoing.outgoing(u) {
+            let e = edges[ei];
+            let weight = e.path.len().saturating_sub(1);
+            let next_cost = cost + weight;
+            if next_cost < scratch.dist[e.to] {
+                scratch.dist[e.to] = next_cost;
+                scratch.prev_edge[e.to] = Some(ei);
+                scratch.heap.push(Reverse((next_cost, e.to)));
+            }
+        }
+    }
+
+    (&scratch.dist, &scratch.prev_edge)
+}
+
 /// Every nav node reachable from `start` by following only `is_elevator` edges (either direction) —
 /// the nav-graph-local view of one elevator's full stop set (GitHub issue #535 follow-up). Mirrors
 /// `quality_control::checks::elevator_core::elevator_groups`, but that helper walks the underlying

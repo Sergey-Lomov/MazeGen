@@ -125,6 +125,7 @@ export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Prop
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
+      onConfirm={handleConfirm}
     />
   );
 }
