@@ -54,6 +54,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     presetStart: presetEndpoint([1, 2]),
     presetFinish: presetEndpoint([3, 4]),
     presetGenSource: null,
+    generationSourceMode: "default",
     presetTeleports: [],
     presetVerticalPassages: [],
     presetVerticalPassagePending: null,
@@ -536,6 +537,22 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
       { id: "stage_2", name: "Stage 2", ruleIds: ["rule_1"] },
     ];
     expect(() => parseAndValidate(data)).toThrow(/appears in more than one stage/);
+  });
+
+  // --- generationSourceMode (GitHub issue #640) ---
+
+  it("defaults presets.generationSourceMode to 'default' when absent (pre-#640 project files)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.presets as Record<string, unknown>).generationSourceMode;
+    const result = parseAndValidate(data);
+    expect(result.presets.generationSourceMode).toBe("default");
+  });
+
+  it("falls back presets.generationSourceMode to 'default' on a garbage value", () => {
+    const data = valid_without_optional_sections();
+    (data.presets as Record<string, unknown>).generationSourceMode = "not_a_real_mode";
+    const result = parseAndValidate(data);
+    expect(result.presets.generationSourceMode).toBe("default");
   });
 
   it("silently scrubs a stage's reference to a rule dropped by the kind-drop recovery", () => {

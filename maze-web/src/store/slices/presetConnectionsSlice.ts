@@ -44,6 +44,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetStart: null,
   presetFinish: null,
   presetGenSource: null,
+  generationSourceMode: "random",
   highlightInvalidPresets: false,
   highlightIsolatedNodes: false,
   highlightOrphanSplitNodes: false,
@@ -183,6 +184,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   })),
   setPresetStartEndpoint: (endpoint) => set((state) => ({ presetStart: endpoint, debugStale: debugStaleOf(state) })),
   setPresetFinishEndpoint: (endpoint) => set((state) => ({ presetFinish: endpoint, debugStale: debugStaleOf(state) })),
+  setGenerationSourceMode: (mode) => set((state) => ({
+    generationSourceMode: mode,
+    debugStale: debugStaleOf(state),
+  })),
   setPresetGenSource: (cell) => set((state) => ({
     presetGenSource: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode, activeFloorLevel(state)),
     debugStale: debugStaleOf(state),

@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
-import type { MarkerData, MarkerShape, TeleportCornerStyle } from "../../renderers/types";
+import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { TILE_SIZE } from "../../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
@@ -16,9 +16,9 @@ export interface MarkerStyle {
   /** Marker radius, as a fraction of the tile size (0-1) — same convention as
    *  `VectorByWallsSettings.teleportLineSize`. */
   size: number;
-  /** Sharp vs. round corners (GitHub issue #302 follow-up), same convention/rounding as
-   *  `TeleportCornerStyle` — only affects the four regular-polygon `MarkerShape`s. */
-  cornerStyle: TeleportCornerStyle;
+  /** Sharp (`"miter"`) vs. round (`"round"`) corners (GitHub issue #302 follow-up) — only affects
+   *  the four regular-polygon `MarkerShape`s. */
+  cornerStyle: CornerStyle;
   /** Floor-colored gap drawn around the marker's border (GitHub issue #302 follow-up), same
    *  convention as `VectorByWallsSettings.teleportConnectorGapWidth` — `0` (the default) draws no
    *  gap. `gapColor` is meant to always mirror the caller's own floor color; callers outside

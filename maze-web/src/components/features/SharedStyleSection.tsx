@@ -4,14 +4,9 @@ import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { OverrideResetButton } from "../OverrideResetButton";
-import type { TeleportCornerStyle } from "../../pixi/renderers/types";
+import type { CornerStyle } from "../../pixi/renderers/types";
+import type { ParamLink } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
-
-/** Which dependent-field groups a "Shared style" section drives — both render modes' `overrides`
- *  records share this shape (`Partial<Record<group, Partial<Record<field, true>>>>`), see
- *  `VectorByWallsSharedStyleOverrides`/`VectorByCorridorsSharedStyleOverrides` (`storeTypes.ts`). */
-type SharedStyleGroup = "cornerStyle" | "markerSize" | "markerBorderWidth" | "gapWidth";
-type SharedStyleOverrides = Partial<Record<SharedStyleGroup, Partial<Record<string, true>>>>;
 
 /** The "Shared style" section (GitHub issue #322) — one collapsible section, always first, shared
  *  by `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store
@@ -34,11 +29,11 @@ export function SharedStyleSection({
   onForce,
   onResetAll,
 }: {
-  cornerStyle: TeleportCornerStyle;
+  cornerStyle: CornerStyle;
   markerSize: number;
   markerBorderWidth: number;
   gapWidth: number;
-  onCornerStyleChange: (v: TeleportCornerStyle) => void;
+  onCornerStyleChange: (v: CornerStyle) => void;
   onMarkerSizeChange: (v: number) => void;
   onMarkerBorderWidthChange: (v: number) => void;
   onGapWidthChange: (v: number) => void;
@@ -51,8 +46,8 @@ export function SharedStyleSection({
         label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
         value={cornerStyle}
         options={[
-          { value: "sharp" as TeleportCornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-          { value: "round" as TeleportCornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
+          { value: "miter" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+          { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
         ]}
         onChange={onCornerStyleChange}
       />
@@ -94,9 +89,11 @@ export function SharedStyleSection({
 }
 
 /** Per-field reset button for a dependent field driven by a `SharedStyleSection` group — the
- *  settings panel's own field rows pass this as `SliderRow`/`SelectRow`'s `resetButton` prop. */
-export function sharedStyleFieldReset(overrides: SharedStyleOverrides, group: SharedStyleGroup, field: string, onReset: () => void) {
-  const overridden = overrides[group]?.[field] === true;
+ *  settings panel's own field rows pass this as `SliderRow`/`SelectRow`'s `resetButton` prop.
+ *  `target` is the field's own concrete link path (its `ParamPath` in that mode's registry);
+ *  "overridden" means that path's incoming link is disabled. */
+export function sharedStyleFieldReset<P extends string>(links: ParamLink<P>[], target: P, onReset: () => void) {
+  const overridden = links.find((l) => l.target === target)?.enabled === false;
   return <OverrideResetButton overridden={overridden} onReset={onReset} title={m["image_export.vector_by_walls.shared_style_field_reset"]()} />;
 }
 

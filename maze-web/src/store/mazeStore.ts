@@ -133,6 +133,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       presetStart: file.presets.start,
       presetFinish: file.presets.finish,
       presetGenSource: file.presets.genSource,
+      // `validate.ts` already resolves a missing field to "default" (never "random") for project
+      // files predating GitHub issue #640, so opening an old project never silently changes its
+      // reproducibility.
+      generationSourceMode: file.presets.generationSourceMode,
       presetTeleports: file.presets.teleports,
       presetTeleportPendingFrom: null,
       _nextPresetTeleportId: file.presets.teleports.length === 0

@@ -184,6 +184,11 @@ export interface ProjectFile {
     start: PresetEndpoint | null;
     finish: PresetEndpoint | null;
     genSource: PresetEndpoint | null;
+    /** Geometric fallback mode for the generation start point when `genSource` is unset (GitHub
+     * issue #640) — absent in a project file saved before this issue, defaulting to `"default"`
+     * on load (see `mazeStore.ts`), never `"random"`, so opening an old project never silently
+     * changes its reproducibility. */
+    generationSourceMode?: "default" | "random";
     teleports: PresetTeleportEntry[];
     /** Preset `VerticalPassage`/`Elevator` links (GitHub issue #357) — absent in a project file
      * saved before this issue, defaulting to empty on load (see `validate.ts`). */

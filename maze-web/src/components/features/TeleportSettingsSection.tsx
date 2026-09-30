@@ -318,7 +318,7 @@ export function TeleportSettingsSection({
           label={m["image_export.vector_by_walls.teleport_corner_style"]()}
           value={settings.teleportLineCornerStyle}
           options={[
-            { value: "sharp", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+            { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
             { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
           ]}
           onChange={(v) => onChange({ teleportLineCornerStyle: v })}

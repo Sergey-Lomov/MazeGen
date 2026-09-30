@@ -4,7 +4,8 @@ import { ColorPickerPanel } from "../components/ColorPickerPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { PC } from "../pixi/selectors/projectColorsSelector";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import * as m from "~/paraglide/messages";
@@ -29,9 +30,9 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     background: 0x000000, showGrid: true, gridColor: 0x000000, showInnerGrid: false, innerGridColor: 0x000000, floorColor: 0x2a2a2a, wallColor: 0x0a0a0a,
     randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
-    startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
-    finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
-    teleportLineCornerStyle: "sharp", teleportLineShape: "square", teleportLineSize: 0.3,
+    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    teleportLineCornerStyle: "miter", teleportLineShape: "square", teleportLineSize: 0.3,
     teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
     teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
@@ -42,7 +43,8 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: false,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
-    sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    ...DEFAULT_SHARED_STYLE_SOURCE,
+    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
   };
 }

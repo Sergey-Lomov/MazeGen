@@ -234,6 +234,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
     ...(state.presetGenSource && !invalidGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
     ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
+    generation_source_mode: state.generationSourceMode,
   };
 }
 

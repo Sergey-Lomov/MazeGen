@@ -120,6 +120,7 @@ describe("mazeStore.generate", () => {
       locked_nodes: [],
       split_points: [],
       split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
+      generation_source_mode: "random",
     });
   });
 
@@ -175,6 +176,7 @@ describe("mazeStore.generate", () => {
       locked_nodes: [],
       split_points: [],
       split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
+      generation_source_mode: "random",
     });
   });
 
@@ -200,6 +202,7 @@ describe("mazeStore.generate", () => {
       locked_nodes: [],
       split_points: [],
       split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
+      generation_source_mode: "random",
     });
   });
 
@@ -311,6 +314,7 @@ describe("mazeStore.generate", () => {
       locked_nodes: [],
       split_points: [],
       split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
+      generation_source_mode: "random",
     });
   });
 

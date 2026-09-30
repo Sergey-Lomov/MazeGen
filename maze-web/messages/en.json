@@ -207,6 +207,8 @@
   "generation.generate": "Generate",
   "generation.qc_experiment": "QC Only",
   "generation.qc_experiment_tooltip": "Skip generation and run QC/repair directly on the preset setup",
+  "generation.random_source": "Random source",
+  "generation.random_source_disabled_tooltip": "Generation source is set in presets",
   "generation.save_debug_config": "Save Debug Config",
   "generation.save_debug_config_tooltip": "Download the exact seed/config payload that was last sent to the core, for bug reports",
   "generation.debug_mode": "Debug mode",

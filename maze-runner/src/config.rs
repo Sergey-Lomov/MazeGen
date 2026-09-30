@@ -1,18 +1,19 @@
 use crate::config_dto::default_level_fields;
 pub use crate::config_dto::{
-    CheckInstanceConfig, ElementsConfigDto, GenerationParamsConfig, InitialGenerationConfig,
-    LockedNodeDto, NodeLockKindDto, OneWayDirectionDto, PresetConnectionDto,
-    PresetConnectionStateDto, PresetElevatorDto, PresetEndpointDto, PresetVerticalPassageDto,
-    QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto, SplitPatternDto,
-    SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig, TessellationType,
-    VerticalPassageDirectionDto,
+    CheckInstanceConfig, ElementsConfigDto, GenerationParamsConfig, GenerationSourceModeDto,
+    InitialGenerationConfig, LockedNodeDto, NodeLockKindDto, OneWayDirectionDto,
+    PresetConnectionDto, PresetConnectionStateDto, PresetElevatorDto, PresetEndpointDto,
+    PresetVerticalPassageDto, QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto,
+    SplitPatternDto, SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig,
+    TessellationType, VerticalPassageDirectionDto,
 };
 use maze_core::{
     RepairLimits,
     generation::{
-        ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
-        NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,
-        PresetVerticalPassage, TeleportDirection, VerticalPassageDirection,
+        ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams,
+        GenerationSourceMode, LockedNode, NodeLockKind, PresetConnection, PresetConnectionState,
+        PresetElevator, PresetEndpoint, PresetVerticalPassage, TeleportDirection,
+        VerticalPassageDirection,
     },
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
 };
@@ -57,6 +58,11 @@ pub struct GenerateConfig {
     pub preset_start: Option<PresetEndpointDto>,
     pub preset_finish: Option<PresetEndpointDto>,
     pub preset_gen_source: Option<PresetEndpointDto>,
+    /// Geometric fallback mode when `preset_gen_source` is absent (GitHub issue #640) — see
+    /// `GenerationSourceModeDto`'s doc comment for the precedence rule and the deserialization
+    /// default rationale.
+    #[serde(default)]
+    pub generation_source_mode: GenerationSourceModeDto,
     /// Extra nodes to create at declared points before any preset above is resolved (GitHub
     /// issue #231) — `((x, y), slot_id, level)` triples; `level` added by GitHub issue #340
     /// (0-based `levels_ordered()` index). `#[serde(default)]` so configs predating this field
@@ -127,6 +133,7 @@ impl Default for GenerateConfig {
             preset_start: None,
             preset_finish: None,
             preset_gen_source: None,
+            generation_source_mode: GenerationSourceModeDto::default(),
             split_points: vec![],
             split_generation: SplitGenerationConfigDto::default(),
             debug_events: false,
@@ -351,6 +358,13 @@ fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {
         point: (dto.point[0], dto.point[1]),
         slot: dto.slot,
         level: dto.level,
+    }
+}
+
+pub fn build_generation_source_mode(dto: &GenerationSourceModeDto) -> GenerationSourceMode {
+    match dto {
+        GenerationSourceModeDto::Default => GenerationSourceMode::Default,
+        GenerationSourceModeDto::Random => GenerationSourceMode::Random,
     }
 }
 

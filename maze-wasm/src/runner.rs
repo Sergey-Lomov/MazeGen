@@ -205,8 +205,9 @@ pub fn run_generate<T: Tessellation + 'static>(
     });
 
     // `start_id` prefers a resolved `preset_gen_source` marker (possibly slot-addressed, GitHub
-    // issue #231) over the plain geometric `start` `tessellation_dispatch`'s `pick_start`/
-    // `resolve_start` already chose — mirrors `maze-runner`'s `run_generate_typed`.
+    // issue #231) over the plain geometric `start` `tessellation_dispatch`'s `resolve_start`
+    // already chose (default centroid-nearest or seeded-random per `generation_source_mode`,
+    // GitHub issue #640) — mirrors `maze-runner`'s `run_generate_typed`.
     let level = field.single_level_id();
     let start_id = config
         .preset_gen_source

@@ -454,7 +454,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // with the passage line (GitHub issue #311). This has its own layer, above split-gap geometry:
     // a split gap is background-colored and must not be able to cut a hairline through the marker's
     // corridor-colored expansion (GitHub issue #561). The layer remains below the marker containers.
-    const squareCornerStyle = settings.join === "round" ? "round" : "sharp";
+    const squareCornerStyle = settings.join;
     drawMarkerWidenPatches(this.markerWiden, markerData, settings.color, settings.thickness, settings.markerWidenPadding, settings.markerWidenShape, squareCornerStyle);
 
     // Teleport markers get the same widen patch, reusing the one `markerWidenPadding`/

@@ -118,8 +118,8 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("changing the join select updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     // The "Cells" section's own join select is the first `<select>` in document order (GitHub
-    // issue #322 follow-up: `startMarker.cornerStyle`'s default changed from "sharp" to "round",
-    // so `getByDisplayValue("Round")` is now ambiguous with the "Waypoints" section's own marker
+    // issue #322 follow-up: `startMarker.cornerStyle`'s default is "round", so
+    // `getByDisplayValue("Round")` is ambiguous with the "Waypoints" section's own marker
     // corner-style select).
     const select = document.querySelectorAll("select")[0];
     fireEvent.change(select, { target: { value: "miter" } });

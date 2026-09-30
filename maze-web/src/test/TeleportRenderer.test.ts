@@ -81,7 +81,7 @@ const { Container, Graphics } = await import("pixi.js");
 function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLineStyle {
   return {
     shape: "circle",
-    cornerStyle: "sharp",
+    cornerStyle: "miter",
     size: 0.2,
     edgeColor: 0x111,
     edgeBorderColor: 0x222,

@@ -4,7 +4,8 @@ import { VectorByWallsSettingsPanel } from "../components/features/VectorByWalls
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import * as m from "~/paraglide/messages";
 
 // getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
@@ -52,9 +53,9 @@ beforeEach(() => {
       oneWaySize: 0.18,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
-      finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
-      teleportLineCornerStyle: "sharp",
+      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      teleportLineCornerStyle: "miter",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
       teleportEdgeColor: 0,
@@ -77,7 +78,8 @@ beforeEach(() => {
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
-      sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+      ...DEFAULT_SHARED_STYLE_SOURCE,
+      links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     },
   });
 });
@@ -155,9 +157,9 @@ describe("VectorByWallsSettingsPanel", () => {
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
-        startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-        finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-        teleportLineCornerStyle: "sharp",
+        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+        finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+        teleportLineCornerStyle: "miter",
         teleportLineShape: "square", teleportLineSize: 0.3,
         teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
@@ -168,7 +170,8 @@ describe("VectorByWallsSettingsPanel", () => {
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
         splitNodeColors: [], splitSpecialShapes: false,
         markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
-        sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+        ...DEFAULT_SHARED_STYLE_SOURCE,
+        links: DEFAULT_VECTOR_BY_WALLS_LINKS,
       },
     });
     render(<VectorByWallsSettingsPanel />);
@@ -309,7 +312,7 @@ describe("VectorByWallsSettingsPanel", () => {
     const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
     fireEvent.change(selects[0], { target: { value: "round" } });
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("round");
-    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("sharp");
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("miter");
   });
 
   it("changing the finish marker corner style updates only the finish marker", () => {
@@ -317,7 +320,7 @@ describe("VectorByWallsSettingsPanel", () => {
     const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
     fireEvent.change(selects[1], { target: { value: "round" } });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("round");
-    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("sharp");
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("miter");
   });
 
   it("changing the start marker size updates the store", () => {
@@ -814,25 +817,17 @@ describe("VectorByWallsSettingsPanel", () => {
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fontWeight).toBe("regular");
       });
 
-      it("changing the corner style updates the store and marks it shared-style overridden (GitHub issue #322 follow-up)", () => {
+      it("changing the corner style updates the store and disables its shared-style link (GitHub issue #322 follow-up)", () => {
         setElevatorState({ elevatorBadgesEnabled: true });
-        useMazeStore.setState({
-          vectorByWallsSettings: {
-            ...useMazeStore.getState().vectorByWallsSettings,
-            sharedStyle: {
-              ...useMazeStore.getState().vectorByWallsSettings.sharedStyle,
-              overrides: { ...useMazeStore.getState().vectorByWallsSettings.sharedStyle.overrides, cornerStyle: {} },
-            },
-          },
-        });
         render(<VectorByWallsSettingsPanel />);
         // `elevatorMarker`'s own "Corner style" row (`MarkerSettingsGroup`) and `elevatorBadges`'
         // own row (`ElevatorBadgesSubsection`) share the same label text — the badges row is the
         // one rendered second (badges sit under the elevator marker's own sub-group).
         const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_round"]());
-        fireEvent.change(selects[selects.length - 1], { target: { value: "sharp" } });
-        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.cornerStyle).toBe("sharp");
-        expect(useMazeStore.getState().vectorByWallsSettings.sharedStyle.overrides.cornerStyle?.elevatorBadges).toBe(true);
+        fireEvent.change(selects[selects.length - 1], { target: { value: "miter" } });
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.cornerStyle).toBe("miter");
+        const links = useMazeStore.getState().vectorByWallsSettings.links;
+        expect(links.find((l) => l.target === "elevatorBadges.cornerStyle")?.enabled).toBe(false);
       });
 
       it("changing the fill color updates the store", () => {

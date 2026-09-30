@@ -54,7 +54,14 @@ Clicking a one-way tool on an undecided or non-one-way edge sets `one_way_forwar
 
 `presetStart`, `presetFinish`, and `presetGenSource` each store a single `PresetEndpoint | null` (point + optional slot — see "Split nodes" below; a plain marker with no slot addresses the point's original node). These are independent of the edge connection map. All three markers count toward the preset subtitle total and status logic.
 
-`presetGenSource` sets where the generation algorithm starts (`preset_gen_source` field). `presetStart` sets the maze start endpoint shown after generation (`preset_start` field). The two are independent: if both are set, generation seeds from `presetGenSource` and the start marker is placed at `presetStart`. If neither is set, generation seeds from the center-nearest node and the start endpoint is assigned by the repair strategy.
+`presetGenSource` sets where the generation algorithm starts (`preset_gen_source` field). `presetStart` sets the maze start endpoint shown after generation (`preset_start` field). The two are independent: if both are set, generation seeds from `presetGenSource` and the start marker is placed at `presetStart`.
+
+If `presetGenSource` is not set, the geometric fallback start point is governed by `generationSourceMode` (GitHub issue #640), persisted per project alongside the other preset state:
+
+- `"default"` — seeds from the center-nearest node (the long-standing behavior; also what a config predating this field, or a project file saved before this feature, deserializes to).
+- `"random"` — seeds from a uniformly random node among all field points, deterministic per the run's generation seed via an independent RNG stream (not the same draw the generation algorithm itself consumes) — see `maze-core::generation::resolve_generation_start`/`GenerationSourceMode`.
+
+A new project (created from scratch in the editor, not loaded from a file) defaults `generationSourceMode` to `"random"`. The Generation panel shows a toggle for this mode, always reflecting the actual `generationSourceMode` value (checked for `"random"`, unchecked for `"default"`) even while disabled. The toggle is **disabled** whenever `presetGenSource` is set, since the pin always takes priority regardless of the mode — a tooltip explains the source is set in presets. The start endpoint assigned after generation (`maze.meta.start`) is still ultimately up to the repair strategy unless `presetStart` pins it explicitly; `generationSourceMode` only affects where the generation algorithm's traversal begins.
 
 ## Preset teleports
 

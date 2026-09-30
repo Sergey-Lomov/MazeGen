@@ -101,7 +101,7 @@ describe("drawMarkerWidenPatches", () => {
   it("shapeOverride 'square' forces every patch square regardless of the marker's own shape", () => {
     const graphics = g();
     const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "circle" }];
-    drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "square", "sharp");
+    drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "square", "miter");
     expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
@@ -110,7 +110,7 @@ describe("drawMarkerWidenPatches", () => {
   // widen patch obeys `markerWidenShape` exactly like an ordinary marker.
   it("shapeOverride 'circle' also flattens a badge-shaped (hexagon) marker to a circle", () => {
     const graphics = g();
-    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
+    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "miter" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "circle");
     expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
@@ -118,7 +118,7 @@ describe("drawMarkerWidenPatches", () => {
 
   it("shapeOverride 'match_marker' copies a badge-shaped (hexagon) marker's own shape", () => {
     const graphics = g();
-    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
+    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "miter" }];
     drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 3, "match_marker");
     expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
     expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);

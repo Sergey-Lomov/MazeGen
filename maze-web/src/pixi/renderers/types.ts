@@ -12,6 +12,14 @@ export type PassageKind = "both" | "forward" | "backward" | "none";
 export type WallStyle = "solid" | "faint" | "background";
 export type RandomWallColorMode = "off" | "per_pass" | "per_segment";
 
+/** Sharp (`"miter"`, plain polygon/mitered corners) vs. round (`"round"`, `Graphics.roundPoly`-
+ *  rounded or rounded stroke join) corners — the one corner-style domain used across every
+ *  Pixi-rendered stroke/polygon in this app (live canvas and image export alike): a `Graphics.stroke`
+ *  `join`, a `roundPoly`'s rounded-vs-sharp corners, and every user-facing "corner style" setting all
+ *  share these exact two values, so there is a single type instead of parallel domains that would
+ *  need converting at every boundary. */
+export type CornerStyle = "round" | "miter";
+
 /** Optional per-call override for a "wall"-colored stroke's color/thickness/join/cap, applied only
  *  to the `solid` `WallStyle` in `WallRenderer` and to `wallFaces` in `SplitJunctionRenderer` — the
  *  `faint`/`background` wall styles and a split passage's own node-identity `color` are never
@@ -21,7 +29,7 @@ export type RandomWallColorMode = "off" | "per_pass" | "per_segment";
  *  `round` or `miter`+`square`) — a `join` only becomes visible where two wall segments meet at a
  *  shared vertex within the same continuous stroked path, so `WallRenderer.render` groups solid
  *  edges into per-vertex paths precisely so this override has somewhere to show up. */
-export type WallStyleOverride = { color?: number; width?: number; join?: "round" | "miter"; cap?: "round" | "square" };
+export type WallStyleOverride = { color?: number; width?: number; join?: CornerStyle; cap?: "round" | "square" };
 
 export type OneWayPattern = "triangle" | "chevron" | "arrow";
 export type VerticalArrowStyle = OneWayPattern | "sign";
@@ -48,7 +56,7 @@ export type OneWayStyleOverride = {
   /** Chevron/arrow's own line thickness — independent of `size` (geometric scale). Has no effect
    *  on the `triangle` pattern (a filled shape, no line stroke of its own). */
   thickness: number;
-  join: "round" | "miter";
+  join: CornerStyle;
   cap: "round" | "square";
 };
 
@@ -225,9 +233,9 @@ export type EdgeHL = {
 export type MarkerShape = "circle" | "triangle" | "square" | "diamond" | "pentagon" | "star" | "hexagon" | "cross";
 
 /** `borderWidth: 0` (the default) draws no border — see GitHub issue #296. `cornerStyle` (GitHub
- *  issue #302 follow-up) rounds the four regular-polygon shapes, same convention as
- *  `TeleportCornerStyle`. `gapWidth: 0` (the default) draws no floor-colored gap ring around the
- *  border — see `MarkerStyle`'s own doc comment (`mazeSelectors.ts`). */
+ *  issue #302 follow-up) rounds the four regular-polygon shapes. `gapWidth: 0` (the default) draws
+ *  no floor-colored gap ring around the border — see `MarkerStyle`'s own doc comment
+ *  (`mazeSelectors.ts`). */
 export type MarkerData = {
   pos: [number, number];
   color: number;
@@ -235,7 +243,7 @@ export type MarkerData = {
   shape?: MarkerShape;
   borderColor?: number;
   borderWidth?: number;
-  cornerStyle?: TeleportCornerStyle;
+  cornerStyle?: CornerStyle;
   gapWidth?: number;
   gapColor?: number;
 };
@@ -299,13 +307,6 @@ export type VerticalConnectionMarker = {
   arrowFilled: boolean;
 };
 
-/** Sharp (plain polygon corners) vs. round (`Graphics.roundPoly`-rounded) corners — one shared
- *  setting for every teleport marker (GitHub issue #293 follow-up). Only affects the four
- *  regular-polygon `MarkerShape`s (`triangle`/`square`/`diamond`/`pentagon`/`hexagon` — see
- *  `drawMarkerShape`'s `rounded` param); `circle` has no corners, `star`/`cross` have no
- *  regular-polygon equivalent to round. */
-export type TeleportCornerStyle = "sharp" | "round";
-
 /** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) —
  *  resolved to a baked MSDF atlas family by `msdfFontFamily` (GitHub issue #352). Alias of the
  *  neutral `LabelFontWeight` (shared with GitHub issue #471's marker index labels). */
@@ -341,7 +342,7 @@ export type TeleportArrowMode = "none" | "center" | "double" | "periodic";
  *  with tessellation the same way the one-way indicator does. */
 export type TeleportLineStyle = {
   shape: MarkerShape;
-  cornerStyle: TeleportCornerStyle;
+  cornerStyle: CornerStyle;
   size: number;
   edgeColor: number;
   /** Independent from `edgeColor` — a marker's border doesn't have to mirror its fill color. */

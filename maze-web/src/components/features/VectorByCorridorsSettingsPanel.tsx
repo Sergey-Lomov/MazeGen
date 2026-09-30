@@ -259,10 +259,10 @@ export function VectorByCorridorsSettingsPanel() {
       />
       {isExpanded("shared_style") && (
         <SharedStyleSection
-          cornerStyle={settings.sharedStyle.cornerStyle}
-          markerSize={settings.sharedStyle.markerSize}
-          markerBorderWidth={settings.sharedStyle.markerBorderWidth}
-          gapWidth={settings.sharedStyle.gapWidth}
+          cornerStyle={settings.cornerStyle}
+          markerSize={settings.markerSize}
+          markerBorderWidth={settings.markerBorderWidth}
+          gapWidth={settings.gapWidth}
           onCornerStyleChange={setSharedCornerStyle}
           onMarkerSizeChange={setSharedMarkerSize}
           onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
@@ -320,7 +320,7 @@ export function VectorByCorridorsSettingsPanel() {
               { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
             ]}
             onChange={setJoin}
-            resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "join", () => resetSharedStyleField("cornerStyle", "join"))}
+            resetButton={sharedStyleFieldReset(settings.links, "join", () => resetSharedStyleField("join"))}
           />
           <SelectRow
             label={m["image_export.vector_by_corridors.render_style"]()}
@@ -393,10 +393,10 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.size !== undefined) setStartMarkerSize(patch.size);
             }}
             resetButtons={{
-              cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "startMarker", () => resetSharedStyleField("cornerStyle", "startMarker")),
-              size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "startMarker", () => resetSharedStyleField("markerSize", "startMarker")),
-              borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "startMarker", () => resetSharedStyleField("markerBorderWidth", "startMarker")),
-              gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "startMarker", () => resetSharedStyleField("gapWidth", "startMarker")),
+              cornerStyle: sharedStyleFieldReset(settings.links, "startMarker.cornerStyle", () => resetSharedStyleField("startMarker.cornerStyle")),
+              size: sharedStyleFieldReset(settings.links, "startMarker.size", () => resetSharedStyleField("startMarker.size")),
+              borderWidth: sharedStyleFieldReset(settings.links, "startMarker.borderWidth", () => resetSharedStyleField("startMarker.borderWidth")),
+              gapWidth: sharedStyleFieldReset(settings.links, "startMarker.gapWidth", () => resetSharedStyleField("startMarker.gapWidth")),
             }}
           />
           <MarkerSettingsGroup
@@ -415,10 +415,10 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.size !== undefined) setFinishMarkerSize(patch.size);
             }}
             resetButtons={{
-              cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "finishMarker", () => resetSharedStyleField("cornerStyle", "finishMarker")),
-              size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "finishMarker", () => resetSharedStyleField("markerSize", "finishMarker")),
-              borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "finishMarker", () => resetSharedStyleField("markerBorderWidth", "finishMarker")),
-              gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "finishMarker", () => resetSharedStyleField("gapWidth", "finishMarker")),
+              cornerStyle: sharedStyleFieldReset(settings.links, "finishMarker.cornerStyle", () => resetSharedStyleField("finishMarker.cornerStyle")),
+              size: sharedStyleFieldReset(settings.links, "finishMarker.size", () => resetSharedStyleField("finishMarker.size")),
+              borderWidth: sharedStyleFieldReset(settings.links, "finishMarker.borderWidth", () => resetSharedStyleField("finishMarker.borderWidth")),
+              gapWidth: sharedStyleFieldReset(settings.links, "finishMarker.gapWidth", () => resetSharedStyleField("finishMarker.gapWidth")),
             }}
           />
         </div>
@@ -497,7 +497,7 @@ export function VectorByCorridorsSettingsPanel() {
                   { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                 ]}
                 onChange={(join) => patchOneWaySettings({ oneWayJoin: join })}
-                resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "oneWayJoin", () => resetSharedStyleField("cornerStyle", "oneWayJoin"))}
+                resetButton={sharedStyleFieldReset(settings.links, "oneWayJoin", () => resetSharedStyleField("oneWayJoin"))}
               />
             </div>
           )}
@@ -523,11 +523,11 @@ export function VectorByCorridorsSettingsPanel() {
               teleportCollisionKeys={teleportCollisionKeys}
               hasCrossFloorTeleports={hasCrossFloorTeleports}
               resetButtons={{
-                lineCornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "teleportLine", () => resetSharedStyleField("cornerStyle", "teleportLine")),
-                lineSize: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "teleportLine", () => resetSharedStyleField("markerSize", "teleportLine")),
-                edgeBorderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "teleportEdge", () => resetSharedStyleField("markerBorderWidth", "teleportEdge")),
-                edgeGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportEdge", () => resetSharedStyleField("gapWidth", "teleportEdge")),
-                connectorGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportConnector", () => resetSharedStyleField("gapWidth", "teleportConnector")),
+                lineCornerStyle: sharedStyleFieldReset(settings.links, "teleportLineCornerStyle", () => resetSharedStyleField("teleportLineCornerStyle")),
+                lineSize: sharedStyleFieldReset(settings.links, "teleportLineSize", () => resetSharedStyleField("teleportLineSize")),
+                edgeBorderWidth: sharedStyleFieldReset(settings.links, "teleportEdgeBorderWidth", () => resetSharedStyleField("teleportEdgeBorderWidth")),
+                edgeGapWidth: sharedStyleFieldReset(settings.links, "teleportEdgeGapWidth", () => resetSharedStyleField("teleportEdgeGapWidth")),
+                connectorGapWidth: sharedStyleFieldReset(settings.links, "teleportConnectorGapWidth", () => resetSharedStyleField("teleportConnectorGapWidth")),
               }}
               edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, corridor]}
               edgeBorderColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, corridor]}
@@ -597,10 +597,10 @@ export function VectorByCorridorsSettingsPanel() {
                             if (patch.size !== undefined) setTwoWayPassageMarkerSize(patch.size);
                           }}
                           resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "twoWayPassage", () => resetSharedStyleField("cornerStyle", "twoWayPassage")),
-                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "twoWayPassage", () => resetSharedStyleField("markerSize", "twoWayPassage")),
-                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "twoWayPassage", () => resetSharedStyleField("markerBorderWidth", "twoWayPassage")),
-                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "twoWayPassage", () => resetSharedStyleField("gapWidth", "twoWayPassage")),
+                            cornerStyle: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.cornerStyle", () => resetSharedStyleField("twoWayPassageMarker.cornerStyle")),
+                            size: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.size", () => resetSharedStyleField("twoWayPassageMarker.size")),
+                            borderWidth: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.borderWidth", () => resetSharedStyleField("twoWayPassageMarker.borderWidth")),
+                            gapWidth: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.gapWidth", () => resetSharedStyleField("twoWayPassageMarker.gapWidth")),
                           }}
                         />
                       </div>
@@ -683,10 +683,10 @@ export function VectorByCorridorsSettingsPanel() {
                             if (patch.size !== undefined) setOneWayPassageMarkerSize(patch.size);
                           }}
                           resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "oneWayPassage", () => resetSharedStyleField("cornerStyle", "oneWayPassage")),
-                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "oneWayPassage", () => resetSharedStyleField("markerSize", "oneWayPassage")),
-                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "oneWayPassage", () => resetSharedStyleField("markerBorderWidth", "oneWayPassage")),
-                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "oneWayPassage", () => resetSharedStyleField("gapWidth", "oneWayPassage")),
+                            cornerStyle: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.cornerStyle", () => resetSharedStyleField("oneWayPassageMarker.cornerStyle")),
+                            size: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.size", () => resetSharedStyleField("oneWayPassageMarker.size")),
+                            borderWidth: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.borderWidth", () => resetSharedStyleField("oneWayPassageMarker.borderWidth")),
+                            gapWidth: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.gapWidth", () => resetSharedStyleField("oneWayPassageMarker.gapWidth")),
                           }}
                         />
                       </div>
@@ -766,10 +766,10 @@ export function VectorByCorridorsSettingsPanel() {
                             if (patch.size !== undefined) setElevatorMarkerSize(patch.size);
                           }}
                           resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "elevator", () => resetSharedStyleField("cornerStyle", "elevator")),
-                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "elevator", () => resetSharedStyleField("markerSize", "elevator")),
-                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "elevator", () => resetSharedStyleField("markerBorderWidth", "elevator")),
-                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "elevator", () => resetSharedStyleField("gapWidth", "elevator")),
+                            cornerStyle: sharedStyleFieldReset(settings.links, "elevatorMarker.cornerStyle", () => resetSharedStyleField("elevatorMarker.cornerStyle")),
+                            size: sharedStyleFieldReset(settings.links, "elevatorMarker.size", () => resetSharedStyleField("elevatorMarker.size")),
+                            borderWidth: sharedStyleFieldReset(settings.links, "elevatorMarker.borderWidth", () => resetSharedStyleField("elevatorMarker.borderWidth")),
+                            gapWidth: sharedStyleFieldReset(settings.links, "elevatorMarker.gapWidth", () => resetSharedStyleField("elevatorMarker.gapWidth")),
                           }}
                         />
                       </div>
@@ -820,10 +820,11 @@ export function VectorByCorridorsSettingsPanel() {
 
                     <ElevatorBadgesSubsection
                       settings={settings.elevatorBadges}
-                      sharedStyleOverrides={settings.sharedStyle.overrides}
+                      links={settings.links}
+                      cornerStyleTarget="elevatorBadges.cornerStyle"
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
-                      onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                      onResetCornerStyle={() => resetSharedStyleField("elevatorBadges.cornerStyle")}
                       fillColorPriority={badgeFillPriority}
                       textColorPriority={badgeTextPriority}
                       fillColorDefault={D.elevatorBadges.fillColor}
@@ -884,7 +885,7 @@ export function VectorByCorridorsSettingsPanel() {
                 step={1}
                 format={(v) => String(v)}
                 disabled={!settings.splitSpecialShapes}
-                resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "split", () => resetSharedStyleField("gapWidth", "split"))}
+                resetButton={sharedStyleFieldReset(settings.links, "splitGapWidth", () => resetSharedStyleField("splitGapWidth"))}
               />
               <SliderRow
                 label={m["image_export.vector_by_corridors.split_diagonal_bow_amount"]()}
@@ -912,7 +913,7 @@ export function VectorByCorridorsSettingsPanel() {
         <MarkerIndexSection
           settings={settings.markerIndex}
           onChange={patchMarkerIndex}
-          gapResetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "markerIndex", () => resetSharedStyleField("gapWidth", "markerIndex"))}
+          gapResetButton={sharedStyleFieldReset(settings.links, "markerIndex.gap", () => resetSharedStyleField("markerIndex.gap"))}
           fillColorPriority={[PC.markerIndexText.at(settings.markerIndex.textColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
           textColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
           borderColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexText.at(settings.markerIndex.textColor), corridor]}

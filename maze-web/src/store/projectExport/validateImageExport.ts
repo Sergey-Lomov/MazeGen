@@ -1,13 +1,13 @@
 import {
-  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
-import type { MarkerShape, ElevatorBadgeFontWeight } from "../../pixi/renderers/types";
+import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
 import type { RenderModeId } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
-import { reconcileVectorByWallsSharedStyle, reconcileVectorByCorridorsSharedStyle } from "../slices/imageExportSliceHelpers";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
 import { assertObject, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
 
 // ─── Image Export (GitHub issue #295) ────────────────────────────────────────
@@ -18,17 +18,12 @@ export function optMarkerShape(obj: Record<string, unknown> | null, key: string,
   return typeof v === "string" && (MARKER_SHAPES as readonly string[]).includes(v) ? (v as MarkerSettings["shape"]) : fallback;
 }
 
-export function optTeleportCornerStyle(obj: Record<string, unknown> | null, key: string, fallback: "sharp" | "round"): "sharp" | "round" {
-  const v = obj?.[key];
-  return v === "sharp" || v === "round" ? v : fallback;
-}
-
 export function optMarkerWidenShape(obj: Record<string, unknown> | null, key: string, fallback: MarkerWidenShape): MarkerWidenShape {
   const v = obj?.[key];
   return v === "circle" || v === "square" || v === "match_marker" ? v : fallback;
 }
 
-export function optJoin(obj: Record<string, unknown> | null, key: string, fallback: "round" | "miter"): "round" | "miter" {
+export function optCornerStyle(obj: Record<string, unknown> | null, key: string, fallback: CornerStyle): CornerStyle {
   const v = obj?.[key];
   return v === "round" || v === "miter" ? v : fallback;
 }
@@ -71,7 +66,7 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
   }
   return {
     shape: optMarkerShape(obj, "shape", fallback.shape),
-    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
+    cornerStyle: optCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
@@ -98,7 +93,7 @@ export function tryValidateTeleportGroupOverride(v: unknown): { fillColor?: numb
  * two never need their own separate recovery logic for it. */
 export function validateTeleportSettingsFields(obj: Record<string, unknown> | null, path: string, d: TeleportSettingsFields): TeleportSettingsFields {
   return {
-    teleportLineCornerStyle: optTeleportCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
+    teleportLineCornerStyle: optCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
     teleportLineShape: optMarkerShape(obj, "teleportLineShape", d.teleportLineShape),
     teleportLineSize: optNumber(obj, "teleportLineSize", d.teleportLineSize),
     teleportEdgeColor: optNumber(obj, "teleportEdgeColor", d.teleportEdgeColor),
@@ -192,7 +187,7 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
     distance: optNumber(obj, "distance", fallback.distance),
     gap: optNumber(obj, "gap", fallback.gap),
     gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
-    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
+    cornerStyle: optCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
     evenDistribution: optBool(obj, "evenDistribution", fallback.evenDistribution),
     shape: optMarkerShape(obj, "shape", fallback.shape),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
@@ -265,16 +260,16 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     twoWayArrowColor: optNumber(obj, "twoWayArrowColor", d.twoWayArrowColor),
     twoWayArrowSize: optNumber(obj, "twoWayArrowSize", d.twoWayArrowSize),
     twoWayArrowStyle: optVerticalArrowStyle(obj, "twoWayArrowStyle", d.twoWayArrowStyle),
-    twoWayArrowCornerStyle: optJoin(obj, "twoWayArrowCornerStyle", d.twoWayArrowCornerStyle),
+    twoWayArrowCornerStyle: optCornerStyle(obj, "twoWayArrowCornerStyle", d.twoWayArrowCornerStyle),
     oneWayArrowColor: optNumber(obj, "oneWayArrowColor", d.oneWayArrowColor),
     oneWayArrowSize: optNumber(obj, "oneWayArrowSize", d.oneWayArrowSize),
     oneWayArrowStyle: optVerticalArrowStyle(obj, "oneWayArrowStyle", d.oneWayArrowStyle),
-    oneWayArrowCornerStyle: optJoin(obj, "oneWayArrowCornerStyle", d.oneWayArrowCornerStyle),
+    oneWayArrowCornerStyle: optCornerStyle(obj, "oneWayArrowCornerStyle", d.oneWayArrowCornerStyle),
     oneWayAccentColor: optNumber(obj, "oneWayAccentColor", d.oneWayAccentColor),
     elevatorArrowColor: optNumber(obj, "elevatorArrowColor", d.elevatorArrowColor),
     elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
     elevatorArrowStyle: optVerticalArrowStyle(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
-    elevatorArrowCornerStyle: optJoin(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
+    elevatorArrowCornerStyle: optCornerStyle(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
     elevatorBadges: validateElevatorBadgeSettings(obj?.elevatorBadges, `${path}.elevatorBadges`, d.elevatorBadges),
   };
 }
@@ -323,57 +318,6 @@ export function validateTeleportGroupOverrides(v: unknown, path: string): Record
   return result;
 }
 
-/** Format-only validation of a shared-style overrides record — same "drop malformed entries rather
- * than fail the whole file" convention as `tryValidateTeleportGroupOverride`. Every group/field
- * pairing is accepted as-is (`true`) regardless of whether it names a field the current build
- * actually has — an unknown pairing is simply never looked up, same as a stale `teleportGroupOverrides`
- * entry for a group that no longer exists. */
-export function validateSharedStyleOverrides<G extends string>(v: unknown): Partial<Record<G, Partial<Record<string, true>>>> {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
-  const result: Partial<Record<G, Partial<Record<string, true>>>> = {};
-  for (const [group, raw] of Object.entries(v as Record<string, unknown>)) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
-    const fields: Partial<Record<string, true>> = {};
-    for (const field of Object.keys(raw as Record<string, unknown>)) fields[field] = true;
-    result[group as G] = fields;
-  }
-  return result;
-}
-
-export function validateVectorByWallsSharedStyle(v: unknown, d: VectorByWallsSharedStyle): VectorByWallsSharedStyle {
-  if (v == null) return d;
-  let obj: Record<string, unknown> | null;
-  try {
-    obj = assertObject(v, "sharedStyle");
-  } catch {
-    return d;
-  }
-  return {
-    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", d.cornerStyle),
-    markerSize: optNumber(obj, "markerSize", d.markerSize),
-    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
-    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    overrides: validateSharedStyleOverrides(obj.overrides),
-  };
-}
-
-export function validateVectorByCorridorsSharedStyle(v: unknown, d: VectorByCorridorsSharedStyle): VectorByCorridorsSharedStyle {
-  if (v == null) return d;
-  let obj: Record<string, unknown> | null;
-  try {
-    obj = assertObject(v, "sharedStyle");
-  } catch {
-    return d;
-  }
-  return {
-    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", d.cornerStyle),
-    markerSize: optNumber(obj, "markerSize", d.markerSize),
-    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
-    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    overrides: validateSharedStyleOverrides(obj.overrides),
-  };
-}
-
 /** Lenient — every field falls back to its own default when absent or malformed, same recovery
  * pattern `validateSplitGeneration` uses, since this whole section is optional (absent entirely
  * for project files saved before GitHub issue #295). */
@@ -386,12 +330,9 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
   } catch {
     return d;
   }
-  // `reconcileVectorByWallsSharedStyle` marks any dependent field whose restored value disagrees
-  // with `sharedStyle`'s own restored value as overridden (GitHub issue #322 follow-up) — covers
-  // both a pre-#322 file (no `sharedStyle` key, so it defaults while dependent fields keep their
-  // real saved values) and a hand-edited file, so a later shared-style edit never silently
-  // overwrites a loaded value that was never marked as following it.
-  return reconcileVectorByWallsSharedStyle({
+  // `links` is in-memory-only in this engine (GitHub issue #643) — never persisted/loaded, always
+  // seeded fresh from the mode's default link graph.
+  return {
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -400,14 +341,14 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
     randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
-    wallJoin: optJoin(obj, "wallJoin", d.wallJoin),
+    wallJoin: optCornerStyle(obj, "wallJoin", d.wallJoin),
     wallThickness: optNumber(obj, "wallThickness", d.wallThickness),
     oneWayPattern: optOneWayPattern(obj, "oneWayPattern", d.oneWayPattern),
     oneWayColor: optNumber(obj, "oneWayColor", d.oneWayColor),
     oneWayGapWidth: optNumber(obj, "oneWayGapWidth", d.oneWayGapWidth),
     oneWaySize: optNumber(obj, "oneWaySize", d.oneWaySize),
     oneWayThickness: optNumber(obj, "oneWayThickness", d.oneWayThickness),
-    oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
+    oneWayJoin: optCornerStyle(obj, "oneWayJoin", d.oneWayJoin),
     startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
     ...validateTeleportSettingsFields(obj, path, d),
@@ -415,9 +356,13 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     ...validateVerticalDecorativeFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
-    sharedStyle: validateVectorByWallsSharedStyle(obj.sharedStyle, d.sharedStyle),
+    cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
+    markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
+    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
+    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
-  });
+  };
 }
 
 export const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls", "vector_by_corridors"];
@@ -514,15 +459,14 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     }
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
-  // See `validateVectorByWallsSettings`'s own comment on `reconcileVectorByWallsSharedStyle` — same
-  // rationale, mirrored for this mode's own dependent-field set.
-  return reconcileVectorByCorridorsSharedStyle({
+  // See `validateVectorByWallsSettings`'s own comment on `links` — same rationale.
+  return {
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
-    join: optJoin(obj, "join", d.join),
+    join: optCornerStyle(obj, "join", d.join),
     renderStyle: optRenderStyle(obj, "renderStyle", d.renderStyle),
     startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj?.finishMarker, `${path}.finishMarker`, d.finishMarker),
@@ -534,16 +478,20 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     oneWayGap: optNumber(obj, "oneWayGap", d.oneWayGap),
     oneWayWidth: optNumber(obj, "oneWayWidth", d.oneWayWidth),
     oneWayLength: optNumber(obj, "oneWayLength", d.oneWayLength),
-    oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
+    oneWayJoin: optCornerStyle(obj, "oneWayJoin", d.oneWayJoin),
     ...validateTeleportSettingsFields(obj, path, d),
     ...validateVerticalSettingsFields(obj, path, d),
     splitNodeColors: Array.isArray(obj?.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),
     splitDiagonalBowAmount: optNumber(obj, "splitDiagonalBowAmount", d.splitDiagonalBowAmount),
-    sharedStyle: validateVectorByCorridorsSharedStyle(obj?.sharedStyle, d.sharedStyle),
+    cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
+    markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
+    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
+    links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: validateMarkerIndexSettings(obj?.markerIndex, `${path}.markerIndex`, d.markerIndex),
-  });
+  };
 }
 
 export function validateImageExport(v: unknown, path: string): ProjectFileImageExport {

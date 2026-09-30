@@ -185,6 +185,19 @@ pub struct PresetConnectionDto {
     pub state: PresetConnectionStateDto,
 }
 
+/// Wire shape for `maze_core::generation::GenerationSourceMode` (GitHub issue #640) — only
+/// governs the geometric fallback start point used when `preset_gen_source` is absent; a pin
+/// always wins regardless of this mode. `#[serde(default)]` on `GenerateConfig`'s field keeps
+/// configs/fixtures predating this field deserializing as `Default` (today's centroid-nearest
+/// behavior), never `Random` — a random choice must be explicitly opted into on the wire.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationSourceModeDto {
+    #[default]
+    Default,
+    Random,
+}
+
 /// Wire shape for `maze_core::generation::VerticalPassageDirection`.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]

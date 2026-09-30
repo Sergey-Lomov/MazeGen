@@ -5,7 +5,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -18,7 +19,7 @@ const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "tele
 const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
 
 const defaultMarker: MarkerSettings = {
-  shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start,
+  shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,
   borderWidth: 0, gapWidth: 0, size: 0.3,
 };
 
@@ -35,7 +36,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true,
-    sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    ...DEFAULT_SHARED_STYLE_SOURCE,
+    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...overrides,
   };
@@ -55,7 +57,8 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
-    sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
+    ...DEFAULT_SHARED_STYLE_SOURCE,
+    links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...overrides,
   };

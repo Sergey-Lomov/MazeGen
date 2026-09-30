@@ -2,6 +2,7 @@ pub mod pipeline;
 
 mod debug_state;
 pub(crate) mod edge_ops;
+mod generation_source;
 pub(crate) mod kruskal;
 mod mutation_commands;
 mod node_ops;
@@ -18,6 +19,7 @@ pub(crate) mod vertex_based;
 pub(crate) mod wilson;
 
 pub use debug_state::DebugGenerationState;
+pub use generation_source::{GenerationSourceMode, pick_start_default, resolve_generation_start};
 
 #[cfg(test)]
 pub(crate) use edge_ops::{add_edge, add_edge_kind};

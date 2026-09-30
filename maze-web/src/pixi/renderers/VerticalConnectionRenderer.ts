@@ -1,5 +1,5 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
+import type { VerticalConnectionMarker, MarkerShape, CornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
@@ -16,7 +16,7 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
  *  own `fillColor`). */
 export type VerticalMarkerStyle = {
   shape: MarkerShape;
-  cornerStyle: TeleportCornerStyle;
+  cornerStyle: CornerStyle;
   fillColor: number;
   borderColor: number;
   borderWidth: number;
@@ -53,11 +53,11 @@ export type VerticalConnectionStyle = {
   /** Direction-arrow size, as a fraction of the marker's own radius (0-1). */
   twoWayArrowSize: number;
   twoWayArrowStyle: VerticalArrowStyle;
-  twoWayArrowCornerStyle: "round" | "miter";
+  twoWayArrowCornerStyle: CornerStyle;
   oneWayArrowColor: number;
   oneWayArrowSize: number;
   oneWayArrowStyle: VerticalArrowStyle;
-  oneWayArrowCornerStyle: "round" | "miter";
+  oneWayArrowCornerStyle: CornerStyle;
   /** One-way passage marker colors, "primary"/"secondary" (GitHub issue #347 fifth follow-up,
    *  simplified from the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which
    *  always meant the same accent anyway): the **primary** color is `oneWayPassageMarker.fillColor`
@@ -69,7 +69,7 @@ export type VerticalConnectionStyle = {
   elevatorArrowColor: number;
   elevatorArrowSize: number;
   elevatorArrowStyle: VerticalArrowStyle;
-  elevatorArrowCornerStyle: "round" | "miter";
+  elevatorArrowCornerStyle: CornerStyle;
   decorativeStairsTwoWay: VerticalDecorativeLineStyle;
   decorativeStairsOneWay: VerticalDecorativeLineStyle;
   decorativeElevator: VerticalDecorativeLineStyle;
@@ -147,7 +147,7 @@ function arrowThickness(arrowSizeFraction: number): number {
  *  (`OneWayDrawStyle.thickness`, `wallUtils.ts` defaults to a fixed `4` when omitted) — `triangle`
  *  is a filled shape with no stroke of its own, so `thickness` is simply never read for it. See
  *  `drawArrowFilled` for the one call site. */
-function drawArrowPattern(g: Graphics, pattern: OneWayPattern, cx: number, cy: number, dx: number, dy: number, size: number, color: number, join: "round" | "miter", thickness: number): void {
+function drawArrowPattern(g: Graphics, pattern: OneWayPattern, cx: number, cy: number, dx: number, dy: number, size: number, color: number, join: CornerStyle, thickness: number): void {
   // `cap` (chevron/arrow's own stroke line-ends) mirrors `join` the same way the wall one-way
   // indicator's own `buildOneWayStyle` does (`exportStyleBuilders.ts`) — `join`/`cap` are two
   // separate pixi stroke options (corners vs. line-ends); without setting `cap` too, the corner
@@ -163,11 +163,11 @@ function drawArrowPattern(g: Graphics, pattern: OneWayPattern, cx: number, cy: n
 
 /** Draws the departure-end (`marker.filled: true`/`marker.arrowFilled: true`) direction arrow —
  *  the ordinary, full-color pattern draw, no outline treatment. */
-function drawArrowFilled(g: Graphics, pattern: OneWayPattern, cx: number, cy: number, dx: number, dy: number, size: number, color: number, join: "round" | "miter", thickness: number): void {
+function drawArrowFilled(g: Graphics, pattern: OneWayPattern, cx: number, cy: number, dx: number, dy: number, size: number, color: number, join: CornerStyle, thickness: number): void {
   drawArrowPattern(g, pattern, cx, cy, dx, dy, size, color, join, thickness);
 }
 
-function drawDirectionSign(g: Graphics, cx: number, cy: number, direction: number, size: number, color: number, join: "round" | "miter", thickness: number): void {
+function drawDirectionSign(g: Graphics, cx: number, cy: number, direction: number, size: number, color: number, join: CornerStyle, thickness: number): void {
   const halfLength = size;
   const cap = join === "round" ? "round" : "square";
   g.moveTo(cx - halfLength, cy).lineTo(cx + halfLength, cy);
