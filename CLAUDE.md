@@ -54,6 +54,8 @@ Compile from `maze-web`: `npx paraglide-js compile --project ./project.inlang --
 
 **Always pass `--output-structure locale-modules`.** Without it the CLI defaults to `message-modules` (~1700+ files), making Vite dev-server start very slow. `locale-modules` produces ~10 files — sanity check: `find generated/paraglide -type f | wc -l` ≈ 10, not 1000+.
 
+`npm run dev`, `npm run build`, `npm test`, and `npm run test:watch` run `tools/prepare-paraglide.mjs` first. It fingerprints the translation files, `project.inlang/settings.json`, the package manifests, and the installed Paraglide package. When the fingerprint changes, it regenerates `generated/paraglide` with the command above and clears `node_modules/.vite`; otherwise it reuses the generated output. Both generated output and the preparation marker remain untracked.
+
 ## Specs
 
 `Specs/` — markdown descriptions of systems and data structures, authoritative source of intent. Check before implementing or modifying a feature.

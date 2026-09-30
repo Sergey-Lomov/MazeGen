@@ -7,10 +7,14 @@
     "node": ">=22"
   },
   "scripts": {
+    "predev": "node tools/prepare-paraglide.mjs",
     "dev": "vite",
+    "prebuild": "node tools/prepare-paraglide.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "pretest": "node tools/prepare-paraglide.mjs",
     "test": "vitest run",
+    "pretest:watch": "node tools/prepare-paraglide.mjs",
     "test:watch": "vitest",
     "gen:msdf": "node tools/msdf/generate.mjs"
   },
