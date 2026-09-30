@@ -93,6 +93,23 @@ export interface GenerateMazeResult {
   debugTape: DebugTape | undefined;
 }
 
+/** Runs generation off the main thread so long WASM calls can provide responsive UI feedback. */
+export function generateMazeAsync(seed: number, config: GenerateConfig): Promise<GenerateMazeResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<GenerateMazeResult | { error: string }>) => {
+      worker.terminate();
+      if ("error" in event.data) reject(new Error(event.data.error));
+      else resolve(event.data);
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Generation worker failed"));
+    };
+    worker.postMessage({ seed, config });
+  });
+}
+
 /** Zips `GenerateResult::debugValueNames()`/`debugValueKinds()`'s parallel arrays (see
  *  `maze-wasm/src/result.rs`'s `kind_wire_str`) into `DebugValueDescriptor`s. Both arrays are
  *  always the same length by construction on the Rust side — asserted here so a mismatch (e.g.

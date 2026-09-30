@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
@@ -48,25 +48,87 @@ describe("GenerationFeature — QC Only toggle", () => {
     expect(setQcExperiment).toHaveBeenCalledWith(true);
   });
 
-  it("calls generate directly when post-edit is not dirty", () => {
-    const generate = vi.fn();
-    useMazeStore.setState({ generate });
+  it("starts async generation directly when post-edit is not dirty", () => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ generateAsync });
     render(<GenerationFeature canGenerate={true} />);
 
     fireEvent.click(screen.getByText(m["generation.generate"]()));
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generateAsync).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a confirm modal instead of calling generate when post-edit is dirty", () => {
-    const generate = vi.fn();
-    useMazeStore.setState({ generate, postEditDirty: true });
+  it("shows a confirm modal instead of starting generation when post-edit is dirty", () => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ generateAsync, postEditDirty: true });
     render(<GenerationFeature canGenerate={true} />);
 
     fireEvent.click(screen.getByText(m["generation.generate"]()));
 
-    expect(generate).not.toHaveBeenCalled();
+    expect(generateAsync).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — delayed generation spinner", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function renderWithPendingGeneration() {
+    let resolveGeneration!: () => void;
+    const generation = new Promise<void>((resolve) => { resolveGeneration = resolve; });
+    const generateAsync = vi.fn(() => generation);
+    useMazeStore.setState({ generateAsync });
+    render(<GenerationFeature canGenerate={true} />);
+    return { generateAsync, resolveGeneration };
+  }
+
+  it("does not show a spinner for a generation completed before the delay", async () => {
+    const { resolveGeneration } = renderWithPendingGeneration();
+    fireEvent.click(screen.getByText(m["generation.generate"]()));
+
+    act(() => { vi.advanceTimersByTime(150); });
+    await act(async () => { resolveGeneration(); await Promise.resolve(); });
+
+    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
+  });
+
+  it("shows the spinner after 200 ms and keeps it visible for 750 ms", async () => {
+    const { resolveGeneration } = renderWithPendingGeneration();
+    const button = screen.getByText(m["generation.generate"]());
+    fireEvent.click(button);
+
+    expect(button).toBeDisabled();
+    act(() => { vi.advanceTimersByTime(199); });
+    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
+    expect(screen.queryByText(m["generation.generate"]())).not.toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(400); });
+    await act(async () => { resolveGeneration(); await Promise.resolve(); });
+    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(349); });
+    expect(document.querySelector(".generation-spinner")).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(document.querySelector(".generation-spinner")).not.toBeInTheDocument();
+  });
+
+  it("ignores a repeated click while generation is running", () => {
+    const { generateAsync } = renderWithPendingGeneration();
+    const button = screen.getByText(m["generation.generate"]());
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(generateAsync).toHaveBeenCalledTimes(1);
   });
 });
 

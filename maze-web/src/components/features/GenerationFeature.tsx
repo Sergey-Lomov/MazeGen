@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
@@ -16,6 +16,11 @@ import * as m from "~/paraglide/messages";
 interface Props {
   canGenerate: boolean;
 }
+
+const SPINNER_SHOW_DELAY = 200;
+const SPINNER_MIN_VISIBLE = 750;
+
+type TimerHandle = ReturnType<typeof setTimeout>;
 
 export function GenerationFeature({ canGenerate }: Props) {
   const seed = useMazeStore((s) => s.seed);
@@ -39,26 +44,117 @@ export function GenerationFeature({ canGenerate }: Props) {
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
   const setGenerationSourceMode = useMazeStore((s) => s.setGenerationSourceMode);
   const setVertexSettingsPanelOpen = useMazeStore((s) => s.setVertexSettingsPanelOpen);
-  const generate = useMazeStore((s) => s.generate);
+  const generateAsync = useMazeStore((s) => s.generateAsync);
   const postEditDirty = useMazeStore(selectPostEditDirty);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
+  const [generationInProgress, setGenerationInProgress] = useState(false);
+  const [spinnerVisible, setSpinnerVisible] = useState(false);
+  const generationToken = useRef(0);
+  const generationInProgressRef = useRef(false);
+  const spinnerVisibleRef = useRef(false);
+  const spinnerShownAt = useRef<number | null>(null);
+  const showTimer = useRef<TimerHandle | null>(null);
+  const hideTimer = useRef<TimerHandle | null>(null);
 
   useEffect(() => { setSeedDraft(String(seed)); }, [seed]);
+
+  useEffect(() => () => {
+    if (showTimer.current !== null) clearTimeout(showTimer.current);
+    if (hideTimer.current !== null) clearTimeout(hideTimer.current);
+    generationToken.current += 1;
+  }, []);
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
 
+  function clearGenerationTimers() {
+    if (showTimer.current !== null) {
+      clearTimeout(showTimer.current);
+      showTimer.current = null;
+    }
+    if (hideTimer.current !== null) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }
+
+  function finishGeneration(token: number) {
+    if (token !== generationToken.current) return;
+
+    generationInProgressRef.current = false;
+    setGenerationInProgress(false);
+    if (showTimer.current !== null) {
+      clearTimeout(showTimer.current);
+      showTimer.current = null;
+    }
+
+    if (!spinnerVisibleRef.current) return;
+    const shownAt = spinnerShownAt.current ?? Date.now();
+    const remaining = Math.max(0, SPINNER_MIN_VISIBLE - (Date.now() - shownAt));
+    if (remaining === 0) {
+      spinnerVisibleRef.current = false;
+      spinnerShownAt.current = null;
+      setSpinnerVisible(false);
+      return;
+    }
+    hideTimer.current = setTimeout(() => {
+      if (token !== generationToken.current) return;
+      hideTimer.current = null;
+      spinnerVisibleRef.current = false;
+      spinnerShownAt.current = null;
+      setSpinnerVisible(false);
+    }, remaining);
+  }
+
+  function startGeneration() {
+    if (generationInProgressRef.current) return;
+    const keepVisibleSpinner = spinnerVisibleRef.current;
+    clearGenerationTimers();
+
+    const token = ++generationToken.current;
+    generationInProgressRef.current = true;
+    setGenerationInProgress(true);
+    if (!keepVisibleSpinner) {
+      spinnerVisibleRef.current = false;
+      spinnerShownAt.current = null;
+      setSpinnerVisible(false);
+    }
+    showTimer.current = setTimeout(() => {
+      showTimer.current = null;
+      if (token !== generationToken.current || !generationInProgressRef.current) return;
+      spinnerVisibleRef.current = true;
+      spinnerShownAt.current = Date.now();
+      setSpinnerVisible(true);
+    }, SPINNER_SHOW_DELAY);
+
+    try {
+      const result = generateAsync() as unknown;
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        void (result as PromiseLike<unknown>).then(
+          () => finishGeneration(token),
+          () => finishGeneration(token),
+        );
+      } else {
+        finishGeneration(token);
+      }
+    } catch (error) {
+      finishGeneration(token);
+      throw error;
+    }
+  }
+
   function handleGenerate() {
+    if (generationInProgressRef.current) return;
     if (postEditDirty) { setPendingAction("generate"); return; }
-    generate();
+    startGeneration();
   }
 
   function confirmPending() {
-    if (pendingAction === "generate") generate();
+    if (pendingAction === "generate") startGeneration();
     setPendingAction(null);
   }
 
@@ -180,10 +276,13 @@ export function GenerationFeature({ canGenerate }: Props) {
         <Button
           variant="primary"
           layoutStyle={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
-          disabled={!canGenerate}
+          disabled={!canGenerate || generationInProgress}
+          aria-busy={generationInProgress}
           onClick={handleGenerate}
         >
-          {m["generation.generate"]()}
+          {spinnerVisible
+            ? <span className="generation-spinner" aria-hidden="true" />
+            : m["generation.generate"]()}
         </Button>
       </div>
 

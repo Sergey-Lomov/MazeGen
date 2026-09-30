@@ -1,5 +1,5 @@
-﻿import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateMaze } from "../wasm/mazeService";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { generateMaze, generateMazeAsync } from "../wasm/mazeService";
 
 vi.mock("../wasm/wasmLoader", () => ({
   getWasm: vi.fn(),
@@ -30,6 +30,35 @@ function fakeGenerateResult(snapshot: unknown) {
 beforeEach(() => {
   vi.mocked(getWasm).mockReturnValue({ generate: mockGenerate } as never);
   mockGenerate.mockReset();
+});
+
+describe("generateMazeAsync", () => {
+  it("resolves the result returned by the generation worker", async () => {
+    let request: unknown;
+    const terminate = vi.fn();
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+
+      postMessage(value: unknown) {
+        request = value;
+        this.onmessage?.({ data: { snapshot: validSnapshot, debugTape: undefined } } as MessageEvent);
+      }
+
+      terminate = terminate;
+    }
+    vi.stubGlobal("Worker", FakeWorker);
+
+    const result = await generateMazeAsync(42, defaultConfig);
+
+    expect(request).toEqual({ seed: 42, config: defaultConfig });
+    expect(result.snapshot).toEqual(validSnapshot);
+    expect(terminate).toHaveBeenCalledTimes(1);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const validSnapshot = {
@@ -293,4 +322,3 @@ describe("generateMaze / validateSnapshot", () => {
   });
 
 });
-

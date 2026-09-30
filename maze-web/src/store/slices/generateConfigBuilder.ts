@@ -1,4 +1,5 @@
-import { generateMaze } from "../../wasm/mazeService";
+import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
+import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
@@ -247,25 +248,35 @@ function applyQcExperimentOverrides(config: GenerateConfig): void {
   config.locked_nodes = [];
 }
 
-export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): void {
+function prepareGeneration(get: StoreGet, set: StoreSet, qcExperiment: boolean) {
   const state = get();
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) {
     set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
-    return;
+    return null;
   }
   const activeTessellation = activeFloorTessellationOf(state);
   const debugMode = state.debugMode;
   const config = buildGenerateConfig(state);
-  if (!config) return;
+  if (!config) return null;
   if (qcExperiment) {
     applyQcExperimentOverrides(config);
     if (debugMode) config.debug_events = true;
   } else if (debugMode) {
     config.debug_events = true;
   }
-  try {
-    const { snapshot, debugTape } = generateMaze(seed, config);
+  return { activeTessellation, debugMode, config };
+}
+
+function applyGenerationResult(
+  result: GenerateMazeResult,
+  get: StoreGet,
+  set: StoreSet,
+  activeTessellation: ReturnType<typeof activeFloorTessellationOf>,
+  debugMode: boolean,
+): void {
+  const { snapshot, debugTape } = result;
+  {
     warmCartesianCache(activeTessellation);
     let debugArena: DebugArenaHandle | null = null;
     let lastStep = 0;
@@ -391,6 +402,26 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       postEditElevatorPending: null,
       postEditSplitTargetPrompt: null,
     });
+  }
+}
+
+export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): void {
+  const prepared = prepareGeneration(get, set, qcExperiment);
+  if (!prepared) return;
+  try {
+    applyGenerationResult(generateMaze(seed, prepared.config), get, set, prepared.activeTessellation, prepared.debugMode);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    set({ error: msg, generationStatus: "error" });
+  }
+}
+
+export async function generateWithSeedAsync(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): Promise<void> {
+  const prepared = prepareGeneration(get, set, qcExperiment);
+  if (!prepared) return;
+  try {
+    const result = await generateMazeAsync(seed, prepared.config);
+    applyGenerationResult(result, get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: msg, generationStatus: "error" });

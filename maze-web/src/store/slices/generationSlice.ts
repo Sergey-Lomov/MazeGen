@@ -5,16 +5,34 @@ import type { InitialGenerationConfig } from "../../wasm/types";
 import type { MazeStore, GenerationState, GenerationActions, QcRuleState } from "../storeTypes";
 import { debugStaleOf, buildResetDownstreamState } from "../storeHelpers";
 import { resolveCheckKind, defaultParamsFor, newRule, newStage } from "./generationSliceHelpers";
-import { generateWithSeed } from "./generateConfigBuilder";
+import { generateWithSeed, generateWithSeedAsync } from "./generateConfigBuilder";
 import { createGenerationRulesSlice } from "./generationSliceRules";
 import { createGenerationStagesSlice } from "./generationSliceStages";
 import { createGenerationDebugSlice } from "./generationSliceDebug";
 
-export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
+export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (...a) => {
   const [set, get] = a;
+  const prepareGenerate = () => {
+    const state = get();
+    let usedSeed = state.seed;
+    if (state.randomSeed) usedSeed = Math.floor(Math.random() * 1_000_000);
+    const reuseSameHistorySeed = state.seedAttachedToHistory
+      && state.seedHistory.length > 0
+      && state.seedHistory[state.seedHistoryIndex] === usedSeed;
+    const historyPatch = reuseSameHistorySeed
+      ? {}
+      : (() => {
+          const truncated = state.seedHistory.slice(0, state.seedHistoryIndex + (state.seedHistory.length > 0 ? 1 : 0));
+          let next = [...truncated, usedSeed];
+          if (next.length > 20) next = next.slice(next.length - 20);
+          return { seedHistory: next, seedHistoryIndex: next.length - 1, seedAttachedToHistory: true };
+        })();
+    set({ seed: usedSeed, lastUsedSeed: usedSeed, lastUsedQcExperiment: state.qcExperiment, ...historyPatch });
+    return { usedSeed, qcExperiment: state.qcExperiment };
+  };
   return {
   ...createGenerationRulesSlice(...a),
   ...createGenerationStagesSlice(...a),
@@ -126,36 +144,17 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   },
 
   generate: () => {
-    const state = get();
-    let usedSeed = state.seed;
-    if (state.randomSeed) {
-      usedSeed = Math.floor(Math.random() * 1_000_000);
+    const { usedSeed, qcExperiment } = prepareGenerate();
+    generateWithSeed(usedSeed, get, set, qcExperiment);
+  },
+
+  generateAsync: async () => {
+    if (typeof Worker === "undefined") {
+      get().generate();
+      return;
     }
-
-    // Repeat-generate on the exact seed just navigated to (Back/Forward/Jump, unedited) leaves
-    // history untouched. Anything else — a new seed, or a hand-edited one, even if it happens to
-    // match an old value — truncates from the current position and appends, standard undo/redo
-    // stack semantics. Truncation point is always `seedHistoryIndex`, regardless of how it got
-    // there (navigation or a prior generate).
-    const reuseSameHistorySeed = state.seedAttachedToHistory
-      && state.seedHistory.length > 0
-      && state.seedHistory[state.seedHistoryIndex] === usedSeed;
-    const historyPatch = reuseSameHistorySeed
-      ? {}
-      : (() => {
-          const truncated = state.seedHistory.slice(0, state.seedHistoryIndex + (state.seedHistory.length > 0 ? 1 : 0));
-          let next = [...truncated, usedSeed];
-          if (next.length > 20) next = next.slice(next.length - 20);
-          return { seedHistory: next, seedHistoryIndex: next.length - 1, seedAttachedToHistory: true };
-        })();
-
-    set({
-      seed: usedSeed,
-      lastUsedSeed: usedSeed,
-      lastUsedQcExperiment: state.qcExperiment,
-      ...historyPatch,
-    });
-    generateWithSeed(usedSeed, get, set, state.qcExperiment);
+    const { usedSeed, qcExperiment } = prepareGenerate();
+    await generateWithSeedAsync(usedSeed, get, set, qcExperiment);
   },
 
   seedHistoryBack: () => set((state) => {
