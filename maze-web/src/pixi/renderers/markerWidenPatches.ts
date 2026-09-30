@@ -1,5 +1,5 @@
 import type { Graphics } from "pixi.js";
-import type { MarkerData } from "./types";
+import type { MarkerData, CornerStyle } from "./types";
 import { drawMarkerUnderlay } from "./markerShapes";
 
 /** Draws a filled patch matching each marker's own shape, in the line's own color, wherever a
@@ -27,8 +27,8 @@ import { drawMarkerUnderlay } from "./markerShapes";
  *  follow-up: the badge patch copies the badge shape only when `markerWidenShape` is
  *  `"match_marker"`, and follows the fixed `"circle"`/`"square"` otherwise, exactly like an
  *  ordinary marker). `squareCornerStyle` only matters when `shapeOverride` is `"square"` — the
- *  corridor's own `join` drives it (`"round"`->rounded corners, `"miter"`->sharp), not a fixed
- *  value, so a square patch reads consistently with the corridor stroke's own corners. */
+ *  corridor's own `join` drives it directly, not a fixed value, so a square patch reads
+ *  consistently with the corridor stroke's own corners. */
 export function drawMarkerWidenPatches(
   g: Graphics,
   markers: MarkerData[],
@@ -36,7 +36,7 @@ export function drawMarkerWidenPatches(
   lineWidth: number,
   padding: number,
   shapeOverride?: "circle" | "square" | "match_marker",
-  squareCornerStyle?: "sharp" | "round",
+  squareCornerStyle?: CornerStyle,
 ): void {
   if (padding <= 0) return; // padding is this patch's own on/off switch — 0 means no widen patch at all, regardless of borderWidth/gapWidth
   const halfWidth = lineWidth / 2;

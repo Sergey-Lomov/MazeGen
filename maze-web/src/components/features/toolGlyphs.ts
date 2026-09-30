@@ -1,7 +1,7 @@
 import { Application, Graphics } from "pixi.js";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import type { PostEditTool } from "../../store/postEditTypes";
-import type { MarkerShape } from "../../pixi/renderers/types";
+import type { MarkerShape, CornerStyle } from "../../pixi/renderers/types";
 import { drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/markerShapes";
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
@@ -108,7 +108,7 @@ const one_way: GlyphFn = (g) => {
 
 type MarkerLike = {
   shape: MarkerShape;
-  cornerStyle: "round" | "miter" | "sharp";
+  cornerStyle: CornerStyle;
   fillColor: number;
   borderColor?: number;
   borderWidth: number;

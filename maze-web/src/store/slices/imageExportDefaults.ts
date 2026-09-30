@@ -1,8 +1,7 @@
 import type {
   VectorByWallsSettings,
   VectorByCorridorsSettings,
-  VectorByWallsSharedStyle,
-  VectorByCorridorsSharedStyle,
+  SharedStyleSourceFields,
   TeleportSettingsFields,
   OneWaySettingsFields,
   VerticalSettingsFields,
@@ -14,10 +13,8 @@ import type {
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
-import {
-  applyVectorByWallsSharedStyle,
-  applyVectorByCorridorsSharedStyle,
-} from "./imageExportSliceHelpers";
+import { propagate } from "./parameterLinksEngine";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
 
 function markerSettings(style: MazeRenderStyle["startMarker"]): MarkerSettings {
   return {
@@ -31,41 +28,22 @@ function markerSettings(style: MazeRenderStyle["startMarker"]): MarkerSettings {
   };
 }
 
-/** Shared defaults for the centralized "Shared style" section (GitHub issue #322) — the single
- * source of truth every dependent field's own default is derived from below (`applyVectorBy*
- * SharedStyle`), rather than each field separately hardcoding the same number. Changing a value
- * here changes every dependent field's default in lockstep. */
-/** `twoWayPassage`/`oneWayPassage`/`elevator` start pre-overridden in every group (GitHub issue
- * #347 follow-up) — unlike `startMarker`/`finishMarker` (which intentionally start out following
- * the shared style), the three vertical-connection markers' own defaults (`DEFAULT_VERTICAL_
- * SETTINGS`) are pinned to match `GenerationRenderer`'s fixed `DEFAULT_VERTICAL_STYLE` look
- * instead, so they must not be silently overwritten by `applyVectorByWallsSharedStyle` right
- * after. The user is still free to pull them back onto the shared value via the panel's own
- * per-field reset button. */
-export const DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE: VectorByWallsSharedStyle = {
+/** Shared defaults for the four "Shared style" source values (GitHub issue #322, generalized by
+ * #643) — the single source of truth every dependent field's own default is derived from below
+ * (via `propagate` over `DEFAULT_VECTOR_BY_*_LINKS`), rather than each field separately
+ * hardcoding the same number. Changing a value here changes every dependent field's default in
+ * lockstep. `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges` links
+ * start disabled (GitHub issue #347 follow-up, see `parameterLinksDefaults.ts`) — unlike
+ * `startMarker`/`finishMarker` (which intentionally start out following the shared value), the
+ * three vertical-connection markers' own defaults (`DEFAULT_VERTICAL_SETTINGS`) are pinned to
+ * match `GenerationRenderer`'s fixed `DEFAULT_VERTICAL_STYLE` look instead, so `propagate` below
+ * (which only follows enabled links) leaves them alone. The user is still free to pull them onto
+ * the shared value via the panel's own per-field reset button. */
+export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
-  overrides: {
-    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
-    markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-    markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-    gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-  },
-};
-
-export const DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE: VectorByCorridorsSharedStyle = {
-  cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
-  markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
-  markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
-  gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
-  overrides: {
-    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
-    markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-    markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-    gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-  },
 };
 
 /** Shared by both `VectorByWallsSettings` and `VectorByCorridorsSettings` — GitHub issue #313
@@ -215,10 +193,10 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files
  * (GitHub issue #295) — kept as a single exported const so the two never drift apart.
  * `startMarker`/`finishMarker`/`wallJoin`/`oneWayJoin`/every `teleportLine*`/`teleportEdge*`/
- * `teleportConnectorGapWidth` field driven by "Shared style" (GitHub issue #322) holds a
- * placeholder value below, overwritten by `applyVectorByWallsSharedStyle` right after — see that
- * function's own doc comment for exactly which fields it touches. */
-export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVectorByWallsSharedStyle(
+ * `teleportConnectorGapWidth` field driven by "Shared style" (GitHub issue #322, generalized by
+ * #643) holds a placeholder value below, overwritten by the `propagate` call right after — see
+ * `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment for exactly which fields it touches. */
+export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate(
   {
     background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
     showGrid: DEFAULT_MAZE_RENDER_STYLE.grid.visible,
@@ -243,11 +221,13 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
     splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
-    sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    ...DEFAULT_SHARED_STYLE_SOURCE,
+    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
-  },
+  } as unknown as Record<string, unknown>,
+  DEFAULT_VECTOR_BY_WALLS_LINKS,
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
-);
+) as unknown as VectorByWallsSettings;
 
 /** Shared by `VectorByCorridorsSettings` and `projectExport/validate.ts`'s recovery defaults, same
  * extraction rationale as `DEFAULT_TELEPORT_SETTINGS` (GitHub issue #312). `oneWayColor` defaults
@@ -271,8 +251,8 @@ export const DEFAULT_ONE_WAY_SETTINGS: OneWaySettingsFields = {
  * walls" uses — a corridor's meaningful range scales with the cell size, so its default should too.
  * Same "Shared style" placeholder-then-overwrite convention as `DEFAULT_VECTOR_BY_WALLS_SETTINGS`
  * (`join`/`oneWayJoin`/markers/teleport fields/`splitGapWidth` — see
- * `applyVectorByCorridorsSharedStyle`). */
-export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = applyVectorByCorridorsSharedStyle(
+ * `DEFAULT_VECTOR_BY_CORRIDORS_LINKS`). */
+export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = propagate(
   {
     background: canvas.stage.background,
     showGrid: false,
@@ -292,11 +272,13 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = a
     splitSpecialShapes: true,
     splitGapWidth: 0,
     splitDiagonalBowAmount: 0.5,
-    sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
+    ...DEFAULT_SHARED_STYLE_SOURCE,
+    links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
-  },
+  } as unknown as Record<string, unknown>,
+  DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
-);
+) as unknown as VectorByCorridorsSettings;
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */

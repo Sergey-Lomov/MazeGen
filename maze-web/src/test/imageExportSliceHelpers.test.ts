@@ -1,292 +1,178 @@
 import { describe, it, expect } from "vitest";
-import {
-  applyVectorByWallsSharedStyle,
-  applyVectorByCorridorsSharedStyle,
-  forceVectorByWallsSharedStyle,
-  forceVectorByCorridorsSharedStyle,
-  reconcileVectorByWallsSharedStyle,
-  reconcileVectorByCorridorsSharedStyle,
-  withOverride,
-  withoutOverride,
-} from "../store/slices/imageExportSliceHelpers";
+import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget } from "../store/slices/parameterLinksEngine";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
+import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
-import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../store/storeTypes";
+import { validateVectorByWallsSettings, validateVectorByCorridorsSettings } from "../store/projectExport/validateImageExport";
 
-// `DEFAULT_VECTOR_BY_WALLS_SETTINGS`/`DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS` are themselves already
-// produced via `applyVectorBy*SharedStyle` (GitHub issue #322) — every dependent field starts
-// exactly equal to its shared value, so these fixtures are a valid "nothing overridden" baseline,
-// except `VectorByWallsSettings`' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`
-// (GitHub issue #347 follow-up), which start pre-overridden in every group by design — see
-// `VERTICAL_PRE_OVERRIDDEN`.
-function wallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
-  return { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, ...overrides };
-}
-
-function corridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
-  return { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, ...overrides };
-}
-
-describe("applyVectorByWallsSharedStyle", () => {
-  it("propagates a new cornerStyle to every non-overridden dependent field, mapping sharp/round to miter/round", () => {
-    const settings = wallsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, cornerStyle: "sharp" } });
-    const next = applyVectorByWallsSharedStyle(settings, ["cornerStyle"]);
-    expect(next.wallJoin).toBe("miter");
-    expect(next.oneWayJoin).toBe("miter");
-    expect(next.startMarker.cornerStyle).toBe("sharp");
-    expect(next.finishMarker.cornerStyle).toBe("sharp");
-    expect(next.teleportLineCornerStyle).toBe("sharp");
-  });
-
-  it("skips a field marked overridden, leaving its own value untouched", () => {
-    const settings = wallsSettings({
-      wallJoin: "miter",
-      sharedStyle: {
-        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle,
-        cornerStyle: "round",
-        overrides: { cornerStyle: { wallJoin: true } },
-      },
-    });
-    const next = applyVectorByWallsSharedStyle(settings, ["cornerStyle"]);
-    expect(next.wallJoin).toBe("miter"); // untouched — overridden
-    expect(next.oneWayJoin).toBe("round"); // still follows shared
-  });
-
-  it("only touches fields in the requested groups, leaving other groups' fields alone", () => {
-    const settings = wallsSettings({
-      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, size: 0.5, borderWidth: 7 },
-      sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, markerSize: 0.2, markerBorderWidth: 9 },
-    });
-    const next = applyVectorByWallsSharedStyle(settings, ["markerSize"]);
-    expect(next.startMarker.size).toBe(0.2); // markerSize group applied
-    expect(next.startMarker.borderWidth).toBe(7); // markerBorderWidth group not requested — untouched
-  });
-
-  it("propagates gapWidth to startMarker/finishMarker/teleportEdge/teleportConnector", () => {
-    const settings = wallsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, gapWidth: 6 } });
-    const next = applyVectorByWallsSharedStyle(settings, ["gapWidth"]);
-    expect(next.startMarker.gapWidth).toBe(6);
-    expect(next.finishMarker.gapWidth).toBe(6);
-    expect(next.teleportEdgeGapWidth).toBe(6);
-    expect(next.teleportConnectorGapWidth).toBe(6);
-  });
-
-  it("propagates gapWidth to markerIndex.gap, and skips it when overridden", () => {
-    const followed = applyVectorByWallsSharedStyle(
-      wallsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, gapWidth: 6 } }),
-      ["gapWidth"],
-    );
-    expect(followed.markerIndex.gap).toBe(6);
-
-    const overridden = applyVectorByWallsSharedStyle(
-      wallsSettings({
-        markerIndex: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex, gap: 2 },
-        sharedStyle: {
-          ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle,
-          gapWidth: 6,
-          overrides: { gapWidth: { markerIndex: true } },
-        },
-      }),
-      ["gapWidth"],
-    );
-    expect(overridden.markerIndex.gap).toBe(2);
-  });
-});
-
-describe("applyVectorByCorridorsSharedStyle", () => {
-  it("propagates cornerStyle to join/oneWayJoin (not wallJoin — corridors has no wall join)", () => {
-    const settings = corridorsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.sharedStyle, cornerStyle: "sharp" } });
-    const next = applyVectorByCorridorsSharedStyle(settings, ["cornerStyle"]);
-    expect(next.join).toBe("miter");
-    expect(next.oneWayJoin).toBe("miter");
-  });
-
-  it("propagates gapWidth to splitGapWidth, corridors' own extra gapWidth-group field", () => {
-    const settings = corridorsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.sharedStyle, gapWidth: 8 } });
-    const next = applyVectorByCorridorsSharedStyle(settings, ["gapWidth"]);
-    expect(next.splitGapWidth).toBe(8);
-  });
-
-  it("skips splitGapWidth when overridden", () => {
-    const settings = corridorsSettings({
-      splitGapWidth: 2,
-      sharedStyle: {
-        ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.sharedStyle,
-        gapWidth: 8,
-        overrides: { gapWidth: { split: true } },
-      },
-    });
-    const next = applyVectorByCorridorsSharedStyle(settings, ["gapWidth"]);
-    expect(next.splitGapWidth).toBe(2);
-  });
-});
-
-describe("forceVectorByWallsSharedStyle / forceVectorByCorridorsSharedStyle", () => {
-  it("clears every override and re-applies every group's shared value to every dependent field", () => {
-    const settings = wallsSettings({
-      wallJoin: "miter",
-      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, size: 0.9, borderWidth: 5 },
-      sharedStyle: {
-        cornerStyle: "round",
-        markerSize: 0.16,
-        markerBorderWidth: 3,
-        gapWidth: 3,
-        overrides: { cornerStyle: { wallJoin: true }, markerSize: { startMarker: true }, markerBorderWidth: { startMarker: true } },
-      },
-    });
-    const next = forceVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides).toEqual({});
-    expect(next.wallJoin).toBe("round");
-    expect(next.startMarker.size).toBe(0.16);
-    expect(next.startMarker.borderWidth).toBe(3);
-  });
-
-  it("corridors variant clears every override the same way", () => {
-    const settings = corridorsSettings({
-      join: "miter",
-      sharedStyle: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.sharedStyle, cornerStyle: "round", overrides: { cornerStyle: { join: true } } },
-    });
-    const next = forceVectorByCorridorsSharedStyle(settings);
-    expect(next.sharedStyle.overrides).toEqual({});
-    expect(next.join).toBe("round");
-  });
-});
-
-const VERTICAL_PRE_OVERRIDDEN = {
-  cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
-  markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-  markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
-  gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+const registry: Record<string, ParamDescriptor> = {
+  a: { type: "number", equals: Object.is },
+  b: { type: "number", equals: Object.is },
+  c: { type: "number", equals: Object.is },
+  color: { type: "color", equals: Object.is },
 };
 
-describe("reconcileVectorByWallsSharedStyle", () => {
-  it("marks nothing overridden beyond the vertical markers' own always-overridden defaults when every other dependent field already matches the shared values", () => {
-    // `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` intentionally default to
-    // `GenerationRenderer`'s own fixed look (not the shared style), so
-    // `DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides`
-    // already pins them overridden — reconcile is expected to leave that as-is here.
-    const next = reconcileVectorByWallsSharedStyle(wallsSettings());
-    expect(next.sharedStyle.overrides).toEqual(VERTICAL_PRE_OVERRIDDEN);
+function link(source: string, target: string, enabled = true): ParamLink<string> {
+  return { id: `${source}->${target}`, source, target, enabled };
+}
+
+describe("getParamValue / setParamValue", () => {
+  it("reads/writes a top-level field", () => {
+    const settings = { a: 1 };
+    expect(getParamValue(settings, "a")).toBe(1);
+    expect(setParamValue(settings, "a", 2)).toEqual({ a: 2 });
   });
 
-  it("marks a dependent field overridden when its loaded value disagrees with the shared value — the loadProject/pre-#322-file case", () => {
-    // Simulates a project file saved before "Shared style" existed: sharedStyle defaults to
-    // round/0.16/3/3 (nothing in the file to say otherwise) but startMarker.size was saved as 0.4
-    // by the pre-#322 per-field-only settings. Without reconciliation this field would silently
-    // snap to 0.16 the next time the user touches the shared "Marker size" slider.
-    const settings = wallsSettings({ startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, size: 0.4 } });
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.markerSize?.startMarker).toBe(true);
-    expect(next.startMarker.size).toBe(0.4); // value itself untouched
-  });
-
-  it("does not re-mark a field already recorded as overridden (idempotent)", () => {
-    const settings = wallsSettings({
-      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, size: 0.4 },
-      sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, overrides: { markerSize: { startMarker: true } } },
-    });
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    // The vertical markers' own `size` still mismatches the shared style here too (its default
-    // doesn't follow it, unlike `cornerStyle`/`gapWidth`, which happen to match the shared
-    // default's own round/3 values) — reconcile marks that on top of the caller's own `markerSize`.
-    // `borderWidth` (GitHub issue #347 sixth/seventh follow-up: all three vertical passage
-    // markers' own default raised 2 -> 3) now matches the shared style's own default `3` for
-    // `twoWayPassage`/`oneWayPassage`/`elevator`, so no `markerBorderWidth` mismatch remains.
-    expect(next.sharedStyle.overrides).toEqual({
-      markerSize: { startMarker: true, twoWayPassage: true, oneWayPassage: true, elevator: true },
-    });
-  });
-
-  it("detects a wallJoin/oneWayJoin mismatch via the sharp/round <-> miter/round mapping", () => {
-    const settings = wallsSettings({ wallJoin: "miter" }); // shared cornerStyle stays "round"
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.cornerStyle?.wallJoin).toBe(true);
-    expect(next.sharedStyle.overrides.cornerStyle?.oneWayJoin).toBeUndefined();
-  });
-
-  it("detects mismatches across all four groups independently in one pass", () => {
-    const settings = wallsSettings({
-      teleportLineCornerStyle: "sharp",
-      teleportLineSize: 0.9,
-      teleportEdgeBorderWidth: 9,
-      teleportConnectorGapWidth: 9,
-    });
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.cornerStyle?.teleportLine).toBe(true);
-    expect(next.sharedStyle.overrides.markerSize?.teleportLine).toBe(true);
-    expect(next.sharedStyle.overrides.markerBorderWidth?.teleportEdge).toBe(true);
-    expect(next.sharedStyle.overrides.gapWidth?.teleportConnector).toBe(true);
-  });
-
-  it("detects startMarker/finishMarker mismatches independently for cornerStyle/size/borderWidth/gapWidth", () => {
-    const settings = wallsSettings({
-      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, cornerStyle: "sharp", borderWidth: 9, gapWidth: 9 },
-      finishMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.finishMarker, cornerStyle: "sharp", borderWidth: 9, gapWidth: 9 },
-    });
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.cornerStyle?.startMarker).toBe(true);
-    expect(next.sharedStyle.overrides.cornerStyle?.finishMarker).toBe(true);
-    expect(next.sharedStyle.overrides.markerBorderWidth?.startMarker).toBe(true);
-    expect(next.sharedStyle.overrides.markerBorderWidth?.finishMarker).toBe(true);
-    expect(next.sharedStyle.overrides.gapWidth?.startMarker).toBe(true);
-    expect(next.sharedStyle.overrides.gapWidth?.finishMarker).toBe(true);
-  });
-
-  it("detects a markerIndex.gap mismatch against the shared gapWidth", () => {
-    const settings = wallsSettings({ markerIndex: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex, gap: 9 } });
-    const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.gapWidth?.markerIndex).toBe(true);
-    expect(next.markerIndex.gap).toBe(9);
-  });
-
-});
-
-describe("reconcileVectorByCorridorsSharedStyle", () => {
-  it("marks nothing overridden beyond the vertical markers' own always-overridden defaults when every other dependent field already matches the shared values", () => {
-    // Same rationale as `reconcileVectorByWallsSharedStyle`'s own analogous test above —
-    // `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` default to the fixed
-    // `DEFAULT_VERTICAL_STYLE` look, not the shared style, so `DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.
-    // sharedStyle.overrides` already pins them overridden.
-    const next = reconcileVectorByCorridorsSharedStyle(corridorsSettings());
-    expect(next.sharedStyle.overrides).toEqual(VERTICAL_PRE_OVERRIDDEN);
-  });
-
-  it("detects a splitGapWidth mismatch — corridors' own extra gapWidth-group field", () => {
-    const settings = corridorsSettings({ splitGapWidth: 9 });
-    const next = reconcileVectorByCorridorsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.gapWidth?.split).toBe(true);
-  });
-
-  it("detects a join mismatch via the sharp/round <-> miter/round mapping (join, not wallJoin)", () => {
-    const settings = corridorsSettings({ join: "miter" });
-    const next = reconcileVectorByCorridorsSharedStyle(settings);
-    expect(next.sharedStyle.overrides.cornerStyle?.join).toBe(true);
+  it("reads/writes a dot-path nested field without mutating the original", () => {
+    const settings = { marker: { size: 1, other: "x" } };
+    expect(getParamValue(settings, "marker.size")).toBe(1);
+    const next = setParamValue(settings, "marker.size", 5);
+    expect(next).toEqual({ marker: { size: 5, other: "x" } });
+    expect(settings.marker.size).toBe(1);
   });
 });
 
-describe("withOverride / withoutOverride", () => {
-  // Uses an empty-overrides base (not `DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides`,
-  // which starts with the vertical markers' own always-overridden `cornerStyle` group pre-populated
-  // — see `VERTICAL_PRE_OVERRIDDEN`) so these assertions only exercise `startMarker`/`finishMarker`.
-  const emptyOverrides: typeof DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides = {};
-
-  it("withOverride marks a field true without disturbing other fields in the same group", () => {
-    const overrides = withOverride(emptyOverrides, "cornerStyle", "startMarker");
-    const overrides2 = withOverride(overrides, "cornerStyle", "finishMarker");
-    expect(overrides2.cornerStyle).toEqual({ startMarker: true, finishMarker: true });
+describe("propagate", () => {
+  it("propagates a changed source to every enabled dependent field", () => {
+    const links = [link("a", "b"), link("a", "c")];
+    const next = propagate({ a: 5, b: 0, c: 0 }, links, ["a"]);
+    expect(next).toEqual({ a: 5, b: 5, c: 5 });
   });
 
-  it("withoutOverride clears one field, leaving sibling fields in the same group intact", () => {
-    const overrides = withOverride(
-      withOverride(emptyOverrides, "cornerStyle", "startMarker"),
-      "cornerStyle",
-      "finishMarker",
-    );
-    const cleared = withoutOverride(overrides, "cornerStyle", "startMarker");
-    expect(cleared.cornerStyle).toEqual({ finishMarker: true });
+  it("a disabled link resists propagation", () => {
+    const links = [link("a", "b", false)];
+    const next = propagate({ a: 5, b: 0 }, links, ["a"]);
+    expect(next.b).toBe(0);
   });
 
-  it("withoutOverride on a field that was never set is a no-op", () => {
-    const cleared = withoutOverride(emptyOverrides, "cornerStyle", "startMarker");
-    expect(cleared.cornerStyle).toEqual({});
+  it("propagates transitively through a chain A->B->C", () => {
+    const links = [link("a", "b"), link("b", "c")];
+    const next = propagate({ a: 7, b: 0, c: 0 }, links, ["a"]);
+    expect(next.b).toBe(7);
+    expect(next.c).toBe(7);
+  });
+
+  it("result is independent of the input links array order", () => {
+    const links1 = [link("a", "b"), link("b", "c")];
+    const links2 = [link("b", "c"), link("a", "b")];
+    const settings = { a: 3, b: 0, c: 0 };
+    expect(propagate(settings, links1, ["a"])).toEqual(propagate(settings, links2, ["a"]));
+  });
+
+  it("a diamond dependency (a->b, a->c, b->d, c->d) sets d exactly once, from whichever branch reaches it first", () => {
+    const links = [link("a", "b"), link("a", "c"), link("b", "d"), link("c", "d")];
+    const next = propagate({ a: 1, b: 0, c: 0, d: 0 }, links, ["a"]);
+    expect(next).toEqual({ a: 1, b: 1, c: 1, d: 1 });
+  });
+});
+
+describe("forceLinks", () => {
+  it("enables every link and propagates every source's value through", () => {
+    const links = [link("a", "b", false), link("b", "c", false)];
+    const { settings, links: nextLinks } = forceLinks({ a: 9, b: 0, c: 0 }, links);
+    expect(settings).toEqual({ a: 9, b: 9, c: 9 });
+    expect(nextLinks.every((l) => l.enabled)).toBe(true);
+  });
+});
+
+describe("reconcileLinks", () => {
+  it("marks a link disabled when target disagrees with source, independent of list order", () => {
+    const settings = { a: 1, b: 2 };
+    const links1 = [link("a", "b")];
+    const links2 = [link("a", "b")];
+    expect(reconcileLinks(settings, links1, registry)[0].enabled).toBe(false);
+    expect(reconcileLinks(settings, links2, registry)[0].enabled).toBe(false);
+  });
+
+  it("keeps a link enabled when target already matches source", () => {
+    const settings = { a: 1, b: 1 };
+    const [result] = reconcileLinks(settings, [link("a", "b")], registry);
+    expect(result.enabled).toBe(true);
+  });
+});
+
+describe("setLinkEnabledByTarget", () => {
+  it("disabling does not re-propagate — the caller already wrote the field", () => {
+    const links = [link("a", "b")];
+    const { settings, links: nextLinks } = setLinkEnabledByTarget({ a: 1, b: 99 }, links, "b", false);
+    expect(settings.b).toBe(99);
+    expect(nextLinks[0].enabled).toBe(false);
+  });
+
+  it("re-enabling re-propagates from the link's source", () => {
+    const links = [link("a", "b", false)];
+    const { settings, links: nextLinks } = setLinkEnabledByTarget({ a: 5, b: 99 }, links, "b", true);
+    expect(settings.b).toBe(5);
+    expect(nextLinks[0].enabled).toBe(true);
+  });
+
+  it("no-ops when no link targets the given path", () => {
+    const links = [link("a", "b")];
+    const result = setLinkEnabledByTarget({ a: 1, b: 1 }, links, "c", false);
+    expect(result.links).toBe(links);
+  });
+});
+
+describe("validateLinkGraph", () => {
+  it("accepts a valid acyclic graph with unique targets", () => {
+    expect(() => validateLinkGraph([link("a", "b"), link("b", "c")], registry)).not.toThrow();
+  });
+
+  it("rejects a cycle", () => {
+    expect(() => validateLinkGraph([link("a", "b"), link("b", "a")], registry)).toThrow();
+  });
+
+  it("rejects duplicate targets regardless of array order", () => {
+    const l1 = link("a", "c");
+    const l2 = link("b", "c");
+    expect(() => validateLinkGraph([l1, l2], registry)).toThrow();
+    expect(() => validateLinkGraph([l2, l1], registry)).toThrow();
+  });
+
+  it("rejects a type mismatch between source and target", () => {
+    expect(() => validateLinkGraph([link("a", "color")], registry)).toThrow();
+  });
+
+  it("rejects an unknown source path", () => {
+    expect(() => validateLinkGraph([link("nope", "b")], registry)).toThrow(/unknown source/);
+  });
+
+  it("rejects an unknown target path", () => {
+    expect(() => validateLinkGraph([link("a", "nope")], registry)).toThrow(/unknown target/);
+  });
+
+  it("DEFAULT_VECTOR_BY_WALLS_LINKS is internally valid", () => {
+    expect(() => validateLinkGraph(DEFAULT_VECTOR_BY_WALLS_LINKS, VECTOR_BY_WALLS_PARAM_REGISTRY)).not.toThrow();
+  });
+
+  it("DEFAULT_VECTOR_BY_CORRIDORS_LINKS is internally valid", () => {
+    expect(() => validateLinkGraph(DEFAULT_VECTOR_BY_CORRIDORS_LINKS, VECTOR_BY_CORRIDORS_PARAM_REGISTRY)).not.toThrow();
+  });
+});
+
+describe("round-trip persistence of the four shared-style source values", () => {
+  it("VectorByWallsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
+    const saved = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, cornerStyle: "miter" as const, markerSize: 0.42, markerBorderWidth: 4, gapWidth: 5 };
+    const loaded = validateVectorByWallsSettings(saved, "vectorByWallsSettings");
+    expect(loaded.cornerStyle).toBe("miter");
+    expect(loaded.markerSize).toBe(0.42);
+    expect(loaded.markerBorderWidth).toBe(4);
+    expect(loaded.gapWidth).toBe(5);
+  });
+
+  it("VectorByCorridorsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
+    const saved = { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, cornerStyle: "miter" as const, markerSize: 0.42, markerBorderWidth: 4, gapWidth: 5 };
+    const loaded = validateVectorByCorridorsSettings(saved, "vectorByCorridorsSettings");
+    expect(loaded.cornerStyle).toBe("miter");
+    expect(loaded.markerSize).toBe(0.42);
+    expect(loaded.markerBorderWidth).toBe(4);
+    expect(loaded.gapWidth).toBe(5);
+  });
+
+  it("links is never loaded from a project file — always seeded fresh from the defaults", () => {
+    const tampered = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, links: [] };
+    const loaded = validateVectorByWallsSettings(tampered, "vectorByWallsSettings");
+    expect(loaded.links).toBe(DEFAULT_VECTOR_BY_WALLS_LINKS);
   });
 });

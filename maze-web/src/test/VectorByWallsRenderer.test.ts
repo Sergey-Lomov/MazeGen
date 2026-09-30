@@ -6,6 +6,7 @@ import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -179,9 +180,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWaySize: 0.3,
     oneWayThickness: 4,
     oneWayJoin: "round",
-    startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-    finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-    teleportLineCornerStyle: "sharp",
+    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    teleportLineCornerStyle: "miter",
     teleportLineShape: "square",
     teleportLineSize: 0.3,
     teleportEdgeColor: 0,
@@ -227,7 +228,11 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     splitNodeColors: [],
     splitSpecialShapes: false,
     markerIndex: { enabled: false, labelStyle: "roman", height: 0.35, offset: 0, cornerRadius: 0.03, paddingX: 0.04, gap: 0, fillColor: 0xf0c900, textColor: 0x333333, borderColor: 0x444444, borderColorFromMarker: false, borderWidthFromMarker: false, borderWidth: 0, fontWeight: "bold", coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true } },
-    sharedStyle: { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} },
+    cornerStyle: "round",
+    markerSize: 0.16,
+    markerBorderWidth: 3,
+    gapWidth: 3,
+    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
   };
 }
@@ -337,7 +342,7 @@ describe("buildMarkerStyle", () => {
   });
 
   it("gapColor tracks floorColor independently of the marker's own fillColor/borderColor", () => {
-    const settings = { shape: "circle" as const, cornerStyle: "sharp" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225 };
+    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225 };
     expect(buildMarkerStyle(settings, 0x111).gapColor).toBe(0x111);
     expect(buildMarkerStyle(settings, 0x222).gapColor).toBe(0x222);
   });

@@ -1,6 +1,8 @@
-import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
+import type { ParamLink } from "./parameterLinks";
+import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -143,10 +145,10 @@ export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left"
  *  (GitHub issue #430 second follow-up: badges must never cut into *each other* with their own gap,
  *  only into the environment around the pair). `shape` is the badge's own outline (`MarkerShape`,
  *  same shapes `MarkerSettings` offers) — purely visual, no border of its own (badges never draw
- *  one). `cornerStyle` (`TeleportCornerStyle`) drives a polygon shape's corner rounding — seeded
+ *  one). `cornerStyle` (`CornerStyle`) drives a polygon shape's corner rounding — seeded
  *  from `elevatorMarker.cornerStyle` when badges are first enabled, but its own independent field
- *  from then on (no live link back to the marker's setting, unlike `VectorByWallsSharedStyle`'s
- *  tracked-override mechanism — this is a one-time seed, not an ongoing follow). `evenDistribution`
+ *  from then on (no live link back to the marker's setting, unlike the "Shared style" `ParamLink`
+ *  mechanism's tracked-override — this is a one-time seed, not an ongoing follow). `evenDistribution`
  *  (default `true`, GitHub issue #430 follow-up) picks how badges pack: on, a two-sided placement
  *  splits the count in half between its two sides (leading side gets the extra badge on an odd
  *  split) and `"full_circle"` spreads badges evenly around the whole ring; off, a two-sided
@@ -166,7 +168,7 @@ export interface ElevatorBadgeSettings {
   distance: number;
   gap: number;
   gapWidth: number;
-  cornerStyle: TeleportCornerStyle;
+  cornerStyle: CornerStyle;
   evenDistribution: boolean;
   shape: MarkerShape;
   fillColor: number;
@@ -247,11 +249,11 @@ export interface VerticalSettingsFields {
   twoWayArrowStyle: VerticalArrowStyle;
   /** Corner style for `twoWayArrowStyle` — `"round"`/`"miter"`, same convention as `oneWayJoin`:
    *  drives the filled triangle's own corner rounding, or the chevron/arrow's stroke join. */
-  twoWayArrowCornerStyle: "round" | "miter";
+  twoWayArrowCornerStyle: CornerStyle;
   oneWayArrowColor: number;
   oneWayArrowSize: number;
   oneWayArrowStyle: VerticalArrowStyle;
-  oneWayArrowCornerStyle: "round" | "miter";
+  oneWayArrowCornerStyle: CornerStyle;
   /** One-way passage's "secondary" accent color (GitHub issue #347 fifth follow-up, simplified from
    *  the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the
    *  same accent anyway): the arrival end draws the ordinary ("primary") fill with its border
@@ -261,7 +263,7 @@ export interface VerticalSettingsFields {
   elevatorArrowColor: number;
   elevatorArrowSize: number;
   elevatorArrowStyle: VerticalArrowStyle;
-  elevatorArrowCornerStyle: "round" | "miter";
+  elevatorArrowCornerStyle: CornerStyle;
   /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
    *  Independent of `verticalStyle` on modes that have one — draws on top of `elevatorMarker`/
    *  `decorativeElevator` alike. */
@@ -321,7 +323,7 @@ export interface TeleportFloorBadgeSettings {
 }
 
 export interface TeleportSettingsFields {
-  teleportLineCornerStyle: TeleportCornerStyle;
+  teleportLineCornerStyle: CornerStyle;
   teleportLineShape: MarkerShape;
   /** Marker radius, as a fraction of the tile size (0-1, GitHub issue #293 follow-up — matches
    *  `OneWayStyleOverride.size`'s convention, not a fixed pixel radius). */
@@ -374,7 +376,7 @@ export interface MarkerSettings {
   shape: MarkerShape;
   /** Sharp vs. round corners (GitHub issue #302 follow-up) — only affects the four
    *  regular-polygon `MarkerShape`s, same convention as `teleportLineCornerStyle`. */
-  cornerStyle: TeleportCornerStyle;
+  cornerStyle: CornerStyle;
   fillColor: number;
   borderColor: number;
   borderWidth: number;
@@ -387,64 +389,17 @@ export interface MarkerSettings {
   size: number;
 }
 
-/** Which dependent fields of "Vector by walls" mode's `SharedStyle` currently hold a
- *  user-set value instead of following the shared setting (GitHub issue #322) — `true` marks an
- *  overridden field, absent/`undefined` means "still follows the shared value". Mirrors
- *  `TeleportGroupOverride`'s own sparse-optional-field convention, but keyed by dependent-field
- *  identity rather than by teleport group. */
-export interface VectorByWallsSharedStyleOverrides {
-  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
-  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; markerIndex?: true };
-}
-
-/** "Vector by walls" mode's centralized marker/corner-style settings (GitHub issue #322) — one
- *  shared value per group of conceptually-related fields (cell/marker corner style, marker size,
- *  marker border width, gap width) that every dependent field in that group follows by default.
- *  Changing a dependent field directly (its own per-mode setter) marks it overridden in
- *  `overrides`, detaching it from the shared value until reset (the settings panel's own
- *  per-field reset button, mirroring `TeleportGroupRow`'s reset convention) or until "Force shared
- *  style" clears every override at once. `cornerStyle` drives two different underlying enums —
- *  `"sharp"` maps to `wallJoin`/`oneWayJoin`'s `"miter"` and to the marker/teleport-line
- *  `TeleportCornerStyle`'s own `"sharp"`; `"round"` maps to both enums' `"round"` — since the two
- *  enums mean the same visual intent (sharp vs. rounded corners) despite different value spellings. */
-export interface VectorByWallsSharedStyle {
-  cornerStyle: TeleportCornerStyle;
+/** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
+ *  an ordinary linkable parameter in `VECTOR_BY_WALLS_PARAM_REGISTRY`/`VECTOR_BY_CORRIDORS_PARAM_
+ *  REGISTRY` with no incoming link, driving whichever dependent fields `links` currently routes to
+ *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
+ *  comment. */
+export interface SharedStyleSourceFields {
+  cornerStyle: CornerStyle;
   markerSize: number;
   markerBorderWidth: number;
   gapWidth: number;
-  overrides: VectorByWallsSharedStyleOverrides;
 }
-
-/** Same role as `VectorByWallsSharedStyleOverrides`, for "Vector by corridors" — its dependent
- *  field set differs (no `wallJoin`, has `join`/`oneWayJoin` instead; `gapWidth` also reaches
- *  `splitGapWidth`). */
-export interface VectorByCorridorsSharedStyleOverrides {
-  cornerStyle?: { join?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
-  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; markerIndex?: true };
-}
-
-/** Same role as `VectorByWallsSharedStyle`, for "Vector by corridors" (GitHub issue #322) — see
- *  that type's own doc comment for the shared-value/override/reset mechanics. */
-export interface VectorByCorridorsSharedStyle {
-  cornerStyle: TeleportCornerStyle;
-  markerSize: number;
-  markerBorderWidth: number;
-  gapWidth: number;
-  overrides: VectorByCorridorsSharedStyleOverrides;
-}
-
-/** The set of valid field names for one group `G` of one mode's `overrides` record `O` — e.g. for
- *  `VectorByWallsSharedStyleOverrides["cornerStyle"]` that's `"wallJoin" | "oneWayJoin" |
- *  "startMarker" | "finishMarker" | "teleportLine"`. Constrains `withOverride`/`withoutOverride`/
- *  `resetVectorBy*SharedStyleField`'s `field` parameter so a typo (e.g. `"wallJoinn"`) is a compile
- *  error instead of a silently-inert reset button (GitHub issue #322 follow-up — `field` was
- *  previously a bare `string`). */
-export type SharedStyleField<O extends VectorByWallsSharedStyleOverrides | VectorByCorridorsSharedStyleOverrides, G extends keyof O> =
-  keyof NonNullable<O[G]> & string;
 
 /** "Marker indices" settings (GitHub issue #471) — an independent decorative layer, drawn only in
  *  the two vector export modes, that links the two endpoints of every cross-floor connection
@@ -521,7 +476,7 @@ export interface MarkerIndexCoverage {
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields {
+export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields {
   background: number;
   /** Original viewport grid, drawn behind the maze. */
   showGrid: boolean;
@@ -539,7 +494,7 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   randomWallColorMode: RandomWallColorMode;
   /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
-  wallJoin: "round" | "miter";
+  wallJoin: CornerStyle;
   wallThickness: number;
   /** One-way indicator drawn on a directed passage's wall segment — shape/color/gap/size/
    *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
@@ -558,7 +513,7 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
    *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
-  oneWayJoin: "round" | "miter";
+  oneWayJoin: CornerStyle;
   startMarker: MarkerSettings;
   finishMarker: MarkerSettings;
   /** Splits section (GitHub issue #294) — per-split-node-slot identity colors, indexed by slot
@@ -575,9 +530,12 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
    *  adjacent-face pair) draw as a dedicated shape (see `SplitSpecialShapeKind`) instead of the
    *  generic per-node segment/connector reading. */
   splitSpecialShapes: boolean;
-  /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
-   *  `VectorByWallsSharedStyle`'s own doc comment. */
-  sharedStyle: VectorByWallsSharedStyle;
+  /** Generic parameter-link graph (GitHub issue #643, generalizing #322's fixed "Shared style"
+   *  groups) — `source`/`target` reference `VectorByWallsParamPath`s, `enabled: false` meaning
+   *  `target` currently holds a manually-set value instead of following `source` (the old
+   *  "override" state). In-memory only, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS` — not persisted
+   *  (see `parameterLinks.ts`'s own doc comment). */
+  links: ParamLink<VectorByWallsParamPath>[];
   /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
    *  Independent layer, not part of "Shared style". */
   markerIndex: MarkerIndexSettings;
@@ -609,7 +567,7 @@ export interface OneWaySettingsFields {
   /** Chevron corner/end style — round vs. sharp (miter) tip and ends, same convention as
    *  `VectorByWallsSettings.oneWayJoin`, independent of `VectorByCorridorsSettings.join` (the
    *  corridor stroke's own corner style). */
-  oneWayJoin: "round" | "miter";
+  oneWayJoin: CornerStyle;
 }
 
 /** "Vector by corridors" mode's own settings (GitHub issue #310) — the corridor stroke's color,
@@ -622,7 +580,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields {
+export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields {
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
    *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
@@ -633,7 +591,7 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   thickness: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
-  join: "round" | "miter";
+  join: CornerStyle;
   /** Which corridor-drawing algorithm renders this mode's corridor network (GitHub issue #510),
    *  independent of `join` (each style applies its own round/miter behavior). `"contour"` (the
    *  default) draws each tile as one filled shape (`buildCorridorContour`/`vectorByCorridorsContour.ts`,
@@ -697,9 +655,8 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
    *  on. `0` draws a plain straight connector (the two nodes' lines would coincide at the tile
    *  center, same as the generic non-special reading). */
   splitDiagonalBowAmount: number;
-  /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
-   *  `VectorByCorridorsSharedStyle`'s own doc comment. */
-  sharedStyle: VectorByCorridorsSharedStyle;
+  /** Same role as `VectorByWallsSettings.links` (GitHub issue #643), over `VectorByCorridorsParamPath`. */
+  links: ParamLink<VectorByCorridorsParamPath>[];
   /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
    *  Independent layer, not part of "Shared style". */
   markerIndex: MarkerIndexSettings;
@@ -789,17 +746,17 @@ export interface ImageExportActions {
   setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
-  setVectorByCorridorsJoin: (join: "round" | "miter") => void;
+  setVectorByCorridorsJoin: (join: CornerStyle) => void;
   setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsStartMarkerFillColor: (color: number) => void;
   setVectorByCorridorsStartMarkerBorderColor: (color: number) => void;
   setVectorByCorridorsStartMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsStartMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsStartMarkerSize: (v: number) => void;
   setVectorByCorridorsFinishMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsFinishMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsFinishMarkerFillColor: (color: number) => void;
   setVectorByCorridorsFinishMarkerBorderColor: (color: number) => void;
   setVectorByCorridorsFinishMarkerBorderWidth: (v: number) => void;
@@ -841,47 +798,41 @@ export interface ImageExportActions {
   /** See `patchVectorByWallsElevatorBadges`'s own doc comment. */
   patchVectorByCorridorsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
   /** See `setVectorByWallsElevatorBadgesCornerStyle`'s own doc comment. */
-  setVectorByCorridorsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsElevatorBadgesCornerStyle: (style: CornerStyle) => void;
   /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
    *  "Shared style" override to track. */
   patchVectorByCorridorsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   setVectorByCorridorsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsTwoWayPassageMarkerFillColor: (color: number) => void;
   setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color: number) => void;
   setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsTwoWayPassageMarkerSize: (v: number) => void;
   setVectorByCorridorsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsOneWayPassageMarkerFillColor: (color: number) => void;
   setVectorByCorridorsOneWayPassageMarkerBorderColor: (color: number) => void;
   setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsOneWayPassageMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsOneWayPassageMarkerSize: (v: number) => void;
   setVectorByCorridorsElevatorMarkerShape: (shape: MarkerShape) => void;
-  setVectorByCorridorsElevatorMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsElevatorMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsElevatorMarkerFillColor: (color: number) => void;
   setVectorByCorridorsElevatorMarkerBorderColor: (color: number) => void;
   setVectorByCorridorsElevatorMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsElevatorMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsElevatorMarkerSize: (v: number) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
-   *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`).
-   *  See `VectorByCorridorsSharedStyle`'s own doc comment for the `"sharp"`/`"round"` -> `"miter"`/
-   *  `"round"` mapping. */
-  setVectorByCorridorsSharedCornerStyle: (style: TeleportCornerStyle) => void;
+   *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`). */
+  setVectorByCorridorsSharedCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsSharedMarkerSize: (v: number) => void;
   setVectorByCorridorsSharedMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsSharedGapWidth: (v: number) => void;
-  /** Clears the override flag for one dependent field of one shared-style group, re-applying that
-   *  group's current shared value to it — the settings panel's own per-field reset button. `field`
-   *  is constrained to that group's own valid field names (see `SharedStyleField`), so a typo is a
-   *  compile error rather than a silently-inert reset button. */
-  resetVectorByCorridorsSharedStyleField: <G extends keyof VectorByCorridorsSharedStyleOverrides>(
-    group: G,
-    field: SharedStyleField<VectorByCorridorsSharedStyleOverrides, G>,
-  ) => void;
+  /** Re-enables the link (if any) targeting `target`, re-applying that link's current source value
+   *  to it (GitHub issue #643, generalizing #322's per-field reset button). No-op if the field isn't
+   *  linkable. */
+  resetVectorByCorridorsSharedStyleField: (target: VectorByCorridorsParamPath) => void;
   /** "Synchronize" — clears every override across every group, re-applying all four shared values
    *  to every dependent field. */
   forceVectorByCorridorsSharedStyle: () => void;
@@ -896,23 +847,23 @@ export interface ImageExportActions {
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;
-  setVectorByWallsWallJoin: (join: "round" | "miter") => void;
+  setVectorByWallsWallJoin: (join: CornerStyle) => void;
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
   setVectorByWallsOneWayColor: (color: number) => void;
   setVectorByWallsOneWayGapWidth: (v: number) => void;
   setVectorByWallsOneWaySize: (v: number) => void;
   setVectorByWallsOneWayThickness: (v: number) => void;
-  setVectorByWallsOneWayJoin: (join: "round" | "miter") => void;
+  setVectorByWallsOneWayJoin: (join: CornerStyle) => void;
   setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsStartMarkerFillColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderWidth: (v: number) => void;
   setVectorByWallsStartMarkerGapWidth: (v: number) => void;
   setVectorByWallsStartMarkerSize: (v: number) => void;
   setVectorByWallsFinishMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsFinishMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsFinishMarkerFillColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
@@ -957,26 +908,26 @@ export interface ImageExportActions {
   patchVectorByWallsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
   /** Same "Shared style"-tracked convention as `setVectorByWallsElevatorMarkerCornerStyle` — marks
    *  the `cornerStyle` group's `elevatorBadges` field overridden before writing the value. */
-  setVectorByWallsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsElevatorBadgesCornerStyle: (style: CornerStyle) => void;
   /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
    *  "Shared style" override to track. */
   patchVectorByWallsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;
   setVectorByWallsTwoWayPassageMarkerBorderColor: (color: number) => void;
   setVectorByWallsTwoWayPassageMarkerBorderWidth: (v: number) => void;
   setVectorByWallsTwoWayPassageMarkerGapWidth: (v: number) => void;
   setVectorByWallsTwoWayPassageMarkerSize: (v: number) => void;
   setVectorByWallsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsOneWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsOneWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsOneWayPassageMarkerFillColor: (color: number) => void;
   setVectorByWallsOneWayPassageMarkerBorderColor: (color: number) => void;
   setVectorByWallsOneWayPassageMarkerBorderWidth: (v: number) => void;
   setVectorByWallsOneWayPassageMarkerGapWidth: (v: number) => void;
   setVectorByWallsOneWayPassageMarkerSize: (v: number) => void;
   setVectorByWallsElevatorMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsElevatorMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsElevatorMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsElevatorMarkerFillColor: (color: number) => void;
   setVectorByWallsElevatorMarkerBorderColor: (color: number) => void;
   setVectorByWallsElevatorMarkerBorderWidth: (v: number) => void;
@@ -991,21 +942,13 @@ export interface ImageExportActions {
   setVectorByWallsSplitNodeColor: (index: number, color: number) => void;
   setVectorByWallsSplitSpecialShapes: (v: boolean) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
-   *  (`wallJoin`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`).
-   *  See `VectorByWallsSharedStyle`'s own doc comment for the `"sharp"`/`"round"` -> `"miter"`/
-   *  `"round"` mapping. */
-  setVectorByWallsSharedCornerStyle: (style: TeleportCornerStyle) => void;
+   *  (`wallJoin`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`). */
+  setVectorByWallsSharedCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsSharedMarkerSize: (v: number) => void;
   setVectorByWallsSharedMarkerBorderWidth: (v: number) => void;
   setVectorByWallsSharedGapWidth: (v: number) => void;
-  /** Clears the override flag for one dependent field of one shared-style group, re-applying that
-   *  group's current shared value to it — the settings panel's own per-field reset button. `field`
-   *  is constrained to that group's own valid field names (see `SharedStyleField`), so a typo is a
-   *  compile error rather than a silently-inert reset button. */
-  resetVectorByWallsSharedStyleField: <G extends keyof VectorByWallsSharedStyleOverrides>(
-    group: G,
-    field: SharedStyleField<VectorByWallsSharedStyleOverrides, G>,
-  ) => void;
+  /** Same role as `resetVectorByCorridorsSharedStyleField`, over `VectorByWallsParamPath`. */
+  resetVectorByWallsSharedStyleField: (target: VectorByWallsParamPath) => void;
   /** "Synchronize" — clears every override across every group, re-applying all four shared values
    *  to every dependent field. */
   forceVectorByWallsSharedStyle: () => void;

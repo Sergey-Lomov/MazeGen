@@ -3,21 +3,12 @@ import type {
   MazeStore,
   ImageExportState,
   ImageExportActions,
-  VectorByWallsSharedStyleOverrides,
-  VectorByCorridorsSharedStyleOverrides,
-  SharedStyleField,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageExport/printFit";
 import { splitSlotColor } from "../../pixi/colorUtils";
-import {
-  applyVectorByWallsSharedStyle,
-  applyVectorByCorridorsSharedStyle,
-  forceVectorByWallsSharedStyle,
-  forceVectorByCorridorsSharedStyle,
-  withOverride,
-  withoutOverride,
-} from "./imageExportSliceHelpers";
+import { setLinkEnabledByTarget, propagate, forceLinks } from "./parameterLinksEngine";
+import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -25,13 +16,12 @@ import {
 } from "./imageExportDefaults";
 
 export {
-  DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
-  DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
   DEFAULT_TELEPORT_SETTINGS,
   DEFAULT_VERTICAL_SETTINGS,
   DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
   DEFAULT_MARKER_INDEX_SETTINGS,
   DEFAULT_ONE_WAY_SETTINGS,
+  DEFAULT_SHARED_STYLE_SOURCE,
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   DEFAULT_PNG_EXPORT_SETTINGS,
@@ -132,138 +122,88 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByCorridorsThickness: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, thickness: v } })),
   setVectorByCorridorsJoin: (join) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        join,
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "join") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "join", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, join, links } };
+    }),
   setVectorByCorridorsRenderStyle: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, renderStyle: v } })),
   setVectorByCorridorsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, shape } } })),
   setVectorByCorridorsStartMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        startMarker: { ...s.vectorByCorridorsSettings.startMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsStartMarkerFillColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, fillColor: color } } })),
   setVectorByCorridorsStartMarkerBorderColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderColor: color } } })),
   setVectorByCorridorsStartMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.borderWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderWidth: v }, links } };
+    }),
   setVectorByCorridorsStartMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        startMarker: { ...s.vectorByCorridorsSettings.startMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.gapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, gapWidth: v }, links } };
+    }),
   setVectorByCorridorsStartMarkerSize: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        startMarker: { ...s.vectorByCorridorsSettings.startMarker, size: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.size", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, size: v }, links } };
+    }),
   setVectorByCorridorsFinishMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, shape } } })),
   setVectorByCorridorsFinishMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsFinishMarkerFillColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, fillColor: color } } })),
   setVectorByCorridorsFinishMarkerBorderColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderColor: color } } })),
   setVectorByCorridorsFinishMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.borderWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderWidth: v }, links } };
+    }),
   setVectorByCorridorsFinishMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.gapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, gapWidth: v }, links } };
+    }),
   setVectorByCorridorsFinishMarkerSize: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, size: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.size", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, size: v }, links } };
+    }),
   setVectorByCorridorsMarkerWidenPadding: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, markerWidenPadding: v } })),
   setVectorByCorridorsMarkerWidenShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, markerWidenShape: shape } })),
   patchVectorByCorridorsOneWaySettings: (patch) =>
     set((s) => {
-      let overrides = s.vectorByCorridorsSettings.sharedStyle.overrides;
-      if (patch.oneWayJoin !== undefined) overrides = withOverride(overrides, "cornerStyle", "oneWayJoin");
-      return {
-        vectorByCorridorsSettings: {
-          ...s.vectorByCorridorsSettings,
-          ...patch,
-          sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides },
-        },
-      };
+      let links = s.vectorByCorridorsSettings.links;
+      if (patch.oneWayJoin !== undefined) links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, "oneWayJoin", false).links;
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch, links } };
     }),
   patchVectorByCorridorsTeleportSettings: (patch) =>
     set((s) => {
-      // A `Record<string, [group, field]>` lookup necessarily loses the compile-time link between
-      // a `TeleportSettingsFields` key and its matching group/field pair — the values below are
-      // still hand-verified against `VectorByCorridorsSharedStyleOverrides`'s own shape, so the
-      // cast on `withOverride`'s call is safe, just outside what a dynamic key lookup can express.
-      const overridable: Record<string, [keyof VectorByCorridorsSharedStyleOverrides, string]> = {
-        teleportLineCornerStyle: ["cornerStyle", "teleportLine"],
-        teleportLineSize: ["markerSize", "teleportLine"],
-        teleportEdgeBorderWidth: ["markerBorderWidth", "teleportEdge"],
-        teleportEdgeGapWidth: ["gapWidth", "teleportEdge"],
-        teleportConnectorGapWidth: ["gapWidth", "teleportConnector"],
-      };
-      let overrides = s.vectorByCorridorsSettings.sharedStyle.overrides;
-      for (const key of Object.keys(patch)) {
-        const mapping = overridable[key];
-        if (mapping) {
-          overrides = withOverride(
-            overrides,
-            mapping[0],
-            mapping[1] as SharedStyleField<VectorByCorridorsSharedStyleOverrides, typeof mapping[0]>,
-          );
-        }
+      const overridable: VectorByCorridorsParamPath[] = [
+        "teleportLineCornerStyle",
+        "teleportLineSize",
+        "teleportEdgeBorderWidth",
+        "teleportEdgeGapWidth",
+        "teleportConnectorGapWidth",
+      ];
+      let links = s.vectorByCorridorsSettings.links;
+      for (const target of overridable) {
+        if (patch[target as keyof typeof patch] !== undefined) links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
       }
-      return {
-        vectorByCorridorsSettings: {
-          ...s.vectorByCorridorsSettings,
-          ...patch,
-          sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides },
-        },
-      };
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch, links } };
     }),
   setVectorByCorridorsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
@@ -282,13 +222,10 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByCorridorsSplitSpecialShapes: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitSpecialShapes: v } })),
   setVectorByCorridorsSplitGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        splitGapWidth: v,
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "split") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "splitGapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitGapWidth: v, links } };
+    }),
   setVectorByCorridorsSplitDiagonalBowAmount: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitDiagonalBowAmount: v } })),
   patchVectorByCorridorsVerticalSettings: (patch) =>
@@ -301,165 +238,131 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       },
     })),
   patchVectorByCorridorsMarkerIndexSettings: (patch) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        markerIndex: { ...s.vectorByCorridorsSettings.markerIndex, ...patch },
-        ...(patch.gap !== undefined
-          ? { sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "markerIndex") } }
-          : {}),
-      },
-    })),
+    set((s) => {
+      let links = s.vectorByCorridorsSettings.links;
+      if (patch.gap !== undefined) links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, "markerIndex.gap", false).links;
+      return {
+        vectorByCorridorsSettings: {
+          ...s.vectorByCorridorsSettings,
+          markerIndex: { ...s.vectorByCorridorsSettings.markerIndex, ...patch },
+          links,
+        },
+      };
+    }),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "elevatorBadges") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorBadges.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, shape } } })),
   setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerFillColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, fillColor: color } } })),
   setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderColor: color } } })),
   setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.borderWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderWidth: v }, links } };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.gapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, gapWidth: v }, links } };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerSize: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, size: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.size", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, size: v }, links } };
+    }),
   setVectorByCorridorsOneWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, shape } } })),
   setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsOneWayPassageMarkerFillColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, fillColor: color } } })),
   setVectorByCorridorsOneWayPassageMarkerBorderColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderColor: color } } })),
   setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.borderWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderWidth: v }, links } };
+    }),
   setVectorByCorridorsOneWayPassageMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.gapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, gapWidth: v }, links } };
+    }),
   setVectorByCorridorsOneWayPassageMarkerSize: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, size: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.size", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, size: v }, links } };
+    }),
   setVectorByCorridorsElevatorMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, shape } } })),
   setVectorByCorridorsElevatorMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.cornerStyle", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, cornerStyle: style }, links } };
+    }),
   setVectorByCorridorsElevatorMarkerFillColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, fillColor: color } } })),
   setVectorByCorridorsElevatorMarkerBorderColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderColor: color } } })),
   setVectorByCorridorsElevatorMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.borderWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderWidth: v }, links } };
+    }),
   setVectorByCorridorsElevatorMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.gapWidth", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, gapWidth: v }, links } };
+    }),
   setVectorByCorridorsElevatorMarkerSize: (v) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
-        ...s.vectorByCorridorsSettings,
-        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, size: v },
-        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.size", false);
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, size: v }, links } };
+    }),
   setVectorByCorridorsSharedCornerStyle: (style) =>
     set((s) => {
-      const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, cornerStyle: style } };
-      return { vectorByCorridorsSettings: applyVectorByCorridorsSharedStyle(settings, ["cornerStyle"]) };
+      const settings = { ...s.vectorByCorridorsSettings, cornerStyle: style };
+      return { vectorByCorridorsSettings: propagate(settings, settings.links, ["cornerStyle"]) };
     }),
   setVectorByCorridorsSharedMarkerSize: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, markerSize: v } };
-      return { vectorByCorridorsSettings: applyVectorByCorridorsSharedStyle(settings, ["markerSize"]) };
+      const settings = { ...s.vectorByCorridorsSettings, markerSize: v };
+      return { vectorByCorridorsSettings: propagate(settings, settings.links, ["markerSize"]) };
     }),
   setVectorByCorridorsSharedMarkerBorderWidth: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, markerBorderWidth: v } };
-      return { vectorByCorridorsSettings: applyVectorByCorridorsSharedStyle(settings, ["markerBorderWidth"]) };
+      const settings = { ...s.vectorByCorridorsSettings, markerBorderWidth: v };
+      return { vectorByCorridorsSettings: propagate(settings, settings.links, ["markerBorderWidth"]) };
     }),
   setVectorByCorridorsSharedGapWidth: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, gapWidth: v } };
-      return { vectorByCorridorsSettings: applyVectorByCorridorsSharedStyle(settings, ["gapWidth"]) };
+      const settings = { ...s.vectorByCorridorsSettings, gapWidth: v };
+      return { vectorByCorridorsSettings: propagate(settings, settings.links, ["gapWidth"]) };
     }),
-  resetVectorByCorridorsSharedStyleField: (group, field) =>
+  resetVectorByCorridorsSharedStyleField: (target) =>
     set((s) => {
-      const overrides = withoutOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, group, field);
-      const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides } };
-      return { vectorByCorridorsSettings: applyVectorByCorridorsSharedStyle(settings, [group]) };
+      const { settings, links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target, true);
+      if (links === s.vectorByCorridorsSettings.links) return {};
+      return { vectorByCorridorsSettings: { ...settings, links } };
     }),
   forceVectorByCorridorsSharedStyle: () =>
-    set((s) => ({ vectorByCorridorsSettings: forceVectorByCorridorsSharedStyle(s.vectorByCorridorsSettings) })),
+    set((s) => {
+      const { settings, links } = forceLinks(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links);
+      return { vectorByCorridorsSettings: { ...settings, links } };
+    }),
   resetVectorByCorridorsSettings: () => set({ vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS }),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
@@ -478,13 +381,10 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByWallsRandomWallColorMode: (mode) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, randomWallColorMode: mode } })),
   setVectorByWallsWallJoin: (join) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        wallJoin: join,
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "wallJoin") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "wallJoin", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, wallJoin: join, links } };
+    }),
   setVectorByWallsWallThickness: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallThickness: v } })),
   setVectorByWallsOneWayPattern: (pattern) =>
@@ -498,89 +398,62 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByWallsOneWayThickness: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayThickness: v } })),
   setVectorByWallsOneWayJoin: (join) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        oneWayJoin: join,
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "oneWayJoin") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayJoin", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayJoin: join, links } };
+    }),
   setVectorByWallsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, shape } } })),
   setVectorByWallsStartMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        startMarker: { ...s.vectorByWallsSettings.startMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, cornerStyle: style }, links } };
+    }),
   setVectorByWallsStartMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, fillColor: color } } })),
   setVectorByWallsStartMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderColor: color } } })),
   setVectorByWallsStartMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        startMarker: { ...s.vectorByWallsSettings.startMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerBorderWidth", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.borderWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderWidth: v }, links } };
+    }),
   setVectorByWallsStartMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        startMarker: { ...s.vectorByWallsSettings.startMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.gapWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, gapWidth: v }, links } };
+    }),
   setVectorByWallsStartMarkerSize: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        startMarker: { ...s.vectorByWallsSettings.startMarker, size: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "startMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.size", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, size: v }, links } };
+    }),
   setVectorByWallsFinishMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, shape } } })),
   setVectorByWallsFinishMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        finishMarker: { ...s.vectorByWallsSettings.finishMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, cornerStyle: style }, links } };
+    }),
   setVectorByWallsFinishMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, fillColor: color } } })),
   setVectorByWallsFinishMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color } } })),
   setVectorByWallsFinishMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerBorderWidth", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.borderWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderWidth: v }, links } };
+    }),
   setVectorByWallsFinishMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        finishMarker: { ...s.vectorByWallsSettings.finishMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.gapWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, gapWidth: v }, links } };
+    }),
   setVectorByWallsFinishMarkerSize: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        finishMarker: { ...s.vectorByWallsSettings.finishMarker, size: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "finishMarker") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.size", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, size: v }, links } };
+    }),
   patchVectorByWallsVerticalSettings: (patch) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, ...patch } })),
   patchVectorByWallsDecorativeLineStyle: (section, patch) =>
@@ -598,168 +471,116 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       },
     })),
   patchVectorByWallsMarkerIndexSettings: (patch) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        markerIndex: { ...s.vectorByWallsSettings.markerIndex, ...patch },
-        // `gap` is a "Shared style" `gapWidth`-group member — editing it directly detaches it
-        // from the shared value (GitHub issue #471), same convention as the marker gap-ring setters.
-        ...(patch.gap !== undefined
-          ? { sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "markerIndex") } }
-          : {}),
-      },
-    })),
+    set((s) => {
+      let links = s.vectorByWallsSettings.links;
+      // `gap` is a "Shared style" `gapWidth`-group member — editing it directly detaches it from
+      // the shared value (GitHub issue #471), same convention as the marker gap-ring setters.
+      if (patch.gap !== undefined) links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, "markerIndex.gap", false).links;
+      return {
+        vectorByWallsSettings: {
+          ...s.vectorByWallsSettings,
+          markerIndex: { ...s.vectorByWallsSettings.markerIndex, ...patch },
+          links,
+        },
+      };
+    }),
   setVectorByWallsElevatorBadgesCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "elevatorBadges") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorBadges.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, cornerStyle: style }, links } };
+    }),
   setVectorByWallsTwoWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, shape } } })),
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, cornerStyle: style }, links } };
+    }),
   setVectorByWallsTwoWayPassageMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, fillColor: color } } })),
   setVectorByWallsTwoWayPassageMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, borderColor: color } } })),
   setVectorByWallsTwoWayPassageMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerBorderWidth", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.borderWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, borderWidth: v }, links } };
+    }),
   setVectorByWallsTwoWayPassageMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.gapWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, gapWidth: v }, links } };
+    }),
   setVectorByWallsTwoWayPassageMarkerSize: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, size: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "twoWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.size", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, size: v }, links } };
+    }),
   setVectorByWallsOneWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, shape } } })),
   setVectorByWallsOneWayPassageMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, cornerStyle: style }, links } };
+    }),
   setVectorByWallsOneWayPassageMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, fillColor: color } } })),
   setVectorByWallsOneWayPassageMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, borderColor: color } } })),
   setVectorByWallsOneWayPassageMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerBorderWidth", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.borderWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, borderWidth: v }, links } };
+    }),
   setVectorByWallsOneWayPassageMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.gapWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, gapWidth: v }, links } };
+    }),
   setVectorByWallsOneWayPassageMarkerSize: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, size: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "oneWayPassage") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.size", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, size: v }, links } };
+    }),
   setVectorByWallsElevatorMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, shape } } })),
   setVectorByWallsElevatorMarkerCornerStyle: (style) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, cornerStyle: style },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.cornerStyle", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, cornerStyle: style }, links } };
+    }),
   setVectorByWallsElevatorMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, fillColor: color } } })),
   setVectorByWallsElevatorMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderColor: color } } })),
   setVectorByWallsElevatorMarkerBorderWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerBorderWidth", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.borderWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderWidth: v }, links } };
+    }),
   setVectorByWallsElevatorMarkerGapWidth: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, gapWidth: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.gapWidth", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, gapWidth: v }, links } };
+    }),
   setVectorByWallsElevatorMarkerSize: (v) =>
-    set((s) => ({
-      vectorByWallsSettings: {
-        ...s.vectorByWallsSettings,
-        elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, size: v },
-        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "elevator") },
-      },
-    })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.size", false);
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, size: v }, links } };
+    }),
   patchVectorByWallsTeleportSettings: (patch) =>
     set((s) => {
-      // See `patchVectorByCorridorsTeleportSettings`'s own comment on this same pattern — the cast
-      // is hand-verified against `VectorByWallsSharedStyleOverrides`'s own shape.
-      const overridable: Record<string, [keyof VectorByWallsSharedStyleOverrides, string]> = {
-        teleportLineCornerStyle: ["cornerStyle", "teleportLine"],
-        teleportLineSize: ["markerSize", "teleportLine"],
-        teleportEdgeBorderWidth: ["markerBorderWidth", "teleportEdge"],
-        teleportEdgeGapWidth: ["gapWidth", "teleportEdge"],
-        teleportConnectorGapWidth: ["gapWidth", "teleportConnector"],
-      };
-      let overrides = s.vectorByWallsSettings.sharedStyle.overrides;
-      for (const key of Object.keys(patch)) {
-        const mapping = overridable[key];
-        if (mapping) {
-          overrides = withOverride(
-            overrides,
-            mapping[0],
-            mapping[1] as SharedStyleField<VectorByWallsSharedStyleOverrides, typeof mapping[0]>,
-          );
-        }
+      const overridable: VectorByWallsParamPath[] = [
+        "teleportLineCornerStyle",
+        "teleportLineSize",
+        "teleportEdgeBorderWidth",
+        "teleportEdgeGapWidth",
+        "teleportConnectorGapWidth",
+      ];
+      let links = s.vectorByWallsSettings.links;
+      for (const target of overridable) {
+        if (patch[target as keyof typeof patch] !== undefined) links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
       }
-      return {
-        vectorByWallsSettings: {
-          ...s.vectorByWallsSettings,
-          ...patch,
-          sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides },
-        },
-      };
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, ...patch, links } };
     }),
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
@@ -780,32 +601,35 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, splitSpecialShapes: v } })),
   setVectorByWallsSharedCornerStyle: (style) =>
     set((s) => {
-      const settings = { ...s.vectorByWallsSettings, sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, cornerStyle: style } };
-      return { vectorByWallsSettings: applyVectorByWallsSharedStyle(settings, ["cornerStyle"]) };
+      const settings = { ...s.vectorByWallsSettings, cornerStyle: style };
+      return { vectorByWallsSettings: propagate(settings, settings.links, ["cornerStyle"]) };
     }),
   setVectorByWallsSharedMarkerSize: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByWallsSettings, sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, markerSize: v } };
-      return { vectorByWallsSettings: applyVectorByWallsSharedStyle(settings, ["markerSize"]) };
+      const settings = { ...s.vectorByWallsSettings, markerSize: v };
+      return { vectorByWallsSettings: propagate(settings, settings.links, ["markerSize"]) };
     }),
   setVectorByWallsSharedMarkerBorderWidth: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByWallsSettings, sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, markerBorderWidth: v } };
-      return { vectorByWallsSettings: applyVectorByWallsSharedStyle(settings, ["markerBorderWidth"]) };
+      const settings = { ...s.vectorByWallsSettings, markerBorderWidth: v };
+      return { vectorByWallsSettings: propagate(settings, settings.links, ["markerBorderWidth"]) };
     }),
   setVectorByWallsSharedGapWidth: (v) =>
     set((s) => {
-      const settings = { ...s.vectorByWallsSettings, sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, gapWidth: v } };
-      return { vectorByWallsSettings: applyVectorByWallsSharedStyle(settings, ["gapWidth"]) };
+      const settings = { ...s.vectorByWallsSettings, gapWidth: v };
+      return { vectorByWallsSettings: propagate(settings, settings.links, ["gapWidth"]) };
     }),
-  resetVectorByWallsSharedStyleField: (group, field) =>
+  resetVectorByWallsSharedStyleField: (target) =>
     set((s) => {
-      const overrides = withoutOverride(s.vectorByWallsSettings.sharedStyle.overrides, group, field);
-      const settings = { ...s.vectorByWallsSettings, sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides } };
-      return { vectorByWallsSettings: applyVectorByWallsSharedStyle(settings, [group]) };
+      const { settings, links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, target, true);
+      if (links === s.vectorByWallsSettings.links) return {};
+      return { vectorByWallsSettings: { ...settings, links } };
     }),
   forceVectorByWallsSharedStyle: () =>
-    set((s) => ({ vectorByWallsSettings: forceVectorByWallsSharedStyle(s.vectorByWallsSettings) })),
+    set((s) => {
+      const { settings, links } = forceLinks(s.vectorByWallsSettings, s.vectorByWallsSettings.links);
+      return { vectorByWallsSettings: { ...settings, links } };
+    }),
   resetVectorByWallsSettings: () => set({ vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS }),
   setHoveredExportWarningKey: (key) => set({ hoveredExportWarningKey: key }),
 });

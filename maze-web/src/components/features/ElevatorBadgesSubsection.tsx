@@ -1,5 +1,6 @@
 import type * as React from "react";
-import type { ElevatorBadgeSettings, VectorByWallsSharedStyleOverrides } from "../../store/storeTypes";
+import type { ElevatorBadgeSettings } from "../../store/storeTypes";
+import type { ParamLink } from "../../store/parameterLinks";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
@@ -14,13 +15,15 @@ import * as m from "~/paraglide/messages";
  *  collapsible, same convention as "Marker"/"Arrow" (`VectorByWallsSettingsPanel`). Independent of
  *  `verticalStyle`: rendered under both the abstract and decorative elevator sub-groups, since a
  *  floor-number badge ring is its own decorative layer on top of whichever elevator look is active
- *  (`VerticalConnectionRenderer.drawElevatorBadges`). `cornerStyle` is "Shared style"-tracked
- *  (GitHub issue #430 follow-up — same `elevatorBadges` group key as `elevatorMarker.cornerStyle`'s
- *  own `elevator` key), so it needs the override map + its own change handler instead of going
- *  through the plain `onChange` patch used by every other field here. */
-export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onChange, onCornerStyleChange, onResetCornerStyle, fillColorPriority, textColorPriority, fillColorDefault, textColorDefault, fillColorFieldName, textColorFieldName }: {
+ *  (`VerticalConnectionRenderer.drawElevatorBadges`). `cornerStyle` is "Shared style"-linked
+ *  (GitHub issue #430 follow-up, generalized by #643 — its own `"elevatorBadges.cornerStyle"` link,
+ *  same as `elevatorMarker.cornerStyle`'s own), so it needs `links`/`cornerStyleTarget` + its own
+ *  change handler instead of going through the plain `onChange` patch used by every other field
+ *  here. Shared by both render modes, so `P` is generic over each mode's own `ParamPath` union. */
+export function ElevatorBadgesSubsection<P extends string>({ settings, links, cornerStyleTarget, onChange, onCornerStyleChange, onResetCornerStyle, fillColorPriority, textColorPriority, fillColorDefault, textColorDefault, fillColorFieldName, textColorFieldName }: {
   settings: ElevatorBadgeSettings;
-  sharedStyleOverrides: VectorByWallsSharedStyleOverrides;
+  links: ParamLink<P>[];
+  cornerStyleTarget: P;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
   onResetCornerStyle: () => void;
@@ -87,11 +90,11 @@ export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onCha
               label={m["image_export.vector_by_walls.marker_corner_style"]()}
               value={settings.cornerStyle}
               options={[
-                { value: "sharp", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+                { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
                 { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
               ]}
               onChange={onCornerStyleChange}
-              resetButton={sharedStyleFieldReset(sharedStyleOverrides, "cornerStyle", "elevatorBadges", onResetCornerStyle)}
+              resetButton={sharedStyleFieldReset(links, cornerStyleTarget, onResetCornerStyle)}
             />
             <SliderRow
               label={m["image_export.vector_by_walls.elevator_badges_size"]()}

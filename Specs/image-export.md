@@ -112,7 +112,7 @@ Sections:
 
   Rendered by `VerticalConnectionRenderer` (`pixi/renderers/`), its own instance per `maze-web/CLAUDE.md`'s feature-renderer ownership rule — factored out as a standalone low-level primitive (alongside `WaypointsRenderer`/`TeleportRenderer`) specifically so a future floor-aware `GenerationRenderer` could own its own instance the same way.
 
-  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`'s `cornerStyle`/`size`/`borderWidth`/`gapWidth` are wired into "Shared style" (GitHub issue #322 follow-up) the same mechanism `startMarker`/`finishMarker` use — a `twoWayPassage`/`oneWayPassage`/`elevator` entry in each of `VectorByWallsSharedStyleOverrides`' four group records, `applyVectorByWallsSharedStyle`/`reconcileVectorByWallsSharedStyle`, and the panel's own per-field `OverrideResetButton`s on each sub-group's `MarkerSettingsGroup` corner-style/size/border-width/gap-width rows — but **start out pre-overridden** in all four groups (`DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE.overrides`), unlike `startMarker`/`finishMarker` (which start out following the shared value). This is deliberate: all three vertical markers' own default (`DEFAULT_VERTICAL_SETTINGS`) is derived from `DEFAULT_MAZE_RENDER_STYLE.verticalConnections` (also exposed to existing live-canvas callers through the `DEFAULT_VERTICAL_STYLE` alias) — border width 3 for all three of `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` — raised from `2` in GitHub issue #347's sixth follow-up for the first two, seventh follow-up for `elevatorMarker`; size 0.22 for all three, rather than the Shared style baseline (border width 3, size 0.16) — all three markers' own border width now happens to already match the shared baseline, so reconcile no longer auto-marks any of them overridden for that field — so the exported image looks identical to the editor view until changed — the user can still pull a field back onto the shared value via its own reset button. `shape`/`fillColor`/`borderColor` stay independent, same as `startMarker`/`finishMarker`'s own fill/border colors. Default fill colors are chosen so the three sub-groups read apart out of the box: all three fill with `canvas.vertical.default` (elevator additionally uses a diamond shape to read apart from the passage's circle) — a one-way passage's two ends are told apart from each other (and from the two-way/elevator look) by the dark-accent redesign below, not by a distinct base fill color.
+  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`'s `cornerStyle`/`size`/`borderWidth`/`gapWidth` are wired into "Shared style" (GitHub issue #322 follow-up, generalized to the generic `ParamLink` engine by #643) the same mechanism `startMarker`/`finishMarker` use — a `"twoWayPassageMarker.<field>"`/`"oneWayPassageMarker.<field>"`/`"elevatorMarker.<field>"` link per group in `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, and the panel's own per-field `OverrideResetButton`s on each sub-group's `MarkerSettingsGroup` corner-style/size/border-width/gap-width rows — but those links **start `enabled: false`** in all four groups, unlike `startMarker`/`finishMarker` (whose links start out enabled, following the shared value). This is deliberate: all three vertical markers' own default (`DEFAULT_VERTICAL_SETTINGS`) is derived from `DEFAULT_MAZE_RENDER_STYLE.verticalConnections` (also exposed to existing live-canvas callers through the `DEFAULT_VERTICAL_STYLE` alias) — border width 3 for all three of `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` — raised from `2` in GitHub issue #347's sixth follow-up for the first two, seventh follow-up for `elevatorMarker`; size 0.22 for all three, rather than the Shared style baseline (border width 3, size 0.16) — so the exported image looks identical to the editor view until changed — the user can still pull a field onto the shared value via its own reset button. `shape`/`fillColor`/`borderColor` stay independent, same as `startMarker`/`finishMarker`'s own fill/border colors. Default fill colors are chosen so the three sub-groups read apart out of the box: all three fill with `canvas.vertical.default` (elevator additionally uses a diamond shape to read apart from the passage's circle) — a one-way passage's two ends are told apart from each other (and from the two-way/elevator look) by the dark-accent redesign below, not by a distinct base fill color.
 
   **One-way passage redesign** (GitHub issue #347 fourth/fifth follow-up): a one-way `VerticalPassage`'s two markers (`filled: false` on both ends, `VerticalConnectionMarker`'s own doc comment) no longer draw an empty/floor-colored circle distinguished only by an outline-vs-solid arrow. Instead both ends now read as an accented variant of the ordinary two-way/elevator look, driven by exactly two colors — **primary** and **secondary** (GitHub issue #347 fifth follow-up, replacing the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the same accent anyway): the primary color is just the marker's own ordinary `fillColor` — no dedicated field of its own; the secondary color is one field, `oneWayAccentColor` (`VerticalSettingsFields`). The **departure end** (`arrowFilled: true`, this marker's own node is the edge's `from`) draws the primary fill with its border recolored to `oneWayAccentColor` — an accent marking "you can leave from here"; the **arrival end** (`arrowFilled: false`, this marker's own node is the edge's `to`) draws its *entire* fill in `oneWayAccentColor` instead, with no separate border color, reading as sealed off — no way back out (GitHub issue #428 sixth follow-up swapped which end gets which treatment from an earlier, backwards version of this same redesign: the arrival end must be the fully-darkened one, the departure end the light-with-border one). `oneWayAccentColor` defaults to a fixed value (`ONE_WAY_ACCENT_DARK`, `0x196c64`, a darker shade of the primary teal `canvas.vertical.default`/`#2ec4b6` — the fifth follow-up's `0x2a2a2a` was replaced with a lighter, but too-gray, `0x5a9c94`, then the sixth follow-up settled on this same-hue darker shade instead per user feedback, defined once per file that needs it per the feature-renderer ownership rule — `imageExportDefaults.ts` and each fixed-style live-canvas renderer), independently adjustable via the panel's own single "Secondary color" row (renamed from "Accent color" in GitHub issue #347's seventh follow-up — the i18n key itself, `one_way_accent_color`, is unchanged; `oneWayAccentColor` in `patchVectorByWallsVerticalSettings`'s own field allowlist). The one-way sub-group's `MarkerSettingsGroup` hides its own "Border color" row (`hideBorderColor`, `MarkerSettingsGroup.tsx`) since `oneWayPassageMarker.borderColor` is no longer read by the renderer for a one-way marker — showing it would be a dead control.
 
@@ -122,7 +122,7 @@ Sections:
 
   **`vertical_on_special_split` export warning** — mirrors `waypoint_on_split`/`teleport_on_special_split`: a marker's `from` node lands on a split point recognized as a special shape (bridge/diagonal), only when `splitSpecialShapes` is on. Folded into `computeVectorByWallsWarnings` (`exportWarnings.ts`), "Vector by walls"-only — "Vector by corridors" has no vertical-connection reading of its own.
 
-  **Elevator floor-number badges** ("Floor badges" section, GitHub issue #430) — a small ring of badges around an `Elevator` marker, one per floor its own node's fan actually reaches, layered on top of whichever `verticalStyle` is active (abstract or decorative alike — orthogonal to marker look, since it's drawn by the same `VerticalConnectionRenderer` regardless of which marker-drawing branch ran). Off by default (`elevatorBadges.enabled`). Which floors to badge is resolved once in `buildVerticalConnectionMarkers` (`mazeSelectors/vertical.ts`): `VerticalConnectionMarker.targetFloorIndices` collects every distinct floor an `Elevator`'s own fan of edges (all edges sharing that marker's `from` node) resolves to via `resolveNodeLevel`, deduplicated and sorted ascending — `undefined` for a `vertical_passage` marker (already covered by the singular `targetFloorIndex`) and for an `elevator` marker whose fan resolves no floor at all. Settings (`ElevatorBadgeSettings`, `imageExportTypes.ts`): `enabled`, `labelType` (`"arabic"`/`"roman"`/`"letters"` — a badge always displays `targetFloorIndex + 1`, the same 1-based convention `drawFloorBadge` uses, formatted by `formatElevatorBadgeLabel`), `size` (fraction of the elevator marker's own radius, unclamped past the settings panel's own 0.1-1 slider range), `placement` (`"full_circle"`/`"left_right"`/`"right_left"`/`"top_bottom"`/`"bottom_top"`, `"full_circle"` listed and offered first in the panel — see below), `evenDistribution` (off by default — see below), `distance` (px past the marker's own radius), `gap` (px between adjacent badges' own edges, default `2` — badges never touch by default, unlike `distance` which defaults to allowing it; disabled in the settings panel only for `"full_circle"` *with* `evenDistribution` on, since that's the one combination where it has no effect), `gapWidth` (px, default `2` — a floor-colored ring drawn around each badge's own border, same visual convention `MarkerSettings.gapWidth`/`WaypointsRenderer`'s gap ring uses: within one elevator's own badge set, all gap rings draw first, then all badge fills on top, so a neighboring badge's gap ring can never end up drawn over an already-drawn badge's own fill (`drawElevatorBadgeGap`/`drawElevatorBadgeBody`, round-4 GitHub issue #430 follow-up two-pass split of what used to be one combined per-badge draw call). Colored from `elevatorMarker.gapColor`, which already mirrors the caller's own floor color — no separate floor-color parameter threaded through for this. **Still no inter-badge collision handling** — a gap ring can still overlap a neighboring badge's own gap ring; only the fill-never-covered guarantee above is new), `cornerStyle` (`TeleportCornerStyle`, default `"round"` — drives polygon-shape corner rounding for badges, reusing `optTeleportCornerStyle` for validation; wired into "Shared style" (GitHub issue #322 follow-up) the same mechanism `elevatorMarker.cornerStyle` uses — an `elevatorBadges` entry in `VectorByWallsSharedStyleOverrides.cornerStyle` alone (badges have no shared `markerSize`/`markerBorderWidth`/`gapWidth` group membership, only their own independent `gapWidth` field above), `applyVectorByWallsSharedStyle`/`reconcileVectorByWallsSharedStyle`, `setVectorByWallsElevatorBadgesCornerStyle` marking the override before writing, and the panel's own `OverrideResetButton` on the corner-style row — starts out pre-overridden in `DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE.overrides`, same as `twoWayPassage`/`oneWayPassage`/`elevator`), `shape` (`MarkerShape`, same shapes `MarkerSettings` offers — purely visual, no border of its own), `fillColor`, `textColor` — independently visible fill and text colors, not the knockout/cutout text `drawFloorBadge`'s off-floor navigation stand-in uses, since these badges carry no click-to-navigate behavior of their own; `fontWeight` (`"regular"`/`"bold"`, default `"bold"` — selects the regular vs. bold baked MSDF atlas via `msdfFontFamily`, see `maze-web/Specs/renderer.md`'s "MSDF label font"; each weight is a separately baked atlas, since MSDF glyph shapes can't be synthesized bold at runtime. A `"semibold"` third option was tried and dropped back when badges used pixi `Text` — the canvas font had no real semibold face, so pixi rounded weight `"600"` up to the same rendered result as `"bold"`; there is likewise no semibold atlas). A badge's own font size scales proportionally with `size` (no fixed floor under it), so a small badge never draws with disproportionately oversized text — but the actual size used is shared across *every* elevator badge drawn in one render pass, not just one marker's own fan (`fitElevatorBadgeFontSize`, computed once in `VerticalConnectionRenderer.render` over every elevator's own `targetFloorIndices`, round-4 GitHub issue #430 follow-up): scaled down from the `radius * 1.4` baseline only as far as needed to fit the single widest label across the whole maze (e.g. `"roman"`'s `"VIII"` on one elevator vs. `"I"` on another) within `radius * 1.6`, so every badge in the image reads at the same size — an elevator reaching only floor 2 draws its badge no larger than one elsewhere reaching floor 8.
+  **Elevator floor-number badges** ("Floor badges" section, GitHub issue #430) — a small ring of badges around an `Elevator` marker, one per floor its own node's fan actually reaches, layered on top of whichever `verticalStyle` is active (abstract or decorative alike — orthogonal to marker look, since it's drawn by the same `VerticalConnectionRenderer` regardless of which marker-drawing branch ran). Off by default (`elevatorBadges.enabled`). Which floors to badge is resolved once in `buildVerticalConnectionMarkers` (`mazeSelectors/vertical.ts`): `VerticalConnectionMarker.targetFloorIndices` collects every distinct floor an `Elevator`'s own fan of edges (all edges sharing that marker's `from` node) resolves to via `resolveNodeLevel`, deduplicated and sorted ascending — `undefined` for a `vertical_passage` marker (already covered by the singular `targetFloorIndex`) and for an `elevator` marker whose fan resolves no floor at all. Settings (`ElevatorBadgeSettings`, `imageExportTypes.ts`): `enabled`, `labelType` (`"arabic"`/`"roman"`/`"letters"` — a badge always displays `targetFloorIndex + 1`, the same 1-based convention `drawFloorBadge` uses, formatted by `formatElevatorBadgeLabel`), `size` (fraction of the elevator marker's own radius, unclamped past the settings panel's own 0.1-1 slider range), `placement` (`"full_circle"`/`"left_right"`/`"right_left"`/`"top_bottom"`/`"bottom_top"`, `"full_circle"` listed and offered first in the panel — see below), `evenDistribution` (off by default — see below), `distance` (px past the marker's own radius), `gap` (px between adjacent badges' own edges, default `2` — badges never touch by default, unlike `distance` which defaults to allowing it; disabled in the settings panel only for `"full_circle"` *with* `evenDistribution` on, since that's the one combination where it has no effect), `gapWidth` (px, default `2` — a floor-colored ring drawn around each badge's own border, same visual convention `MarkerSettings.gapWidth`/`WaypointsRenderer`'s gap ring uses: within one elevator's own badge set, all gap rings draw first, then all badge fills on top, so a neighboring badge's gap ring can never end up drawn over an already-drawn badge's own fill (`drawElevatorBadgeGap`/`drawElevatorBadgeBody`, round-4 GitHub issue #430 follow-up two-pass split of what used to be one combined per-badge draw call). Colored from `elevatorMarker.gapColor`, which already mirrors the caller's own floor color — no separate floor-color parameter threaded through for this. **Still no inter-badge collision handling** — a gap ring can still overlap a neighboring badge's own gap ring; only the fill-never-covered guarantee above is new), `cornerStyle` (`TeleportCornerStyle`, default `"round"` — drives polygon-shape corner rounding for badges, reusing `optTeleportCornerStyle` for validation; wired into "Shared style" (GitHub issue #322 follow-up, generalized by #643) the same mechanism `elevatorMarker.cornerStyle` uses — an `"elevatorBadges.cornerStyle"` link in `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` alone (badges have no shared `markerSize`/`markerBorderWidth`/`gapWidth` group membership, only their own independent `gapWidth` field above), `setVectorByWallsElevatorBadgesCornerStyle` disabling that link before writing, and the panel's own `OverrideResetButton` on the corner-style row — that link starts `enabled: false`, same as `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`'s own), `shape` (`MarkerShape`, same shapes `MarkerSettings` offers — purely visual, no border of its own), `fillColor`, `textColor` — independently visible fill and text colors, not the knockout/cutout text `drawFloorBadge`'s off-floor navigation stand-in uses, since these badges carry no click-to-navigate behavior of their own; `fontWeight` (`"regular"`/`"bold"`, default `"bold"` — selects the regular vs. bold baked MSDF atlas via `msdfFontFamily`, see `maze-web/Specs/renderer.md`'s "MSDF label font"; each weight is a separately baked atlas, since MSDF glyph shapes can't be synthesized bold at runtime. A `"semibold"` third option was tried and dropped back when badges used pixi `Text` — the canvas font had no real semibold face, so pixi rounded weight `"600"` up to the same rendered result as `"bold"`; there is likewise no semibold atlas). A badge's own font size scales proportionally with `size` (no fixed floor under it), so a small badge never draws with disproportionately oversized text — but the actual size used is shared across *every* elevator badge drawn in one render pass, not just one marker's own fan (`fitElevatorBadgeFontSize`, computed once in `VerticalConnectionRenderer.render` over every elevator's own `targetFloorIndices`, round-4 GitHub issue #430 follow-up): scaled down from the `radius * 1.4` baseline only as far as needed to fit the single widest label across the whole maze (e.g. `"roman"`'s `"VIII"` on one elevator vs. `"I"` on another) within `radius * 1.6`, so every badge in the image reads at the same size — an elevator reaching only floor 2 draws its badge no larger than one elsewhere reaching floor 8.
 
   **Gap-then-fill draw order** (round-4 GitHub issue #430 follow-up) — `drawElevatorBadges` draws every badge's own gap ring first, then every badge's own body second (`drawElevatorBadgeGap`/`drawElevatorBadgeBody`, split out of what was one combined per-badge draw call), rather than gap-then-body-then-gap-then-body per badge in sequence. A badge's `gapWidth` ring still never actively avoids a neighboring badge (see above — no inter-badge collision handling), but the two-pass order guarantees a badge's own fill is never drawn *underneath* a neighboring badge's gap ring — only the reverse (a gap ring can still visually extend into a neighbor's own gap ring, never into that neighbor's actual body).
 
@@ -315,10 +315,10 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `floorColor` field. Every vertical marker also gets its own widen patch under the corridor stroke
   (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Cells section's
   `markerWidenPadding`/`markerWidenShape` the same way `buildTeleportWidenMarkers` does. "Shared
-  style" integration (GitHub issue #322) is identical to "Vector by walls"': `twoWayPassage`/
-  `oneWayPassage`/`elevator`/`elevatorBadges` entries in `VectorByCorridorsSharedStyleOverrides`, all
-  four starting pre-overridden in `DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE.overrides` so the export
-  matches the editor's fixed vertical-connection look until changed. **Deliberately no
+  style" integration (GitHub issue #322, generalized by #643) is identical to "Vector by walls"':
+  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges`' own `cornerStyle`/
+  `size`/`borderWidth`/`gapWidth` links all start `enabled: false` in `DEFAULT_VECTOR_BY_CORRIDORS_LINKS`
+  so the export matches the editor's fixed vertical-connection look until changed. **Deliberately no
   `vertical_on_special_split`-equivalent export warning** — `computeVectorByCorridorsWarnings` has no
   vertical-connection reading of its own, matching "Vector by corridors"' existing no-vertical-warning
   behavior (see the note under "Vector by walls"' own `vertical_on_special_split` warning above).
@@ -452,85 +452,102 @@ distinguish, so both getters return the same value. Background color is not yet 
 — always `canvas.stage.background` (`resolveBackgroundColor`'s `"vector_by_corridors"` case), a
 follow-up sub-issue's concern.
 
-### "Shared style" — centralized marker/corner-style settings (GitHub issue #322)
+### "Shared style" — centralized marker/corner-style settings (GitHub issue #322, generalized to a generic parameter-link engine by #643)
 
 Both render mode settings panels have a "Shared style" section, always the first section (before
-"Background"), backed by `VectorByWallsSettings.sharedStyle`/`VectorByCorridorsSettings.sharedStyle`
-(`VectorByWallsSharedStyle`/`VectorByCorridorsSharedStyle`, `storeTypes.ts`). It centralizes four
-values that would otherwise need editing separately on every marker-like field that conceptually
-shares them:
+"Background"). It centralizes four ordinary top-level settings fields (`cornerStyle`, `markerSize`,
+`markerBorderWidth`, `gapWidth` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
+into both `VectorByWallsSettings` and `VectorByCorridorsSettings`) that would otherwise need editing
+separately on every marker-like field that conceptually shares them:
 
 | Shared value | Default | Drives |
 |---|---|---|
-| `cornerStyle` (sharp/round) | round | `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.cornerStyle` (GitHub issue #347 follow-ups), and each mode's own wall/corridor join field (`wallJoin`+`oneWayJoin` for "Vector by walls", `join`+`oneWayJoin` for "Vector by corridors") |
-| `markerSize` | 0.16 | `startMarker`/`finishMarker.size`, `teleportLineSize`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.size` |
-| `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportEdgeBorderWidth`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
-| `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportEdgeGapWidth`, `teleportConnectorGapWidth`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
+| `cornerStyle` (`CornerStyle` = `"round" \| "miter"`) | round | `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges.cornerStyle` (GitHub issue #347/#430 follow-ups), and each mode's own wall/corridor join field (`wallJoin`+`oneWayJoin` for "Vector by walls", `join`+`oneWayJoin` for "Vector by corridors") |
+| `markerSize` | 0.16 | `startMarker`/`finishMarker.size`, `teleportLineSize`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.size` |
+| `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportEdgeBorderWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
+| `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportEdgeGapWidth`, `teleportConnectorGapWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
 
-`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` start pre-overridden in all four groups
-(see the "Vertical connections" section above), so out of the box they keep their own default look
-(`DEFAULT_VERTICAL_SETTINGS`, matching `GenerationRenderer`) rather than the shared values above —
-listed here as what they'd follow once un-overridden via their own reset button.
+`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges` start with their
+link's `enabled: false` in all groups that apply to them (see the "Vertical connections" section
+above), so out of the box they keep their own default look (`DEFAULT_VERTICAL_SETTINGS`, matching
+`GenerationRenderer`) rather than the shared values above — listed here as what they'd follow once
+their link is re-enabled via their own reset button.
 
-`cornerStyle` drives two differently-spelled enums at once — `sharp` maps to the wall/corridor join
-field's `"miter"`, `round` maps to its own `"round"` (`cornerStyleToJoin`,
-`imageExportSliceHelpers.ts`) — since both enums mean the same visual intent (sharp vs. rounded
-corners) despite the value-name mismatch.
+**Engine (`parameterLinks.ts`/`parameterLinksEngine.ts`, GitHub issue #643).** Behind the four rows
+above is a generic parameter-link graph, not a hardcoded 4-group mechanism. `ParamLink<P>` is a
+`{ id, source, target, enabled }` triple over `P` — a per-mode path union
+(`VectorByWallsParamPath`/`VectorByCorridorsParamPath`, `parameterLinksRegistry.ts`) type-checked
+against that mode's own `VECTOR_BY_WALLS_PARAM_REGISTRY`/`VECTOR_BY_CORRIDORS_PARAM_REGISTRY`, which
+maps every linkable path (dot-path for a one-level-nested field, e.g. `"startMarker.cornerStyle"`)
+to a `ParamDescriptor` (`{ type, equals }`) — same-`type` (`"number" | "color" | "cornerStyle" |
+"join"`) is the only constraint on what can link to what; `equals` defaults to `Object.is`.
+`settings.links: ParamLink<...>[]` (in-memory only — see "Not persisted" below) holds the live graph
+for that mode, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`
+(`parameterLinksDefaults.ts`), which reproduce the table above as plain equality links (each link's
+`enabled: false` is exactly the old "override" state). A link's `target` has at most one incoming
+link (`validateLinkGraph` enforces this, plus acyclicity and type-matching, over the `DEFAULT_*`
+constants as a consistency guard) — so "is this field overridden" is just "is the link whose
+`target` is this field's path `enabled: false`", never a matrix.
 
-**Override mechanics.** Each dependent field carries its own override flag in
-`sharedStyle.overrides` (`VectorByWallsSharedStyleOverrides`/`VectorByCorridorsSharedStyleOverrides`
-— a sparse `{ [group]: { [field]: true } }` map, same "absent means default, `true` means
-overridden" convention `TeleportGroupOverride` uses), not a per-group single bit — so overriding
-`startMarker.size` directly leaves `finishMarker.size`/`teleportLineSize` still following the shared
-`markerSize`. Editing a dependent field through its own per-mode setter (e.g.
-`setVectorByWallsStartMarkerSize`) both writes the value and marks that field overridden
-(`withOverride`); editing the shared value itself (`setVectorByWallsSharedMarkerSize`) re-applies it
-to every field in that group *not* marked overridden (`applyVectorByWallsSharedStyle`/
-`applyVectorByCorridorsSharedStyle`). Each dependent field's own settings-panel row carries a
-per-field reset button (`OverrideResetButton`, mirroring `TeleportGroupRow`'s own reset-icon
-convention) — dim/inert while the field still follows the shared value, active once overridden;
-clicking it clears that one field's override flag and re-applies the shared value
-(`resetVectorBy*SharedStyleField`). Built into `SliderRow`/`SelectRow`'s own optional `resetButton`
-prop (a trailing control that shrinks the slider's own track, never the label) rather than a
-`ColorRow` prop, since no dependent field's color is centralized — only shape-adjacent geometry
-(corner style, size, border width, gap width), not fill/border color, is shared.
+Propagation (`propagate(settings, links, changedPaths)`) is a BFS over enabled edges starting from
+`changedPaths`, so a future chain `A -> B -> C` (not present in the current `DEFAULT_*_LINKS`, which
+are all one level deep, but supported by the engine) would carry a change at `A` through to `C`
+transitively. Editing the shared value itself (`setVectorByWallsSharedMarkerSize`, etc.) calls
+`propagate(settings, links, [sourcePath])`; editing a dependent field through its own per-mode
+setter (e.g. `setVectorByWallsStartMarkerSize`) calls `setLinkEnabledByTarget(settings, links,
+targetPath, false)` — writes the value itself and disables that field's incoming link, so sibling
+fields in the same group keep following the shared value. Each dependent field's own settings-panel
+row carries a per-field reset button (`OverrideResetButton`, via `sharedStyleFieldReset(links,
+target, onReset)` in `SharedStyleSection.tsx`), addressing the field directly by its own concrete
+`ParamPath` (e.g. `"startMarker.cornerStyle"`) rather than any indirect `(group, field)` scheme — dim/
+inert while the link is enabled, active once disabled; clicking it calls `setLinkEnabledByTarget(...,
+true)` (`resetVectorBy*SharedStyleField(target)`), which also re-propagates from that link's `source`
+so the field immediately snaps back to the shared value.
+Built into `SliderRow`/`SelectRow`'s own optional `resetButton` prop (a trailing control that
+shrinks the slider's own track, never the label) rather than a `ColorRow` prop, since no dependent
+field's color is centralized — only shape-adjacent geometry (corner style, size, border width, gap
+width), not fill/border color, is shared.
 
 Every `ColorRow` / `ColorSwatch` in these panels opens the custom color picker
 (`Specs/color-picker.md`, GitHub issue #499) rather than the browser-native color popup; the
 `resetButton` wiring above is unchanged by that.
 
-The section's own two buttons: **"Synchronize"** clears every override across every group at once,
-re-applying all four shared values to every dependent field
-(`forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`); **"Reset all settings"**
-restores the whole render mode's settings object (shared style included, overrides cleared) to its
-defaults (`resetVectorByWallsSettings`/`resetVectorByCorridorsSettings`) — a full-panel reset, not
-scoped to shared style alone.
+The section's own two buttons: **"Synchronize"** enables every link and propagates every shared
+value to every dependent field at once (`forceLinks`, called via
+`forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`); **"Reset all settings"**
+restores the whole render mode's settings object (including `links`, reseeded from
+`DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`) to its defaults
+(`resetVectorByWallsSettings`/`resetVectorByCorridorsSettings`) — a full-panel reset, not scoped to
+shared style alone.
 
 **Defaults are derived, not duplicated.** `DEFAULT_MAZE_RENDER_STYLE`
 (`pixi/defaultMazeRenderStyle.ts`) is the store-independent runtime source for the live canvas and
 the matching parts of `DEFAULT_VECTOR_BY_WALLS_SETTINGS`: background/grid/floor, walls, one-ways,
 start/finish markers, teleports, vertical connections, and split rendering. Low-level renderers
-read only their own section; `imageExportDefaults.ts` maps those sections into persisted
-`VectorByWallsSettings`, deliberately dropping runtime-only fields such as marker `gapColor`.
-Export-only state (group customization, `teleportAvoidFieldExit`, decorative vertical settings,
-enabled elevator badges, and Shared-style override bookkeeping) remains in the export model.
-`applyVectorByWallsSharedStyle`/`applyVectorByCorridorsSharedStyle` still reconcile fields controlled
-by the Shared style panel, but their baseline values originate in the canonical runtime style.
+read only their own section; `imageExportDefaults.ts` assembles those sections plus the four shared
+values into a placeholder settings object and runs it through one `propagate(..., DEFAULT_*_LINKS,
+["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"])` call, so every non-disabled
+dependent field's default is derived from the shared value rather than duplicated by hand; a
+disabled-by-default link's field (the four vertical-marker groups above) keeps whatever literal
+value `DEFAULT_VERTICAL_SETTINGS`/`DEFAULT_VERTICAL_DECORATIVE_SETTINGS` supplied instead, since
+`propagate` skips disabled edges. Export-only state (group customization,
+`teleportAvoidFieldExit`, decorative vertical settings, enabled elevator badges, and `links` itself)
+remains in the export model, not the runtime style.
 
-**No migration for project files predating this feature** — per project policy, `validate.ts`'s
-`validateVectorByWallsSharedStyle`/`validateVectorByCorridorsSharedStyle` simply default a missing
-`sharedStyle` key to `DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE`/`DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE`
-like any other optional section. That alone would leave a stale gap, though: a pre-#322 file's
-`startMarker.size` (etc.) keeps its own saved value while `sharedStyle` silently defaults, with no
-override recorded — so a later edit to the shared value would otherwise snap that field to the
-shared default and discard the loaded value with no warning. `reconcileVectorByWallsSharedStyle`/
-`reconcileVectorByCorridorsSharedStyle` close that gap: called once right after
-`validateVectorByWallsSettings`/`validateVectorByCorridorsSettings` assemble the full settings
-object, they compare every dependent field's *actual* (loaded) value against `sharedStyle`'s own
-restored value and mark any mismatch overridden — never touching the field's own value, only which
-fields the four shared values are still allowed to drive going forward. The same reconciliation
-also covers a hand-edited project file whose `sharedStyle` and dependent-field values simply
-disagree for any other reason.
+**Not persisted (GitHub issue #643's own scope cut, deferred to a future ticket).** `links` is
+in-memory-only — `validateVectorByWallsSettings`/`validateVectorByCorridorsSettings`
+(`validateImageExport.ts`) always reseed it fresh from `DEFAULT_VECTOR_BY_WALLS_LINKS`/
+`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` on load, ignoring whatever a saved project file's own `links`
+key (if any) contains. The four shared-style source values themselves (`cornerStyle`/`markerSize`/
+`markerBorderWidth`/`gapWidth`) are ordinary persisted fields, validated/defaulted like any other
+settings field. **Consequence:** a link a user disabled by editing a dependent field directly (e.g.
+a custom `startMarker.size` no longer following the shared `markerSize`) does not survive a
+save/reload round-trip — after reload, that field's link is back to whatever `DEFAULT_*_LINKS` says,
+even though the field's own saved *value* is preserved and will keep displaying correctly right
+until the shared value is next edited, at which point the field snaps to it unexpectedly. This is a
+deliberate, known gap (`reconcileLinks`, `parameterLinksEngine.ts`, exists and is tested for exactly
+this purpose but is not yet wired into `validateImageExport.ts`), not an oversight — persisting
+`links` and reconciling a loaded file's actual field values against them is out of scope for #643.
 
 ### Widening a corridor under a marker (`drawMarkerWidenPatches`, `pixi/renderers/markerWidenPatches.ts`)
 
