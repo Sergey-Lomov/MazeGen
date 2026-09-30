@@ -22,6 +22,7 @@ import { SceneInteraction } from "./SceneInteraction";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
+import type { FieldPrimitive } from "../store/tessellationTypes";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => TessellationConfig;
@@ -37,6 +38,26 @@ export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   analytics: (st) => st.activeTessellationConfig,
   image_export: (st) => st.activeTessellationConfig,
 };
+
+export function shouldCancelFieldEditGesture(args: {
+  openChanged: boolean;
+  floorChanged: boolean;
+  modeChanged: boolean;
+  primitiveChanged: boolean;
+  configChanged: boolean;
+  fieldPointsChanged: boolean;
+  fieldEditMode: "default" | "custom";
+  fieldPrimitive: FieldPrimitive;
+}): boolean {
+  const pointBrushUpdate = args.fieldEditMode === "custom"
+    && args.fieldPrimitive === "point"
+    && args.fieldPointsChanged;
+  return args.openChanged
+    || args.floorChanged
+    || args.modeChanged
+    || args.primitiveChanged
+    || (args.configChanged && !pointBrushUpdate);
+}
 
 export class MazeScene {
   private app: Application;
@@ -344,6 +365,7 @@ export class MazeScene {
     let prevFloorId = initial.activeFloorId;
     let prevMode = initial.floorFields[initial.activeFloorId].fieldEditMode;
     let prevPrimitive = initial.floorFields[initial.activeFloorId].fieldPrimitive;
+    let prevFieldPoints = initial.floorFields[initial.activeFloorId].fieldPoints;
     let prevConfig = initial.floorFields[initial.activeFloorId].tessellationConfig;
     let prevFrameVisible = initial.showPrimitiveFrame;
     this.primitivePreviewOverlay.setFrameVisible(initial.showPrimitiveFrame);
@@ -354,16 +376,27 @@ export class MazeScene {
       const floorChanged = state.activeFloorId !== prevFloorId;
       const modeChanged = field.fieldEditMode !== prevMode;
       const primitiveChanged = field.fieldPrimitive !== prevPrimitive;
+      const fieldPointsChanged = field.fieldPoints !== prevFieldPoints;
       const configChanged = field.tessellationConfig !== prevConfig;
       const frameVisibilityChanged = state.showPrimitiveFrame !== prevFrameVisible;
       prevCard = state.openCard;
       prevFloorId = state.activeFloorId;
       prevMode = field.fieldEditMode;
       prevPrimitive = field.fieldPrimitive;
+      prevFieldPoints = field.fieldPoints;
       prevConfig = field.tessellationConfig;
       prevFrameVisible = state.showPrimitiveFrame;
       if (frameVisibilityChanged) this.primitivePreviewOverlay.setFrameVisible(state.showPrimitiveFrame);
-      if (openChanged || floorChanged || modeChanged || primitiveChanged || configChanged) {
+      if (shouldCancelFieldEditGesture({
+        openChanged,
+        floorChanged,
+        modeChanged,
+        primitiveChanged,
+        configChanged,
+        fieldPointsChanged,
+        fieldEditMode: field.fieldEditMode,
+        fieldPrimitive: field.fieldPrimitive,
+      })) {
         this.fieldEditController.cancelPointerGesture();
         this.primitivePreviewOverlay.clear();
         this.fieldEditorOverlay.updateHover(null, field.tessellationConfig);

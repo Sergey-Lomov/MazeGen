@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FieldEditController } from "../pixi/FieldEditController";
-import { makeProjection } from "../pixi/tessellationProjection";
+import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
@@ -188,5 +188,29 @@ describe("FieldEditController polygon interaction", () => {
 
     expect(commits).toHaveLength(0);
     expect(previewClear).toHaveBeenCalled();
+  });
+});
+
+describe("FieldEditController point interaction", () => {
+  it("paints every new cell reached during a left-button drag", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "point",
+          tessellationConfig: { type: "square", width: 10, height: 10 },
+        }),
+      },
+    });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 1);
+    controller.onPointerMove(100, -20, 1);
+    controller.onPointerUp();
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(
+      new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(2, 0)]),
+    );
   });
 });

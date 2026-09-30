@@ -203,7 +203,7 @@ shape variant.
 
 Custom mode supports two drawing modes controlled by `fieldPrimitive`:
 
-**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape.
+**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape. Rebuilding the custom field configuration after a point edit must not cancel the active streak gesture; only a mode, floor, tool, or card change ends it.
 
 **Shape primitives** — batch mode. Mousedown begins gesture, drag adjusts shape, mouseup commits all cells in one store update (no per-cell flicker). Escape cancels the gesture without committing.
 

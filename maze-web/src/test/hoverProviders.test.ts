@@ -4,7 +4,7 @@ import { canvasToGrid, DefaultHoverProvider } from "../pixi/hoverProviders";
 import { makeProjection } from "../pixi/tessellationProjection";
 import type { TessellationProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
-import { MazeScene } from "../pixi/MazeScene";
+import { MazeScene, shouldCancelFieldEditGesture } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";
 
@@ -57,7 +57,36 @@ describe("DefaultHoverProvider", () => {
   });
 });
 
+describe("field edit gesture cancellation", () => {
+  it("keeps a point brush gesture alive when adding a cell rebuilds the config", () => {
+    const pointUpdate = {
+      openChanged: false,
+      floorChanged: false,
+      modeChanged: false,
+      primitiveChanged: false,
+      configChanged: true,
+      fieldPointsChanged: true,
+      fieldEditMode: "custom",
+      fieldPrimitive: "point",
+    } as const;
+    expect(shouldCancelFieldEditGesture(pointUpdate)).toBe(false);
+
+    for (const change of ["openChanged", "floorChanged", "modeChanged", "primitiveChanged"] as const) {
+      expect(shouldCancelFieldEditGesture({ ...pointUpdate, [change]: true }), change).toBe(true);
+    }
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldPointsChanged: false }), "config-only change").toBe(true);
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldPrimitive: "rectangle" }), "shape primitive update").toBe(true);
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldEditMode: "default" }), "default-mode update").toBe(true);
+    expect(shouldCancelFieldEditGesture({
+      ...pointUpdate,
+      configChanged: false,
+      fieldPointsChanged: false,
+    }), "unrelated state update").toBe(false);
+  });
+});
+
 describe("zoom reset controls", () => {
+
   it("does not highlight a hover cell for the polygon field tool", () => {
     const stageHandlers: Record<string, (event?: any) => void> = {};
     const state = useMazeStore.getState();
