@@ -49,6 +49,8 @@ export interface TessellationState {
   showFieldOverlay: boolean;
   showFieldOrigin: boolean;
   showPrimitiveFrame: boolean;
+  /** Whether the custom-field editor shows the shared print paper and margin guides. */
+  showPaperLayout: boolean;
   smoothPrimitives: boolean;
 }
 
@@ -68,6 +70,7 @@ export interface TessellationActions {
   setShowFieldOverlay: (show: boolean) => void;
   setShowFieldOrigin: (show: boolean) => void;
   setShowPrimitiveFrame: (show: boolean) => void;
+  setShowPaperLayout: (show: boolean) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
 }
 

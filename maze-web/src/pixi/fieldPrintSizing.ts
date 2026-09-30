@@ -9,6 +9,9 @@ const MAX_RECT_DIMENSION = 1000;
 const MAX_RADIUS = 500;
 const SQRT_3 = Math.sqrt(3);
 
+/** Initial physical cell measure used by print-layout previews before a manual size is confirmed. */
+export const DEFAULT_PRINT_CELL_SIZE_MM = 10;
+
 export type { PrintFieldSizingInput } from "../store/imageExportTypes";
 
 export type PredefinedFieldConfig = Exclude<FieldConfig,

@@ -1,17 +1,17 @@
 import { useMemo, useEffect, useState } from "react";
-import { Maximize2, RectangleVertical, RectangleHorizontal, Ruler } from "lucide-react";
+import { Maximize2, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { Stack, Inline } from "../Layout";
 import { HoverIconButton } from "../HoverIconButton";
 import { ToggleRow } from "../ToggleRow";
-import { buttonStyle, buttonClass, sharedStyles } from "../../styles/shared";
+import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, resolveSheetSizeMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { computePrintExportFit, computeAutoFitPrintScale, printCellMeasureMm, DPI_BY_DENSITY, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
 import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
 import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
 import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
@@ -21,8 +21,9 @@ import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
 import { Container } from "pixi.js";
 import { getCurrentViewportScale } from "../../pixi/viewportScaleBridge";
 import { TILE_SIZE } from "../../pixi/constants";
-import type { PngCanvasMode, PrintDensity, PaperSize, PrintAnchor } from "../../store/storeTypes";
+import type { PngCanvasMode, PrintDensity, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
+import { PaperLayoutFields } from "./PaperLayoutFields";
 
 const CANVAS_MODE_OPTIONS: { value: PngCanvasMode; label: string }[] = [
   { value: "edge_to_edge", label: m["image_export.format.png.digital.canvas_edge_to_edge"]() },
@@ -42,21 +43,6 @@ const DENSITY_OPTIONS: { value: PrintDensity; label: string }[] = [
 // other) — a native `<select>` resolves a controlled `value` to the *first* `<option>` sharing it,
 // so reusing "custom" for the separators made the select display the separator's dash text instead
 // of "Custom" whenever `paperSize === "custom"` was actually selected.
-const PAPER_SIZE_OPTIONS: { value: PaperSize; label: string; disabled?: boolean }[] = [
-  { value: "a0", label: m["image_export.format.png.print.paper_a0"]() },
-  { value: "a1", label: m["image_export.format.png.print.paper_a1"]() },
-  { value: "a2", label: m["image_export.format.png.print.paper_a2"]() },
-  { value: "a3", label: m["image_export.format.png.print.paper_a3"]() },
-  { value: "a4", label: m["image_export.format.png.print.paper_a4"]() },
-  { value: "a5", label: m["image_export.format.png.print.paper_a5"]() },
-  { value: "__sep_iso__" as PaperSize, label: m["image_export.format.png.print.paper_separator"](), disabled: true },
-  { value: "letter", label: m["image_export.format.png.print.paper_letter"]() },
-  { value: "legal", label: m["image_export.format.png.print.paper_legal"]() },
-  { value: "tabloid", label: m["image_export.format.png.print.paper_tabloid"]() },
-  { value: "__sep_us__" as PaperSize, label: m["image_export.format.png.print.paper_separator"](), disabled: true },
-  { value: "custom", label: m["image_export.format.png.print.paper_custom"]() },
-];
-
 // "custom" is never manually selectable from the dropdown — it's set automatically when the user
 // pans/zooms the maze under the on-canvas print frame (ExportFrameOverlay / setPrintCustomPlacement).
 // Listed as a disabled option purely so the select has something to display while that state holds
@@ -295,98 +281,21 @@ export function PngExportSettingsPanel() {
               onChange={setPrintDensity}
             />
 
-            <SelectRow<PaperSize>
-              label={m["image_export.format.png.print.paper_size"]()}
-              value={print.paperSize}
-              options={PAPER_SIZE_OPTIONS}
-              onChange={setPrintPaperSize}
+            <PaperLayoutFields
+              paperSize={print.paperSize}
+              customWidthMm={print.customWidthMm}
+              customHeightMm={print.customHeightMm}
+              orientation={print.orientation}
+              marginHMm={print.marginHMm}
+              marginVMm={print.marginVMm}
+              onPaperSizeChange={setPrintPaperSize}
+              onCustomWidthChange={(value) => setPrintCustomSize(Number(value), print.customHeightMm)}
+              onCustomHeightChange={(value) => setPrintCustomSize(print.customWidthMm, Number(value))}
+              onOrientationChange={setPrintOrientation}
+              onMarginHChange={(value) => setPrintMargins(Number(value), print.marginVMm)}
+              onMarginVChange={(value) => setPrintMargins(print.marginHMm, Number(value))}
+              inputNamePrefix="png-print"
             />
-
-            <Inline gap="itemGap" justify="space-between">
-              <span style={styles.label}>{m["image_export.format.png.print.size_mm"]()}</span>
-              <Inline gap="groupGap">
-                <Inline gap="elementsGap">
-                  <span style={{ ...styles.shortLabel, ...(print.paperSize !== "custom" ? styles.labelDisabled : {}) }}>
-                    {m["image_export.format.png.print.width_short"]()}
-                  </span>
-                  <input
-                    type="number"
-                    name="png-print-width"
-                    style={{
-                      ...sharedStyles.input, ...styles.control, width: 70,
-                      ...(print.paperSize !== "custom" ? styles.inputDisabled : {}),
-                    }}
-                    value={print.paperSize === "custom" ? print.customWidthMm : resolveSheetSizeMm(print).widthMm}
-                    disabled={print.paperSize !== "custom"}
-                    onChange={(e) => setPrintCustomSize(Number(e.target.value), print.customHeightMm)}
-                  />
-                </Inline>
-                <Inline gap="elementsGap">
-                  <span style={{ ...styles.shortLabel, ...(print.paperSize !== "custom" ? styles.labelDisabled : {}) }}>
-                    {m["image_export.format.png.print.height_short"]()}
-                  </span>
-                  <input
-                    type="number"
-                    name="png-print-height"
-                    style={{
-                      ...sharedStyles.input, ...styles.control, width: 70,
-                      ...(print.paperSize !== "custom" ? styles.inputDisabled : {}),
-                    }}
-                    value={print.paperSize === "custom" ? print.customHeightMm : resolveSheetSizeMm(print).heightMm}
-                    disabled={print.paperSize !== "custom"}
-                    onChange={(e) => setPrintCustomSize(print.customWidthMm, Number(e.target.value))}
-                  />
-                </Inline>
-              </Inline>
-            </Inline>
-
-            <Inline gap="itemGap" justify="space-between">
-              <span style={styles.label}>{m["image_export.format.png.print.orientation"]()}</span>
-              <Inline gap="itemGap">
-                <button
-                  className={buttonClass(print.orientation === "portrait" ? "toggle-selected" : "toggle")}
-                  style={{ ...buttonStyle(print.orientation === "portrait" ? "toggle-selected" : "toggle"), ...styles.control, ...styles.iconToggle }}
-                  title={m["image_export.format.png.print.orientation_portrait"]()}
-                  onClick={() => setPrintOrientation("portrait")}
-                >
-                  <RectangleVertical size={16} />
-                </button>
-                <button
-                  className={buttonClass(print.orientation === "landscape" ? "toggle-selected" : "toggle")}
-                  style={{ ...buttonStyle(print.orientation === "landscape" ? "toggle-selected" : "toggle"), ...styles.control, ...styles.iconToggle }}
-                  title={m["image_export.format.png.print.orientation_landscape"]()}
-                  onClick={() => setPrintOrientation("landscape")}
-                >
-                  <RectangleHorizontal size={16} />
-                </button>
-              </Inline>
-            </Inline>
-
-            <Inline gap="itemGap" justify="space-between">
-              <span style={styles.label}>{m["image_export.format.png.print.margin_mm"]()}</span>
-              <Inline gap="groupGap">
-                <Inline gap="elementsGap">
-                  <span style={styles.shortLabel}>{m["image_export.format.png.print.margin_h_short"]()}</span>
-                  <input
-                    type="number"
-                    name="png-print-margin-horizontal"
-                    style={{ ...sharedStyles.input, ...styles.control, width: 70 }}
-                    value={print.marginHMm}
-                    onChange={(e) => setPrintMargins(Number(e.target.value), print.marginVMm)}
-                  />
-                </Inline>
-                <Inline gap="elementsGap">
-                  <span style={styles.shortLabel}>{m["image_export.format.png.print.margin_v_short"]()}</span>
-                  <input
-                    type="number"
-                    name="png-print-margin-vertical"
-                    style={{ ...sharedStyles.input, ...styles.control, width: 70 }}
-                    value={print.marginVMm}
-                    onChange={(e) => setPrintMargins(print.marginHMm, Number(e.target.value))}
-                  />
-                </Inline>
-              </Inline>
-            </Inline>
 
             <div style={styles.control}>
               <ToggleRow

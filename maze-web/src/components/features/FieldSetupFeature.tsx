@@ -10,9 +10,12 @@ import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { FieldPrintSizingDialog } from "../dialogs/FieldPrintSizingDialog";
+import { PaperLayoutDialog } from "../dialogs/PaperLayoutDialog";
 import { Switch } from "../Switch";
 import { Stack, Inline } from "../Layout";
 import { InfoIconButton } from "../InfoIconButton";
+import { ToggleRow } from "../ToggleRow";
+import { SettingsIconButton } from "../SettingsIconButton";
 import { Modal } from "../Modal";
 import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
@@ -88,6 +91,8 @@ export function FieldSetupFeature() {
   const setShowFieldOrigin = useMazeStore((s) => s.setShowFieldOrigin);
   const showPrimitiveFrame = useMazeStore((s) => s.showPrimitiveFrame);
   const setShowPrimitiveFrame = useMazeStore((s) => s.setShowPrimitiveFrame);
+  const showPaperLayout = useMazeStore((s) => s.showPaperLayout);
+  const setShowPaperLayout = useMazeStore((s) => s.setShowPaperLayout);
   const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
   const floorCount = useMazeStore((s) => s.floors.length);
@@ -96,6 +101,7 @@ export function FieldSetupFeature() {
   const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
   const [printSizingDialogOpen, setPrintSizingDialogOpen] = useState(false);
   const [smoothingInfoOpen, setSmoothingInfoOpen] = useState(false);
+  const [paperLayoutDialogOpen, setPaperLayoutDialogOpen] = useState(false);
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
@@ -281,6 +287,18 @@ export function FieldSetupFeature() {
             <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} />
           </div>
           <div style={styles.originRow}>
+            <ToggleRow
+              label={m["field.paper_layout.title"]()}
+              checked={showPaperLayout}
+              onChange={setShowPaperLayout}
+              layoutStyle={{ flex: 1 }}
+              action={<SettingsIconButton
+                title={m["field.paper_layout.configure"]()}
+                onClick={() => setPaperLayoutDialogOpen(true)}
+              />}
+            />
+          </div>
+          <div style={styles.originRow}>
             <span style={styles.smoothingLabelGroup}>
               <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
               <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
@@ -331,6 +349,16 @@ export function FieldSetupFeature() {
             setPrintFieldSizing(printSizing, config);
           }}
           onClose={() => setPrintSizingDialogOpen(false)}
+        />
+      )}
+      {paperLayoutDialogOpen && (
+        <PaperLayoutDialog
+          config={tessellationConfig}
+          onApply={(input) => {
+            setPrintFieldSizing(input, { type: tessellationConfig.type });
+            setShowPaperLayout(true);
+          }}
+          onClose={() => setPaperLayoutDialogOpen(false)}
         />
       )}
       {smoothingInfoOpen && (

@@ -7,12 +7,8 @@ import { contrastGray } from "../colorTokens";
 import type { ViewportListener } from "../sceneTypes";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import type { ImageExportRenderer } from "./ImageExportRenderer";
+import { drawPaperLayoutDim, drawPaperLayoutFrame, drawPaperLayoutMargins } from "./paperLayoutGraphics";
 
-const DASH_LENGTH = 10;
-const GAP_LENGTH = 6;
-const FRAME_STROKE_WIDTH = 2;
-const MARGIN_STROKE_WIDTH = 1;
-const DIM_ALPHA = 0.45;
 
 type ScreenRect = { x: number; y: number; w: number; h: number };
 type PrintFrameLayout = ScreenRect & { sheetWidthPx: number; sheetHeightPx: number };
@@ -249,8 +245,19 @@ export class ExportFrameOverlay implements ViewportListener {
     const frameColor = contrastGray(backgroundColor);
 
     this.drawDimOverlay(layout);
-    this.drawSolidRect(layout.x, layout.y, layout.w, layout.h, frameColor);
-    if (printLayout) this.drawMarginLines(printLayout, state.pngExportSettings.print, frameColor);
+    drawPaperLayoutFrame(this.graphics, layout, frameColor);
+    if (printLayout) {
+      const dpi = DPI_BY_DENSITY[state.pngExportSettings.print.density];
+      const sheetToScreenX = printLayout.w / printLayout.sheetWidthPx;
+      const sheetToScreenY = printLayout.h / printLayout.sheetHeightPx;
+      drawPaperLayoutMargins(
+        this.graphics,
+        layout,
+        mmToPx(state.pngExportSettings.print.marginHMm, dpi) * sheetToScreenX,
+        mmToPx(state.pngExportSettings.print.marginVMm, dpi) * sheetToScreenY,
+        frameColor,
+      );
+    }
   }
 
   private lastPlacement: Pick<PrintExportSettings, "scale" | "offsetXMm" | "offsetYMm" | "anchor"> | null = null;
@@ -280,66 +287,17 @@ export class ExportFrameOverlay implements ViewportListener {
 
   private drawDimOverlay(layout: ScreenRect): void {
     const { width: screenW, height: screenH } = this.getScreenSize();
+    drawPaperLayoutDim(this.graphics, layout, { x: 0, y: 0, w: screenW, h: screenH });
     // Four rects covering everything outside `layout` (top/bottom bands full-width, left/right
     // bands only the remaining height) rather than an even-odd cutout path — simpler and this
     // shape has no rotation/skew to worry about.
-    this.graphics.rect(0, 0, screenW, layout.y).fill({ color: 0x000000, alpha: DIM_ALPHA });
-    this.graphics.rect(0, layout.y + layout.h, screenW, screenH - layout.y - layout.h).fill({ color: 0x000000, alpha: DIM_ALPHA });
-    this.graphics.rect(0, layout.y, layout.x, layout.h).fill({ color: 0x000000, alpha: DIM_ALPHA });
-    this.graphics.rect(layout.x + layout.w, layout.y, screenW - layout.x - layout.w, layout.h).fill({ color: 0x000000, alpha: DIM_ALPHA });
   }
 
   // Pixi centers a stroke on the path — inset the rect outward by half the stroke width so the
   // whole line sits outside the canvas bounds it's marking, instead of eating into the content.
-  private drawSolidRect(x: number, y: number, w: number, h: number, color: number): void {
-    const half = FRAME_STROKE_WIDTH / 2;
-    this.graphics.rect(x - half, y - half, w + FRAME_STROKE_WIDTH, h + FRAME_STROKE_WIDTH).stroke({ width: FRAME_STROKE_WIDTH, color });
-  }
-
-  private drawMarginLines(printLayout: PrintFrameLayout, settings: PrintExportSettings, color: number): void {
-    const dpi = DPI_BY_DENSITY[settings.density];
-    const sheetToScreenX = printLayout.w / printLayout.sheetWidthPx;
-    const sheetToScreenY = printLayout.h / printLayout.sheetHeightPx;
-    const marginHScreen = mmToPx(settings.marginHMm, dpi) * sheetToScreenX;
-    const marginVScreen = mmToPx(settings.marginVMm, dpi) * sheetToScreenY;
-    if (marginHScreen <= 0 && marginVScreen <= 0) return;
-
-    const left = printLayout.x + marginHScreen;
-    const right = printLayout.x + printLayout.w - marginHScreen;
-    const top = printLayout.y + marginVScreen;
-    const bottom = printLayout.y + printLayout.h - marginVScreen;
-
-    if (marginHScreen > 0) {
-      this.drawDashedSegment([left, printLayout.y], [left, printLayout.y + printLayout.h], color);
-      this.drawDashedSegment([right, printLayout.y], [right, printLayout.y + printLayout.h], color);
-    }
-    if (marginVScreen > 0) {
-      this.drawDashedSegment([printLayout.x, top], [printLayout.x + printLayout.w, top], color);
-      this.drawDashedSegment([printLayout.x, bottom], [printLayout.x + printLayout.w, bottom], color);
-    }
-  }
-
   // Strokes each dash individually (rather than accumulating every moveTo/lineTo pair and calling
   // stroke() once at the end) — mirrors IssueHighlightOverlay's per-segment stroke() pattern, the
   // only other place in this codebase drawing disconnected line segments on one Graphics.
-  private drawDashedSegment([x1, y1]: [number, number], [x2, y2]: [number, number], color: number): void {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const length = Math.hypot(dx, dy);
-    const ux = dx / length;
-    const uy = dy / length;
-    const step = DASH_LENGTH + GAP_LENGTH;
-
-    let travelled = 0;
-    while (travelled < length) {
-      const dashEnd = Math.min(travelled + DASH_LENGTH, length);
-      this.graphics.moveTo(x1 + ux * travelled, y1 + uy * travelled);
-      this.graphics.lineTo(x1 + ux * dashEnd, y1 + uy * dashEnd);
-      this.graphics.stroke({ width: MARGIN_STROKE_WIDTH, color });
-      travelled += step;
-    }
-  }
-
   destroy(): void {
     this.unsubscribe?.();
     this.graphics.destroy();

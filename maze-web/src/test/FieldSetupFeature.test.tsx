@@ -36,7 +36,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(dialog).toBeTruthy();
     const dialogQueries = within(dialog!);
     const inputs = dialogQueries.getAllByRole("spinbutton") as HTMLInputElement[];
-    fireEvent.change(inputs[2], { target: { value: "10" } });
+    fireEvent.change(inputs[4], { target: { value: "10" } });
     fireEvent.click(dialogQueries.getByTitle("Portrait"));
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
@@ -91,9 +91,9 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(dialogQueries.getByDisplayValue("A3")).toBeInTheDocument();
     expect(inputs[0].value).toBe("420");
     expect(inputs[1].value).toBe("297");
-    expect(inputs[2].value).toBe("12");
-    expect(inputs[3].value).toBe("7");
-    expect(inputs[4].value).toBe("9");
+    expect(inputs[2].value).toBe("7");
+    expect(inputs[3].value).toBe("9");
+    expect(inputs[4].value).toBe("12");
   });
 
   it("opens with a 10 mm cell size before the user sets a print size", () => {
@@ -107,14 +107,14 @@ describe("FieldSetupFeature — Copy floor button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    expect((within(dialog!).getAllByRole("spinbutton")[2] as HTMLInputElement).value).toBe("10");
+    expect((within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement).value).toBe("10");
   });
 
   it("allows the last numeric character to be cleared", () => {
     render(<FieldSetupFeature />);
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    const cellInput = within(dialog!).getAllByRole("spinbutton")[2] as HTMLInputElement;
+    const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
 
     fireEvent.change(cellInput, { target: { value: "" } });
 
@@ -211,7 +211,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
     const dialogQueries = within(dialog!);
-    const cellInput = dialogQueries.getAllByRole("spinbutton")[2] as HTMLInputElement;
+    const cellInput = dialogQueries.getAllByRole("spinbutton")[4] as HTMLInputElement;
     fireEvent.change(cellInput, { target: { value: "10" } });
     expect(cellInput.value).toBe("10");
     fireEvent.click(dialogQueries.getByTitle("Portrait"));
@@ -265,7 +265,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByText("Apply to all floors with standard shape")).toBeInTheDocument();
 
     const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
-    const cellInput = within(dialog!).getAllByRole("spinbutton")[2] as HTMLInputElement;
+    const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
     fireEvent.change(cellInput, { target: { value: "5" } });
 
     await waitFor(() => {
@@ -273,6 +273,39 @@ describe("FieldSetupFeature — Copy floor button", () => {
       expect(within(groundRow).getByText("2280 cells")).toBeInTheDocument();
       expect(within(upperRow).getByText("Triangle")).toBeInTheDocument();
     });
+  });
+
+  it("shows and configures the shared paper layout in custom mode", () => {
+    useMazeStore.setState({
+      showPaperLayout: false,
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0]),
+          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+        }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Paper layout" }));
+    expect(useMazeStore.getState().showPaperLayout).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure paper layout" }));
+    const dialogTitle = screen.getAllByText("Paper layout")[1];
+    const dialog = dialogTitle.parentElement?.parentElement;
+    expect(dialog).toBeTruthy();
+    const inputs = within(dialog!).getAllByRole("spinbutton") as HTMLInputElement[];
+    fireEvent.change(inputs[4], { target: { value: "12" } });
+    fireEvent.click(within(dialog!).getByRole("button", { name: "Confirm" }));
+
+    expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({
+      scaleAutoFit: false,
+      marginHMm: 5,
+      marginVMm: 5,
+    });
+    expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(12, 300) / 40);
   });
 });
 

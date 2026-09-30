@@ -11,6 +11,7 @@ import { buildActiveCells } from "./selectors/fieldSelectors";
 import { ACTIVE_CELL_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
+import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
@@ -18,11 +19,13 @@ const HOVER_ALPHA = 0.3;
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
+  private readonly paperLayoutContainer: Container;
   private readonly floorContainer: Container;
   private readonly originContainer: Container;
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly paperLayout: PaperLayoutRenderer;
   private readonly floor: CellFillRenderer;
   private readonly origin: OriginRenderer;
   private readonly hover: CellFillRenderer;
@@ -33,15 +36,18 @@ export class FieldEditorOverlay {
   constructor(container: Container) {
     this.root = container;
     this.gridContainer = new Container();
+    this.paperLayoutContainer = new Container();
     this.floorContainer = new Container();
     this.originContainer = new Container();
     this.hoverContainer = new Container();
     this.root.addChild(this.gridContainer);
+    this.root.addChild(this.paperLayoutContainer);
     this.root.addChild(this.floorContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
+    this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.origin = new OriginRenderer(this.originContainer);
     this.hover = new CellFillRenderer(this.hoverContainer);
@@ -72,6 +78,7 @@ export class FieldEditorOverlay {
       if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
         this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+        this.redrawPaperLayout(state);
       }
 
       if (isOpen && field.fieldPrimitive !== prevField.fieldPrimitive) {
@@ -80,6 +87,11 @@ export class FieldEditorOverlay {
 
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+      }
+
+      if (isOpen && (state.showPaperLayout !== prev.showPaperLayout
+        || state.pngExportSettings.print !== prev.pngExportSettings.print)) {
+        this.redrawPaperLayout(state);
       }
     });
   }
@@ -99,6 +111,7 @@ export class FieldEditorOverlay {
       const field = state.floorFields[state.activeFloorId];
       this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
       this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+      this.redrawPaperLayout(state);
     }
   }
 
@@ -107,6 +120,7 @@ export class FieldEditorOverlay {
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
     this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
+    this.redrawPaperLayout(state);
   }
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
@@ -118,13 +132,25 @@ export class FieldEditorOverlay {
     this.origin.render({ show }, cfg);
   }
 
+  private redrawPaperLayout(state: ReturnType<typeof useMazeStore.getState>): void {
+    const field = state.floorFields[state.activeFloorId];
+    this.paperLayout.render(
+      state.showPaperLayout && field.fieldEditMode === "custom",
+      field.tessellationConfig,
+      state.pngExportSettings.print,
+      this.viewport,
+    );
+  }
+
   destroy(): void {
     this.unsubscribe?.();
     this.grid.destroy();
+    this.paperLayout.destroy();
     this.floor.destroy();
     this.origin.destroy();
     this.hover.destroy();
     this.gridContainer.destroy();
+    this.paperLayoutContainer.destroy();
     this.floorContainer.destroy();
     this.originContainer.destroy();
     this.hoverContainer.destroy();

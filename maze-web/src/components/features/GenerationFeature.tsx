@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, History, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
@@ -7,6 +7,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
+import { SettingsIconButton } from "../SettingsIconButton";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
@@ -122,9 +123,7 @@ export function GenerationFeature({ canGenerate }: Props) {
         <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
           {isVertexBased && (
-            <button className="hoverable" style={styles.gearBtn} onClick={() => setVertexSettingsPanelOpen(true)} title={m["generation.vertex_settings"]()}>
-              <Settings size={16} color={ui.text.tertiary} />
-            </button>
+            <SettingsIconButton title={m["generation.vertex_settings"]()} onClick={() => setVertexSettingsPanelOpen(true)} />
           )}
           <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
@@ -226,18 +225,6 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
-  },
-  // `lucide-react` icon instead of the `⚙` glyph (GitHub issue #237 follow-up) — the glyph read
-  // thin/blurry at small sizes across fonts; a real SVG icon looks crisp instead.
-  gearBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "none",
-    border: "none",
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    flexShrink: 0,
   },
   seedToolbarBtn: {
     background: "none",

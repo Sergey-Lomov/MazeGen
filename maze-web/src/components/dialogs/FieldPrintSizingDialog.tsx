@@ -1,20 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { RectangleHorizontal, RectangleVertical } from "lucide-react";
 import type { FieldConfig } from "../../fieldConfig";
 import { useMazeStore } from "../../store/mazeStore";
 import type { FloorFieldConfig } from "../../store/storeTypes";
 import type { PaperOrientation, PaperSize } from "../../store/storeTypes";
 import { Modal } from "../Modal";
 import { Button } from "../Button";
-import { SelectRow } from "../SelectRow";
 import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
-import { buttonClass, buttonStyle, sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
-import { calculatePrintFieldConfig, isPredefinedFieldConfig, resolvePrintPaperSizeMm, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
+import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
 import { configAllCells } from "../../pixi/tessellationCells";
 import * as m from "~/paraglide/messages";
+import { PaperLayoutFields } from "../features/PaperLayoutFields";
 
 interface Props {
   config: PredefinedFieldConfig;
@@ -28,29 +26,14 @@ interface Props {
   onClose: () => void;
 }
 
-const PAPER_SIZE_OPTIONS: { value: PaperSize; label: string; disabled?: boolean }[] = [
-  { value: "a0", label: m["image_export.format.png.print.paper_a0"]() },
-  { value: "a1", label: m["image_export.format.png.print.paper_a1"]() },
-  { value: "a2", label: m["image_export.format.png.print.paper_a2"]() },
-  { value: "a3", label: m["image_export.format.png.print.paper_a3"]() },
-  { value: "a4", label: m["image_export.format.png.print.paper_a4"]() },
-  { value: "a5", label: m["image_export.format.png.print.paper_a5"]() },
-  { value: "letter", label: m["image_export.format.png.print.paper_letter"]() },
-  { value: "legal", label: m["image_export.format.png.print.paper_legal"]() },
-  { value: "tabloid", label: m["image_export.format.png.print.paper_tabloid"]() },
-  { value: "custom", label: m["image_export.format.png.print.paper_custom"]() },
-];
-
 const CALCULATION_DEBOUNCE_MS = 120;
-const DEFAULT_DIALOG_CELL_SIZE_MM = 10;
-
 export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onClose }: Props) {
   const print = useMazeStore((s) => s.pngExportSettings.print);
   const floors = useMazeStore((s) => s.floors);
   const floorFields = useMazeStore((s) => s.floorFields);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const initialCellSizeMm = print.scaleAutoFit
-    ? DEFAULT_DIALOG_CELL_SIZE_MM
+    ? DEFAULT_PRINT_CELL_SIZE_MM
     : printCellMeasureMm(config, print.scale, DPI_BY_DENSITY[print.density]);
   const [paperSize, setPaperSize] = useState<PaperSize>(() => print.paperSize);
   const [customWidthText, setCustomWidthText] = useState(() => String(print.customWidthMm));
@@ -67,10 +50,6 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   const marginVMm = parseNumber(marginVText);
   const debouncedCellSizeMm = useDebouncedValue(cellSizeMm, CALCULATION_DEBOUNCE_MS);
 
-  const paper = useMemo(
-    () => resolvePrintPaperSizeMm({ paperSize, customWidthMm, customHeightMm, orientation }),
-    [paperSize, customWidthMm, customHeightMm, orientation],
-  );
   const result = useMemo(
     () => calculatePrintFieldConfig(config, {
       paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm: debouncedCellSizeMm, marginHMm, marginVMm,
@@ -127,42 +106,23 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
   return (
     <Modal title={m["field.print_sizing.title"]()} size={hasMultipleFloors ? "printSizing" : "info"} onClose={onClose} onConfirm={canConfirm ? handleApply : undefined}>
       <Stack gap="itemGap">
-        <SelectRow<PaperSize>
-          label={m["field.print_sizing.paper"]()}
-          value={paperSize}
-          options={PAPER_SIZE_OPTIONS}
-          onChange={setPaperSize}
+        <PaperLayoutFields
+          paperSize={paperSize}
+          customWidthMm={customWidthText}
+          customHeightMm={customHeightText}
+          orientation={orientation}
+          marginHMm={marginHText}
+          marginVMm={marginVText}
+          onPaperSizeChange={setPaperSize}
+          onCustomWidthChange={setCustomWidthText}
+          onCustomHeightChange={setCustomHeightText}
+          onOrientationChange={setOrientation}
+          onMarginHChange={setMarginHText}
+          onMarginVChange={setMarginVText}
+          paperLabel={m["field.print_sizing.paper"]()}
+          marginLabel={m["field.print_sizing.margin"]()}
+          inputNamePrefix="field-print"
         />
-
-        <Inline gap="itemGap" justify="space-between">
-          <span style={styles.label}>{m["image_export.format.png.print.size_mm"]()}</span>
-          <Inline gap="groupGap">
-            <NumberInput label={m["image_export.format.png.print.width_short"]()} value={paperSize === "custom" ? customWidthText : String(paper.widthMm)} disabled={paperSize !== "custom"} onChange={setCustomWidthText} />
-            <NumberInput label={m["image_export.format.png.print.height_short"]()} value={paperSize === "custom" ? customHeightText : String(paper.heightMm)} disabled={paperSize !== "custom"} onChange={setCustomHeightText} />
-          </Inline>
-        </Inline>
-
-        <Inline gap="itemGap" justify="space-between">
-          <span style={styles.label}>{m["image_export.format.png.print.orientation"]()}</span>
-          <Inline gap="itemGap">
-            <button
-              className={buttonClass(orientation === "portrait" ? "toggle-selected" : "toggle")}
-              style={{ ...buttonStyle(orientation === "portrait" ? "toggle-selected" : "toggle"), ...styles.iconButton }}
-              title={m["image_export.format.png.print.orientation_portrait"]()}
-              onClick={() => setOrientation("portrait")}
-            >
-              <RectangleVertical size={16} />
-            </button>
-            <button
-              className={buttonClass(orientation === "landscape" ? "toggle-selected" : "toggle")}
-              style={{ ...buttonStyle(orientation === "landscape" ? "toggle-selected" : "toggle"), ...styles.iconButton }}
-              title={m["image_export.format.png.print.orientation_landscape"]()}
-              onClick={() => setOrientation("landscape")}
-            >
-              <RectangleHorizontal size={16} />
-            </button>
-          </Inline>
-        </Inline>
 
         <NumberInputRow
           label={config.type === "square" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
@@ -170,16 +130,6 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
           suffix="mm"
           onChange={setCellSizeText}
         />
-        <NumberInputPairRow
-          label={m["field.print_sizing.margin"]()}
-          firstLabel={m["image_export.format.png.print.margin_h_short"]()}
-          secondLabel={m["image_export.format.png.print.margin_v_short"]()}
-          firstValue={marginHText}
-          secondValue={marginVText}
-          onFirstChange={setMarginHText}
-          onSecondChange={setMarginVText}
-        />
-
         {hasMultipleFloors && (
           <Stack gap="elementsGap">
             <Inline justify="space-between" gap="itemGap">
@@ -262,35 +212,6 @@ function NumberInputRow({ label, value, suffix, onChange }: { label: string; val
         <input type="number" name={label} min={0} step="0.1" style={styles.input} value={value} onChange={(e) => onChange(e.target.value)} />
         {suffix && <span style={typography.caption}>{suffix}</span>}
       </Inline>
-    </Inline>
-  );
-}
-
-function NumberInputPairRow({ label, firstLabel, secondLabel, firstValue, secondValue, onFirstChange, onSecondChange }: {
-  label: string;
-  firstLabel: string;
-  secondLabel: string;
-  firstValue: string;
-  secondValue: string;
-  onFirstChange: (value: string) => void;
-  onSecondChange: (value: string) => void;
-}) {
-  return (
-    <Inline gap="itemGap" justify="space-between">
-      <span style={styles.label}>{label}</span>
-      <Inline gap="groupGap">
-        <NumberInput label={firstLabel} value={firstValue} onChange={onFirstChange} />
-        <NumberInput label={secondLabel} value={secondValue} onChange={onSecondChange} />
-      </Inline>
-    </Inline>
-  );
-}
-
-function NumberInput({ label, value, disabled, onChange }: { label: string; value: string; disabled?: boolean; onChange: (value: string) => void }) {
-  return (
-    <Inline gap="elementsGap">
-      <span style={{ ...styles.shortLabel, ...(disabled ? styles.disabled : {}) }}>{label}</span>
-      <input type="number" name={label} min={0} step="0.1" disabled={disabled} style={{ ...styles.input, ...(disabled ? styles.inputDisabled : {}) }} value={value} onChange={(e) => onChange(e.target.value)} />
     </Inline>
   );
 }
@@ -401,11 +322,6 @@ function printFieldCellCount(config: FieldConfig): number {
 
 const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },
-  shortLabel: typography.caption,
-  input: { ...sharedStyles.input, width: 72 },
-  inputDisabled: { opacity: 0.45 },
-  disabled: { opacity: 0.45 },
-  iconButton: { width: 32, height: 28, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" },
   result: { padding: 0 },
   error: { ...typography.body, color: ui.text.error },
   sectionLabel: typography.body,

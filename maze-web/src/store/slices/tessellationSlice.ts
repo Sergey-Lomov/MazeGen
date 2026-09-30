@@ -21,6 +21,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showFieldOverlay: true,
   showFieldOrigin: true,
   showPrimitiveFrame: true,
+  showPaperLayout: false,
   smoothPrimitives: true,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
@@ -145,5 +146,6 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
   setShowFieldOrigin: (show) => set({ showFieldOrigin: show }),
   setShowPrimitiveFrame: (show) => set({ showPrimitiveFrame: show }),
+  setShowPaperLayout: (show) => set({ showPaperLayout: show }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
 });

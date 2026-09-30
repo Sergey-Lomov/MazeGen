@@ -87,6 +87,20 @@ Changing the confirmed tessellation kind resets the print sizing override (`prin
 enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
 physical size was tied to the old tessellation geometry.
 
+### Paper layout in custom mode (GitHub issue #641)
+
+Custom mode provides a paper-layout switch and a gear button for configuration. The switch and gear
+are aligned with the other right-justified field-editor switches. When enabled, the field editor
+draws the selected paper's outer edge and the four margin guides behind the editable cells. The
+guide uses the same high-contrast frame, outside dimming, and dashed margin guides as the PNG Print
+overlay, while remaining in the editor's world coordinate system. It is centered on the field
+origin and follows the editor viewport's pan/zoom. Its paper
+size, orientation, margins, and cell measure are read from the shared `pngExportSettings.print`
+configuration, so changing the layout in this dialog changes the print calculator and PNG Print
+settings as well. With automatic print scale enabled, the guide uses a 10 mm cell measure until
+the user confirms a physical size. The guide is hidden outside custom mode and is not part of the
+generated field or export image.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:

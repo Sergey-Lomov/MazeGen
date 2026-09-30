@@ -7,15 +7,17 @@ interface Props {
   disabled?: boolean;
   name?: string;
   id?: string;
+  ariaLabel?: string;
 }
 
-export function Switch({ checked, onChange, disabled, name = "switch", id }: Props) {
+export function Switch({ checked, onChange, disabled, name = "switch", id, ariaLabel }: Props) {
   return (
     <label style={{ ...styles.wrap, ...(disabled ? styles.wrapDisabled : {}) }}>
       <input
         type="checkbox"
         name={name}
         id={id}
+        aria-label={ariaLabel}
         style={styles.input}
         checked={checked}
         disabled={disabled}
