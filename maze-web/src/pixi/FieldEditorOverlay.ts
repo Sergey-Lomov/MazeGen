@@ -1,6 +1,6 @@
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { makeProjection } from "./tessellationProjection";
+import { decodePoint, encodePoint, makeProjection } from "./tessellationProjection";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
@@ -12,21 +12,30 @@ import { ACTIVE_CELL_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
+import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
+const SYMMETRY_POLYGON_COLOR = 0xffffff;
+const SYMMETRY_POLYGON_ALPHA = 0.9;
+const SYMMETRY_POLYGON_WIDTH = 1.25;
+const SYMMETRY_POLYGON_DASH_LENGTH = TILE_SIZE * 0.35;
+const SYMMETRY_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
 
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
   private readonly paperLayoutContainer: Container;
   private readonly floorContainer: Container;
+  private readonly symmetryContainer: Container;
   private readonly originContainer: Container;
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly paperLayout: PaperLayoutRenderer;
   private readonly floor: CellFillRenderer;
+  private readonly symmetryCells: CellFillRenderer;
+  private readonly symmetryGraphics: Graphics;
   private readonly origin: OriginRenderer;
   private readonly hover: CellFillRenderer;
 
@@ -38,17 +47,22 @@ export class FieldEditorOverlay {
     this.gridContainer = new Container();
     this.paperLayoutContainer = new Container();
     this.floorContainer = new Container();
+    this.symmetryContainer = new Container();
     this.originContainer = new Container();
     this.hoverContainer = new Container();
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.paperLayoutContainer);
     this.root.addChild(this.floorContainer);
+    this.root.addChild(this.symmetryContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
+    this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
+    this.symmetryGraphics = new Graphics();
+    this.symmetryContainer.addChild(this.symmetryGraphics);
     this.origin = new OriginRenderer(this.originContainer);
     this.hover = new CellFillRenderer(this.hoverContainer);
 
@@ -83,6 +97,18 @@ export class FieldEditorOverlay {
 
       if (isOpen && field.fieldPrimitive !== prevField.fieldPrimitive) {
         this.updateHover(null, field.tessellationConfig);
+        this.redrawSymmetry(state);
+      }
+
+      if (isOpen && (field.fieldPoints !== prevField.fieldPoints
+        || state.symmetryOperation !== prev.symmetryOperation
+        || state.symmetrySnapMode !== prev.symmetrySnapMode
+        || state.symmetryScope !== prev.symmetryScope
+        || state.symmetryAxisPoints !== prev.symmetryAxisPoints
+        || state.symmetrySourceSide !== prev.symmetrySourceSide
+        || state.symmetryPolygon !== prev.symmetryPolygon
+        || state.symmetryPolygonFinished !== prev.symmetryPolygonFinished)) {
+        this.redrawSymmetry(state);
       }
 
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
@@ -112,6 +138,7 @@ export class FieldEditorOverlay {
       this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
       this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
       this.redrawPaperLayout(state);
+      this.redrawSymmetry(state);
     }
   }
 
@@ -121,6 +148,7 @@ export class FieldEditorOverlay {
     this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
+    this.redrawSymmetry(state);
   }
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
@@ -142,18 +170,148 @@ export class FieldEditorOverlay {
     );
   }
 
+  updateSymmetryPreview(axisOverride?: SymmetryAxisPoints, polygonOverride?: SymmetryPoint[]): void {
+    this.redrawSymmetry(useMazeStore.getState(), axisOverride, polygonOverride);
+  }
+
+  private redrawSymmetry(
+    state: ReturnType<typeof useMazeStore.getState>,
+    axisOverride?: SymmetryAxisPoints,
+    polygonOverride?: SymmetryPoint[],
+  ): void {
+    const field = state.floorFields[state.activeFloorId];
+    const visible = state.openCard === "field_setup"
+      && field.fieldEditMode === "custom"
+      && field.fieldPrimitive === "symmetry";
+    this.symmetryContainer.visible = visible;
+    this.symmetryGraphics.clear();
+    if (!visible) {
+      this.symmetryCells.render({ cells: [], color: 0, alpha: 0 }, field.tessellationConfig);
+      return;
+    }
+
+    const axisPoints = axisOverride ?? state.symmetryAxisPoints;
+    const polygon = polygonOverride ?? state.symmetryPolygon;
+    const color = state.symmetryOperation === "subtract" ? canvas.fieldEditor.previewRemove : canvas.fieldEditor.previewAdd;
+    if (axisPoints.length === 2) {
+      const axis: [SymmetryPoint, SymmetryPoint] = [axisPoints[0], axisPoints[1]];
+      const preview = computeSymmetryPreview(
+        field.fieldPoints,
+        symmetryCandidateCells(field.fieldPoints, field.tessellationConfig, axisPoints, decodePoint),
+        field.tessellationConfig,
+        {
+          scope: state.symmetryScope,
+          sourceSide: state.symmetrySourceSide,
+          axis,
+          polygon,
+        },
+        encodePoint,
+      );
+      this.symmetryCells.render({ cells: preview.mirroredCells, color, alpha: 0.45 }, field.tessellationConfig);
+      const dx = axis[1].x - axis[0].x;
+      const dy = axis[1].y - axis[0].y;
+      const length = Math.hypot(dx, dy);
+      if (length > 0) {
+        const ux = dx / length;
+        const uy = dy / length;
+        const mx = (axis[0].x + axis[1].x) / 2;
+        const my = (axis[0].y + axis[1].y) / 2;
+        this.symmetryGraphics.moveTo(mx - ux * 100000, -my + uy * 100000);
+        this.symmetryGraphics.lineTo(mx + ux * 100000, -my - uy * 100000);
+        this.symmetryGraphics.stroke({ color, alpha: 0.9, width: 1.5 });
+        this.symmetryGraphics.circle(axis[0].x, -axis[0].y, TILE_SIZE * 0.14);
+        this.symmetryGraphics.circle(axis[1].x, -axis[1].y, TILE_SIZE * 0.14);
+        this.symmetryGraphics.fill({ color, alpha: 0.95 });
+
+        if (state.symmetryScope === "one_side") {
+          const normalX = -uy * -state.symmetrySourceSide;
+          const normalY = ux * -state.symmetrySourceSide;
+          const from = { x: mx - normalX * TILE_SIZE * 0.7, y: my - normalY * TILE_SIZE * 0.7 };
+          const to = { x: mx + normalX * TILE_SIZE * 0.7, y: my + normalY * TILE_SIZE * 0.7 };
+          this.symmetryGraphics.moveTo(from.x, -from.y);
+          this.symmetryGraphics.lineTo(to.x, -to.y);
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+          const head = TILE_SIZE * 0.18;
+          this.symmetryGraphics.moveTo(to.x - normalX * head + normalY * head, -to.y + normalY * head + normalX * head);
+          this.symmetryGraphics.lineTo(to.x, -to.y);
+          this.symmetryGraphics.lineTo(to.x - normalX * head - normalY * head, -to.y + normalY * head - normalX * head);
+          this.symmetryGraphics.stroke({ color, alpha: 0.95, width: 2 });
+        }
+      }
+    } else {
+      this.symmetryCells.render({ cells: [], color, alpha: 0 }, field.tessellationConfig);
+      if (axisPoints.length === 1) {
+        this.symmetryGraphics.circle(axisPoints[0].x, -axisPoints[0].y, TILE_SIZE * 0.14);
+        this.symmetryGraphics.fill({ color, alpha: 0.95 });
+      }
+    }
+    if (state.symmetryScope === "polygon" && polygon.length > 0) {
+      const hasCursorPoint = polygonOverride !== undefined
+        && polygon.length > state.symmetryPolygon.length
+        && !state.symmetryPolygonFinished;
+      const confirmedVertexCount = state.symmetryPolygon.length;
+      const solidPointCount = hasCursorPoint
+        ? (confirmedVertexCount >= 2 ? polygon.length : 0)
+        : (confirmedVertexCount >= 3 ? polygon.length : 0);
+      if (solidPointCount >= 2) {
+        this.symmetryGraphics.moveTo(polygon[0].x, -polygon[0].y);
+        for (let i = 1; i < solidPointCount; i++) this.symmetryGraphics.lineTo(polygon[i].x, -polygon[i].y);
+        this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+      }
+      if (polygon.length >= 2) {
+        const last = { x: polygon[polygon.length - 1].x, y: -polygon[polygon.length - 1].y };
+        const first = { x: polygon[0].x, y: -polygon[0].y };
+        if (state.symmetryPolygonFinished) {
+          this.symmetryGraphics.moveTo(last.x, last.y);
+          this.symmetryGraphics.lineTo(first.x, first.y);
+          this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+        } else {
+          drawDashedSegment(this.symmetryGraphics, last, first, SYMMETRY_POLYGON_COLOR);
+        }
+      }
+      for (const point of state.symmetryPolygon) {
+        this.symmetryGraphics.circle(point.x, -point.y, TILE_SIZE * 0.12);
+        this.symmetryGraphics.fill({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA });
+      }
+    }
+  }
+
   destroy(): void {
     this.unsubscribe?.();
     this.grid.destroy();
     this.paperLayout.destroy();
     this.floor.destroy();
+    this.symmetryCells.destroy();
+    this.symmetryGraphics.destroy();
     this.origin.destroy();
     this.hover.destroy();
     this.gridContainer.destroy();
     this.paperLayoutContainer.destroy();
     this.floorContainer.destroy();
+    this.symmetryContainer.destroy();
     this.originContainer.destroy();
     this.hoverContainer.destroy();
+  }
+}
+
+function drawDashedSegment(
+  graphics: Graphics,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  color: number,
+): void {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return;
+  const ux = dx / length;
+  const uy = dy / length;
+  const step = SYMMETRY_POLYGON_DASH_LENGTH + SYMMETRY_POLYGON_GAP_LENGTH;
+  for (let travelled = 0; travelled < length; travelled += step) {
+    const dashEnd = Math.min(travelled + SYMMETRY_POLYGON_DASH_LENGTH, length);
+    graphics.moveTo(start.x + ux * travelled, start.y + uy * travelled);
+    graphics.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
+    graphics.stroke({ color, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
   }
 }
 

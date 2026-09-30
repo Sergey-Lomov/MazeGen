@@ -7,8 +7,12 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry";
 export type PolygonOperation = "add" | "remove";
+export type SymmetryOperation = "add" | "subtract";
+export type SymmetrySnapMode = "centers" | "corners" | "free";
+export type SymmetryScope = "everything" | "one_side" | "polygon";
+export type SymmetryPoint = { x: number; y: number };
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
@@ -24,6 +28,7 @@ export type PendingFieldEdit =
   | { kind: "removeFieldPoints"; cells: [number, number][] }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
+  | { kind: "applySymmetry" }
   | { kind: "copyFloorField"; sourceFloorId: string };
 
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
@@ -52,6 +57,13 @@ export interface TessellationState {
   /** Whether the custom-field editor shows the shared print paper and margin guides. */
   showPaperLayout: boolean;
   smoothPrimitives: boolean;
+  symmetryOperation: SymmetryOperation;
+  symmetrySnapMode: SymmetrySnapMode;
+  symmetryScope: SymmetryScope;
+  symmetryAxisPoints: SymmetryPoint[];
+  symmetrySourceSide: -1 | 1;
+  symmetryPolygon: SymmetryPoint[];
+  symmetryPolygonFinished: boolean;
 }
 
 export interface TessellationActions {
@@ -72,6 +84,15 @@ export interface TessellationActions {
   setShowPrimitiveFrame: (show: boolean) => void;
   setShowPaperLayout: (show: boolean) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
+  setSymmetryOperation: (operation: SymmetryOperation) => void;
+  setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
+  setSymmetryScope: (scope: SymmetryScope) => void;
+  setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;
+  setSymmetrySourceSide: (side: -1 | 1) => void;
+  setSymmetryPolygon: (points: SymmetryPoint[]) => void;
+  finishSymmetryPolygon: () => void;
+  resetSymmetryPolygon: () => void;
+  resetSymmetryAxis: () => void;
 }
 
 /** Per-floor field-shape state — GitHub issue #338. Everything about "what cells make up this
@@ -129,6 +150,7 @@ export interface FloorFieldsActions {
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
   setPolygonOperation: (operation: PolygonOperation) => void;
+  applySymmetry: () => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;

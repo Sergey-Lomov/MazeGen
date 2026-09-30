@@ -9,6 +9,8 @@ import type { PolygonPoint } from "./polygonGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
+import { decodePoint } from "./tessellationProjection";
+import { sideOfAxis, snapSymmetryPoint, worldPointForCell, type SymmetryPoint } from "./symmetry";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -25,6 +27,7 @@ interface PrimitiveCallbacks {
   onPreviewUpdate: (cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: ReturnType<typeof primitiveWorldGeometry>) => void;
   onPreviewClear: () => void;
   onPrimitiveCommit: (cells: [number, number][], button: number) => void;
+  onSymmetryPreviewUpdate?: (axis: SymmetryPoint[], polygon: SymmetryPoint[]) => void;
 }
 
 export class FieldEditController {
@@ -54,6 +57,12 @@ export class FieldEditController {
   private polygonDragOriginalPoint: PolygonPoint | null = null;
   private polygonCloseCandidate = false;
   private lastPointerCanvas: { x: number; y: number } | null = null;
+  private symmetryDraggedPolygonIndex: number | null = null;
+  private symmetryDragStartCanvas: { x: number; y: number } | null = null;
+  private symmetryDragOriginalPoint: SymmetryPoint | null = null;
+  private symmetryDraggedAxisIndex: number | null = null;
+  private symmetryAxisDragStartCanvas: { x: number; y: number } | null = null;
+  private symmetryAxisDragOriginalPoint: SymmetryPoint | null = null;
 
   private canvas: HTMLCanvasElement;
   private getProjection: () => TessellationProjection | null;
@@ -80,7 +89,16 @@ export class FieldEditController {
       }
     }
     if (e.code === "Escape") this.cancelGesture();
-    if (e.code === "Enter") this.commitPolygon();
+    if (e.code === "Enter") {
+      const state = useMazeStore.getState();
+      const field = state.floorFields[state.activeFloorId];
+      if (field.fieldPrimitive === "symmetry" && state.symmetryScope === "polygon") {
+        state.finishSymmetryPolygon();
+        this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+      } else {
+        this.commitPolygon();
+      }
+    }
   };
   private onKeyUp = (e: KeyboardEvent) => {
     if (e.code === "Space") this.spaceHeld = false;
@@ -133,6 +151,11 @@ export class FieldEditController {
 
     if (this.spaceHeld || button === 1) {
       this.panCallbacks.startPan(canvasX, canvasY);
+      return;
+    }
+
+    if (this.activePrimitive === "symmetry") {
+      this.handleSymmetryPointerDown(canvasX, canvasY, button);
       return;
     }
 
@@ -219,6 +242,10 @@ export class FieldEditController {
     if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
 
     if (!this.gestureActive) {
+      if (field.fieldPrimitive === "symmetry") {
+        this.updateSymmetryCursor(canvasX, canvasY);
+        return;
+      }
       if (field.fieldPrimitive === "polygon" && this.polygonPoints.length > 0) {
         this.activePrimitive = "polygon";
         this.updatePolygonCursor(canvasX, canvasY);
@@ -228,6 +255,35 @@ export class FieldEditController {
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.movePan(canvasX, canvasY);
+      return;
+    }
+
+    if (this.activePrimitive === "symmetry") {
+      if (this.symmetryDraggedAxisIndex !== null && this.symmetryAxisDragStartCanvas) {
+        const moved = Math.hypot(canvasX - this.symmetryAxisDragStartCanvas.x, canvasY - this.symmetryAxisDragStartCanvas.y) >= 3;
+        if (moved) {
+          const state = useMazeStore.getState();
+          const field = state.floorFields[state.activeFloorId];
+          const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.tessellationConfig);
+          const axis = [...state.symmetryAxisPoints];
+          axis[this.symmetryDraggedAxisIndex] = point;
+          state.setSymmetryAxisPoints(axis);
+          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axis, state.symmetryPolygon);
+        }
+        return;
+      }
+      if (this.symmetryDraggedPolygonIndex !== null && this.symmetryDragStartCanvas) {
+        const moved = Math.hypot(canvasX - this.symmetryDragStartCanvas.x, canvasY - this.symmetryDragStartCanvas.y) >= 3;
+        if (moved) {
+          const state = useMazeStore.getState();
+          const field = state.floorFields[state.activeFloorId];
+          const polygon = [...state.symmetryPolygon];
+          const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.tessellationConfig);
+          polygon[this.symmetryDraggedPolygonIndex] = point;
+          state.setSymmetryPolygon(polygon);
+          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+        }
+      }
       return;
     }
 
@@ -289,6 +345,14 @@ export class FieldEditController {
     if (button !== 0) return;
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
+    if (field.fieldPrimitive === "symmetry") {
+      if (state.symmetryScope === "polygon" && state.symmetryPolygon.length >= 3 && state.symmetryAxisPoints.length === 2) {
+        state.finishSymmetryPolygon();
+        this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+      }
+      this.updateSymmetryCursor(canvasX, canvasY);
+      return;
+    }
     if (!(state.openCard === "field_setup"
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "polygon"
@@ -305,6 +369,31 @@ export class FieldEditController {
   }
 
   private cancelGesture(): void {
+    if (this.activePrimitive === "symmetry") {
+      if (this.symmetryDraggedPolygonIndex !== null && this.symmetryDragOriginalPoint) {
+        const state = useMazeStore.getState();
+        const polygon = [...state.symmetryPolygon];
+        polygon[this.symmetryDraggedPolygonIndex] = this.symmetryDragOriginalPoint;
+        state.setSymmetryPolygon(polygon);
+      }
+      if (this.symmetryDraggedAxisIndex !== null && this.symmetryAxisDragOriginalPoint) {
+        const state = useMazeStore.getState();
+        const axis = [...state.symmetryAxisPoints];
+        axis[this.symmetryDraggedAxisIndex] = this.symmetryAxisDragOriginalPoint;
+        state.setSymmetryAxisPoints(axis);
+      }
+      this.gestureActive = false;
+      if (this.symmetryDraggedPolygonIndex !== null) {
+        this.symmetryDraggedPolygonIndex = null;
+        this.symmetryDragStartCanvas = null;
+        this.symmetryDragOriginalPoint = null;
+      }
+      this.symmetryDraggedAxisIndex = null;
+      this.symmetryAxisDragStartCanvas = null;
+      this.symmetryAxisDragOriginalPoint = null;
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(useMazeStore.getState().symmetryAxisPoints, useMazeStore.getState().symmetryPolygon);
+      return;
+    }
     if (this.draggedPolygonIndex !== null) {
       if (this.polygonDragOriginalPoint) {
         this.polygonPoints[this.draggedPolygonIndex] = this.polygonDragOriginalPoint;
@@ -365,6 +454,14 @@ export class FieldEditController {
         this.updatePolygonPreview();
       }
       // The polygon remains active between clicks until it is closed or confirmed with Enter.
+    } else if (this.activePrimitive === "symmetry") {
+      this.symmetryDraggedAxisIndex = null;
+      this.symmetryAxisDragStartCanvas = null;
+      this.symmetryAxisDragOriginalPoint = null;
+      this.symmetryDraggedPolygonIndex = null;
+      this.symmetryDragStartCanvas = null;
+      this.symmetryDragOriginalPoint = null;
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(useMazeStore.getState().symmetryAxisPoints, useMazeStore.getState().symmetryPolygon);
     } else if (this.activeShapePrimitive !== null && this.primitiveStartGrid !== null) {
       this.primitiveCallbacks.onPreviewClear();
       this.primitiveCallbacks.onPrimitiveCommit(this.lastPreviewCells, this.gestureButton);
@@ -488,6 +585,97 @@ export class FieldEditController {
     grid: { x: number; y: number },
   ): PolygonPoint {
     return this.shiftHeld ? this.toWorld(canvasX, canvasY) : this.gridToWorld(grid);
+  }
+
+  private handleSymmetryPointerDown(canvasX: number, canvasY: number, button: number): void {
+    if (button !== 0) return;
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.tessellationConfig);
+    const axisPoints = state.symmetryAxisPoints;
+    if (axisPoints.length < 2) {
+      const nextAxis = axisPoints.length === 0 ? [point] : [axisPoints[0], point];
+      state.setSymmetryAxisPoints(nextAxis);
+      if (nextAxis.length === 2) {
+        const axis: [SymmetryPoint, SymmetryPoint] = [nextAxis[0], nextAxis[1]];
+        const reference = [...field.fieldPoints].map(decodePoint)
+          .map((cell) => worldPointForCell(cell, field.tessellationConfig))
+          .find((candidate) => sideOfAxis(candidate, axis) !== 0);
+        state.setSymmetrySourceSide(reference ? (sideOfAxis(reference, axis) < 0 ? -1 : 1) : 1);
+      }
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(nextAxis, state.symmetryPolygon);
+      return;
+    }
+    const axisNodeIndex = this.findSymmetryAxisNode(canvasX, canvasY, axisPoints);
+    if (axisNodeIndex !== null) {
+      this.symmetryDraggedAxisIndex = axisNodeIndex;
+      this.symmetryAxisDragStartCanvas = { x: canvasX, y: canvasY };
+      this.symmetryAxisDragOriginalPoint = axisPoints[axisNodeIndex];
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axisPoints, state.symmetryPolygon);
+      return;
+    }
+    if (state.symmetryScope !== "polygon") return;
+    const polygon = [...state.symmetryPolygon];
+    const nodeIndex = this.findSymmetryNode(canvasX, canvasY, polygon);
+    if (nodeIndex !== null) {
+      this.symmetryDraggedPolygonIndex = nodeIndex;
+      this.symmetryDragStartCanvas = { x: canvasX, y: canvasY };
+      this.symmetryDragOriginalPoint = polygon[nodeIndex];
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+      return;
+    }
+    if (state.symmetryPolygonFinished) return;
+    const previous = polygon[polygon.length - 1];
+    if (!previous || previous.x !== point.x || previous.y !== point.y) polygon.push(point);
+    state.setSymmetryPolygon(polygon);
+    this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, polygon);
+  }
+
+  private updateSymmetryCursor(canvasX: number, canvasY: number): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const axisPoints = state.symmetryAxisPoints;
+    if (axisPoints.length === 1) {
+      const point = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.tessellationConfig);
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.([axisPoints[0], point], state.symmetryPolygon);
+    } else if (axisPoints.length === 2 && state.symmetryScope === "polygon"
+      && !state.symmetryPolygonFinished && state.symmetryPolygon.length > 0) {
+      const cursor = snapSymmetryPoint(this.toWorld(canvasX, canvasY), state.symmetrySnapMode, field.tessellationConfig);
+      this.primitiveCallbacks.onSymmetryPreviewUpdate?.(axisPoints, [...state.symmetryPolygon, cursor]);
+    }
+  }
+
+  private findSymmetryNode(canvasX: number, canvasY: number, polygon: SymmetryPoint[]): number | null {
+    const viewport = this.getViewport();
+    let nearest: number | null = null;
+    let distance = 12;
+    polygon.forEach((point, index) => {
+      const nodeX = viewport.x + point.x * viewport.scale.x;
+      const nodeY = viewport.y - point.y * viewport.scale.y;
+      const nextDistance = Math.hypot(canvasX - nodeX, canvasY - nodeY);
+      if (nextDistance <= distance) {
+        nearest = index;
+        distance = nextDistance;
+      }
+    });
+    return nearest;
+  }
+
+  private findSymmetryAxisNode(canvasX: number, canvasY: number, axis: SymmetryPoint[]): number | null {
+    if (axis.length !== 2) return null;
+    const viewport = this.getViewport();
+    let nearest: number | null = null;
+    let distance = 12;
+    axis.forEach((point, index) => {
+      const nodeX = viewport.x + point.x * viewport.scale.x;
+      const nodeY = viewport.y - point.y * viewport.scale.y;
+      const nextDistance = Math.hypot(canvasX - nodeX, canvasY - nodeY);
+      if (nextDistance <= distance) {
+        nearest = index;
+        distance = nextDistance;
+      }
+    });
+    return nearest;
   }
 
   private toGridPoint(point: PolygonPoint): { x: number; y: number } | null {

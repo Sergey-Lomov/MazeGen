@@ -305,5 +305,23 @@ The same `pointermove` also drives the generic `x, y` coordinate readout in `Hov
 Square/hex: rectangular row/column lookup.
 
 Triangle: nearest-centroid among `col0-1, col0, col0+1` candidates. Each centroid position depends on parity:
+
+## Symmetry tool (GitHub issue #654)
+
+Custom mode includes a Symmetry tool. It collects two snapped or free points for an infinite
+symmetry axis, previews the reflected cells, and changes the field only when the user confirms.
+The right-side symmetry panel uses toggle buttons for Add/Subtract, Cell centers/Cell corners/Free
+snapping, and Everything/One side/Polygon processing. Only active cells are used as the source.
+One-side mode chooses the initial source side from the field when the axis is completed and
+exposes a direction toggle. Polygon mode reuses the field editor's editable polygon gesture and
+has reset and explicit finish actions.
+
+The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
+toward the reflected side. Preview cells use the operation's add/remove color. Cells whose centers
+lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
+processing, the polygon has at least three points and has been explicitly finished. The operation
+applies the selected scope to the active cells in the current custom field, then merges or removes
+the reflected cells. After confirmation, the symmetry geometry is cleared and the normal point tool
+is restored; the symmetry settings remain unchanged.
 - pointing-up: `cy = -(row × H + H/3)`
 - pointing-down: `cy = -(row × H + 2H/3)`

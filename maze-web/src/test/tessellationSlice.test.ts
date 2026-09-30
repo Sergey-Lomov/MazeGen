@@ -38,6 +38,87 @@ function setActiveField(patch: Partial<ReturnType<typeof baseFloorFieldConfig>>)
 }
 
 describe("mazeStore setters", () => {
+  it("clears unfinished symmetry geometry when switching to another field primitive", () => {
+    setActiveField({ fieldPrimitive: "symmetry" });
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 10, y: 0 }, { x: 10, y: 80 }],
+      symmetryPolygon: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 40 }],
+      symmetryPolygonFinished: true,
+    });
+
+    useMazeStore.getState().setFieldPrimitive("polygon");
+
+    const state = useMazeStore.getState();
+    expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("polygon");
+    expect(state.symmetryAxisPoints).toEqual([]);
+    expect(state.symmetryPolygon).toEqual([]);
+    expect(state.symmetryPolygonFinished).toBe(false);
+  });
+
+  it("clears symmetry geometry after applying while preserving its settings", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+    });
+    useMazeStore.setState({
+      symmetryOperation: "subtract",
+      symmetrySnapMode: "free",
+      symmetryScope: "one_side",
+      symmetrySourceSide: -1,
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
+      symmetryPolygonFinished: true,
+    });
+
+    useMazeStore.getState().applySymmetry();
+
+    const state = useMazeStore.getState();
+    expect(state.floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+    expect(state.symmetryAxisPoints).toEqual([]);
+    expect(state.symmetryPolygon).toEqual([]);
+    expect(state.symmetryPolygonFinished).toBe(false);
+    expect(state.symmetryOperation).toBe("subtract");
+    expect(state.symmetrySnapMode).toBe("free");
+    expect(state.symmetryScope).toBe("one_side");
+    expect(state.symmetrySourceSide).toBe(-1);
+  });
+
+  it("does not apply a polygon symmetry preview before the polygon is finished", () => {
+    setActiveField({
+      fieldEditMode: "custom",
+      isEditingField: true,
+      fieldPrimitive: "symmetry",
+      fieldPoints: new Set([encodePoint(1, 0)]),
+    });
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: -100 }, { x: 20, y: 100 }],
+      symmetryScope: "polygon",
+      symmetryPolygon: [{ x: 0, y: -40 }, { x: 100, y: -40 }, { x: 50, y: 40 }],
+      symmetryPolygonFinished: false,
+    });
+
+    useMazeStore.getState().applySymmetry();
+
+    const state = useMazeStore.getState();
+    expect(state.floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(new Set([encodePoint(1, 0)]));
+    expect(state.symmetryAxisPoints).toHaveLength(2);
+    expect(state.symmetryPolygonFinished).toBe(false);
+  });
+
+  it("does not apply symmetry with a zero-length axis", () => {
+    setActiveField({ fieldEditMode: "custom", isEditingField: true, fieldPrimitive: "symmetry" });
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 20 }],
+      symmetryPolygon: [],
+    });
+
+    useMazeStore.getState().applySymmetry();
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("symmetry");
+    expect(useMazeStore.getState().symmetryAxisPoints).toHaveLength(2);
+  });
+
   it("setSeed updates seed and clears error", () => {
     useMazeStore.setState({ error: "old error" });
     useMazeStore.getState().setSeed(99);

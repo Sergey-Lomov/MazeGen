@@ -23,6 +23,13 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showPrimitiveFrame: true,
   showPaperLayout: false,
   smoothPrimitives: true,
+  symmetryOperation: "add",
+  symmetrySnapMode: "centers",
+  symmetryScope: "everything",
+  symmetryAxisPoints: [],
+  symmetrySourceSide: 1,
+  symmetryPolygon: [],
+  symmetryPolygonFinished: false,
 
   setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
@@ -63,6 +70,9 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationConfirmed: true,
       ...buildPreviewState(kind, hexOrientation, triOrientation),
       floorFields,
+      symmetryAxisPoints: [],
+      symmetryPolygon: [],
+      symmetryPolygonFinished: false,
       ...(clearMaze ? {
         ...buildResetDownstreamState(),
         pngExportSettings: {
@@ -121,6 +131,9 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     return {
       tessellationKind: kind,
       floorFields,
+      symmetryAxisPoints: [],
+      symmetryPolygon: [],
+      symmetryPolygonFinished: false,
       pngExportSettings: {
         ...state.pngExportSettings,
         print: { ...state.pngExportSettings.print, scaleAutoFit: true },
@@ -148,4 +161,13 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setShowPrimitiveFrame: (show) => set({ showPrimitiveFrame: show }),
   setShowPaperLayout: (show) => set({ showPaperLayout: show }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
+  setSymmetryOperation: (operation) => set({ symmetryOperation: operation }),
+  setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
+  setSymmetryScope: (scope) => set({ symmetryScope: scope }),
+  setSymmetryAxisPoints: (points) => set({ symmetryAxisPoints: points }),
+  setSymmetrySourceSide: (side) => set({ symmetrySourceSide: side }),
+  setSymmetryPolygon: (points) => set({ symmetryPolygon: points }),
+  finishSymmetryPolygon: () => set((state) => state.symmetryPolygon.length >= 3 ? { symmetryPolygonFinished: true } : {}),
+  resetSymmetryPolygon: () => set({ symmetryPolygon: [], symmetryPolygonFinished: false }),
+  resetSymmetryAxis: () => set({ symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
 });

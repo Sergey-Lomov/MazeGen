@@ -220,6 +220,9 @@ export class MazeScene {
           if (btn === 0) store.addFieldPoints(cells);
           else if (btn === 2) store.removeFieldPoints(cells);
         },
+        onSymmetryPreviewUpdate: (axis, polygon) => {
+          this.fieldEditorOverlay.updateSymmetryPreview(axis, polygon);
+        },
       },
     );
 
