@@ -14,7 +14,7 @@ import { compactPostEditCommands } from "../pixi/postEditCompaction";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
-  computeAnalytics: vi.fn(),
+  computeAnalyticsAsync: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
@@ -22,7 +22,7 @@ vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
-import { computeAnalytics } from "../wasm/mazeService";
+import { computeAnalyticsAsync as computeAnalytics } from "../wasm/mazeService";
 
 const n = nodeEndpoint;
 const key01 = edgeKey(n(0), n(1));
@@ -63,7 +63,7 @@ function seedPostEdit(
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   vi.mocked(computeAnalytics).mockReset();
-  vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
+  vi.mocked(computeAnalytics).mockResolvedValue(mockSnapshot);
   useMazeStore.setState({
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
     postEditAutoConfirm: false,
@@ -350,7 +350,7 @@ describe("mazeStore post-edit actions", () => {
 
   it("confirmPostEdit refreshes state.nodes from the snapshot (a confirmed split node must become resolvable on the next confirm)", async () => {
     const nodesWithSplit = [...mockSnapshot.nodes, { id: 2, x: 0, y: 0, i: 1 }];
-    vi.mocked(computeAnalytics).mockReturnValueOnce({ ...mockSnapshot, nodes: nodesWithSplit });
+    vi.mocked(computeAnalytics).mockResolvedValueOnce({ ...mockSnapshot, nodes: nodesWithSplit });
     await useMazeStore.getState().confirmPostEdit();
     expect(useMazeStore.getState().nodes).toEqual(nodesWithSplit);
   });
@@ -734,7 +734,7 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("confirmPostEdit increments the request id on every call", async () => {
-    vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
+    vi.mocked(computeAnalytics).mockResolvedValue(mockSnapshot);
     const before = useMazeStore.getState()._postEditRequestId;
     await useMazeStore.getState().confirmPostEdit();
     await useMazeStore.getState().confirmPostEdit();
