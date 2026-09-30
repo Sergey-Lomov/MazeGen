@@ -3,6 +3,13 @@ import { base, hexToNumber } from "../styles/palette";
 const CONTRAST_DARK = hexToNumber("#2a2a2a");
 const CONTRAST_LIGHT = hexToNumber("#e0e0e0");
 
+/** Shared add/remove preview colors for the field editor canvas and its tool icons. */
+export const FIELD_EDITOR_PREVIEW_COLORS = {
+  add: base.debugActive,
+  remove: "#ff4444",
+  background: base.bgSurfaceRaised,
+} as const;
+
 /** Picks a dark- or light-gray color that reads clearly against `backgroundColor` (0xRRGGBB) —
  * relative luminance (ITU-R BT.601 weights, same coefficients used for perceived-brightness
  * grayscale conversion), light background gets the dark gray and vice versa. Used for UI drawn
@@ -55,6 +62,8 @@ export const canvas = {
   },
 
   fieldEditor: {
+    previewAdd: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.add),
+    previewRemove: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.remove),
     hover: hexToNumber(base.canvasHover),
     // Manage split nodes panel target (GitHub issue #606): a transparent fill with a yellow frame
     // distinguishes the edited cell from the cursor hover while using the same full-cell geometry.

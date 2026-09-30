@@ -4,8 +4,9 @@ import { canvasToGrid, DefaultHoverProvider } from "../pixi/hoverProviders";
 import { makeProjection } from "../pixi/tessellationProjection";
 import type { TessellationProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
-import { MazeScene } from "../pixi/MazeScene";
+import { MazeScene, shouldCancelFieldEditGesture } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
+import { useMazeStore } from "../store/mazeStore";
 
 function fakeViewport(x: number, y: number, scale = 1): Container {
   return { x, y, scale: { x: scale, y: scale } } as unknown as Container;
@@ -56,7 +57,134 @@ describe("DefaultHoverProvider", () => {
   });
 });
 
+describe("field edit gesture cancellation", () => {
+  it("keeps a point brush gesture alive when adding a cell rebuilds the config", () => {
+    const pointUpdate = {
+      openChanged: false,
+      floorChanged: false,
+      modeChanged: false,
+      primitiveChanged: false,
+      configChanged: true,
+      fieldPointsChanged: true,
+      fieldEditMode: "custom",
+      fieldPrimitive: "point",
+    } as const;
+    expect(shouldCancelFieldEditGesture(pointUpdate)).toBe(false);
+
+    for (const change of ["openChanged", "floorChanged", "modeChanged", "primitiveChanged"] as const) {
+      expect(shouldCancelFieldEditGesture({ ...pointUpdate, [change]: true }), change).toBe(true);
+    }
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldPointsChanged: false }), "config-only change").toBe(true);
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldPrimitive: "rectangle" }), "shape primitive update").toBe(true);
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldEditMode: "default" }), "default-mode update").toBe(true);
+    expect(shouldCancelFieldEditGesture({
+      ...pointUpdate,
+      configChanged: false,
+      fieldPointsChanged: false,
+    }), "unrelated state update").toBe(false);
+  });
+});
+
 describe("zoom reset controls", () => {
+
+  it("does not highlight a hover cell for the polygon field tool", () => {
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const state = useMazeStore.getState();
+    const activeField = state.floorFields[state.activeFloorId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...activeField, fieldEditMode: "custom", fieldPrimitive: "polygon" },
+      },
+    });
+
+    const updateHover = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+        },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({
+        onPointerMove: vi.fn(),
+        getHoverCell: vi.fn(() => [2, 3]),
+        isGestureActive: vi.fn(() => false),
+      }) as any,
+      fieldEditorOverlay: { updateHover } as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointermove?.({ globalX: 10, globalY: 10, buttons: 0 });
+
+    expect(updateHover).toHaveBeenCalledWith(null, activeField.tessellationConfig);
+    useMazeStore.setState({
+      openCard: state.openCard,
+      floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
+    });
+    interaction.destroy();
+  });
+
+  it("forwards polygon double-taps to the field editor controller", () => {
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const state = useMazeStore.getState();
+    const activeField = state.floorFields[state.activeFloorId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...activeField, fieldEditMode: "custom", fieldPrimitive: "polygon" },
+      },
+    });
+
+    const onDoubleClick = vi.fn();
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+        },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({ onDoubleClick }) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointertap?.({ detail: 2, globalX: 10, globalY: 20, button: 0 });
+
+    expect(onDoubleClick).toHaveBeenCalledWith(10, 20, 0);
+    useMazeStore.setState({
+      openCard: state.openCard,
+      floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
+    });
+    interaction.destroy();
+  });
+
   it("resets viewport scale and keeps the center anchored", () => {
     const viewport = {
       x: 150,

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { type ReactNode } from "react";
 import { typography, muted, disabled as disabledStyle, spacing } from "../styles/theme";
 import { Switch } from "./Switch";
 import { Inline } from "./Layout";
@@ -7,14 +7,15 @@ import { InfoIconButton } from "./InfoIconButton";
 /** Shared labeled toggle-switch row — lifted out of `AnalyticsFeature.tsx` (its original,
  *  previously-private home) so a second feature (the debug panel's per-debug-value toggles, GitHub
  *  issue #131) can reuse it instead of a third hand-rolled copy. */
-export function ToggleRow({ label, checked, onChange, disabled, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void }) {
+export function ToggleRow({ label, checked, onChange, disabled, info, action, layoutStyle }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void; action?: ReactNode; layoutStyle?: React.CSSProperties }) {
   return (
-    <Inline gap="groupGap">
+    <Inline gap="groupGap" style={layoutStyle}>
       <span style={styles.toggleLabelGroup}>
         <span style={disabled ? disabledStyle(typography.body) : styles.toggleLabel}>{label}</span>
         {info && <InfoIconButton onClick={info} />}
       </span>
-      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
+      {action}
+      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} ariaLabel={label} />
     </Inline>
   );
 }

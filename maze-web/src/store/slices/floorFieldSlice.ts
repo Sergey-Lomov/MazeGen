@@ -170,6 +170,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setFieldPrimitive: (p) => set((state) => withActiveFloorField(state, { fieldPrimitive: p })),
 
+  setPolygonOperation: (operation) => set((state) => withActiveFloorField(state, { polygonOperation: operation })),
+
   copyFloorField: (sourceFloorId) => set((state) => {
     const source = state.floorFields[sourceFloorId];
     if (!source) return {};

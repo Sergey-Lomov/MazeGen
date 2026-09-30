@@ -28,6 +28,7 @@ export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}):
     fieldPoints: new Set<number>(),
     fieldEditMode: "default",
     fieldPrimitive: "point",
+    polygonOperation: "add",
     fieldDirty: false,
     ...overrides,
   };
@@ -182,6 +183,7 @@ export function baseStoreState() {
     showNodeIds: false,
     showCoords: false,
     showFieldOverlay: true,
+    showPaperLayout: false,
     selectedNode: null,
     error: null,
     initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },

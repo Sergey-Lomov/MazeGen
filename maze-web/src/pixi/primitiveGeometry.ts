@@ -24,10 +24,17 @@ export interface PrimitiveContext {
 }
 
 export type ShapePrimitive = PrimitiveShape;
-type WorldPoint = { x: number; y: number };
+export type WorldPoint = { x: number; y: number };
 
 export type PrimitiveWorldGeometry =
-  | { kind: "polygon"; points: WorldPoint[] }
+  | {
+      kind: "polygon";
+      points: WorldPoint[];
+      /** Number of points already committed by the user (the rest may be the cursor preview). */
+      vertexCount?: number;
+      /** Draw the segment from the cursor preview back to the first vertex as a dashed line. */
+      dashedClosing?: boolean;
+    }
   | { kind: "ellipse"; center: WorldPoint; width: number; height: number };
 
 function contextConfig(ctx: PrimitiveContext): FieldConfig {

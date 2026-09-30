@@ -87,6 +87,20 @@ Changing the confirmed tessellation kind resets the print sizing override (`prin
 enabled again). The next print-sizing dialog starts with a 10 mm cell measure, because the previous
 physical size was tied to the old tessellation geometry.
 
+### Paper layout in custom mode (GitHub issue #641)
+
+Custom mode provides a paper-layout switch and a gear button for configuration. The switch and gear
+are aligned with the other right-justified field-editor switches. When enabled, the field editor
+draws the selected paper's outer edge and the four margin guides behind the editable cells. The
+guide uses the same high-contrast frame, outside dimming, and dashed margin guides as the PNG Print
+overlay, while remaining in the editor's world coordinate system. It is centered on the field
+origin and follows the editor viewport's pan/zoom. Its paper
+size, orientation, margins, and cell measure are read from the shared `pngExportSettings.print`
+configuration, so changing the layout in this dialog changes the print calculator and PNG Print
+settings as well. With automatic print scale enabled, the guide uses a 10 mm cell measure until
+the user confirms a physical size. The guide is hidden outside custom mode and is not part of the
+generated field or export image.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
@@ -118,7 +132,8 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"`, per floor |
+| `floorFields[floorId].polygonOperation` | Stored polygon commit operation: `"add"` or `"remove"`; selected through the Add polygon / Subtract polygon tools |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
@@ -188,9 +203,25 @@ shape variant.
 
 Custom mode supports two drawing modes controlled by `fieldPrimitive`:
 
-**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape.
+**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape. Rebuilding the custom field configuration after a point edit must not cancel the active streak gesture; only a mode, floor, tool, or card change ends it.
 
 **Shape primitives** — batch mode. Mousedown begins gesture, drag adjusts shape, mouseup commits all cells in one store update (no per-cell flicker). Escape cancels the gesture without committing.
+
+**Polygon** (`"polygon"`) — click-based batch mode. Each left click places the next vertex in
+world coordinates. The Field Setup card exposes separate Add polygon and Subtract polygon tools; their
+icons share the polygon shape and carry a white plus or minus symbol with a background-colored gap. While moving the pointer, the preview follows the cursor continuously; the
+unconfirmed closing segment back to the first vertex is dashed. Confirmed vertices are shown as
+circles and can be dragged to reposition them. Newly added and dragged vertices snap to the center
+of their cell by default; holding Shift enables free movement. A double-click while placing a new
+vertex, or a double-click on the last vertex, closes and commits the polygon; clicking the first
+cell again or pressing Enter does the same. Escape cancels it. Right click also cancels the in-progress polygon and does not remove
+cells, because the operation is selected explicitly by the Add polygon or Subtract polygon tool. The
+preview shows the vertex outline and all cells whose centers are inside the polygon.
+Self-intersecting polygons use the even-odd rule.
+
+Polygon commits call `addFieldPoints` or `removeFieldPoints` once with the stored preview cell set.
+The tool works with square, hexagonal, and triangular tessellations and does not apply primitive
+smoothing or isolated-cell cleanup.
 
 ### Shape primitives
 
@@ -249,7 +280,7 @@ Preview is RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame 
 
 ### Gesture cancellation
 
-Escape key cancels any active shape-primitive gesture: preview clears, nothing committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
+Escape key cancels any active shape-primitive or polygon gesture: preview clears, nothing committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
 
 ### Commit
 

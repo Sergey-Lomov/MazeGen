@@ -7,7 +7,8 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon";
+export type PolygonOperation = "add" | "remove";
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
@@ -48,6 +49,8 @@ export interface TessellationState {
   showFieldOverlay: boolean;
   showFieldOrigin: boolean;
   showPrimitiveFrame: boolean;
+  /** Whether the custom-field editor shows the shared print paper and margin guides. */
+  showPaperLayout: boolean;
   smoothPrimitives: boolean;
 }
 
@@ -67,6 +70,7 @@ export interface TessellationActions {
   setShowFieldOverlay: (show: boolean) => void;
   setShowFieldOrigin: (show: boolean) => void;
   setShowPrimitiveFrame: (show: boolean) => void;
+  setShowPaperLayout: (show: boolean) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
 }
 
@@ -97,6 +101,8 @@ export interface FloorFieldConfig {
   fieldPoints: Set<number>;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
+  /** Operation used when the polygon tool commits its selected cells. */
+  polygonOperation?: PolygonOperation;
   /** True after any field setup change since the last confirmTessellation. */
   fieldDirty: boolean;
 }
@@ -122,6 +128,7 @@ export interface FloorFieldsActions {
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
+  setPolygonOperation: (operation: PolygonOperation) => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;
