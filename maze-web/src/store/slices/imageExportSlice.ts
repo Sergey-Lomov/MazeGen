@@ -7,7 +7,7 @@ import type {
 import { canvas } from "../../pixi/colorTokens";
 import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageExport/printFit";
 import { splitSlotColor } from "../../pixi/colorUtils";
-import { setLinkEnabledByTarget, propagate, forceLinks } from "./parameterLinksEngine";
+import { setLinkEnabledByTarget, propagate, forceLinks, addLink, removeLink } from "./parameterLinksEngine";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
@@ -364,6 +364,23 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: { ...settings, links } };
     }),
   resetVectorByCorridorsSettings: () => set({ vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS }),
+  setVectorByCorridorsLinkEnabled: (target, enabled) =>
+    set((s) => {
+      const { settings, links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target, enabled);
+      if (links === s.vectorByCorridorsSettings.links) return {};
+      return { vectorByCorridorsSettings: { ...settings, links } };
+    }),
+  addVectorByCorridorsLink: (source, target) =>
+    set((s) => {
+      const { settings, links } = addLink(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, source, target);
+      return { vectorByCorridorsSettings: { ...settings, links } };
+    }),
+  removeVectorByCorridorsLink: (target) =>
+    set((s) => {
+      const { settings, links } = removeLink(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target);
+      if (links === s.vectorByCorridorsSettings.links) return {};
+      return { vectorByCorridorsSettings: { ...settings, links } };
+    }),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
   setVectorByWallsShowGrid: (v) =>
@@ -631,5 +648,22 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: { ...settings, links } };
     }),
   resetVectorByWallsSettings: () => set({ vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS }),
+  setVectorByWallsLinkEnabled: (target, enabled) =>
+    set((s) => {
+      const { settings, links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, target, enabled);
+      if (links === s.vectorByWallsSettings.links) return {};
+      return { vectorByWallsSettings: { ...settings, links } };
+    }),
+  addVectorByWallsLink: (source, target) =>
+    set((s) => {
+      const { settings, links } = addLink(s.vectorByWallsSettings, s.vectorByWallsSettings.links, source, target);
+      return { vectorByWallsSettings: { ...settings, links } };
+    }),
+  removeVectorByWallsLink: (target) =>
+    set((s) => {
+      const { settings, links } = removeLink(s.vectorByWallsSettings, s.vectorByWallsSettings.links, target);
+      if (links === s.vectorByWallsSettings.links) return {};
+      return { vectorByWallsSettings: { ...settings, links } };
+    }),
   setHoveredExportWarningKey: (key) => set({ hoveredExportWarningKey: key }),
 });

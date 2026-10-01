@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { X, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { WarningIcon } from "../../WarningIcon";
+import { RemoveIconButton } from "../../RemoveIconButton";
+import { EditIconButton } from "../../EditIconButton";
 import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
-import { ui, typography, spacing, indent, inset } from "../../../styles/theme";
+import { ui, typography, spacing, indent } from "../../../styles/theme";
 import { Inline } from "../../Layout";
 import { resolveStrategyLabel, resolveNestedStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
@@ -220,14 +222,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           />
           {percent !== null && <span style={styles.weightPercent}>{percent}%</span>}
           {removable && (
-            <button
-              className="hoverable"
-              style={styles.removeBtn}
-              title={m["quality.nested_strategy.remove"]()}
-              onClick={() => removeNestedStrategy(ruleId, path)}
-            >
-              <X size={18} color={ui.text.tertiary} />
-            </button>
+            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
@@ -253,14 +248,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             <ChevronDown size={16} color={canMoveDown ? ui.text.tertiary : ui.text.disabled} />
           </button>
           {removable && (
-            <button
-              className="hoverable"
-              style={styles.removeBtn}
-              title={m["quality.nested_strategy.remove"]()}
-              onClick={() => removeNestedStrategy(ruleId, path)}
-            >
-              <X size={18} color={ui.text.tertiary} />
-            </button>
+            <RemoveIconButton title={m["quality.nested_strategy.remove"]()} onClick={() => removeNestedStrategy(ruleId, path)} />
           )}
         </Inline>
       )}
@@ -292,16 +280,12 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
               {resolveStrategyLabel(node.strategy.id)}
             </span>
             {node.strategy.experimental && <WarningIcon />}
-            <button className="hoverable" style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }}>✎</button>
+            <EditIconButton title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }} />
             {!showRankRow && removable && (
-              <button
-                className="hoverable"
-                style={styles.removeBtn}
+              <RemoveIconButton
                 title={m["quality.nested_strategy.remove"]()}
                 onClick={(e) => { e.stopPropagation(); flushRef.current(); removeNestedStrategy(ruleId, path); }}
-              >
-                <X size={18} color={ui.text.tertiary} />
-              </button>
+              />
             )}
           </Inline>
           {node.params.length > 0 && (
@@ -417,29 +401,7 @@ const styles = {
     whiteSpace: "nowrap" as const,
     textAlign: "right" as const,
   },
-  // Mirrors `qualityCanvasStyles.editBtn` — same "name + edit icon" affordance the top-level
-  // strategy header uses.
-  editBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    lineHeight: 1,
-    flexShrink: 0,
-  },
-  // Mirrors `qualityCanvasStyles.removeBtn` exactly — same remove affordance as "Remove rule".
-  removeBtn: {
-    background: "none",
-    border: "none",
-    cursor: "default",
-    padding: 0,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-  },
-  // Up/down priority-reorder buttons — same shape as `removeBtn`, disabled (not hidden) at
+  // Up/down priority-reorder buttons — same shape as `RemoveIconButton`, disabled (not hidden) at
   // either end of the sibling list so the row's width stays stable as rank changes.
   reorderBtn: {
     background: "none",

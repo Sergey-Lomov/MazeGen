@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget } from "../store/slices/parameterLinksEngine";
+import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget, addLink, removeLink } from "../store/slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
@@ -7,10 +7,10 @@ import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS 
 import { validateVectorByWallsSettings, validateVectorByCorridorsSettings } from "../store/projectExport/validateImageExport";
 
 const registry: Record<string, ParamDescriptor> = {
-  a: { type: "number", equals: Object.is },
-  b: { type: "number", equals: Object.is },
-  c: { type: "number", equals: Object.is },
-  color: { type: "color", equals: Object.is },
+  a: { type: "number", equals: Object.is, label: "a", group: [], format: String },
+  b: { type: "number", equals: Object.is, label: "b", group: [], format: String },
+  c: { type: "number", equals: Object.is, label: "c", group: [], format: String },
+  color: { type: "color", equals: Object.is, label: "color", group: [], format: String },
 };
 
 function link(source: string, target: string, enabled = true): ParamLink<string> {
@@ -30,6 +30,14 @@ describe("getParamValue / setParamValue", () => {
     const next = setParamValue(settings, "marker.size", 5);
     expect(next).toEqual({ marker: { size: 5, other: "x" } });
     expect(settings.marker.size).toBe(1);
+  });
+
+  it("reads/writes a field nested three levels deep without mutating the original", () => {
+    const settings = { index: { coverage: { elevator: true, other: false } } };
+    expect(getParamValue(settings, "index.coverage.elevator")).toBe(true);
+    const next = setParamValue(settings, "index.coverage.elevator", false);
+    expect(next).toEqual({ index: { coverage: { elevator: false, other: false } } });
+    expect(settings.index.coverage.elevator).toBe(true);
   });
 });
 
@@ -114,6 +122,38 @@ describe("setLinkEnabledByTarget", () => {
   });
 });
 
+describe("addLink", () => {
+  it("creates a new link and propagates the source's current value into the target", () => {
+    const { settings, links } = addLink({ a: 7, b: 0 }, [], "a", "b");
+    expect(settings.b).toBe(7);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ source: "a", target: "b", enabled: true });
+  });
+
+  it("replaces any existing link already targeting the same target", () => {
+    const links = [link("a", "c"), link("b", "c")];
+    const { links: nextLinks } = addLink({ a: 1, b: 2, c: 2 }, links, "a", "c");
+    const targetingC = nextLinks.filter((l) => l.target === "c");
+    expect(targetingC).toHaveLength(1);
+    expect(targetingC[0].source).toBe("a");
+  });
+});
+
+describe("removeLink", () => {
+  it("removes whichever link targets the given path, leaving the value untouched", () => {
+    const links = [link("a", "b"), link("a", "c")];
+    const { settings, links: nextLinks } = removeLink({ a: 1, b: 1, c: 1 }, links, "b");
+    expect(settings).toEqual({ a: 1, b: 1, c: 1 });
+    expect(nextLinks).toEqual([link("a", "c")]);
+  });
+
+  it("no-ops when no link targets the given path", () => {
+    const links = [link("a", "b")];
+    const result = removeLink({ a: 1, b: 1 }, links, "c");
+    expect(result.links).toBe(links);
+  });
+});
+
 describe("validateLinkGraph", () => {
   it("accepts a valid acyclic graph with unique targets", () => {
     expect(() => validateLinkGraph([link("a", "b"), link("b", "c")], registry)).not.toThrow();
@@ -174,5 +214,77 @@ describe("round-trip persistence of the four shared-style source values", () => 
     const tampered = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, links: [] };
     const loaded = validateVectorByWallsSettings(tampered, "vectorByWallsSettings");
     expect(loaded.links).toBe(DEFAULT_VECTOR_BY_WALLS_LINKS);
+  });
+});
+
+describe("param registry paths resolve against real settings", () => {
+  // `validateLinkGraph` only checks graph structure (types, acyclicity, unique targets) — it never
+  // reads `settings` itself, so a misspelled registry key (e.g. "markerIndex.coverge.elevator")
+  // would pass that check silently and only fail once a user opened the dialog. This walks every
+  // registered path through `getParamValue` against the real default settings instead.
+  it("every VECTOR_BY_WALLS_PARAM_REGISTRY path resolves to a defined value on DEFAULT_VECTOR_BY_WALLS_SETTINGS", () => {
+    for (const path of Object.keys(VECTOR_BY_WALLS_PARAM_REGISTRY)) {
+      expect(getParamValue(DEFAULT_VECTOR_BY_WALLS_SETTINGS, path), `path "${path}"`).not.toBeUndefined();
+    }
+  });
+
+  it("every VECTOR_BY_CORRIDORS_PARAM_REGISTRY path resolves to a defined value on DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS", () => {
+    for (const path of Object.keys(VECTOR_BY_CORRIDORS_PARAM_REGISTRY)) {
+      expect(getParamValue(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, path), `path "${path}"`).not.toBeUndefined();
+    }
+  });
+});
+
+describe("registry format functions", () => {
+  it("formatMarkerShape renders every MarkerShape value distinctly from the raw enum string", () => {
+    const format = VECTOR_BY_WALLS_PARAM_REGISTRY["startMarker.shape"].format;
+    const shapes = ["circle", "triangle", "square", "diamond", "pentagon", "star", "hexagon", "cross"];
+    const rendered = shapes.map((s) => format(s));
+    expect(new Set(rendered).size).toBe(shapes.length);
+    expect(rendered).not.toContain("circle");
+  });
+
+  it("formatVerticalArrowStyle renders every VerticalArrowStyle value distinctly", () => {
+    const format = VECTOR_BY_WALLS_PARAM_REGISTRY.twoWayArrowStyle.format;
+    const styles = ["triangle", "chevron", "arrow", "sign"];
+    const rendered = styles.map((s) => format(s));
+    expect(new Set(rendered).size).toBe(styles.length);
+  });
+
+  it("elevator badges and marker index use different i18n keys for IndexLabelStyle, even where the rendered wording happens to coincide in some locales", () => {
+    // Wording can coincide by accident in one locale (e.g. ru's "roman"/"letters" strings currently
+    // match) — what must hold is that each format function is backed by its own key set, so a future
+    // wording change to one doesn't silently affect the other. "arabic" has distinct wording in both
+    // locales today ("Numbers"/"Цифры" vs "Arabic numerals"/"Арабские цифры"), enough to prove the
+    // two functions aren't aliases of the same key set.
+    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.labelType"].format;
+    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.labelStyle"].format;
+    expect(badgeFormat("arabic")).not.toBe(indexFormat("arabic"));
+  });
+
+  it("teleport floor badge reuses the elevator badges IndexLabelStyle wording, not marker index's", () => {
+    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.labelType"].format;
+    const teleportFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["teleportFloorBadge.labelType"].format;
+    expect(teleportFormat("arabic")).toBe(badgeFormat("arabic"));
+  });
+
+  it("elevator badges and marker index use separate format functions for LabelFontWeight, not one aliasing the other", () => {
+    // Unlike IndexLabelStyle, LabelFontWeight's "regular"/"bold" wording happens to be identical
+    // between the two key sets in every current locale, so the assertion can't be "renders
+    // differently" here — instead it pins that the two descriptors reference distinct functions, so
+    // a future wording change to one key set can't accidentally also change the other's text.
+    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.fontWeight"].format;
+    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.fontWeight"].format;
+    expect(badgeFormat).not.toBe(indexFormat);
+  });
+
+  it("formatBoolean renders true/false distinctly", () => {
+    const format = VECTOR_BY_WALLS_PARAM_REGISTRY.showGrid.format;
+    expect(format(true)).not.toBe(format(false));
+  });
+
+  it("formatCornerStyle renders round/miter distinctly, including for the vertical-arrow-corner-style fields", () => {
+    const format = VECTOR_BY_WALLS_PARAM_REGISTRY.twoWayArrowCornerStyle.format;
+    expect(format("round")).not.toBe(format("miter"));
   });
 });

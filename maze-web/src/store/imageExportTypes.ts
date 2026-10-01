@@ -839,6 +839,17 @@ export interface ImageExportActions {
   /** "Reset all settings" — restores the whole `vectorByCorridorsSettings` object (shared style
    *  included, overrides cleared) to its defaults. */
   resetVectorByCorridorsSettings: () => void;
+  /** Enables/disables the link (if any) targeting `target`, without touching the field's own value
+   *  (GitHub issue #644's parameter-links dialog toggle). Re-enabling re-propagates `source`'s
+   *  value, same as `resetVectorByCorridorsSharedStyleField`; disabling just flips the flag. */
+  setVectorByCorridorsLinkEnabled: (target: VectorByCorridorsParamPath, enabled: boolean) => void;
+  /** Creates (or replaces) the link `source -> target` and propagates `source`'s current value into
+   *  `target` (GitHub issue #644). Both paths must share the same `ParamType` — the dialog only ever
+   *  offers same-type pairs. */
+  addVectorByCorridorsLink: (source: VectorByCorridorsParamPath, target: VectorByCorridorsParamPath) => void;
+  /** Removes whichever link targets `target` entirely (GitHub issue #644) — the field's own value is
+   *  left untouched but it stops following any source until a new link is created for it. */
+  removeVectorByCorridorsLink: (target: VectorByCorridorsParamPath) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
@@ -955,5 +966,11 @@ export interface ImageExportActions {
   /** "Reset all settings" — restores the whole `vectorByWallsSettings` object (shared style
    *  included, overrides cleared) to its defaults. */
   resetVectorByWallsSettings: () => void;
+  /** Same role as `setVectorByCorridorsLinkEnabled`, over `VectorByWallsParamPath`. */
+  setVectorByWallsLinkEnabled: (target: VectorByWallsParamPath, enabled: boolean) => void;
+  /** Same role as `addVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
+  addVectorByWallsLink: (source: VectorByWallsParamPath, target: VectorByWallsParamPath) => void;
+  /** Same role as `removeVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
+  removeVectorByWallsLink: (target: VectorByWallsParamPath) => void;
   setHoveredExportWarningKey: (key: string | null) => void;
 }

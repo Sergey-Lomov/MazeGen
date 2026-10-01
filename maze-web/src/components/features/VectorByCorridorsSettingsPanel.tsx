@@ -15,6 +15,7 @@ import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
+import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
@@ -117,8 +118,10 @@ export function VectorByCorridorsSettingsPanel() {
   const setSharedMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsSharedMarkerBorderWidth);
   const setSharedGapWidth = useMazeStore((s) => s.setVectorByCorridorsSharedGapWidth);
   const resetSharedStyleField = useMazeStore((s) => s.resetVectorByCorridorsSharedStyleField);
-  const forceSharedStyle = useMazeStore((s) => s.forceVectorByCorridorsSharedStyle);
   const resetAllSettings = useMazeStore((s) => s.resetVectorByCorridorsSettings);
+  const setLinkEnabled = useMazeStore((s) => s.setVectorByCorridorsLinkEnabled);
+  const addLink = useMazeStore((s) => s.addVectorByCorridorsLink);
+  const removeLink = useMazeStore((s) => s.removeVectorByCorridorsLink);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
@@ -267,8 +270,13 @@ export function VectorByCorridorsSettingsPanel() {
           onMarkerSizeChange={setSharedMarkerSize}
           onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
           onGapWidthChange={setSharedGapWidth}
-          onForce={forceSharedStyle}
           onResetAll={resetAllSettings}
+          settings={settings}
+          links={settings.links}
+          registry={VECTOR_BY_CORRIDORS_PARAM_REGISTRY}
+          onSetLinkEnabled={setLinkEnabled}
+          onAddLink={addLink}
+          onRemoveLink={removeLink}
         />
       )}
 

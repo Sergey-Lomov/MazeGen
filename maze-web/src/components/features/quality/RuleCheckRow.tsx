@@ -2,10 +2,9 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
+import { RemoveIconButton } from "../../RemoveIconButton";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
-import { X } from "lucide-react";
-import { ui } from "../../../styles/theme";
 import type { CheckVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
@@ -67,18 +66,14 @@ export function RuleCheckRow({ check, selected, selection, hovered, onSelect, on
         >
           <Switch checked={!check.disabled} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
         </div>
-        <button
-          className="hoverable"
-          style={styles.removeBtn}
+        <RemoveIconButton
           title={m["quality.remove"]()}
           onClick={(e) => {
             e.stopPropagation();
             flushRef.current();
             onRemove();
           }}
-        >
-          <X size={18} color={ui.text.tertiary} />
-        </button>
+        />
       </div>
       {check.params.length > 0 && (
         <div style={styles.ruleStrategyParams}>

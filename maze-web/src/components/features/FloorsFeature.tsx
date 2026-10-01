@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../pixi/selectors/mazeSelectors";
 import { ConfirmModal } from "../ConfirmModal";
@@ -7,6 +7,8 @@ import { Stack } from "../Layout";
 import { ui, radius, typography, muted, spacing, inset } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
+import { EditIconButton } from "../EditIconButton";
+import { RemoveIconButton } from "../RemoveIconButton";
 import * as m from "~/paraglide/messages";
 
 type PendingAction =
@@ -133,16 +135,8 @@ export function FloorsFeature() {
               >
                 <ChevronDown size={16} color={ui.text.tertiary} />
               </button>
-              <button className="hoverable" style={{ ...styles.editBtn, fontSize: 15 }} title={m["floors.rename_floor"]()} onClick={() => startRename(floor.id, floor.title)}>✎</button>
-              <button
-                className={floors.length === 1 ? undefined : "hoverable"}
-                style={{ ...styles.removeBtn, ...(floors.length === 1 ? styles.removeBtnDisabled : {}) }}
-                title={m["floors.remove_floor"]()}
-                disabled={floors.length === 1}
-                onClick={() => handleRemoveClick(floor.id)}
-              >
-                <X size={18} color={ui.text.tertiary} />
-              </button>
+              <EditIconButton title={m["floors.rename_floor"]()} fontSize={15} onClick={() => startRename(floor.id, floor.title)} />
+              <RemoveIconButton title={m["floors.remove_floor"]()} disabled={floors.length === 1} onClick={() => handleRemoveClick(floor.id)} />
             </div>
           </div>
         );
@@ -207,29 +201,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
   },
   moveBtnDisabled: {
-    opacity: 0.25,
-    cursor: "default",
-  },
-  editBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    lineHeight: 1,
-    flexShrink: 0,
-  },
-  removeBtn: {
-    background: "none",
-    border: "none",
-    cursor: "default",
-    padding: 0,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-  },
-  removeBtnDisabled: {
     opacity: 0.25,
     cursor: "default",
   },

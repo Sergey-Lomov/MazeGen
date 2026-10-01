@@ -1,27 +1,29 @@
 import type { ParamDescriptor, ParamLink } from "../parameterLinks";
 
-/** Reads `settings[path]`, where `path` may be a dot-path into one sub-object (e.g.
- *  `"startMarker.cornerStyle"`) — the only nesting depth any current registry path uses. Works with
- *  `P` as a plain string at runtime; type safety comes from the caller's per-mode `ParamPath`
- *  union. */
+/** Reads `settings[path]`, recursing through any nesting depth of dot-separated sub-object keys
+ *  (e.g. `"startMarker.cornerStyle"`, or `"markerIndex.coverage.elevator"` three levels deep).
+ *  Works with `P` as a plain string at runtime; type safety comes from the caller's per-mode
+ *  `ParamPath` union. */
 export function getParamValue<P extends string>(settings: object, path: P): unknown {
   const dot = path.indexOf(".");
   const rec = settings as Record<string, unknown>;
   if (dot === -1) return rec[path];
   const head = path.slice(0, dot);
   const tail = path.slice(dot + 1);
-  return (rec[head] as Record<string, unknown> | undefined)?.[tail];
+  const nested = rec[head] as object | undefined;
+  return nested === undefined ? undefined : getParamValue(nested, tail);
 }
 
 /** Returns a new settings object with `settings[path]` set to `value`, same dot-path convention as
- *  `getParamValue`. Never mutates `settings`. */
+ *  `getParamValue` (recurses through any nesting depth, e.g. `markerIndex.coverage.elevator`).
+ *  Never mutates `settings`. */
 export function setParamValue<P extends string, S extends object>(settings: S, path: P, value: unknown): S {
   const dot = path.indexOf(".");
   const rec = settings as Record<string, unknown>;
   if (dot === -1) return { ...settings, [path]: value };
   const head = path.slice(0, dot);
   const tail = path.slice(dot + 1);
-  return { ...settings, [head]: { ...(rec[head] as Record<string, unknown>), [tail]: value } };
+  return { ...settings, [head]: setParamValue((rec[head] as object) ?? {}, tail, value) };
 }
 
 /** Atomic, all-or-nothing check over the whole `links` list — accepts it entirely or throws
@@ -119,6 +121,39 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
     const matches = equals(getParamValue(settings, link.target), getParamValue(settings, link.source));
     return matches ? link : { ...link, enabled: false };
   });
+}
+
+/** Adds a new enabled link `source -> target` (GitHub issue #644's parameter-links dialog) and
+ *  propagates `source`'s current value into `target` immediately, same as re-enabling an existing
+ *  link (`setLinkEnabledByTarget`). Any existing link already targeting `target` is replaced (the
+ *  at-most-one-incoming-link invariant), not left dangling — callers should confirm with the user
+ *  before calling this when a prior link exists and they need to preserve it. Does not validate
+ *  `source`/`target` against a registry itself; the dialog only ever offers same-`ParamType` pairs
+ *  from the registry, so this stays a pure graph edit like the rest of the engine. */
+export function addLink<P extends string, S extends object>(
+  settings: S,
+  links: ParamLink<P>[],
+  source: P,
+  target: P,
+): { settings: S; links: ParamLink<P>[] } {
+  const withoutTarget = links.filter((l) => l.target !== target);
+  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true };
+  const nextLinks = [...withoutTarget, newLink];
+  const nextSettings = propagate(settings, nextLinks, [source]);
+  return { settings: nextSettings, links: nextLinks };
+}
+
+/** Removes whichever link targets `target` entirely (GitHub issue #644) — unlike
+ *  `setLinkEnabledByTarget(..., false)`, the field stops being linkable at all until a new link is
+ *  created for it, rather than merely following a disabled link that could later be re-enabled. The
+ *  field's own current value is left untouched. No-op if no link targets `target`. */
+export function removeLink<P extends string, S extends object>(
+  settings: S,
+  links: ParamLink<P>[],
+  target: P,
+): { settings: S; links: ParamLink<P>[] } {
+  if (!links.some((l) => l.target === target)) return { settings, links };
+  return { settings, links: links.filter((l) => l.target !== target) };
 }
 
 /** Addresses a link by its `target` (not `id` — a field's own setter always knows its own field

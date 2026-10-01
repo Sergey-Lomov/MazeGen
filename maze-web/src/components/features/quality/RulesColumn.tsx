@@ -13,6 +13,8 @@ import { RuleParamsSection } from "./RuleParamsSection";
 import { ConfirmModal } from "../../ConfirmModal";
 import { AlertModal } from "../../AlertModal";
 import { Switch } from "../../Switch";
+import { RemoveIconButton } from "../../RemoveIconButton";
+import { EditIconButton } from "../../EditIconButton";
 import { ui } from "../../../styles/theme";
 import { Button } from "../../Button";
 import * as m from "~/paraglide/messages";
@@ -295,15 +297,8 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           >
                             <Switch checked={!slot.ruleDisabled} onChange={() => toggleRuleDisabled(slot.ruleId)} />
                           </div>
-                          <button className="hoverable" style={styles.editBtn} title={m["quality.rename_rule"]()} onClick={() => startRename(slot)}>✎</button>
-                          <button
-                            className="hoverable"
-                            style={styles.removeBtn}
-                            title={m["quality.remove_rule"]()}
-                            onClick={() => setRemoveConfirmRuleId(slot.ruleId)}
-                          >
-                            <X size={18} color={ui.text.tertiary} />
-                          </button>
+                          <EditIconButton title={m["quality.rename_rule"]()} onClick={() => startRename(slot)} />
+                          <RemoveIconButton title={m["quality.remove_rule"]()} onClick={() => setRemoveConfirmRuleId(slot.ruleId)} />
                         </div>
                       </div>
                       {!slot.collapsed && (

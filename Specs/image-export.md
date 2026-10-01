@@ -512,13 +512,138 @@ Every `ColorRow` / `ColorSwatch` in these panels opens the custom color picker
 (`Specs/color-picker.md`, GitHub issue #499) rather than the browser-native color popup; the
 `resetButton` wiring above is unchanged by that.
 
-The section's own two buttons: **"Synchronize"** enables every link and propagates every shared
-value to every dependent field at once (`forceLinks`, called via
-`forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`); **"Reset all settings"**
-restores the whole render mode's settings object (including `links`, reseeded from
-`DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`) to its defaults
+The section's own two buttons: **"Manage links"** (secondary-variant, the standard auxiliary-
+action style, not the toggle style) opens the parameter-links dialog below;
+**"Reset all settings"** restores the whole render mode's settings object (including `links`,
+reseeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`) to its defaults
 (`resetVectorByWallsSettings`/`resetVectorByCorridorsSettings`) — a full-panel reset, not scoped to
-shared style alone.
+shared style alone. (The section used to also have a "Synchronize" button force-enabling every link;
+removed as a leftover of the pre-#644 override model once the link-list dialog below became the
+actual place to manage links — `forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`/
+`forceLinks` still exist in the store/engine but are no longer wired to any UI.)
+
+**Parameter-links dialog (`ParameterLinksDialog.tsx`, GitHub issue #644, redesigned link-centric
+per follow-up feedback, then trimmed to just a filter/add toolbar plus the link list).** No
+explanatory hint text above the list — the toolbar and cards are self-explanatory. The toolbar holds
+a `BreadcrumbNav` filter (see below) and an `AddIconButton` (see below — the quality panel's own flat
+`Plus` convention, no border, not a labeled button) that opens `LinkEditor` to add a new link. The
+list itself is sorted by the dependent (target) field's own `hierarchicalLabel`, one two-line card per
+link — parameters with no link are not shown at all, so the list never mirrors the full settings
+panel. Line 1: the dependent field's full hierarchical name on the left; an enable/disable switch, an
+edit action, and a delete action on the right (removes the link entirely — distinct from disabling it
+— via `removeVectorByWallsLink`/`removeVectorByCorridorsLink`, `removeLink`). Line 2: `"Value: "` then
+the target's current value, formatted the same way the settings panel itself displays it
+(`registry[link.target].format(getParamValue(settings, link.target))` — e.g. a `cornerStyle`/`join`
+field's raw `"round"`/`"miter"` renders as "Скругление"/"Заострение", not the enum string; plain
+numbers fall back to `String(v)`), then "=", then the source's own hierarchical name — reads as "this
+value comes from that one". Both hierarchical names render via `HierarchicalLabelSegments`, not the
+plain `hierarchicalLabel` string helper: each "/"-separated segment (every `group` entry plus the
+field's own `label`) is its own clickable span with a faint `ui.bg.panelAlt` background (a hair
+lighter than the card's own `ui.bg.panel`, just enough to read as a distinct token without drawing
+attention) and `className="hoverable-tint"` (brightens in place on hover, same convention as the
+severity bubbles elsewhere — a plain `.hoverable` class can't layer a hover state on top of a span's
+own inline `background` since the inline style always wins). Clicking a segment sets the toolbar's
+breadcrumb filter path to that segment prefixed with every segment before it — clicking "Elevator" in
+"Vertical connections / Elevator / Marker" filters to "Vertical connections / Elevator", not just
+"Elevator" alone (an earlier segment narrows down *which* "Elevator", since the same subsection name
+can recur under a different top-level group); a first-segment click has nothing before it to
+prepend. A disabled
+row is dimmed but stays in the list. Cards use the same bordered-panel look as the quality panel's
+own rule cards (`ui.bg.panel`/`ui.border.default`/`radius.md`) so each link reads as a distinct
+entity, not a bare row. Edit/delete use the shared
+`EditIconButton`/`RemoveIconButton` components (see below). No summary line, no bulk sync/enable/
+disable-all actions; those were cut as duplicating the (now also removed) section-level "Synchronize"
+button and adding chrome around what's usually a short list.
+
+**Breadcrumb filter (`BreadcrumbNav`, inside the same file).** Replaces an earlier free-text search
+box — the filter can only ever be an actual parameter address, built one level at a time, never an
+arbitrary typed word. Backed by a group tree (`buildPickerTree`) built only from paths some link's
+`target` or `source` actually references, not the full registry — so a level the dropdown can offer
+is always a level some visible link can match. The path renders as a chip trail inside the toolbar bar
+(empty path reads as the localized "Search parameters..." placeholder, same wording the earlier free-text
+box used); the bar itself has a `"hoverable-tint"` hover highlight (not plain `"hoverable"` — the bar's
+own inline `background` would otherwise win over a plain class-based background swap) so it reads as
+interactive even before the dropdown opens. Clicking the bar toggles a dropdown listing the current
+level's children — sub-groups (with a `ChevronRight`, same as `ParamPicker`'s own group rows) and any
+leaf parameters sitting at that exact level. Picking a sub-group appends its segment to the path and
+leaves the dropdown open, now one level deeper; picking a leaf sets the path to that leaf's full address
+and closes the dropdown — same end state as clicking a `HierarchicalLabelSegments` leaf's last segment.
+Two flat icon buttons sit inside the bar itself, right after the chip trail (both
+`sharedStyles.closeBtn`, vertically centered): `ArrowLeft` pops exactly one trailing segment, `X` clears
+the whole path in one click — both only rendered once the path is non-empty. Backspace also pops one
+segment while the bar is hovered or the dropdown is open (`hovered || open` gating a `document`-level
+`keydown` listener — `open` matters on its own since picking a sub-group leaves the mouse over a dropdown
+row, not the bar, so `hovered` alone would stop tracking mid-drill-down). Clicking anywhere outside the
+component (a `mousedown` listener on `document`, added only while `open`) closes the dropdown without
+changing the path. The link list's own filter matches a link if either its target's or its source's full
+segment path (`group` + `label`) starts with the breadcrumb path — an empty path matches everything.
+
+**Add/Edit link (`LinkEditor`, inside the same file).** The full parameter list only appears here,
+not on the dialog's main screen — two side-by-side hierarchical, collapsible pickers (`ParamPicker`,
+built by `buildPickerTree` from each path's `registry[path].group` segments, mirroring the settings
+panel's own section/subsection nesting rather than a flat alphabetical list). Column titles and group
+folder rows both use the same `typography.body` header style `SectionHeader`/`SubsectionHeader` use
+for the render-mode settings panel's own section titles — no bold, no caption-level or title-level
+token. The left picker chooses **Target** from every path in the registry; picking one filters the
+right **Source** picker down to
+same-`ParamType` paths excluding that target — mirrors the engine's own `source`/`target`-must-match-
+type and at-most-one-incoming-link rules. "Edit" reopens this same component pre-filled with the
+link's current `source`/`target`; saving (Add or Edit) always calls `onAddLink`
+(`addVectorByWallsLink`/`addVectorByCorridorsLink`, engine's `addLink`), which replaces any prior link
+already targeting that target and propagates the source's current value in immediately — so editing a
+link's source re-syncs the target's value as part of the save. The whole dialog is scoped to whichever
+render mode's panel opened it (`SharedStyleSection`'s own `links`/`registry`/`settings` props, generic
+over `P`) — not persisted any differently than `links` itself (see "Not persisted" below).
+
+The four "Shared style" source fields (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`)
+carry `group: ["Shared style"]` (the section they actually live in), not an empty `group` — so they
+too show up nested under "Shared style" in the picker tree and in any `hierarchicalLabel`, instead of
+floating at the dialog's top level. Their own `label`s dropped the earlier `"Shared: "`/`"Общее: "`
+prefix once they got a real group segment — the section name already says that.
+
+**Registry coverage (`parameterLinksRegistry.ts`).** Covers effectively every linkable field in both
+panels: plain numbers and booleans (`formatBoolean`, localized "Вкл"/"Выкл") fall back to generic
+formatting; `cornerStyle` fields (including the three `*ArrowCornerStyle` fields, which are plain
+`CornerStyle` despite their vertical-arrow-specific naming) share `formatCornerStyle`. Four small
+string enums reused across multiple fields each get their own `ParamType` and format function instead
+of a raw enum string: `markerShape` (`formatMarkerShape`, backed by the same 8 values
+`MARKER_SHAPE_OPTIONS` uses), `verticalArrowStyle` (`formatVerticalArrowStyle`), `indexLabelStyle` and
+`labelFontWeight`. The latter two need per-field label-text selection, not one shared format — the
+same `arabic`/`roman`/`letters`/`regular`/`bold` values render under different wording depending on
+whether the field is an elevator/teleport-floor badge (`elevator_badges_label_type_*`/
+`elevator_badges_font_weight_*`, the `descriptor()` default) or a marker-index field
+(`marker_index_label_style_*`/`marker_index_font_weight_*`, passed explicitly as a `format` override).
+A handful of one-off enum domains (random wall color mode, one-way render pattern, corridor marker-
+widen shape, teleport connector style/arrow mode, and similar single-field selects) are intentionally
+not in the registry yet — each would need its own `ParamType` for exactly one field, with no shared
+format to reuse, and how to denote that is still undecided.
+
+A `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` object's `cornerStyle`/`size`/
+`borderWidth`/`gapWidth`/`shape` fields all share one `group` (ending in the panel's own "Маркер"
+subsection), not a shallower one for the first four and a deeper one for `shape` — the panel renders
+all five inside the same `MarkerSettingsGroup`, under one `vertical_subsection_marker` wrapper, so the
+registry's `group` path mirrors that rather than splitting one object's fields across two picker-tree
+depths. The decorative-mode counterparts (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/
+`decorativeElevator`, each a walls-only `DecorativeLineStyle`, see "Vertical connections" above) sit
+one level shallower (no "Маркер" subsection exists in decorative mode) and are registered only in
+`VECTOR_BY_WALLS_PARAM_REGISTRY` — `VectorByCorridorsSettings` has no `VerticalDecorativeFields` at
+all (corridors mode has no decorative/abstract `verticalStyle` toggle), so neither these three
+sub-objects nor `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize` exist for corridors.
+
+**`EditIconButton`/`RemoveIconButton`/`AddIconButton` (`components/EditIconButton.tsx`,
+`components/RemoveIconButton.tsx`, `components/AddIconButton.tsx`).** Reusable icon-button components
+extracted from the quality panel's own row/toolbar-action convention (a plain "✎" glyph for edit, a
+lucide `X` for remove/delete — never a trash-can icon — and a flat, borderless lucide `Plus` for add)
+so every edit/delete/add entry point across the app renders and behaves identically instead of each
+row or toolbar hand-rolling its own button+glyph copy. Used by `ParameterLinksDialog`'s link rows and
+its own toolbar's "+" button, `FloorsFeature`'s floor rows, and the quality panel's own
+`RuleCheckRow`/`NestedStrategyPanel`/`RulesColumn`/`RuleStrategyPanel`. `RemoveIconButton` takes a
+`size` (16 compact / 18 card-level) and an optional `disabled` (dims via opacity, e.g. "can't remove
+the last floor"); `EditIconButton` takes an optional `fontSize` override; `AddIconButton` has no
+options — always the same flat 16px `Plus`. Toolbar-style button rows with their own distinct
+padding/border convention (e.g. `RulesColumn`'s 5-button uniform stage toolbar, which keeps its own
+inline `Plus` button so it stays visually uniform with its ChevronUp/ChevronDown neighbors sharing
+the same `stageToolbarBtn` style) are left as-is rather than forced into these generic components.
 
 **Defaults are derived, not duplicated.** `DEFAULT_MAZE_RENDER_STYLE`
 (`pixi/defaultMazeRenderStyle.ts`) is the store-independent runtime source for the live canvas and
