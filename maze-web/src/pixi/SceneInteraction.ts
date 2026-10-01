@@ -85,7 +85,8 @@ export class SceneInteraction {
       if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
-        const hoverCell = st.floorFields[st.activeFloorId].fieldPrimitive === "polygon"
+        const hoverCell = (st.floorFields[st.activeFloorId].fieldPrimitive === "polygon"
+          || st.floorFields[st.activeFloorId].fieldPrimitive === "symmetry")
           ? null
           : fieldEditController.getHoverCell(e.globalX, e.globalY);
         fieldEditorOverlay.updateHover(fieldEditController.isGestureActive() ? null : hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
@@ -105,7 +106,8 @@ export class SceneInteraction {
       const field = st.floorFields[st.activeFloorId];
       if (!(st.openCard === "field_setup"
         && field.fieldEditMode === "custom"
-        && field.fieldPrimitive === "polygon")) return;
+        && (field.fieldPrimitive === "polygon"
+          || (field.fieldPrimitive === "symmetry" && st.symmetryAxisPoints.length === 2 && st.symmetryScope === "polygon")))) return;
       getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
     });
 

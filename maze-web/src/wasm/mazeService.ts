@@ -93,6 +93,90 @@ export interface GenerateMazeResult {
   debugTape: DebugTape | undefined;
 }
 
+/** Runs generation off the main thread so long WASM calls can provide responsive UI feedback. */
+export function generateMazeAsync(seed: number, config: GenerateConfig): Promise<GenerateMazeResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./generationWorker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<GenerateMazeResult | { error: string }>) => {
+      worker.terminate();
+      if ("error" in event.data) reject(new Error(event.data.error));
+      else resolve(event.data);
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Generation worker failed"));
+    };
+    worker.postMessage({ seed, config });
+  });
+}
+
+interface AnalyticsWorkerResponse {
+  error: string;
+}
+
+interface ActiveAnalyticsRequest {
+  worker: Worker;
+  reject: (reason?: unknown) => void;
+  settled: boolean;
+}
+
+let activeAnalyticsRequest: ActiveAnalyticsRequest | null = null;
+
+/** Runs the expensive analytics-only WASM call off the UI thread. A newer request supersedes the
+ * previous one, so rapid rule edits do not leave a pool of stale cycle analyses running in the
+ * background. `confirmPostEdit`'s request id still protects the store from a result that raced
+ * with another state change after the worker completed. */
+export function computeAnalyticsAsync(config: ComputeAnalyticsConfig): Promise<MazeSnapshot> {
+  if (activeAnalyticsRequest !== null) {
+    const previous = activeAnalyticsRequest;
+    activeAnalyticsRequest = null;
+    previous.settled = true;
+    previous.worker.terminate();
+    previous.reject(new Error("Analytics request superseded"));
+  }
+
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./analyticsWorker.ts", import.meta.url), { type: "module" });
+    const request: ActiveAnalyticsRequest = { worker, reject, settled: false };
+    activeAnalyticsRequest = request;
+
+    const finish = (callback: () => void): void => {
+      if (request.settled) return;
+      request.settled = true;
+      if (activeAnalyticsRequest === request) activeAnalyticsRequest = null;
+      worker.terminate();
+      callback();
+    };
+
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      if (isAnalyticsWorkerResponse(event.data)) {
+        const message = event.data.error;
+        finish(() => reject(new Error(message)));
+        return;
+      }
+      try {
+        const snapshot = validateSnapshot(event.data);
+        finish(() => resolve(snapshot));
+      } catch (error) {
+        finish(() => reject(error));
+      }
+    };
+    worker.onerror = (event) => {
+      finish(() => reject(new Error(event.message || "Analytics worker failed")));
+    };
+    try {
+      worker.postMessage({ config });
+    } catch (error) {
+      finish(() => reject(error));
+    }
+  });
+}
+
+function isAnalyticsWorkerResponse(value: unknown): value is AnalyticsWorkerResponse {
+  return typeof value === "object" && value !== null &&
+    typeof (value as AnalyticsWorkerResponse).error === "string";
+}
+
 /** Zips `GenerateResult::debugValueNames()`/`debugValueKinds()`'s parallel arrays (see
  *  `maze-wasm/src/result.rs`'s `kind_wire_str`) into `DebugValueDescriptor`s. Both arrays are
  *  always the same length by construction on the Rust side — asserted here so a mismatch (e.g.

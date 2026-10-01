@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import { computeAnalytics } from "../../wasm/mazeService";
+import { computeAnalyticsAsync } from "../../wasm/mazeService";
 import type { NodeDto, PostEditEdgeWasmDto } from "../../wasm/types";
 import {
   postEditTeleportsToDto,
@@ -508,7 +508,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...(state.presetFinish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
     };
     try {
-      const snapshot = computeAnalytics(config);
+      const snapshot = await computeAnalyticsAsync(config);
       if (get()._postEditRequestId !== requestId) return;
       set((state) => ({
         // A confirmed split node (GitHub issue #221) exists only in the WASM-returned snapshot

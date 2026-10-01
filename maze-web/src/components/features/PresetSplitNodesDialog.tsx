@@ -6,20 +6,14 @@ import { activeFloorLevel } from "../../store/storeHelpers";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
-import { splitSlotColor } from "../../pixi/colorUtils";
-import { canvas } from "../../pixi/colorTokens";
-import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
 import { presetTargetLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type SplitNodesRow, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
 import { buildPresetPointEntities } from "../../pixi/pointEntities";
-import type { TileFace, TileFaceNode } from "./TileFaceEditor";
+import type { TileFace } from "./TileFaceEditor";
+import { resolveActiveSplitEndpoint, splitPointKey, useSplitDialogFieldCells, useSplitNodesDialogOrchestration } from "./splitNodesOrchestration";
 import * as m from "~/paraglide/messages";
-
-function colorToCss(color: number): string {
-  return `#${color.toString(16).padStart(6, "0")}`;
-}
 
 interface Props {
   point: [number, number];
@@ -66,14 +60,9 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
   const level = useMazeStore((s) => activeFloorLevel(s));
-  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const key = splitPointKey(point, level);
   const slots = useMemo(() => [...(splitPoints[key] ?? [])].sort((a, b) => a - b), [splitPoints, key]);
-  const isActive = (ep: PresetEndpoint) => presetEndpointsEqual(activeSplitNode[key] ?? presetEndpoint(point, undefined, level), ep);
-
-  const inFieldCells = useMemo(
-    () => buildCellSet(buildActiveCells(fieldPoints, fieldEditMode, cfg)),
-    [fieldPoints, fieldEditMode, cfg],
-  );
+  const inFieldCells = useSplitDialogFieldCells(fieldPoints, fieldEditMode, cfg);
   const presetSplitLabelContext: PresetSplitLabelContext = {
     splitPoints,
     presetConnections,
@@ -216,38 +205,15 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
 
   // Node color by row order (original node first, then each slot in slotId order) — same
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).
-  const colorAt = (rowIndex: number) => colorToCss(splitSlotColor(rowIndex, canvas.node.splitSlots));
-
-  const rows: SplitNodesRow<PresetEndpoint>[] = [
-    {
-      key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
-      color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
-      elements: elementsFor(originalEndpoint),
-      lockKind: lockedNodes.get(presetEndpointKey(originalEndpoint)) ?? (autoLockedNodes.has(presetEndpointKey(originalEndpoint)) ? "both" : undefined),
-    },
-    ...slots.map((slotId, i) => {
-      const ep = presetEndpoint(point, slotId, level);
-      return {
-        key: presetEndpointKey(ep), endpoint: ep, title: semanticNames?.[1 + i]?.full ?? splitNodeLabel(slotId),
-        color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
-        elements: elementsFor(ep),
-        lockKind: lockedNodes.get(presetEndpointKey(ep)) ?? (autoLockedNodes.has(presetEndpointKey(ep)) ? "both" : undefined),
-      };
-    }),
-  ];
-
-  const activeEndpoint = activeSplitNode[key] ?? originalEndpoint;
-
-  const blueprints = useMemo(
-    () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
-    [cfg, point],
-  );
-
-  const tileNodes: TileFaceNode[] = useMemo(
-    () => rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, cfg, point, inFieldCells, presetConnections],
-  );
+  const activeEndpoint = resolveActiveSplitEndpoint(activeSplitNode, key, originalEndpoint);
+  const { rows, tileNodes, blueprints } = useSplitNodesDialogOrchestration({
+    point, cfg, slots, originalEndpoint, endpointForSlot: (slotId) => presetEndpoint(point, slotId, level),
+    endpointKey: presetEndpointKey, activeEndpoint, semanticNames,
+    fallbackTitle: (rowIndex) => splitNodeLabel(rowIndex === 0 ? undefined : slots[rowIndex - 1]),
+    lockKindFor: (endpoint) => lockedNodes.get(presetEndpointKey(endpoint))
+      ?? (autoLockedNodes.has(presetEndpointKey(endpoint)) ? "both" : undefined),
+    describeEndpoint, linksFor: links, elementsFor, facesOf,
+  });
 
   const handleFaceClick = (offsetIndex: number) => {
     const { offsets } = getNeighborData(cfg, point[0], point[1]);

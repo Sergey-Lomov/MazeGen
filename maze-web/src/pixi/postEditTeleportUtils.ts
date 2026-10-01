@@ -4,6 +4,7 @@ import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint } from "./postEditEndpoint";
 import { formatPostEditId } from "./postEditIdFormat";
+import { pickNearestPointerHit } from "./pointerInteraction";
 
 /** Rebuilds editable teleport entries from generation's EdgeDto[]. Kept as their own list rather
  * than folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` (keyed by `from-to`), since a
@@ -133,24 +134,17 @@ export function pickPostEditTeleportEndpointAt(
 ): PostEditTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
   const pointerCell = proj.screenToGrid(viewportX, viewportY);
-  let best: PostEditTeleportEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const t of teleports) {
-    for (const end of ["from", "to"] as const) {
-      const nodeId = resolveEndpoint(end === "from" ? t.from : t.to, resolveSplit);
-      if (nodeId === undefined) continue;
-      const node = nodeById.get(nodeId);
-      if (!node) continue;
-      const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
-      if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
-      const dx = px - viewportX;
-      const dy = py - viewportY;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < bestDistSq) {
-        bestDistSq = distSq;
-        best = { id: t.id, end };
-      }
-    }
-  }
-  return best;
+  const candidates = teleports.flatMap((teleport) => (["from", "to"] as const).flatMap((end) => {
+    const nodeId = resolveEndpoint(end === "from" ? teleport.from : teleport.to, resolveSplit);
+    const node = nodeId === undefined ? undefined : nodeById.get(nodeId);
+    return node ? [{ id: teleport.id, end, node }] : [];
+  }));
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.node.x, candidate.node.y),
+    (candidate) => pointerCell.x === candidate.node.x && pointerCell.y === candidate.node.y,
+  );
+  return hit ? { id: hit.id, end: hit.end } : null;
 }

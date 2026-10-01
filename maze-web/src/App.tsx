@@ -3,6 +3,7 @@ import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
+import { SymmetryPanel } from "./components/features/SymmetryPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
@@ -37,6 +38,10 @@ export function App() {
   const qualityOpen = openCard === "quality";
   const floorCount = useMazeStore((s) => s.floors.length);
   const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
+  const field = useMazeStore((s) => s.floorFields[s.activeFloorId]);
+  const showSymmetryPanel = openCard === "field_setup"
+    && field.fieldEditMode === "custom"
+    && field.fieldPrimitive === "symmetry";
 
   useEffect(() => {
     loadRegistry();
@@ -113,6 +118,7 @@ export function App() {
         {showFloorSwitcher && <FloorSwitcher />}
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
+      {showSymmetryPanel && <SymmetryPanel />}
       {/* Portal target for `SidePanel` (GitHub issue #237) — split-node management panels
        * (post-edit, preset, pattern editor) render here regardless of where in the component tree
        * they're triggered from, so they always dock beside the canvas, never inside the left

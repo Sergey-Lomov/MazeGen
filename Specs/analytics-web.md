@@ -9,6 +9,14 @@ The Analytics feature card is the last card in `FeaturesPanel`. It displays maze
 
 Opening the Analytics card sets `analyticsOpen = true` in the store; closing it sets `analyticsOpen = false`. The flag drives all overlay visibility in `AnalyticsRenderer`.
 
+## Recomputing analytics after rule edits
+
+When the Quality panel changes `rules` or `stages`, the post-edit analytics snapshot is refreshed
+after a 300 ms debounce. The analytics-only WASM call runs in a dedicated module worker so cycle
+analysis and QC issue collection do not block rule editing or canvas input on the main thread.
+Starting a newer refresh terminates the previous worker; only the latest completed request may
+update the store. Leaving the Quality panel flushes the pending refresh immediately.
+
 ### Card comment
 
 `computeAnalyticsCard` (`FeaturesPanel.tsx`) always reports the analytics issue count, regardless of status — never a specific issue's title:

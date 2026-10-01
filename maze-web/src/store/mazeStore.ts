@@ -202,6 +202,13 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       showFieldOrigin: file.ui.showFieldOrigin,
       showPrimitiveFrame: true,
       smoothPrimitives: true,
+      symmetryOperation: "add",
+      symmetrySnapMode: "centers",
+      symmetryScope: "everything",
+      symmetryAxisPoints: [],
+      symmetrySourceSide: 1,
+      symmetryPolygon: [],
+      symmetryPolygonFinished: false,
       openCard: file.ui.openCard,
       // clear transient UI flags
       highlightInvalidPresets: false,

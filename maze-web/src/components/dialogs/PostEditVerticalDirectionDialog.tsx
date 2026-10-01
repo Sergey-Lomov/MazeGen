@@ -1,8 +1,5 @@
-import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { Modal } from "../Modal";
-import { Button } from "../Button";
-import { radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import { VerticalDirectionPicker } from "./VerticalDirectionPicker";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -18,31 +15,9 @@ export function PostEditVerticalDirectionDialog({ onClose }: Props) {
 
   if (!pending) return null;
 
-  return (
-    <Modal title={m["preset.vertical_direction_dialog_title"]()} size="approve" onClose={onClose}>
-      <div style={styles.row}>
-        <Button variant="primary" layoutStyle={styles.btn} onClick={() => { choose("up"); onClose(); }}>
-          {m["preset.vertical_direction_up"]()}
-        </Button>
-        <Button variant="primary" layoutStyle={styles.btn} onClick={() => { choose("down"); onClose(); }}>
-          {m["preset.vertical_direction_down"]()}
-        </Button>
-      </div>
-    </Modal>
-  );
+  return <VerticalDirectionPicker
+    title={m["preset.vertical_direction_dialog_title"]()}
+    onSelect={(direction) => { choose(direction); onClose(); }}
+    onClose={onClose}
+  />;
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  row: {
-    display: "flex",
-    gap: dialogSpacing.gap,
-  },
-  btn: {
-    ...typography.control,
-    flex: 1,
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    cursor: "default",
-    borderRadius: radius.sm,
-    textAlign: "center",
-  },
-};

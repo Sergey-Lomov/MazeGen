@@ -2,9 +2,8 @@ import { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
-import { ToolIconButton } from "../ToolIconButton";
-import { ToolGlyph } from "./ToolGlyph";
-import type { ToolGlyphKey } from "./toolGlyphs";
+import { ToolIconRow } from "../ToolIconRow";
+import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { typography, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
@@ -18,8 +17,7 @@ import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDire
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import { PostEditEntityDeleteDialog } from "../dialogs/PostEditEntityDeleteDialog";
 import { PostEditResetDialog } from "../dialogs/PostEditResetDialog";
-import { formatTargetLabel } from "../../pixi/targetLabel";
-import { AlertModal } from "../AlertModal";
+import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -62,33 +60,6 @@ function glyphKeyFor(t: PostEditTool): ToolGlyphKey {
 
 /** Destructive tools show a danger-hued selected border instead of the accent one. */
 const DANGER_TOOLS = new Set<PostEditTool>(["reset", "delete"]);
-
-/** A wrapping row of square pictogram buttons for the post-edit tools (GitHub issue #456). */
-function ToolIconRow({
-  tools,
-  activeTool,
-  onPick,
-}: {
-  tools: [PostEditTool, string][];
-  activeTool: PostEditTool;
-  onPick: (t: PostEditTool) => void;
-}) {
-  return (
-    <div style={styles.iconRow}>
-      {tools.map(([t, label]) => (
-        <ToolIconButton
-          key={t}
-          selected={activeTool === t}
-          danger={DANGER_TOOLS.has(t)}
-          title={label}
-          onClick={() => onPick(t)}
-        >
-          <ToolGlyph tool={glyphKeyFor(t)} />
-        </ToolIconButton>
-      ))}
-    </div>
-  );
-}
 
 export function PostEditFeature() {
   const tool                = useMazeStore((s) => s.postEditTool);
@@ -184,6 +155,8 @@ export function PostEditFeature() {
           ]}
           activeTool={tool}
           onPick={setTool}
+          glyphFor={glyphKeyFor}
+          isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
       </div>
 
@@ -207,17 +180,7 @@ export function PostEditFeature() {
         <PostEditResetDialog onClose={cancelPostEditReset} />
       )}
 
-      {postEditDragFailureMessage && (
-        <AlertModal
-          title={m["vertical_drag.dialog_title"]()}
-          message={
-            postEditDragFailureMessage.entityKind === "elevator"
-              ? m["vertical_drag.failed_elevator"]({ coords: formatTargetLabel(postEditDragFailureMessage.point, postEditDragFailureMessage.level, true, undefined) })
-              : m["vertical_drag.failed_passage"]({ coords: formatTargetLabel(postEditDragFailureMessage.point, postEditDragFailureMessage.level, true, undefined) })
-          }
-          onClose={dismissPostEditDragFailureMessage}
-        />
-      )}
+      {postEditDragFailureMessage && <VerticalDragFailureAlert failure={postEditDragFailureMessage} onClose={dismissPostEditDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <div style={styles.nestedContent}>
@@ -293,11 +256,6 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     ...typography.body,
     marginTop: spacing.groupGap,
-  },
-  iconRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap,
   },
   // One indent level for a section's own content, relative to its `sectionLabel`.
   nestedContent: {

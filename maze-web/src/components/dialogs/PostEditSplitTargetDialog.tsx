@@ -1,7 +1,5 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { Modal } from "../Modal";
-import { Button } from "../Button";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
@@ -10,15 +8,11 @@ import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 
 interface Props {
   onClose: () => void;
-}
-
-function colorToCss(color: number): string {
-  return `#${color.toString(16).padStart(6, "0")}`;
 }
 
 /** "Which split node?" picker for an in-progress post-edit vertex-tool placement (GitHub issue
@@ -79,91 +73,17 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   if (!prompt || !point) return null;
 
   const coords = formatTargetLabel(point, level, true, undefined);
-  return (
-    <Modal title={m["post_edit.split_target_title"]({ coords })} size="approve" onClose={onClose}>
-      <p style={styles.hint}>{m["post_edit.split_target_hint"]()}</p>
-      <div style={styles.body}>
-        <div style={styles.list}>
-          {prompt.nodeIds.map((id, index) => (
-            <Button
-              key={id}
-              variant="secondary"
-              layoutStyle={styles.item}
-              onClick={() => pick(id)}
-            >
-              <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
-              {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
-            </Button>
-          ))}
-        </div>
-        {preview && (
-          <SplitPointPixiPreview
-            point={point}
-            cfg={cfg}
-            pointNodes={preview.pointNodes}
-            allNodes={preview.floorNodes}
-            allEdges={preview.edges}
-            showMarkers={preview.special}
-          />
-        )}
-      </div>
-      <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
-      </div>
-    </Modal>
-  );
+  const targetOptions: SplitTargetOption[] = prompt.nodeIds.map((id, index) => ({
+    key: String(id),
+    color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
+    label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),
+  }));
+  return <SplitTargetPicker
+    title={m["post_edit.split_target_title"]({ coords })}
+    hint={m["post_edit.split_target_hint"]()}
+    options={targetOptions}
+    preview={preview ? <SplitPointPixiPreview point={point} cfg={cfg} pointNodes={preview.pointNodes} allNodes={preview.floorNodes} allEdges={preview.edges} showMarkers={preview.special} /> : undefined}
+    onSelect={(option) => pick(Number(option.key))}
+    onClose={onClose}
+  />;
 }
-
-// Mirrors PostEditElevatorFloorDialog's row/footer styling.
-const styles: Record<string, React.CSSProperties> = {
-  // No `paddingBottom` here — `Modal`'s own `body` is a flex column with `gap: dialogSpacing.gap`
-  // between its direct children (this `<p>` and `styles.body` below), so an extra bottom padding
-  // on the `<p>` itself would stack on top of that gap instead of replacing it (GitHub issue #609
-  // follow-up).
-  hint: {
-    ...typography.control,
-    color: ui.text.secondary,
-    margin: 0,
-  },
-  body: {
-    display: "flex",
-    gap: dialogSpacing.paddingX,
-    alignItems: "center",
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column",
-    gap: dialogSpacing.gap,
-    flex: 1,
-    minWidth: 0,
-  },
-  item: {
-    ...typography.control,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    width: "100%",
-    justifyContent: "flex-start",
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    borderRadius: radius.sm,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    flex: "0 0 auto",
-  },
-  footer: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: dialogSpacing.gap,
-    paddingTop: dialogSpacing.paddingY,
-    borderTop: `1px solid ${ui.border.default}`,
-  },
-  btnCancel: {
-    ...typography.control,
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    cursor: "default",
-    borderRadius: radius.sm,
-  },
-};

@@ -24,4 +24,7 @@ export default defineConfig({
       "~/paraglide": path.resolve(__dirname, "generated/paraglide"),
     },
   },
+  worker: {
+    format: "es",
+  },
 });

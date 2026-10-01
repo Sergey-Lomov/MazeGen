@@ -9,6 +9,7 @@ const activeControllers: FieldEditController[] = [];
 
 function makeController() {
   const updates: PrimitiveWorldGeometry[] = [];
+  const symmetryUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
   const previewClear = vi.fn();
   const canvas = {
@@ -25,10 +26,11 @@ function makeController() {
       onPreviewUpdate: (_cells, _button, _kind, _cfg, geometry) => updates.push(geometry),
       onPreviewClear: previewClear,
       onPrimitiveCommit: (cells, button) => commits.push({ cells, button }),
+      onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
     },
   );
   activeControllers.push(controller);
-  return { controller, updates, commits, previewClear };
+  return { controller, updates, symmetryUpdates, commits, previewClear };
 }
 
 function click(controller: FieldEditController, x: number, y: number): void {
@@ -188,6 +190,60 @@ describe("FieldEditController polygon interaction", () => {
 
     expect(commits).toHaveLength(0);
     expect(previewClear).toHaveBeenCalled();
+  });
+});
+
+describe("FieldEditController symmetry interaction", () => {
+  it("allows dragging either defining axis point", () => {
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 20 }, { x: 20, y: 100 }],
+      symmetryScope: "everything",
+      floorFields: {
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+      },
+    });
+    const { controller, symmetryUpdates } = makeController();
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 1);
+    controller.onPointerUp();
+
+    expect(useMazeStore.getState().symmetryAxisPoints).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
+    expect(symmetryUpdates.at(-1)?.axis).toEqual([{ x: 60, y: 20 }, { x: 20, y: 100 }]);
+  });
+
+  it("finishes a processing polygon with Enter", () => {
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryScope: "polygon",
+      symmetryPolygon: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 40, y: 80 }],
+      symmetryPolygonFinished: false,
+      floorFields: {
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+      },
+    });
+    const { controller } = makeController();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    expect(useMazeStore.getState().symmetryPolygonFinished).toBe(true);
+    controller.destroy();
+  });
+
+  it("allows dragging a finished processing polygon vertex", () => {
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryScope: "polygon",
+      symmetrySnapMode: "free",
+      symmetryPolygon: [{ x: 40, y: 40 }, { x: 80, y: 40 }, { x: 40, y: 80 }],
+      symmetryPolygonFinished: true,
+      floorFields: {
+        [TEST_FLOOR_ID]: { ...useMazeStore.getState().floorFields[TEST_FLOOR_ID], fieldPrimitive: "symmetry" },
+      },
+    });
+    const { controller } = makeController();
+    controller.onPointerDown(40, -40, 0);
+    controller.onPointerMove(80, -80, 1);
+    controller.onPointerUp();
+
+    expect(useMazeStore.getState().symmetryPolygon[0]).toEqual({ x: 80, y: 80 });
   });
 });
 

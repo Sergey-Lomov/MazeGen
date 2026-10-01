@@ -6,6 +6,7 @@ import type {
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey, endpointsEqual } from "./postEditEndpoint";
+import { pickNearestPointerHit } from "./pointerInteraction";
 
 /** Same hit-test as `pickPostEditTeleportEndpointAt`, for post-edit vertical passages (GitHub issue
  * #341) — mirrors `pickVerticalPassageEndpointAt` (`fieldEditUtils.ts`), adapted to node-id space:
@@ -24,27 +25,20 @@ export function pickPostEditVerticalPassageEndpointAt(
 ): PostEditVerticalPassageEndpointHit | null {
   const proj = makeProjection(cfg);
   const pointerCell = proj.screenToGrid(viewportX, viewportY);
-  let best: PostEditVerticalPassageEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const p of passages) {
-    for (const end of ["from", "to"] as const) {
-      const ep = end === "from" ? p.from : p.to;
-      if (ep.kind !== "node") continue;
-      if ((resolveNodeLevel(ep.id) ?? 0) !== (activeLevel ?? 0)) continue;
-      const node = nodeById.get(ep.id);
-      if (!node) continue;
-      const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
-      if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
-      const dx = px - viewportX;
-      const dy = py - viewportY;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < bestDistSq) {
-        bestDistSq = distSq;
-        best = { id: p.id, end };
-      }
-    }
-  }
-  return best;
+  const candidates = passages.flatMap((passage) => (["from", "to"] as const).flatMap((end) => {
+    const endpoint = end === "from" ? passage.from : passage.to;
+    if (endpoint.kind !== "node" || (resolveNodeLevel(endpoint.id) ?? 0) !== (activeLevel ?? 0)) return [];
+    const node = nodeById.get(endpoint.id);
+    return node ? [{ id: passage.id, end, node }] : [];
+  }));
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.node.x, candidate.node.y),
+    (candidate) => pointerCell.x === candidate.node.x && pointerCell.y === candidate.node.y,
+  );
+  return hit ? { id: hit.id, end: hit.end } : null;
 }
 
 /** Same hit-test as `pickPostEditVerticalPassageEndpointAt`, for post-edit elevators (GitHub issue
@@ -62,24 +56,20 @@ export function pickPostEditElevatorEndpointAt(
 ): PostEditElevatorEndpointHit | null {
   const proj = makeProjection(cfg);
   const pointerCell = proj.screenToGrid(viewportX, viewportY);
-  let best: PostEditElevatorEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const e of elevators) {
-    const own = e.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === (activeLevel ?? 0));
-    if (!own || own.kind !== "node") continue;
+  const candidates = elevators.flatMap((elevator) => {
+    const own = elevator.floors.find((floor) => floor.kind === "node" && (resolveNodeLevel(floor.id) ?? 0) === (activeLevel ?? 0));
+    if (!own || own.kind !== "node") return [];
     const node = nodeById.get(own.id);
-    if (!node) continue;
-    const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
-    if (pointerCell.x !== node.x || pointerCell.y !== node.y) continue;
-    const dx = px - viewportX;
-    const dy = py - viewportY;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < bestDistSq) {
-      bestDistSq = distSq;
-      best = { id: e.id, level: activeLevel ?? 0 };
-    }
-  }
-  return best;
+    return node ? [{ id: elevator.id, level: activeLevel ?? 0, node }] : [];
+  });
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.node.x, candidate.node.y),
+    (candidate) => pointerCell.x === candidate.node.x && pointerCell.y === candidate.node.y,
+  );
+  return hit ? { id: hit.id, level: hit.level } : null;
 }
 
 /** The draft vertical-passage entry connecting endpoints `a` and `b` (either order), or `undefined`.

@@ -154,6 +154,8 @@ export interface GenerationState {
 
 export interface GenerationActions {
   generate: () => void;
+  /** Async counterpart used by the UI so WASM generation does not block delayed feedback. */
+  generateAsync: () => Promise<void>;
   /** Moves `seedHistoryIndex` one step back and copies that seed into `seed` — does not trigger
    *  generation. No-op at the start of history. Also turns `randomSeed` off (a navigated-to seed
    *  would otherwise be discarded by the next `generate()`). */

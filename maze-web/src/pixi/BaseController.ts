@@ -1,5 +1,6 @@
 import type { Container } from "pixi.js";
 import type { FieldEdge } from "./fieldEditUtils";
+import { PointerDragTracker, toViewportCoordinates } from "./pointerInteraction";
 
 export abstract class BaseController {
   protected getViewport: () => Container;
@@ -9,9 +10,7 @@ export abstract class BaseController {
   private panStart = { x: 0, y: 0 };
   private vpStart = { x: 0, y: 0 };
 
-  private dragActive = false;
-  private dragKind: "edge" | "cell" | null = null;
-  private dragVisited = new Set<string>();
+  private dragTracker = new PointerDragTracker();
 
   protected draggingMarker: "set_start" | "set_finish" | null = null;
 
@@ -21,11 +20,7 @@ export abstract class BaseController {
   }
 
   protected toViewport(canvasX: number, canvasY: number): { x: number; y: number } {
-    const vp = this.getViewport();
-    return {
-      x: (canvasX - vp.x) / vp.scale.x,
-      y: (canvasY - vp.y) / vp.scale.y,
-    };
+    return toViewportCoordinates(canvasX, canvasY, this.getViewport());
   }
 
   protected tryStartPan(canvasX: number, canvasY: number, button: number): boolean {
@@ -62,16 +57,11 @@ export abstract class BaseController {
    * does not touch the store, does not decide which tool is active, does not trigger a redraw.
    * Callers own the store action and any visual update via `onNewEdge`. */
   protected beginEdgeDrag(edgeKey: string): void {
-    this.dragActive = true;
-    this.dragKind = "edge";
-    this.dragVisited = new Set([edgeKey]);
+    this.dragTracker.begin("edge", edgeKey);
   }
 
   protected continueEdgeDrag(edge: FieldEdge | null, onNewEdge: (edge: FieldEdge) => void): void {
-    if (this.dragActive && this.dragKind === "edge" && edge && !this.dragVisited.has(edge.key)) {
-      this.dragVisited.add(edge.key);
-      onNewEdge(edge);
-    }
+    if (edge) this.dragTracker.dispatch("edge", edge.key, edge, onNewEdge);
   }
 
   /** Visited-set key for a cell drag. Prefixed so a cell key can never collide with a `FieldEdge`
@@ -86,20 +76,16 @@ export abstract class BaseController {
    * active tool is fixed for its duration. `point` is the visited-set seed, same role as
    * `edgeKey` above — callers own the store action via `onNewCell`. */
   protected beginCellDrag(point: [number, number]): void {
-    this.dragActive = true;
-    this.dragKind = "cell";
-    this.dragVisited = new Set([BaseController.cellDragKey(point)]);
+    this.dragTracker.begin("cell", BaseController.cellDragKey(point));
   }
 
   protected continueCellDrag(
     point: [number, number] | null,
     onNewCell: (point: [number, number]) => void,
   ): void {
-    if (!this.dragActive || this.dragKind !== "cell" || point === null) return;
+    if (point === null) return;
     const key = BaseController.cellDragKey(point);
-    if (this.dragVisited.has(key)) return;
-    this.dragVisited.add(key);
-    onNewCell(point);
+    this.dragTracker.dispatch("cell", key, point, onNewCell);
   }
 
   /** Idempotent — safe to call even when no drag was active. Callers that need to react to
@@ -107,21 +93,19 @@ export abstract class BaseController {
    * before calling this, since this only clears bookkeeping and has no other side effect.
    * Covers both edge and cell drags (shared bookkeeping). */
   protected endEdgeDrag(): void {
-    this.dragActive = false;
-    this.dragKind = null;
-    this.dragVisited.clear();
+    this.dragTracker.end();
   }
 
   protected get isDragActive(): boolean {
-    return this.dragActive;
+    return this.dragTracker.active;
   }
 
   protected get isEdgeDrag(): boolean {
-    return this.dragActive && this.dragKind === "edge";
+    return this.dragTracker.isEdge;
   }
 
   protected get isCellDrag(): boolean {
-    return this.dragActive && this.dragKind === "cell";
+    return this.dragTracker.isCell;
   }
 
   /** Marker drag and teleport-endpoint drag (the latter only in PresetConnectionsController) are

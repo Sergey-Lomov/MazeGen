@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { encodePoint } from "../../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
+import { computeSymmetryPreview, symmetryCandidateCells } from "../../pixi/symmetry";
 import type { MazeStore, MazeState, FloorFieldsState, FloorFieldsActions, PendingFieldEdit } from "../storeTypes";
 import {
   buildPredefinedConfig, buildFreeConfig, debugStaleOf,
@@ -168,9 +169,62 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return true;
   })))),
 
-  setFieldPrimitive: (p) => set((state) => withActiveFloorField(state, { fieldPrimitive: p })),
+  setFieldPrimitive: (p) => set((state) => ({
+    ...withActiveFloorField(state, { fieldPrimitive: p }),
+    ...(p === "symmetry"
+      ? {}
+      : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
+  })),
 
   setPolygonOperation: (operation) => set((state) => withActiveFloorField(state, { polygonOperation: operation })),
+
+  applySymmetry: () => set((state) => guardFieldEdit(state, { kind: "applySymmetry" }, () => {
+    const field = activeFloorField(state);
+    const axis = state.symmetryAxisPoints;
+    if (field.fieldEditMode !== "custom" || axis.length !== 2
+      || (axis[0].x === axis[1].x && axis[0].y === axis[1].y)) return {};
+    if (state.symmetryScope === "polygon"
+      && (state.symmetryPolygon.length < 3 || !state.symmetryPolygonFinished)) return {};
+    const preview = computeSymmetryPreview(
+      field.fieldPoints,
+      symmetryCandidateCells(field.fieldPoints, field.tessellationConfig, axis, decodePoint),
+      field.tessellationConfig,
+      {
+        scope: state.symmetryScope,
+        sourceSide: state.symmetrySourceSide,
+        axis: [axis[0], axis[1]],
+        polygon: state.symmetryPolygon,
+      },
+      encodePoint,
+    );
+    const fieldPointsPatch = withFieldPointsEdit(state, (points) => {
+      let changed = false;
+      for (const [x, y] of preview.mirroredCells) {
+        const key = encodePoint(x, y);
+        if (state.symmetryOperation === "add" && !points.has(key)) {
+          points.add(key);
+          changed = true;
+        } else if (state.symmetryOperation === "subtract" && points.delete(key)) {
+          changed = true;
+        }
+      }
+      return changed;
+    });
+    const nextFloorFields = fieldPointsPatch.floorFields ?? state.floorFields;
+    return {
+      ...invalidateIfChanged(fieldPointsPatch),
+      floorFields: {
+        ...nextFloorFields,
+        [state.activeFloorId]: {
+          ...nextFloorFields[state.activeFloorId],
+          fieldPrimitive: "point",
+        },
+      },
+      symmetryAxisPoints: [],
+      symmetryPolygon: [],
+      symmetryPolygonFinished: false,
+    };
+  })),
 
   copyFloorField: (sourceFloorId) => set((state) => {
     const source = state.floorFields[sourceFloorId];
@@ -200,6 +254,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "removeFieldPoints": get().removeFieldPoints(pending.cells); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
+      case "applySymmetry": get().applySymmetry(); break;
       case "copyFloorField": get().copyFloorField(pending.sourceFloorId); break;
     }
   },
