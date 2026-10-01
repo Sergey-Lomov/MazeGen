@@ -7,6 +7,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
+import { pickNearestPointerHit } from "./pointerInteraction";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -184,22 +185,18 @@ export function pickTeleportEndpointAt(
 ): PresetTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
   const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
-  let best: PresetTeleportEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const t of teleports) {
-    for (const end of ["from", "to"] as const) {
-      const [cx, cy] = end === "from" ? t.from.point : t.to.point;
-      const { x: px, y: py } = proj.gridToScreen(cx, cy);
-      const dx = px - viewportX;
-      const dy = py - viewportY;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < thresholdSq && distSq < bestDistSq) {
-        bestDistSq = distSq;
-        best = { id: t.id, end };
-      }
-    }
-  }
-  return best;
+  const candidates = teleports.flatMap((teleport) => ([
+    { id: teleport.id, end: "from" as const, point: teleport.from.point },
+    { id: teleport.id, end: "to" as const, point: teleport.to.point },
+  ]));
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
+    (_candidate, distanceSq) => distanceSq < thresholdSq,
+  );
+  return hit ? { id: hit.id, end: hit.end } : null;
 }
 
 /** Same hit-test as `pickTeleportEndpointAt`, for vertical passages — only ever tests the endpoint
@@ -214,23 +211,20 @@ export function pickVerticalPassageEndpointAt(
 ): PresetVerticalPassageEndpointHit | null {
   const proj = makeProjection(cfg);
   const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
-  let best: PresetVerticalPassageEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const p of passages) {
-    for (const end of ["from", "to"] as const) {
-      const ep = end === "from" ? p.from : p.to;
-      if ((ep.level ?? 0) !== (activeLevel ?? 0)) continue;
-      const { x: px, y: py } = proj.gridToScreen(ep.point[0], ep.point[1]);
-      const dx = px - viewportX;
-      const dy = py - viewportY;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < thresholdSq && distSq < bestDistSq) {
-        bestDistSq = distSq;
-        best = { id: p.id, end };
-      }
-    }
-  }
-  return best;
+  const candidates = passages.flatMap((passage) => (["from", "to"] as const).flatMap((end) => {
+    const endpoint = end === "from" ? passage.from : passage.to;
+    return (endpoint.level ?? 0) === (activeLevel ?? 0)
+      ? [{ id: passage.id, end, point: endpoint.point }]
+      : [];
+  }));
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
+    (_candidate, distanceSq) => distanceSq < thresholdSq,
+  );
+  return hit ? { id: hit.id, end: hit.end } : null;
 }
 
 /** Same hit-test as `pickVerticalPassageEndpointAt`, for elevators (GitHub issue #566) — only ever
@@ -245,21 +239,18 @@ export function pickElevatorEndpointAt(
 ): PresetElevatorEndpointHit | null {
   const proj = makeProjection(cfg);
   const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
-  let best: PresetElevatorEndpointHit | null = null;
-  let bestDistSq = Infinity;
-  for (const e of elevators) {
-    const own = e.floors.find((f) => (f.level ?? 0) === (activeLevel ?? 0));
-    if (!own) continue;
-    const { x: px, y: py } = proj.gridToScreen(own.point[0], own.point[1]);
-    const dx = px - viewportX;
-    const dy = py - viewportY;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < thresholdSq && distSq < bestDistSq) {
-      bestDistSq = distSq;
-      best = { id: e.id, level: activeLevel ?? 0 };
-    }
-  }
-  return best;
+  const candidates = elevators.flatMap((elevator) => {
+    const own = elevator.floors.find((floor) => (floor.level ?? 0) === (activeLevel ?? 0));
+    return own ? [{ id: elevator.id, level: activeLevel ?? 0, point: own.point }] : [];
+  });
+  const hit = pickNearestPointerHit(
+    viewportX,
+    viewportY,
+    candidates,
+    (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
+    (_candidate, distanceSq) => distanceSq < thresholdSq,
+  );
+  return hit ? { id: hit.id, level: hit.level } : null;
 }
 
 export function cycleTeleportDirection(

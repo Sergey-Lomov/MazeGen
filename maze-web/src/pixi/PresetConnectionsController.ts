@@ -3,11 +3,12 @@ import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
 import { pickEdgeAtPosition, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, pickElevatorEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit, type PresetVerticalPassageEndpointHit, type PresetElevatorEndpointHit } from "./fieldEditUtils";
 import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
-import { makeProjection, encodePoint } from "./tessellationProjection";
+import { encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
 import { activeFloorLevel } from "../store/storeHelpers";
 import type { PresetTeleportEntry } from "./fieldEditUtils";
+import { cancelPendingPointerAction, isPointerModalOpen, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -23,10 +24,12 @@ const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_sourc
  *  the cursor moved to further cells (button still down), silently re-targeting the open dialog to
  *  whatever cell the mouse happened to be over. */
 function isPresetModalOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
-  return state.presetSplitTargetPrompt !== null
-    || state.presetEntityDeletePrompt !== null
-    || state.presetVerticalPassagePending !== null
-    || state.presetElevatorPending !== null;
+  return isPointerModalOpen(
+    state.presetSplitTargetPrompt !== null,
+    state.presetEntityDeletePrompt !== null,
+    state.presetVerticalPassagePending !== null,
+    state.presetElevatorPending !== null,
+  );
 }
 
 /** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
@@ -89,8 +92,8 @@ export class PresetConnectionsController extends BaseController {
     this.lastViewportPos = { x: vpX, y: vpY };
 
     if (this.draggingMarker) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell or vanishing for the whole gesture.
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
@@ -116,8 +119,8 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingTeleportEndpoint) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
@@ -145,8 +148,8 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingVerticalPassageEndpoint) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
@@ -173,8 +176,8 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingElevatorEndpoint) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
@@ -209,8 +212,8 @@ export class PresetConnectionsController extends BaseController {
       // point, not one of its faces — highlight the cell under the cursor, not an edge (mirrors
       // manage_split_nodes's original fix, GitHub issue #231; issue #326 extends this to every
       // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
       this.renderer.updateHover(null);
@@ -230,8 +233,8 @@ export class PresetConnectionsController extends BaseController {
       // pointerdown. Crossing an edge hit zone must not switch a cell clear to edge mutations,
       // and a cell clear must continue while the cursor is over an edge.
       if (this.isCellDrag) {
-        const proj = makeProjection(cfg);
-        const cell = proj.screenToGrid(vpX, vpY);
+        const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
+        const cell = { x, y };
         const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
         this.renderer.updateHover(null);
         this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
@@ -272,8 +275,8 @@ export class PresetConnectionsController extends BaseController {
         this.renderer.updateCellHover(null);
         return;
       }
-      const proj = makeProjection(cfg);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
+      const cell = { x, y };
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
       this.renderer.updateHover(null);
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
@@ -315,8 +318,8 @@ export class PresetConnectionsController extends BaseController {
     // Locks are cell tools (not VERTEX_TOOLS), but a split cell still needs an explicit node
     // target. Defer the click to the same picker used by other split-node vertex actions.
     if (button === 0 && (tool === "lock_in" || tool === "lock_out" || tool === "full_lock")) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       const point: [number, number] = [cell.x, cell.y];
       const level = activeFloorLevel(state);
       if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
@@ -329,8 +332,8 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (VERTEX_TOOLS.has(tool)) {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
@@ -446,8 +449,8 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "gen_source") {
       if (button !== 0 && button !== 2) return;
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
@@ -487,8 +490,8 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const cell = { x, y };
       const key = encodePoint(cell.x, cell.y);
       useMazeStore.getState().setPresetFocusedPoint(this.renderer.getCachedCellSet().has(key) ? [cell.x, cell.y] : null);
       return;
@@ -510,8 +513,8 @@ export class PresetConnectionsController extends BaseController {
         return;
       }
       if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
-      const proj = makeProjection(cfg);
-      const cell = proj.screenToGrid(vpX, vpY);
+      const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
+      const cell = { x, y };
       const key = encodePoint(cell.x, cell.y);
       // Invalid preset entities remain addressable by their projected coordinates, even when
       // their point is outside the current field.
@@ -527,9 +530,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (tool === "lock_in" || tool === "lock_out" || tool === "full_lock") {
-      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-      const cell = proj.screenToGrid(vpX, vpY);
-      const x = cell.x, y = cell.y;
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
       const key = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
@@ -666,8 +667,8 @@ export class PresetConnectionsController extends BaseController {
   /** Starts or completes a two-click teleport placement at the cell under (vpX, vpY). No-op if
    * the cell is outside the field, or (on completion) equal to the pending origin cell. */
   private tryTeleportClick(vpX: number, vpY: number, tool: string, state: ReturnType<typeof useMazeStore.getState>): void {
-    const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
-    const cell = proj.screenToGrid(vpX, vpY);
+    const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+    const cell = { x, y };
     if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
 
     const coords: [number, number] = [cell.x, cell.y];
@@ -686,14 +687,18 @@ export class PresetConnectionsController extends BaseController {
 
   private cancelPendingTeleport(): void {
     const state = useMazeStore.getState();
-    if (!state.presetTeleportPendingFrom) return;
-    state.setPresetTeleportPendingFrom(null);
-    this.renderer.updateTeleportPreview(null, 0, 0);
+    cancelPendingPointerAction(
+      state.presetTeleportPendingFrom,
+      () => state.setPresetTeleportPendingFrom(null),
+      () => this.renderer.updateTeleportPreview(null, 0, 0),
+    );
   }
 
   clearHover(): void {
-    this.renderer.updateHover(null);
-    this.renderer.updateTeleportPreview(null, 0, 0);
+    resetPointerHover({
+      updateHover: (edge) => this.renderer.updateHover(edge),
+      updateTeleportPreview: (point, x, y) => this.renderer.updateTeleportPreview(point, x, y),
+    });
   }
 
   destroy(): void {

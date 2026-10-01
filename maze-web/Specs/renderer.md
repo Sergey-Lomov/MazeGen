@@ -4,6 +4,18 @@
 
 Pixi.js-based rendering system. `MazeScene` owns a Pixi `Application` and orchestrates all renderers. Created by `App` once on mount, destroyed on unmount.
 
+## Shared pointer interaction primitives
+
+`pixi/pointerInteraction.ts` contains the domain-neutral mechanics shared by the preset and post-edit controllers:
+
+- canvas-to-viewport coordinates and tessellation cell lookup;
+- modal guards, hover reset, and pending-preview cancellation;
+- nearest pointer-hit selection over caller-provided endpoint candidates;
+- visited-target bookkeeping for edge and cell drag strokes.
+
+The primitives do not import either editor's store, endpoint model, or renderer. Controllers retain
+feature-specific hit candidate construction, prompts, drag previews, and store/command mutations.
+
 ## MazeScene
 
 Top-level coordinator. Holds a single `viewport: Container` for the maze, plus separate synced overlay containers for editor UI. All containers move together on pan/zoom via `syncLayersToViewport()`.
