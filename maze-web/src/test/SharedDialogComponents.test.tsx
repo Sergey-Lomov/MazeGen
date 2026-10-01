@@ -3,7 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import * as m from "~/paraglide/messages";
 import { ElevatorFloorPicker, type ElevatorFloorRow } from "../components/dialogs/ElevatorFloorPicker";
 import { EntityChoiceDialog } from "../components/dialogs/EntityChoiceDialog";
-import { numberToCssColor } from "../components/dialogs/SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor } from "../components/dialogs/SplitTargetPicker";
+import { VerticalDirectionPicker } from "../components/dialogs/VerticalDirectionPicker";
+import { ToolIconRow } from "../components/ToolIconRow";
+import { VerticalDragFailureAlert } from "../components/VerticalDragFailureAlert";
+import { formatTargetLabel } from "../pixi/targetLabel";
+
+vi.mock("../components/features/ToolGlyph", () => ({
+  ToolGlyph: ({ tool }: { tool: string }) => <span data-testid={`glyph-${tool}`} />,
+}));
 
 const rows: ElevatorFloorRow[] = [
   { key: "floor-1", index: 0, label: "1: Ground", status: "current", statusLabel: "Current", checked: true },
@@ -57,5 +65,67 @@ describe("shared preset/post-edit dialog components", () => {
 
   it("formats packed colors for split-target dots", () => {
     expect(numberToCssColor(0x0a1b2c)).toBe("#0a1b2c");
+  });
+
+  it("routes split-target selection and cancellation while keeping the preview slot", () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const option = { key: "node-1", color: "#123456", label: "Node 1" };
+    render(
+      <SplitTargetPicker
+        title="Target"
+        hint="Choose a node"
+        options={[option]}
+        preview={<span>Preview</span>}
+        onSelect={onSelect}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.getByText("Preview")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Node 1/ }));
+    expect(onSelect).toHaveBeenCalledWith(option);
+    fireEvent.click(screen.getByRole("button", { name: m["common.cancel"]() }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("routes both vertical directions through the shared picker", () => {
+    const onSelect = vi.fn();
+    render(<VerticalDirectionPicker title="Direction" onSelect={onSelect} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["preset.vertical_direction_up"]() }));
+    fireEvent.click(screen.getByRole("button", { name: m["preset.vertical_direction_down"]() }));
+    expect(onSelect.mock.calls.map(([direction]) => direction)).toEqual(["up", "down"]);
+  });
+
+  it("keeps generic tool glyph mapping and destructive selection in the shared row", () => {
+    const onPick = vi.fn();
+    render(
+      <ToolIconRow
+        tools={[["wall", "Wall"], ["delete", "Delete"]]}
+        activeTool="delete"
+        onPick={onPick}
+        glyphFor={(tool) => tool === "delete" ? "delete" : "wall"}
+        isDanger={(tool) => tool === "delete"}
+      />,
+    );
+
+    expect(screen.getByTestId("glyph-wall")).toBeInTheDocument();
+    expect(screen.getByTestId("glyph-delete")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveClass("btn-tool-icon-selected-danger");
+    fireEvent.click(screen.getByRole("button", { name: "Wall" }));
+    expect(onPick).toHaveBeenCalledWith("wall");
+  });
+
+  it("formats both vertical drag-failure variants in the shared alert", () => {
+    const point: [number, number] = [2, 3];
+    const coords = formatTargetLabel(point, 1, true, undefined);
+    const { rerender } = render(
+      <VerticalDragFailureAlert failure={{ entityKind: "vertical_passage", point, level: 1 }} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText(m["vertical_drag.failed_passage"]({ coords }))).toBeInTheDocument();
+
+    rerender(<VerticalDragFailureAlert failure={{ entityKind: "elevator", point, level: 1 }} onClose={vi.fn()} />);
+    expect(screen.getByText(m["vertical_drag.failed_elevator"]({ coords }))).toBeInTheDocument();
   });
 });
