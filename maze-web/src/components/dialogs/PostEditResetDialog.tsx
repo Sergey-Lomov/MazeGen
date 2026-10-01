@@ -1,9 +1,6 @@
-import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { Modal } from "../Modal";
-import { Button } from "../Button";
+import { EntityChoiceDialog, type EntityChoiceRow } from "./EntityChoiceDialog";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { ui, radius, dialogSpacing, spacing, typography, inset, muted } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -36,121 +33,24 @@ export function PostEditResetDialog({ onClose }: Props) {
   }
   const coords = formatTargetLabel(prompt.point, prompt.level ?? 0, floors.length > 1, undefined);
 
-  return (
-    <Modal title={m["post_edit.reset_dialog_title"]({ coords })} size="approveWide" onClose={onClose}>
-      <p style={styles.hint}>{m["post_edit.reset_dialog_hint"]()}</p>
-      <div style={styles.list}>
-        {lifelines.map((l) => (
-          <Button
-            key={l.commandIndex}
-            variant="secondary"
-            layoutStyle={styles.item}
-            onClick={() => resetOne(l.commandIndex, l.command, l.keys)}
-          >
-            <span style={styles.action}>{l.label.action}</span>
-            {l.label.entityId !== undefined && <span style={styles.idBubble}>id: {l.label.entityId}</span>}
-            <div style={styles.bubbles}>
-              {l.label.bubbles.map((bubble, j) => (
-                <span key={j} style={styles.bubbleGroup}>
-                  {j > 0 && l.label.showArrow && <span style={styles.arrow}>{l.label.arrow}</span>}
-                  <span style={styles.bubble}>{bubble.text}</span>
-                </span>
-              ))}
-            </div>
-          </Button>
-        ))}
-      </div>
-      <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="destructive" layoutStyle={styles.btnCancel} onClick={() => { resetAll(); onClose(); }}>
-          {m["post_edit.reset_dialog_all"]()}
-        </Button>
-      </div>
-    </Modal>
-  );
+  const rows: EntityChoiceRow[] = lifelines.map((l) => ({
+    key: String(l.commandIndex),
+    title: l.label.action,
+    entityId: l.label.entityId,
+    bubbles: l.label.bubbles.map((bubble) => bubble.text),
+    showArrow: l.label.showArrow,
+    arrow: l.label.arrow,
+  }));
+  return <EntityChoiceDialog
+    title={m["post_edit.reset_dialog_title"]({ coords })}
+    hint={m["post_edit.reset_dialog_hint"]()}
+    rows={rows}
+    deleteAllLabel={m["post_edit.reset_dialog_all"]()}
+    onSelect={(row) => {
+      const lifeline = lifelines.find((l) => String(l.commandIndex) === row.key);
+      if (lifeline) resetOne(lifeline.commandIndex, lifeline.command, lifeline.keys);
+    }}
+    onDeleteAll={() => { resetAll(); onClose(); }}
+    onClose={onClose}
+  />;
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  hint: {
-    ...typography.control,
-    color: ui.text.secondary,
-    margin: 0,
-    paddingBottom: dialogSpacing.paddingY,
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column",
-    gap: dialogSpacing.gap,
-  },
-  item: {
-    ...typography.control,
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.rowGap,
-    width: "100%",
-    justifyContent: "flex-start",
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    borderRadius: radius.sm,
-  },
-  action: {
-    ...typography.body,
-    whiteSpace: "nowrap",
-  },
-  idBubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.bg.success,
-    borderColor: ui.text.success,
-    color: ui.text.success,
-    whiteSpace: "nowrap",
-  },
-  bubbles: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: spacing.itemGap / 2,
-  },
-  bubbleGroup: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-  },
-  arrow: {
-    ...muted(typography.caption),
-  },
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
-    whiteSpace: "nowrap",
-  },
-  footer: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: dialogSpacing.gap,
-    paddingTop: dialogSpacing.paddingY,
-    borderTop: `1px solid ${ui.border.default}`,
-  },
-  btnCancel: {
-    ...typography.control,
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    cursor: "default",
-    borderRadius: radius.sm,
-  },
-};

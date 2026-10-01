@@ -119,6 +119,15 @@ All dialog tokens live in `src/styles/theme.ts`.
 | `CheckDetailsDialog` (edit mode) | `info` | Check details + param editing |
 | `CheckDetailsDialog` (add mode) | `complex` | Check list + detail split pane, uses `rawBody` |
 
+### Preset and post-edit shared presentation (GitHub issue #658)
+
+Preset and post-edit keep their endpoint models, selectors, previews, and store actions separate.
+Their genuinely common presentation is shared through `EntityChoiceDialog`, `ElevatorFloorPicker`,
+`SplitTargetPicker`, `VerticalDirectionPicker`, `ToolIconRow`, and `VerticalDragFailureAlert`.
+`PresetSplitNodesDialog` and `ManageSplitNodesDialog` use the shared split-node orchestration helper
+for slot ordering, row/tile construction, node colors, semantic labels, and blueprint preparation;
+their endpoint resolution, link/entity assembly, mutations, and hover behavior remain adapters.
+
 ### Enter/Space confirmation coverage (GitHub issue #638)
 
 `onConfirm` is wired — matching the visible confirm button's own handler and `disabled`/enabled guard — on: `ConfirmModal`, `AlertModal` (OK), `ScreenDpiCalibrationModal`, `FieldPrintSizingDialog`, `PostEditElevatorFloorDialog`, `PresetElevatorFloorDialog`, `CopyFloorDialog`, and `ItemSelectDialog`'s consumers that have a confirm action of their own (`StrategySelectDialog`, `NewRuleStrategyDialog`, `NestedStrategySelectDialog`, `CheckSelectDialog`, `AddCheckToRuleDialog`, `IssueSelectDialog`, `AlgorithmSelectDialog`).

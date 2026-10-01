@@ -1,7 +1,5 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { Modal } from "../Modal";
-import { Button } from "../Button";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds, resolveCells } from "../../pixi/fieldEditUtils";
@@ -13,15 +11,11 @@ import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 
 interface Props {
   onClose: () => void;
-}
-
-function colorToCss(color: number): string {
-  return `#${color.toString(16).padStart(6, "0")}`;
 }
 
 /** "Which split node?" picker for an in-progress preset vertex-tool placement (GitHub issue #474,
@@ -104,112 +98,18 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   };
 
   const coords = formatTargetLabel(point, level ?? 0, true, undefined);
-  return (
-    <Modal
-      title={lockAction
-        ? m["preset.lock_target_title"]({ coords })
-        : m["preset.split_target_title"]({ coords })}
-      size="approve"
-      onClose={onClose}
-    >
-      <p style={styles.hint}>{lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}</p>
-      <div style={styles.body}>
-        <div style={styles.list}>
-          {options.map((slotId, index) => (
-            <Button
-              key={slotId ?? "original"}
-              variant="secondary"
-              layoutStyle={styles.item}
-              // A pick does NOT call `onClose` itself — a `move_*`/`place_*_target` action's queue
-              // (GitHub issue #594, same fix as post-edit's `PostEditSplitTargetDialog` for #567)
-              // reopens this dialog for the NEXT queued point by re-setting `presetSplitTargetPrompt`
-              // from inside `applyPresetSplitTargetPick` itself. Calling `onClose` (==
-              // `cancelPresetSplitTarget`, which nulls the prompt unconditionally) right after would
-              // immediately wipe out that freshly-set next prompt, so the dialog appeared to fire once
-              // then silently stop, and any action gated on the queue draining (e.g. elevator
-              // placement) never actually completed.
-              onClick={() => pick(slotId)}
-            >
-              <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
-              {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
-              {lockStatus(slotId) === "cancel" && <span style={styles.lockState}>{m["preset.lock_target_cancel"]()}</span>}
-              {lockStatus(slotId) === "replace" && <span style={styles.lockState}>{m["preset.lock_target_replace"]()}</span>}
-            </Button>
-          ))}
-        </div>
-        {preview && (
-          <PresetSplitPointPixiPreview
-            point={point}
-            cfg={preview.cfg}
-            slotIds={prompt.slotIds}
-            presetSplitPoints={preview.presetSplitPoints}
-            presetConnections={preview.presetConnections}
-            cells={preview.cells}
-            showMarkers={preview.special}
-          />
-        )}
-      </div>
-      <div style={styles.footer}>
-        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
-      </div>
-    </Modal>
-  );
+  const targetOptions: SplitTargetOption[] = options.map((slotId, index) => ({
+    key: slotId === undefined ? "original" : String(slotId),
+    color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
+    label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),
+    state: lockStatus(slotId) === "cancel" ? m["preset.lock_target_cancel"]() : lockStatus(slotId) === "replace" ? m["preset.lock_target_replace"]() : undefined,
+  }));
+  return <SplitTargetPicker
+    title={lockAction ? m["preset.lock_target_title"]({ coords }) : m["preset.split_target_title"]({ coords })}
+    hint={lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}
+    options={targetOptions}
+    preview={preview ? <PresetSplitPointPixiPreview point={point} cfg={preview.cfg} slotIds={prompt.slotIds} presetSplitPoints={preview.presetSplitPoints} presetConnections={preview.presetConnections} cells={preview.cells} showMarkers={preview.special} /> : undefined}
+    onSelect={(option) => pick(options[targetOptions.indexOf(option)] ?? undefined)}
+    onClose={onClose}
+  />;
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  // No `paddingBottom` here — `Modal`'s own `body` is a flex column with `gap: dialogSpacing.gap`
-  // between its direct children (this `<p>` and `styles.body` below), so an extra bottom padding
-  // on the `<p>` itself would stack on top of that gap instead of replacing it (GitHub issue #609
-  // follow-up).
-  hint: {
-    ...typography.control,
-    color: ui.text.secondary,
-    margin: 0,
-  },
-  body: {
-    display: "flex",
-    gap: dialogSpacing.paddingX,
-    alignItems: "center",
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column",
-    gap: dialogSpacing.gap,
-    flex: 1,
-    minWidth: 0,
-  },
-  item: {
-    ...typography.control,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    width: "100%",
-    justifyContent: "flex-start",
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    borderRadius: radius.sm,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    flex: "0 0 auto",
-  },
-  footer: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: dialogSpacing.gap,
-    paddingTop: dialogSpacing.paddingY,
-    borderTop: `1px solid ${ui.border.default}`,
-  },
-  btnCancel: {
-    ...typography.control,
-    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
-    cursor: "default",
-    borderRadius: radius.sm,
-  },
-  lockState: {
-    marginLeft: "auto",
-    color: ui.text.secondary,
-    fontSize: 11,
-  },
-};

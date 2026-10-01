@@ -8,8 +8,8 @@ import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
-import { ToolIconButton } from "../ToolIconButton";
-import { ToolGlyph } from "./ToolGlyph";
+import { ToolIconRow } from "../ToolIconRow";
+import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
@@ -25,7 +25,6 @@ import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog"
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import { PresetEntityDeleteDialog } from "../dialogs/PresetEntityDeleteDialog";
-import { AlertModal } from "../AlertModal";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -71,33 +70,6 @@ function getGenerationTools(): [PresetConnectionTool, string][] {
 /** Destructive tools show a danger-hued selected border instead of the accent one (mirrors
  *  `PostEditFeature`'s own `DANGER_TOOLS`). */
 const DANGER_TOOLS = new Set<PresetConnectionTool>(["clear"]);
-
-/** A wrapping row of square pictogram buttons for a tool group (GitHub issue #456). */
-function ToolIconRow({
-  tools,
-  activeTool,
-  onPick,
-}: {
-  tools: [PresetConnectionTool, string][];
-  activeTool: PresetConnectionTool;
-  onPick: (t: PresetConnectionTool) => void;
-}) {
-  return (
-    <div style={styles.iconRow}>
-      {tools.map(([t, label]) => (
-        <ToolIconButton
-          key={t}
-          selected={activeTool === t}
-          danger={DANGER_TOOLS.has(t)}
-          title={label}
-          onClick={() => onPick(t)}
-        >
-          <ToolGlyph tool={t} />
-        </ToolIconButton>
-      ))}
-    </div>
-  );
-}
 
 export function PresetConnectionsFeature() {
   const tool = useMazeStore((s) => s.presetConnectionsTool);
@@ -277,6 +249,7 @@ export function PresetConnectionsFeature() {
           ]}
           activeTool={tool}
           onPick={setTool}
+          isDanger={(candidate) => DANGER_TOOLS.has(candidate)}
         />
       </div>
 
@@ -319,17 +292,7 @@ export function PresetConnectionsFeature() {
         <PresetEntityDeleteDialog onClose={cancelPresetEntityDelete} />
       )}
 
-      {presetDragFailureMessage && (
-        <AlertModal
-          title={m["vertical_drag.dialog_title"]()}
-          message={
-            presetDragFailureMessage.entityKind === "elevator"
-              ? m["vertical_drag.failed_elevator"]({ coords: formatTargetLabel(presetDragFailureMessage.point, presetDragFailureMessage.level, true, undefined) })
-              : m["vertical_drag.failed_passage"]({ coords: formatTargetLabel(presetDragFailureMessage.point, presetDragFailureMessage.level, true, undefined) })
-          }
-          onClose={dismissPresetDragFailureMessage}
-        />
-      )}
+      {presetDragFailureMessage && <VerticalDragFailureAlert failure={presetDragFailureMessage} onClose={dismissPresetDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>
@@ -412,11 +375,6 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     ...typography.body,
     marginTop: spacing.groupGap,
-  },
-  iconRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap,
   },
   // One indent level for a section's own content, relative to its `sectionLabel` (mirrors
   // analyticsStyles `nestedGroup`).
