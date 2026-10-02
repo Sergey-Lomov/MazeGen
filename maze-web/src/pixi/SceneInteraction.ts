@@ -6,6 +6,7 @@ import type { FieldEditorOverlay } from "./FieldEditorOverlay";
 import type { PointerHandler } from "./sceneTypes";
 import { PanState } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
+import { canvas } from "./colorTokens";
 
 interface SceneInteractionDeps {
   app: Application;
@@ -85,12 +86,19 @@ export class SceneInteraction {
       if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
-        const hoverCell = (st.floorFields[st.activeFloorId].fieldPrimitive === "polygon"
-          || st.floorFields[st.activeFloorId].fieldPrimitive === "move"
+        const field = st.floorFields[st.activeFloorId];
+        const hoverCell = (field.fieldPrimitive === "polygon"
           || st.floorFields[st.activeFloorId].fieldPrimitive === "symmetry")
           ? null
           : fieldEditController.getHoverCell(e.globalX, e.globalY);
-        fieldEditorOverlay.updateHover(fieldEditController.isGestureActive() ? null : hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
+        const hoverColor = field.fieldOperation === "remove"
+          ? canvas.fieldEditor.previewRemove
+          : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
+        fieldEditorOverlay.updateHover(
+          fieldEditController.isGestureActive() || fieldEditController.hasSelectionPreview?.() ? null : hoverCell,
+          field.tessellationConfig,
+          hoverColor,
+        );
         return;
       }
       const controller = getController(st);
@@ -108,7 +116,6 @@ export class SceneInteraction {
       if (!(st.openCard === "field_setup"
         && field.fieldEditMode === "custom"
         && (field.fieldPrimitive === "polygon"
-          || field.fieldPrimitive === "move"
           || (field.fieldPrimitive === "symmetry" && st.symmetryAxisPoints.length === 2 && st.symmetryScope === "polygon")))) return;
       getFieldEditController().onDoubleClick(e.globalX, e.globalY, e.button);
     });
@@ -125,7 +132,17 @@ export class SceneInteraction {
     stage.on("pointerupoutside", () => {
       const st = useMazeStore.getState();
       const controller = getController(st);
-      controller?.cancelPointerGesture();
+      const fieldEditController = getFieldEditController();
+      const field = st.floorFields[st.activeFloorId];
+      if (st.openCard === "field_setup"
+        && field.fieldEditMode === "custom"
+        && fieldEditController.hasSelectionPreview()) {
+        // Releasing the mouse outside the canvas is a confirmation boundary for a
+        // persistent selection, not a cancellation of its pending move.
+        fieldEditController.commitPendingSelectionMove();
+      } else {
+        controller?.cancelPointerGesture();
+      }
       controller?.clearHover?.();
       onHoverChanged(null);
       if (st.openCard === "field_setup") {

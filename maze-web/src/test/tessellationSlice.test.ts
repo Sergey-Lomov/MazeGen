@@ -60,9 +60,9 @@ describe("mazeStore setters", () => {
       fieldEditMode: "custom",
       isEditingField: true,
       fieldPrimitive: "symmetry",
+      fieldOperation: "remove",
     });
     useMazeStore.setState({
-      symmetryOperation: "subtract",
       symmetrySnapMode: "free",
       symmetryScope: "one_side",
       symmetrySourceSide: -1,
@@ -78,7 +78,7 @@ describe("mazeStore setters", () => {
     expect(state.symmetryAxisPoints).toEqual([]);
     expect(state.symmetryPolygon).toEqual([]);
     expect(state.symmetryPolygonFinished).toBe(false);
-    expect(state.symmetryOperation).toBe("subtract");
+    expect(state.floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     expect(state.symmetrySnapMode).toBe("free");
     expect(state.symmetryScope).toBe("one_side");
     expect(state.symmetrySourceSide).toBe(-1);

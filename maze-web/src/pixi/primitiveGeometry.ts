@@ -49,7 +49,7 @@ export type PrimitiveWorldGeometry =
       cellColor?: number;
       cellAlpha?: number;
     }
-  | { kind: "ellipse"; center: WorldPoint; width: number; height: number };
+  | { kind: "ellipse"; center: WorldPoint; width: number; height: number; dashed?: boolean };
 
 function contextConfig(ctx: PrimitiveContext): FieldConfig {
   if (ctx.config) return ctx.config;

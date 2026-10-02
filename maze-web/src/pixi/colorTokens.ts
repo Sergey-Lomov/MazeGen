@@ -7,6 +7,7 @@ const CONTRAST_LIGHT = hexToNumber("#e0e0e0");
 export const FIELD_EDITOR_PREVIEW_COLORS = {
   add: base.debugActive,
   remove: "#ff4444",
+  select: base.textInverse,
   background: base.bgSurfaceRaised,
 } as const;
 
@@ -64,6 +65,7 @@ export const canvas = {
   fieldEditor: {
     previewAdd: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.add),
     previewRemove: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.remove),
+    previewSelect: hexToNumber(FIELD_EDITOR_PREVIEW_COLORS.select),
     hover: hexToNumber(base.canvasHover),
     // Manage split nodes panel target (GitHub issue #606): a transparent fill with a yellow frame
     // distinguishes the edited cell from the cursor hover while using the same full-cell geometry.

@@ -7,9 +7,8 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "move" | "symmetry";
-export type PolygonOperation = "add" | "remove";
-export type SymmetryOperation = "add" | "subtract";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry";
+export type FieldOperation = "add" | "remove" | "select";
 export type SymmetrySnapMode = "centers" | "corners" | "free";
 export type SymmetryScope = "everything" | "one_side" | "polygon";
 export type SymmetryPoint = { x: number; y: number };
@@ -58,7 +57,6 @@ export interface TessellationState {
   /** Whether the custom-field editor shows the shared print paper and margin guides. */
   showPaperLayout: boolean;
   smoothPrimitives: boolean;
-  symmetryOperation: SymmetryOperation;
   symmetrySnapMode: SymmetrySnapMode;
   symmetryScope: SymmetryScope;
   symmetryAxisPoints: SymmetryPoint[];
@@ -85,7 +83,6 @@ export interface TessellationActions {
   setShowPrimitiveFrame: (show: boolean) => void;
   setShowPaperLayout: (show: boolean) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
-  setSymmetryOperation: (operation: SymmetryOperation) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;
   setSymmetryAxisPoints: (points: SymmetryPoint[]) => void;
@@ -122,9 +119,9 @@ export interface FloorFieldConfig {
    */
   fieldPoints: Set<number>;
   fieldEditMode: "default" | "custom";
+  /** Operation applied by the active primitive. */
+  fieldOperation: FieldOperation;
   fieldPrimitive: FieldPrimitive;
-  /** Operation used when the polygon tool commits its selected cells. */
-  polygonOperation?: PolygonOperation;
   /** True after any field setup change since the last confirmTessellation. */
   fieldDirty: boolean;
 }
@@ -151,8 +148,8 @@ export interface FloorFieldsActions {
   moveFieldPoints: (cells: [number, number][], dx: number, dy: number) => void;
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
+  setFieldOperation: (operation: FieldOperation) => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
-  setPolygonOperation: (operation: PolygonOperation) => void;
   applySymmetry: () => void;
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */

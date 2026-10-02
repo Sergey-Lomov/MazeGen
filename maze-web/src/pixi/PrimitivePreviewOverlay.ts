@@ -8,6 +8,7 @@ import { canvas } from "./colorTokens";
 
 const ADD_COLOR = canvas.fieldEditor.previewAdd;
 const REMOVE_COLOR = canvas.fieldEditor.previewRemove;
+const SELECT_COLOR = canvas.fieldEditor.previewSelect;
 const PREVIEW_ALPHA = 0.5;
 const FRAME_ALPHA = 0.9;
 const FRAME_WIDTH = 1.25;
@@ -61,7 +62,7 @@ export class PrimitivePreviewOverlay {
       ? geometry.cellColor
       : geometry.kind === "boundary" && geometry.cellColor !== undefined
         ? geometry.cellColor
-        : button === 0 ? ADD_COLOR : REMOVE_COLOR;
+        : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
     const alpha = geometry.kind !== "ellipse" ? geometry.cellAlpha ?? PREVIEW_ALPHA : PREVIEW_ALPHA;
     for (const [x, y] of cells) {
       const verts = getCellVertices(x, y, kind, cfg);
@@ -71,13 +72,16 @@ export class PrimitivePreviewOverlay {
     }
     if (this.frameVisible) {
       const frameColor = geometry.kind === "boundary"
-        ? 0xffffff
+        ? SELECT_COLOR
         : geometry.kind === "polygon" && geometry.frameColor !== undefined
           ? geometry.frameColor
-          : button === 0 ? ADD_COLOR : REMOVE_COLOR;
+          : button === 0 ? ADD_COLOR : button === 1 ? SELECT_COLOR : REMOVE_COLOR;
       if (geometry.kind === "ellipse") {
-        g.ellipse(geometry.center.x, -geometry.center.y, geometry.width / 2, geometry.height / 2);
-        g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+        if (geometry.dashed) drawDashedEllipse(g, geometry.center, geometry.width / 2, geometry.height / 2, frameColor);
+        else {
+          g.ellipse(geometry.center.x, -geometry.center.y, geometry.width / 2, geometry.height / 2);
+          g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+        }
       } else if (geometry.kind === "boundary") {
         for (const [start, end] of geometry.segments) {
           drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor);
@@ -110,12 +114,19 @@ export class PrimitivePreviewOverlay {
             const point = points[i];
             g.circle(point.x, -point.y, NODE_RADIUS);
             g.fill({ color: frameColor, alpha: 0.95 });
-            g.stroke({ color: 0xffffff, alpha: 0.95, width: FRAME_WIDTH });
+            g.stroke({ color: SELECT_COLOR, alpha: 0.95, width: FRAME_WIDTH });
           }
         } else {
           if (points.length === 2) {
             g.moveTo(points[0].x, -points[0].y);
             g.lineTo(points[1].x, -points[1].y);
+          } else if (geometry.dashedAll) {
+            for (let i = 0; i < points.length; i++) {
+              const start = points[i];
+              const end = points[(i + 1) % points.length];
+              drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor);
+            }
+            return;
           } else {
             g.poly(points.flatMap((point) => [point.x, -point.y]));
           }
@@ -155,6 +166,28 @@ function drawDashedSegment(
     const dashEnd = Math.min(travelled + DASH_LENGTH, length);
     g.moveTo(start.x + ux * travelled, start.y + uy * travelled);
     g.lineTo(start.x + ux * dashEnd, start.y + uy * dashEnd);
+    g.stroke({ color, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+  }
+}
+
+function drawDashedEllipse(
+  g: Graphics,
+  center: { x: number; y: number },
+  radiusX: number,
+  radiusY: number,
+  color: number,
+): void {
+  const segments = 64;
+  const cx = center.x;
+  const cy = -center.y;
+  for (let i = 0; i < segments; i++) {
+    const startAngle = (i / segments) * Math.PI * 2;
+    const endAngle = ((i + 0.58) / segments) * Math.PI * 2;
+    g.moveTo(cx + Math.cos(startAngle) * radiusX, cy + Math.sin(startAngle) * radiusY);
+    for (let j = 1; j <= 4; j++) {
+      const angle = startAngle + (endAngle - startAngle) * j / 4;
+      g.lineTo(cx + Math.cos(angle) * radiusX, cy + Math.sin(angle) * radiusY);
+    }
     g.stroke({ color, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
   }
 }
