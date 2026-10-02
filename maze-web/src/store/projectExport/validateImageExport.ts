@@ -8,7 +8,10 @@ import type { RenderModeId } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
-import { assertObject, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
+import type { ParamLink, ParamModifier, ParamDescriptor } from "../parameterLinks";
+import { validateLinkGraph, linksMatchDefaults } from "../slices/parameterLinksEngine";
+import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, type VectorByWallsParamPath, type VectorByCorridorsParamPath } from "../parameterLinksRegistry";
+import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
 
 // ─── Image Export (GitHub issue #295) ────────────────────────────────────────
 
@@ -318,20 +321,61 @@ export function validateTeleportGroupOverrides(v: unknown, path: string): Record
   return result;
 }
 
+function tryValidateParamModifier(v: unknown): ParamModifier | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  if (obj.op !== "add" && obj.op !== "sub" && obj.op !== "mul" && obj.op !== "div") return null;
+  if (typeof obj.value !== "number") return null;
+  return { op: obj.op, value: obj.value };
+}
+
+function tryValidateParamLink<P extends string>(v: unknown): ParamLink<P> | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj.id !== "string" || typeof obj.source !== "string" || typeof obj.target !== "string" || typeof obj.enabled !== "boolean") return null;
+  const modifiers = Array.isArray(obj.modifiers)
+    ? obj.modifiers.map(tryValidateParamModifier).filter((m): m is ParamModifier => m !== null)
+    : undefined;
+  return { id: obj.id, source: obj.source as P, target: obj.target as P, enabled: obj.enabled, modifiers: modifiers && modifiers.length > 0 ? modifiers : undefined };
+}
+
+/** Validates a persisted `links` array (GitHub issue #651) — `null`/absent means "untouched since
+ *  load (or saved before this issue existed)", read back as `fallback` (the mode's current
+ *  `DEFAULT_*_LINKS`) so a project file always picks up a later change to that default set rather
+ *  than freezing today's defaults into the file. A malformed individual entry is dropped (same
+ *  "degrade gracefully" leniency as the rest of this file); the whole array falls back to
+ *  `fallback` if it fails `validateLinkGraph` (duplicate target, cross-type pair, cycle, unknown
+ *  path against `registry`) — a hand-edited or corrupted link graph only degrades this one section,
+ *  never fails the whole file load. */
+export function validateLinks<P extends string>(v: unknown, path: string, fallback: ParamLink<P>[], registry: Record<string, ParamDescriptor>): ParamLink<P>[] {
+  if (v == null) return fallback;
+  let arr: unknown[];
+  try {
+    arr = assertArray(v, path);
+  } catch {
+    return fallback;
+  }
+  const links = arr.map(tryValidateParamLink<P>).filter((l): l is ParamLink<P> => l !== null);
+  try {
+    validateLinkGraph(links, registry);
+  } catch {
+    return fallback;
+  }
+  return links;
+}
+
 /** Lenient — every field falls back to its own default when absent or malformed, same recovery
  * pattern `validateSplitGeneration` uses, since this whole section is optional (absent entirely
  * for project files saved before GitHub issue #295). */
-export function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsSettings {
+export function validateVectorByWallsSettings(v: unknown, path: string, links: ParamLink<VectorByWallsParamPath>[]): VectorByWallsSettings {
   const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
-  if (v == null) return d;
+  if (v == null) return { ...d, links };
   let obj: Record<string, unknown> | null;
   try {
     obj = assertObject(v, path);
   } catch {
-    return d;
+    return { ...d, links };
   }
-  // `links` is in-memory-only in this engine (GitHub issue #643) — never persisted/loaded, always
-  // seeded fresh from the mode's default link graph.
   return {
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
@@ -360,7 +404,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     markerSize: optNumber(obj, "markerSize", d.markerSize),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    links: DEFAULT_VECTOR_BY_WALLS_LINKS,
+    links,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
   };
 }
@@ -449,7 +493,7 @@ export function validatePngExportSettings(v: unknown, path: string): PngExportSe
 }
 
 /** Same recovery-default convention as `validateVectorByWallsSettings` (GitHub issue #310). */
-export function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCorridorsSettings {
+export function validateVectorByCorridorsSettings(v: unknown, path: string, links: ParamLink<VectorByCorridorsParamPath>[]): VectorByCorridorsSettings {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
     try {
@@ -459,7 +503,6 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     }
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
-  // See `validateVectorByWallsSettings`'s own comment on `links` — same rationale.
   return {
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
@@ -489,7 +532,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     markerSize: optNumber(obj, "markerSize", d.markerSize),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
-    links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
+    links,
     markerIndex: validateMarkerIndexSettings(obj?.markerIndex, `${path}.markerIndex`, d.markerIndex),
   };
 }
@@ -503,18 +546,22 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       obj = null;
     }
   }
+  const vectorByWallsLinks = validateLinks<VectorByWallsParamPath>(obj?.vectorByWallsLinks, `${path}.vectorByWallsLinks`, DEFAULT_VECTOR_BY_WALLS_LINKS, VECTOR_BY_WALLS_PARAM_REGISTRY);
+  const vectorByCorridorsLinks = validateLinks<VectorByCorridorsParamPath>(obj?.vectorByCorridorsLinks, `${path}.vectorByCorridorsLinks`, DEFAULT_VECTOR_BY_CORRIDORS_LINKS, VECTOR_BY_CORRIDORS_PARAM_REGISTRY);
   return {
     activeRenderMode: optRenderModeId(obj, "activeRenderMode"),
     openRenderModeSettings: optRenderModeId(obj, "openRenderModeSettings"),
-    vectorByWallsSettings: validateVectorByWallsSettings(obj?.vectorByWallsSettings, `${path}.vectorByWallsSettings`),
+    vectorByWallsSettings: validateVectorByWallsSettings(obj?.vectorByWallsSettings, `${path}.vectorByWallsSettings`, vectorByWallsLinks),
     vectorByWallsSectionsExpanded: obj?.vectorByWallsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
       : {},
     showColorWarnings: optBool(obj, "showColorWarnings", true),
-    vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`),
+    vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`, vectorByCorridorsLinks),
     vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)
       : {},
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
+    vectorByWallsLinks: linksMatchDefaults(vectorByWallsLinks, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : vectorByWallsLinks,
+    vectorByCorridorsLinks: linksMatchDefaults(vectorByCorridorsLinks, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : vectorByCorridorsLinks,
   };
 }

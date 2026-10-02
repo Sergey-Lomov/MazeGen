@@ -7,7 +7,7 @@ import { SliderRow } from "../SliderRow";
 import { OverrideResetButton } from "../OverrideResetButton";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import type { CornerStyle } from "../../pixi/renderers/types";
-import type { ParamDescriptor, ParamLink } from "../../store/parameterLinks";
+import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
 
 /** The "Shared style" section (GitHub issue #322) — one collapsible section, always first, shared
@@ -50,7 +50,7 @@ export function SharedStyleSection<P extends string>({
   links: ParamLink<P>[];
   registry: Record<P, ParamDescriptor>;
   onSetLinkEnabled: (target: P, enabled: boolean) => void;
-  onAddLink: (source: P, target: P) => void;
+  onAddLink: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   onRemoveLink: (target: P) => void;
 }) {
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);

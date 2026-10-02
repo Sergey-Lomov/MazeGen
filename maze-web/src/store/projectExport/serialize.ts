@@ -3,6 +3,8 @@ import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
+import { linksMatchDefaults } from "../slices/parameterLinksEngine";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
 
 export function serializeProject(state: MazeState): ProjectFile {
   const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
@@ -115,6 +117,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       vectorByCorridorsSettings: state.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
       pngExportSettings: state.pngExportSettings,
+      vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
+      vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
     },
     floors: {
       floors: state.floors,

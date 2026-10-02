@@ -1,19 +1,32 @@
 import type { ParamDescriptor, ParamType } from "./parameterLinks";
+import { colorToHex } from "./colorMath";
 import * as m from "~/paraglide/messages";
 
-/** Every linkable param in this app is either a plain number/boolean or one of these small string
- *  enums — `equals` is `Object.is` in all cases, so one shared descriptor factory covers every
- *  entry. A future object-valued param type (#647 color-as-object) would need its own `equals`,
- *  added here when that type is introduced. `label`/`group` back the parameter-links dialog
- *  (GitHub issue #644) — see `ParamDescriptor`'s own doc comment for what `group` means.
- *  `cornerStyle`/`join` values ("round"/"miter") are formatted via the same labels the settings
- *  panel's own corner-style `SelectRow` uses, not the raw enum string; `markerShape`/
+/** Every linkable param in this app is either a plain number/boolean, a packed-RGB color, or one of
+ *  these small string enums — `equals` is `Object.is` in all cases (a color value is just a number,
+ *  GitHub issue #647), so one shared descriptor factory covers every entry. `label`/`group` back the
+ *  parameter-links dialog (GitHub issue #644) — see `ParamDescriptor`'s own doc comment for what
+ *  `group` means. `cornerStyle`/`join` values ("round"/"miter") are formatted via the same labels the
+ *  settings panel's own corner-style `SelectRow` uses, not the raw enum string; `markerShape`/
  *  `verticalArrowStyle` each get their own localized format function. `indexLabelStyle` and
  *  `labelFontWeight` need the caller to pick which of two label-key sets applies (see
  *  `formatElevatorBadgesLabelType`/`formatMarkerIndexLabelStyle` and
  *  `formatElevatorBadgesFontWeight`/`formatMarkerIndexFontWeight`), since the same values are
  *  labelled differently depending on which field they appear on; plain numbers/booleans fall back
- *  to `String(v)`. */
+ *  to `String(v)`; `color` formats as `#rrggbb` (`formatColor`). */
+/** Integers render bare ("5"), non-integers always to 2 decimal places ("5.10"), never the raw
+ *  float string a chain of modifier steps can produce (e.g. a `×0.1` step's floating-point
+ *  remainder) — GitHub issue #645 follow-up, link-row "current value" display. */
+function formatNumber(value: unknown): string {
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/** `"#rrggbb"`, same hex rendering the color picker's own hex field uses (`colorToHex`). */
+function formatColor(value: unknown): string {
+  return colorToHex(value as number);
+}
+
 function descriptor(type: ParamType, label: string, group: string[], format?: (value: unknown) => string): ParamDescriptor {
   const defaultFormat =
     type === "cornerStyle"
@@ -24,7 +37,11 @@ function descriptor(type: ParamType, label: string, group: string[], format?: (v
           ? formatVerticalArrowStyle
           : type === "labelFontWeight"
             ? formatElevatorBadgesFontWeight
-            : String;
+            : type === "number"
+              ? formatNumber
+              : type === "color"
+                ? formatColor
+                : String;
   return { type, equals: Object.is, label, group, format: format ?? defaultFormat };
 }
 
@@ -161,36 +178,52 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "startMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersStart()),
   "startMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.markersStart()),
   "startMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.markersStart()),
+  "startMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.markersStart()),
+  "startMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.markersStart()),
   "finishMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersFinish()),
   "finishMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersFinish()),
   "finishMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersFinish()),
   "finishMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.markersFinish()),
   "finishMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.markersFinish()),
+  "finishMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.markersFinish()),
+  "finishMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.markersFinish()),
   teleportLineCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.teleport_corner_style"](), G.teleportMarkers()),
   teleportLineSize: descriptor("number", m["image_export.vector_by_walls.teleport_size"](), G.teleportMarkers()),
   teleportLineShape: descriptor("markerShape", m["image_export.vector_by_walls.teleport_shape"](), G.teleportMarkers()),
   teleportEdgeBorderWidth: descriptor("number", m["image_export.vector_by_walls.teleport_border_width"](), G.teleportMarkers()),
   teleportEdgeGapWidth: descriptor("number", m["image_export.vector_by_walls.teleport_edge_gap_width"](), G.teleportMarkers()),
+  teleportEdgeColor: descriptor("color", m["image_export.vector_by_walls.teleport_edge_color"](), G.teleportMarkers()),
+  teleportEdgeBorderColor: descriptor("color", m["image_export.vector_by_walls.teleport_edge_border_color"](), G.teleportMarkers()),
   teleportConnectorGapWidth: descriptor("number", m["image_export.vector_by_walls.teleport_connector_gap_width"](), G.teleportConnector()),
+  teleportConnectorColor: descriptor("color", m["image_export.vector_by_walls.teleport_connector_color"](), G.teleportConnector()),
   teleportAvoidFieldExit: descriptor("boolean", m["image_export.vector_by_walls.teleport_avoid_field_exit"](), G.teleportConnector(), formatBoolean),
   teleportGroupCustomization: descriptor("boolean", m["image_export.vector_by_walls.teleport_group_customization"](), G.teleportRoot(), formatBoolean),
   "teleportFloorBadge.shape": descriptor("markerShape", m["image_export.vector_by_walls.teleport_floor_badge_shape"](), G.teleportFloorBadges()),
   "teleportFloorBadge.labelType": descriptor("indexLabelStyle", m["image_export.vector_by_walls.teleport_floor_badge_label_type"](), G.teleportFloorBadges(), formatElevatorBadgesLabelType),
+  "teleportFloorBadge.fillColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_fill_color"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.borderColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_border_color"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.textColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_text_color"](), G.teleportFloorBadges()),
   "twoWayPassageMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalTwoWayMarker()),
+  "twoWayPassageMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalTwoWayMarker()),
+  "twoWayPassageMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalTwoWayMarker()),
   "oneWayPassageMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalOneWayMarker()),
+  "oneWayPassageMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalOneWayMarker()),
+  "oneWayPassageMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalOneWayMarker()),
   "elevatorMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalElevatorMarker()),
   "elevatorMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalElevatorMarker()),
   "elevatorMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalElevatorMarker()),
   "elevatorMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalElevatorMarker()),
   "elevatorMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalElevatorMarker()),
+  "elevatorMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalElevatorMarker()),
+  "elevatorMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalElevatorMarker()),
   "elevatorBadges.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalElevatorBadges()),
   "elevatorBadges.enabled": descriptor("boolean", m["image_export.vector_by_walls.elevator_badges_enabled"](), G.verticalElevatorBadges(), formatBoolean),
   "elevatorBadges.evenDistribution": descriptor("boolean", m["image_export.vector_by_walls.elevator_badges_even_distribution"](), G.verticalElevatorBadges(), formatBoolean),
@@ -201,7 +234,9 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "elevatorBadges.shape": descriptor("markerShape", m["image_export.vector_by_walls.elevator_badges_shape"](), G.verticalElevatorBadges()),
   "elevatorBadges.labelType": descriptor("indexLabelStyle", m["image_export.vector_by_walls.elevator_badges_label_type"](), G.verticalElevatorBadges(), formatElevatorBadgesLabelType),
   "elevatorBadges.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.elevator_badges_font_weight"](), G.verticalElevatorBadges(), formatElevatorBadgesFontWeight),
-  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndex()),
+  "elevatorBadges.fillColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_fill_color"](), G.verticalElevatorBadges()),
+  "elevatorBadges.textColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_text_color"](), G.verticalElevatorBadges()),
+  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexSettings()),
   "markerIndex.enabled": descriptor("boolean", m["image_export.vector_by_walls.marker_index_enabled"](), G.markerIndex(), formatBoolean),
   "markerIndex.paddingX": descriptor("number", m["image_export.vector_by_walls.marker_index_padding_x"](), G.markerIndexSettings()),
   "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexSettings()),
@@ -212,12 +247,21 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexSettings(), formatBoolean),
   "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexSettings(), formatMarkerIndexLabelStyle),
   "markerIndex.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_index_font_weight"](), G.markerIndexSettings(), formatMarkerIndexFontWeight),
+  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexSettings()),
+  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_index_text_color"](), G.markerIndexSettings()),
+  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexSettings()),
   "markerIndex.coverage.singleFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.crossFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_cross_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.verticalPassage": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_vertical_passage"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.elevator": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_elevator"](), G.markerIndexCoverage(), formatBoolean),
 
+  background: descriptor("color", m["image_export.vector_by_walls.background_color"](), G.background()),
+  gridColor: descriptor("color", m["image_export.vector_by_walls.grid_color"](), G.background()),
+  innerGridColor: descriptor("color", m["image_export.vector_by_walls.inner_grid_color"](), G.background()),
+  floorColor: descriptor("color", m["image_export.vector_by_walls.floor_color"](), G.tiles()),
+  wallColor: descriptor("color", m["image_export.vector_by_walls.wall_color"](), G.tiles()),
   wallThickness: descriptor("number", m["image_export.vector_by_walls.wall_thickness"](), G.tiles()),
+  oneWayColor: descriptor("color", m["image_export.vector_by_walls.one_way_color"](), G.oneWays()),
   oneWayGapWidth: descriptor("number", m["image_export.vector_by_walls.one_way_gap_width"](), G.oneWays()),
   oneWaySize: descriptor("number", m["image_export.vector_by_walls.one_way_size"](), G.oneWays()),
   oneWayThickness: descriptor("number", m["image_export.vector_by_walls.one_way_thickness"](), G.oneWays()),
@@ -227,21 +271,30 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   splitSpecialShapes: descriptor("boolean", m["image_export.vector_by_walls.split_special_shapes"](), G.splits(), formatBoolean),
   "decorativeStairsTwoWay.lineWidth": descriptor("number", m["image_export.vector_by_walls.decorative_line_width"](), G.verticalTwoWay()),
   "decorativeStairsTwoWay.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalTwoWay()),
+  "decorativeStairsTwoWay.lineColor": descriptor("color", m["image_export.vector_by_walls.decorative_line_color"](), G.verticalTwoWay()),
   "decorativeStairsOneWay.lineWidth": descriptor("number", m["image_export.vector_by_walls.decorative_line_width"](), G.verticalOneWay()),
   "decorativeStairsOneWay.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalOneWay()),
+  "decorativeStairsOneWay.lineColor": descriptor("color", m["image_export.vector_by_walls.decorative_line_color"](), G.verticalOneWay()),
   "decorativeElevator.lineWidth": descriptor("number", m["image_export.vector_by_walls.decorative_line_width"](), G.verticalElevator()),
   "decorativeElevator.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalElevator()),
+  "decorativeElevator.lineColor": descriptor("color", m["image_export.vector_by_walls.decorative_line_color"](), G.verticalElevator()),
   decorativeStairsArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalTwoWayArrows()),
+  decorativeStairsArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalTwoWayArrows()),
   decorativeStairsOneWayArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalOneWayArrows()),
+  decorativeStairsOneWayArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalOneWayArrows()),
   twoWayArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalTwoWayArrows()),
   twoWayArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalTwoWayArrows()),
   twoWayArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalTwoWayArrows()),
+  twoWayArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalTwoWayArrows()),
   oneWayArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalOneWayArrows()),
   oneWayArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalOneWayArrows()),
   oneWayArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalOneWayArrows()),
+  oneWayArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalOneWayArrows()),
+  oneWayAccentColor: descriptor("color", m["image_export.vector_by_walls.one_way_accent_color"](), G.verticalOneWayMarker()),
   elevatorArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalElevatorArrows()),
   elevatorArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalElevatorArrows()),
   elevatorArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalElevatorArrows()),
+  elevatorArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalElevatorArrows()),
 } as const satisfies Record<string, ParamDescriptor>;
 
 export type VectorByWallsParamPath = keyof typeof VECTOR_BY_WALLS_PARAM_REGISTRY;
@@ -261,21 +314,31 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "startMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersStart()),
   "startMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.markersStart()),
   "startMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.markersStart()),
+  "startMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.markersStart()),
+  "startMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.markersStart()),
   "finishMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersFinish()),
   "finishMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersFinish()),
   "finishMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.markersFinish()),
   "finishMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.markersFinish()),
   "finishMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.markersFinish()),
+  "finishMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.markersFinish()),
+  "finishMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.markersFinish()),
   teleportLineCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.teleport_corner_style"](), G.teleportMarkers()),
   teleportLineSize: descriptor("number", m["image_export.vector_by_walls.teleport_size"](), G.teleportMarkers()),
   teleportLineShape: descriptor("markerShape", m["image_export.vector_by_walls.teleport_shape"](), G.teleportMarkers()),
   teleportEdgeBorderWidth: descriptor("number", m["image_export.vector_by_walls.teleport_border_width"](), G.teleportMarkers()),
   teleportEdgeGapWidth: descriptor("number", m["image_export.vector_by_walls.teleport_edge_gap_width"](), G.teleportMarkers()),
+  teleportEdgeColor: descriptor("color", m["image_export.vector_by_walls.teleport_edge_color"](), G.teleportMarkers()),
+  teleportEdgeBorderColor: descriptor("color", m["image_export.vector_by_walls.teleport_edge_border_color"](), G.teleportMarkers()),
   teleportConnectorGapWidth: descriptor("number", m["image_export.vector_by_walls.teleport_connector_gap_width"](), G.teleportConnector()),
+  teleportConnectorColor: descriptor("color", m["image_export.vector_by_walls.teleport_connector_color"](), G.teleportConnector()),
   teleportAvoidFieldExit: descriptor("boolean", m["image_export.vector_by_walls.teleport_avoid_field_exit"](), G.teleportConnector(), formatBoolean),
   teleportGroupCustomization: descriptor("boolean", m["image_export.vector_by_walls.teleport_group_customization"](), G.teleportRoot(), formatBoolean),
   "teleportFloorBadge.shape": descriptor("markerShape", m["image_export.vector_by_walls.teleport_floor_badge_shape"](), G.teleportFloorBadges()),
   "teleportFloorBadge.labelType": descriptor("indexLabelStyle", m["image_export.vector_by_walls.teleport_floor_badge_label_type"](), G.teleportFloorBadges(), formatElevatorBadgesLabelType),
+  "teleportFloorBadge.fillColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_fill_color"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.borderColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_border_color"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.textColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_text_color"](), G.teleportFloorBadges()),
   splitGapWidth: descriptor("number", m["image_export.vector_by_corridors.split_gap_width"](), [m["image_export.vector_by_walls.section_splits"]()]),
   splitSpecialShapes: descriptor("boolean", m["image_export.vector_by_walls.split_special_shapes"](), G.splits(), formatBoolean),
   splitDiagonalBowAmount: descriptor("number", m["image_export.vector_by_corridors.split_diagonal_bow_amount"](), G.splits()),
@@ -284,16 +347,22 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "twoWayPassageMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalTwoWayMarker()),
+  "twoWayPassageMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalTwoWayMarker()),
+  "twoWayPassageMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalTwoWayMarker()),
   "oneWayPassageMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalOneWayMarker()),
   "oneWayPassageMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalOneWayMarker()),
+  "oneWayPassageMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalOneWayMarker()),
+  "oneWayPassageMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalOneWayMarker()),
   "elevatorMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalElevatorMarker()),
   "elevatorMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.verticalElevatorMarker()),
   "elevatorMarker.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalElevatorMarker()),
   "elevatorMarker.gapWidth": descriptor("number", m["image_export.vector_by_walls.marker_gap_width"](), G.verticalElevatorMarker()),
   "elevatorMarker.shape": descriptor("markerShape", m["image_export.vector_by_walls.marker_shape"](), G.verticalElevatorMarker()),
+  "elevatorMarker.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_fill_color"](), G.verticalElevatorMarker()),
+  "elevatorMarker.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_border_color"](), G.verticalElevatorMarker()),
   "elevatorBadges.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.verticalElevatorBadges()),
   "elevatorBadges.enabled": descriptor("boolean", m["image_export.vector_by_walls.elevator_badges_enabled"](), G.verticalElevatorBadges(), formatBoolean),
   "elevatorBadges.evenDistribution": descriptor("boolean", m["image_export.vector_by_walls.elevator_badges_even_distribution"](), G.verticalElevatorBadges(), formatBoolean),
@@ -304,7 +373,9 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "elevatorBadges.shape": descriptor("markerShape", m["image_export.vector_by_walls.elevator_badges_shape"](), G.verticalElevatorBadges()),
   "elevatorBadges.labelType": descriptor("indexLabelStyle", m["image_export.vector_by_walls.elevator_badges_label_type"](), G.verticalElevatorBadges(), formatElevatorBadgesLabelType),
   "elevatorBadges.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.elevator_badges_font_weight"](), G.verticalElevatorBadges(), formatElevatorBadgesFontWeight),
-  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndex()),
+  "elevatorBadges.fillColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_fill_color"](), G.verticalElevatorBadges()),
+  "elevatorBadges.textColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_text_color"](), G.verticalElevatorBadges()),
+  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexSettings()),
   "markerIndex.enabled": descriptor("boolean", m["image_export.vector_by_walls.marker_index_enabled"](), G.markerIndex(), formatBoolean),
   "markerIndex.paddingX": descriptor("number", m["image_export.vector_by_walls.marker_index_padding_x"](), G.markerIndexSettings()),
   "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexSettings()),
@@ -315,11 +386,17 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexSettings(), formatBoolean),
   "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexSettings(), formatMarkerIndexLabelStyle),
   "markerIndex.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_index_font_weight"](), G.markerIndexSettings(), formatMarkerIndexFontWeight),
+  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexSettings()),
+  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_index_text_color"](), G.markerIndexSettings()),
+  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexSettings()),
   "markerIndex.coverage.singleFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.crossFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_cross_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.verticalPassage": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_vertical_passage"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.elevator": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_elevator"](), G.markerIndexCoverage(), formatBoolean),
 
+  background: descriptor("color", m["image_export.vector_by_walls.background_color"](), G.background()),
+  gridColor: descriptor("color", m["image_export.vector_by_walls.grid_color"](), G.background()),
+  color: descriptor("color", m["image_export.vector_by_corridors.color"](), G.cells()),
   thickness: descriptor("number", m["image_export.vector_by_corridors.thickness"](), G.cells()),
   markerWidenPadding: descriptor("number", m["image_export.vector_by_corridors.marker_widen_padding"](), G.cells()),
   oneWayCount: descriptor("number", m["image_export.vector_by_corridors.one_way_count"](), G.oneWays()),
@@ -327,17 +404,22 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   oneWayGap: descriptor("number", m["image_export.vector_by_corridors.one_way_gap"](), G.oneWays()),
   oneWayWidth: descriptor("number", m["image_export.vector_by_corridors.one_way_width"](), G.oneWays()),
   oneWayLength: descriptor("number", m["image_export.vector_by_corridors.one_way_length"](), G.oneWays()),
+  oneWayColor: descriptor("color", m["image_export.vector_by_corridors.one_way_color"](), G.oneWays()),
   showGrid: descriptor("boolean", m["image_export.vector_by_walls.show_grid"](), G.background(), formatBoolean),
   replaceTwoFloorElevatorsWithStairs: descriptor("boolean", m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"](), G.verticalRoot(), formatBoolean),
   twoWayArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalTwoWayArrows()),
   twoWayArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalTwoWayArrows()),
   twoWayArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalTwoWayArrows()),
+  twoWayArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalTwoWayArrows()),
   oneWayArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalOneWayArrows()),
   oneWayArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalOneWayArrows()),
   oneWayArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalOneWayArrows()),
+  oneWayArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalOneWayArrows()),
+  oneWayAccentColor: descriptor("color", m["image_export.vector_by_walls.one_way_accent_color"](), G.verticalOneWayMarker()),
   elevatorArrowSize: descriptor("number", m["image_export.vector_by_walls.vertical_arrow_size"](), G.verticalElevatorArrows()),
   elevatorArrowStyle: descriptor("verticalArrowStyle", m["image_export.vector_by_walls.vertical_arrow_style"](), G.verticalElevatorArrows()),
   elevatorArrowCornerStyle: descriptor("cornerStyle", m["image_export.vector_by_walls.vertical_arrow_corner_style"](), G.verticalElevatorArrows()),
+  elevatorArrowColor: descriptor("color", m["image_export.vector_by_walls.vertical_arrow_color"](), G.verticalElevatorArrows()),
 } as const satisfies Record<string, ParamDescriptor>;
 
 export type VectorByCorridorsParamPath = keyof typeof VECTOR_BY_CORRIDORS_PARAM_REGISTRY;

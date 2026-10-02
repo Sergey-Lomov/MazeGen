@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings } from "../store/projectExport/validateImageExport";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks } from "../store/projectExport/validateImageExport";
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 
 describe("validateVerticalSettingsFields", () => {
   it("preserves elevator simplification and defaults it on for older projects", () => {
@@ -207,7 +209,54 @@ describe("optRenderStyle (VectorByCorridorsSettings.renderStyle recovery)", () =
   it("validateVectorByCorridorsSettings maps a legacy roundJunctions-only object onto renderStyle: 'contour'", () => {
     const { renderStyle, ...legacyObj } = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as typeof DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS & { roundJunctions?: boolean };
     void renderStyle;
-    const recovered = validateVectorByCorridorsSettings({ ...legacyObj, roundJunctions: true }, "path");
+    const recovered = validateVectorByCorridorsSettings({ ...legacyObj, roundJunctions: true }, "path", []);
     expect(recovered.renderStyle).toBe("contour");
+  });
+});
+
+describe("validateLinks (GitHub issue #651)", () => {
+  const registry = VECTOR_BY_WALLS_PARAM_REGISTRY;
+  const defaults = DEFAULT_VECTOR_BY_WALLS_LINKS;
+
+  it("returns the fallback when the persisted value is null/absent", () => {
+    expect(validateLinks(null, "path", defaults, registry)).toBe(defaults);
+    expect(validateLinks(undefined, "path", defaults, registry)).toBe(defaults);
+  });
+
+  it("returns the fallback when the persisted value isn't an array", () => {
+    expect(validateLinks("not-an-array", "path", defaults, registry)).toBe(defaults);
+    expect(validateLinks({}, "path", defaults, registry)).toBe(defaults);
+  });
+
+  it("returns an explicit empty array as-is, distinct from null (user removed every link)", () => {
+    expect(validateLinks([], "path", defaults, registry)).toEqual([]);
+  });
+
+  it("drops a malformed individual entry but keeps the rest", () => {
+    const valid = defaults[0];
+    const result = validateLinks([valid, { bogus: true }, "nonsense"], "path", defaults, registry);
+    expect(result).toEqual([valid]);
+  });
+
+  it("parses modifiers on a valid entry", () => {
+    const withModifiers = { ...defaults[0], modifiers: [{ op: "add", value: 2 }] };
+    const result = validateLinks([withModifiers], "path", defaults, registry);
+    expect(result[0].modifiers).toEqual([{ op: "add", value: 2 }]);
+  });
+
+  it("drops an invalid modifier entry while keeping the link itself (no modifiers)", () => {
+    const withBadModifiers = { ...defaults[0], modifiers: [{ op: "bogus", value: 2 }] };
+    const result = validateLinks([withBadModifiers], "path", defaults, registry);
+    expect(result[0].modifiers).toBeUndefined();
+  });
+
+  it("falls back to the defaults when the array fails validateLinkGraph (duplicate target)", () => {
+    const duplicateTarget = [defaults[0], { ...defaults[1], target: defaults[0].target }];
+    expect(validateLinks(duplicateTarget, "path", defaults, registry)).toBe(defaults);
+  });
+
+  it("falls back to the defaults when a link references an unknown path", () => {
+    const unknownPath = [{ id: "x", source: "not.a.real.path", target: "also.not.real", enabled: true }];
+    expect(validateLinks(unknownPath, "path", defaults, registry)).toBe(defaults);
   });
 });

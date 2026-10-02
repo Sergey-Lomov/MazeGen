@@ -1,4 +1,15 @@
-import type { ParamDescriptor, ParamLink } from "../parameterLinks";
+import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../parameterLinks";
+import { applyModifiers, applyColorModifiers } from "../parameterLinks";
+
+/** Applies whichever chain `link` actually carries — `modifiers` (number) or `colorModifiers`
+ *  (color, GitHub issue #647) — to `value` copied from its `source`. The two are mutually exclusive
+ *  (a link's `source`/`target` share one `ParamType`), so at most one chain is ever set; neither set
+ *  means a pure equality link. */
+function applyLinkChain<P extends string>(link: ParamLink<P>, value: unknown): unknown {
+  if (link.modifiers) return applyModifiers(value as number, link.modifiers);
+  if (link.colorModifiers) return applyColorModifiers(value as number, link.colorModifiers);
+  return value;
+}
 
 /** Reads `settings[path]`, recursing through any nesting depth of dot-separated sub-object keys
  *  (e.g. `"startMarker.cornerStyle"`, or `"markerIndex.coverage.elevator"` three levels deep).
@@ -30,9 +41,10 @@ export function setParamValue<P extends string, S extends object>(settings: S, p
  *  describing every violation found, never silently drops a conflicting link (that would make the
  *  result depend on array order). Checks: every `source`/`target` exists in `registry`; source and
  *  target share the same `ParamType`; no two links share a `target` (at-most-one-incoming-link
- *  invariant); the `source -> target` graph is acyclic. In #643 this runs only over the
- *  `DEFAULT_*_LINKS` constants (a dev-time/test consistency guard) — persisted/user `links` are out
- *  of scope for #643, so there is no loaded-data path to validate yet. */
+ *  invariant); the `source -> target` graph is acyclic. Originally (#643) this ran only over the
+ *  `DEFAULT_*_LINKS` constants as a dev-time/test consistency guard; `projectExport/
+ *  validateImageExport.ts`'s `validateLinks` (#651) now also runs it over a persisted project
+ *  file's `links` at load time, falling back to the mode's defaults if it throws. */
 export function validateLinkGraph<P extends string>(links: ParamLink<P>[], registry: Record<string, ParamDescriptor>): void {
   const errors: string[] = [];
 
@@ -74,9 +86,11 @@ export function validateLinkGraph<P extends string>(links: ParamLink<P>[], regis
 
 /** BFS propagation of `changedPaths` through `links`' enabled edges — for each path popped from the
  *  queue, every enabled link whose `source` is that path copies the value into `target` and enqueues
- *  `target` next, so a chain A->B->C reacts to a change at A transitively through B. The graph is
- *  guaranteed acyclic by `validateLinkGraph` over `DEFAULT_*_LINKS`, but the traversal still tracks
- *  visited paths as a safety net rather than relying on that alone. */
+ *  `target` next, so a chain A->B->C reacts to a change at A transitively through B. A link's own
+ *  `modifiers` chain (GitHub issue #645) applies per-hop — a multi-link chain compounds rather than
+ *  carrying the root value through unchanged. The graph is guaranteed acyclic by `validateLinkGraph`
+ *  over `DEFAULT_*_LINKS`, but the traversal still tracks visited paths as a safety net rather than
+ *  relying on that alone. */
 export function propagate<P extends string, S extends object>(settings: S, links: ParamLink<P>[], changedPaths: P[]): S {
   const bySource = new Map<P, ParamLink<P>[]>();
   for (const link of links) bySource.set(link.source, [...(bySource.get(link.source) ?? []), link]);
@@ -89,7 +103,9 @@ export function propagate<P extends string, S extends object>(settings: S, links
     for (const link of bySource.get(path) ?? []) {
       if (!link.enabled) continue;
       if (visited.has(link.target)) continue;
-      next = setParamValue(next, link.target, getParamValue(next, path));
+      const sourceValue = getParamValue(next, path);
+      const targetValue = applyLinkChain(link, sourceValue);
+      next = setParamValue(next, link.target, targetValue);
       visited.add(link.target);
       queue.push(link.target);
     }
@@ -118,7 +134,9 @@ export function forceLinks<P extends string, S extends object>(settings: S, link
 export function reconcileLinks<P extends string>(settings: object, links: ParamLink<P>[], registry: Record<string, ParamDescriptor>): ParamLink<P>[] {
   return links.map((link) => {
     const equals = registry[link.target].equals;
-    const matches = equals(getParamValue(settings, link.target), getParamValue(settings, link.source));
+    const sourceValue = getParamValue(settings, link.source);
+    const expected = applyLinkChain(link, sourceValue);
+    const matches = equals(getParamValue(settings, link.target), expected);
     return matches ? link : { ...link, enabled: false };
   });
 }
@@ -129,15 +147,20 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
  *  at-most-one-incoming-link invariant), not left dangling — callers should confirm with the user
  *  before calling this when a prior link exists and they need to preserve it. Does not validate
  *  `source`/`target` against a registry itself; the dialog only ever offers same-`ParamType` pairs
- *  from the registry, so this stays a pure graph edit like the rest of the engine. */
+ *  from the registry, so this stays a pure graph edit like the rest of the engine. `modifiers`
+ *  (GitHub issue #645) is only ever passed for a `"number"`-type pair, `colorModifiers` (GitHub issue
+ *  #647) only for a `"color"`-type pair — `LinkEditor` is the only caller that offers either, and it
+ *  hides both controls for every other `ParamType`. */
 export function addLink<P extends string, S extends object>(
   settings: S,
   links: ParamLink<P>[],
   source: P,
   target: P,
+  modifiers?: ParamModifier[],
+  colorModifiers?: ColorModifier[],
 ): { settings: S; links: ParamLink<P>[] } {
   const withoutTarget = links.filter((l) => l.target !== target);
-  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true };
+  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true, modifiers, colorModifiers };
   const nextLinks = [...withoutTarget, newLink];
   const nextSettings = propagate(settings, nextLinks, [source]);
   return { settings: nextSettings, links: nextLinks };
@@ -154,6 +177,36 @@ export function removeLink<P extends string, S extends object>(
 ): { settings: S; links: ParamLink<P>[] } {
   if (!links.some((l) => l.target === target)) return { settings, links };
   return { settings, links: links.filter((l) => l.target !== target) };
+}
+
+function linksEqual<P extends string>(a: ParamLink<P>, b: ParamLink<P>): boolean {
+  if (a.source !== b.source || a.target !== b.target || a.enabled !== b.enabled) return false;
+  const am = a.modifiers ?? [];
+  const bm = b.modifiers ?? [];
+  if (am.length !== bm.length) return false;
+  if (!am.every((m, i) => m.op === bm[i].op && m.value === bm[i].value)) return false;
+  const acm = a.colorModifiers ?? [];
+  const bcm = b.colorModifiers ?? [];
+  if (acm.length !== bcm.length) return false;
+  return acm.every((m, i) => m.model === bcm[i].model && m.channel === bcm[i].channel && m.op === bcm[i].op && m.value === bcm[i].value);
+}
+
+/** True if `current` carries exactly the same links as `defaults` (same set of `source`/`target`/
+ *  `enabled`/`modifiers`, order-independent — `id` doesn't count, see below). Used to decide
+ *  whether `links` needs saving at all (GitHub issue #651): an untouched project's `links` always
+ *  equals its mode's `DEFAULT_*_LINKS` at save time, so the project file can omit it (`null`) and
+ *  automatically pick up any later change to that default set on next load, instead of freezing
+ *  today's defaults into the file forever. `id` is excluded from the comparison — a default link's
+ *  own id is assigned by call order in `parameterLinksDefaults.ts` and isn't semantically part of
+ *  the link itself (`setLinkEnabledByTarget` et al. never change it, but nothing should depend on
+ *  it matching either). */
+export function linksMatchDefaults<P extends string>(current: ParamLink<P>[], defaults: ParamLink<P>[]): boolean {
+  if (current.length !== defaults.length) return false;
+  const byTarget = new Map(defaults.map((l) => [l.target, l]));
+  return current.every((l) => {
+    const def = byTarget.get(l.target);
+    return def !== undefined && linksEqual(l, def);
+  });
 }
 
 /** Addresses a link by its `target` (not `id` — a field's own setter always knows its own field

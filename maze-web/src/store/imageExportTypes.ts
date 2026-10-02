@@ -1,7 +1,7 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
-import type { ParamLink } from "./parameterLinks";
+import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
@@ -533,8 +533,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   /** Generic parameter-link graph (GitHub issue #643, generalizing #322's fixed "Shared style"
    *  groups) — `source`/`target` reference `VectorByWallsParamPath`s, `enabled: false` meaning
    *  `target` currently holds a manually-set value instead of following `source` (the old
-   *  "override" state). In-memory only, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS` — not persisted
-   *  (see `parameterLinks.ts`'s own doc comment). */
+   *  "override" state). Seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`; persisted verbatim only when
+   *  it deviates from that default (GitHub issue #651) — see `parameterLinksEngine.ts`'s
+   *  `linksMatchDefaults` and `projectExport/types.ts`'s `vectorByWallsLinks`. */
   links: ParamLink<VectorByWallsParamPath>[];
   /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
    *  Independent layer, not part of "Shared style". */
@@ -845,8 +846,8 @@ export interface ImageExportActions {
   setVectorByCorridorsLinkEnabled: (target: VectorByCorridorsParamPath, enabled: boolean) => void;
   /** Creates (or replaces) the link `source -> target` and propagates `source`'s current value into
    *  `target` (GitHub issue #644). Both paths must share the same `ParamType` — the dialog only ever
-   *  offers same-type pairs. */
-  addVectorByCorridorsLink: (source: VectorByCorridorsParamPath, target: VectorByCorridorsParamPath) => void;
+   *  offers same-type pairs. `modifiers` (GitHub issue #645) is only passed for `"number"`-type pairs. */
+  addVectorByCorridorsLink: (source: VectorByCorridorsParamPath, target: VectorByCorridorsParamPath, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   /** Removes whichever link targets `target` entirely (GitHub issue #644) — the field's own value is
    *  left untouched but it stops following any source until a new link is created for it. */
   removeVectorByCorridorsLink: (target: VectorByCorridorsParamPath) => void;
@@ -969,7 +970,7 @@ export interface ImageExportActions {
   /** Same role as `setVectorByCorridorsLinkEnabled`, over `VectorByWallsParamPath`. */
   setVectorByWallsLinkEnabled: (target: VectorByWallsParamPath, enabled: boolean) => void;
   /** Same role as `addVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
-  addVectorByWallsLink: (source: VectorByWallsParamPath, target: VectorByWallsParamPath) => void;
+  addVectorByWallsLink: (source: VectorByWallsParamPath, target: VectorByWallsParamPath, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   /** Same role as `removeVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
   removeVectorByWallsLink: (target: VectorByWallsParamPath) => void;
   setHoveredExportWarningKey: (key: string | null) => void;

@@ -226,6 +226,10 @@ export const dialogSize = {
   approveWide: { minWidth: 260, maxWidth: 640 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
+  // Same height as `complex`, wider — `LinkEditor` (GitHub issue #645) needs a third column for a
+  // link's modifier chain alongside the existing target/source pickers, which `complex`'s 720px is
+  // too narrow for without squeezing all three.
+  threeColumn: { minWidth: 460, maxWidth: 960, width: 960, height: "60vh" },
   printSizing: { minWidth: 520, maxWidth: 720 },
   // The pattern editor (`AbstractPatternEditorDialog`) — its tile diagram and node-card list stack
   // vertically, not side-by-side (GitHub issue #237 follow-up: post-edit/preset moved to a
