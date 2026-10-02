@@ -9,8 +9,13 @@ const activeControllers: FieldEditController[] = [];
 
 function makeController() {
   const updates: PrimitiveWorldGeometry[] = [];
+  const previewCells: [number, number][][] = [];
   const symmetryUpdates: { axis: { x: number; y: number }[]; polygon: { x: number; y: number }[] }[] = [];
   const commits: { cells: [number, number][]; button: number }[] = [];
+  const moves: { cells: [number, number][]; dx: number; dy: number }[] = [];
+  const movePreviews: [number, number][][] = [];
+  const moveTemporaryPreviews: [number, number][][] = [];
+  const moveComplete = vi.fn();
   const previewClear = vi.fn();
   const canvas = {
     addEventListener: vi.fn(),
@@ -23,14 +28,26 @@ function makeController() {
     () => viewport,
     { startPan: vi.fn(), movePan: vi.fn(), endPan: vi.fn() },
     {
-      onPreviewUpdate: (_cells, _button, _kind, _cfg, geometry) => updates.push(geometry),
+      onPreviewUpdate: (cells, _button, _kind, _cfg, geometry) => {
+        previewCells.push(cells);
+        updates.push(geometry);
+      },
       onPreviewClear: previewClear,
       onPrimitiveCommit: (cells, button) => commits.push({ cells, button }),
+      onMoveCommit: (cells, dx, dy) => {
+        moves.push({ cells, dx, dy });
+        return true;
+      },
+      onMovePreview: (cells, temporaryCells) => {
+        movePreviews.push(cells);
+        moveTemporaryPreviews.push(temporaryCells);
+      },
+      onMoveComplete: moveComplete,
       onSymmetryPreviewUpdate: (axis, polygon) => symmetryUpdates.push({ axis, polygon }),
     },
   );
   activeControllers.push(controller);
-  return { controller, updates, symmetryUpdates, commits, previewClear };
+  return { controller, updates, previewCells, movePreviews, moveTemporaryPreviews, symmetryUpdates, commits, moves, moveComplete, previewClear };
 }
 
 function click(controller: FieldEditController, x: number, y: number): void {
@@ -76,6 +93,8 @@ describe("FieldEditController polygon interaction", () => {
       vertexCount: 2,
       dashedClosing: true,
     });
+    expect(geometry.dashedAll).toBeUndefined();
+    expect(geometry.frameColor).toBeUndefined();
     expect(geometry?.points).toHaveLength(3);
   });
 
@@ -193,6 +212,112 @@ describe("FieldEditController polygon interaction", () => {
   });
 });
 
+describe("FieldEditController move interaction", () => {
+  it("selects existing cells with a polygon and moves them as one drag", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "move",
+          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldPoints: new Set([
+            encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(1, 1), encodePoint(2, 0),
+          ]),
+        }),
+      },
+    });
+    const { controller, moves, moveComplete, movePreviews, moveTemporaryPreviews, updates, previewCells } = makeController();
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", code: "ShiftLeft" }));
+    click(controller, 0, -10);
+    click(controller, 80, -10);
+    click(controller, 80, -90);
+    click(controller, 0, -90);
+    expect(previewCells.at(-1)).toEqual([[0, 0], [1, 0], [0, 1], [1, 1]]);
+    expect(lastPolygon(updates)).toMatchObject({ cellColor: 0xffffff });
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", code: "ShiftLeft" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    expect(updates.at(-1)).toMatchObject({ kind: "boundary" });
+    expect(previewCells.at(-1)).toEqual([]);
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 1);
+    expect(moves).toHaveLength(0);
+    controller.onPointerMove(100, -20, 1);
+    controller.onPointerUp();
+    expect(moves).toHaveLength(0);
+    expect(movePreviews.at(-1)).toEqual([[0, 0], [1, 0], [0, 1], [1, 1]]);
+    expect(moveTemporaryPreviews.at(-1)).toEqual([[2, 0], [3, 0], [2, 1], [3, 1]]);
+    expect(previewCells.at(-1)).toEqual([]);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    expect(moves).toEqual([
+      {
+        cells: [[0, 0], [1, 0], [0, 1], [1, 1]],
+        dx: 2,
+        dy: 0,
+      },
+    ]);
+
+    expect(moves).toHaveLength(1);
+    expect(moveComplete).toHaveBeenCalledOnce();
+    expect(movePreviews.at(-1)).toEqual([]);
+  });
+
+  it("keeps the field unchanged when Escape cancels a pending move", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "move",
+          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
+        }),
+      },
+    });
+    const { controller, moves, previewClear } = makeController();
+    click(controller, 0, -10);
+    click(controller, 80, -10);
+    click(controller, 80, -90);
+    click(controller, 0, -90);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 1);
+    controller.onPointerUp();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+
+    expect(moves).toHaveLength(0);
+    expect(previewClear).toHaveBeenCalled();
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(
+      new Set([encodePoint(0, 0), encodePoint(1, 0)]),
+    );
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+  });
+
+  it("deletes an already selected piece with Delete", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "move",
+          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(3, 0)]),
+        }),
+      },
+    });
+    const { controller, commits, moveComplete } = makeController();
+    click(controller, 0, -10);
+    click(controller, 80, -10);
+    click(controller, 80, -90);
+    click(controller, 0, -90);
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Delete" }));
+
+    expect(commits).toEqual([{ cells: [[0, 0], [1, 0]], button: 2 }]);
+    expect(moveComplete).toHaveBeenCalledOnce();
+  });
+});
+
 describe("FieldEditController symmetry interaction", () => {
   it("allows dragging either defining axis point", () => {
     useMazeStore.setState({
@@ -224,6 +349,26 @@ describe("FieldEditController symmetry interaction", () => {
     const { controller } = makeController();
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
     expect(useMazeStore.getState().symmetryPolygonFinished).toBe(true);
+    controller.destroy();
+  });
+
+  it("applies a ready symmetry with Enter", () => {
+    useMazeStore.setState({
+      symmetryAxisPoints: [{ x: 20, y: 0 }, { x: 20, y: 100 }],
+      symmetryScope: "everything",
+      floorFields: {
+        [TEST_FLOOR_ID]: {
+          ...useMazeStore.getState().floorFields[TEST_FLOOR_ID],
+          fieldPrimitive: "symmetry",
+          fieldPoints: new Set([encodePoint(0, 0)]),
+        },
+      },
+    });
+    const { controller } = makeController();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPrimitive).toBe("point");
+    expect(useMazeStore.getState().symmetryAxisPoints).toEqual([]);
     controller.destroy();
   });
 

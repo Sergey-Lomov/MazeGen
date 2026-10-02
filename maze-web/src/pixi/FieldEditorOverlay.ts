@@ -40,6 +40,8 @@ export class FieldEditorOverlay {
   private readonly hover: CellFillRenderer;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+  private movePreviewHidden = new Set<number>();
+  private movePreviewTemporary = new Set<number>();
   private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
@@ -152,12 +154,33 @@ export class FieldEditorOverlay {
   }
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
-    const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
+    const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg)
+      .filter(([x, y]) => !this.movePreviewHidden.has(encodePoint(x, y)));
+    const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
+    for (const key of this.movePreviewTemporary) {
+      if (!rendered.has(key)) cells.push(decodePoint(key));
+    }
     this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
   }
 
   private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
     this.origin.render({ show }, cfg);
+  }
+
+  setMovePreview(sourceCells: [number, number][], temporaryCells: [number, number][]): void {
+    const hidden = new Set(sourceCells.map(([x, y]) => encodePoint(x, y)));
+    const temporary = new Set(temporaryCells.map(([x, y]) => encodePoint(x, y)));
+    if (hidden.size === this.movePreviewHidden.size
+      && temporary.size === this.movePreviewTemporary.size
+      && [...hidden].every((key) => this.movePreviewHidden.has(key))
+      && [...temporary].every((key) => this.movePreviewTemporary.has(key))) return;
+    this.movePreviewHidden = hidden;
+    this.movePreviewTemporary = temporary;
+    const state = useMazeStore.getState();
+    if (state.openCard === "field_setup") {
+      const field = state.floorFields[state.activeFloorId];
+      this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+    }
   }
 
   private redrawPaperLayout(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -254,9 +277,14 @@ export class FieldEditorOverlay {
         ? (confirmedVertexCount >= 2 ? polygon.length : 0)
         : (confirmedVertexCount >= 3 ? polygon.length : 0);
       if (solidPointCount >= 2) {
-        this.symmetryGraphics.moveTo(polygon[0].x, -polygon[0].y);
-        for (let i = 1; i < solidPointCount; i++) this.symmetryGraphics.lineTo(polygon[i].x, -polygon[i].y);
-        this.symmetryGraphics.stroke({ color: SYMMETRY_POLYGON_COLOR, alpha: SYMMETRY_POLYGON_ALPHA, width: SYMMETRY_POLYGON_WIDTH });
+        for (let i = 1; i < solidPointCount; i++) {
+          drawDashedSegment(
+            this.symmetryGraphics,
+            { x: polygon[i - 1].x, y: -polygon[i - 1].y },
+            { x: polygon[i].x, y: -polygon[i].y },
+            SYMMETRY_POLYGON_COLOR,
+          );
+        }
       }
       if (polygon.length >= 2) {
         const last = { x: polygon[polygon.length - 1].x, y: -polygon[polygon.length - 1].y };

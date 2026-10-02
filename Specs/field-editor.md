@@ -132,7 +132,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"move"`, per floor |
 | `floorFields[floorId].polygonOperation` | Stored polygon commit operation: `"add"` or `"remove"`; selected through the Add polygon / Subtract polygon tools |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
@@ -223,6 +223,28 @@ Polygon commits call `addFieldPoints` or `removeFieldPoints` once with the store
 The tool works with square, hexagonal, and triangular tessellations and does not apply primitive
 smoothing or isolated-cell cleanup.
 
+**Select and move** (`"move"`) is a two-step polygon gesture with no additional settings panel.
+Clicks create the selection polygon; Enter, clicking the first cell, or double-clicking finishes it.
+While the polygon is being drawn, existing field cells inside it are highlighted white. Once the
+selection is finished, the fill disappears and only its white dashed exposed boundary remains.
+Dragging from a selected cell moves that selected set by the tessellation's integer cell offset.
+The source cells are hidden from the field overlay and the moved cells are shown as a temporary
+overlay above the unchanged field while the drag is in progress.
+Pointerup only ends the drag; Enter, choosing another tool, or double-clicking the selected area
+commits one atomic move to the final offset. After a successful commit the tool switches to Point.
+Once the polygon is finished, Backspace or Delete removes the selected source cells. Destination
+collisions merge with the selected cells instead of deleting either side. Escape cancels the pending
+move and restores the unchanged field. Polygon construction and operations on the finished piece
+are separate phases, so later selection methods can be added without changing piece operations.
+A drag that reaches the signed coordinate limit is clamped before applying the step; it never wraps a
+cell to the opposite side of the field. Right-click or Escape clears the selection.
+
+The move-selection polygon is drawn with a white dashed outline while it is being edited. Once the
+selection is finished, that outline is replaced by dashed exposed edges of the selected cell union
+(internal shared edges and polygon vertex handles are not rendered). The symmetry polygon uses the
+same white dashed outline and vertex markers; the add/subtract polygon tools retain their normal
+field-editor frame styling.
+
 ### Shape primitives
 
 | Primitive | Tessellation | Drag semantics |
@@ -280,11 +302,11 @@ Preview is RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame 
 
 ### Gesture cancellation
 
-Escape key cancels any active shape-primitive or polygon gesture: preview clears, nothing committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
+Escape key cancels any active shape-primitive, polygon, or select-and-move gesture: preview clears, nothing further is committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
 
 ### Commit
 
-On mouseup: `addFieldPoints(cells)` or `removeFieldPoints(cells)` called with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit divergence.
+On mouseup: `addFieldPoints(cells)` or `removeFieldPoints(cells)` called with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit divergence. The select-and-move tool keeps dragged cells in a temporary overlay and calls `moveFieldPoints(cells, dx, dy)` once when the edit is committed by Enter, tool change, or double-click; mouseup only ends the drag.
 
 ## Grid overlay
 
@@ -319,9 +341,10 @@ has reset and explicit finish actions.
 The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
 toward the reflected side. Preview cells use the operation's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
-processing, the polygon has at least three points and has been explicitly finished. The operation
-applies the selected scope to the active cells in the current custom field, then merges or removes
-the reflected cells. After confirmation, the symmetry geometry is cleared and the normal point tool
-is restored; the symmetry settings remain unchanged.
+processing, the polygon has at least three points and has been explicitly finished. Enter finishes
+an unfinished polygon; when the symmetry status is ready, Enter confirms the operation. The
+operation applies the selected scope to the active cells in the current custom field, then merges
+or removes the reflected cells. After confirmation, the symmetry geometry is cleared and the normal
+point tool is restored; the symmetry settings remain unchanged.
 - pointing-up: `cy = -(row × H + H/3)`
 - pointing-down: `cy = -(row × H + 2H/3)`

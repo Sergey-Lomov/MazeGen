@@ -163,6 +163,30 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return changed;
   })))),
 
+  moveFieldPoints: (cells, dx, dy) => set((state) => guardFieldEdit(state, { kind: "moveFieldPoints", cells, dx, dy }, () => {
+    if (!Number.isSafeInteger(dx) || !Number.isSafeInteger(dy) || (dx === 0 && dy === 0)) return {};
+    const field = activeFloorField(state);
+    const selected = cells
+      .filter(([x, y]) => Number.isSafeInteger(x) && Number.isSafeInteger(y) && field.fieldPoints.has(encodePoint(x, y)));
+    if (selected.length === 0) return {};
+
+    // encodePoint stores signed 16-bit coordinates. Clamp the whole translation before
+    // applying it so a drag near the representable edge cannot wrap a point to the opposite side.
+    const minX = Math.max(...selected.map(([x]) => -32768 - x));
+    const maxX = Math.min(...selected.map(([x]) => 32767 - x));
+    const minY = Math.max(...selected.map(([, y]) => -32768 - y));
+    const maxY = Math.min(...selected.map(([, y]) => 32767 - y));
+    const safeDx = Math.max(minX, Math.min(maxX, dx));
+    const safeDy = Math.max(minY, Math.min(maxY, dy));
+    if (safeDx === 0 && safeDy === 0) return {};
+
+    return invalidateIfChanged(withFieldPointsEdit(state, (points) => {
+      for (const [x, y] of selected) points.delete(encodePoint(x, y));
+      for (const [x, y] of selected) points.add(encodePoint(x + safeDx, y + safeDy));
+      return true;
+    }));
+  })),
+
   clearFieldPoints: () => set((state) => guardFieldEdit(state, { kind: "clearFieldPoints" }, () => invalidateIfChanged(withFieldPointsEdit(state, (pts) => {
     if (pts.size === 0) return false;
     pts.clear();
@@ -252,6 +276,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "removeFieldPoint": get().removeFieldPoint(pending.x, pending.y); break;
       case "addFieldPoints": get().addFieldPoints(pending.cells); break;
       case "removeFieldPoints": get().removeFieldPoints(pending.cells); break;
+      case "moveFieldPoints": get().moveFieldPoints(pending.cells, pending.dx, pending.dy); break;
       case "clearFieldPoints": get().clearFieldPoints(); break;
       case "setFieldEditMode": get().setFieldEditMode(pending.mode); break;
       case "applySymmetry": get().applySymmetry(); break;

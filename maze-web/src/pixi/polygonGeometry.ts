@@ -43,7 +43,7 @@ export function cellsInsidePolygon(
 
 export function polygonWorldGeometry(
   points: PolygonPoint[],
-  options: { vertexCount?: number; dashedClosing?: boolean } = {},
+  options: { vertexCount?: number; dashedClosing?: boolean; dashedAll?: boolean; frameColor?: number; cellColor?: number; cellAlpha?: number } = {},
 ): PrimitiveWorldGeometry {
   return { kind: "polygon", points, ...options };
 }
