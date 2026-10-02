@@ -180,6 +180,18 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByRole("button", { name: /Symmetry/ })).toBeDisabled();
   });
 
+  it("labels the connected-area tool and explains its effect", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const tool = screen.getByRole("button", { name: /Connected Area/ });
+    expect(tool).toHaveAttribute("title", "Connected Area\nAffects all connected cells.");
+  });
+
   it("applies print sizing to standard floors but preserves custom floors", () => {
     useMazeStore.setState({
       floors: [

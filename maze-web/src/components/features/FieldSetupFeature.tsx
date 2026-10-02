@@ -279,7 +279,11 @@ export function FieldSetupFeature() {
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
               disabled={tool.primitive === "symmetry" && fieldOperation === "select"}
-              title={tool.primitive === "polygon" ? `${tool.label}\n${m["field.polygon.shift_tooltip"]()}` : tool.label}
+              title={tool.primitive === "polygon"
+                ? tool.label + "\n" + m["field.polygon.shift_tooltip"]()
+                : tool.primitive === "magic_wand"
+                  ? tool.label + "\n" + m["field.connected_area.tooltip"]()
+                  : tool.label}
               onClick={() => {
                 setFieldPrimitive(tool.primitive);
               }}
@@ -400,6 +404,7 @@ function primitivesForKind(_kind: TessellationKind): PrimitiveToolOption[] {
     { key: "hexagon", primitive: "hexagon", label: m["field.shape.hexagon"]() },
     { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
     { key: "polygon", primitive: "polygon", label: m["field.polygon.tool"]() },
+    { key: "magic_wand", primitive: "magic_wand", label: m["field.connected_area.tool"]() },
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
   return primitives.filter((tool) => _kind !== "square" || tool.primitive !== "parallelogram");
@@ -424,6 +429,33 @@ function primitiveIcon(primitive: FieldPrimitive): React.ReactNode {
         </svg>
       );
     case "symmetry": return <FlipHorizontal {...iconProps} />;
+    case "magic_wand": {
+      const cellSize = 5;
+      const cellGap = 1;
+      const shapeWidth = 3 * cellSize + 2 * cellGap;
+      const shapeHeight = 2 * cellSize + cellGap;
+      const gridOriginX = (24 - shapeWidth) / 2;
+      const gridOriginY = (24 - shapeHeight) / 2;
+      const cellRadius = cellSize * 0.2;
+      const filledCells = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 2]];
+      return (
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <g fill={wallColor}>
+            {filledCells.map(([row, col]) => (
+              <rect
+                key={row + "-" + col}
+                x={gridOriginX + col * (cellSize + cellGap)}
+                y={gridOriginY + row * (cellSize + cellGap)}
+                width={cellSize}
+                height={cellSize}
+                rx={cellRadius}
+                ry={cellRadius}
+              />
+            ))}
+          </g>
+        </svg>
+      );
+    }
     case "rectangle": return <Square {...iconProps} />;
     case "circle": return <Circle {...iconProps} />;
     case "triangle":

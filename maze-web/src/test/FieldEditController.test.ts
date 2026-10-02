@@ -44,8 +44,8 @@ function makeController() {
   return { controller, updates, previewCells, symmetryUpdates, commits, selectionMoves, selectionMovePreviews, previewClear };
 }
 
-function click(controller: FieldEditController, x: number, y: number): void {
-  controller.onPointerDown(x, y, 0);
+function click(controller: FieldEditController, x: number, y: number, button = 0): void {
+  controller.onPointerDown(x, y, button);
   controller.onPointerUp();
 }
 
@@ -563,6 +563,142 @@ describe("FieldEditController point interaction", () => {
 
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(
       new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(2, 0)]),
+    );
+  });
+});
+
+describe("FieldEditController magic wand interaction", () => {
+  it("adds a bounded empty component", () => {
+    const occupied = new Set<number>();
+    for (let x = 0; x < 3; x++) {
+      for (let y = 0; y < 3; y++) {
+        if (x !== 1 || y !== 1) occupied.add(encodePoint(x, y));
+      }
+    }
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "add",
+          fieldPoints: occupied,
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+
+    click(controller, 60, -60);
+
+    expect(commits).toEqual([{ cells: [[1, 1]], button: 0 }]);
+  });
+
+  it("removes the connected occupied component", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "remove",
+          fieldPoints: new Set([
+            encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(4, 4),
+          ]),
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+
+    click(controller, 20, -20);
+
+    expect(commits).toEqual([{
+      cells: expect.arrayContaining([[0, 0], [1, 0], [0, 1]]),
+      button: 2,
+    }]);
+    expect(commits[0].cells).toHaveLength(3);
+  });
+
+  it("inverts Add to Remove with RMB", () => {
+    const occupied = new Set<number>();
+    for (let x = 0; x < 3; x++) {
+      for (let y = 0; y < 3; y++) {
+        if (x !== 1 || y !== 1) occupied.add(encodePoint(x, y));
+      }
+    }
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "add",
+          fieldPoints: occupied,
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+
+    click(controller, 20, -20, 2);
+
+    expect(commits).toEqual([{ cells: expect.arrayContaining([[0, 0]]), button: 2 }]);
+  });
+
+  it("selects the connected occupied component without mutating the field", () => {
+    const fieldPoints = new Set([
+      encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(4, 4),
+    ]);
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "select",
+          fieldPoints,
+        }),
+      },
+    });
+    const { controller, previewCells, commits } = makeController();
+
+    click(controller, 20, -20);
+
+    expect(commits).toHaveLength(0);
+    expect(previewCells.at(-1)).toEqual([]);
+    expect(controller.hasSelectionPreview()).toBe(true);
+    controller.destroy();
+  });
+
+  it("does nothing when Add targets the unbounded empty area", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "add",
+          fieldPoints: new Set([encodePoint(0, 0)]),
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+
+    click(controller, 100, -20);
+
+    expect(commits).toHaveLength(0);
+  });
+
+  it("previews the full area before clicking", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "magic_wand",
+          fieldOperation: "remove",
+          fieldPoints: new Set([
+            encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(4, 4),
+          ]),
+        }),
+      },
+    });
+    const { controller } = makeController();
+
+    expect(controller.getMagicWandPreview(20, -20)).toEqual(
+      expect.arrayContaining([[0, 0], [1, 0], [0, 1]]),
     );
   });
 });

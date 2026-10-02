@@ -537,6 +537,8 @@
   "field.polygon.tool": "Polygon",
   "field.polygon.shift_tooltip": "Shift: move vertices freely.",
   "field.symmetry.tool": "Symmetry",
+  "field.connected_area.tool": "Connected Area",
+  "field.connected_area.tooltip": "Affects all connected cells.",
   "field.symmetry.snap": "Grid snapping",
   "field.symmetry.centers": "Cell centers",
   "field.symmetry.corners": "Cell corners",

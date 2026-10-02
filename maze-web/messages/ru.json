@@ -549,6 +549,8 @@
   "field.polygon.tool": "Полигон",
   "field.polygon.shift_tooltip": "Shift: свободное перемещение вершин.",
   "field.symmetry.tool": "Симметрия",
+  "field.connected_area.tool": "Связанная область",
+  "field.connected_area.tooltip": "Воздействует на все связанные ячейки.",
   "field.symmetry.snap": "Привязка к сетке",
   "field.symmetry.centers": "Центры ячеек",
   "field.symmetry.corners": "Углы ячеек",

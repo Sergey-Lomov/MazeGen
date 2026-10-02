@@ -7,7 +7,7 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry" | "magic_wand";
 export type FieldOperation = "add" | "remove" | "select";
 export type SymmetrySnapMode = "centers" | "corners" | "free";
 export type SymmetryScope = "everything" | "one_side" | "polygon";

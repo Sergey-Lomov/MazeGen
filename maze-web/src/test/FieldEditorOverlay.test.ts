@@ -145,6 +145,14 @@ describe("FieldEditorOverlay", () => {
     expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
       expect.objectContaining({ cells: [[2, 3]], color: 0x888888 }), cfg,
     );
+    overlay.updateHover([[2, 3], [3, 3]], cfg);
+    expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[2, 3], [3, 3]], color: 0x888888 }), cfg,
+    );
+    overlay.updateHover([[2, 3], [3, 3]], cfg, 0x00ff00, 0.5);
+    expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[2, 3], [3, 3]], color: 0x00ff00, alpha: 0.5 }), cfg,
+    );
     overlay.updateHover(null, cfg);
     expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
       expect.objectContaining({ cells: [] }), cfg,

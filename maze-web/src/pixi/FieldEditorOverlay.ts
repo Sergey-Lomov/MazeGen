@@ -124,12 +124,18 @@ export class FieldEditorOverlay {
     });
   }
 
-  updateHover(cell: [number, number] | null, cfg: TessellationConfig, color = CELL_HOVER_COLOR): void {
-    if (!cell) {
-      this.hover.render({ cells: [], color, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
-    } else {
-      this.hover.render({ cells: [cell], color, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
-    }
+  updateHover(
+    cellOrCells: [number, number] | [number, number][] | null,
+    cfg: TessellationConfig,
+    color = CELL_HOVER_COLOR,
+    alpha = HOVER_ALPHA,
+  ): void {
+    const cells = !cellOrCells
+      ? []
+      : typeof cellOrCells[0] === "number"
+        ? [cellOrCells as [number, number]]
+        : cellOrCells as [number, number][];
+    this.hover.render({ cells, color, alpha, inset: 0, borderWidth: 0 }, cfg);
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {

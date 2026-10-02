@@ -13,6 +13,7 @@ import { decodePoint, encodePoint } from "./tessellationProjection";
 import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type SymmetryPoint } from "./symmetry";
 import { selectionBoundarySegments } from "./fieldSelectionGeometry";
 import { canvas } from "./colorTokens";
+import { connectedMagicWandCells } from "./magicWand";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -242,6 +243,13 @@ export class FieldEditController {
 
     if (this.activePrimitive === "symmetry") {
       this.handleSymmetryPointerDown(canvasX, canvasY, button);
+      return;
+    }
+
+    if (this.activePrimitive === "magic_wand") {
+      const grid = this.toGrid(canvasX, canvasY);
+      if (grid && (button === 0 || button === 2)) this.applyMagicWand(grid.x, grid.y, button);
+      this.gestureActive = false;
       return;
     }
 
@@ -615,6 +623,15 @@ export class FieldEditController {
     return [grid.x, grid.y];
   }
 
+  getMagicWandPreview(canvasX: number, canvasY: number): [number, number][] {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    if (field.fieldPrimitive !== "magic_wand") return [];
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return [];
+    return this.magicWandCellsAt(grid.x, grid.y, field.fieldOperation) ?? [];
+  }
+
   isGestureActive(): boolean {
     return this.gestureActive;
   }
@@ -861,6 +878,36 @@ export class FieldEditController {
     } else if (operation === "remove") {
       store.removeFieldPoint(x, y);
     }
+  }
+
+  private applyMagicWand(x: number, y: number, button: number): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const operation = this.effectiveOperation(button);
+    const cells = this.magicWandCellsAt(x, y, operation);
+    if (!cells || cells.length === 0) return;
+    if (operation === "select") {
+      this.showSelection(cells, cfgKind(field.tessellationConfig.type), field.tessellationConfig);
+    } else {
+      this.primitiveCallbacks.onPrimitiveCommit(cells, operation === "remove" ? 2 : 0);
+    }
+  }
+
+  private magicWandCellsAt(
+    x: number,
+    y: number,
+    operation: "add" | "remove" | "select",
+  ): [number, number][] | null {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const startKey = encodePoint(x, y);
+
+    // Select and Remove operate on occupied cells. Add operates on an empty component;
+    // connectedMagicWandCells returns null for the unbounded empty component.
+    if ((operation === "select" || operation === "remove") && !field.fieldPoints.has(startKey)) return null;
+    if (operation === "add" && field.fieldPoints.has(startKey)) return null;
+
+    return connectedMagicWandCells([x, y], field.tessellationConfig, field.fieldPoints);
   }
 
   private operationButton(button = this.gestureButton): number {

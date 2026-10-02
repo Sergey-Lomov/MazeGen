@@ -135,7 +135,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
 | `floorFields[floorId].fieldOperation` | Active primitive operation: `"add"`, `"remove"`, or `"select"`, per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"` \| `"magic_wand"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
@@ -210,7 +210,12 @@ operation; right mouse input is ignored in Select mode. The Symmetry tool remain
 but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
 its operation also comes from the active mode.
 
-Custom mode supports point, shape, and polygon interaction modes controlled by `fieldPrimitive`:
+Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`:
+
+Connected Area (magic_wand) — a click processes the connected component containing the clicked
+cell. Select previews the occupied component, Remove deletes it, and Add fills a bounded empty
+component. Clicking the unbounded empty area does nothing, so Add never attempts to fill the
+infinite grid. Right-click applies the opposite Add/Remove operation; it is ignored in Select mode.
 
 **Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately
 applies the active operation. No batch. Cannot be cancelled with Escape. Rebuilding the custom
@@ -341,9 +346,11 @@ Grid rendering is embedded in each feature renderer, not in a standalone compone
 ## Hover highlight (custom mode)
 
 While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted
-with the active operation color (Add green, Remove red, Select white; alpha 0.3). Rendered by
-`FieldEditorOverlay.updateHover()`, called from `MazeScene` on every `pointermove`. The hover is
-hidden while a persistent Select-mode selection is active. Cleared on `pointerupoutside`.
+with the active operation color (Add green, Remove red, Select white; alpha 0.3). The Connected
+Area tool highlights its whole bounded/occupied connected component instead of only the hovered
+cell. Rendered by `FieldEditorOverlay.updateHover()`, called from `MazeScene` on every
+`pointermove`. The hover is hidden while a persistent Select-mode selection is active. Cleared on
+`pointerupoutside`.
 
 The same `pointermove` also drives the generic `x, y` coordinate readout in `HoverInfoPanel` (see `maze-web/Specs/renderer.md`) — that mechanism is card-agnostic and runs regardless of `fieldSetupOpen`; this section only covers the field-edit-specific operation-colored cell overlay layered on top of it.
 

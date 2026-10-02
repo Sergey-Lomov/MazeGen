@@ -302,6 +302,7 @@ describe("zoom reset controls", () => {
         onPointerMove: vi.fn(),
         getHoverCell: vi.fn(() => [2, 3]),
         isGestureActive: vi.fn(() => false),
+        hasSelectionPreview: vi.fn(() => false),
       }) as any,
       fieldEditorOverlay: { updateHover } as any,
       getController: () => null,
@@ -313,7 +314,63 @@ describe("zoom reset controls", () => {
 
     stageHandlers.pointermove?.({ globalX: 10, globalY: 10, buttons: 0 });
 
-    expect(updateHover).toHaveBeenCalledWith(null, activeField.tessellationConfig, expect.any(Number));
+    expect(updateHover).toHaveBeenCalledWith(null, activeField.tessellationConfig, expect.any(Number), undefined);
+    useMazeStore.setState({
+      openCard: state.openCard,
+      floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
+    });
+    interaction.destroy();
+  });
+
+  it("highlights the connected area for the magic-wand field tool", () => {
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const state = useMazeStore.getState();
+    const activeField = state.floorFields[state.activeFloorId];
+    const getMagicWandPreview = vi.fn(() => [[1, 1], [2, 1]] as [number, number][]);
+    const updateHover = vi.fn();
+    useMazeStore.setState({
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...activeField, fieldEditMode: "custom", fieldPrimitive: "magic_wand" },
+      },
+    });
+
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+        },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({
+        onPointerMove: vi.fn(),
+        getMagicWandPreview,
+        isGestureActive: vi.fn(() => false),
+        hasSelectionPreview: vi.fn(() => false),
+      }) as any,
+      fieldEditorOverlay: { updateHover } as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointermove?.({ globalX: 10, globalY: 10, buttons: 0 });
+
+    expect(getMagicWandPreview).toHaveBeenCalledWith(10, 10);
+    expect(updateHover).toHaveBeenCalledWith(
+      [[1, 1], [2, 1]], activeField.tessellationConfig, expect.any(Number), 0.5,
+    );
     useMazeStore.setState({
       openCard: state.openCard,
       floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
@@ -408,7 +465,7 @@ describe("zoom reset controls", () => {
         screen: { width: 100, height: 100 },
       } as any,
       viewport: { x: 0, y: 0, scale: { x: 1, y: 1 } } as any,
-      getFieldEditController: () => ({}) as any,
+      getFieldEditController: () => ({ hasSelectionPreview: vi.fn(() => false) }) as any,
       fieldEditorOverlay: {} as any,
       getController: () => null,
       getHoverProvider: () => ({ getHoverInfo: () => null }),

@@ -88,9 +88,11 @@ export class SceneInteraction {
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const field = st.floorFields[st.activeFloorId];
         const hoverCell = (field.fieldPrimitive === "polygon"
-          || st.floorFields[st.activeFloorId].fieldPrimitive === "symmetry")
+          || field.fieldPrimitive === "symmetry")
           ? null
-          : fieldEditController.getHoverCell(e.globalX, e.globalY);
+          : field.fieldPrimitive === "magic_wand"
+            ? fieldEditController.getMagicWandPreview(e.globalX, e.globalY)
+            : fieldEditController.getHoverCell(e.globalX, e.globalY);
         const hoverColor = field.fieldOperation === "remove"
           ? canvas.fieldEditor.previewRemove
           : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
@@ -98,6 +100,7 @@ export class SceneInteraction {
           fieldEditController.isGestureActive() || fieldEditController.hasSelectionPreview?.() ? null : hoverCell,
           field.tessellationConfig,
           hoverColor,
+          field.fieldPrimitive === "magic_wand" ? 0.5 : undefined,
         );
         return;
       }
