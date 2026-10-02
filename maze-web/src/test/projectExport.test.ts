@@ -657,6 +657,8 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      vectorByWallsLinks: null,
+      vectorByCorridorsLinks: null,
     });
   });
 
@@ -718,6 +720,39 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     expect(reparsed.imageExport).toEqual(serialized.imageExport);
   });
 
+  it("omits vectorByWallsLinks/vectorByCorridorsLinks when links are untouched (GitHub issue #651)", () => {
+    const serialized = serializeProject(makeState());
+    expect(serialized.imageExport.vectorByWallsLinks).toBeNull();
+    expect(serialized.imageExport.vectorByCorridorsLinks).toBeNull();
+  });
+
+  it("persists vectorByWallsSettings.links verbatim when it deviates from the defaults, and round-trips it", () => {
+    const disabled = DEFAULT_VECTOR_BY_WALLS_SETTINGS.links.map((l) => (l.target === "startMarker.size" ? { ...l, enabled: false } : l));
+    const state = makeState({ vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, links: disabled } });
+    const serialized = serializeProject(state);
+    expect(serialized.imageExport.vectorByWallsLinks).not.toBeNull();
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    const link = reparsed.imageExport.vectorByWallsSettings.links.find((l) => l.target === "startMarker.size");
+    expect(link?.enabled).toBe(false);
+  });
+
+  it("an absent vectorByWallsLinks section (pre-#651 project file) reads the current defaults", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport.vectorByWallsLinks;
+    delete raw.imageExport.vectorByCorridorsLinks;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.links).toEqual(DEFAULT_VECTOR_BY_WALLS_SETTINGS.links);
+    expect(reparsed.imageExport.vectorByCorridorsSettings.links).toEqual(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.links);
+  });
+
+  it("falls back to the defaults when a persisted links array is structurally invalid (duplicate target), without throwing", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    const base = DEFAULT_VECTOR_BY_WALLS_SETTINGS.links[0];
+    raw.imageExport.vectorByWallsLinks = [{ ...base, id: "dup-1" }, { ...base, id: "dup-2" }];
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.links).toEqual(DEFAULT_VECTOR_BY_WALLS_SETTINGS.links);
+  });
+
   it("defaults the optional inner grid for projects saved before it existed", () => {
     const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
     delete raw.imageExport.vectorByWallsSettings.showInnerGrid;
@@ -757,6 +792,8 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      vectorByWallsLinks: null,
+      vectorByCorridorsLinks: null,
     });
   });
 });

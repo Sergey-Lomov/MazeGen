@@ -533,8 +533,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   /** Generic parameter-link graph (GitHub issue #643, generalizing #322's fixed "Shared style"
    *  groups) — `source`/`target` reference `VectorByWallsParamPath`s, `enabled: false` meaning
    *  `target` currently holds a manually-set value instead of following `source` (the old
-   *  "override" state). In-memory only, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS` — not persisted
-   *  (see `parameterLinks.ts`'s own doc comment). */
+   *  "override" state). Seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`; persisted verbatim only when
+   *  it deviates from that default (GitHub issue #651) — see `parameterLinksEngine.ts`'s
+   *  `linksMatchDefaults` and `projectExport/types.ts`'s `vectorByWallsLinks`. */
   links: ParamLink<VectorByWallsParamPath>[];
   /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
    *  Independent layer, not part of "Shared style". */

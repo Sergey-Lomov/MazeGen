@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget, addLink, removeLink } from "../store/slices/parameterLinksEngine";
+import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget, addLink, removeLink, linksMatchDefaults } from "../store/slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
@@ -239,7 +239,7 @@ describe("validateLinkGraph", () => {
 describe("round-trip persistence of the four shared-style source values", () => {
   it("VectorByWallsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
     const saved = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, cornerStyle: "miter" as const, markerSize: 0.42, markerBorderWidth: 4, gapWidth: 5 };
-    const loaded = validateVectorByWallsSettings(saved, "vectorByWallsSettings");
+    const loaded = validateVectorByWallsSettings(saved, "vectorByWallsSettings", []);
     expect(loaded.cornerStyle).toBe("miter");
     expect(loaded.markerSize).toBe(0.42);
     expect(loaded.markerBorderWidth).toBe(4);
@@ -248,17 +248,76 @@ describe("round-trip persistence of the four shared-style source values", () => 
 
   it("VectorByCorridorsSettings' cornerStyle/markerSize/markerBorderWidth/gapWidth survive a save/load cycle", () => {
     const saved = { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, cornerStyle: "miter" as const, markerSize: 0.42, markerBorderWidth: 4, gapWidth: 5 };
-    const loaded = validateVectorByCorridorsSettings(saved, "vectorByCorridorsSettings");
+    const loaded = validateVectorByCorridorsSettings(saved, "vectorByCorridorsSettings", []);
     expect(loaded.cornerStyle).toBe("miter");
     expect(loaded.markerSize).toBe(0.42);
     expect(loaded.markerBorderWidth).toBe(4);
     expect(loaded.gapWidth).toBe(5);
   });
 
-  it("links is never loaded from a project file — always seeded fresh from the defaults", () => {
+  it("an absent/empty links section falls back to the current defaults verbatim (GitHub issue #651)", () => {
     const tampered = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, links: [] };
-    const loaded = validateVectorByWallsSettings(tampered, "vectorByWallsSettings");
-    expect(loaded.links).toBe(DEFAULT_VECTOR_BY_WALLS_LINKS);
+    const loaded = validateVectorByWallsSettings(tampered, "vectorByWallsSettings", DEFAULT_VECTOR_BY_WALLS_LINKS);
+    expect(loaded.links).toEqual(DEFAULT_VECTOR_BY_WALLS_LINKS);
+  });
+
+  it("a persisted links array is used verbatim, overriding the current defaults", () => {
+    const persisted = DEFAULT_VECTOR_BY_WALLS_LINKS.filter((l) => l.target !== "wallJoin");
+    const loaded = validateVectorByWallsSettings(DEFAULT_VECTOR_BY_WALLS_SETTINGS, "vectorByWallsSettings", persisted);
+    expect(loaded.links.some((l) => l.target === "wallJoin")).toBe(false);
+  });
+});
+
+describe("linksMatchDefaults (GitHub issue #651)", () => {
+  const defaults: ParamLink<string>[] = [link("a", "b"), link("a", "c", false)];
+
+  it("an untouched link list matches its own defaults", () => {
+    expect(linksMatchDefaults(defaults, defaults)).toBe(true);
+  });
+
+  it("matches a reordered-but-otherwise-identical list", () => {
+    expect(linksMatchDefaults([defaults[1], defaults[0]], defaults)).toBe(true);
+  });
+
+  it("ignores id when comparing", () => {
+    const relabeled = defaults.map((l) => ({ ...l, id: `other-${l.id}` }));
+    expect(linksMatchDefaults(relabeled, defaults)).toBe(true);
+  });
+
+  it("does not match when a link was re-enabled", () => {
+    const current = [defaults[0], { ...defaults[1], enabled: true }];
+    expect(linksMatchDefaults(current, defaults)).toBe(false);
+  });
+
+  it("does not match when a default link's target was removed", () => {
+    expect(linksMatchDefaults([defaults[0]], defaults)).toBe(false);
+  });
+
+  it("does not match when a link was added for a target the defaults don't cover", () => {
+    expect(linksMatchDefaults([...defaults, link("b", "d")], defaults)).toBe(false);
+  });
+
+  it("does not match when a modifiers chain differs in length", () => {
+    const current = [modLink("a", "b", [{ op: "add", value: 1 }]), defaults[1]];
+    expect(linksMatchDefaults(current, defaults)).toBe(false);
+  });
+
+  it("does not match when same-length modifiers chains differ only in op", () => {
+    const withDefaults: ParamLink<string>[] = [modLink("a", "b", [{ op: "add", value: 1 }]), defaults[1]];
+    const current = [modLink("a", "b", [{ op: "sub", value: 1 }]), defaults[1]];
+    expect(linksMatchDefaults(current, withDefaults)).toBe(false);
+  });
+
+  it("does not match when same-length modifiers chains differ only in value", () => {
+    const withDefaults: ParamLink<string>[] = [modLink("a", "b", [{ op: "add", value: 1 }]), defaults[1]];
+    const current = [modLink("a", "b", [{ op: "add", value: 2 }]), defaults[1]];
+    expect(linksMatchDefaults(current, withDefaults)).toBe(false);
+  });
+
+  it("matches when modifiers chains are identical", () => {
+    const withDefaults: ParamLink<string>[] = [modLink("a", "b", [{ op: "add", value: 1 }]), defaults[1]];
+    const current = [modLink("a", "b", [{ op: "add", value: 1 }]), defaults[1]];
+    expect(linksMatchDefaults(current, withDefaults)).toBe(true);
   });
 });
 

@@ -481,7 +481,7 @@ against that mode's own `VECTOR_BY_WALLS_PARAM_REGISTRY`/`VECTOR_BY_CORRIDORS_PA
 maps every linkable path (dot-path for a one-level-nested field, e.g. `"startMarker.cornerStyle"`)
 to a `ParamDescriptor` (`{ type, equals }`) — same-`type` (`"number" | "color" | "cornerStyle" |
 "join"`) is the only constraint on what can link to what; `equals` defaults to `Object.is`.
-`settings.links: ParamLink<...>[]` (in-memory only — see "Not persisted" below) holds the live graph
+`settings.links: ParamLink<...>[]` (persisted — see "Persistence" below) holds the live graph
 for that mode, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`
 (`parameterLinksDefaults.ts`), which reproduce the table above as plain equality links (each link's
 `enabled: false` is exactly the old "override" state). A link's `target` has at most one incoming
@@ -593,7 +593,7 @@ link's current `source`/`target`; saving (Add or Edit) always calls `onAddLink`
 already targeting that target and propagates the source's current value in immediately — so editing a
 link's source re-syncs the target's value as part of the save. The whole dialog is scoped to whichever
 render mode's panel opened it (`SharedStyleSection`'s own `links`/`registry`/`settings` props, generic
-over `P`) — not persisted any differently than `links` itself (see "Not persisted" below).
+over `P`) — not persisted any differently than `links` itself (see "Persistence" below).
 
 The four "Shared style" source fields (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`)
 carry `group: ["Shared style"]` (the section they actually live in), not an empty `group` — so they
@@ -659,20 +659,29 @@ value `DEFAULT_VERTICAL_SETTINGS`/`DEFAULT_VERTICAL_DECORATIVE_SETTINGS` supplie
 `teleportAvoidFieldExit`, decorative vertical settings, enabled elevator badges, and `links` itself)
 remains in the export model, not the runtime style.
 
-**Not persisted (GitHub issue #643's own scope cut, deferred to a future ticket).** `links` is
-in-memory-only — `validateVectorByWallsSettings`/`validateVectorByCorridorsSettings`
-(`validateImageExport.ts`) always reseed it fresh from `DEFAULT_VECTOR_BY_WALLS_LINKS`/
-`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` on load, ignoring whatever a saved project file's own `links`
-key (if any) contains. The four shared-style source values themselves (`cornerStyle`/`markerSize`/
-`markerBorderWidth`/`gapWidth`) are ordinary persisted fields, validated/defaulted like any other
-settings field. **Consequence:** a link a user disabled by editing a dependent field directly (e.g.
-a custom `startMarker.size` no longer following the shared `markerSize`) does not survive a
-save/reload round-trip — after reload, that field's link is back to whatever `DEFAULT_*_LINKS` says,
-even though the field's own saved *value* is preserved and will keep displaying correctly right
-until the shared value is next edited, at which point the field snaps to it unexpectedly. This is a
-deliberate, known gap (`reconcileLinks`, `parameterLinksEngine.ts`, exists and is tested for exactly
-this purpose but is not yet wired into `validateImageExport.ts`), not an oversight — persisting
-`links` and reconciling a loaded file's actual field values against them is out of scope for #643.
+**Persistence (GitHub issue #651).** `ProjectFileImageExport` carries `vectorByWallsLinks`/
+`vectorByCorridorsLinks: ParamLink<P>[] | null`, alongside (not inside) the mode's own
+`vectorByWallsSettings`/`vectorByCorridorsSettings` object — `serializeProject` (`serialize.ts`)
+compares the live `settings.links` against that mode's `DEFAULT_*_LINKS` via `linksMatchDefaults`
+(`parameterLinksEngine.ts`, an order-independent, `id`-ignoring structural comparison): an untouched
+project (every link still exactly matches its default `source`/`target`/`enabled`/`modifiers`)
+serializes that field as `null`, so the file stays lean and a later change to `DEFAULT_*_LINKS`
+(e.g. #649) is picked up automatically on next load rather than being frozen out by a stale saved
+copy. The instant any link deviates — a user disabled/re-enabled one, edited its `modifiers`, or
+added/removed one via the parameter-links dialog (#644) — the field holds the **entire current
+`links` array verbatim**, not a diff.
+
+On load, `validateLinks` (`validateImageExport.ts`) reads that field: `null`/absent (including every
+project file saved before #651) means "use the current `DEFAULT_*_LINKS` as-is". A present array is
+parsed leniently per entry (a malformed link is dropped, same recovery convention as the rest of
+this file) and then re-checked whole via `validateLinkGraph` (shared with the `DEFAULT_*_LINKS`
+dev-time consistency guard, `parameterLinksEngine.ts`) — a result that fails validation (duplicate
+target, cross-type pair, a cycle, an unknown path) falls back to the defaults entirely rather than
+loading a corrupt graph. An explicit `[]` (the user removed every link) is preserved as-is, distinct
+from `null` — it round-trips as "no links" rather than reverting to defaults. The four shared-style
+source values themselves (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`) remain ordinary
+persisted fields inside `vectorByWallsSettings`/`vectorByCorridorsSettings`, validated/defaulted like
+any other settings field, unaffected by this mechanism.
 
 ### Widening a corridor under a marker (`drawMarkerWidenPatches`, `pixi/renderers/markerWidenPatches.ts`)
 

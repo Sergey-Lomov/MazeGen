@@ -5,6 +5,8 @@ import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { FeatureId, RenderModeId } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
+import type { ParamLink } from "../parameterLinks";
+import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
 /** Replayable command log (GitHub issue #543) — replaces the old per-entity draft snapshot +
  * suppression-set persistence shape. `commands` replays on top of the freshly-regenerated
@@ -65,6 +67,14 @@ export interface ProjectFileImageExport {
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;
   pngExportSettings: PngExportSettings;
+  /** `vectorByWallsSettings.links`, persisted only when it deviates from
+   * `DEFAULT_VECTOR_BY_WALLS_LINKS` (GitHub issue #651) — `null` for a project untouched since
+   * load (or saved before this issue existed), meaning "use the current defaults as-is" rather than
+   * freezing today's defaults into the file; a non-`null` value is the full link list verbatim. */
+  vectorByWallsLinks: ParamLink<VectorByWallsParamPath>[] | null;
+  /** Same role as `vectorByWallsLinks`, for `vectorByCorridorsSettings.links` against
+   * `DEFAULT_VECTOR_BY_CORRIDORS_LINKS`. */
+  vectorByCorridorsLinks: ParamLink<VectorByCorridorsParamPath>[] | null;
 }
 
 /** Floor list — GitHub issue #335, epic #333. See `FloorsState`'s doc comment for why

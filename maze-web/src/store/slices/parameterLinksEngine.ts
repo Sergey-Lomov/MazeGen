@@ -31,9 +31,10 @@ export function setParamValue<P extends string, S extends object>(settings: S, p
  *  describing every violation found, never silently drops a conflicting link (that would make the
  *  result depend on array order). Checks: every `source`/`target` exists in `registry`; source and
  *  target share the same `ParamType`; no two links share a `target` (at-most-one-incoming-link
- *  invariant); the `source -> target` graph is acyclic. In #643 this runs only over the
- *  `DEFAULT_*_LINKS` constants (a dev-time/test consistency guard) — persisted/user `links` are out
- *  of scope for #643, so there is no loaded-data path to validate yet. */
+ *  invariant); the `source -> target` graph is acyclic. Originally (#643) this ran only over the
+ *  `DEFAULT_*_LINKS` constants as a dev-time/test consistency guard; `projectExport/
+ *  validateImageExport.ts`'s `validateLinks` (#651) now also runs it over a persisted project
+ *  file's `links` at load time, falling back to the mode's defaults if it throws. */
 export function validateLinkGraph<P extends string>(links: ParamLink<P>[], registry: Record<string, ParamDescriptor>): void {
   const errors: string[] = [];
 
@@ -164,6 +165,32 @@ export function removeLink<P extends string, S extends object>(
 ): { settings: S; links: ParamLink<P>[] } {
   if (!links.some((l) => l.target === target)) return { settings, links };
   return { settings, links: links.filter((l) => l.target !== target) };
+}
+
+function linksEqual<P extends string>(a: ParamLink<P>, b: ParamLink<P>): boolean {
+  if (a.source !== b.source || a.target !== b.target || a.enabled !== b.enabled) return false;
+  const am = a.modifiers ?? [];
+  const bm = b.modifiers ?? [];
+  if (am.length !== bm.length) return false;
+  return am.every((m, i) => m.op === bm[i].op && m.value === bm[i].value);
+}
+
+/** True if `current` carries exactly the same links as `defaults` (same set of `source`/`target`/
+ *  `enabled`/`modifiers`, order-independent — `id` doesn't count, see below). Used to decide
+ *  whether `links` needs saving at all (GitHub issue #651): an untouched project's `links` always
+ *  equals its mode's `DEFAULT_*_LINKS` at save time, so the project file can omit it (`null`) and
+ *  automatically pick up any later change to that default set on next load, instead of freezing
+ *  today's defaults into the file forever. `id` is excluded from the comparison — a default link's
+ *  own id is assigned by call order in `parameterLinksDefaults.ts` and isn't semantically part of
+ *  the link itself (`setLinkEnabledByTarget` et al. never change it, but nothing should depend on
+ *  it matching either). */
+export function linksMatchDefaults<P extends string>(current: ParamLink<P>[], defaults: ParamLink<P>[]): boolean {
+  if (current.length !== defaults.length) return false;
+  const byTarget = new Map(defaults.map((l) => [l.target, l]));
+  return current.every((l) => {
+    const def = byTarget.get(l.target);
+    return def !== undefined && linksEqual(l, def);
+  });
 }
 
 /** Addresses a link by its `target` (not `id` — a field's own setter always knows its own field
