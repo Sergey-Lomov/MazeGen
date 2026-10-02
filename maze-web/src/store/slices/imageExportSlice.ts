@@ -112,13 +112,25 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
   setShowColorWarnings: (show) => set({ showColorWarnings: show, hoveredExportWarningKey: null }),
   setVectorByCorridorsBackground: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, background: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "background", false);
+      const settings = { ...s.vectorByCorridorsSettings, background: color, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["background"]) };
+    }),
   setVectorByCorridorsShowGrid: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, showGrid: v } })),
   setVectorByCorridorsGridColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, gridColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "gridColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, gridColor: color, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["gridColor"]) };
+    }),
   setVectorByCorridorsColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "color", false);
+      const settings = { ...s.vectorByCorridorsSettings, color, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["color"]) };
+    }),
   setVectorByCorridorsThickness: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, thickness: v } })),
   setVectorByCorridorsJoin: (join) =>
@@ -138,9 +150,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.cornerStyle"]) };
     }),
   setVectorByCorridorsStartMarkerFillColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.fillColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, fillColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.fillColor"]) };
+    }),
   setVectorByCorridorsStartMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.borderColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.borderColor"]) };
+    }),
   setVectorByCorridorsStartMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.borderWidth", false);
@@ -168,9 +188,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.cornerStyle"]) };
     }),
   setVectorByCorridorsFinishMarkerFillColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.fillColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, fillColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.fillColor"]) };
+    }),
   setVectorByCorridorsFinishMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.borderColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.borderColor"]) };
+    }),
   setVectorByCorridorsFinishMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.borderWidth", false);
@@ -209,9 +237,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       const overridable: VectorByCorridorsParamPath[] = [
         "teleportLineCornerStyle",
         "teleportLineSize",
+        "teleportEdgeColor",
+        "teleportEdgeBorderColor",
         "teleportEdgeBorderWidth",
         "teleportEdgeGapWidth",
+        "teleportConnectorColor",
         "teleportConnectorGapWidth",
+      ];
+      const floorBadgeOverridable: VectorByCorridorsParamPath[] = [
+        "teleportFloorBadge.fillColor",
+        "teleportFloorBadge.borderColor",
+        "teleportFloorBadge.textColor",
       ];
       let links = s.vectorByCorridorsSettings.links;
       const detached: VectorByCorridorsParamPath[] = [];
@@ -219,6 +255,15 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
         if (patch[target as keyof typeof patch] !== undefined) {
           links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
           detached.push(target);
+        }
+      }
+      if (patch.teleportFloorBadge !== undefined) {
+        for (const target of floorBadgeOverridable) {
+          const field = target.slice("teleportFloorBadge.".length) as keyof typeof patch.teleportFloorBadge;
+          if (patch.teleportFloorBadge[field] !== undefined) {
+            links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
+            detached.push(target);
+          }
         }
       }
       const settings = { ...s.vectorByCorridorsSettings, ...patch, links };
@@ -249,24 +294,56 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByCorridorsSplitDiagonalBowAmount: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitDiagonalBowAmount: v } })),
   patchVectorByCorridorsVerticalSettings: (patch) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch } })),
+    set((s) => {
+      const overridable: VectorByCorridorsParamPath[] = ["twoWayArrowColor", "oneWayArrowColor", "oneWayAccentColor", "elevatorArrowColor"];
+      let links = s.vectorByCorridorsSettings.links;
+      const detached: VectorByCorridorsParamPath[] = [];
+      for (const target of overridable) {
+        if (patch[target as keyof typeof patch] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
+      const settings = { ...s.vectorByCorridorsSettings, ...patch, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, detached) };
+    }),
   patchVectorByCorridorsElevatorBadges: (patch) =>
-    set((s) => ({
-      vectorByCorridorsSettings: {
+    set((s) => {
+      const overridable: VectorByCorridorsParamPath[] = ["elevatorBadges.fillColor", "elevatorBadges.textColor"];
+      let links = s.vectorByCorridorsSettings.links;
+      const detached: VectorByCorridorsParamPath[] = [];
+      for (const target of overridable) {
+        const field = target.slice("elevatorBadges.".length) as keyof typeof patch;
+        if (patch[field] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
+      const settings = {
         ...s.vectorByCorridorsSettings,
         elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, ...patch },
-      },
-    })),
+        links,
+      };
+      return { vectorByCorridorsSettings: propagate(settings, links, detached) };
+    }),
   patchVectorByCorridorsMarkerIndexSettings: (patch) =>
     set((s) => {
+      const overridable: VectorByCorridorsParamPath[] = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"];
       let links = s.vectorByCorridorsSettings.links;
-      if (patch.gap !== undefined) links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, "markerIndex.gap", false).links;
+      const detached: VectorByCorridorsParamPath[] = [];
+      for (const target of overridable) {
+        const field = target.slice("markerIndex.".length) as keyof typeof patch;
+        if (patch[field] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByCorridorsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
       const settings = {
         ...s.vectorByCorridorsSettings,
         markerIndex: { ...s.vectorByCorridorsSettings.markerIndex, ...patch },
         links,
       };
-      return { vectorByCorridorsSettings: patch.gap !== undefined ? propagate(settings, links, ["markerIndex.gap"]) : settings };
+      return { vectorByCorridorsSettings: propagate(settings, links, detached) };
     }),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) =>
     set((s) => {
@@ -283,9 +360,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: propagate(settings, links, ["twoWayPassageMarker.cornerStyle"]) };
     }),
   setVectorByCorridorsTwoWayPassageMarkerFillColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.fillColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, fillColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["twoWayPassageMarker.fillColor"]) };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.borderColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["twoWayPassageMarker.borderColor"]) };
+    }),
   setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "twoWayPassageMarker.borderWidth", false);
@@ -313,9 +398,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: propagate(settings, links, ["oneWayPassageMarker.cornerStyle"]) };
     }),
   setVectorByCorridorsOneWayPassageMarkerFillColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.fillColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, fillColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["oneWayPassageMarker.fillColor"]) };
+    }),
   setVectorByCorridorsOneWayPassageMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.borderColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["oneWayPassageMarker.borderColor"]) };
+    }),
   setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "oneWayPassageMarker.borderWidth", false);
@@ -343,9 +436,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: propagate(settings, links, ["elevatorMarker.cornerStyle"]) };
     }),
   setVectorByCorridorsElevatorMarkerFillColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.fillColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, fillColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["elevatorMarker.fillColor"]) };
+    }),
   setVectorByCorridorsElevatorMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.borderColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderColor: color }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["elevatorMarker.borderColor"]) };
+    }),
   setVectorByCorridorsElevatorMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "elevatorMarker.borderWidth", false);
@@ -402,9 +503,9 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       if (links === s.vectorByCorridorsSettings.links) return {};
       return { vectorByCorridorsSettings: { ...settings, links } };
     }),
-  addVectorByCorridorsLink: (source, target, modifiers) =>
+  addVectorByCorridorsLink: (source, target, modifiers, colorModifiers) =>
     set((s) => {
-      const { settings, links } = addLink(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, source, target, modifiers);
+      const { settings, links } = addLink(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, source, target, modifiers, colorModifiers);
       return { vectorByCorridorsSettings: { ...settings, links } };
     }),
   removeVectorByCorridorsLink: (target) =>
@@ -414,19 +515,39 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByCorridorsSettings: { ...settings, links } };
     }),
   setVectorByWallsBackground: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "background", false);
+      const settings = { ...s.vectorByWallsSettings, background: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["background"]) };
+    }),
   setVectorByWallsShowGrid: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, showGrid: v } })),
   setVectorByWallsGridColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, gridColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "gridColor", false);
+      const settings = { ...s.vectorByWallsSettings, gridColor: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["gridColor"]) };
+    }),
   setVectorByWallsShowInnerGrid: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, showInnerGrid: v } })),
   setVectorByWallsInnerGridColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, innerGridColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "innerGridColor", false);
+      const settings = { ...s.vectorByWallsSettings, innerGridColor: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["innerGridColor"]) };
+    }),
   setVectorByWallsFloorColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, floorColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "floorColor", false);
+      const settings = { ...s.vectorByWallsSettings, floorColor: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["floorColor"]) };
+    }),
   setVectorByWallsWallColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "wallColor", false);
+      const settings = { ...s.vectorByWallsSettings, wallColor: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["wallColor"]) };
+    }),
   setVectorByWallsRandomWallColorMode: (mode) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, randomWallColorMode: mode } })),
   setVectorByWallsWallJoin: (join) =>
@@ -440,7 +561,11 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByWallsOneWayPattern: (pattern) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPattern: pattern } })),
   setVectorByWallsOneWayColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayColor: color } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayColor", false);
+      const settings = { ...s.vectorByWallsSettings, oneWayColor: color, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["oneWayColor"]) };
+    }),
   setVectorByWallsOneWayGapWidth: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayGapWidth: v } })),
   setVectorByWallsOneWaySize: (v) =>
@@ -462,9 +587,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["startMarker.cornerStyle"]) };
     }),
   setVectorByWallsStartMarkerFillColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.fillColor", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, fillColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.fillColor"]) };
+    }),
   setVectorByWallsStartMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.borderColor", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.borderColor"]) };
+    }),
   setVectorByWallsStartMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.borderWidth", false);
@@ -492,9 +625,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.cornerStyle"]) };
     }),
   setVectorByWallsFinishMarkerFillColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.fillColor", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, fillColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.fillColor"]) };
+    }),
   setVectorByWallsFinishMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.borderColor", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.borderColor"]) };
+    }),
   setVectorByWallsFinishMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.borderWidth", false);
@@ -514,33 +655,81 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.size"]) };
     }),
   patchVectorByWallsVerticalSettings: (patch) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, ...patch } })),
+    set((s) => {
+      const overridable: VectorByWallsParamPath[] = [
+        "twoWayArrowColor",
+        "oneWayArrowColor",
+        "oneWayAccentColor",
+        "elevatorArrowColor",
+        "decorativeStairsArrowColor",
+        "decorativeStairsOneWayArrowColor",
+      ];
+      let links = s.vectorByWallsSettings.links;
+      const detached: VectorByWallsParamPath[] = [];
+      for (const target of overridable) {
+        if (patch[target as keyof typeof patch] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
+      const settings = { ...s.vectorByWallsSettings, ...patch, links };
+      return { vectorByWallsSettings: propagate(settings, links, detached) };
+    }),
   patchVectorByWallsDecorativeLineStyle: (section, patch) =>
-    set((s) => ({
-      vectorByWallsSettings: {
+    set((s) => {
+      const target = `${section}.lineColor` as VectorByWallsParamPath;
+      let links = s.vectorByWallsSettings.links;
+      const detached: VectorByWallsParamPath[] = [];
+      if (patch.lineColor !== undefined) {
+        links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
+        detached.push(target);
+      }
+      const settings = {
         ...s.vectorByWallsSettings,
         [section]: { ...s.vectorByWallsSettings[section], ...patch },
-      },
-    })),
+        links,
+      };
+      return { vectorByWallsSettings: propagate(settings, links, detached) };
+    }),
   patchVectorByWallsElevatorBadges: (patch) =>
-    set((s) => ({
-      vectorByWallsSettings: {
+    set((s) => {
+      const overridable: VectorByWallsParamPath[] = ["elevatorBadges.fillColor", "elevatorBadges.textColor"];
+      let links = s.vectorByWallsSettings.links;
+      const detached: VectorByWallsParamPath[] = [];
+      for (const target of overridable) {
+        const field = target.slice("elevatorBadges.".length) as keyof typeof patch;
+        if (patch[field] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
+      const settings = {
         ...s.vectorByWallsSettings,
         elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, ...patch },
-      },
-    })),
+        links,
+      };
+      return { vectorByWallsSettings: propagate(settings, links, detached) };
+    }),
   patchVectorByWallsMarkerIndexSettings: (patch) =>
     set((s) => {
-      let links = s.vectorByWallsSettings.links;
       // `gap` is a "Shared style" `gapWidth`-group member — editing it directly detaches it from
       // the shared value (GitHub issue #471), same convention as the marker gap-ring setters.
-      if (patch.gap !== undefined) links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, "markerIndex.gap", false).links;
+      const overridable: VectorByWallsParamPath[] = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"];
+      let links = s.vectorByWallsSettings.links;
+      const detached: VectorByWallsParamPath[] = [];
+      for (const target of overridable) {
+        const field = target.slice("markerIndex.".length) as keyof typeof patch;
+        if (patch[field] !== undefined) {
+          links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
+          detached.push(target);
+        }
+      }
       const settings = {
         ...s.vectorByWallsSettings,
         markerIndex: { ...s.vectorByWallsSettings.markerIndex, ...patch },
         links,
       };
-      return { vectorByWallsSettings: patch.gap !== undefined ? propagate(settings, links, ["markerIndex.gap"]) : settings };
+      return { vectorByWallsSettings: propagate(settings, links, detached) };
     }),
   setVectorByWallsElevatorBadgesCornerStyle: (style) =>
     set((s) => {
@@ -557,9 +746,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["twoWayPassageMarker.cornerStyle"]) };
     }),
   setVectorByWallsTwoWayPassageMarkerFillColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.fillColor", false);
+      const settings = { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, fillColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["twoWayPassageMarker.fillColor"]) };
+    }),
   setVectorByWallsTwoWayPassageMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.borderColor", false);
+      const settings = { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, borderColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["twoWayPassageMarker.borderColor"]) };
+    }),
   setVectorByWallsTwoWayPassageMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "twoWayPassageMarker.borderWidth", false);
@@ -587,9 +784,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["oneWayPassageMarker.cornerStyle"]) };
     }),
   setVectorByWallsOneWayPassageMarkerFillColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.fillColor", false);
+      const settings = { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, fillColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["oneWayPassageMarker.fillColor"]) };
+    }),
   setVectorByWallsOneWayPassageMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.borderColor", false);
+      const settings = { ...s.vectorByWallsSettings, oneWayPassageMarker: { ...s.vectorByWallsSettings.oneWayPassageMarker, borderColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["oneWayPassageMarker.borderColor"]) };
+    }),
   setVectorByWallsOneWayPassageMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "oneWayPassageMarker.borderWidth", false);
@@ -617,9 +822,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: propagate(settings, links, ["elevatorMarker.cornerStyle"]) };
     }),
   setVectorByWallsElevatorMarkerFillColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, fillColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.fillColor", false);
+      const settings = { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, fillColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["elevatorMarker.fillColor"]) };
+    }),
   setVectorByWallsElevatorMarkerBorderColor: (color) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderColor: color } } })),
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.borderColor", false);
+      const settings = { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderColor: color }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["elevatorMarker.borderColor"]) };
+    }),
   setVectorByWallsElevatorMarkerBorderWidth: (v) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "elevatorMarker.borderWidth", false);
@@ -643,9 +856,17 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       const overridable: VectorByWallsParamPath[] = [
         "teleportLineCornerStyle",
         "teleportLineSize",
+        "teleportEdgeColor",
+        "teleportEdgeBorderColor",
         "teleportEdgeBorderWidth",
         "teleportEdgeGapWidth",
+        "teleportConnectorColor",
         "teleportConnectorGapWidth",
+      ];
+      const floorBadgeOverridable: VectorByWallsParamPath[] = [
+        "teleportFloorBadge.fillColor",
+        "teleportFloorBadge.borderColor",
+        "teleportFloorBadge.textColor",
       ];
       let links = s.vectorByWallsSettings.links;
       const detached: VectorByWallsParamPath[] = [];
@@ -653,6 +874,15 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
         if (patch[target as keyof typeof patch] !== undefined) {
           links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
           detached.push(target);
+        }
+      }
+      if (patch.teleportFloorBadge !== undefined) {
+        for (const target of floorBadgeOverridable) {
+          const field = target.slice("teleportFloorBadge.".length) as keyof typeof patch.teleportFloorBadge;
+          if (patch.teleportFloorBadge[field] !== undefined) {
+            links = setLinkEnabledByTarget(s.vectorByWallsSettings, links, target, false).links;
+            detached.push(target);
+          }
         }
       }
       const settings = { ...s.vectorByWallsSettings, ...patch, links };
@@ -713,9 +943,9 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       if (links === s.vectorByWallsSettings.links) return {};
       return { vectorByWallsSettings: { ...settings, links } };
     }),
-  addVectorByWallsLink: (source, target, modifiers) =>
+  addVectorByWallsLink: (source, target, modifiers, colorModifiers) =>
     set((s) => {
-      const { settings, links } = addLink(s.vectorByWallsSettings, s.vectorByWallsSettings.links, source, target, modifiers);
+      const { settings, links } = addLink(s.vectorByWallsSettings, s.vectorByWallsSettings.links, source, target, modifiers, colorModifiers);
       return { vectorByWallsSettings: { ...settings, links } };
     }),
   removeVectorByWallsLink: (target) =>

@@ -1,7 +1,7 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
-import type { ParamLink, ParamModifier } from "./parameterLinks";
+import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./parameterLinksRegistry";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
@@ -847,7 +847,7 @@ export interface ImageExportActions {
   /** Creates (or replaces) the link `source -> target` and propagates `source`'s current value into
    *  `target` (GitHub issue #644). Both paths must share the same `ParamType` — the dialog only ever
    *  offers same-type pairs. `modifiers` (GitHub issue #645) is only passed for `"number"`-type pairs. */
-  addVectorByCorridorsLink: (source: VectorByCorridorsParamPath, target: VectorByCorridorsParamPath, modifiers?: ParamModifier[]) => void;
+  addVectorByCorridorsLink: (source: VectorByCorridorsParamPath, target: VectorByCorridorsParamPath, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   /** Removes whichever link targets `target` entirely (GitHub issue #644) — the field's own value is
    *  left untouched but it stops following any source until a new link is created for it. */
   removeVectorByCorridorsLink: (target: VectorByCorridorsParamPath) => void;
@@ -970,7 +970,7 @@ export interface ImageExportActions {
   /** Same role as `setVectorByCorridorsLinkEnabled`, over `VectorByWallsParamPath`. */
   setVectorByWallsLinkEnabled: (target: VectorByWallsParamPath, enabled: boolean) => void;
   /** Same role as `addVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
-  addVectorByWallsLink: (source: VectorByWallsParamPath, target: VectorByWallsParamPath, modifiers?: ParamModifier[]) => void;
+  addVectorByWallsLink: (source: VectorByWallsParamPath, target: VectorByWallsParamPath, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   /** Same role as `removeVectorByCorridorsLink`, over `VectorByWallsParamPath`. */
   removeVectorByWallsLink: (target: VectorByWallsParamPath) => void;
   setHoveredExportWarningKey: (key: string | null) => void;

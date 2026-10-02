@@ -12,8 +12,9 @@ import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
 import { ui, radius, typography, muted, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
-import type { ParamDescriptor, ParamLink, ParamModifier } from "../../store/parameterLinks";
+import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel } from "../../store/parameterLinks";
 import { getParamValue } from "../../store/slices/parameterLinksEngine";
+import { colorToHex } from "../../store/colorMath";
 import * as m from "~/paraglide/messages";
 
 /** Full hierarchical display name for a registry path — its `group` path segments joined with
@@ -35,6 +36,33 @@ const MODIFIER_SYMBOL: Record<ParamModifier["op"], string> = { add: "+", sub: "�
 function modifierSuffix(modifiers: ParamModifier[] | undefined): string {
   if (!modifiers || modifiers.length === 0) return "";
   return " " + modifiers.map((modifier) => `${MODIFIER_SYMBOL[modifier.op]} ${modifier.value}`).join(" ");
+}
+
+/** Display label for one `ColorChannel`, e.g. "R" / "H" — independent per-model even where two
+ *  channels share a letter (`hsl-h`/`oklch-h` both read "H"), since the chain's `model` already
+ *  disambiguates them visually (see `COLOR_CHANNEL_OPTIONS`). */
+const COLOR_CHANNEL_LABEL: Record<ColorChannel, string> = {
+  r: m["image_export.param_links.color_channel_r"](),
+  g: m["image_export.param_links.color_channel_g"](),
+  b: m["image_export.param_links.color_channel_b"](),
+  "hsl-h": m["image_export.param_links.color_channel_hsl_h"](),
+  s: m["image_export.param_links.color_channel_s"](),
+  l: m["image_export.param_links.color_channel_l"](),
+  "oklch-h": m["image_export.param_links.color_channel_oklch_h"](),
+  c: m["image_export.param_links.color_channel_c"](),
+  "oklch-l": m["image_export.param_links.color_channel_oklch_l"](),
+};
+
+/** Short display text for one color-modifier step (e.g. "× 1.5L (OKLCH)") — mirrors
+ *  `modifierStepText`'s role for a plain numeric step. */
+function colorModifierStepText(modifier: ColorModifier): string {
+  return `${MODIFIER_SYMBOL[modifier.op]} ${modifier.value}${COLOR_CHANNEL_LABEL[modifier.channel]} (${COLOR_MODEL_LABEL[modifier.model]})`;
+}
+
+/** Short operator-chain suffix for a color link's row, same convention as `modifierSuffix`. */
+function colorModifierSuffix(modifiers: ColorModifier[] | undefined): string {
+  if (!modifiers || modifiers.length === 0) return "";
+  return " " + modifiers.map(colorModifierStepText).join(" ");
 }
 
 /** Renders a path's `hierarchicalLabel` as one clickable "bubble" per segment (each `group` entry
@@ -352,6 +380,32 @@ function modifierStepText(modifier: ParamModifier): string {
   return `${MODIFIER_SYMBOL[modifier.op]} ${modifier.value}`;
 }
 
+/** Color model options for a color-modifier step's model `SelectRow` (GitHub issue #647) — map 1:1
+ *  onto `ColorModel`. OKLCH is listed first and is the default for a brand-new step/chain
+ *  (`ColorModifierStepDialog`/`LinkEditor`): channel-wise arithmetic is perceptually uniform there,
+ *  while the same operation in RGB/HSL can shift perceived hue or brightness as a side effect — see
+ *  `ColorModel`'s own doc comment in `parameterLinks.ts`. */
+const COLOR_MODEL_OPTIONS: { value: ColorModel; label: string }[] = [
+  { value: "oklch", label: m["image_export.param_links.color_model_oklch"]() },
+  { value: "rgb", label: m["image_export.param_links.color_model_rgb"]() },
+  { value: "hsl", label: m["image_export.param_links.color_model_hsl"]() },
+];
+
+const COLOR_MODEL_LABEL: Record<ColorModel, string> = {
+  rgb: m["image_export.param_links.color_model_rgb"](),
+  hsl: m["image_export.param_links.color_model_hsl"](),
+  oklch: m["image_export.param_links.color_model_oklch"](),
+};
+
+/** Which `ColorChannel`s a step's channel `SelectRow` offers, keyed by the step's own `model` — a
+ *  model switch resets the channel to that model's first entry (`ColorModifierStepDialog`), since a
+ *  channel literal from one model (e.g. `"s"`) isn't meaningful under another. */
+const CHANNELS_BY_MODEL: Record<ColorModel, ColorChannel[]> = {
+  rgb: ["r", "g", "b"],
+  hsl: ["hsl-h", "s", "l"],
+  oklch: ["oklch-l", "c", "oklch-h"],
+};
+
 /** Single-step add/edit sub-dialog (GitHub issue #645 follow-up) — a modifier step is always added
  *  or edited through this small modal, never inline in the chain list, so the list itself only ever
  *  shows read-only rows with edit/delete actions (mirrors how the link list's own rows work).
@@ -435,24 +489,118 @@ function modifiersHint<P extends string>(target: P | null, source: P | null, reg
   return null;
 }
 
-/** Add/Edit link sub-dialog (GitHub issue #644 redesign, modifier-chain support added in #645) —
- *  three side-by-side columns: dependent parameter and source parameter (wide, for the picker
- *  trees) and the modifier chain (narrow — just a list of short step rows plus an add button, see
- *  `modifiersColumn`). `initialSource`/`initialTarget`/`initialModifiers` pre-select an existing
- *  link's endpoints (and chain, if any) for `Edit`, left `null`/empty for `Add link`. The dependent
- *  parameter is picked first (any path in the registry not already fixed); Source is then
- *  restricted to same-`ParamType` paths excluding the chosen dependent parameter — same constraint
- *  the engine itself enforces (`validateLinkGraph`). The modifiers column shows `modifiersHint`'s
- *  status message in place of the list/add-button until both endpoints are picked and
- *  `"number"`-type (the only `ParamType` a chain is valid for); switching to a non-numeric pair
- *  afterwards drops whatever chain was built. Each step is only ever added/edited through
- *  `ModifierStepDialog`, never inline here. Saving is blocked while any step divides by 0 (would
- *  make `target` NaN/Infinity on every propagation), via the save button's own `disabled`. */
+/** Same role as `modifiersHint`, for the color-modifiers column (GitHub issue #647) — the chain is
+ *  only offered once both endpoints are picked and the pair is `"color"`-type. */
+function colorModifiersHint<P extends string>(target: P | null, source: P | null, registry: Record<P, ParamDescriptor>): string | null {
+  if (target === null) return m["image_export.param_links.pick_target_first"]();
+  if (source === null) return m["image_export.param_links.pick_source_first"]();
+  if (registry[target].type !== "color") return m["image_export.param_links.modifiers_not_available"]();
+  return null;
+}
+
+/** One color-modifier chain-step row (GitHub issue #647) — mirrors `ModifierStepRow`. */
+function ColorModifierStepRow({
+  modifier,
+  onEdit,
+  onRemove,
+}: {
+  modifier: ColorModifier;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div style={styles.modifierStep}>
+      <span style={styles.modifierStepText}>{colorModifierStepText(modifier)}</span>
+      <EditIconButton title={m["image_export.param_links.edit_color_modifier_title"]()} onClick={onEdit} />
+      <RemoveIconButton title={m["image_export.param_links.remove_color_modifier"]()} size={16} onClick={onRemove} />
+    </div>
+  );
+}
+
+/** Single-step add/edit sub-dialog for a color-modifier chain step (GitHub issue #647) — mirrors
+ *  `ModifierStepDialog`, but picks a `ColorModel` first (defaulting a brand-new step to `"oklch"`,
+ *  with a hint recommending it — see `COLOR_MODEL_OPTIONS`'s own doc comment) and a `ColorChannel`
+ *  within that model (`CHANNELS_BY_MODEL`); switching the model resets the channel to that model's
+ *  first entry rather than keeping a now-meaningless selection from the old model. */
+function ColorModifierStepDialog({
+  initial,
+  onSave,
+  onClose,
+}: {
+  initial: ColorModifier | null;
+  onSave: (modifier: ColorModifier) => void;
+  onClose: () => void;
+}) {
+  const [model, setModel] = useState<ColorModel>(initial?.model ?? "oklch");
+  const [channel, setChannel] = useState<ColorChannel>(initial?.channel ?? CHANNELS_BY_MODEL[model][0]);
+  const [op, setOp] = useState<ParamModifier["op"]>(initial?.op ?? "add");
+  const [value, setValue] = useState<string>(String(initial?.value ?? 1));
+  const divideByZero = op === "div" && Number(value) === 0;
+  const canSave = !divideByZero;
+
+  function handleModelChange(nextModel: ColorModel) {
+    setModel(nextModel);
+    setChannel(CHANNELS_BY_MODEL[nextModel][0]);
+  }
+
+  function save() {
+    if (!canSave) return;
+    onSave({ model, channel, op, value: Number(value) });
+  }
+
+  const channelOptions = CHANNELS_BY_MODEL[model].map((ch) => ({ value: ch, label: COLOR_CHANNEL_LABEL[ch] }));
+
+  return (
+    <Modal
+      title={initial === null ? m["image_export.param_links.add_color_modifier_title"]() : m["image_export.param_links.edit_color_modifier_title"]()}
+      size="approve"
+      onClose={onClose}
+      onConfirm={canSave ? save : undefined}
+      rawBody={
+        <div style={styles.editorBody}>
+          <SelectRow label={m["image_export.param_links.color_model_label"]()} value={model} options={COLOR_MODEL_OPTIONS} onChange={handleModelChange} />
+          {model === "oklch" && <div style={styles.pickerHint}>{m["image_export.param_links.color_model_oklch_hint"]()}</div>}
+          <Inline gap="rowGap">
+            <SelectRow label="" value={channel} options={channelOptions} onChange={setChannel} selectStyle={styles.modifierOpSelect} />
+            <SelectRow label="" value={op} options={MODIFIER_OPTIONS} onChange={setOp} selectStyle={styles.modifierOpSelect} />
+            <NumberInput value={value} onChange={setValue} style={styles.modifierValueInput} />
+          </Inline>
+          {divideByZero && <span style={styles.modifierError}>{m["image_export.param_links.modifier_divide_by_zero"]()}</span>}
+          <div style={styles.editorFooter}>
+            <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" disabled={!canSave} onClick={save}>
+              {m["image_export.param_links.save_link"]()}
+            </Button>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** Add/Edit link sub-dialog (GitHub issue #644 redesign, modifier-chain support added in #645,
+ *  per-channel color-modifier chain support added in #647) — three side-by-side columns: dependent
+ *  parameter and source parameter (wide, for the picker trees) and the modifier chain (narrow — just
+ *  a list of short step rows plus an add button, see `modifiersColumn`). The third column renders
+ *  whichever chain the picked pair's `ParamType` actually supports: the plain numeric chain
+ *  (`ParamModifier`/`modifiersHint`) for `"number"`, the per-channel color chain
+ *  (`ColorModifier`/`colorModifiersHint`) for `"color"`, or a hint explaining why neither applies
+ *  otherwise — never both at once, since a link's `source`/`target` share one `ParamType`.
+ *  `initialSource`/`initialTarget`/`initialModifiers`/`initialColorModifiers` pre-select an existing
+ *  link's endpoints (and whichever chain it carries) for `Edit`, left `null`/empty for `Add link`.
+ *  The dependent parameter is picked first (any path in the registry not already fixed); Source is
+ *  then restricted to same-`ParamType` paths excluding the chosen dependent parameter — same
+ *  constraint the engine itself enforces (`validateLinkGraph`). Switching to a pair whose type
+ *  doesn't support the chain currently being built drops it. Each step is only ever added/edited
+ *  through `ModifierStepDialog`/`ColorModifierStepDialog`, never inline here. Saving is blocked while
+ *  any numeric step divides by 0 (would make `target` NaN/Infinity on every propagation), via the
+ *  save button's own `disabled`. */
 function LinkEditor<P extends string>({
   registry,
   initialSource,
   initialTarget,
   initialModifiers,
+  initialColorModifiers,
   onSave,
   onClose,
 }: {
@@ -460,7 +608,8 @@ function LinkEditor<P extends string>({
   initialSource: P | null;
   initialTarget: P | null;
   initialModifiers?: ParamModifier[];
-  onSave: (source: P, target: P, modifiers?: ParamModifier[]) => void;
+  initialColorModifiers?: ColorModifier[];
+  onSave: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   onClose: () => void;
 }) {
   const [target, setTarget] = useState<P | null>(initialTarget);
@@ -468,12 +617,17 @@ function LinkEditor<P extends string>({
   const [modifiers, setModifiers] = useState<ParamModifier[]>(initialModifiers ?? []);
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   const [addingStep, setAddingStep] = useState(false);
+  const [colorModifiers, setColorModifiers] = useState<ColorModifier[]>(initialColorModifiers ?? []);
+  const [editingColorStepIndex, setEditingColorStepIndex] = useState<number | null>(null);
+  const [addingColorStep, setAddingColorStep] = useState(false);
   const allPaths = Object.keys(registry) as P[];
   const sourceCandidates = target === null ? [] : allPaths.filter((p) => p !== target && registry[p].type === registry[target].type);
   const modifiersAllowed = target !== null && source !== null && registry[target].type === "number";
+  const colorModifiersAllowed = target !== null && source !== null && registry[target].type === "color";
   const hint = modifiersHint(target, source, registry);
-  const hasDivideByZero = modifiers.some((mod) => mod.op === "div" && mod.value === 0);
-  const canSave = target !== null && source !== null && !(modifiersAllowed && hasDivideByZero);
+  const colorHint = colorModifiersHint(target, source, registry);
+  const hasDivideByZero = modifiers.some((mod) => mod.op === "div" && mod.value === 0) || colorModifiers.some((mod) => mod.op === "div" && mod.value === 0);
+  const canSave = target !== null && source !== null && !hasDivideByZero;
 
   function handleTargetPick(p: P) {
     setTarget(p);
@@ -482,8 +636,19 @@ function LinkEditor<P extends string>({
 
   function save() {
     if (!canSave || target === null || source === null) return;
-    onSave(source, target, modifiersAllowed && modifiers.length > 0 ? modifiers : undefined);
+    onSave(
+      source,
+      target,
+      modifiersAllowed && modifiers.length > 0 ? modifiers : undefined,
+      colorModifiersAllowed && colorModifiers.length > 0 ? colorModifiers : undefined,
+    );
   }
+
+  const showColorChain = colorModifiersAllowed;
+  const thirdColumnTitle = showColorChain
+    ? m["image_export.param_links.color_modifiers_label"]()
+    : m["image_export.param_links.modifiers_label"]();
+  const thirdColumnHint = showColorChain ? colorHint : hint;
 
   return (
     <>
@@ -508,9 +673,26 @@ function LinkEditor<P extends string>({
                 )}
               </div>
               <div style={{ ...styles.editorColumn, ...styles.modifiersColumn }}>
-                <div style={styles.editorColumnTitle}>{m["image_export.param_links.modifiers_label"]()}</div>
-                {hint !== null ? (
-                  <div style={styles.pickerHint}>{hint}</div>
+                <div style={styles.editorColumnTitle}>{thirdColumnTitle}</div>
+                {thirdColumnHint !== null ? (
+                  <div style={styles.pickerHint}>{thirdColumnHint}</div>
+                ) : showColorChain ? (
+                  <>
+                    {colorModifiers.map((modifier, i) => (
+                      <ColorModifierStepRow
+                        key={i}
+                        modifier={modifier}
+                        onEdit={() => setEditingColorStepIndex(i)}
+                        onRemove={() => setColorModifiers((prev) => prev.filter((_, j) => j !== i))}
+                      />
+                    ))}
+                    <div
+                      className="hoverable"
+                      style={styles.addModifierRow}
+                      onClick={() => setAddingColorStep(true)}
+                      title={m["image_export.param_links.add_color_modifier"]()}
+                    >{`+ ${m["image_export.param_links.add_color_modifier_short"]()}`}</div>
+                  </>
                 ) : (
                   <>
                     {modifiers.map((modifier, i) => (
@@ -560,6 +742,26 @@ function LinkEditor<P extends string>({
           onClose={() => setEditingStepIndex(null)}
         />
       )}
+      {addingColorStep && (
+        <ColorModifierStepDialog
+          initial={null}
+          onSave={(modifier) => {
+            setColorModifiers((prev) => [...prev, modifier]);
+            setAddingColorStep(false);
+          }}
+          onClose={() => setAddingColorStep(false)}
+        />
+      )}
+      {editingColorStepIndex !== null && (
+        <ColorModifierStepDialog
+          initial={colorModifiers[editingColorStepIndex]}
+          onSave={(modifier) => {
+            setColorModifiers((prev) => prev.map((step, j) => (j === editingColorStepIndex ? modifier : step)));
+            setEditingColorStepIndex(null);
+          }}
+          onClose={() => setEditingColorStepIndex(null)}
+        />
+      )}
     </>
   );
 }
@@ -593,16 +795,16 @@ export function ParameterLinksDialog<P extends string>({
   settings: object;
   links: ParamLink<P>[];
   onSetLinkEnabled: (target: P, enabled: boolean) => void;
-  onAddLink: (source: P, target: P, modifiers?: ParamModifier[]) => void;
+  onAddLink: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   onRemoveLink: (target: P) => void;
   onClose: () => void;
 }) {
-  const [editing, setEditing] = useState<{ source: P; target: P; modifiers?: ParamModifier[] } | null>(null);
+  const [editing, setEditing] = useState<{ source: P; target: P; modifiers?: ParamModifier[]; colorModifiers?: ColorModifier[] } | null>(null);
   const [adding, setAdding] = useState(false);
   const [filterPath, setFilterPath] = useState<string[]>([]);
 
-  function handleSave(source: P, target: P, modifiers?: ParamModifier[]) {
-    onAddLink(source, target, modifiers);
+  function handleSave(source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) {
+    onAddLink(source, target, modifiers, colorModifiers);
     setEditing(null);
     setAdding(false);
   }
@@ -664,7 +866,7 @@ export function ParameterLinksDialog<P extends string>({
                       />
                       <EditIconButton
                         title={m["image_export.param_links.edit_link_title"]()}
-                        onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers })}
+                        onClick={() => setEditing({ source: link.source, target: link.target, modifiers: link.modifiers, colorModifiers: link.colorModifiers })}
                       />
                       <RemoveIconButton
                         title={m["image_export.param_links.remove_link"]()}
@@ -674,7 +876,11 @@ export function ParameterLinksDialog<P extends string>({
                     </div>
                     <div style={styles.rowLine}>
                       <span style={styles.valueLabel}>
-                        {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))} = <HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} />{modifierSuffix(link.modifiers)}
+                        {m["image_export.param_links.value_prefix"]()}{registry[link.target].format(getParamValue(settings, link.target))}
+                        {registry[link.target].type === "color" && (
+                          <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
+                        )}
+                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} />{modifierSuffix(link.modifiers)}{colorModifierSuffix(link.colorModifiers)}
                       </span>
                     </div>
                   </div>
@@ -694,6 +900,7 @@ export function ParameterLinksDialog<P extends string>({
           initialSource={editing.source}
           initialTarget={editing.target}
           initialModifiers={editing.modifiers}
+          initialColorModifiers={editing.colorModifiers}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />
@@ -782,6 +989,15 @@ const styles: Record<string, React.CSSProperties> = {
   rowLine: { display: "flex", alignItems: "center", gap: spacing.groupGap },
   linkLabel: { ...typography.body, flex: 1, minWidth: 0 },
   valueLabel: { ...muted(typography.caption), flex: 1, minWidth: 0 },
+  valueColorSwatch: {
+    display: "inline-block",
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    marginLeft: 4,
+    verticalAlign: "middle",
+    border: `1px solid ${ui.border.default}`,
+  },
   editorBody: {
     flex: 1,
     display: "flex",

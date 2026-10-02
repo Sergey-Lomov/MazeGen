@@ -1,5 +1,15 @@
-import type { ParamDescriptor, ParamLink, ParamModifier } from "../parameterLinks";
-import { applyModifiers } from "../parameterLinks";
+import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../parameterLinks";
+import { applyModifiers, applyColorModifiers } from "../parameterLinks";
+
+/** Applies whichever chain `link` actually carries — `modifiers` (number) or `colorModifiers`
+ *  (color, GitHub issue #647) — to `value` copied from its `source`. The two are mutually exclusive
+ *  (a link's `source`/`target` share one `ParamType`), so at most one chain is ever set; neither set
+ *  means a pure equality link. */
+function applyLinkChain<P extends string>(link: ParamLink<P>, value: unknown): unknown {
+  if (link.modifiers) return applyModifiers(value as number, link.modifiers);
+  if (link.colorModifiers) return applyColorModifiers(value as number, link.colorModifiers);
+  return value;
+}
 
 /** Reads `settings[path]`, recursing through any nesting depth of dot-separated sub-object keys
  *  (e.g. `"startMarker.cornerStyle"`, or `"markerIndex.coverage.elevator"` three levels deep).
@@ -94,7 +104,7 @@ export function propagate<P extends string, S extends object>(settings: S, links
       if (!link.enabled) continue;
       if (visited.has(link.target)) continue;
       const sourceValue = getParamValue(next, path);
-      const targetValue = link.modifiers ? applyModifiers(sourceValue as number, link.modifiers) : sourceValue;
+      const targetValue = applyLinkChain(link, sourceValue);
       next = setParamValue(next, link.target, targetValue);
       visited.add(link.target);
       queue.push(link.target);
@@ -125,7 +135,7 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
   return links.map((link) => {
     const equals = registry[link.target].equals;
     const sourceValue = getParamValue(settings, link.source);
-    const expected = link.modifiers ? applyModifiers(sourceValue as number, link.modifiers) : sourceValue;
+    const expected = applyLinkChain(link, sourceValue);
     const matches = equals(getParamValue(settings, link.target), expected);
     return matches ? link : { ...link, enabled: false };
   });
@@ -138,17 +148,19 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
  *  before calling this when a prior link exists and they need to preserve it. Does not validate
  *  `source`/`target` against a registry itself; the dialog only ever offers same-`ParamType` pairs
  *  from the registry, so this stays a pure graph edit like the rest of the engine. `modifiers`
- *  (GitHub issue #645) is only ever passed for a `"number"`-type pair — `LinkEditor` is the only
- *  caller that offers it, and it hides the control for every other `ParamType`. */
+ *  (GitHub issue #645) is only ever passed for a `"number"`-type pair, `colorModifiers` (GitHub issue
+ *  #647) only for a `"color"`-type pair — `LinkEditor` is the only caller that offers either, and it
+ *  hides both controls for every other `ParamType`. */
 export function addLink<P extends string, S extends object>(
   settings: S,
   links: ParamLink<P>[],
   source: P,
   target: P,
   modifiers?: ParamModifier[],
+  colorModifiers?: ColorModifier[],
 ): { settings: S; links: ParamLink<P>[] } {
   const withoutTarget = links.filter((l) => l.target !== target);
-  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true, modifiers };
+  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true, modifiers, colorModifiers };
   const nextLinks = [...withoutTarget, newLink];
   const nextSettings = propagate(settings, nextLinks, [source]);
   return { settings: nextSettings, links: nextLinks };
@@ -172,7 +184,11 @@ function linksEqual<P extends string>(a: ParamLink<P>, b: ParamLink<P>): boolean
   const am = a.modifiers ?? [];
   const bm = b.modifiers ?? [];
   if (am.length !== bm.length) return false;
-  return am.every((m, i) => m.op === bm[i].op && m.value === bm[i].value);
+  if (!am.every((m, i) => m.op === bm[i].op && m.value === bm[i].value)) return false;
+  const acm = a.colorModifiers ?? [];
+  const bcm = b.colorModifiers ?? [];
+  if (acm.length !== bcm.length) return false;
+  return acm.every((m, i) => m.model === bcm[i].model && m.channel === bcm[i].channel && m.op === bcm[i].op && m.value === bcm[i].value);
 }
 
 /** True if `current` carries exactly the same links as `defaults` (same set of `source`/`target`/

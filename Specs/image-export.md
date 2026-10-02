@@ -475,19 +475,49 @@ their link is re-enabled via their own reset button.
 
 **Engine (`parameterLinks.ts`/`parameterLinksEngine.ts`, GitHub issue #643).** Behind the four rows
 above is a generic parameter-link graph, not a hardcoded 4-group mechanism. `ParamLink<P>` is a
-`{ id, source, target, enabled }` triple over `P` — a per-mode path union
+`{ id, source, target, enabled, modifiers?, colorModifiers? }` object over `P` — a per-mode path union
 (`VectorByWallsParamPath`/`VectorByCorridorsParamPath`, `parameterLinksRegistry.ts`) type-checked
 against that mode's own `VECTOR_BY_WALLS_PARAM_REGISTRY`/`VECTOR_BY_CORRIDORS_PARAM_REGISTRY`, which
 maps every linkable path (dot-path for a one-level-nested field, e.g. `"startMarker.cornerStyle"`)
-to a `ParamDescriptor` (`{ type, equals }`) — same-`type` (`"number" | "color" | "cornerStyle" |
-"join"`) is the only constraint on what can link to what; `equals` defaults to `Object.is`.
-`settings.links: ParamLink<...>[]` (persisted — see "Persistence" below) holds the live graph
-for that mode, seeded from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`
-(`parameterLinksDefaults.ts`), which reproduce the table above as plain equality links (each link's
-`enabled: false` is exactly the old "override" state). A link's `target` has at most one incoming
-link (`validateLinkGraph` enforces this, plus acyclicity and type-matching, over the `DEFAULT_*`
-constants as a consistency guard) — so "is this field overridden" is just "is the link whose
-`target` is this field's path `enabled: false`", never a matrix.
+to a `ParamDescriptor` (`{ type, equals, label, group, format }`) — same-`type` (`ParamType` =
+`"number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "indexLabelStyle" |
+"labelFontWeight" | "boolean"`) is the only constraint on what can link to what; `equals` is
+`Object.is` in every case (a `"color"` value is just a packed 24-bit RGB number, same representation
+every other color field in the app uses — see `store/colorMath.ts`). `settings.links:
+ParamLink<...>[]` (persisted — see "Persistence" below) holds the live graph for that mode, seeded
+from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` (`parameterLinksDefaults.ts`),
+which reproduce the table above as plain equality links (each link's `enabled: false` is exactly the
+old "override" state). A link's `target` has at most one incoming link (`validateLinkGraph` enforces
+this, plus acyclicity and type-matching, over the `DEFAULT_*` constants as a consistency guard) — so
+"is this field overridden" is just "is the link whose `target` is this field's path `enabled: false`",
+never a matrix.
+
+**Modifier chains (GitHub issue #645 numeric, #647 color).** A link can carry a transform chain
+instead of pure equality — `modifiers?: ParamModifier[]` for a `"number"`-type pair
+(`{ op: "add" | "sub" | "mul" | "div", value }`, applied in list order by `applyModifiers`, each step
+transforming the previous step's result) or `colorModifiers?: ColorModifier[]` for a `"color"`-type
+pair (`{ model: "rgb" | "hsl" | "oklch", channel, op, value }`, applied by `applyColorModifiers`).
+The two chains are mutually exclusive — a link's `source`/`target` share one `ParamType`, so at most
+one is ever set; `undefined`/empty on either means pure equality, same as every other `ParamType`.
+`propagate`/`reconcileLinks` dispatch through one shared `applyLinkChain` helper
+(`parameterLinksEngine.ts`) rather than duplicating the modifiers-vs-colorModifiers branch at each
+call site. A `ColorModifier` step reads its `channel`'s current value out of the source color
+(converting to `model` first), applies `op`/`value` to just that one number, then repacks the whole
+triple back to a 24-bit RGB number — the other two channels of that step pass through unchanged, and
+a chained step in a different model reads the previous step's *repacked* color, so steps compound
+through the packed RGB value rather than against each other's intermediate triples. `ColorChannel` is
+`"r" | "g" | "b" | "hsl-h" | "s" | "l" | "oklch-h" | "c" | "oklch-l"` — HSL and OKLCH each get their
+own hue literal (`"hsl-h"` / `"oklch-h"`) rather than sharing a bare `"h"`, so a step's `channel`
+alone (together with its own `model`) fully determines which hue space a degree value means, with no
+risk of silently keeping a stale channel selection across a model switch in the editor. Every channel
+clamps to its own range on write (`colorChannelRange`): `r`/`g`/`b` to 0-255, `s`/`l`/`oklch-l` to
+0-100, `c` to 0+, and both hue channels wrap mod 360 instead of clamping. OKLCH is the default model
+for a brand-new color-modifier step (`LinkEditor`'s `ColorModifierStepDialog`, with a hint
+recommending it) since channel-wise arithmetic there is perceptually uniform, unlike RGB/HSL where
+the same operation can shift perceived hue or brightness as a side effect — but RGB/HSL stay fully
+available. A numeric step with `op: "div"` and `value: 0` is rejected at the editor level
+(`ModifierStepDialog`/`ColorModifierStepDialog`'s own save-button `disabled`), never reaches the
+engine.
 
 Propagation (`propagate(settings, links, changedPaths)`) is a BFS over enabled edges starting from
 `changedPaths`, so a future chain `A -> B -> C` (not present in the current `DEFAULT_*_LINKS`, which
@@ -535,8 +565,14 @@ edit action, and a delete action on the right (removes the link entirely — dis
 the target's current value, formatted the same way the settings panel itself displays it
 (`registry[link.target].format(getParamValue(settings, link.target))` — e.g. a `cornerStyle`/`join`
 field's raw `"round"`/`"miter"` renders as "Скругление"/"Заострение", not the enum string; plain
-numbers fall back to `String(v)`), then "=", then the source's own hierarchical name — reads as "this
-value comes from that one". Both hierarchical names render via `HierarchicalLabelSegments`, not the
+numbers fall back to `String(v)`; a `"color"` field (`formatColor`) renders as `#rrggbb`, immediately
+followed by a small rounded swatch (`styles.valueColorSwatch`, sized to the text line's height) filled
+with that same color via `colorToHex`), then "=", then the source's own hierarchical name, then
+whichever chain suffix applies — `modifierSuffix` (e.g. `"× 1.5"`) for a `"number"` link's
+`modifiers`, or `colorModifierSuffix` for a `"color"` link's `colorModifiers` (one
+`colorModifierStepText` per step, e.g. `"− 30L (OKLCH)"` — operator symbol, then value, then the
+channel letter, then the model name in parens) — reads as "this value comes from that one, via this
+chain". Both hierarchical names render via `HierarchicalLabelSegments`, not the
 plain `hierarchicalLabel` string helper: each "/"-separated segment (every `group` entry plus the
 field's own `label`) is its own clickable span with a faint `ui.bg.panelAlt` background (a hair
 lighter than the card's own `ui.bg.panel`, just enough to read as a distinct token without drawing
@@ -579,16 +615,26 @@ changing the path. The link list's own filter matches a link if either its targe
 segment path (`group` + `label`) starts with the breadcrumb path — an empty path matches everything.
 
 **Add/Edit link (`LinkEditor`, inside the same file).** The full parameter list only appears here,
-not on the dialog's main screen — two side-by-side hierarchical, collapsible pickers (`ParamPicker`,
-built by `buildPickerTree` from each path's `registry[path].group` segments, mirroring the settings
-panel's own section/subsection nesting rather than a flat alphabetical list). Column titles and group
-folder rows both use the same `typography.body` header style `SectionHeader`/`SubsectionHeader` use
-for the render-mode settings panel's own section titles — no bold, no caption-level or title-level
-token. The left picker chooses **Target** from every path in the registry; picking one filters the
-right **Source** picker down to
-same-`ParamType` paths excluding that target — mirrors the engine's own `source`/`target`-must-match-
-type and at-most-one-incoming-link rules. "Edit" reopens this same component pre-filled with the
-link's current `source`/`target`; saving (Add or Edit) always calls `onAddLink`
+not on the dialog's main screen — three side-by-side columns: two wide hierarchical, collapsible
+pickers (`ParamPicker`, built by `buildPickerTree` from each path's `registry[path].group` segments,
+mirroring the settings panel's own section/subsection nesting rather than a flat alphabetical list)
+for **Target**/**Source**, and a narrower third column for whichever modifier chain the picked pair's
+`ParamType` actually supports. Column titles and group folder rows both use the same `typography.body`
+header style `SectionHeader`/`SubsectionHeader` use for the render-mode settings panel's own section
+titles — no bold, no caption-level or title-level token. The left picker chooses **Target** from every
+path in the registry; picking one filters the right **Source** picker down to same-`ParamType` paths
+excluding that target — mirrors the engine's own `source`/`target`-must-match-type and
+at-most-one-incoming-link rules. The third column shows a status hint (`modifiersHint`/
+`colorModifiersHint`, e.g. "pick a dependent parameter first" / "not available for this parameter
+type") until both endpoints are picked and the pair is `"number"`-type (the plain numeric chain,
+`ParamModifier`/`ModifierStepDialog`) or `"color"`-type (the per-channel color chain, `ColorModifier`/
+`ColorModifierStepDialog`) — never both at once, since a pair shares one `ParamType`. Each chain is a
+read-only list of short step rows (`ModifierStepRow`/`ColorModifierStepRow`, edit/delete actions) plus
+an add button; a step is only ever added/edited through its own small modal, never inline in the list.
+Switching Target/Source to a pair whose type no longer matches the chain being built drops it. Saving
+is blocked while any numeric step divides by 0 (would make the target NaN/Infinity on every
+propagation), via the save button's own `disabled`. "Edit" reopens this same component pre-filled with
+the link's current `source`/`target`/chain; saving (Add or Edit) always calls `onAddLink`
 (`addVectorByWallsLink`/`addVectorByCorridorsLink`, engine's `addLink`), which replaces any prior link
 already targeting that target and propagates the source's current value in immediately — so editing a
 link's source re-syncs the target's value as part of the save. The whole dialog is scoped to whichever
@@ -602,8 +648,11 @@ floating at the dialog's top level. Their own `label`s dropped the earlier `"Sha
 prefix once they got a real group segment — the section name already says that.
 
 **Registry coverage (`parameterLinksRegistry.ts`).** Covers effectively every linkable field in both
-panels: plain numbers and booleans (`formatBoolean`, localized "Вкл"/"Выкл") fall back to generic
-formatting; `cornerStyle` fields (including the three `*ArrowCornerStyle` fields, which are plain
+panels, including every color field (GitHub issue #647 — fill/border/text colors on every marker,
+background/grid/floor/wall colors, vertical-connection arrow colors, teleport edge/connector/floor-
+badge colors, marker-index colors, and so on): plain numbers and booleans (`formatBoolean`, localized
+"Вкл"/"Выкл") fall back to generic formatting; `"color"` fields render as `#rrggbb` (`formatColor`,
+`colorToHex`); `cornerStyle` fields (including the three `*ArrowCornerStyle` fields, which are plain
 `CornerStyle` despite their vertical-arrow-specific naming) share `formatCornerStyle`. Four small
 string enums reused across multiple fields each get their own `ParamType` and format function instead
 of a raw enum string: `markerShape` (`formatMarkerShape`, backed by the same 8 values
@@ -664,12 +713,12 @@ remains in the export model, not the runtime style.
 `vectorByWallsSettings`/`vectorByCorridorsSettings` object — `serializeProject` (`serialize.ts`)
 compares the live `settings.links` against that mode's `DEFAULT_*_LINKS` via `linksMatchDefaults`
 (`parameterLinksEngine.ts`, an order-independent, `id`-ignoring structural comparison): an untouched
-project (every link still exactly matches its default `source`/`target`/`enabled`/`modifiers`)
-serializes that field as `null`, so the file stays lean and a later change to `DEFAULT_*_LINKS`
-(e.g. #649) is picked up automatically on next load rather than being frozen out by a stale saved
-copy. The instant any link deviates — a user disabled/re-enabled one, edited its `modifiers`, or
-added/removed one via the parameter-links dialog (#644) — the field holds the **entire current
-`links` array verbatim**, not a diff.
+project (every link still exactly matches its default `source`/`target`/`enabled`/`modifiers`/
+`colorModifiers`) serializes that field as `null`, so the file stays lean and a later change to
+`DEFAULT_*_LINKS` (e.g. #649) is picked up automatically on next load rather than being frozen out by
+a stale saved copy. The instant any link deviates — a user disabled/re-enabled one, edited its
+`modifiers`/`colorModifiers`, or added/removed one via the parameter-links dialog (#644) — the field
+holds the **entire current `links` array verbatim**, not a diff.
 
 On load, `validateLinks` (`validateImageExport.ts`) reads that field: `null`/absent (including every
 project file saved before #651) means "use the current `DEFAULT_*_LINKS` as-is". A present array is
