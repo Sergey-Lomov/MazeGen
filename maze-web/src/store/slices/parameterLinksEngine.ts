@@ -1,4 +1,5 @@
-import type { ParamDescriptor, ParamLink } from "../parameterLinks";
+import type { ParamDescriptor, ParamLink, ParamModifier } from "../parameterLinks";
+import { applyModifiers } from "../parameterLinks";
 
 /** Reads `settings[path]`, recursing through any nesting depth of dot-separated sub-object keys
  *  (e.g. `"startMarker.cornerStyle"`, or `"markerIndex.coverage.elevator"` three levels deep).
@@ -74,9 +75,11 @@ export function validateLinkGraph<P extends string>(links: ParamLink<P>[], regis
 
 /** BFS propagation of `changedPaths` through `links`' enabled edges — for each path popped from the
  *  queue, every enabled link whose `source` is that path copies the value into `target` and enqueues
- *  `target` next, so a chain A->B->C reacts to a change at A transitively through B. The graph is
- *  guaranteed acyclic by `validateLinkGraph` over `DEFAULT_*_LINKS`, but the traversal still tracks
- *  visited paths as a safety net rather than relying on that alone. */
+ *  `target` next, so a chain A->B->C reacts to a change at A transitively through B. A link's own
+ *  `modifiers` chain (GitHub issue #645) applies per-hop — a multi-link chain compounds rather than
+ *  carrying the root value through unchanged. The graph is guaranteed acyclic by `validateLinkGraph`
+ *  over `DEFAULT_*_LINKS`, but the traversal still tracks visited paths as a safety net rather than
+ *  relying on that alone. */
 export function propagate<P extends string, S extends object>(settings: S, links: ParamLink<P>[], changedPaths: P[]): S {
   const bySource = new Map<P, ParamLink<P>[]>();
   for (const link of links) bySource.set(link.source, [...(bySource.get(link.source) ?? []), link]);
@@ -89,7 +92,9 @@ export function propagate<P extends string, S extends object>(settings: S, links
     for (const link of bySource.get(path) ?? []) {
       if (!link.enabled) continue;
       if (visited.has(link.target)) continue;
-      next = setParamValue(next, link.target, getParamValue(next, path));
+      const sourceValue = getParamValue(next, path);
+      const targetValue = link.modifiers ? applyModifiers(sourceValue as number, link.modifiers) : sourceValue;
+      next = setParamValue(next, link.target, targetValue);
       visited.add(link.target);
       queue.push(link.target);
     }
@@ -118,7 +123,9 @@ export function forceLinks<P extends string, S extends object>(settings: S, link
 export function reconcileLinks<P extends string>(settings: object, links: ParamLink<P>[], registry: Record<string, ParamDescriptor>): ParamLink<P>[] {
   return links.map((link) => {
     const equals = registry[link.target].equals;
-    const matches = equals(getParamValue(settings, link.target), getParamValue(settings, link.source));
+    const sourceValue = getParamValue(settings, link.source);
+    const expected = link.modifiers ? applyModifiers(sourceValue as number, link.modifiers) : sourceValue;
+    const matches = equals(getParamValue(settings, link.target), expected);
     return matches ? link : { ...link, enabled: false };
   });
 }
@@ -129,15 +136,18 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
  *  at-most-one-incoming-link invariant), not left dangling — callers should confirm with the user
  *  before calling this when a prior link exists and they need to preserve it. Does not validate
  *  `source`/`target` against a registry itself; the dialog only ever offers same-`ParamType` pairs
- *  from the registry, so this stays a pure graph edit like the rest of the engine. */
+ *  from the registry, so this stays a pure graph edit like the rest of the engine. `modifiers`
+ *  (GitHub issue #645) is only ever passed for a `"number"`-type pair — `LinkEditor` is the only
+ *  caller that offers it, and it hides the control for every other `ParamType`. */
 export function addLink<P extends string, S extends object>(
   settings: S,
   links: ParamLink<P>[],
   source: P,
   target: P,
+  modifiers?: ParamModifier[],
 ): { settings: S; links: ParamLink<P>[] } {
   const withoutTarget = links.filter((l) => l.target !== target);
-  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true };
+  const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true, modifiers };
   const nextLinks = [...withoutTarget, newLink];
   const nextSettings = propagate(settings, nextLinks, [source]);
   return { settings: nextSettings, links: nextLinks };

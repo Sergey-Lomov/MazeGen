@@ -1,6 +1,7 @@
 /** Family of a linkable parameter — constrains which parameters can be linked to one another (only
- *  same-type pairs) and, in the future, which kinds of `Modifier` are valid for a link of this type
- *  (#645/#647). Extend as new parameter shapes appear. `markerShape`/`verticalArrowStyle`/
+ *  same-type pairs) and which link a `"number"` pair may carry a `ParamModifier` chain on (#645) —
+ *  every other type stays pure equality. Extend as new parameter shapes appear. `markerShape`/
+ *  `verticalArrowStyle`/
  *  `indexLabelStyle`/`labelFontWeight` are each a small string enum reused by multiple settings
  *  fields across both render modes (same underlying TS type and value set) — split out from a
  *  generic catch-all so each gets its own localized `format` instead of showing a raw enum string.
@@ -30,16 +31,51 @@ export interface ParamDescriptor {
   format: (value: unknown) => string;
 }
 
+/** One numeric transform step in a link's `modifiers` chain (GitHub issue #645) — `value op`
+ *  applied to whatever the previous step produced (or to the raw source value, for the first
+ *  step). Only valid for `ParamType: "number"` links; a link between any other same-type pair
+ *  never carries any. `"div"` with `value: 0` is rejected at the editor level (`LinkEditor`),
+ *  never reaches here. */
+export interface ParamModifier {
+  op: "add" | "sub" | "mul" | "div";
+  value: number;
+}
+
+function applyOne(value: number, modifier: ParamModifier): number {
+  switch (modifier.op) {
+    case "add":
+      return value + modifier.value;
+    case "sub":
+      return value - modifier.value;
+    case "mul":
+      return value * modifier.value;
+    case "div":
+      return value / modifier.value;
+  }
+}
+
+/** Applies a link's `modifiers` chain, in list order, to a raw numeric `value` copied from its
+ *  `source` — each step transforms the previous step's result, so `[+3, x2]` on `value: 5` yields
+ *  `(5 + 3) * 2 = 16`, not two independent transforms of `5`. `undefined`/empty is the pure-equality
+ *  case (no transform), same as every other link type. */
+export function applyModifiers(value: number, modifiers: ParamModifier[] | undefined): number {
+  if (!modifiers) return value;
+  return modifiers.reduce(applyOne, value);
+}
+
 /** One parameter-to-parameter link. Parameterized by `P` (a per-mode path union) so `source`/
  *  `target` are checked by the compiler against a concrete mode's real paths, not an arbitrary
  *  string. `enabled: false` means `target` currently carries a manually-set value and does NOT
  *  follow `source` — the same state the old "Shared style" mechanism called "override"; a single
  *  flag, since `target` has at most one incoming link (guaranteed by `validateLinkGraph`). Flipping
  *  it back to `true` does not by itself resync the value — the caller (see `setLinkEnabledByTarget`)
- *  does that, by re-applying `source`. */
+ *  does that, by re-applying `source`. `modifiers` (GitHub issue #645) is only ever set for a
+ *  `"number"`-type pair; `undefined`/empty means a pure equality link, same as every other
+ *  `ParamType` — applied in list order by `applyModifiers`, never independently. */
 export interface ParamLink<P extends string = string> {
   id: string;
   source: P;
   target: P;
   enabled: boolean;
+  modifiers?: ParamModifier[];
 }

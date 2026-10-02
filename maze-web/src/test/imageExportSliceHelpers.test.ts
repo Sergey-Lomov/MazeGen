@@ -17,6 +17,10 @@ function link(source: string, target: string, enabled = true): ParamLink<string>
   return { id: `${source}->${target}`, source, target, enabled };
 }
 
+function modLink(source: string, target: string, modifiers: ParamLink<string>["modifiers"]): ParamLink<string> {
+  return { id: `${source}->${target}`, source, target, enabled: true, modifiers };
+}
+
 describe("getParamValue / setParamValue", () => {
   it("reads/writes a top-level field", () => {
     const settings = { a: 1 };
@@ -73,6 +77,33 @@ describe("propagate", () => {
     const next = propagate({ a: 1, b: 0, c: 0, d: 0 }, links, ["a"]);
     expect(next).toEqual({ a: 1, b: 1, c: 1, d: 1 });
   });
+
+  it("applies a link's modifier chain when copying source into target (GitHub issue #645)", () => {
+    const addLink = [modLink("a", "b", [{ op: "add", value: 3 }])];
+    expect(propagate({ a: 10, b: 0 }, addLink, ["a"]).b).toBe(13);
+
+    const subLink = [modLink("a", "b", [{ op: "sub", value: 3 }])];
+    expect(propagate({ a: 10, b: 0 }, subLink, ["a"]).b).toBe(7);
+
+    const mulLink = [modLink("a", "b", [{ op: "mul", value: 1.5 }])];
+    expect(propagate({ a: 10, b: 0 }, mulLink, ["a"]).b).toBe(15);
+
+    const divLink = [modLink("a", "b", [{ op: "div", value: 2 }])];
+    expect(propagate({ a: 10, b: 0 }, divLink, ["a"]).b).toBe(5);
+  });
+
+  it("compounds multiple steps on one link in list order, not independently (GitHub issue #645 follow-up)", () => {
+    const links = [modLink("a", "b", [{ op: "add", value: 3 }, { op: "mul", value: 2 }])];
+    // (5 + 3) * 2 = 16, not two independent transforms of 5
+    expect(propagate({ a: 5, b: 0 }, links, ["a"]).b).toBe(16);
+  });
+
+  it("compounds per-hop modifiers through a chain A->B->C", () => {
+    const links = [modLink("a", "b", [{ op: "mul", value: 2 }]), modLink("b", "c", [{ op: "add", value: 1 }])];
+    const next = propagate({ a: 5, b: 0, c: 0 }, links, ["a"]);
+    expect(next.b).toBe(10);
+    expect(next.c).toBe(11);
+  });
 });
 
 describe("forceLinks", () => {
@@ -97,6 +128,14 @@ describe("reconcileLinks", () => {
     const settings = { a: 1, b: 1 };
     const [result] = reconcileLinks(settings, [link("a", "b")], registry);
     expect(result.enabled).toBe(true);
+  });
+
+  it("compares against the modified value, not the raw source, for a link with a modifier chain", () => {
+    const matching = reconcileLinks({ a: 10, b: 15 }, [modLink("a", "b", [{ op: "mul", value: 1.5 }])], registry);
+    expect(matching[0].enabled).toBe(true);
+
+    const stale = reconcileLinks({ a: 10, b: 999 }, [modLink("a", "b", [{ op: "mul", value: 1.5 }])], registry);
+    expect(stale[0].enabled).toBe(false);
   });
 });
 
@@ -136,6 +175,12 @@ describe("addLink", () => {
     const targetingC = nextLinks.filter((l) => l.target === "c");
     expect(targetingC).toHaveLength(1);
     expect(targetingC[0].source).toBe("a");
+  });
+
+  it("stores and applies an optional modifier chain (GitHub issue #645)", () => {
+    const { settings, links } = addLink({ a: 10, b: 0 }, [], "a", "b", [{ op: "mul", value: 2 }]);
+    expect(settings.b).toBe(20);
+    expect(links[0].modifiers).toEqual([{ op: "mul", value: 2 }]);
   });
 });
 
@@ -286,5 +331,11 @@ describe("registry format functions", () => {
   it("formatCornerStyle renders round/miter distinctly, including for the vertical-arrow-corner-style fields", () => {
     const format = VECTOR_BY_WALLS_PARAM_REGISTRY.twoWayArrowCornerStyle.format;
     expect(format("round")).not.toBe(format("miter"));
+  });
+
+  it("formatNumber renders integers bare and non-integers to 2 decimal places (GitHub issue #645 follow-up)", () => {
+    const format = VECTOR_BY_WALLS_PARAM_REGISTRY["startMarker.size"].format;
+    expect(format(5)).toBe("5");
+    expect(format(5.1)).toBe("5.10");
   });
 });

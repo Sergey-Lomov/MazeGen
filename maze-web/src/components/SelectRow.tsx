@@ -14,6 +14,7 @@ export function SelectRow<T extends string>({
   disabled,
   info,
   resetButton,
+  selectStyle,
 }: {
   label: string;
   value: T;
@@ -26,13 +27,17 @@ export function SelectRow<T extends string>({
   /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
    *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
+  /** Merged onto the native `<select>`'s own `sharedStyles.selectSm`, for a caller that needs it
+   *  to match a sibling control's height exactly (e.g. `ModifierStepDialog`'s op select next to
+   *  its value `NumberInput`, GitHub issue #645 follow-up) rather than `selectSm`'s own sizing. */
+  selectStyle?: React.CSSProperties;
 }) {
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
       <select
         name={label}
-        style={sharedStyles.selectSm}
+        style={{ ...sharedStyles.selectSm, ...selectStyle }}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as T)}

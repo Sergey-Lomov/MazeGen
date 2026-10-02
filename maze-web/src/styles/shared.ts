@@ -194,6 +194,22 @@ export const sharedStyles = {
     ...typography.title,
     marginBottom: spacing.itemGap,
   } satisfies React.CSSProperties,
+
+  // Plain clickable "+ Add" text row below a list — no border/background, just muted
+  // (`ui.text.tertiary`) label text. Originated as the quality panel's "+ Add check" row
+  // (`RulesColumn`'s own check list); shared here so other add-to-list entry points (e.g.
+  // `ParameterLinksDialog`'s modifier chain, GitHub issue #645 follow-up) don't duplicate it.
+  addListRow: {
+    ...typography.body,
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+    padding: `0 ${inset.panelInsetX}px`,
+    cursor: "default",
+    userSelect: "none" as const,
+    minHeight: 28,
+    color: ui.text.tertiary,
+  } satisfies React.CSSProperties,
 } as const;
 
 type ButtonVariant = "primary" | "secondary" | "toggle" | "toggle-selected" | "destructive" | "toggle-danger" | "toggle-danger-selected";

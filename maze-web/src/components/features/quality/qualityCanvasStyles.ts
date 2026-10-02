@@ -240,17 +240,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   ruleCheckRowDisabled: {
     opacity: 0.5,
   },
-  ruleAddCheckRow: {
-    ...typography.body,
-    display: "flex",
-    alignItems: "center",
-    gap: spacing.itemGap,
-    padding: `0 ${inset.panelInsetX}px`,
-    cursor: "default",
-    userSelect: "none" as const,
-    minHeight: 28,
-    color: ui.text.tertiary,
-  },
+  ruleAddCheckRow: { ...sharedStyles.addListRow },
   ruleCardDivider: {
     width: 1,
     background: ui.border.default,

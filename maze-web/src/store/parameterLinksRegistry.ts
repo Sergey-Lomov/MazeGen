@@ -14,6 +14,14 @@ import * as m from "~/paraglide/messages";
  *  `formatElevatorBadgesFontWeight`/`formatMarkerIndexFontWeight`), since the same values are
  *  labelled differently depending on which field they appear on; plain numbers/booleans fall back
  *  to `String(v)`. */
+/** Integers render bare ("5"), non-integers always to 2 decimal places ("5.10"), never the raw
+ *  float string a chain of modifier steps can produce (e.g. a `×0.1` step's floating-point
+ *  remainder) — GitHub issue #645 follow-up, link-row "current value" display. */
+function formatNumber(value: unknown): string {
+  const n = Number(value);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 function descriptor(type: ParamType, label: string, group: string[], format?: (value: unknown) => string): ParamDescriptor {
   const defaultFormat =
     type === "cornerStyle"
@@ -24,7 +32,9 @@ function descriptor(type: ParamType, label: string, group: string[], format?: (v
           ? formatVerticalArrowStyle
           : type === "labelFontWeight"
             ? formatElevatorBadgesFontWeight
-            : String;
+            : type === "number"
+              ? formatNumber
+              : String;
   return { type, equals: Object.is, label, group, format: format ?? defaultFormat };
 }
 
