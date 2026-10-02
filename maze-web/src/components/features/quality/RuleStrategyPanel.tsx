@@ -4,6 +4,7 @@ import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
 import { WarningIcon } from "../../WarningIcon";
+import { EditIconButton } from "../../EditIconButton";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { NestedStrategyPanel } from "./NestedStrategyPanel";
@@ -98,7 +99,7 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             <Switch checked={!slot.disabled} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
           </div>
         )}
-        <button className="hoverable" style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }}>✎</button>
+        <EditIconButton title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }} />
       </div>
       {strategy && (strategy.params.length > 0 || strategy.nestedSlots.length > 0) && (
         <div style={styles.ruleStrategyParams}>

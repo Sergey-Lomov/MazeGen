@@ -457,6 +457,50 @@ describe("mazeStore shared-style link patch/reset actions (GitHub issue #643)", 
   });
 });
 
+describe("mazeStore parameter-links management actions (GitHub issue #644)", () => {
+  it("addVectorByWallsLink creates a link and propagates the source's value", () => {
+    useMazeStore.getState().removeVectorByWallsLink("elevatorMarker.size");
+    useMazeStore.getState().setVectorByWallsSharedMarkerSize(0.33);
+    useMazeStore.getState().addVectorByWallsLink("markerSize", "elevatorMarker.size");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.elevatorMarker.size).toBe(0.33);
+    expect(settings.links.find((l) => l.target === "elevatorMarker.size")).toMatchObject({ source: "markerSize", enabled: true });
+  });
+
+  it("removeVectorByWallsLink drops the link targeting the given path without touching its value", () => {
+    const before = useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle;
+    useMazeStore.getState().removeVectorByWallsLink("startMarker.cornerStyle");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.links.find((l) => l.target === "startMarker.cornerStyle")).toBeUndefined();
+    expect(settings.startMarker.cornerStyle).toBe(before);
+  });
+
+  it("setVectorByWallsLinkEnabled toggles enabled without re-propagating on disable", () => {
+    useMazeStore.getState().setVectorByWallsStartMarkerSize(0.77);
+    useMazeStore.getState().setVectorByWallsLinkEnabled("startMarker.size", true);
+    expect(useMazeStore.getState().vectorByWallsSettings.links.find((l) => l.target === "startMarker.size")?.enabled).toBe(true);
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.size).toBe(useMazeStore.getState().vectorByWallsSettings.markerSize);
+  });
+
+  it("addVectorByCorridorsLink creates a link and propagates the source's value", () => {
+    useMazeStore.getState().removeVectorByCorridorsLink("elevatorMarker.size");
+    useMazeStore.getState().setVectorByCorridorsSharedMarkerSize(0.21);
+    useMazeStore.getState().addVectorByCorridorsLink("markerSize", "elevatorMarker.size");
+    const settings = useMazeStore.getState().vectorByCorridorsSettings;
+    expect(settings.elevatorMarker.size).toBe(0.21);
+    expect(settings.links.find((l) => l.target === "elevatorMarker.size")).toMatchObject({ source: "markerSize", enabled: true });
+  });
+
+  it("removeVectorByCorridorsLink drops the link targeting the given path without touching its value", () => {
+    const before = useMazeStore.getState().vectorByCorridorsSettings.startMarker.cornerStyle;
+    useMazeStore.getState().removeVectorByCorridorsLink("startMarker.cornerStyle");
+    const settings = useMazeStore.getState().vectorByCorridorsSettings;
+    expect(settings.links.find((l) => l.target === "startMarker.cornerStyle")).toBeUndefined();
+    expect(settings.startMarker.cornerStyle).toBe(before);
+  });
+
+});
+
 describe("mazeStore vectorByWallsSectionsExpanded", () => {
   it("starts empty", () => {
     expect(useMazeStore.getState().vectorByWallsSectionsExpanded).toEqual({});

@@ -135,31 +135,12 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
   },
-  removeBtn: {
-    background: "none",
-    border: "none",
-    cursor: "default",
-    padding: 0,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-  },
   emptyHint: {
     ...disabled(typography.caption),
     padding: "4px 2px",
   },
   strategyDisabled: {
     opacity: 0.5,
-  },
-  editBtn: {
-    ...typography.icon,
-    background: "none",
-    border: "none",
-    color: ui.text.tertiary,
-    padding: `0 ${inset.iconButtonInset}px`,
-    cursor: "default",
-    lineHeight: 1,
-    flexShrink: 0,
   },
   moveBtn: {
     background: "none",

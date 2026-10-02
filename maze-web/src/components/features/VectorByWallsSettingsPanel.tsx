@@ -20,6 +20,7 @@ import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
+import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
@@ -117,8 +118,10 @@ export function VectorByWallsSettingsPanel() {
   const setSharedMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsSharedMarkerBorderWidth);
   const setSharedGapWidth = useMazeStore((s) => s.setVectorByWallsSharedGapWidth);
   const resetSharedStyleField = useMazeStore((s) => s.resetVectorByWallsSharedStyleField);
-  const forceSharedStyle = useMazeStore((s) => s.forceVectorByWallsSharedStyle);
   const resetAllSettings = useMazeStore((s) => s.resetVectorByWallsSettings);
+  const setLinkEnabled = useMazeStore((s) => s.setVectorByWallsLinkEnabled);
+  const addLink = useMazeStore((s) => s.addVectorByWallsLink);
+  const removeLink = useMazeStore((s) => s.removeVectorByWallsLink);
 
   // `Escape` clears a click-selected teleport group (GitHub issue #293 follow-up) — global, not
   // scoped to a focused row, so it works regardless of what has focus (including the canvas itself,
@@ -291,8 +294,13 @@ export function VectorByWallsSettingsPanel() {
           onMarkerSizeChange={setSharedMarkerSize}
           onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
           onGapWidthChange={setSharedGapWidth}
-          onForce={forceSharedStyle}
           onResetAll={resetAllSettings}
+          settings={settings}
+          links={settings.links}
+          registry={VECTOR_BY_WALLS_PARAM_REGISTRY}
+          onSetLinkEnabled={setLinkEnabled}
+          onAddLink={addLink}
+          onRemoveLink={removeLink}
         />
       )}
 
