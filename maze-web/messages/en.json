@@ -530,6 +530,7 @@
   "field.shape.equilateral_triangle": "Equilateral triangle",
   "field.shape.polygon": "Polygon",
   "field.tools": "Tools",
+  "field.move_tool": "Select and move",
   "field.polygon.add_tool": "Add polygon",
   "field.polygon.remove_tool": "Subtract polygon",
   "field.polygon.shift_tooltip": "Shift: move vertices freely.",

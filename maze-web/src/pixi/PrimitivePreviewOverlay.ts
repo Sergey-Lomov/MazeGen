@@ -57,30 +57,47 @@ export class PrimitivePreviewOverlay {
   private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
-    const color = button === 0 ? ADD_COLOR : REMOVE_COLOR;
+    const color = geometry.kind === "polygon" && geometry.cellColor !== undefined
+      ? geometry.cellColor
+      : geometry.kind === "boundary" && geometry.cellColor !== undefined
+        ? geometry.cellColor
+        : button === 0 ? ADD_COLOR : REMOVE_COLOR;
+    const alpha = geometry.kind !== "ellipse" ? geometry.cellAlpha ?? PREVIEW_ALPHA : PREVIEW_ALPHA;
     for (const [x, y] of cells) {
       const verts = getCellVertices(x, y, kind, cfg);
       if (!verts) continue;
       g.poly(verts.flatMap(v => [v.x, v.y]));
-      g.fill({ color, alpha: PREVIEW_ALPHA });
+      g.fill({ color, alpha });
     }
     if (this.frameVisible) {
-      const frameColor = button === 0 ? ADD_COLOR : REMOVE_COLOR;
+      const frameColor = geometry.kind === "boundary"
+        ? 0xffffff
+        : geometry.kind === "polygon" && geometry.frameColor !== undefined
+          ? geometry.frameColor
+          : button === 0 ? ADD_COLOR : REMOVE_COLOR;
       if (geometry.kind === "ellipse") {
         g.ellipse(geometry.center.x, -geometry.center.y, geometry.width / 2, geometry.height / 2);
         g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
+      } else if (geometry.kind === "boundary") {
+        for (const [start, end] of geometry.segments) {
+          drawDashedSegment(g, { x: start.x, y: -start.y }, { x: end.x, y: -end.y }, frameColor);
+        }
       } else {
         const points = geometry.points;
         const interactivePolygon = geometry.vertexCount !== undefined;
         if (interactivePolygon) {
           const hasCursorPoint = points.length > (geometry.vertexCount ?? 0);
           const confirmedVertexCount = geometry.vertexCount ?? points.length;
-          const solidPointCount = hasCursorPoint
+          const pointCount = hasCursorPoint
             ? (confirmedVertexCount >= 2 ? points.length : 0)
             : (confirmedVertexCount >= 3 ? points.length : 0);
-          if (solidPointCount >= 2) {
+          if (geometry.dashedAll && pointCount >= 2) {
+            for (let i = 1; i < pointCount; i++) {
+              drawDashedSegment(g, { x: points[i - 1].x, y: -points[i - 1].y }, { x: points[i].x, y: -points[i].y }, frameColor);
+            }
+          } else if (pointCount >= 2) {
             g.moveTo(points[0].x, -points[0].y);
-            for (let i = 1; i < solidPointCount; i++) g.lineTo(points[i].x, -points[i].y);
+            for (let i = 1; i < pointCount; i++) g.lineTo(points[i].x, -points[i].y);
             g.stroke({ color: frameColor, alpha: FRAME_ALPHA, width: FRAME_WIDTH });
           }
           if (geometry.dashedClosing && points.length >= 2) {

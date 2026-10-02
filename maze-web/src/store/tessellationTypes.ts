@@ -7,7 +7,7 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
-  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry";
+  | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "move" | "symmetry";
 export type PolygonOperation = "add" | "remove";
 export type SymmetryOperation = "add" | "subtract";
 export type SymmetrySnapMode = "centers" | "corners" | "free";
@@ -26,6 +26,7 @@ export type PendingFieldEdit =
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
   | { kind: "removeFieldPoints"; cells: [number, number][] }
+  | { kind: "moveFieldPoints"; cells: [number, number][]; dx: number; dy: number }
   | { kind: "clearFieldPoints" }
   | { kind: "setFieldEditMode"; mode: "default" | "custom" }
   | { kind: "applySymmetry" }
@@ -146,6 +147,8 @@ export interface FloorFieldsActions {
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;
   removeFieldPoints: (cells: [number, number][]) => void;
+  /** Moves selected custom-field cells atomically, preserving destination collisions. */
+  moveFieldPoints: (cells: [number, number][], dx: number, dy: number) => void;
   clearFieldPoints: () => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;

@@ -4,7 +4,7 @@ import { canvasToGrid, DefaultHoverProvider } from "../pixi/hoverProviders";
 import { makeProjection } from "../pixi/tessellationProjection";
 import type { TessellationProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
-import { MazeScene, shouldCancelFieldEditGesture } from "../pixi/MazeScene";
+import { MazeScene, shouldCancelFieldEditGesture, TESSELLATION_CONFIG_BY_CARD } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";
 
@@ -70,6 +70,7 @@ describe("field edit gesture cancellation", () => {
       fieldPrimitive: "point",
     } as const;
     expect(shouldCancelFieldEditGesture(pointUpdate)).toBe(false);
+    expect(shouldCancelFieldEditGesture({ ...pointUpdate, fieldPrimitive: "move" })).toBe(false);
 
     for (const change of ["openChanged", "floorChanged", "modeChanged", "primitiveChanged"] as const) {
       expect(shouldCancelFieldEditGesture({ ...pointUpdate, [change]: true }), change).toBe(true);
@@ -86,6 +87,187 @@ describe("field edit gesture cancellation", () => {
 });
 
 describe("zoom reset controls", () => {
+
+  it("resolves the tessellation config for every feature card", () => {
+    const state = useMazeStore.getState();
+    const floorConfig = state.floorFields[state.activeFloorId].tessellationConfig;
+
+    expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.floors(state)).toBe(floorConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.field_setup(state)).toBe(floorConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.preset_connections(state)).toBe(floorConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.quality(state)).toBe(floorConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.generation(state)).toBe(state.activeTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.post_edit(state)).toBe(state.activeTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.analytics(state)).toBe(state.activeTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.image_export(state)).toBe(state.activeTessellationConfig);
+  });
+
+  it("syncs layer transforms, viewport listeners, and the scale listener", () => {
+    const layer = { x: 0, y: 0, scale: { x: 1, y: 1 } };
+    const viewportListener = { onViewportChanged: vi.fn() };
+    const viewportScaleListener = vi.fn();
+    const scene = {
+      viewport: { x: 12, y: -7, scale: { x: 2.5, y: 2.5 } },
+      syncedLayers: [layer],
+      viewportListeners: [viewportListener],
+      viewportScaleCallback: viewportScaleListener,
+      app: { screen: { width: 800, height: 600 } },
+    } as unknown as MazeScene;
+
+    (MazeScene.prototype as any).syncLayersToViewport.call(scene);
+
+    expect(layer).toEqual({ x: 12, y: -7, scale: { x: 2.5, y: 2.5 } });
+    expect(viewportListener.onViewportChanged).toHaveBeenCalledWith(12, -7, 800, 600, 2.5);
+    expect(viewportScaleListener).toHaveBeenCalledWith(2.5);
+  });
+
+  it("keeps only one hover and viewport-scale listener and notifies replacements", () => {
+    const oldHover = vi.fn();
+    const newHover = vi.fn();
+    const oldScale = vi.fn();
+    const newScale = vi.fn();
+    const scene = {
+      hoverCallback: oldHover,
+      viewportScaleCallback: null,
+      viewport: { scale: { x: 1.75 } },
+    } as unknown as MazeScene;
+
+    MazeScene.prototype.setHoverListener.call(scene, oldHover);
+    expect(oldHover).not.toHaveBeenCalled();
+    MazeScene.prototype.setHoverListener.call(scene, newHover);
+    expect(oldHover).toHaveBeenCalledWith(null);
+    MazeScene.prototype.setHoverListener.call(scene, newHover);
+    expect(oldHover).toHaveBeenCalledTimes(1);
+
+    MazeScene.prototype.setViewportScaleListener.call(scene, oldScale);
+    expect(oldScale).toHaveBeenCalledWith(1.75);
+    MazeScene.prototype.setViewportScaleListener.call(scene, newScale);
+    expect(newScale).toHaveBeenCalledWith(1.75);
+    MazeScene.prototype.setViewportScaleListener.call(scene, newScale);
+    expect(newScale).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets the viewport transform and exposes its current scale", () => {
+    const syncLayersToViewport = vi.fn();
+    const viewport = {
+      x: 0,
+      y: 0,
+      scale: { x: 1, y: 1, set: vi.fn(function (this: { x: number; y: number }, value: number) { this.x = value; this.y = value; }) },
+    };
+    const scene = { viewport, syncLayersToViewport } as unknown as MazeScene;
+
+    MazeScene.prototype.setViewportTransform.call(scene, 30, 40, 1.25);
+
+    expect(viewport.x).toBe(30);
+    expect(viewport.y).toBe(40);
+    expect(viewport.scale.set).toHaveBeenCalledWith(1.25);
+    expect(MazeScene.prototype.getViewportScale.call(scene)).toBe(1.25);
+    expect(syncLayersToViewport).toHaveBeenCalledOnce();
+  });
+
+  it("routes each interactive card to its controller and falls back to default pan", () => {
+    const state = useMazeStore.getState();
+    const controllers = {
+      field: {},
+      preset: {},
+      post: {},
+    };
+    const scene = {
+      fieldEditController: controllers.field,
+      presetConnectionsController: controllers.preset,
+      postEditController: controllers.post,
+    } as unknown as MazeScene;
+    const customFieldState = {
+      ...state,
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldEditMode: "custom" },
+      },
+    };
+
+    expect((MazeScene.prototype as any).getController.call(scene, { ...customFieldState, openCard: "field_setup" } as never)).toBe(controllers.field);
+    expect((MazeScene.prototype as any).getController.call(scene, { ...state, openCard: "preset_connections" } as never)).toBe(controllers.preset);
+    expect((MazeScene.prototype as any).getController.call(scene, { ...state, openCard: "post_edit" } as never)).toBe(controllers.post);
+    expect((MazeScene.prototype as any).getController.call(scene, { ...state, openCard: "generation" } as never)).toBeNull();
+    expect((MazeScene.prototype as any).getController.call(scene, {
+      ...state,
+      openCard: "field_setup",
+      floorFields: {
+        ...state.floorFields,
+        [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], fieldEditMode: "default" },
+      },
+    } as never)).toBeNull();
+  });
+
+  it("samples rendered pixels in physical canvas coordinates and rejects outside points", () => {
+    const pixels = new Uint8Array([1, 2, 3, 255]);
+    const extract = {
+      pixels: vi.fn(({ frame }: { frame: { width: number } }) => ({
+        pixels,
+        width: frame.width > 1 ? 5 : 1,
+        height: frame.width > 1 ? 5 : 1,
+      })),
+    };
+    const canvas = {
+      width: 200,
+      height: 100,
+      getBoundingClientRect: () => ({ left: 10, top: 20, width: 100, height: 50 }),
+    };
+    const scene = {
+      app: { canvas, renderer: { resolution: 2, extract }, stage: {} },
+      clientToCanvasPx: (MazeScene.prototype as any).clientToCanvasPx,
+    } as unknown as MazeScene;
+
+    expect(MazeScene.prototype.sampleColorAt.call(scene, 5, 25)).toBeNull();
+    expect(MazeScene.prototype.sampleColorAt.call(scene, 35, 45)).toBe(0x010203);
+    expect(extract.pixels).toHaveBeenCalledWith(expect.objectContaining({ frame: expect.anything() }));
+
+    const region = MazeScene.prototype.sampleRegionAt.call(scene, 35, 45, 2);
+    expect(region).toEqual({ pixels, width: 5, height: 5, centerX: 2, centerY: 2 });
+    expect(MazeScene.prototype.sampleRegionAt.call(scene, 5, 25, 2)).toBeNull();
+  });
+
+  it("handles no-op zoom resets and forwards print zoom and resize notifications", () => {
+    const syncLayersToViewport = vi.fn();
+    const resize = vi.fn();
+    const notifyExternalResize = vi.fn();
+    const applyViewportScaleAroundFrameCentre = vi.fn();
+    const viewport = {
+      x: 20,
+      y: 30,
+      scale: { x: 1, y: 1, set: vi.fn() },
+    };
+    const scene = {
+      app: { screen: { width: 100, height: 100 }, resize },
+      viewport,
+      syncLayersToViewport,
+      exportFrameOverlay: { notifyExternalResize, applyViewportScaleAroundFrameCentre },
+    } as unknown as MazeScene;
+
+    MazeScene.prototype.resetZoomToOne.call(scene);
+    expect(syncLayersToViewport).not.toHaveBeenCalled();
+    MazeScene.prototype.applyPrintPhysicalZoom.call(scene, 1.5);
+    expect(applyViewportScaleAroundFrameCentre).toHaveBeenCalledWith(1.5);
+    MazeScene.prototype.notifyScreenResized.call(scene);
+    expect(resize).toHaveBeenCalledOnce();
+    expect(syncLayersToViewport).toHaveBeenCalledOnce();
+    expect(notifyExternalResize).toHaveBeenCalledOnce();
+  });
+
+  it("caches projections, exposes the canvas, and forwards PNG export", async () => {
+    const canvas = {} as HTMLCanvasElement;
+    const pngExporter = { export: vi.fn().mockResolvedValue(new Blob(["png"])) };
+    const scene = { cachedProjection: null, pngExporter, app: { canvas } } as unknown as MazeScene;
+    const cfg = { type: "square", width: 2, height: 2 } as const;
+
+    const first = (MazeScene.prototype as any).getProjectionFor.call(scene, cfg);
+    expect((MazeScene.prototype as any).getProjectionFor.call(scene, cfg)).toBe(first);
+    expect((MazeScene.prototype as any).getProjectionFor.call(scene, { ...cfg, width: 3 })).not.toBe(first);
+    expect(Object.getOwnPropertyDescriptor(MazeScene.prototype, "canvas")?.get?.call(scene)).toBe(canvas);
+    await expect(MazeScene.prototype.exportPng.call(scene, { } as never)).resolves.toBeInstanceOf(Blob);
+    expect(pngExporter.export).toHaveBeenCalledOnce();
+  });
 
   it("does not highlight a hover cell for the polygon field tool", () => {
     const stageHandlers: Record<string, (event?: any) => void> = {};

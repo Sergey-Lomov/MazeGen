@@ -222,6 +222,57 @@ describe("mazeStore tessellation misc actions", () => {
     expect(activeField().fieldPoints.size).toBe(1);
   });
 
+  it("moveFieldPoints moves selected cells atomically and preserves collisions", () => {
+    const pts = new Set([
+      encodePoint(0, 0), encodePoint(1, 0), encodePoint(2, 0),
+    ]);
+    useMazeStore.setState({ tessellationKind: "square" });
+    setActiveField({ fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts }, fieldEditMode: "custom", isEditingField: true });
+    useMazeStore.getState().moveFieldPoints([[0, 0], [1, 0]], 1, 0);
+    expect(activeField().fieldPoints).toEqual(new Set([
+      encodePoint(1, 0), encodePoint(2, 0),
+    ]));
+  });
+
+  it("clamps moveFieldPoints at the signed coordinate boundary", () => {
+    const pts = new Set([encodePoint(32767, 0)]);
+    useMazeStore.setState({ tessellationKind: "square" });
+    setActiveField({ fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts }, fieldEditMode: "custom", isEditingField: true });
+    useMazeStore.getState().moveFieldPoints([[32767, 0]], 1, 0);
+    expect(activeField().fieldPoints).toEqual(new Set([encodePoint(32767, 0)]));
+  });
+
+  it("defers moveFieldPoints behind the field-edit confirmation guard", () => {
+    const pts = new Set([encodePoint(0, 0)]);
+    useMazeStore.setState({
+      mazeDirty: true,
+      tessellationKind: "square",
+      floorFields: {
+        ...useMazeStore.getState().floorFields,
+        [TEST_FLOOR_ID]: {
+          ...useMazeStore.getState().floorFields[TEST_FLOOR_ID],
+          fieldPoints: pts,
+          freeFieldPoints: { ...emptyFreePoints(), square: pts },
+          fieldEditMode: "custom",
+          isEditingField: true,
+        },
+      },
+    });
+
+    useMazeStore.getState().moveFieldPoints([[0, 0]], 1, 0);
+    expect(useMazeStore.getState().fieldEditConfirmation).toEqual({
+      kind: "moveFieldPoints",
+      cells: [[0, 0]],
+      dx: 1,
+      dy: 0,
+    });
+    expect(activeField().fieldPoints).toEqual(new Set([encodePoint(0, 0)]));
+
+    useMazeStore.setState({ mazeDirty: false });
+    useMazeStore.getState().confirmFieldEdit();
+    expect(activeField().fieldPoints).toEqual(new Set([encodePoint(1, 0)]));
+  });
+
   it("clearFieldPoints empties the set", () => {
     const pts = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
     useMazeStore.setState({ tessellationKind: "square" });

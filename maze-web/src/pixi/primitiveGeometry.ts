@@ -28,12 +28,26 @@ export type WorldPoint = { x: number; y: number };
 
 export type PrimitiveWorldGeometry =
   | {
+      kind: "boundary";
+      segments: Array<[WorldPoint, WorldPoint]>;
+      /** Optional fill style for temporary cells rendered with the boundary. */
+      cellColor?: number;
+      cellAlpha?: number;
+    }
+  | {
       kind: "polygon";
       points: WorldPoint[];
       /** Number of points already committed by the user (the rest may be the cursor preview). */
       vertexCount?: number;
       /** Draw the segment from the cursor preview back to the first vertex as a dashed line. */
       dashedClosing?: boolean;
+      /** Draw every polygon segment as a dashed line while the polygon is being edited. */
+      dashedAll?: boolean;
+      /** Optional frame color for a tool-specific polygon overlay. */
+      frameColor?: number;
+      /** Optional fill color for the cells covered by this polygon. */
+      cellColor?: number;
+      cellAlpha?: number;
     }
   | { kind: "ellipse"; center: WorldPoint; width: number; height: number };
 

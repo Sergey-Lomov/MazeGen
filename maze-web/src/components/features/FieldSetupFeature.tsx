@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Circle, FlipHorizontal, Hexagon, Square, Triangle } from "lucide-react";
+import { Circle, FlipHorizontal, Hexagon, Move, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive, PolygonOperation } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
@@ -392,6 +392,7 @@ function primitivesForKind(_kind: TessellationKind): PrimitiveToolOption[] {
     { key: "parallelogram", primitive: "parallelogram", label: m["field.shape.parallelogram"]() },
     { key: "polygon-add", primitive: "polygon", label: m["field.polygon.add_tool"](), polygonOperation: "add" },
     { key: "polygon-remove", primitive: "polygon", label: m["field.polygon.remove_tool"](), polygonOperation: "remove" },
+    { key: "move", primitive: "move", label: m["field.move_tool"]() },
     { key: "symmetry", primitive: "symmetry", label: m["field.symmetry.tool"]() },
   ];
   return _kind === "square" ? primitives.filter((tool) => tool.primitive !== "parallelogram") : primitives;
@@ -416,6 +417,7 @@ function primitiveIcon(primitive: FieldPrimitive, polygonOperation?: PolygonOper
         </svg>
       );
     case "symmetry": return <FlipHorizontal {...iconProps} />;
+    case "move": return <Move {...iconProps} />;
     case "rectangle": return <Square {...iconProps} />;
     case "circle": return <Circle {...iconProps} />;
     case "triangle":

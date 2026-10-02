@@ -542,6 +542,7 @@
   "field.shape.equilateral_triangle": "Равносторонний треугольник",
   "field.shape.polygon": "Многоугольник",
   "field.tools": "Инструменты",
+  "field.move_tool": "Выделить и переместить",
   "field.polygon.add_tool": "Добавить полигон",
   "field.polygon.remove_tool": "Вычесть полигон",
   "field.polygon.shift_tooltip": "Shift: свободное перемещение вершин.",

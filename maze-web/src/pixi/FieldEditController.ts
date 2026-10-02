@@ -9,8 +9,10 @@ import type { PolygonPoint } from "./polygonGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvasToGrid } from "./hoverProviders";
-import { decodePoint } from "./tessellationProjection";
-import { sideOfAxis, snapSymmetryPoint, worldPointForCell, type SymmetryPoint } from "./symmetry";
+import { decodePoint, encodePoint } from "./tessellationProjection";
+import { sideOfAxis, snapSymmetryPoint, symmetryStatus, worldPointForCell, type SymmetryPoint } from "./symmetry";
+import { selectionBoundarySegments } from "./fieldSelectionGeometry";
+import { canvas } from "./colorTokens";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -27,6 +29,9 @@ interface PrimitiveCallbacks {
   onPreviewUpdate: (cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: ReturnType<typeof primitiveWorldGeometry>) => void;
   onPreviewClear: () => void;
   onPrimitiveCommit: (cells: [number, number][], button: number) => void;
+  onMoveCommit?: (cells: [number, number][], dx: number, dy: number) => boolean;
+  onMovePreview?: (sourceCells: [number, number][], temporaryCells: [number, number][]) => void;
+  onMoveComplete?: () => void;
   onSymmetryPreviewUpdate?: (axis: SymmetryPoint[], polygon: SymmetryPoint[]) => void;
 }
 
@@ -57,6 +62,15 @@ export class FieldEditController {
   private polygonDragOriginalPoint: PolygonPoint | null = null;
   private polygonCloseCandidate = false;
   private lastPointerCanvas: { x: number; y: number } | null = null;
+  private movePolygonPoints: PolygonPoint[] = [];
+  private movePolygonGridPoints: { x: number; y: number }[] = [];
+  private movePolygonCursorPoint: PolygonPoint | null = null;
+  private moveSelectionCells: [number, number][] = [];
+  private moveSelectionFinished = false;
+  private movingSelection = false;
+  private moveDragStartGrid: { x: number; y: number } | null = null;
+  private moveDragStartDelta: { x: number; y: number } | null = null;
+  private moveDelta = { x: 0, y: 0 };
   private symmetryDraggedPolygonIndex: number | null = null;
   private symmetryDragStartCanvas: { x: number; y: number } | null = null;
   private symmetryDragOriginalPoint: SymmetryPoint | null = null;
@@ -89,12 +103,34 @@ export class FieldEditController {
       }
     }
     if (e.code === "Escape") this.cancelGesture();
+    if (e.code === "Backspace" || e.code === "Delete") {
+      const state = useMazeStore.getState();
+      const field = state.floorFields[state.activeFloorId];
+      if (field.fieldPrimitive === "move" && this.moveSelectionFinished) {
+        e.preventDefault();
+        this.deleteMoveSelection();
+      }
+    }
     if (e.code === "Enter") {
       const state = useMazeStore.getState();
       const field = state.floorFields[state.activeFloorId];
-      if (field.fieldPrimitive === "symmetry" && state.symmetryScope === "polygon") {
-        state.finishSymmetryPolygon();
-        this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+      if (field.fieldPrimitive === "symmetry") {
+        const status = symmetryStatus({
+          axisPoints: state.symmetryAxisPoints,
+          scope: state.symmetryScope,
+          polygon: state.symmetryPolygon,
+          polygonFinished: state.symmetryPolygonFinished,
+        });
+        if (status === "ready") {
+          state.applySymmetry();
+        } else if (state.symmetryScope === "polygon") {
+          state.finishSymmetryPolygon();
+          this.primitiveCallbacks.onSymmetryPreviewUpdate?.(state.symmetryAxisPoints, state.symmetryPolygon);
+        }
+      } else if (field.fieldPrimitive === "move") {
+        if (this.movingSelection) this.commitMoveSelection();
+        else if (!this.moveSelectionFinished) this.finishMoveSelection();
+        else this.commitMoveSelection();
       } else {
         this.commitPolygon();
       }
@@ -148,6 +184,7 @@ export class FieldEditController {
     this.activePrimitive = field.fieldPrimitive;
 
     if (this.polygonPoints.length > 0 && this.activePrimitive !== "polygon") this.clearPolygon();
+    if (this.movePolygonPoints.length > 0 && this.activePrimitive !== "move") this.clearMoveSelection();
 
     if (this.spaceHeld || button === 1) {
       this.panCallbacks.startPan(canvasX, canvasY);
@@ -207,6 +244,8 @@ export class FieldEditController {
       this.polygonPoints.push(this.inputWorldPoint(canvasX, canvasY, grid));
       this.polygonCursorPoint = null;
       this.updatePolygonPreview();
+    } else if (this.activePrimitive === "move") {
+      this.handleMovePointerDown(canvasX, canvasY, button, clickCount);
     } else {
       const grid = this.toGrid(canvasX, canvasY);
       if (!grid) return;
@@ -249,6 +288,9 @@ export class FieldEditController {
       if (field.fieldPrimitive === "polygon" && this.polygonPoints.length > 0) {
         this.activePrimitive = "polygon";
         this.updatePolygonCursor(canvasX, canvasY);
+      } else if (field.fieldPrimitive === "move" && this.movePolygonPoints.length > 0) {
+        this.activePrimitive = "move";
+        this.updateMovePolygonCursor(canvasX, canvasY);
       }
       return;
     }
@@ -294,6 +336,8 @@ export class FieldEditController {
       this.applyEdit(grid.x, grid.y, this.gestureButton);
       this.lastGridX = grid.x;
       this.lastGridY = grid.y;
+    } else if (this.activePrimitive === "move") {
+      this.handleMovePointerMove(canvasX, canvasY);
     } else if (this.activePrimitive === "polygon") {
       if (this.draggedPolygonIndex !== null && this.polygonDragStartCanvas) {
         const moved = Math.hypot(
@@ -353,6 +397,11 @@ export class FieldEditController {
       this.updateSymmetryCursor(canvasX, canvasY);
       return;
     }
+    if (field.fieldPrimitive === "move") {
+      if (this.moveSelectionFinished) this.commitMoveSelection();
+      else if (this.movePolygonPoints.length >= 3) this.finishMoveSelection();
+      return;
+    }
     if (!(state.openCard === "field_setup"
       && field.fieldEditMode === "custom"
       && field.fieldPrimitive === "polygon"
@@ -392,6 +441,13 @@ export class FieldEditController {
       this.symmetryAxisDragStartCanvas = null;
       this.symmetryAxisDragOriginalPoint = null;
       this.primitiveCallbacks.onSymmetryPreviewUpdate?.(useMazeStore.getState().symmetryAxisPoints, useMazeStore.getState().symmetryPolygon);
+      return;
+    }
+    if (this.activePrimitive === "move") {
+      this.clearMoveSelection();
+      this.gestureActive = false;
+      this.activePrimitive = "point";
+      useMazeStore.getState().setFieldPrimitive("point");
       return;
     }
     if (this.draggedPolygonIndex !== null) {
@@ -438,6 +494,18 @@ export class FieldEditController {
     this.cancelGesture();
   }
 
+  /** Completes a move before the field tool is replaced by another tool. */
+  commitPendingMoveEdit(): void {
+    if (this.activePrimitive !== "move") return;
+    if (this.movingSelection) this.finishMoveDrag();
+    if (this.moveSelectionFinished) this.commitMoveSelection();
+    else {
+      this.clearMoveSelection();
+      this.activePrimitive = "point";
+    }
+    this.gestureActive = false;
+  }
+
   onPointerUp(): void {
     if (!this.gestureActive) return;
 
@@ -454,6 +522,8 @@ export class FieldEditController {
         this.updatePolygonPreview();
       }
       // The polygon remains active between clicks until it is closed or confirmed with Enter.
+    } else if (this.activePrimitive === "move") {
+      if (this.movingSelection) this.finishMoveDrag();
     } else if (this.activePrimitive === "symmetry") {
       this.symmetryDraggedAxisIndex = null;
       this.symmetryAxisDragStartCanvas = null;
@@ -509,6 +579,228 @@ export class FieldEditController {
     if (!projection) return { x: 0, y: 0 };
     const screen = projection.gridToScreen(grid.x, grid.y);
     return { x: screen.x, y: -screen.y };
+  }
+
+  private handleMovePointerDown(canvasX: number, canvasY: number, button: number, clickCount: number): void {
+    if (button === 2) {
+      this.clearMoveSelection();
+      this.gestureActive = false;
+      return;
+    }
+    if (button !== 0) return;
+
+    if (this.moveSelectionFinished) {
+      this.handleSelectedMovePointerDown(canvasX, canvasY);
+      return;
+    }
+
+    this.handleMovePolygonPointerDown(canvasX, canvasY, clickCount);
+  }
+
+  /** Handles interaction with the already confirmed piece, independently of polygon construction. */
+  private handleSelectedMovePointerDown(canvasX: number, canvasY: number): void {
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return;
+
+    const selected = this.moveSelectionCells.some(([x, y]) => x + this.moveDelta.x === grid.x && y + this.moveDelta.y === grid.y);
+    if (selected) {
+      this.movingSelection = true;
+      this.moveDragStartGrid = grid;
+      this.moveDragStartDelta = { ...this.moveDelta };
+      this.updateMovePreview();
+      return;
+    }
+    this.clearMoveSelection();
+  }
+
+  /** Handles only the polygon-construction phase of select-and-move. */
+  private handleMovePolygonPointerDown(canvasX: number, canvasY: number, clickCount: number): void {
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return;
+
+    if (this.movePolygonGridPoints.length >= 3
+      && grid.x === this.movePolygonGridPoints[0].x
+      && grid.y === this.movePolygonGridPoints[0].y) {
+      this.finishMoveSelection();
+      return;
+    }
+    const previous = this.movePolygonGridPoints[this.movePolygonGridPoints.length - 1];
+    if (previous?.x === grid.x && previous.y === grid.y) return;
+    this.movePolygonGridPoints.push(grid);
+    this.movePolygonPoints.push(this.inputWorldPoint(canvasX, canvasY, grid));
+    this.movePolygonCursorPoint = null;
+    if (clickCount >= 2 && this.movePolygonPoints.length >= 3) this.finishMoveSelection();
+    else this.updateMovePreview();
+  }
+
+  private handleMovePointerMove(canvasX: number, canvasY: number): void {
+    if (this.movingSelection && this.moveDragStartGrid) {
+      const grid = this.toGrid(canvasX, canvasY);
+      if (!grid) return;
+      this.moveDelta = this.safeMoveDelta({
+        x: (this.moveDragStartDelta?.x ?? 0) + grid.x - this.moveDragStartGrid.x,
+        y: (this.moveDragStartDelta?.y ?? 0) + grid.y - this.moveDragStartGrid.y,
+      });
+      this.updateMovePreview();
+      return;
+    }
+    this.updateMovePolygonCursor(canvasX, canvasY);
+  }
+
+  private finishMoveSelection(): void {
+    if (this.movePolygonPoints.length < 3) return;
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    this.moveSelectionCells = this.activeCellsInsidePolygon(this.movePolygonPoints, field.tessellationConfig);
+    this.moveSelectionFinished = true;
+    this.movePolygonCursorPoint = null;
+    this.updateMovePreview();
+  }
+
+  private commitMoveSelection(): void {
+    if (!this.moveSelectionFinished) return;
+    const { x: dx, y: dy } = this.moveDelta;
+    if (dx !== 0 || dy !== 0) {
+      const applied = this.primitiveCallbacks.onMoveCommit?.(this.moveSelectionCells, dx, dy) ?? false;
+      if (!applied) {
+        this.movingSelection = false;
+        this.gestureActive = false;
+        this.activePrimitive = "point";
+        this.clearMoveSelection();
+        this.primitiveCallbacks.onMoveComplete?.();
+        return;
+      }
+      this.moveSelectionCells = this.moveSelectionCells.map(([x, y]) => [x + dx, y + dy]);
+      const worldDelta = this.moveWorldDelta(dx, dy);
+      this.movePolygonPoints = this.movePolygonPoints.map((point) => ({
+        x: point.x + worldDelta.x,
+        y: point.y + worldDelta.y,
+      }));
+      this.movePolygonGridPoints = this.movePolygonGridPoints.map((point) => ({
+        x: point.x + dx,
+        y: point.y + dy,
+      }));
+    }
+    this.movingSelection = false;
+    this.moveDragStartGrid = null;
+    this.moveDragStartDelta = null;
+    this.moveDelta = { x: 0, y: 0 };
+    this.gestureActive = false;
+    this.activePrimitive = "point";
+    this.clearMoveSelection();
+    this.primitiveCallbacks.onMoveComplete?.();
+  }
+
+  private deleteMoveSelection(): void {
+    if (!this.moveSelectionFinished) return;
+    if (this.movingSelection) this.finishMoveDrag();
+    this.primitiveCallbacks.onPrimitiveCommit(this.moveSelectionCells, 2);
+    this.activePrimitive = "point";
+    this.gestureActive = false;
+    this.clearMoveSelection();
+    this.primitiveCallbacks.onMoveComplete?.();
+  }
+
+  private finishMoveDrag(): void {
+    this.movingSelection = false;
+    this.moveDragStartGrid = null;
+    this.moveDragStartDelta = null;
+    this.gestureActive = false;
+    this.updateMovePreview();
+  }
+
+  private updateMovePolygonCursor(canvasX: number, canvasY: number): void {
+    if (this.moveSelectionFinished || this.movePolygonPoints.length === 0) return;
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return;
+    this.movePolygonCursorPoint = this.inputWorldPoint(canvasX, canvasY, grid);
+    this.updateMovePreview();
+  }
+
+  private updateMovePreview(): void {
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    const cfg = field.tessellationConfig;
+    const kind = cfgKind(cfg.type);
+    const points = this.translatedMovePolygon();
+    const previewPoints = this.moveSelectionFinished
+      ? points
+      : this.movePolygonCursorPoint
+        ? [...this.movePolygonPoints, this.movePolygonCursorPoint]
+        : [...this.movePolygonPoints];
+    const hasPendingMove = this.moveSelectionFinished && (this.movingSelection || this.moveDelta.x !== 0 || this.moveDelta.y !== 0);
+    const cells = this.moveSelectionFinished
+      ? hasPendingMove
+        ? this.moveSelectionCells.map(([x, y]) => [x + this.moveDelta.x, y + this.moveDelta.y] as [number, number])
+        : []
+      : this.activeCellsInsidePolygon(previewPoints, cfg);
+    const boundaryCells = this.moveSelectionFinished
+      ? hasPendingMove
+        ? cells
+        : this.moveSelectionCells
+      : [];
+    const geometry = this.moveSelectionFinished
+      ? {
+        kind: "boundary" as const,
+        segments: selectionBoundarySegments(boundaryCells, kind, cfg),
+        cellColor: canvas.fieldEditor.activeCell,
+        cellAlpha: 1,
+      }
+      : polygonWorldGeometry(previewPoints, {
+        vertexCount: this.movePolygonPoints.length,
+        dashedClosing: this.movePolygonPoints.length >= 2,
+        dashedAll: true,
+        frameColor: 0xffffff,
+        cellColor: 0xffffff,
+      });
+    this.primitiveCallbacks.onMovePreview?.(hasPendingMove ? this.moveSelectionCells : [], hasPendingMove ? cells : []);
+    this.primitiveCallbacks.onPreviewUpdate(this.moveSelectionFinished ? [] : cells, 0, kind, cfg, geometry);
+  }
+
+  private translatedMovePolygon(): PolygonPoint[] {
+    if (this.moveDelta.x === 0 && this.moveDelta.y === 0) return [...this.movePolygonPoints];
+    const delta = this.moveWorldDelta(this.moveDelta.x, this.moveDelta.y);
+    return this.movePolygonPoints.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y }));
+  }
+
+  private moveWorldDelta(dx: number, dy: number): { x: number; y: number } {
+    const anchor = this.movePolygonGridPoints[0] ?? { x: 0, y: 0 };
+    const from = this.gridToWorld(anchor);
+    const to = this.gridToWorld({ x: anchor.x + dx, y: anchor.y + dy });
+    return { x: to.x - from.x, y: to.y - from.y };
+  }
+
+  private safeMoveDelta(delta: { x: number; y: number }): { x: number; y: number } {
+    if (this.moveSelectionCells.length === 0) return { x: 0, y: 0 };
+    const minX = Math.max(...this.moveSelectionCells.map(([x]) => -32768 - x));
+    const maxX = Math.min(...this.moveSelectionCells.map(([x]) => 32767 - x));
+    const minY = Math.max(...this.moveSelectionCells.map(([, y]) => -32768 - y));
+    const maxY = Math.min(...this.moveSelectionCells.map(([, y]) => 32767 - y));
+    return {
+      x: Math.max(minX, Math.min(maxX, Math.trunc(delta.x))),
+      y: Math.max(minY, Math.min(maxY, Math.trunc(delta.y))),
+    };
+  }
+
+  private activeCellsInsidePolygon(points: PolygonPoint[], cfg: TessellationConfig): [number, number][] {
+    const inside = new Set(cellsInsidePolygon(points, cfg).map(([x, y]) => encodePoint(x, y)));
+    return [...useMazeStore.getState().floorFields[useMazeStore.getState().activeFloorId].fieldPoints]
+      .map(decodePoint)
+      .filter(([x, y]) => inside.has(encodePoint(x, y)));
+  }
+
+  private clearMoveSelection(): void {
+    this.primitiveCallbacks.onPreviewClear();
+    this.primitiveCallbacks.onMovePreview?.([], []);
+    this.movePolygonPoints = [];
+    this.movePolygonGridPoints = [];
+    this.movePolygonCursorPoint = null;
+    this.moveSelectionCells = [];
+    this.moveSelectionFinished = false;
+    this.movingSelection = false;
+    this.moveDragStartGrid = null;
+    this.moveDragStartDelta = null;
+    this.moveDelta = { x: 0, y: 0 };
   }
 
   private updatePolygonPreview(): void {
