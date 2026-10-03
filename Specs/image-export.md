@@ -526,17 +526,39 @@ transitively. Editing the shared value itself (`setVectorByWallsSharedMarkerSize
 `propagate(settings, links, [sourcePath])`; editing a dependent field through its own per-mode
 setter (e.g. `setVectorByWallsStartMarkerSize`) calls `setLinkEnabledByTarget(settings, links,
 targetPath, false)` — writes the value itself and disables that field's incoming link, so sibling
-fields in the same group keep following the shared value. Each dependent field's own settings-panel
-row carries a per-field reset button (`OverrideResetButton`, via `sharedStyleFieldReset(links,
-target, onReset)` in `SharedStyleSection.tsx`), addressing the field directly by its own concrete
-`ParamPath` (e.g. `"startMarker.cornerStyle"`) rather than any indirect `(group, field)` scheme — dim/
-inert while the link is enabled, active once disabled; clicking it calls `setLinkEnabledByTarget(...,
-true)` (`resetVectorBy*SharedStyleField(target)`), which also re-propagates from that link's `source`
-so the field immediately snaps back to the shared value.
-Built into `SliderRow`/`SelectRow`'s own optional `resetButton` prop (a trailing control that
-shrinks the slider's own track, never the label) rather than a `ColorRow` prop, since no dependent
-field's color is centralized — only shape-adjacent geometry (corner style, size, border width, gap
-width), not fill/border color, is shared.
+fields in the same group keep following the shared value.
+
+**Per-field link-status icon (`LinkStatusIcon.tsx`, GitHub issue #652).** Every linkable field row
+in both panels — not just the four "Shared style" fields above — carries a `LinkStatusIcon` as its
+trailing control, rendered via one of the `Linked*Row` wrappers (`LinkedSelectRow`/`LinkedSliderRow`/
+`LinkedColorRow`/`LinkedToggleRow`/`LinkedTextFieldRow`, `LinkedRows.tsx`). Each wrapper takes a
+`linkTarget: P | null` prop and reads `links`/`registry`/`onSetLinkEnabled`/`onAddLink` from the
+nearest `LinkContextProvider` (`LinkContext.tsx`, one per panel root) instead of threading them
+through every intermediate component. `linkTarget: null` marks a field that isn't in the mode's
+`ParamDescriptor` registry at all (an enum with no modeled type, a toggle that actually drives a
+multi-value field underneath it, etc.) — linking is impossible for it, not merely unset.
+
+Terminology: a **driving link** is the link where this field is the *target* (it follows another
+field's value); a **dependent link** is a link where this field is the *source* (another field
+follows it). The icon's core is a chain glyph (`Link`/`Unlink` from lucide-react) plus up to two
+small corner badges: the green **driving indicator** (top-left) when a driving link exists (active
+or disabled as an override); the blue **dependents indicator** (bottom-right) when at least one
+dependent link exists; and, only for an unsupported (`linkTarget: null`) field, a red **unsupported
+indicator** (bottom-right `X`) over a disabled-gray chain. A field with no link of any kind (but
+linkable) renders the chain alone, broken and disabled-gray, with no badge — the glyph itself says
+enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each suffixed
+"(disabled)" when inactive, plus a click hint); clicking opens `LinkEditor` (add/edit) or, for a
+disabled driving link, re-enables it directly (`onSetLinkEnabled`, equivalent to the old
+`OverrideResetButton`'s reset action) without a dialog. An unsupported field's click opens a small
+info dialog instead, explaining why (a per-field `unsupportedHint` override is supported for a field
+whose unsupported reason isn't the generic "type not modeled yet", e.g. the random-wall-color-mode
+toggle).
+
+Visibility is governed by one global `ImageExportState.linkIconVisibility` ("always" / "linked" /
+"never", `setLinkIconVisibility`, persisted in the project file with a `"linked"` fallback for an
+older/malformed file) — shared by both render modes' "Shared style" section, not per-mode, since the
+icon's meaning doesn't change between them. `"linked"` hides the icon on a field with no link of
+either kind (same as `"never"`'s blanket hide); an unsupported field never counts as "linked".
 
 Every `ColorRow` / `ColorSwatch` in these panels opens the custom color picker
 (`Specs/color-picker.md`, GitHub issue #499) rather than the browser-native color popup; the

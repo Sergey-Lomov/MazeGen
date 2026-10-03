@@ -22,7 +22,7 @@ export type {
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
-  FieldPrimitive, PolygonOperation, FeatureId, RenderModeId, ExportFormatId, MazeState,
+  FieldPrimitive, PolygonOperation, FeatureId, RenderModeId, LinkIconVisibility, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
   DigitalExportSettings, PrintExportSettings, PngExportSettings, FloorState,
 } from "./storeTypes";
@@ -222,6 +222,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       vectorByWallsSettings: file.imageExport.vectorByWallsSettings,
       vectorByWallsSectionsExpanded: file.imageExport.vectorByWallsSectionsExpanded,
       showColorWarnings: file.imageExport.showColorWarnings,
+      linkIconVisibility: file.imageExport.linkIconVisibility,
       vectorByCorridorsSettings: file.imageExport.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,

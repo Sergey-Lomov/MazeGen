@@ -3,10 +3,11 @@ import { useState } from "react";
 import { indent, spacing } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
-import { SliderRow } from "../SliderRow";
-import { OverrideResetButton } from "../OverrideResetButton";
+import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
+import { useMazeStore } from "../../store/mazeStore";
 import type { CornerStyle } from "../../pixi/renderers/types";
+import type { LinkIconVisibility } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
 
@@ -54,10 +55,22 @@ export function SharedStyleSection<P extends string>({
   onRemoveLink: (target: P) => void;
 }) {
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
+  const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
+  const setLinkIconVisibility = useMazeStore((s) => s.setLinkIconVisibility);
 
   return (
     <div style={styles.block}>
       <SelectRow
+        label={m["image_export.param_links.link_icon_visibility_label"]()}
+        value={linkIconVisibility}
+        options={[
+          { value: "always" as LinkIconVisibility, label: m["image_export.param_links.link_icon_visibility_always"]() },
+          { value: "linked" as LinkIconVisibility, label: m["image_export.param_links.link_icon_visibility_linked"]() },
+          { value: "never" as LinkIconVisibility, label: m["image_export.param_links.link_icon_visibility_never"]() },
+        ]}
+        onChange={setLinkIconVisibility}
+      />
+      <LinkedSelectRow
         label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
         value={cornerStyle}
         options={[
@@ -65,8 +78,9 @@ export function SharedStyleSection<P extends string>({
           { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
         ]}
         onChange={onCornerStyleChange}
+        linkTarget={"cornerStyle" as P}
       />
-      <SliderRow
+      <LinkedSliderRow
         label={m["image_export.vector_by_walls.shared_style_marker_size"]()}
         value={markerSize}
         onChange={onMarkerSizeChange}
@@ -74,8 +88,9 @@ export function SharedStyleSection<P extends string>({
         max={1}
         step={0.01}
         format={(v) => v.toFixed(2)}
+        linkTarget={"markerSize" as P}
       />
-      <SliderRow
+      <LinkedSliderRow
         label={m["image_export.vector_by_walls.shared_style_marker_border_width"]()}
         value={markerBorderWidth}
         onChange={onMarkerBorderWidthChange}
@@ -83,8 +98,9 @@ export function SharedStyleSection<P extends string>({
         max={10}
         step={1}
         format={(v) => String(v)}
+        linkTarget={"markerBorderWidth" as P}
       />
-      <SliderRow
+      <LinkedSliderRow
         label={m["image_export.vector_by_walls.shared_style_gap_width"]()}
         value={gapWidth}
         onChange={onGapWidthChange}
@@ -92,6 +108,7 @@ export function SharedStyleSection<P extends string>({
         max={10}
         step={1}
         format={(v) => String(v)}
+        linkTarget={"gapWidth" as P}
       />
       <Button variant="secondary" onClick={() => setLinksDialogOpen(true)}>
         {m["image_export.param_links.manage_links"]()}
@@ -112,15 +129,6 @@ export function SharedStyleSection<P extends string>({
       )}
     </div>
   );
-}
-
-/** Per-field reset button for a dependent field driven by a `SharedStyleSection` group — the
- *  settings panel's own field rows pass this as `SliderRow`/`SelectRow`'s `resetButton` prop.
- *  `target` is the field's own concrete link path (its `ParamPath` in that mode's registry);
- *  "overridden" means that path's incoming link is disabled. */
-export function sharedStyleFieldReset<P extends string>(links: ParamLink<P>[], target: P, onReset: () => void) {
-  const overridden = links.find((l) => l.target === target)?.enabled === false;
-  return <OverrideResetButton overridden={overridden} onReset={onReset} title={m["image_export.vector_by_walls.shared_style_field_reset"]()} />;
 }
 
 const styles: Record<string, React.CSSProperties> = {

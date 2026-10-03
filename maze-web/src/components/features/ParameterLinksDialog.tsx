@@ -298,6 +298,21 @@ function BreadcrumbNav<P extends string>({
   );
 }
 
+/** Every `groupKey` (same joined-segments identity `buildPickerTree`'s group nodes use) on the
+ *  path to `path`'s own leaf — used to pre-expand `ParamPicker`'s tree down to an already-selected
+ *  parameter (e.g. the field the link-status icon was clicked from) so it's visible and highlighted
+ *  instead of collapsed inside a closed group. `path === null` yields no keys. */
+function expandedGroupKeysFor<P extends string>(path: P | null, registry: Record<P, ParamDescriptor>): Set<string> {
+  if (path === null) return new Set();
+  const keys = new Set<string>();
+  let prefix = "";
+  for (const segment of registry[path].group) {
+    prefix = `${prefix}/${segment}`;
+    keys.add(prefix);
+  }
+  return keys;
+}
+
 /** Hierarchical, collapsible parameter picker (target or source) — used only inside `LinkEditor`.
  *  Mirrors the settings panel's own section/subsection nesting (`registry[path].group`) rather
  *  than a flat alphabetical list, so a field is found where it's expected instead of scanning one
@@ -315,8 +330,13 @@ function ParamPicker<P extends string>({
   selected: P | null;
   onPick: (path: P) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const tree = buildPickerTree(paths, registry);
+  const [expanded, setExpanded] = useState<Set<string>>(() => expandedGroupKeysFor(selected, registry));
+
+  useEffect(() => {
+    if (selected === null) return;
+    setExpanded((prev) => new Set([...prev, ...expandedGroupKeysFor(selected, registry)]));
+  }, [selected, registry]);
 
   function toggle(groupKey: string) {
     setExpanded((prev) => {
@@ -595,7 +615,7 @@ function ColorModifierStepDialog({
  *  through `ModifierStepDialog`/`ColorModifierStepDialog`, never inline here. Saving is blocked while
  *  any numeric step divides by 0 (would make `target` NaN/Infinity on every propagation), via the
  *  save button's own `disabled`. */
-function LinkEditor<P extends string>({
+export function LinkEditor<P extends string>({
   registry,
   initialSource,
   initialTarget,

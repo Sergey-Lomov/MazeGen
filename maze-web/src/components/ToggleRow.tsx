@@ -7,7 +7,11 @@ import { InfoIconButton } from "./InfoIconButton";
 /** Shared labeled toggle-switch row — lifted out of `AnalyticsFeature.tsx` (its original,
  *  previously-private home) so a second feature (the debug panel's per-debug-value toggles, GitHub
  *  issue #131) can reuse it instead of a third hand-rolled copy. */
-export function ToggleRow({ label, checked, onChange, disabled, info, action, layoutStyle }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void; action?: ReactNode; layoutStyle?: React.CSSProperties }) {
+export function ToggleRow({ label, checked, onChange, disabled, info, action, resetButton, layoutStyle }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void; action?: ReactNode;
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`), after the
+   *  `Switch` — same trailing-slot convention as `SelectRow`/`SliderRow`/`ColorRow`. */
+  resetButton?: ReactNode;
+  layoutStyle?: React.CSSProperties }) {
   return (
     <Inline gap="groupGap" style={layoutStyle}>
       <span style={styles.toggleLabelGroup}>
@@ -16,6 +20,7 @@ export function ToggleRow({ label, checked, onChange, disabled, info, action, la
       </span>
       {action}
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} ariaLabel={label} />
+      {resetButton}
     </Inline>
   );
 }

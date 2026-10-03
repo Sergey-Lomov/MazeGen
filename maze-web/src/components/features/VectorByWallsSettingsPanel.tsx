@@ -2,11 +2,9 @@ import React, { useEffect, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
-import { ToggleRow } from "../ToggleRow";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
-import { ColorRow } from "../ColorRow";
-import { SelectRow } from "../SelectRow";
-import { SliderRow } from "../SliderRow";
+import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
+import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
 import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
@@ -18,7 +16,7 @@ import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
-import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
+import { SharedStyleSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
@@ -117,7 +115,6 @@ export function VectorByWallsSettingsPanel() {
   const setSharedMarkerSize = useMazeStore((s) => s.setVectorByWallsSharedMarkerSize);
   const setSharedMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsSharedMarkerBorderWidth);
   const setSharedGapWidth = useMazeStore((s) => s.setVectorByWallsSharedGapWidth);
-  const resetSharedStyleField = useMazeStore((s) => s.resetVectorByWallsSharedStyleField);
   const resetAllSettings = useMazeStore((s) => s.resetVectorByWallsSettings);
   const setLinkEnabled = useMazeStore((s) => s.setVectorByWallsLinkEnabled);
   const addLink = useMazeStore((s) => s.addVectorByWallsLink);
@@ -270,6 +267,7 @@ export function VectorByWallsSettingsPanel() {
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
 
   return (
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink } as unknown as LinkContextValue<string>}>
     <div style={styles.root}>
       <ExportWarningsSection
         warnings={exportWarnings}
@@ -313,16 +311,17 @@ export function VectorByWallsSettingsPanel() {
       />
       {isExpanded("background") && (
         <div style={styles.block}>
-          <ColorRow
+          <LinkedColorRow
             label={m["image_export.vector_by_walls.background_color"]()}
             color={settings.background}
             onChange={setBackground}
             defaultColor={D.background}
             fieldName={PC.bgFill.name()}
             priorityColors={[PC.bgGrid.at(settings.gridColor), PC.innerGrid.at(settings.innerGridColor), floor, wall]}
+            linkTarget="background"
           />
-          <ToggleRow label={m["image_export.vector_by_walls.show_grid"]()} checked={settings.showGrid} onChange={setShowGrid} />
-          <ColorRow
+          <LinkedToggleRow label={m["image_export.vector_by_walls.show_grid"]()} checked={settings.showGrid} onChange={setShowGrid} linkTarget="showGrid" />
+          <LinkedColorRow
             label={m["image_export.vector_by_walls.grid_color"]()}
             color={settings.gridColor}
             onChange={setGridColor}
@@ -330,9 +329,10 @@ export function VectorByWallsSettingsPanel() {
             defaultColor={D.gridColor}
             fieldName={PC.bgGrid.name()}
             priorityColors={[background, PC.innerGrid.at(settings.innerGridColor), wall]}
+            linkTarget="gridColor"
           />
-          <ToggleRow label={m["image_export.vector_by_walls.show_inner_grid"]()} checked={settings.showInnerGrid} onChange={setShowInnerGrid} />
-          <ColorRow
+          <LinkedToggleRow label={m["image_export.vector_by_walls.show_inner_grid"]()} checked={settings.showInnerGrid} onChange={setShowInnerGrid} linkTarget="showInnerGrid" />
+          <LinkedColorRow
             label={m["image_export.vector_by_walls.inner_grid_color"]()}
             color={settings.innerGridColor}
             onChange={setInnerGridColor}
@@ -340,6 +340,7 @@ export function VectorByWallsSettingsPanel() {
             defaultColor={D.innerGridColor}
             fieldName={PC.innerGrid.name()}
             priorityColors={[floor, wall, background, PC.bgGrid.at(settings.gridColor)]}
+            linkTarget="innerGridColor"
           />
         </div>
       )}
@@ -353,30 +354,34 @@ export function VectorByWallsSettingsPanel() {
       />
       {isExpanded("tiles") && (
         <div style={styles.block}>
-          <ColorRow
+          <LinkedColorRow
             label={m["image_export.vector_by_walls.floor_color"]()}
             color={settings.floorColor}
             onChange={setFloorColor}
             defaultColor={D.floorColor}
             fieldName={PC.tilesFloor.name()}
             priorityColors={[wall]}
+            linkTarget="floorColor"
           />
-          <ToggleRow
+          <LinkedToggleRow
             label={m["image_export.vector_by_walls.random_wall_colors"]()}
             checked={settings.randomWallColorMode !== "off"}
             onChange={(enabled) => setRandomWallColorMode(enabled ? "per_pass" : "off")}
+            linkTarget={null}
+            unsupportedHint={m["link_status.unsupported_hint_random_wall_colors"]()}
           />
           {settings.randomWallColorMode === "off" ? (
-            <ColorRow
+            <LinkedColorRow
               label={m["image_export.vector_by_walls.wall_color"]()}
               color={settings.wallColor}
               onChange={setWallColor}
               defaultColor={D.wallColor}
               fieldName={PC.tilesWall.name()}
               priorityColors={[floor, background]}
+              linkTarget="wallColor"
             />
           ) : (
-            <SelectRow
+            <LinkedSelectRow
               label={m["image_export.vector_by_walls.random_wall_color_mode"]()}
               value={settings.randomWallColorMode}
               options={[
@@ -384,9 +389,10 @@ export function VectorByWallsSettingsPanel() {
                 { value: "per_segment" as RandomWallColorMode, label: m["image_export.vector_by_walls.random_wall_colors_per_pass"]() },
               ]}
               onChange={setRandomWallColorMode}
+              linkTarget={null}
             />
           )}
-          <SelectRow
+          <LinkedSelectRow
             label={m["image_export.vector_by_walls.wall_join"]()}
             value={settings.wallJoin}
             options={[
@@ -394,9 +400,9 @@ export function VectorByWallsSettingsPanel() {
               { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
             ]}
             onChange={setWallJoin}
-            resetButton={sharedStyleFieldReset(settings.links, "wallJoin", () => resetSharedStyleField("wallJoin"))}
+            linkTarget="wallJoin"
           />
-          <SliderRow
+          <LinkedSliderRow
             label={m["image_export.vector_by_walls.wall_thickness"]()}
             value={settings.wallThickness}
             onChange={setWallThickness}
@@ -404,6 +410,7 @@ export function VectorByWallsSettingsPanel() {
             max={20}
             step={1}
             format={(v) => String(v)}
+            linkTarget="wallThickness"
           />
         </div>
       )}
@@ -437,11 +444,14 @@ export function VectorByWallsSettingsPanel() {
               if (patch.gapWidth !== undefined) setStartMarkerGapWidth(patch.gapWidth);
               if (patch.size !== undefined) setStartMarkerSize(patch.size);
             }}
-            resetButtons={{
-              cornerStyle: sharedStyleFieldReset(settings.links, "startMarker.cornerStyle", () => resetSharedStyleField("startMarker.cornerStyle")),
-              size: sharedStyleFieldReset(settings.links, "startMarker.size", () => resetSharedStyleField("startMarker.size")),
-              borderWidth: sharedStyleFieldReset(settings.links, "startMarker.borderWidth", () => resetSharedStyleField("startMarker.borderWidth")),
-              gapWidth: sharedStyleFieldReset(settings.links, "startMarker.gapWidth", () => resetSharedStyleField("startMarker.gapWidth")),
+            linkTargets={{
+              shape: "startMarker.shape",
+              cornerStyle: "startMarker.cornerStyle",
+              size: "startMarker.size",
+              fillColor: "startMarker.fillColor",
+              borderColor: "startMarker.borderColor",
+              borderWidth: "startMarker.borderWidth",
+              gapWidth: "startMarker.gapWidth",
             }}
           />
           <MarkerSettingsGroup
@@ -459,11 +469,14 @@ export function VectorByWallsSettingsPanel() {
               if (patch.gapWidth !== undefined) setFinishMarkerGapWidth(patch.gapWidth);
               if (patch.size !== undefined) setFinishMarkerSize(patch.size);
             }}
-            resetButtons={{
-              cornerStyle: sharedStyleFieldReset(settings.links, "finishMarker.cornerStyle", () => resetSharedStyleField("finishMarker.cornerStyle")),
-              size: sharedStyleFieldReset(settings.links, "finishMarker.size", () => resetSharedStyleField("finishMarker.size")),
-              borderWidth: sharedStyleFieldReset(settings.links, "finishMarker.borderWidth", () => resetSharedStyleField("finishMarker.borderWidth")),
-              gapWidth: sharedStyleFieldReset(settings.links, "finishMarker.gapWidth", () => resetSharedStyleField("finishMarker.gapWidth")),
+            linkTargets={{
+              shape: "finishMarker.shape",
+              cornerStyle: "finishMarker.cornerStyle",
+              size: "finishMarker.size",
+              fillColor: "finishMarker.fillColor",
+              borderColor: "finishMarker.borderColor",
+              borderWidth: "finishMarker.borderWidth",
+              gapWidth: "finishMarker.gapWidth",
             }}
           />
         </div>
@@ -481,7 +494,7 @@ export function VectorByWallsSettingsPanel() {
           />
           {isExpanded("one_ways") && (
             <div style={styles.block}>
-              <SelectRow
+              <LinkedSelectRow
                 label={m["image_export.vector_by_walls.one_way_pattern"]()}
                 value={settings.oneWayPattern}
                 options={[
@@ -490,16 +503,18 @@ export function VectorByWallsSettingsPanel() {
                   { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
                 ]}
                 onChange={setOneWayPattern}
+                linkTarget={null}
               />
-              <ColorRow
+              <LinkedColorRow
                 label={m["image_export.vector_by_walls.one_way_color"]()}
                 color={settings.oneWayColor}
                 onChange={setOneWayColor}
                 defaultColor={D.oneWayColor}
                 fieldName={PC.oneWaysMarker.name()}
                 priorityColors={[floor, wall]}
+                linkTarget="oneWayColor"
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.one_way_gap_width"]()}
                 value={settings.oneWayGapWidth}
                 onChange={setOneWayGapWidth}
@@ -507,8 +522,9 @@ export function VectorByWallsSettingsPanel() {
                 max={10}
                 step={1}
                 format={(v) => String(v)}
+                linkTarget="oneWayGapWidth"
               />
-              <SelectRow
+              <LinkedSelectRow
                 label={m["image_export.vector_by_walls.one_way_join"]()}
                 value={settings.oneWayJoin}
                 options={[
@@ -516,9 +532,9 @@ export function VectorByWallsSettingsPanel() {
                   { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                 ]}
                 onChange={setOneWayJoin}
-                resetButton={sharedStyleFieldReset(settings.links, "oneWayJoin", () => resetSharedStyleField("oneWayJoin"))}
+                linkTarget="oneWayJoin"
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.one_way_size"]()}
                 value={settings.oneWaySize}
                 onChange={setOneWaySize}
@@ -526,8 +542,9 @@ export function VectorByWallsSettingsPanel() {
                 max={0.5}
                 step={0.01}
                 format={(v) => v.toFixed(2)}
+                linkTarget="oneWaySize"
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.one_way_thickness"]()}
                 value={settings.oneWayThickness}
                 onChange={setOneWayThickness}
@@ -535,6 +552,7 @@ export function VectorByWallsSettingsPanel() {
                 max={10}
                 step={1}
                 format={(v) => String(v)}
+                linkTarget="oneWayThickness"
               />
             </div>
           )}
@@ -559,12 +577,31 @@ export function VectorByWallsSettingsPanel() {
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
               hasCrossFloorTeleports={hasCrossFloorTeleports}
-              resetButtons={{
-                lineCornerStyle: sharedStyleFieldReset(settings.links, "teleportLineCornerStyle", () => resetSharedStyleField("teleportLineCornerStyle")),
-                lineSize: sharedStyleFieldReset(settings.links, "teleportLineSize", () => resetSharedStyleField("teleportLineSize")),
-                edgeBorderWidth: sharedStyleFieldReset(settings.links, "teleportEdgeBorderWidth", () => resetSharedStyleField("teleportEdgeBorderWidth")),
-                edgeGapWidth: sharedStyleFieldReset(settings.links, "teleportEdgeGapWidth", () => resetSharedStyleField("teleportEdgeGapWidth")),
-                connectorGapWidth: sharedStyleFieldReset(settings.links, "teleportConnectorGapWidth", () => resetSharedStyleField("teleportConnectorGapWidth")),
+              linkTargets={{
+                lineCornerStyle: "teleportLineCornerStyle",
+                lineShape: "teleportLineShape",
+                lineSize: "teleportLineSize",
+                edgeColor: "teleportEdgeColor",
+                edgeBorderColor: "teleportEdgeBorderColor",
+                edgeBorderWidth: "teleportEdgeBorderWidth",
+                edgeGapWidth: "teleportEdgeGapWidth",
+                connectorStyle: null,
+                avoidFieldExit: "teleportAvoidFieldExit",
+                connectorColor: "teleportConnectorColor",
+                connectorWidth: null,
+                connectorGapWidth: "teleportConnectorGapWidth",
+                arrowMode: null,
+                arrowPeriod: null,
+                arrowSize: null,
+                floorBadgeShape: "teleportFloorBadge.shape",
+                floorBadgeLabelType: "teleportFloorBadge.labelType",
+                floorBadgeSize: null,
+                floorBadgeFillColor: "teleportFloorBadge.fillColor",
+                floorBadgeBorderColor: "teleportFloorBadge.borderColor",
+                floorBadgeTextColor: "teleportFloorBadge.textColor",
+                floorBadgeBorderWidth: null,
+                floorBadgeTextPadding: null,
+                groupCustomization: "teleportGroupCustomization",
               }}
               edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
               edgeBorderColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
@@ -600,7 +637,7 @@ export function VectorByWallsSettingsPanel() {
           />
           {isExpanded("vertical") && (
             <div style={styles.block}>
-              <SelectRow
+              <LinkedSelectRow
                 label={m["image_export.vector_by_walls.vertical_style"]()}
                 value={settings.verticalStyle}
                 options={[
@@ -608,11 +645,13 @@ export function VectorByWallsSettingsPanel() {
                   { value: "decorative", label: m["image_export.vector_by_walls.vertical_style_decorative"]() },
                 ]}
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
+                linkTarget={null}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
                 checked={settings.replaceTwoFloorElevatorsWithStairs}
                 onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
+                linkTarget="replaceTwoFloorElevatorsWithStairs"
               />
 
               {settings.verticalStyle === "decorative" && (
@@ -623,6 +662,7 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsTwoWay}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeStairsTwoWay", patch)}
+                      linkTargets={{ lineColor: "decorativeStairsTwoWay.lineColor", lineWidth: "decorativeStairsTwoWay.lineWidth", size: "decorativeStairsTwoWay.size" }}
                       lineColorPriority={onFloor}
                       lineColorDefault={D.decorativeStairsTwoWay.lineColor}
                       lineColorFieldName={PC.decorLineTwoWay.name()}
@@ -630,15 +670,16 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.decorativeStairsArrowColor}
                           onChange={(decorativeStairsArrowColor) => patchVerticalSettings({ decorativeStairsArrowColor })}
                           priorityColors={[PC.decorLineTwoWay.at(settings.decorativeStairsTwoWay.lineColor), floor]}
                           defaultColor={D.decorativeStairsArrowColor}
                           fieldName={PC.decorArrowTwoWay.name()}
+                          linkTarget="decorativeStairsArrowColor"
                         />
-                        <SliderRow
+                        <LinkedSliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
                           value={settings.decorativeStairsArrowSize}
                           onChange={(decorativeStairsArrowSize) => patchVerticalSettings({ decorativeStairsArrowSize })}
@@ -646,6 +687,7 @@ export function VectorByWallsSettingsPanel() {
                           max={1}
                           step={0.05}
                           format={(v) => v.toFixed(2)}
+                          linkTarget="decorativeStairsArrowSize"
                         />
                       </div>
                     </div>
@@ -662,6 +704,7 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsOneWay}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeStairsOneWay", patch)}
+                      linkTargets={{ lineColor: "decorativeStairsOneWay.lineColor", lineWidth: "decorativeStairsOneWay.lineWidth", size: "decorativeStairsOneWay.size" }}
                       lineColorPriority={onFloor}
                       lineColorDefault={D.decorativeStairsOneWay.lineColor}
                       lineColorFieldName={PC.decorLineOneWay.name()}
@@ -669,15 +712,16 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.decorativeStairsOneWayArrowColor}
                           onChange={(decorativeStairsOneWayArrowColor) => patchVerticalSettings({ decorativeStairsOneWayArrowColor })}
                           priorityColors={[PC.decorLineOneWay.at(settings.decorativeStairsOneWay.lineColor), floor]}
                           defaultColor={D.decorativeStairsOneWayArrowColor}
                           fieldName={PC.decorArrowOneWay.name()}
+                          linkTarget="decorativeStairsOneWayArrowColor"
                         />
-                        <SliderRow
+                        <LinkedSliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
                           value={settings.decorativeStairsOneWayArrowSize}
                           onChange={(decorativeStairsOneWayArrowSize) => patchVerticalSettings({ decorativeStairsOneWayArrowSize })}
@@ -685,6 +729,7 @@ export function VectorByWallsSettingsPanel() {
                           max={1}
                           step={0.05}
                           format={(v) => v.toFixed(2)}
+                          linkTarget="decorativeStairsOneWayArrowSize"
                         />
                       </div>
                     </div>
@@ -701,17 +746,30 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeElevator}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeElevator", patch)}
+                      linkTargets={{ lineColor: "decorativeElevator.lineColor", lineWidth: "decorativeElevator.lineWidth", size: "decorativeElevator.size" }}
                       lineColorPriority={onFloor}
                       lineColorDefault={D.decorativeElevator.lineColor}
                       lineColorFieldName={PC.decorLineElevator.name()}
                     />
                     <ElevatorBadgesSubsection
                       settings={settings.elevatorBadges}
-                      links={settings.links}
-                      cornerStyleTarget="elevatorBadges.cornerStyle"
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
-                      onResetCornerStyle={() => resetSharedStyleField("elevatorBadges.cornerStyle")}
+                      linkTargets={{
+                        enabled: "elevatorBadges.enabled",
+                        labelType: "elevatorBadges.labelType",
+                        fontWeight: "elevatorBadges.fontWeight",
+                        placement: null,
+                        shape: "elevatorBadges.shape",
+                        cornerStyle: "elevatorBadges.cornerStyle",
+                        size: "elevatorBadges.size",
+                        distance: "elevatorBadges.distance",
+                        evenDistribution: "elevatorBadges.evenDistribution",
+                        gap: "elevatorBadges.gap",
+                        gapWidth: "elevatorBadges.gapWidth",
+                        fillColor: "elevatorBadges.fillColor",
+                        textColor: "elevatorBadges.textColor",
+                      }}
                       fillColorPriority={badgeFillPriority}
                       textColorPriority={badgeTextPriority}
                       fillColorDefault={D.elevatorBadges.fillColor}
@@ -753,11 +811,14 @@ export function VectorByWallsSettingsPanel() {
                             if (patch.gapWidth !== undefined) setTwoWayPassageMarkerGapWidth(patch.gapWidth);
                             if (patch.size !== undefined) setTwoWayPassageMarkerSize(patch.size);
                           }}
-                          resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.cornerStyle", () => resetSharedStyleField("twoWayPassageMarker.cornerStyle")),
-                            size: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.size", () => resetSharedStyleField("twoWayPassageMarker.size")),
-                            borderWidth: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.borderWidth", () => resetSharedStyleField("twoWayPassageMarker.borderWidth")),
-                            gapWidth: sharedStyleFieldReset(settings.links, "twoWayPassageMarker.gapWidth", () => resetSharedStyleField("twoWayPassageMarker.gapWidth")),
+                          linkTargets={{
+                            shape: "twoWayPassageMarker.shape",
+                            cornerStyle: "twoWayPassageMarker.cornerStyle",
+                            size: "twoWayPassageMarker.size",
+                            fillColor: "twoWayPassageMarker.fillColor",
+                            borderColor: "twoWayPassageMarker.borderColor",
+                            borderWidth: "twoWayPassageMarker.borderWidth",
+                            gapWidth: "twoWayPassageMarker.gapWidth",
                           }}
                         />
                       </div>
@@ -766,15 +827,16 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.twoWayArrowColor}
                           onChange={(twoWayArrowColor) => patchVerticalSettings({ twoWayArrowColor })}
                           priorityColors={[PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor), PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor), ...vOneWay, ...vElevator, ...vTailBg]}
                           defaultColor={D.twoWayArrowColor}
                           fieldName={PC.twoWayArrow.name()}
+                          linkTarget="twoWayArrowColor"
                         />
-                        <SliderRow
+                        <LinkedSliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
                           value={settings.twoWayArrowSize}
                           onChange={(twoWayArrowSize) => patchVerticalSettings({ twoWayArrowSize })}
@@ -782,8 +844,9 @@ export function VectorByWallsSettingsPanel() {
                           max={1}
                           step={0.05}
                           format={(v) => v.toFixed(2)}
+                          linkTarget="twoWayArrowSize"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.twoWayArrowStyle}
                           options={[
@@ -793,8 +856,9 @@ export function VectorByWallsSettingsPanel() {
                             { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(twoWayArrowStyle) => patchVerticalSettings({ twoWayArrowStyle })}
+                          linkTarget="twoWayArrowStyle"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
                           value={settings.twoWayArrowCornerStyle}
                           options={[
@@ -802,6 +866,7 @@ export function VectorByWallsSettingsPanel() {
                             { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                           ]}
                           onChange={(twoWayArrowCornerStyle) => patchVerticalSettings({ twoWayArrowCornerStyle })}
+                          linkTarget="twoWayArrowCornerStyle"
                         />
                       </div>
                     </div>
@@ -818,13 +883,14 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.one_way_accent_color"]()}
                           color={settings.oneWayAccentColor}
                           onChange={(oneWayAccentColor) => patchVerticalSettings({ oneWayAccentColor })}
                           priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail]}
                           defaultColor={D.oneWayAccentColor}
                           fieldName={PC.oneWayAccent.name()}
+                          linkTarget="oneWayAccentColor"
                         />
                         <MarkerSettingsGroup
                           title=""
@@ -842,11 +908,14 @@ export function VectorByWallsSettingsPanel() {
                             if (patch.gapWidth !== undefined) setOneWayPassageMarkerGapWidth(patch.gapWidth);
                             if (patch.size !== undefined) setOneWayPassageMarkerSize(patch.size);
                           }}
-                          resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.cornerStyle", () => resetSharedStyleField("oneWayPassageMarker.cornerStyle")),
-                            size: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.size", () => resetSharedStyleField("oneWayPassageMarker.size")),
-                            borderWidth: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.borderWidth", () => resetSharedStyleField("oneWayPassageMarker.borderWidth")),
-                            gapWidth: sharedStyleFieldReset(settings.links, "oneWayPassageMarker.gapWidth", () => resetSharedStyleField("oneWayPassageMarker.gapWidth")),
+                          linkTargets={{
+                            shape: "oneWayPassageMarker.shape",
+                            cornerStyle: "oneWayPassageMarker.cornerStyle",
+                            size: "oneWayPassageMarker.size",
+                            fillColor: "oneWayPassageMarker.fillColor",
+                            borderColor: "oneWayPassageMarker.borderColor",
+                            borderWidth: "oneWayPassageMarker.borderWidth",
+                            gapWidth: "oneWayPassageMarker.gapWidth",
                           }}
                         />
                       </div>
@@ -855,15 +924,16 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.oneWayArrowColor}
                           onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
                           priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayAccent.at(settings.oneWayAccentColor), ...vTwoWay, ...vElevator, ...vTailBg]}
                           defaultColor={D.oneWayArrowColor}
                           fieldName={PC.oneWayArrow.name()}
+                          linkTarget="oneWayArrowColor"
                         />
-                        <SliderRow
+                        <LinkedSliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
                           value={settings.oneWayArrowSize}
                           onChange={(oneWayArrowSize) => patchVerticalSettings({ oneWayArrowSize })}
@@ -871,8 +941,9 @@ export function VectorByWallsSettingsPanel() {
                           max={1}
                           step={0.05}
                           format={(v) => v.toFixed(2)}
+                          linkTarget="oneWayArrowSize"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.oneWayArrowStyle}
                           options={[
@@ -882,8 +953,9 @@ export function VectorByWallsSettingsPanel() {
                             { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(oneWayArrowStyle) => patchVerticalSettings({ oneWayArrowStyle })}
+                          linkTarget="oneWayArrowStyle"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
                           value={settings.oneWayArrowCornerStyle}
                           options={[
@@ -891,6 +963,7 @@ export function VectorByWallsSettingsPanel() {
                             { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                           ]}
                           onChange={(oneWayArrowCornerStyle) => patchVerticalSettings({ oneWayArrowCornerStyle })}
+                          linkTarget="oneWayArrowCornerStyle"
                         />
                       </div>
                     </div>
@@ -928,11 +1001,14 @@ export function VectorByWallsSettingsPanel() {
                             if (patch.gapWidth !== undefined) setElevatorMarkerGapWidth(patch.gapWidth);
                             if (patch.size !== undefined) setElevatorMarkerSize(patch.size);
                           }}
-                          resetButtons={{
-                            cornerStyle: sharedStyleFieldReset(settings.links, "elevatorMarker.cornerStyle", () => resetSharedStyleField("elevatorMarker.cornerStyle")),
-                            size: sharedStyleFieldReset(settings.links, "elevatorMarker.size", () => resetSharedStyleField("elevatorMarker.size")),
-                            borderWidth: sharedStyleFieldReset(settings.links, "elevatorMarker.borderWidth", () => resetSharedStyleField("elevatorMarker.borderWidth")),
-                            gapWidth: sharedStyleFieldReset(settings.links, "elevatorMarker.gapWidth", () => resetSharedStyleField("elevatorMarker.gapWidth")),
+                          linkTargets={{
+                            shape: "elevatorMarker.shape",
+                            cornerStyle: "elevatorMarker.cornerStyle",
+                            size: "elevatorMarker.size",
+                            fillColor: "elevatorMarker.fillColor",
+                            borderColor: "elevatorMarker.borderColor",
+                            borderWidth: "elevatorMarker.borderWidth",
+                            gapWidth: "elevatorMarker.gapWidth",
                           }}
                         />
                       </div>
@@ -941,15 +1017,16 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
-                        <ColorRow
+                        <LinkedColorRow
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.elevatorArrowColor}
                           onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
                           priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
                           defaultColor={D.elevatorArrowColor}
                           fieldName={PC.elevatorArrow.name()}
+                          linkTarget="elevatorArrowColor"
                         />
-                        <SliderRow
+                        <LinkedSliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
                           value={settings.elevatorArrowSize}
                           onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
@@ -957,8 +1034,9 @@ export function VectorByWallsSettingsPanel() {
                           max={1}
                           step={0.05}
                           format={(v) => v.toFixed(2)}
+                          linkTarget="elevatorArrowSize"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.elevatorArrowStyle}
                           options={[
@@ -968,8 +1046,9 @@ export function VectorByWallsSettingsPanel() {
                             { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
+                          linkTarget="elevatorArrowStyle"
                         />
-                        <SelectRow
+                        <LinkedSelectRow
                           label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
                           value={settings.elevatorArrowCornerStyle}
                           options={[
@@ -977,17 +1056,30 @@ export function VectorByWallsSettingsPanel() {
                             { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                           ]}
                           onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
+                          linkTarget="elevatorArrowCornerStyle"
                         />
                       </div>
                     </div>
 
                     <ElevatorBadgesSubsection
                       settings={settings.elevatorBadges}
-                      links={settings.links}
-                      cornerStyleTarget="elevatorBadges.cornerStyle"
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
-                      onResetCornerStyle={() => resetSharedStyleField("elevatorBadges.cornerStyle")}
+                      linkTargets={{
+                        enabled: "elevatorBadges.enabled",
+                        labelType: "elevatorBadges.labelType",
+                        fontWeight: "elevatorBadges.fontWeight",
+                        placement: null,
+                        shape: "elevatorBadges.shape",
+                        cornerStyle: "elevatorBadges.cornerStyle",
+                        size: "elevatorBadges.size",
+                        distance: "elevatorBadges.distance",
+                        evenDistribution: "elevatorBadges.evenDistribution",
+                        gap: "elevatorBadges.gap",
+                        gapWidth: "elevatorBadges.gapWidth",
+                        fillColor: "elevatorBadges.fillColor",
+                        textColor: "elevatorBadges.textColor",
+                      }}
                       fillColorPriority={badgeFillPriority}
                       textColorPriority={badgeTextPriority}
                       fillColorDefault={D.elevatorBadges.fillColor}
@@ -1018,7 +1110,7 @@ export function VectorByWallsSettingsPanel() {
               {Array.from({ length: maxSplit }, (_, i) => {
                 const slotColor = (j: number) => settings.splitNodeColors[j] ?? splitSlotColor(j, canvas.node.splitSlots);
                 return (
-                <ColorRow
+                <LinkedColorRow
                   key={i}
                   label={m["image_export.vector_by_walls.split_node_color"]({ index: String(i + 1) })}
                   color={slotColor(i)}
@@ -1032,13 +1124,15 @@ export function VectorByWallsSettingsPanel() {
                     floor,
                     wall,
                   ]}
+                  linkTarget={null}
                 />
                 );
               })}
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.split_special_shapes"]()}
                 checked={settings.splitSpecialShapes}
                 onChange={setSplitSpecialShapes}
+                linkTarget="splitSpecialShapes"
               />
             </div>
           )}
@@ -1056,7 +1150,26 @@ export function VectorByWallsSettingsPanel() {
         <MarkerIndexSection
           settings={settings.markerIndex}
           onChange={patchMarkerIndex}
-          gapResetButton={sharedStyleFieldReset(settings.links, "markerIndex.gap", () => resetSharedStyleField("markerIndex.gap"))}
+          linkTargets={{
+            enabled: "markerIndex.enabled",
+            coverageSingleFloorTeleport: "markerIndex.coverage.singleFloorTeleport",
+            coverageCrossFloorTeleport: "markerIndex.coverage.crossFloorTeleport",
+            coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
+            coverageElevator: "markerIndex.coverage.elevator",
+            labelStyle: "markerIndex.labelStyle",
+            fontWeight: "markerIndex.fontWeight",
+            paddingX: "markerIndex.paddingX",
+            height: "markerIndex.height",
+            offset: "markerIndex.offset",
+            cornerRadius: "markerIndex.cornerRadius",
+            gap: "markerIndex.gap",
+            borderWidthFromMarker: "markerIndex.borderWidthFromMarker",
+            borderWidth: "markerIndex.borderWidth",
+            fillColor: "markerIndex.fillColor",
+            textColor: "markerIndex.textColor",
+            borderColorFromMarker: "markerIndex.borderColorFromMarker",
+            borderColor: "markerIndex.borderColor",
+          }}
           fillColorPriority={[PC.markerIndexText.at(settings.markerIndex.textColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), floor, background]}
           textColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), floor, background]}
           borderColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexText.at(settings.markerIndex.textColor), floor]}
@@ -1070,6 +1183,7 @@ export function VectorByWallsSettingsPanel() {
       )}
 
     </div>
+    </LinkContextProvider>
   );
 }
 

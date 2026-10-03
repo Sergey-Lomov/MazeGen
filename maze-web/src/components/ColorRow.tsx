@@ -8,8 +8,8 @@ import { Inline } from "./Layout";
  *  shape so a color param and a toggle param line up identically in the same settings list. */
 export function ColorRow({ label, color, onChange, disabled, resetButton, priorityColors, defaultColor, fieldName }: {
   label: string; color: number; onChange: (color: number) => void; disabled?: boolean;
-  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
-   *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
+   *  label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
   /** "Priority" project colors (GitHub issue #503) pinned to the top of the picker's "Project
    *  colors" section — sibling colors that matter for this particular decision, chosen by the call

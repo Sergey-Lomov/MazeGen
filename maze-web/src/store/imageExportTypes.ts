@@ -8,6 +8,10 @@ import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "./param
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
 export type RenderModeId = "vector_by_walls" | "vector_by_corridors";
 
+/** Visibility policy for the per-field `LinkStatusIcon` (GitHub issue #652 follow-up) — see
+ * `ImageExportState.linkIconVisibility`'s own doc comment. */
+export type LinkIconVisibility = "always" | "linked" | "never";
+
 /** Registry id of a maze image-export output format (see `exportFormatRegistry.ts`) — one entry
  * per row in the Image Export feature card's format list, below the render-mode switcher. */
 export type ExportFormatId = "png";
@@ -682,6 +686,13 @@ export interface ImageExportState {
   vectorByWallsSectionsExpanded: Record<string, boolean>;
   /** Whether color-contrast warnings are included in the export problems list. */
   showColorWarnings: boolean;
+  /** Visibility policy for the per-field `LinkStatusIcon` (GitHub issue #652 follow-up) — a single
+   *  switch shared by both render modes' "Shared style" section, not a per-mode setting, since the
+   *  icon's own meaning is identical everywhere it appears. `"always"` shows it on every linkable
+   *  field, `"linked"` only on a field that currently has an incoming and/or outgoing link,
+   *  `"never"` hides it everywhere (the old reset-only behavior is gone — hiding the icon just
+   *  removes the entry point, it does not disable the underlying link mechanism). */
+  linkIconVisibility: LinkIconVisibility;
   vectorByWallsSettings: VectorByWallsSettings;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
@@ -742,6 +753,7 @@ export interface ImageExportActions {
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowColorWarnings: (show: boolean) => void;
+  setLinkIconVisibility: (v: LinkIconVisibility) => void;
   setVectorByCorridorsBackground: (color: number) => void;
   setVectorByCorridorsShowGrid: (v: boolean) => void;
   setVectorByCorridorsGridColor: (color: number) => void;

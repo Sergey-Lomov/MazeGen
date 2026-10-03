@@ -111,6 +111,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
     showColorWarnings: true,
+    linkIconVisibility: "linked",
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -134,6 +135,22 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
     delete raw.imageExport.showColorWarnings;
     expect(parseAndValidate(raw).imageExport.showColorWarnings).toBe(true);
+  });
+
+  it("round-trips a non-default linkIconVisibility (GitHub issue #652 follow-up)", () => {
+    const state = makeState({ linkIconVisibility: "always" });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.imageExport.linkIconVisibility).toBe("always");
+  });
+
+  it("falls back to 'linked' for a missing or unknown linkIconVisibility", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport.linkIconVisibility;
+    expect(parseAndValidate(raw).imageExport.linkIconVisibility).toBe("linked");
+
+    raw.imageExport.linkIconVisibility = "not_a_real_value";
+    expect(parseAndValidate(raw).imageExport.linkIconVisibility).toBe("linked");
   });
 
   it("round-trips explicitly disabled repair limits (both null), not the default", () => {
@@ -652,6 +669,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     activeRenderMode: null,
     openRenderModeSettings: null,
       showColorWarnings: true,
+      linkIconVisibility: "linked",
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -787,6 +805,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       activeRenderMode: null,
       openRenderModeSettings: null,
       showColorWarnings: true,
+      linkIconVisibility: "linked",
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,

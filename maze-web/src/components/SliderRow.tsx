@@ -13,9 +13,8 @@ interface Props {
   /** Value display formatter. Defaults to `toFixed(2)`, matching the default 0..1/0.01 range. */
   format?: (v: number) => string;
   disabled?: boolean;
-  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
-   *  `OverrideResetButton`) — shrinks the slider's own `flex: 1` track, never the label, per that
-   *  issue's own spec. */
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — shrinks
+   *  the slider's own `flex: 1` track, never the label, per that issue's own spec. */
   resetButton?: React.ReactNode;
 }
 

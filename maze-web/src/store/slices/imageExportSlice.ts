@@ -32,6 +32,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
+  linkIconVisibility: "linked",
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -111,6 +112,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   setVectorByCorridorsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
   setShowColorWarnings: (show) => set({ showColorWarnings: show, hoveredExportWarningKey: null }),
+  setLinkIconVisibility: (v) => set({ linkIconVisibility: v }),
   setVectorByCorridorsBackground: (color) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "background", false);

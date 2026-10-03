@@ -4,7 +4,7 @@ import {
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
-import type { RenderModeId } from "../mazeStore";
+import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -419,6 +419,15 @@ export function optRenderModeId(obj: Record<string, unknown> | null, key: string
   return typeof v === "string" && (KNOWN_RENDER_MODE_IDS as readonly string[]).includes(v) ? (v as RenderModeId) : null;
 }
 
+export const KNOWN_LINK_ICON_VISIBILITIES: LinkIconVisibility[] = ["always", "linked", "never"];
+
+/** Degrades to `fallback` for an unknown/future `LinkIconVisibility` (GitHub issue #652 follow-up)
+ * — same "never throw" convention `optRenderModeId` itself uses. */
+export function optLinkIconVisibility(obj: Record<string, unknown> | null, key: string, fallback: LinkIconVisibility): LinkIconVisibility {
+  const v = obj?.[key];
+  return typeof v === "string" && (KNOWN_LINK_ICON_VISIBILITIES as readonly string[]).includes(v) ? (v as LinkIconVisibility) : fallback;
+}
+
 export const KNOWN_OUTPUT_MODES: PngExportOutputMode[] = ["digital", "print"];
 export const KNOWN_CANVAS_MODES: PngCanvasMode[] = ["edge_to_edge", "margin_px", "margin_cells", "fixed_size"];
 export const KNOWN_PRINT_DENSITIES: PrintDensity[] = ["screen_96", "draft_150", "print_300", "high_600"];
@@ -556,6 +565,7 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
       : {},
     showColorWarnings: optBool(obj, "showColorWarnings", true),
+    linkIconVisibility: optLinkIconVisibility(obj, "linkIconVisibility", "linked"),
     vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`, vectorByCorridorsLinks),
     vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)

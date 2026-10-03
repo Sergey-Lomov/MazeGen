@@ -2,7 +2,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { FeatureId, RenderModeId } from "../mazeStore";
+import type { FeatureId, RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
 import type { ParamLink } from "../parameterLinks";
@@ -62,6 +62,8 @@ export interface ProjectFileImageExport {
    * mirrors `analytics.sectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
   showColorWarnings: boolean;
+  /** GitHub issue #652 follow-up — see `ImageExportState.linkIconVisibility`'s own doc comment. */
+  linkIconVisibility: LinkIconVisibility;
   vectorByCorridorsSettings: VectorByCorridorsSettings;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
