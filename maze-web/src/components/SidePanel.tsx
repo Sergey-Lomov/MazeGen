@@ -311,6 +311,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.panelAlt,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
+    position: "relative",
+    zIndex: 1,
   },
   headerText: {
     display: "flex",
@@ -351,5 +353,7 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflowY: "auto",
     overflowX: "hidden",
+    position: "relative",
+    zIndex: 0,
   },
 };

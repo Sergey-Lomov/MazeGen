@@ -8,6 +8,14 @@ export function isPresetLockTool(tool: PresetConnectionTool): boolean {
   return tool === "lock_in" || tool === "lock_out" || tool === "full_lock";
 }
 
+export type PresetEntityHighlightMode = "inset" | "outset";
+
+export interface PresetHoveredLink {
+  from: PresetEndpoint;
+  to: PresetEndpoint;
+  highlightStyle?: "line" | "one_way" | "boundary";
+}
+
 export interface PresetConnectionsState {
   /** Every preset connection across every floor, in one flat map (GitHub issue #340) — an entry's
    * floor lives in its own `from.level`/`to.level` (`PresetEndpoint.level`, undefined = floor 0),
@@ -82,6 +90,11 @@ export interface PresetConnectionsState {
   /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y[:level]"
    * (GitHub issue #231) — mirrors post-edit's `postEditDraftSplitPoints`. */
   presetSplitPoints: Record<string, number[]>;
+  /** Stable post-edit-style ids for whole split tiles (`s1`, `s2`, ...). */
+  presetSplitPointIds: Record<string, string>;
+  _nextPresetSplitPointId: number;
+  /** Creation order of user-authored preset entities, stored by list cell key. */
+  presetEntityOrder: string[];
   /** Which of a split point's nodes preset edge-tool clicks currently target, keyed by
    * "x,y[:level]". No entry means the point's original node. Mirrors post-edit's
    * `postEditActiveSplitNode`. */
@@ -92,9 +105,10 @@ export interface PresetConnectionsState {
    *  bubbles (GitHub issue #237) — `null` when nothing is hovered. Drives a canvas highlight the
    *  same way `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel
    *  instead of the cursor. */
-  presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null;
+  presetHoveredLink: PresetHoveredLink | null;
   /** Coordinate cells currently hovered in an Elements row. */
   presetHoveredEntity: PresetEndpoint[] | null;
+  presetHoveredEntityMode: PresetEntityHighlightMode;
   /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
    *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
    *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
@@ -206,6 +220,8 @@ export interface PresetConnectionsActions {
    * `state.presetConnectionsTool` — used by the "Manage split nodes" dialog's own kind switcher
    * (GitHub issue #234), which must not disturb the canvas's globally active edge tool. */
   applyPresetConnectionsToolAt: (tool: PresetConnectionTool, key: string, from: [number, number], to: [number, number]) => void;
+  /** Cycles a user-defined one-way edge between its forward and backward directions. */
+  cyclePresetConnectionDirection: (key: string) => void;
   /** Sets an edge to the client-only `"undefined"` state (explicit "preset allows but doesn't
    * force" — GitHub issue #234's "preset optional connection"). No `PresetConnectionTool` produces
    * this state; the "Manage split nodes" dialog also writes it directly for face editing. */
@@ -304,8 +320,8 @@ export interface PresetConnectionsActions {
   cyclePresetActiveSplitNode: (point: [number, number]) => void;
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
-  setPresetHoveredLink: (link: { from: PresetEndpoint; to: PresetEndpoint } | null) => void;
-  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null) => void;
+  setPresetHoveredLink: (link: PresetHoveredLink | null) => void;
+  setPresetHoveredEntity: (endpoints: PresetEndpoint[] | null, mode?: PresetEntityHighlightMode) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */

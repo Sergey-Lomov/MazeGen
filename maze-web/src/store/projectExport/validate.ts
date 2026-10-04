@@ -13,7 +13,7 @@ import { buildPredefinedConfig } from "../storeHelpers";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { FeatureId } from "../mazeStore";
 import {
-  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecordRecord, assertBoolRecord,
+  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertStringRecord, assertStringRecordRecord, assertBoolRecord,
   optBool, optNumber, optEnum, optSection, validateFloors, validateSplitGeneration, assertUniqueIds, validatePairArray,
 } from "./validatePrimitives";
 import {
@@ -168,6 +168,12 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   assertUniqueIds(elevators, (e) => e.id, "elevator id", "presets.elevators");
   // Optional — absent in project files saved before preset split points existed (GitHub issue #231).
   const presetSplitPoints = presetsObj.splitPoints != null ? validateSplitPoints(presetsObj.splitPoints, "presets.splitPoints") : {};
+  const presetSplitPointIds = presetsObj.splitPointIds != null
+    ? assertStringRecord(presetsObj.splitPointIds, "presets.splitPointIds")
+    : undefined;
+  const presetEntityOrder = presetsObj.entityOrder != null
+    ? assertArray(presetsObj.entityOrder, "presets.entityOrder").map((key, i) => assertString(key, `presets.entityOrder[${i}]`))
+    : undefined;
 
   // postEdit
   const postEdit = migrated.postEdit === null || migrated.postEdit === undefined
@@ -253,6 +259,8 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       verticalPassages,
       elevators,
       splitPoints: presetSplitPoints,
+      splitPointIds: presetSplitPointIds,
+      entityOrder: presetEntityOrder,
     },
     postEdit,
     dirtyFlags,

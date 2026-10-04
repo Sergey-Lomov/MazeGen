@@ -54,7 +54,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, {}, null, null, null, [], [], [], new Map(), new Set(["3,5"]),
     );
-    expect(result).toBe("x:3, y:5 | Lock (both)");
+    expect(result).toBe("x:3, y:5 | Lock (full)");
   });
 
   it("same-floor two-way teleport", () => {
@@ -179,7 +179,7 @@ describe("buildPresetCellInspection", () => {
       3, 5, 0, presetSplitPoints, presetEndpoint([3, 5], 0), null, null, teleports, [], [],
       locked, new Set(),
     );
-    expect(result).toBe("x:3, y:5 | [Node 1: Lock (both)] | [Node 2: Start; Teleport -> (7:2)]");
+    expect(result).toBe("x:3, y:5 | [Node 1: Lock (full)] | [Node 2: Start; Teleport -> (7:2)]");
   });
 
   it("split point: auto-lock (no manual entry) reported only on original node", () => {
@@ -187,7 +187,7 @@ describe("buildPresetCellInspection", () => {
     const result = buildPresetCellInspection(
       3, 5, 0, presetSplitPoints, null, null, null, [], [], [], new Map(), new Set(["3,5"]),
     );
-    expect(result).toBe("x:3, y:5 | [Node 1: Lock (both)] | [Node 2: empty]");
+    expect(result).toBe("x:3, y:5 | [Node 1: Lock (full)] | [Node 2: empty]");
   });
 
   it("split point ordering: original first, then ascending slotId", () => {
@@ -216,7 +216,7 @@ describe("buildPresetCellInspection", () => {
       expect(result).toBe("x:3, y:5 | [Узел 1: Источник генерации; Блокировка (выход)] | [Узел 2: пусто]");
       expect(result).not.toMatch(/Gen source|Lock|empty|Node|out/);
 
-      for (const [kind, label] of [["in", "вход"], ["out", "выход"], ["both", "оба"]] as const) {
+      for (const [kind, label] of [["in", "вход"], ["out", "выход"], ["both", "полная"]] as const) {
         const lockResult = buildPresetCellInspection(
           3, 5, 0, {}, null, null, null, [], [], [], new Map([["3,5", kind]]), new Set(),
         );

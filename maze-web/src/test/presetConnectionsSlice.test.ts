@@ -61,6 +61,20 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("passage");
   });
 
+  it("cyclePresetConnectionDirection flips a one-way edge without changing its endpoints", () => {
+    const from = presetEndpoint([0, 0]);
+    const to = presetEndpoint([1, 0]);
+    useMazeStore.setState({
+      presetConnections: new Map([["0,0-1,0", { from, to, state: "one_way_forward", source: "user" }]]),
+    });
+
+    useMazeStore.getState().cyclePresetConnectionDirection("0,0-1,0");
+
+    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toEqual({
+      from, to, state: "one_way_backward", source: "user",
+    });
+  });
+
   it("applyPresetConnectionsTool recomputes autoLockedNodes when fully surrounding a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
     setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
@@ -151,6 +165,27 @@ describe("mazeStore preset connections", () => {
     useMazeStore.setState({ lockedNodes: new Map([["5,5", "both"]]) });
     useMazeStore.getState().clearInvalidPresetConnections();
     expect(useMazeStore.getState().lockedNodes.size).toBe(0);
+  });
+
+  it("clearInvalidPresetConnections removes list metadata for invalid entities", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    useMazeStore.setState({
+      presetSplitPoints: { "99,99": [0] },
+      presetSplitPointIds: { "99,99": "s1" },
+      presetEntityOrder: ["split:99,99", "lock:99,99", "edge:5,5-6,5"],
+      lockedNodes: new Map([["99,99", "in"]]),
+      presetConnections: new Map([[
+        "5,5-6,5",
+        { from: presetEndpoint([5, 5]), to: presetEndpoint([6, 5]), state: "wall", source: "user" },
+      ]]),
+    });
+
+    useMazeStore.getState().clearInvalidPresetConnections();
+
+    const s = useMazeStore.getState();
+    expect(s.presetSplitPoints).toEqual({});
+    expect(s.presetSplitPointIds).toEqual({});
+    expect(s.presetEntityOrder).toEqual([]);
   });
 
   it("resetPresetConnections clears all preset state", () => {
@@ -446,6 +481,21 @@ describe("mazeStore preset connections", () => {
       expect(s.presetSplitPoints["0,0"]).toBeUndefined();
       expect(s.presetSplitPoints["2,2"]).toEqual([0]);
       expect(s.presetActiveSplitNode["0,0"]).toBeUndefined();
+    });
+
+    it("removes list order and split id metadata for cleared entities", () => {
+      useMazeStore.setState({
+        presetConnections: new Map([
+          ["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }],
+        ]),
+        presetSplitPoints: { "0,0": [0] },
+        presetSplitPointIds: { "0,0": "s1" },
+        presetEntityOrder: ["edge:0,0-1,0", "split:0,0"],
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.presetEntityOrder).toEqual([]);
+      expect(s.presetSplitPointIds).toEqual({});
     });
 
     it("clears presetStart/presetFinish/presetGenSource when they address the point", () => {

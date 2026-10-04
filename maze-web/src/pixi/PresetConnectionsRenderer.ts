@@ -5,7 +5,6 @@ import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
-import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { LockRenderer } from "./renderers/LockRenderer";
@@ -36,6 +35,10 @@ import {
 } from "./selectors/presetSelectors";
 import { presetEndpoint, withoutLevel, type PresetEndpoint } from "./presetEndpoint";
 import { canvas } from "./colorTokens";
+import { WALL_THICKNESS } from "./renderConstants";
+import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
+import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
+import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
 import { isPresetLockTool } from "../store/storeTypes";
@@ -68,6 +71,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly splitPanelTargetContainer: Container;
   private readonly teleportPreviewContainer: Container;
   private readonly linkHoverContainer: Container;
+  private readonly boundaryHover: Graphics;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -174,6 +178,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover      = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
+    this.boundaryHover = new Graphics();
+    this.linkHoverContainer.addChild(this.boundaryHover);
     this.entityHighlight = new RegionHighlightRenderer(this.entityHighlightContainer);
 
     this.root.visible = false;
@@ -288,7 +294,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (state.presetHoveredLink !== prev.presetHoveredLink) {
       this.redrawLinkHover(state);
     }
-    if (state.presetHoveredEntity !== prev.presetHoveredEntity) this.redrawEntityHighlight(state);
+    if (state.presetHoveredEntity !== prev.presetHoveredEntity || state.presetHoveredEntityMode !== prev.presetHoveredEntityMode) this.redrawEntityHighlight(state);
 
     if (
       state.presetConnectionsTool !== prev.presetConnectionsTool
@@ -445,16 +451,44 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private redrawEntityHighlight(state: MazeState): void {
     if (!this.cfg) return;
+    const activeLevel = activeFloorLevel(state) ?? 0;
     this.entityHighlight.render({
-      nodes: [], regionGroups: [], cells: (state.presetHoveredEntity ?? []).map((endpoint) => endpoint.point),
-      color: canvas.fieldEditor.hover, width: 0, alpha: 1, cfg: this.cfg, skipPerimeter: true,
+      // Match post-edit's point-bubble highlight: only the cells on the active floor are drawn.
+      // Preset endpoints are intentionally kept as endpoints in the store because their level is
+      // needed when a multi-floor bubble is hovered.
+      nodes: [], regionGroups: [],
+      cells: (state.presetHoveredEntity ?? [])
+        .filter((endpoint) => (endpoint.level ?? 0) === activeLevel)
+        .map((endpoint) => endpoint.point),
+      color: canvas.fieldEditor.hover, width: WALL_THICKNESS * 2, alpha: 1, cfg: this.cfg, skipPerimeter: true,
+      insetMode: state.presetHoveredEntityMode,
     });
   }
 
   private redrawLinkHover(state: MazeState): void {
     if (!this.cfg) return;
-    const highlights = buildLinkHoverHighlight(state.presetHoveredLink, this.cfg);
-    this.linkHover.render(highlights);
+    const link = state.presetHoveredLink;
+    this.boundaryHover.clear();
+    if (!link || !link.highlightStyle || link.highlightStyle === "line") {
+      this.linkHover.render(buildLinkHoverHighlight(link, this.cfg));
+      return;
+    }
+    this.linkHover.render([]);
+    const color = link.highlightStyle === "one_way" ? canvas.debug.refHighlight : canvas.fieldEditor.hover;
+    const span = link.highlightStyle === "one_way"
+      ? oneWayIndicatorSpan(DEFAULT_MAZE_RENDER_STYLE.oneWay)
+      : WALL_HIGHLIGHT_SPAN;
+    drawCellBoundaryHighlight(
+      this.boundaryHover,
+      link.from.point,
+      link.to.point,
+      this.cfg,
+      color,
+      0.25,
+      WALL_THICKNESS,
+      span,
+      getCellHighlightInset(),
+    );
   }
 
   private redrawOrigin(show: boolean): void {
@@ -642,6 +676,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.splitPanelTarget.render({ cells: [], color: canvas.fieldEditor.panelTarget, alpha: 0, inset: 0, borderWidth: 3 }, cfg);
     this.linkHover.clear();
+    this.boundaryHover.clear();
     this.entityHighlight.clear();
     this.teleportPreview.clear();
   }
@@ -666,6 +701,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHover.destroy();
     this.splitPanelTarget.destroy();
     this.linkHover.destroy();
+    this.boundaryHover.destroy();
     this.entityHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();

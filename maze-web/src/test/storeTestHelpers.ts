@@ -197,6 +197,12 @@ export function baseStoreState() {
     registryLoaded: false,
     availableChecks: [],
     availableStrategies: [],
+    presetSplitPointIds: {},
+    _nextPresetSplitPointId: 1,
+    presetEntityOrder: [],
+    presetHoveredLink: null,
+    presetHoveredEntity: null,
+    presetHoveredEntityMode: "inset" as const,
   };
 }
 

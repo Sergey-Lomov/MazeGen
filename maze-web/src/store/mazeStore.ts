@@ -75,6 +75,13 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
 
     // Recompute auto-locked nodes against the active floor's own field.
     const restoredPresetConnections = new Map(file.presets.connections);
+    const restoredSplitPointIds = file.presets.splitPointIds ?? Object.keys(file.presets.splitPoints)
+      .filter((key) => (file.presets.splitPoints[key] ?? []).length > 0)
+      .sort()
+      .reduce<Record<string, string>>((ids, key, index) => ({ ...ids, [key]: `s${index + 1}` }), {});
+    const restoredSplitPointIdNumbers = Object.values(restoredSplitPointIds)
+      .map((id) => Number(id.slice(1)))
+      .filter(Number.isInteger);
     const autoLockedNodes = recomputeAutoLock({
       autoLock: file.presets.autoLock,
       activeFloorId,
@@ -85,6 +92,9 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       triOrientation,
       presetConnections: restoredPresetConnections,
       presetSplitPoints: file.presets.splitPoints,
+      presetSplitPointIds: restoredSplitPointIds,
+      _nextPresetSplitPointId: restoredSplitPointIdNumbers.length > 0 ? Math.max(...restoredSplitPointIdNumbers) + 1 : 1,
+      presetEntityOrder: file.presets.entityOrder ?? [],
     } as MazeState);
 
     // Single atomic set of all non-maze state
