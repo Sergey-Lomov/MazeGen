@@ -13,10 +13,10 @@ land (more color models, practicality checks, presets).
 
 | Component | Role |
 |---|---|
-| `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`). Clicking / activating opens `ColorPickerPanel`. |
-| `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. #503 adds an optional `priorityColors?: ProjectColorEntry[]` threaded straight through to `ColorSwatch` → `ColorPickerPanel` (the call site's own "these sibling colors matter for this decision" list). |
+| `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`) + optional `onOpen?: () => void` / `onCancel?: () => void` (#666, see "Cancel and parameter links" below). Clicking / activating opens `ColorPickerPanel`. |
+| `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. #503 adds an optional `priorityColors?: ProjectColorEntry[]` threaded straight through to `ColorSwatch` → `ColorPickerPanel` (the call site's own "these sibling colors matter for this decision" list). `onOpen?` / `onCancel?` (#666) forward straight through to `ColorSwatch`. |
 | `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { name: string; color: number }`. `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `fieldName` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
-| `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape. |
+| `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape, then calls `onCancel?.()` (#666) before `onClose()`. |
 | `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. |
 | `RgbModelEditor.tsx` (`components/RgbModelEditor.tsx`) | The RGB editing model (#500): three channel sliders (0-255) with per-channel gradient tracks + paired numeric inputs. Reads the working color, calls `onChange` with the new packed color on every edit. |
 | `HslModelEditor.tsx` (`components/HslModelEditor.tsx`) | The HSL editing model (#501): a 2D saturation/lightness area with a draggable crosshair, a vertical hue strip with a draggable marker, three `GradientSlider`s (H 0-360, S 0-100, L 0-100), and three numeric inputs. Reads the working color (HSL reconstructed from the stored RGB), calls `onChange` with the new packed color on every edit. Drag plumbing and area geometry are shared with `OklchModelEditor` via `usePickerDrag` / `pickerAreaStyles`. |
@@ -83,6 +83,36 @@ pending color is never lost to the unmount; a still-pending frame is also cancel
   never called. **Cancel / Escape** restore via `onChange(originalColor)`. Right when `onChange`
   only updates a render — all current call sites (the image-export settings panels) just write a
   `settings.*` value.
+
+**Note:** that last assumption no longer holds for a linked field (#652) — the image-export
+setters also disable the field's incoming link as a side effect of writing its value (an
+override). See "Cancel and parameter links" below for how Cancel undoes that side effect too.
+
+## Cancel and parameter links (#666)
+
+For a field wired into a render mode's parameter-link graph (#644/#652), the call site's
+`onChange` setter (e.g. `setVectorByWallsBackground`) always disables the field's incoming link as
+a side effect of writing its value — correct for a real edit, including the live-stream-is-commit
+mode where every preview tick already is a commit. But the final restoring call that `cancel()`
+makes (`onPreview`/`onChange` with `originalColor`) is not a real edit — Cancel means "undo this
+whole session" — so it must not leave the link disabled, even though, mechanically, it goes
+through the very same setter and disables it one more time.
+
+`ColorPickerPanel` exposes `onCancel?: () => void`, called once in `cancel()` right after the
+restoring preview call and before `onClose()`. `ColorSwatch` / `ColorRow` forward it unchanged.
+`LinkedColorRow` (`components/features/LinkedRows.tsx`) is the only place that uses it: it also
+takes a new `onOpen?: () => void` (same forwarding chain), and on open snapshots whether
+`linkTarget`'s incoming link was enabled (`wasLinkEnabledRef`, a plain `useRef` — not `useMemo`/
+state, since it must survive every render during the session without resetting). On `onCancel`, if
+that snapshot was `true`, it calls `onSetLinkEnabled(linkTarget, true)` — the same re-enable path
+`LinkStatusIcon` itself uses — which re-propagates the target's value from the link's `source`,
+landing back on the same value the plain value-restore already produced (the source didn't move
+during the session). If the link was already disabled (or didn't exist) before open, Cancel is a
+no-op on link state, same as before #666.
+
+This only applies to `LinkedColorRow`; `LinkedSelectRow` / `LinkedSliderRow` / `LinkedToggleRow` /
+`LinkedTextFieldRow` have no live-preview concept at all (no `onPreview` on their underlying rows),
+so they have nothing to restore on cancel — every edit there is a direct, final commit.
 
 ## Model switcher and editing area (#500)
 
