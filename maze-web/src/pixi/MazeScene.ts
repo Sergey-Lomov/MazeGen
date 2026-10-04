@@ -44,18 +44,20 @@ export function shouldCancelFieldEditGesture(args: {
   floorChanged: boolean;
   modeChanged: boolean;
   primitiveChanged: boolean;
+  operationChanged: boolean;
   configChanged: boolean;
   fieldPointsChanged: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
 }): boolean {
   const liveFieldGestureUpdate = args.fieldEditMode === "custom"
-    && (args.fieldPrimitive === "point" || args.fieldPrimitive === "move")
+    && args.fieldPrimitive === "point"
     && args.fieldPointsChanged;
   return args.openChanged
     || args.floorChanged
     || args.modeChanged
     || args.primitiveChanged
+    || args.operationChanged
     || (args.configChanged && !liveFieldGestureUpdate);
 }
 
@@ -215,24 +217,23 @@ export class MazeScene {
         onPreviewClear: () => {
           this.primitivePreviewOverlay.clear();
         },
-        onPrimitiveCommit: (cells, btn) => {
-          const store = useMazeStore.getState();
-          if (btn === 0) store.addFieldPoints(cells);
-          else if (btn === 2) store.removeFieldPoints(cells);
+        onSelectionMovePreview: (sourceCells, temporaryCells) => {
+          this.fieldEditorOverlay.setSelectionMovePreview(sourceCells, temporaryCells);
         },
-        onMoveCommit: (cells, dx, dy) => {
+        onPrimitiveCommit: (cells, _btn) => {
+          const store = useMazeStore.getState();
+          if (_btn === 2) store.removeFieldPoints(cells);
+          else if (_btn === 0) store.addFieldPoints(cells);
+        },
+        onSelectionMove: (cells, dx, dy) => {
           const beforeState = useMazeStore.getState();
           const before = beforeState.floorFields[beforeState.activeFloorId].fieldPoints;
           beforeState.moveFieldPoints(cells, dx, dy);
           const afterState = useMazeStore.getState();
-          return afterState.fieldEditConfirmation === null
-            && afterState.floorFields[afterState.activeFloorId].fieldPoints !== before;
-        },
-        onMovePreview: (sourceCells, temporaryCells) => {
-          this.fieldEditorOverlay.setMovePreview(sourceCells, temporaryCells);
-        },
-        onMoveComplete: () => {
-          useMazeStore.getState().setFieldPrimitive("point");
+          const fieldPointsChanged = afterState.floorFields[afterState.activeFloorId].fieldPoints !== before;
+          const moveQueuedForConfirmation = afterState.fieldEditConfirmation !== null
+            && afterState.fieldEditConfirmation !== beforeState.fieldEditConfirmation;
+          return fieldPointsChanged || moveQueuedForConfirmation;
         },
         onSymmetryPreviewUpdate: (axis, polygon) => {
           this.fieldEditorOverlay.updateSymmetryPreview(axis, polygon);
@@ -382,6 +383,7 @@ export class MazeScene {
     let prevFloorId = initial.activeFloorId;
     let prevMode = initial.floorFields[initial.activeFloorId].fieldEditMode;
     let prevPrimitive = initial.floorFields[initial.activeFloorId].fieldPrimitive;
+    let prevOperation = initial.floorFields[initial.activeFloorId].fieldOperation;
     let prevFieldPoints = initial.floorFields[initial.activeFloorId].fieldPoints;
     let prevConfig = initial.floorFields[initial.activeFloorId].tessellationConfig;
     let prevFrameVisible = initial.showPrimitiveFrame;
@@ -393,7 +395,7 @@ export class MazeScene {
       const floorChanged = state.activeFloorId !== prevFloorId;
       const modeChanged = field.fieldEditMode !== prevMode;
       const primitiveChanged = field.fieldPrimitive !== prevPrimitive;
-      const wasMovePrimitive = prevPrimitive === "move";
+      const operationChanged = field.fieldOperation !== prevOperation;
       const fieldPointsChanged = field.fieldPoints !== prevFieldPoints;
       const configChanged = field.tessellationConfig !== prevConfig;
       const frameVisibilityChanged = state.showPrimitiveFrame !== prevFrameVisible;
@@ -401,16 +403,21 @@ export class MazeScene {
       prevFloorId = state.activeFloorId;
       prevMode = field.fieldEditMode;
       prevPrimitive = field.fieldPrimitive;
+      prevOperation = field.fieldOperation;
       prevFieldPoints = field.fieldPoints;
       prevConfig = field.tessellationConfig;
       prevFrameVisible = state.showPrimitiveFrame;
-      if (primitiveChanged && wasMovePrimitive) this.fieldEditController.commitPendingMoveEdit();
       if (frameVisibilityChanged) this.primitivePreviewOverlay.setFrameVisible(state.showPrimitiveFrame);
-      if (shouldCancelFieldEditGesture({
+      let selectionMoveCommitted = false;
+      if ((modeChanged || primitiveChanged || operationChanged) && this.fieldEditController.hasSelectionPreview()) {
+        selectionMoveCommitted = this.fieldEditController.commitPendingSelectionMove();
+      }
+      if (!selectionMoveCommitted && shouldCancelFieldEditGesture({
         openChanged,
         floorChanged,
         modeChanged,
         primitiveChanged,
+        operationChanged,
         configChanged,
         fieldPointsChanged,
         fieldEditMode: field.fieldEditMode,

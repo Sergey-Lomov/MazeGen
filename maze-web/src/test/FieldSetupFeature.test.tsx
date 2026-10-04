@@ -164,7 +164,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(screen.getByText(/Isolated cells are removed always/)).toBeInTheDocument();
   });
 
-  it("offers separate add/remove polygon tools with a Shift tooltip", () => {
+  it("offers one polygon tool whose operation follows the active mode", () => {
     useMazeStore.setState({
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
@@ -172,12 +172,24 @@ describe("FieldSetupFeature — Copy floor button", () => {
     });
     render(<FieldSetupFeature />);
 
-    const addTool = screen.getByRole("button", { name: /Add polygon/ });
-    expect(addTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
-    fireEvent.click(addTool);
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].polygonOperation).toBe("add");
-    fireEvent.click(screen.getByRole("button", { name: /Subtract polygon/ }));
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].polygonOperation).toBe("remove");
+    const polygonTool = screen.getByRole("button", { name: /Polygon/ });
+    expect(polygonTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
+    fireEvent.click(screen.getByRole("button", { name: "Remove (-)" }));
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
+    fireEvent.click(screen.getByRole("button", { name: /Select/ }));
+    expect(screen.getByRole("button", { name: /Symmetry/ })).toBeDisabled();
+  });
+
+  it("labels the connected-area tool and explains its effect", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+    });
+    render(<FieldSetupFeature />);
+
+    const tool = screen.getByRole("button", { name: /Connected Area/ });
+    expect(tool).toHaveAttribute("title", "Connected Area\nAffects all connected cells.");
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {

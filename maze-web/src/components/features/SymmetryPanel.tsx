@@ -9,7 +9,6 @@ import { sharedStyles } from "../../styles/shared";
 import * as m from "~/paraglide/messages";
 
 export function SymmetryPanel() {
-  const symmetryOperation = useMazeStore((s) => s.symmetryOperation);
   const symmetrySnapMode = useMazeStore((s) => s.symmetrySnapMode);
   const symmetryScope = useMazeStore((s) => s.symmetryScope);
   const symmetryAxisPoints = useMazeStore((s) => s.symmetryAxisPoints);
@@ -17,7 +16,6 @@ export function SymmetryPanel() {
   const symmetryPolygon = useMazeStore((s) => s.symmetryPolygon);
   const symmetryPolygonFinished = useMazeStore((s) => s.symmetryPolygonFinished);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
-  const setSymmetryOperation = useMazeStore((s) => s.setSymmetryOperation);
   const setSymmetrySnapMode = useMazeStore((s) => s.setSymmetrySnapMode);
   const setSymmetryScope = useMazeStore((s) => s.setSymmetryScope);
   const setSymmetrySourceSide = useMazeStore((s) => s.setSymmetrySourceSide);
@@ -49,26 +47,6 @@ export function SymmetryPanel() {
   return (
     <SidePanel title={m["field.symmetry.tool"]()} onClose={closePanel}>
       <Stack gap="groupGap" style={styles.body}>
-        <Stack gap="itemGap">
-          <div style={styles.sectionLabel}>{m["field.symmetry.operation"]()}</div>
-          <Inline gap="itemGap" style={styles.nestedContent}>
-            <Button
-              variant={symmetryOperation === "add" ? "toggle-selected" : "toggle"}
-              layoutStyle={{ flex: 1 }}
-              onClick={() => setSymmetryOperation("add")}
-            >
-              {m["field.symmetry.add"]()}
-            </Button>
-            <Button
-              variant={symmetryOperation === "subtract" ? "toggle-selected" : "toggle"}
-              layoutStyle={{ flex: 1 }}
-              onClick={() => setSymmetryOperation("subtract")}
-            >
-              {m["field.symmetry.subtract"]()}
-            </Button>
-          </Inline>
-        </Stack>
-
         <Stack gap="itemGap">
           <div style={styles.sectionLabel}>{m["field.symmetry.snap"]()}</div>
           <Inline gap="itemGap" style={styles.nestedContent}>

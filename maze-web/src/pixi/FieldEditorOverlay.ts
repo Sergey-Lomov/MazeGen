@@ -40,8 +40,8 @@ export class FieldEditorOverlay {
   private readonly hover: CellFillRenderer;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
-  private movePreviewHidden = new Set<number>();
-  private movePreviewTemporary = new Set<number>();
+  private selectionMoveHidden = new Set<number>();
+  private selectionMoveTemporary = new Set<number>();
   private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
@@ -103,7 +103,7 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && (field.fieldPoints !== prevField.fieldPoints
-        || state.symmetryOperation !== prev.symmetryOperation
+        || field.fieldOperation !== prevField.fieldOperation
         || state.symmetrySnapMode !== prev.symmetrySnapMode
         || state.symmetryScope !== prev.symmetryScope
         || state.symmetryAxisPoints !== prev.symmetryAxisPoints
@@ -124,12 +124,18 @@ export class FieldEditorOverlay {
     });
   }
 
-  updateHover(cell: [number, number] | null, cfg: TessellationConfig): void {
-    if (!cell) {
-      this.hover.render({ cells: [], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
-    } else {
-      this.hover.render({ cells: [cell], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA, inset: 0, borderWidth: 0 }, cfg);
-    }
+  updateHover(
+    cellOrCells: [number, number] | [number, number][] | null,
+    cfg: TessellationConfig,
+    color = CELL_HOVER_COLOR,
+    alpha = HOVER_ALPHA,
+  ): void {
+    const cells = !cellOrCells
+      ? []
+      : typeof cellOrCells[0] === "number"
+        ? [cellOrCells as [number, number]]
+        : cellOrCells as [number, number][];
+    this.hover.render({ cells, color, alpha, inset: 0, borderWidth: 0 }, cfg);
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
@@ -155,32 +161,32 @@ export class FieldEditorOverlay {
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
     const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg)
-      .filter(([x, y]) => !this.movePreviewHidden.has(encodePoint(x, y)));
+      .filter(([x, y]) => !this.selectionMoveHidden.has(encodePoint(x, y)));
     const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
-    for (const key of this.movePreviewTemporary) {
+    for (const key of this.selectionMoveTemporary) {
       if (!rendered.has(key)) cells.push(decodePoint(key));
     }
     this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
   }
 
-  private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
-    this.origin.render({ show }, cfg);
-  }
-
-  setMovePreview(sourceCells: [number, number][], temporaryCells: [number, number][]): void {
+  setSelectionMovePreview(sourceCells: [number, number][], temporaryCells: [number, number][]): void {
     const hidden = new Set(sourceCells.map(([x, y]) => encodePoint(x, y)));
     const temporary = new Set(temporaryCells.map(([x, y]) => encodePoint(x, y)));
-    if (hidden.size === this.movePreviewHidden.size
-      && temporary.size === this.movePreviewTemporary.size
-      && [...hidden].every((key) => this.movePreviewHidden.has(key))
-      && [...temporary].every((key) => this.movePreviewTemporary.has(key))) return;
-    this.movePreviewHidden = hidden;
-    this.movePreviewTemporary = temporary;
+    if (hidden.size === this.selectionMoveHidden.size
+      && temporary.size === this.selectionMoveTemporary.size
+      && [...hidden].every((key) => this.selectionMoveHidden.has(key))
+      && [...temporary].every((key) => this.selectionMoveTemporary.has(key))) return;
+    this.selectionMoveHidden = hidden;
+    this.selectionMoveTemporary = temporary;
     const state = useMazeStore.getState();
     if (state.openCard === "field_setup") {
       const field = state.floorFields[state.activeFloorId];
       this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
     }
+  }
+
+  private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
+    this.origin.render({ show }, cfg);
   }
 
   private redrawPaperLayout(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -215,7 +221,9 @@ export class FieldEditorOverlay {
 
     const axisPoints = axisOverride ?? state.symmetryAxisPoints;
     const polygon = polygonOverride ?? state.symmetryPolygon;
-    const color = state.symmetryOperation === "subtract" ? canvas.fieldEditor.previewRemove : canvas.fieldEditor.previewAdd;
+    const color = field.fieldOperation === "remove"
+      ? canvas.fieldEditor.previewRemove
+      : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
     if (axisPoints.length === 2) {
       const axis: [SymmetryPoint, SymmetryPoint] = [axisPoints[0], axisPoints[1]];
       const preview = computeSymmetryPreview(

@@ -16,7 +16,9 @@ Two sub-modes toggled inside the card:
 
 **Default** — predefined shape with configurable size parameters (width/height, cols/rows, radius, side). Canvas shows all cells of the shape centered around the grid origin. Camera centers on the shape when the card opens or when size params change.
 
-**Custom** — free-draw mode. Left-click adds cells, right-click removes. Space or middle mouse pans the camera. Camera does not move while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
+**Custom** — free-draw mode. The active Add/Remove mode controls whether drawing adds or removes
+cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move
+while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
@@ -132,8 +134,8 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
 | `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
-| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"move"`, per floor |
-| `floorFields[floorId].polygonOperation` | Stored polygon commit operation: `"add"` or `"remove"`; selected through the Add polygon / Subtract polygon tools |
+| `floorFields[floorId].fieldOperation` | Active primitive operation: `"add"`, `"remove"`, or `"select"`, per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"` \| `"magic_wand"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
@@ -201,49 +203,65 @@ shape variant.
 
 ## Primitive brushes (custom mode)
 
-Custom mode supports two drawing modes controlled by `fieldPrimitive`:
+The Modes section above Tools controls the operation for every primitive. Add inserts the
+primitive's cells, Remove deletes them, and Select previews only the existing field cells without
+changing the field. In Add and Remove modes, the right mouse button performs the opposite
+operation; right mouse input is ignored in Select mode. The Symmetry tool remains visible
+but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
+its operation also comes from the active mode.
 
-**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape. Rebuilding the custom field configuration after a point edit must not cancel the active streak gesture; only a mode, floor, tool, or card change ends it.
+Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`:
+
+Connected Area (magic_wand) — a click processes the connected component containing the clicked
+cell. Select previews the occupied component, Remove deletes it, and Add fills a bounded empty
+component. Clicking the unbounded empty area does nothing, so Add never attempts to fill the
+infinite grid. Right-click applies the opposite Add/Remove operation; it is ignored in Select mode.
+
+**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately
+applies the active operation. No batch. Cannot be cancelled with Escape. Rebuilding the custom
+field configuration after a point edit must not cancel the active streak gesture; only a mode,
+floor, tool, or card change ends it.
 
 **Shape primitives** — batch mode. Mousedown begins gesture, drag adjusts shape, mouseup commits all cells in one store update (no per-cell flicker). Escape cancels the gesture without committing.
 
 **Polygon** (`"polygon"`) — click-based batch mode. Each left click places the next vertex in
-world coordinates. The Field Setup card exposes separate Add polygon and Subtract polygon tools; their
-icons share the polygon shape and carry a white plus or minus symbol with a background-colored gap. While moving the pointer, the preview follows the cursor continuously; the
+world coordinates. The Field Setup card exposes one polygon tool. While moving the pointer, the preview follows the cursor continuously; the
 unconfirmed closing segment back to the first vertex is dashed. Confirmed vertices are shown as
 circles and can be dragged to reposition them. Newly added and dragged vertices snap to the center
 of their cell by default; holding Shift enables free movement. A double-click while placing a new
 vertex, or a double-click on the last vertex, closes and commits the polygon; clicking the first
-cell again or pressing Enter does the same. Escape cancels it. Right click also cancels the in-progress polygon and does not remove
-cells, because the operation is selected explicitly by the Add polygon or Subtract polygon tool. The
+cell again or pressing Enter does the same. Escape cancels it. In Add and Remove modes, right
+click places polygon vertices and uses the opposite operation; in Select mode it does nothing.
+The
 preview shows the vertex outline and all cells whose centers are inside the polygon.
 Self-intersecting polygons use the even-odd rule.
 
-Polygon commits call `addFieldPoints` or `removeFieldPoints` once with the stored preview cell set.
+In Add or Remove mode, polygon commits call `addFieldPoints` or `removeFieldPoints` once with the
+stored preview cell set. In Select mode, shape and polygon candidates contain only existing field
+cells. Point selection may preview every traversed cell while the button is held; on release its
+candidate set is collapsed to existing field cells and replaced by a dashed exposed boundary;
+the field is not changed and the selection remains visible until another gesture, tool, mode, or
+card change. A pending move is confirmed by Space, clicking outside the selection, or switching
+the primitive or operation mode.
+The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select.
 The tool works with square, hexagonal, and triangular tessellations and does not apply primitive
 smoothing or isolated-cell cleanup.
 
-**Select and move** (`"move"`) is a two-step polygon gesture with no additional settings panel.
-Clicks create the selection polygon; Enter, clicking the first cell, or double-clicking finishes it.
-While the polygon is being drawn, existing field cells inside it are highlighted white. Once the
-selection is finished, the fill disappears and only its white dashed exposed boundary remains.
-Dragging from a selected cell moves that selected set by the tessellation's integer cell offset.
-The source cells are hidden from the field overlay and the moved cells are shown as a temporary
-overlay above the unchanged field while the drag is in progress.
-Pointerup only ends the drag; Enter, choosing another tool, or double-clicking the selected area
-commits one atomic move to the final offset. After a successful commit the tool switches to Point.
-Once the polygon is finished, Backspace or Delete removes the selected source cells. Destination
-collisions merge with the selected cells instead of deleting either side. Escape cancels the pending
-move and restores the unchanged field. Polygon construction and operations on the finished piece
-are separate phases, so later selection methods can be added without changing piece operations.
-A drag that reaches the signed coordinate limit is clamped before applying the step; it never wraps a
-cell to the opposite side of the field. Right-click or Escape clears the selection.
-
-The move-selection polygon is drawn with a white dashed outline while it is being edited. Once the
-selection is finished, that outline is replaced by dashed exposed edges of the selected cell union
-(internal shared edges and polygon vertex handles are not rendered). The symmetry polygon uses the
-same white dashed outline and vertex markers; the add/subtract polygon tools retain their normal
-field-editor frame styling.
+In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
+edited. Once the gesture is released, that outline is replaced by dashed exposed edges of the
+selected cell union (internal shared edges and polygon vertex handles are not rendered). Point
+selection collects the existing cells reached by the pointer drag and previews those cells in
+white until pointerup. Pointerup replaces the white fill with the same dashed boundary preview.
+Once a selection exists, clicking a selected cell enters selection manipulation: dragging previews
+the translated cells, Enter confirms the atomic move, Escape cancels the pending drag, and
+Backspace/Delete removes the selected source cells. The selection is not changed by a drag until
+Enter confirms it. Enter also exits selection manipulation and keeps the current primitive tool.
+While a point selection already exists, holding Shift and dragging creates another zone that is
+unioned with the current selection; only filled cells are retained when that zone is released. The
+selected-cell hover highlight is hidden while the persistent selection is active. During a move,
+the source cells are hidden and only the temporary translated cells are shown; pointerup restores
+the source until confirmation. The symmetry polygon uses the same white dashed outline and vertex
+markers.
 
 ### Shape primitives
 
@@ -285,9 +303,9 @@ the parallelogram's adjacent sides are equal while its axis angle remains fixed.
 
 ### Preview overlay
 
-While dragging, a semi-transparent overlay shows the pending shape:
-- Left button (add): blue `0x4488ff`, alpha 0.5
-- Right button (remove): red `0xff4444`, alpha 0.5
+While dragging, a semi-transparent overlay shows the pending shape. In Add mode it uses the Add
+color for LMB and the Remove color for RMB; Remove mode reverses those colors. Select mode uses
+the white selection color and ignores RMB.
 
 Custom mode also provides a `Primitive frame` switch. When enabled, a thin outline shows the
 ideal world-space primitive behind the tile preview; it is visual only and does not affect the
@@ -298,15 +316,24 @@ Primitive results always remove cells that have no edge-adjacent neighbor. With 
 one-edge terminal cells are removed first and isolated-cell cleanup is applied again afterward.
 Smoothing affects primitive tools only; point-by-point editing is unchanged.
 
-Preview is RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
+Select-mode shape and polygon frames are dashed while the gesture is being edited. Preview is
+RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
 
 ### Gesture cancellation
 
-Escape key cancels any active shape-primitive, polygon, or select-and-move gesture: preview clears, nothing further is committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
+Escape key cancels any active shape-primitive or polygon gesture and clears a persistent selection
+preview or pending selection drag; nothing further is committed. Point Add/Remove gestures are not
+cancellable (cells are already committed individually on each move).
 
 ### Commit
 
-On mouseup: `addFieldPoints(cells)` or `removeFieldPoints(cells)` called with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit divergence. The select-and-move tool keeps dragged cells in a temporary overlay and calls `moveFieldPoints(cells, dx, dy)` once when the edit is committed by Enter, tool change, or double-click; mouseup only ends the drag.
+On mouseup in Add/Remove mode: `addFieldPoints(cells)` or `removeFieldPoints(cells)` is called
+with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit
+divergence. Select mode initially only updates the transient boundary preview; a confirmed
+selection drag calls `moveFieldPoints(cells, dx, dy)` once on Enter, Space, clicking outside the
+selection, releasing the pointer outside the canvas, or switching the primitive/operation mode,
+while Delete/Backspace calls
+`removeFieldPoints(cells)`.
 
 ## Grid overlay
 
@@ -318,9 +345,14 @@ Grid rendering is embedded in each feature renderer, not in a standalone compone
 
 ## Hover highlight (custom mode)
 
-While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted with a soft grey overlay (`0x888888`, alpha 0.3). Rendered by `FieldEditorOverlay.updateHover()`, called from `MazeScene` on every `pointermove`. Cleared on `pointerupoutside`.
+While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted
+with the active operation color (Add green, Remove red, Select white; alpha 0.3). The Connected
+Area tool highlights its whole bounded/occupied connected component instead of only the hovered
+cell. Rendered by `FieldEditorOverlay.updateHover()`, called from `MazeScene` on every
+`pointermove`. The hover is hidden while a persistent Select-mode selection is active. Cleared on
+`pointerupoutside`.
 
-The same `pointermove` also drives the generic `x, y` coordinate readout in `HoverInfoPanel` (see `maze-web/Specs/renderer.md`) — that mechanism is card-agnostic and runs regardless of `fieldSetupOpen`; this section only covers the field-edit-specific grey-cell overlay layered on top of it.
+The same `pointermove` also drives the generic `x, y` coordinate readout in `HoverInfoPanel` (see `maze-web/Specs/renderer.md`) — that mechanism is card-agnostic and runs regardless of `fieldSetupOpen`; this section only covers the field-edit-specific operation-colored cell overlay layered on top of it.
 
 ## Hit-test
 
@@ -332,19 +364,21 @@ Triangle: nearest-centroid among `col0-1, col0, col0+1` candidates. Each centroi
 
 Custom mode includes a Symmetry tool. It collects two snapped or free points for an infinite
 symmetry axis, previews the reflected cells, and changes the field only when the user confirms.
-The right-side symmetry panel uses toggle buttons for Add/Subtract, Cell centers/Cell corners/Free
-snapping, and Everything/One side/Polygon processing. Only active cells are used as the source.
+The right-side symmetry panel uses toggle buttons for Cell centers/Cell corners/Free snapping and
+Everything/One side/Polygon processing. One side is the default scope. Add/remove is selected in
+the field editor's Modes section.
+Only active cells are used as the source.
 One-side mode chooses the initial source side from the field when the axis is completed and
 exposes a direction toggle. Polygon mode reuses the field editor's editable polygon gesture and
 has reset and explicit finish actions.
 
 The axis is rendered as an infinite line, and one-side mode renders an arrow from the source side
-toward the reflected side. Preview cells use the operation's add/remove color. Cells whose centers
+toward the reflected side. Preview cells use the active field-editor mode's add/remove color. Cells whose centers
 lie on the axis are excluded. Confirmation is disabled until the axis exists and, for Polygon
 processing, the polygon has at least three points and has been explicitly finished. Enter finishes
 an unfinished polygon; when the symmetry status is ready, Enter confirms the operation. The
 operation applies the selected scope to the active cells in the current custom field, then merges
-or removes the reflected cells. After confirmation, the symmetry geometry is cleared and the normal
+or removes the reflected cells according to the active field-editor mode. After confirmation, the symmetry geometry is cleared and the normal
 point tool is restored; the symmetry settings remain unchanged.
 - pointing-up: `cy = -(row × H + H/3)`
 - pointing-down: `cy = -(row × H + 2H/3)`

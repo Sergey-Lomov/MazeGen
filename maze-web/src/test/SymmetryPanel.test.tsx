@@ -14,18 +14,16 @@ beforeEach(() => {
 });
 
 describe("SymmetryPanel", () => {
-  it("updates operation, snap mode, scope, and source direction through toggle controls", () => {
+  it("updates snap mode, scope, and source direction through toggle controls", () => {
     useMazeStore.setState({
       symmetryAxisPoints: [{ x: 0, y: 0 }, { x: 0, y: 100 }],
       symmetryScope: "one_side",
     });
     render(<SymmetryPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Subtract" }));
     fireEvent.click(screen.getByRole("button", { name: "Free" }));
     fireEvent.click(screen.getByRole("button", { name: "Polygon" }));
 
-    expect(useMazeStore.getState().symmetryOperation).toBe("subtract");
     expect(useMazeStore.getState().symmetrySnapMode).toBe("free");
     expect(useMazeStore.getState().symmetryScope).toBe("polygon");
 

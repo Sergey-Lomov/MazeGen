@@ -170,8 +170,6 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       .filter(([x, y]) => Number.isSafeInteger(x) && Number.isSafeInteger(y) && field.fieldPoints.has(encodePoint(x, y)));
     if (selected.length === 0) return {};
 
-    // encodePoint stores signed 16-bit coordinates. Clamp the whole translation before
-    // applying it so a drag near the representable edge cannot wrap a point to the opposite side.
     const minX = Math.max(...selected.map(([x]) => -32768 - x));
     const maxX = Math.min(...selected.map(([x]) => 32767 - x));
     const minY = Math.max(...selected.map(([, y]) => -32768 - y));
@@ -193,14 +191,26 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return true;
   })))),
 
+  setFieldOperation: (operation) => set((state) => {
+    const field = activeFloorField(state);
+    const selectingWithSymmetry = operation === "select" && field.fieldPrimitive === "symmetry";
+    return {
+      ...withActiveFloorField(state, {
+        fieldOperation: operation,
+        ...(selectingWithSymmetry ? { fieldPrimitive: "point" } : {}),
+      }),
+      ...(selectingWithSymmetry
+        ? { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }
+        : {}),
+    };
+  }),
+
   setFieldPrimitive: (p) => set((state) => ({
     ...withActiveFloorField(state, { fieldPrimitive: p }),
     ...(p === "symmetry"
       ? {}
       : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
   })),
-
-  setPolygonOperation: (operation) => set((state) => withActiveFloorField(state, { polygonOperation: operation })),
 
   applySymmetry: () => set((state) => guardFieldEdit(state, { kind: "applySymmetry" }, () => {
     const field = activeFloorField(state);
@@ -225,10 +235,10 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       let changed = false;
       for (const [x, y] of preview.mirroredCells) {
         const key = encodePoint(x, y);
-        if (state.symmetryOperation === "add" && !points.has(key)) {
+        if (field.fieldOperation === "add" && !points.has(key)) {
           points.add(key);
           changed = true;
-        } else if (state.symmetryOperation === "subtract" && points.delete(key)) {
+        } else if (field.fieldOperation === "remove" && points.delete(key)) {
           changed = true;
         }
       }

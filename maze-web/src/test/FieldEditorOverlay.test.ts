@@ -145,6 +145,14 @@ describe("FieldEditorOverlay", () => {
     expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
       expect.objectContaining({ cells: [[2, 3]], color: 0x888888 }), cfg,
     );
+    overlay.updateHover([[2, 3], [3, 3]], cfg);
+    expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[2, 3], [3, 3]], color: 0x888888 }), cfg,
+    );
+    overlay.updateHover([[2, 3], [3, 3]], cfg, 0x00ff00, 0.5);
+    expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[2, 3], [3, 3]], color: 0x00ff00, alpha: 0.5 }), cfg,
+    );
     overlay.updateHover(null, cfg);
     expect((stubs.floors[2] as Stub).render).toHaveBeenLastCalledWith(
       expect.objectContaining({ cells: [] }), cfg,
@@ -156,26 +164,6 @@ describe("FieldEditorOverlay", () => {
     );
     expect((stubs.origins[0] as Stub).render).toHaveBeenLastCalledWith({ show: true }, cfg);
     expect((stubs.papers[0] as Stub).render).toHaveBeenCalled();
-  });
-
-  it("hides source cells and adds temporary destination cells during a move preview", () => {
-    const { overlay } = openOverlay();
-    const floor = stubs.floors[0] as Stub;
-    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig;
-
-    overlay.setMovePreview([[0, 0]], [[2, 0]]);
-    expect(floor.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ cells: [[1, 0], [2, 0]] }), cfg,
-    );
-
-    const callCount = floor.render.mock.calls.length;
-    overlay.setMovePreview([[0, 0]], [[2, 0]]);
-    expect(floor.render).toHaveBeenCalledTimes(callCount);
-
-    overlay.setMovePreview([], []);
-    expect(floor.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ cells: [[0, 0], [1, 0]] }), cfg,
-    );
   });
 
   it("draws symmetry cells and polygon geometry only while symmetry is active", () => {
@@ -208,6 +196,21 @@ describe("FieldEditorOverlay", () => {
     });
     expect((stubs.floors[1] as Stub).render).toHaveBeenLastCalledWith(
       expect.objectContaining({ cells: [], alpha: 0 }), expect.anything(),
+    );
+  });
+
+  it("hides the source cells and renders only the temporary translated cells while moving", () => {
+    const { overlay } = openOverlay();
+    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig;
+
+    overlay.setSelectionMovePreview([[0, 0]], [[2, 0]]);
+    expect((stubs.floors[0] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[1, 0], [2, 0]] }), cfg,
+    );
+
+    overlay.setSelectionMovePreview([], []);
+    expect((stubs.floors[0] as Stub).render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cells: [[0, 0], [1, 0]] }), cfg,
     );
   });
 
