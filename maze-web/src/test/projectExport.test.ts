@@ -754,6 +754,34 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     expect(link?.enabled).toBe(false);
   });
 
+  it("persists a color link's colorModifiers chain and round-trips it (GitHub issue #667)", () => {
+    const colorLink = {
+      id: "color-link-1",
+      source: "startMarker.fillColor" as const,
+      target: "startMarker.borderColor" as const,
+      enabled: true,
+      colorModifiers: [{ model: "oklch" as const, channel: "oklch-l" as const, op: "mul" as const, value: 1.5 }],
+    };
+    const links = [...DEFAULT_VECTOR_BY_WALLS_SETTINGS.links.filter((l) => l.target !== colorLink.target), colorLink];
+    const state = makeState({ vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, links } });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    const link = reparsed.imageExport.vectorByWallsSettings.links.find((l) => l.target === colorLink.target);
+    expect(link?.colorModifiers).toEqual(colorLink.colorModifiers);
+  });
+
+  it("drops a malformed colorModifier step (unknown channel) but keeps the link, falling back to no chain", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    const base = DEFAULT_VECTOR_BY_WALLS_SETTINGS.links.find((l) => l.target !== "startMarker.size") ?? DEFAULT_VECTOR_BY_WALLS_SETTINGS.links[0];
+    raw.imageExport.vectorByWallsLinks = [
+      { ...base, source: "startMarker.fillColor", target: "startMarker.borderColor", colorModifiers: [{ model: "oklch", channel: "not-a-channel", op: "mul", value: 1.5 }] },
+    ];
+    const reparsed = parseAndValidate(raw);
+    const link = reparsed.imageExport.vectorByWallsSettings.links.find((l) => l.target === "startMarker.borderColor");
+    expect(link).toBeDefined();
+    expect(link?.colorModifiers).toBeUndefined();
+  });
+
   it("an absent vectorByWallsLinks section (pre-#651 project file) reads the current defaults", () => {
     const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
     delete raw.imageExport.vectorByWallsLinks;
