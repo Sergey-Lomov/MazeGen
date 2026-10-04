@@ -653,6 +653,10 @@ outset highlight; teleport, vertical-passage, and elevator rows highlight their 
 wall/passage/one-way edge rows use post-edit's boundary/one-way row highlight. Clicking a bubble
 navigates to that endpoint's floor. Deleting a cell dispatches through the existing per-entity
 removal actions, so resetting an edge restores the current default state.
+Coordinate bubbles resolve split endpoints through the shared preset split-node label resolver used
+by the status bar and entity-delete dialog. This includes the original node when it is addressed and
+uses the resolved semantic name (or the shared node-number fallback) for every additional slot; the
+list does not derive labels directly from raw slot IDs.
 The persisted `presetEntityOrder` and split-tile IDs are removed together with their entities (including
 when invalid preset data is cleared), so a later re-addition receives a fresh newest position.
 

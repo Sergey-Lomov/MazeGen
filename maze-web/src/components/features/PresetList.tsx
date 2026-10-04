@@ -13,7 +13,7 @@ import {
 } from "../../pixi/fieldEditUtils";
 import type { PresetPointEntityDescriptor } from "../../pixi/pointEntities";
 import { type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { formatTargetLabel } from "../../pixi/targetLabel";
@@ -92,16 +92,26 @@ export interface PresetListInput {
   presetSplitPointIds?: Record<string, string>;
   presetSplitShapeLabels?: Record<string, string>;
   presetEntityOrder?: string[];
+  splitCtx?: PresetSplitLabelContext | null;
   multiFloor: boolean;
 }
 
-function endpointText(endpoint: PresetEndpoint, multiFloor: boolean): string {
-  const splitLabel = endpoint.slotId === undefined ? undefined : `N${endpoint.slotId + 2}`;
-  return formatTargetLabel(endpoint.point, endpoint.level ?? 0, multiFloor, splitLabel);
+function endpointText(
+  endpoint: PresetEndpoint,
+  multiFloor: boolean,
+  splitCtx: PresetSplitLabelContext | null | undefined,
+): string {
+  return splitCtx
+    ? presetTargetLabel(splitCtx, endpoint, multiFloor)
+    : formatTargetLabel(endpoint.point, endpoint.level ?? 0, multiFloor, undefined);
 }
 
-function bubble(endpoint: PresetEndpoint, multiFloor: boolean): PresetListBubble {
-  return { text: endpointText(endpoint, multiFloor), endpoint };
+function bubble(
+  endpoint: PresetEndpoint,
+  multiFloor: boolean,
+  splitCtx: PresetSplitLabelContext | null | undefined,
+): PresetListBubble {
+  return { text: endpointText(endpoint, multiFloor, splitCtx), endpoint };
 }
 
 function edgeTitle(state: PresetConnectionEntry["state"]): string {
@@ -192,6 +202,7 @@ function descriptor(kind: PresetPointEntityDescriptor["kind"], id: string, endpo
  * a title/id row and a coordinate-bubble/action row. */
 export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
   const { multiFloor } = input;
+  const pointBubble = (endpoint: PresetEndpoint) => bubble(endpoint, multiFloor, input.splitCtx);
   const cells: PresetListCell[] = [];
   const add = (cell: PresetListCell) => cells.push(cell);
   const splitKeys = new Set(Object.entries(input.presetSplitPoints)
@@ -212,7 +223,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       key: `edge:${edgeId}`,
       type: edgeType(entry.state),
       title,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow,
       control: entry.state === "one_way_forward" || entry.state === "one_way_backward"
         ? { kind: "direction", id: key }
@@ -231,7 +242,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: kind,
       title,
       id,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       descriptor: descriptor(kind, key, endpoint, title),
     });
   };
@@ -246,7 +257,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: "teleport",
       title,
       id: `t${entry.id}`,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow: directedArrow(entry.direction),
       control: entry.direction === "two_way" ? undefined : { kind: "direction", id: String(entry.id) },
       descriptor: descriptor("teleport", String(entry.id), entry.from, title),
@@ -260,7 +271,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: entry.direction === "two_way" ? "vertical_passage_two_way" : "vertical_passage_one_way",
       title,
       id: `v${entry.id}`,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow: directedArrow(entry.direction),
       control: entry.direction === "two_way" ? undefined : { kind: "direction", id: String(entry.id) },
       descriptor: descriptor("vertical_passage", String(entry.id), entry.from, title),
@@ -275,7 +286,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: "elevator",
       title,
       id: `e${entry.id}`,
-      bubbles: entry.floors.map((endpoint) => bubble(endpoint, multiFloor)),
+      bubbles: entry.floors.map(pointBubble),
       control: { kind: "elevator", endpoint: entry.floors[0] },
       descriptor: descriptor("elevator", String(entry.id), entry.floors[0], title),
     });
@@ -291,7 +302,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: kind === "in" ? "lock_in" : kind === "out" ? "lock_out" : "full_lock",
       title,
       id: `l${++lockIndex}`,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       descriptor: descriptor("lock", `lock:${key}`, endpoint, title),
     });
   }
@@ -306,7 +317,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       type: "split",
       title,
       id: input.presetSplitPointIds?.[key] ?? `s${Object.keys(input.presetSplitPoints).indexOf(key) + 1}`,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       control: { kind: "split", endpoint },
       entityHighlightMode: "outset",
       descriptor: descriptor("split_node", `split:${key}`, endpoint, title),
@@ -368,11 +379,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
     () => new Set(PRESET_LIST_TYPES.filter((type) => !PRESET_LIST_TYPES_OFF_BY_DEFAULT_SET.has(type))),
   );
   const [floorFilter, setFloorFilter] = useState<PresetListFloor>("all");
-  const presetSplitShapeLabels = useMemo(() => {
-    const labels: Record<string, string> = {};
+  const splitLabelContext = useMemo<PresetSplitLabelContext | null>(() => {
     const fallbackField = floors[0] ? floorFields[floors[0].id] : undefined;
-    if (!fallbackField) return labels;
-    const splitLabelContext: PresetSplitLabelContext = {
+    if (!fallbackField) return null;
+    return {
       splitPoints: presetSplitPoints,
       presetConnections,
       activeSplitNode,
@@ -382,6 +392,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
         return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig));
       },
     };
+  }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
+  const presetSplitShapeLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    if (!splitLabelContext) return labels;
     for (const key of Object.keys(presetSplitPoints)) {
       const endpoint = endpointFromKey(key);
       if (!endpoint) continue;
@@ -389,15 +403,16 @@ export function PresetList({ onClose }: { onClose: () => void }) {
       if (label && label !== m["preset.split_tile"]()) labels[key] = label;
     }
     return labels;
-  }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
+  }, [presetSplitPoints, splitLabelContext, locale]);
   const cells = useMemo(() => buildPresetListCells({
     presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports,
     presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints,
     presetSplitPointIds,
     presetSplitShapeLabels,
     presetEntityOrder,
+    splitCtx: splitLabelContext,
     multiFloor: floors.length > 1,
-  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, floors.length]);
+  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, splitLabelContext, floors.length]);
   const visibleCells = useMemo(
     () => filterPresetListCells(cells, { types: selectedTypes, floor: floorFilter }),
     [cells, selectedTypes, floorFilter],

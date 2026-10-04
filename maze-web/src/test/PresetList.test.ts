@@ -1,6 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../pixi/fieldEditUtils", async () => {
+  const actual = await vi.importActual<typeof import("../pixi/fieldEditUtils")>("../pixi/fieldEditUtils");
+  return {
+    ...actual,
+    allNodesAt: (point: [number, number], splitPoints: Record<string, number[]>, level?: number) => {
+      const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+      return [
+        { point, ...(level === undefined ? {} : { level }) },
+        ...(splitPoints[key] ?? []).map((slotId) => ({ point, slotId, ...(level === undefined ? {} : { level }) })),
+      ];
+    },
+    presetSplitNodeFaceKinds: (endpoint: { slotId?: number }) => endpoint.slotId === undefined
+      ? ["passage", "wall", "passage", "wall"]
+      : ["wall", "passage", "wall", "passage"],
+  };
+});
+
 import { buildPresetListCells, filterPresetListCells, PRESET_LIST_TYPES, PRESET_LIST_TYPES_OFF_BY_DEFAULT, type PresetListInput, type PresetListType } from "../components/features/PresetList";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import type { PresetSplitLabelContext } from "../pixi/presetSplitLabels";
 
 const emptyInput = (): PresetListInput => ({
   presetConnections: new Map(),
@@ -101,6 +120,34 @@ describe("buildPresetListCells", () => {
 
     expect(cells.find((cell) => cell.key === "start")?.bubbles[0].text).toBe("L2 2:3");
     expect(cells.find((cell) => cell.key === "teleport:1")?.bubbles.map((item) => item.text)).toEqual(["L1 0:0", "L2 2:3"]);
+  });
+
+  it("uses shared split-node labels for original and extra-node bubbles", () => {
+    const splitCtx: PresetSplitLabelContext = {
+      splitPoints: { "2,2": [7] },
+      presetConnections: new Map(),
+      activeSplitNode: {},
+      cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+      inFieldCellsAt: () => new Set(),
+    };
+    const input = emptyInput();
+    input.splitCtx = splitCtx;
+    input.presetSplitPoints = splitCtx.splitPoints;
+    input.presetStart = presetEndpoint([2, 2]);
+    input.presetTeleports = [{
+      id: 1,
+      from: presetEndpoint([2, 2]),
+      to: presetEndpoint([2, 2], 7),
+      direction: "two_way",
+    }];
+
+    const cells = buildPresetListCells(input);
+
+    expect(cells.find((cell) => cell.key === "start")?.bubbles[0].text).toBe("2:2 (Cor)");
+    expect(cells.find((cell) => cell.key === "teleport:1")?.bubbles.map((item) => item.text)).toEqual([
+      "2:2 (Cor)",
+      "2:2 (Brg)",
+    ]);
   });
 
   it("groups split connections into one split entity and follows creation order", () => {
