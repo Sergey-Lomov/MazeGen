@@ -656,6 +656,17 @@ removal actions, so resetting an edge restores the current default state.
 The persisted `presetEntityOrder` and split-tile IDs are removed together with their entities (including
 when invalid preset data is cleared), so a later re-addition receives a fresh newest position.
 
+### Preset list filters (GitHub issue #665)
+
+The Preset list provides local, non-persisted filters for the user-authored rows. The filter section
+is collapsible and reports the number of active filters. Its fifteen independent toggle buttons use
+the same `ToolGlyph` icons as the preset editing toolbar: wall, passage, undefined edge, one-way,
+start, finish, generation source, teleport, one-way/two-way vertical passage, elevator, lock-in,
+lock-out, full lock, and split. Wall, passage, and undefined edge are disabled by default; the
+other twelve are enabled. Vertical-passage/elevator filters and the floor selector are hidden for
+a single-floor maze. On multi-floor mazes, the selector offers all floors and every current floor;
+an entity is shown for a selected floor when at least one endpoint belongs to that floor.
+
 ### Invalidity
 
 A fourth invalidity check, `computeInvalidSplitPoints`, applies the same "point outside the current field" criterion `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers` already use, to `presetSplitPoints`'s keys. Needed separately because an orphan slot has no referencing preset/teleport/marker to be caught invalid through. Folded into "Clear invalid" and the combined invalid count alongside the other three categories. `generateConfigBuilder.ts` filters `split_points` through it before building the wire payload — the Rust side is guaranteed never to see a `split_points` entry for a point outside the field (see "Applying split points" below for what would happen if it did).

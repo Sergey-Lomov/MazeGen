@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPresetListCells, type PresetListInput } from "../components/features/PresetList";
+import { buildPresetListCells, filterPresetListCells, PRESET_LIST_TYPES, PRESET_LIST_TYPES_OFF_BY_DEFAULT, type PresetListInput, type PresetListType } from "../components/features/PresetList";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 
 const emptyInput = (): PresetListInput => ({
@@ -16,6 +16,11 @@ const emptyInput = (): PresetListInput => ({
 });
 
 describe("buildPresetListCells", () => {
+  it("exposes fifteen filters with twelve enabled by default", () => {
+    expect(PRESET_LIST_TYPES).toHaveLength(15);
+    expect(PRESET_LIST_TYPES.filter((type) => !PRESET_LIST_TYPES_OFF_BY_DEFAULT.includes(type as typeof PRESET_LIST_TYPES_OFF_BY_DEFAULT[number]))).toHaveLength(12);
+  });
+
   it("builds complete cells and excludes derived default edges", () => {
     const from = presetEndpoint([0, 0]);
     const to = presetEndpoint([1, 0]);
@@ -116,5 +121,49 @@ describe("buildPresetListCells", () => {
     expect(cells.find((cell) => cell.key === "split:2,2")?.id).toBe("s3");
     expect(cells.find((cell) => cell.key === "split:2,2")?.title).toBe("Bridge (Split)");
     expect(cells.find((cell) => cell.key === "split:2,2")?.control).toEqual({ kind: "split", endpoint: split });
+  });
+
+  it("classifies edge states so wall and passage rows can be hidden independently", () => {
+    const input = emptyInput();
+    input.presetConnections = new Map([
+      ["wall", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }],
+      ["passage", { from: presetEndpoint([0, 1]), to: presetEndpoint([1, 1]), state: "passage", source: "user" }],
+      ["one-way", { from: presetEndpoint([0, 2]), to: presetEndpoint([1, 2]), state: "one_way_forward", source: "user" }],
+    ]);
+
+    const cells = buildPresetListCells(input);
+    const types = new Set<PresetListType>(["wall", "one_way"]);
+
+    expect(cells.map((cell) => [cell.key, cell.type])).toEqual([
+      ["edge:0,0-1,0", "wall"],
+      ["edge:0,1-1,1", "passage"],
+      ["edge:0,2-1,2", "one_way"],
+    ]);
+    expect(filterPresetListCells(cells, { types, floor: "all" }).map((cell) => cell.key)).toEqual([
+      "edge:0,0-1,0",
+      "edge:0,2-1,2",
+    ]);
+  });
+
+  it("shows an entity on every floor touched by its endpoints", () => {
+    const input = emptyInput();
+    input.presetTeleports = [{
+      id: 1,
+      from: presetEndpoint([0, 0], undefined, 0),
+      to: presetEndpoint([0, 0], undefined, 2),
+      direction: "two_way",
+    }];
+    input.presetStart = presetEndpoint([1, 1], undefined, 1);
+    input.presetElevators = [{
+      id: 2,
+      floors: [presetEndpoint([2, 2], undefined, 1), presetEndpoint([2, 2], undefined, 2)],
+    }];
+
+    const cells = buildPresetListCells(input);
+    const allTypes = new Set<PresetListType>(["teleport", "start", "elevator"]);
+
+    expect(filterPresetListCells(cells, { types: allTypes, floor: 0 }).map((cell) => cell.key)).toEqual(["teleport:1"]);
+    expect(filterPresetListCells(cells, { types: allTypes, floor: 1 }).map((cell) => cell.key)).toEqual(["start", "elevator:2"]);
+    expect(filterPresetListCells(cells, { types: allTypes, floor: 2 }).map((cell) => cell.key)).toEqual(["teleport:1", "elevator:2"]);
   });
 });
