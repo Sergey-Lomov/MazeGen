@@ -249,6 +249,34 @@ describe("ColorSwatch", () => {
     expect(onPreview).toHaveBeenLastCalledWith(0x123456);
   });
 
+  it("calls onOpen synchronously before the picker mounts, and onCancel once on Cancel", () => {
+    const onOpen = vi.fn();
+    const onCancel = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={() => {}} onOpen={onOpen} onCancel={onCancel} />);
+    expect(onOpen).not.toHaveBeenCalled();
+    openPicker();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call onCancel on Apply", () => {
+    const onCancel = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={() => {}} onCancel={onCancel} />);
+    openPicker();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("calls onCancel on Escape too", () => {
+    const onCancel = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={() => {}} onCancel={onCancel} />);
+    openPicker();
+    fireEvent.keyDown(screen.getByTestId("color-picker-preview"), { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it("disabled swatch is not focusable and clicking/keydown do not open the picker", () => {
     render(<ColorSwatch color={0x000000} onChange={() => {}} disabled />);
     const swatch = screen.getByRole("button");

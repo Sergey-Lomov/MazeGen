@@ -2,7 +2,7 @@ import type React from "react";
 import { typography, muted } from "../styles/theme";
 
 /** Shared clickable "ℹ" icon that opens an info popup for a row/section — mirrors
- *  `OverrideResetButton`'s own per-field icon convention, so every info entry point renders and
+ *  `LinkStatusIcon`'s own per-field icon convention, so every info entry point renders and
  *  behaves identically instead of each row hand-rolling its own span+styles copy. */
 export function InfoIconButton({ onClick }: { onClick: () => void }) {
   return (

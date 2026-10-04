@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, EyeOff, X } from "lucide-react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
 import { Button } from "../Button";
@@ -78,10 +78,15 @@ function HierarchicalLabelSegments<P extends string>({
   path,
   registry,
   onSegmentClick,
+  inactive,
 }: {
   path: P;
   registry: Record<P, ParamDescriptor>;
   onSegmentClick: (path: string[]) => void;
+  /** GitHub issue #670 — renders a closed-eye badge right after the path's last segment when
+   *  `true` (the parameter is currently hidden by the render-mode settings panel itself, e.g. a
+   *  teleport field while the maze has no teleports), with a tooltip explaining why. */
+  inactive?: boolean;
 }) {
   const { group, label } = registry[path];
   const segments = [...group, label];
@@ -102,6 +107,11 @@ function HierarchicalLabelSegments<P extends string>({
           </span>
         </span>
       ))}
+      {inactive && (
+        <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+          <EyeOff size={13} strokeWidth={2.5} />
+        </span>
+      )}
     </>
   );
 }
@@ -298,6 +308,21 @@ function BreadcrumbNav<P extends string>({
   );
 }
 
+/** Every `groupKey` (same joined-segments identity `buildPickerTree`'s group nodes use) on the
+ *  path to `path`'s own leaf — used to pre-expand `ParamPicker`'s tree down to an already-selected
+ *  parameter (e.g. the field the link-status icon was clicked from) so it's visible and highlighted
+ *  instead of collapsed inside a closed group. `path === null` yields no keys. */
+function expandedGroupKeysFor<P extends string>(path: P | null, registry: Record<P, ParamDescriptor>): Set<string> {
+  if (path === null) return new Set();
+  const keys = new Set<string>();
+  let prefix = "";
+  for (const segment of registry[path].group) {
+    prefix = `${prefix}/${segment}`;
+    keys.add(prefix);
+  }
+  return keys;
+}
+
 /** Hierarchical, collapsible parameter picker (target or source) — used only inside `LinkEditor`.
  *  Mirrors the settings panel's own section/subsection nesting (`registry[path].group`) rather
  *  than a flat alphabetical list, so a field is found where it's expected instead of scanning one
@@ -309,14 +334,24 @@ function ParamPicker<P extends string>({
   registry,
   selected,
   onPick,
+  activePaths,
 }: {
   paths: P[];
   registry: Record<P, ParamDescriptor>;
   selected: P | null;
   onPick: (path: P) => void;
+  /** Paths currently shown in the settings panel (GitHub issue #670) — a leaf not in this set gets
+   *  a closed-eye badge after its label, regardless of whether it was already filtered out of
+   *  `paths` by the caller's own "Show inactive" toggle. */
+  activePaths: Set<P>;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const tree = buildPickerTree(paths, registry);
+  const [expanded, setExpanded] = useState<Set<string>>(() => expandedGroupKeysFor(selected, registry));
+
+  useEffect(() => {
+    if (selected === null) return;
+    setExpanded((prev) => new Set([...prev, ...expandedGroupKeysFor(selected, registry)]));
+  }, [selected, registry]);
 
   function toggle(groupKey: string) {
     setExpanded((prev) => {
@@ -330,6 +365,7 @@ function ParamPicker<P extends string>({
   function renderNodes(nodes: PickerNode<P>[], depth: number): React.ReactNode[] {
     return nodes.map((node) => {
       if (node.kind === "leaf") {
+        const inactive = !activePaths.has(node.path);
         return (
           <div
             key={node.path}
@@ -342,6 +378,11 @@ function ParamPicker<P extends string>({
             onClick={() => onPick(node.path)}
           >
             {node.label}
+            {inactive && (
+              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+                <EyeOff size={13} strokeWidth={2.5} />
+              </span>
+            )}
           </div>
         );
       }
@@ -595,8 +636,9 @@ function ColorModifierStepDialog({
  *  through `ModifierStepDialog`/`ColorModifierStepDialog`, never inline here. Saving is blocked while
  *  any numeric step divides by 0 (would make `target` NaN/Infinity on every propagation), via the
  *  save button's own `disabled`. */
-function LinkEditor<P extends string>({
+export function LinkEditor<P extends string>({
   registry,
+  activePaths,
   initialSource,
   initialTarget,
   initialModifiers,
@@ -605,6 +647,12 @@ function LinkEditor<P extends string>({
   onClose,
 }: {
   registry: Record<P, ParamDescriptor>;
+  /** Paths currently shown in the settings panel (GitHub issue #670) — governs the Target/Source
+   *  pickers below together with `showInactive`: hidden entirely while it's off (default), listed
+   *  with a closed-eye badge once turned on. The currently selected target/source stays listed
+   *  either way, even if it's since gone inactive, so editing an existing link never looks like its
+   *  own endpoint vanished. */
+  activePaths: Set<P>;
   initialSource: P | null;
   initialTarget: P | null;
   initialModifiers?: ParamModifier[];
@@ -620,8 +668,10 @@ function LinkEditor<P extends string>({
   const [colorModifiers, setColorModifiers] = useState<ColorModifier[]>(initialColorModifiers ?? []);
   const [editingColorStepIndex, setEditingColorStepIndex] = useState<number | null>(null);
   const [addingColorStep, setAddingColorStep] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const allPaths = Object.keys(registry) as P[];
-  const sourceCandidates = target === null ? [] : allPaths.filter((p) => p !== target && registry[p].type === registry[target].type);
+  const visiblePaths = showInactive ? allPaths : allPaths.filter((p) => activePaths.has(p) || p === target || p === source);
+  const sourceCandidates = target === null ? [] : visiblePaths.filter((p) => p !== target && registry[p].type === registry[target].type);
   const modifiersAllowed = target !== null && source !== null && registry[target].type === "number";
   const colorModifiersAllowed = target !== null && source !== null && registry[target].type === "color";
   const hint = modifiersHint(target, source, registry);
@@ -662,14 +712,14 @@ function LinkEditor<P extends string>({
             <div style={styles.editorColumns}>
               <div style={{ ...styles.editorColumn, ...styles.wideColumn }}>
                 <div style={styles.editorColumnTitle}>{m["image_export.param_links.target_label"]()}</div>
-                <ParamPicker paths={allPaths} registry={registry} selected={target} onPick={handleTargetPick} />
+                <ParamPicker paths={visiblePaths} registry={registry} selected={target} onPick={handleTargetPick} activePaths={activePaths} />
               </div>
               <div style={{ ...styles.editorColumn, ...styles.wideColumn }}>
                 <div style={styles.editorColumnTitle}>{m["image_export.param_links.source_label"]()}</div>
                 {target === null ? (
                   <div style={styles.pickerHint}>{m["image_export.param_links.pick_target_first"]()}</div>
                 ) : (
-                  <ParamPicker paths={sourceCandidates} registry={registry} selected={source} onPick={setSource} />
+                  <ParamPicker paths={sourceCandidates} registry={registry} selected={source} onPick={setSource} activePaths={activePaths} />
                 )}
               </div>
               <div style={{ ...styles.editorColumn, ...styles.modifiersColumn }}>
@@ -713,11 +763,17 @@ function LinkEditor<P extends string>({
                 )}
               </div>
             </div>
-            <div style={styles.editorFooter}>
-              <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
-              <Button variant="primary" disabled={!canSave} onClick={save}>
-                {m["image_export.param_links.save_link"]()}
-              </Button>
+            <div style={styles.editorFooterRow}>
+              <span style={styles.showInactiveLabel}>
+                <Switch checked={showInactive} onChange={setShowInactive} ariaLabel={m["image_export.param_links.show_inactive_toggle"]()} />
+                <span onClick={() => setShowInactive((v) => !v)}>{m["image_export.param_links.show_inactive_toggle"]()}</span>
+              </span>
+              <div style={styles.editorFooter}>
+                <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
+                <Button variant="primary" disabled={!canSave} onClick={save}>
+                  {m["image_export.param_links.save_link"]()}
+                </Button>
+              </div>
             </div>
           </div>
         }
@@ -788,6 +844,7 @@ export function ParameterLinksDialog<P extends string>({
   onAddLink,
   onRemoveLink,
   onClose,
+  activePaths,
 }: {
   registry: Record<P, ParamDescriptor>;
   /** Active render mode's settings object — read-only here, just to display each link's current
@@ -798,6 +855,11 @@ export function ParameterLinksDialog<P extends string>({
   onAddLink: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   onRemoveLink: (target: P) => void;
   onClose: () => void;
+  /** Paths currently shown in the settings panel (GitHub issue #670) — a path missing from this
+   *  set is marked with a closed-eye badge on every row that mentions it (target or source),
+   *  regardless of `LinkEditor`'s own "Show inactive" toggle, which only governs the Add/Edit
+   *  pickers' own list. */
+  activePaths: Set<P>;
 }) {
   const [editing, setEditing] = useState<{ source: P; target: P; modifiers?: ParamModifier[]; colorModifiers?: ColorModifier[] } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -857,7 +919,7 @@ export function ParameterLinksDialog<P extends string>({
                   <div key={link.id} style={{ ...styles.row, ...(link.enabled ? {} : styles.rowDisabled) }}>
                     <div style={styles.rowLine}>
                       <span style={styles.linkLabel}>
-                        <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} />
+                        <HierarchicalLabelSegments path={link.target} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.target)} />
                       </span>
                       <Switch
                         checked={link.enabled}
@@ -880,7 +942,7 @@ export function ParameterLinksDialog<P extends string>({
                         {registry[link.target].type === "color" && (
                           <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
                         )}
-                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} />{modifierSuffix(link.modifiers)}{colorModifierSuffix(link.colorModifiers)}
+                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{modifierSuffix(link.modifiers)}{colorModifierSuffix(link.colorModifiers)}
                       </span>
                     </div>
                   </div>
@@ -892,11 +954,12 @@ export function ParameterLinksDialog<P extends string>({
       }
     />
       {adding && (
-        <LinkEditor registry={registry} initialSource={null} initialTarget={null} onSave={handleSave} onClose={() => setAdding(false)} />
+        <LinkEditor registry={registry} activePaths={activePaths} initialSource={null} initialTarget={null} onSave={handleSave} onClose={() => setAdding(false)} />
       )}
       {editing && (
         <LinkEditor
           registry={registry}
+          activePaths={activePaths}
           initialSource={editing.source}
           initialTarget={editing.target}
           initialModifiers={editing.modifiers}
@@ -911,6 +974,7 @@ export function ParameterLinksDialog<P extends string>({
 
 const styles: Record<string, React.CSSProperties> = {
   labelBubble: { cursor: "default", padding: "0 2px", borderRadius: 3, background: ui.bg.panelAlt },
+  inactiveBadge: { display: "inline-flex", alignItems: "center", marginLeft: 4, color: ui.text.tertiary, cursor: "default" },
   // Replaces `Modal`'s own padded `body` now that this dialog uses `rawBody` (GitHub issue #645
   // follow-up) — needed so the toolbar below can stay `flexShrink: 0` while only the row list
   // scrolls, which `Modal.body`'s single `overflowY: auto` container couldn't give us.
@@ -1048,5 +1112,7 @@ const styles: Record<string, React.CSSProperties> = {
   // 4px"` is purely the text's internal inset, not an outer margin — so its hover highlight spans
   // edge-to-edge exactly like the Target/Source columns' own rows, with no gap on either side.
   addModifierRow: { ...typography.body, color: ui.text.tertiary, cursor: "default", padding: "2px 4px", borderRadius: 3 },
-  editorFooter: { display: "flex", justifyContent: "flex-end", gap: spacing.groupGap, paddingTop: spacing.groupGap, flexShrink: 0 },
+  editorFooter: { display: "flex", justifyContent: "flex-end", gap: spacing.groupGap, flexShrink: 0 },
+  editorFooterRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacing.groupGap, paddingTop: spacing.groupGap, flexShrink: 0 },
+  showInactiveLabel: { display: "flex", alignItems: "center", gap: spacing.itemGap, ...typography.body, cursor: "default" },
 };

@@ -4,11 +4,11 @@ import {
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
-import type { RenderModeId } from "../mazeStore";
+import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
-import type { ParamLink, ParamModifier, ParamDescriptor } from "../parameterLinks";
+import type { ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel, ParamDescriptor } from "../parameterLinks";
 import { validateLinkGraph, linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY, type VectorByWallsParamPath, type VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { assertObject, assertArray, assertBoolRecord, optBool, optNumber, optEnum } from "./validatePrimitives";
@@ -329,6 +329,19 @@ function tryValidateParamModifier(v: unknown): ParamModifier | null {
   return { op: obj.op, value: obj.value };
 }
 
+const COLOR_MODELS: ColorModel[] = ["rgb", "hsl", "oklch"];
+const COLOR_CHANNELS: ColorChannel[] = ["r", "g", "b", "hsl-h", "s", "l", "oklch-h", "c", "oklch-l"];
+
+function tryValidateColorModifier(v: unknown): ColorModifier | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  if (obj.op !== "add" && obj.op !== "sub" && obj.op !== "mul" && obj.op !== "div") return null;
+  if (typeof obj.value !== "number") return null;
+  if (typeof obj.model !== "string" || !COLOR_MODELS.includes(obj.model as ColorModel)) return null;
+  if (typeof obj.channel !== "string" || !COLOR_CHANNELS.includes(obj.channel as ColorChannel)) return null;
+  return { model: obj.model as ColorModel, channel: obj.channel as ColorChannel, op: obj.op, value: obj.value };
+}
+
 function tryValidateParamLink<P extends string>(v: unknown): ParamLink<P> | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const obj = v as Record<string, unknown>;
@@ -336,7 +349,17 @@ function tryValidateParamLink<P extends string>(v: unknown): ParamLink<P> | null
   const modifiers = Array.isArray(obj.modifiers)
     ? obj.modifiers.map(tryValidateParamModifier).filter((m): m is ParamModifier => m !== null)
     : undefined;
-  return { id: obj.id, source: obj.source as P, target: obj.target as P, enabled: obj.enabled, modifiers: modifiers && modifiers.length > 0 ? modifiers : undefined };
+  const colorModifiers = Array.isArray(obj.colorModifiers)
+    ? obj.colorModifiers.map(tryValidateColorModifier).filter((m): m is ColorModifier => m !== null)
+    : undefined;
+  return {
+    id: obj.id,
+    source: obj.source as P,
+    target: obj.target as P,
+    enabled: obj.enabled,
+    modifiers: modifiers && modifiers.length > 0 ? modifiers : undefined,
+    colorModifiers: colorModifiers && colorModifiers.length > 0 ? colorModifiers : undefined,
+  };
 }
 
 /** Validates a persisted `links` array (GitHub issue #651) — `null`/absent means "untouched since
@@ -417,6 +440,15 @@ export const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls", "vector
 export function optRenderModeId(obj: Record<string, unknown> | null, key: string): RenderModeId | null {
   const v = obj?.[key];
   return typeof v === "string" && (KNOWN_RENDER_MODE_IDS as readonly string[]).includes(v) ? (v as RenderModeId) : null;
+}
+
+export const KNOWN_LINK_ICON_VISIBILITIES: LinkIconVisibility[] = ["always", "linked", "never"];
+
+/** Degrades to `fallback` for an unknown/future `LinkIconVisibility` (GitHub issue #652 follow-up)
+ * — same "never throw" convention `optRenderModeId` itself uses. */
+export function optLinkIconVisibility(obj: Record<string, unknown> | null, key: string, fallback: LinkIconVisibility): LinkIconVisibility {
+  const v = obj?.[key];
+  return typeof v === "string" && (KNOWN_LINK_ICON_VISIBILITIES as readonly string[]).includes(v) ? (v as LinkIconVisibility) : fallback;
 }
 
 export const KNOWN_OUTPUT_MODES: PngExportOutputMode[] = ["digital", "print"];
@@ -556,6 +588,7 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
       : {},
     showColorWarnings: optBool(obj, "showColorWarnings", true),
+    linkIconVisibility: optLinkIconVisibility(obj, "linkIconVisibility", "linked"),
     vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`, vectorByCorridorsLinks),
     vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)

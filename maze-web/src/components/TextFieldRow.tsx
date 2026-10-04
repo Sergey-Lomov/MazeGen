@@ -23,8 +23,8 @@ export function TextFieldRow({
   invalid?: boolean;
   /** Fixed field width so the label column stays consistent across rows (like `ColorRow`'s swatch). */
   inputWidth?: number;
-  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
-   *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
+   *  label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
 }) {
   return (

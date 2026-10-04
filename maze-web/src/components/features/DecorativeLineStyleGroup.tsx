@@ -2,8 +2,7 @@ import type * as React from "react";
 import type { DecorativeLineStyle } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing } from "../../styles/theme";
-import { ColorRow } from "../ColorRow";
-import { SliderRow } from "../SliderRow";
+import { LinkedColorRow, LinkedSliderRow } from "./LinkedRows";
 import * as m from "~/paraglide/messages";
 
 /** One decorative-style vertical-connection pictogram's line settings (GitHub issue #428) — line
@@ -11,9 +10,11 @@ import * as m from "~/paraglide/messages";
  *  `MarkerSettingsGroup`'s fill/border/gap/shape fields (a stroke-only stairs/elevator icon has none
  *  of those). Shared by all three "decorative" sub-sections (`decorativeStairsTwoWay`/
  *  `decorativeStairsOneWay`/`decorativeElevator`) in `VectorByWallsSettingsPanel`. */
-export function DecorativeLineStyleGroup({ settings, onChange, lineColorPriority, lineColorDefault, lineColorFieldName }: {
+export function DecorativeLineStyleGroup<P extends string>({ settings, onChange, linkTargets, lineColorPriority, lineColorDefault, lineColorFieldName }: {
   settings: DecorativeLineStyle;
   onChange: (patch: Partial<DecorativeLineStyle>) => void;
+  /** Per-field link paths (GitHub issue #652 follow-up) for this group's `Linked*Row`s. */
+  linkTargets: { lineColor: P | null; lineWidth: P | null; size: P | null };
   /** "Priority" project colors (GitHub issue #503) for the line-color row. */
   lineColorPriority?: ProjectColorEntry[];
   /** Factory default (GitHub issue #503) — pinned as the line-color row's first "Default" color. */
@@ -24,8 +25,8 @@ export function DecorativeLineStyleGroup({ settings, onChange, lineColorPriority
 }) {
   return (
     <div style={styles.wrap}>
-      <ColorRow label={m["image_export.vector_by_walls.decorative_line_color"]()} color={settings.lineColor} onChange={(lineColor) => onChange({ lineColor })} priorityColors={lineColorPriority} defaultColor={lineColorDefault} fieldName={lineColorFieldName} />
-      <SliderRow
+      <LinkedColorRow label={m["image_export.vector_by_walls.decorative_line_color"]()} color={settings.lineColor} onChange={(lineColor) => onChange({ lineColor })} priorityColors={lineColorPriority} defaultColor={lineColorDefault} fieldName={lineColorFieldName} linkTarget={linkTargets.lineColor} />
+      <LinkedSliderRow
         label={m["image_export.vector_by_walls.decorative_line_width"]()}
         value={settings.lineWidth}
         onChange={(lineWidth) => onChange({ lineWidth })}
@@ -33,8 +34,9 @@ export function DecorativeLineStyleGroup({ settings, onChange, lineColorPriority
         max={10}
         step={1}
         format={(v) => String(v)}
+        linkTarget={linkTargets.lineWidth}
       />
-      <SliderRow
+      <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_size"]()}
         value={settings.size}
         onChange={(size) => onChange({ size })}
@@ -42,6 +44,7 @@ export function DecorativeLineStyleGroup({ settings, onChange, lineColorPriority
         max={1}
         step={0.01}
         format={(v) => v.toFixed(2)}
+        linkTarget={linkTargets.size}
       />
     </div>
   );

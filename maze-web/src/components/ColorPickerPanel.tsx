@@ -73,6 +73,13 @@ interface Props {
    *  handler here that only updates the render. A handler that is expensive per call should
    *  throttle itself. */
   onPreview?: (color: number) => void;
+  /** Called once when the user cancels (Cancel button, header close, or Escape) — after the
+   *  restoring `onPreview` call, before `onClose` (GitHub issue #666). Lets the call site undo any
+   *  side effect that a mid-session preview/commit tick had beyond the color value itself — e.g.
+   *  re-enabling a field's incoming link that a preview tick disabled as an override, since a
+   *  cancelled edit shouldn't leave the link permanently overridden. Optional — only linked call
+   *  sites need it. */
+  onCancel?: () => void;
   /** "Priority" project colors (GitHub issue #503) pinned to the top of the "Project colors"
    *  section, in the given order — sibling colors that matter for the decision the picker was
    *  opened for. May be empty / omitted. */
@@ -96,7 +103,7 @@ interface Props {
  *  Live canvas preview (GitHub issue #513): while open, every working-color change is pushed through
  *  `onPreview` so the canvas renders the color in context; Cancel / header close / Escape push the
  *  original color back before closing, Apply leaves the last preview in place. */
-export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityColors, defaultColor, fieldName }: Props) {
+export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel, priorityColors, defaultColor, fieldName }: Props) {
   const [working, setWorking] = useState(color);
   const [hexInput, setHexInput] = useState(() => colorToHex(color));
   const [model, setModel] = useState<ColorModel>("rgb");
@@ -218,6 +225,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
       pendingPreview.current = originalColor;
       flushPreview();
     }
+    onCancel?.();
     onClose();
   }
 

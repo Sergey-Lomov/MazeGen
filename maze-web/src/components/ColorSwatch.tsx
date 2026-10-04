@@ -23,6 +23,14 @@ interface Props {
    *  marks the maze dirty or pushes a history entry must pass a lighter handler that just repaints,
    *  so a mid-drag preview isn't recorded as an edit. */
   onPreview?: (color: number) => void;
+  /** Called once, synchronously, right before the picker opens (GitHub issue #666) — lets a call
+   *  site snapshot state it needs to restore on cancel (e.g. whether the field's incoming link was
+   *  enabled), since by the time `onCancel` fires that state may already have been changed by a
+   *  preview/commit tick. */
+  onOpen?: () => void;
+  /** Called once when the user cancels the open picker (Cancel / header close / Escape) — forwarded
+   *  to `ColorPickerPanel`'s `onCancel` (GitHub issue #666). See there for why this exists. */
+  onCancel?: () => void;
 }
 
 /** Reusable color-value indicator/picker. The visible swatch is a plain `div` (native
@@ -40,8 +48,13 @@ interface Props {
  *  (GitHub issue #322). Commit timing depends on `onPreview`: with a distinct `onPreview` channel
  *  the single `onChange` commit fires on Apply; with the default (`onPreview` = `onChange`) the
  *  live stream is the commit and Apply just closes. Cancel / Escape restore the open-time color. */
-export function ColorSwatch({ color, onChange, disabled, onPreview, priorityColors, defaultColor, fieldName }: Props) {
+export function ColorSwatch({ color, onChange, disabled, onPreview, onOpen, onCancel, priorityColors, defaultColor, fieldName }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  function open() {
+    onOpen?.();
+    setPickerOpen(true);
+  }
 
   return (
     <>
@@ -50,8 +63,8 @@ export function ColorSwatch({ color, onChange, disabled, onPreview, priorityColo
         tabIndex={disabled ? -1 : 0}
         aria-disabled={disabled}
         style={{ ...styles.swatch, background: colorToHex(color), ...(disabled ? styles.swatchDisabled : {}) }}
-        onClick={() => { if (!disabled) setPickerOpen(true); }}
-        onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setPickerOpen(true); } }}
+        onClick={() => { if (!disabled) open(); }}
+        onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
       />
       {pickerOpen && (
         <ColorPickerPanel
@@ -63,6 +76,7 @@ export function ColorSwatch({ color, onChange, disabled, onPreview, priorityColo
           onApply={(next) => { if (onPreview) onChange(next); setPickerOpen(false); }}
           onClose={() => setPickerOpen(false)}
           onPreview={onPreview ?? onChange}
+          onCancel={onCancel}
           priorityColors={priorityColors}
           defaultColor={defaultColor}
           fieldName={fieldName}

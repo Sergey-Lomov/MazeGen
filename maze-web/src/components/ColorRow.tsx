@@ -6,11 +6,15 @@ import { Inline } from "./Layout";
 
 /** Shared labeled color-picker row — label + `ColorSwatch`, mirrors `ToggleRow`'s label + `Switch`
  *  shape so a color param and a toggle param line up identically in the same settings list. */
-export function ColorRow({ label, color, onChange, disabled, resetButton, priorityColors, defaultColor, fieldName }: {
+export function ColorRow({ label, color, onChange, disabled, resetButton, onOpen, onCancel, priorityColors, defaultColor, fieldName }: {
   label: string; color: number; onChange: (color: number) => void; disabled?: boolean;
-  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
-   *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
+   *  label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
+  /** Forwarded to `ColorSwatch` (GitHub issue #666) — see its doc comment. */
+  onOpen?: () => void;
+  /** Forwarded to `ColorSwatch` (GitHub issue #666) — see its doc comment. */
+  onCancel?: () => void;
   /** "Priority" project colors (GitHub issue #503) pinned to the top of the picker's "Project
    *  colors" section — sibling colors that matter for this particular decision, chosen by the call
    *  site. Passed straight through to `ColorPickerPanel`; may be empty / omitted. */
@@ -26,7 +30,7 @@ export function ColorRow({ label, color, onChange, disabled, resetButton, priori
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      <ColorSwatch color={color} onChange={onChange} disabled={disabled} priorityColors={priorityColors} defaultColor={defaultColor} fieldName={fieldName ?? label} />
+      <ColorSwatch color={color} onChange={onChange} disabled={disabled} onOpen={onOpen} onCancel={onCancel} priorityColors={priorityColors} defaultColor={defaultColor} fieldName={fieldName ?? label} />
       {resetButton}
     </Inline>
   );

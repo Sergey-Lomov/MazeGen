@@ -24,8 +24,8 @@ export function SelectRow<T extends string>({
   /** Opens an info popup for this row — renders a small clickable "ℹ" after the select, before
    *  `resetButton`. */
   info?: () => void;
-  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
-   *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
+  /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
+   *  label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
   /** Merged onto the native `<select>`'s own `sharedStyles.selectSm`, for a caller that needs it
    *  to match a sibling control's height exactly (e.g. `ModifierStepDialog`'s op select next to

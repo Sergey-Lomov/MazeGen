@@ -2,10 +2,7 @@ import type * as React from "react";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
-import { ToggleRow } from "../ToggleRow";
-import { ColorRow } from "../ColorRow";
-import { SelectRow } from "../SelectRow";
-import { SliderRow } from "../SliderRow";
+import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import * as m from "~/paraglide/messages";
 
 /** "Marker indices" section body (GitHub issue #471) — a self-contained collapsible section,
@@ -17,11 +14,32 @@ import * as m from "~/paraglide/messages";
  *  is nested one indent deep: a "Coverage" sub-group of per-connection-kind toggles, then a
  *  "Settings" sub-group with the plate's appearance. All geometric fields are fractions of
  *  `TILE_SIZE` except `borderWidth` / `gap` (whole pixels). */
-export function MarkerIndexSection({ settings, onChange, gapResetButton, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorFieldName, textColorFieldName, borderColorFieldName }: {
+export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorFieldName, textColorFieldName, borderColorFieldName }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
-  /** "Shared style" `gapWidth`-group per-field reset for `gap` (the one shared-linked field). */
-  gapResetButton?: React.ReactNode;
+  /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
+   *  concrete path where the registry models the field, `null` where it doesn't (every field row
+   *  gets an icon either way, see `LinkStatusIcon`'s doc comment). */
+  linkTargets: {
+    enabled: P | null;
+    coverageSingleFloorTeleport: P | null;
+    coverageCrossFloorTeleport: P | null;
+    coverageVerticalPassage: P | null;
+    coverageElevator: P | null;
+    labelStyle: P | null;
+    fontWeight: P | null;
+    paddingX: P | null;
+    height: P | null;
+    offset: P | null;
+    cornerRadius: P | null;
+    gap: P | null;
+    borderWidthFromMarker: P | null;
+    borderWidth: P | null;
+    fillColor: P | null;
+    textColor: P | null;
+    borderColorFromMarker: P | null;
+    borderColor: P | null;
+  };
   /** "Priority" project colors (GitHub issue #503) for the plate fill / text / border color rows. */
   fillColorPriority?: ProjectColorEntry[];
   textColorPriority?: ProjectColorEntry[];
@@ -43,35 +61,40 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
 
   return (
     <div style={styles.block}>
-      <ToggleRow
+      <LinkedToggleRow
         label={m["image_export.vector_by_walls.marker_index_enabled"]()}
         checked={settings.enabled}
         onChange={(enabled) => onChange({ enabled })}
+        linkTarget={linkTargets.enabled}
       />
       {settings.enabled && (
         <>
           <div style={styles.subGroupWrap}>
             <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_coverage"]()}</div>
             <div style={styles.subGroup}>
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"]()}
                 checked={cov.singleFloorTeleport}
                 onChange={(singleFloorTeleport) => setCoverage({ singleFloorTeleport })}
+                linkTarget={linkTargets.coverageSingleFloorTeleport}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_cross_floor_teleport"]()}
                 checked={cov.crossFloorTeleport}
                 onChange={(crossFloorTeleport) => setCoverage({ crossFloorTeleport })}
+                linkTarget={linkTargets.coverageCrossFloorTeleport}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_vertical_passage"]()}
                 checked={cov.verticalPassage}
                 onChange={(verticalPassage) => setCoverage({ verticalPassage })}
+                linkTarget={linkTargets.coverageVerticalPassage}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_coverage_elevator"]()}
                 checked={cov.elevator}
                 onChange={(elevator) => setCoverage({ elevator })}
+                linkTarget={linkTargets.coverageElevator}
               />
             </div>
           </div>
@@ -79,7 +102,7 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
           <div style={styles.subGroupWrap}>
             <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_settings"]()}</div>
             <div style={styles.subGroup}>
-              <SelectRow
+              <LinkedSelectRow
                 label={m["image_export.vector_by_walls.marker_index_label_style"]()}
                 value={settings.labelStyle}
                 options={[
@@ -88,8 +111,9 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
                   { value: "letters", label: m["image_export.vector_by_walls.marker_index_label_style_letters"]() },
                 ]}
                 onChange={(labelStyle) => onChange({ labelStyle })}
+                linkTarget={linkTargets.labelStyle}
               />
-              <SelectRow
+              <LinkedSelectRow
                 label={m["image_export.vector_by_walls.marker_index_font_weight"]()}
                 value={settings.fontWeight}
                 options={[
@@ -97,78 +121,88 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
                   { value: "bold", label: m["image_export.vector_by_walls.marker_index_font_weight_bold"]() },
                 ]}
                 onChange={(fontWeight) => onChange({ fontWeight })}
+                linkTarget={linkTargets.fontWeight}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_padding_x"]()}
                 value={settings.paddingX}
                 onChange={(paddingX) => onChange({ paddingX })}
                 min={0} max={0.2} step={0.01}
                 format={(v) => v.toFixed(2)}
+                linkTarget={linkTargets.paddingX}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_height"]()}
                 value={settings.height}
                 onChange={(height) => onChange({ height })}
                 min={0.05} max={0.5} step={0.01}
                 format={(v) => v.toFixed(2)}
+                linkTarget={linkTargets.height}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_offset"]()}
                 value={settings.offset}
                 onChange={(offset) => onChange({ offset })}
                 min={0} max={0.3} step={0.01}
                 format={(v) => v.toFixed(2)}
+                linkTarget={linkTargets.offset}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_corner_radius"]()}
                 value={settings.cornerRadius}
                 onChange={(cornerRadius) => onChange({ cornerRadius })}
                 min={0} max={0.25} step={0.01}
                 format={(v) => v.toFixed(2)}
+                linkTarget={linkTargets.cornerRadius}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_gap"]()}
                 value={settings.gap}
                 onChange={(gap) => onChange({ gap: Math.round(gap) })}
                 min={0} max={10} step={1}
                 format={(v) => String(Math.round(v))}
-                resetButton={gapResetButton}
+                linkTarget={linkTargets.gap}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_border_width_from_marker"]()}
                 checked={settings.borderWidthFromMarker}
                 onChange={(borderWidthFromMarker) => onChange({ borderWidthFromMarker })}
+                linkTarget={linkTargets.borderWidthFromMarker}
               />
-              <SliderRow
+              <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_border_width"]()}
                 value={settings.borderWidth}
                 onChange={(borderWidth) => onChange({ borderWidth: Math.round(borderWidth) })}
                 min={0} max={10} step={1}
                 format={(v) => String(Math.round(v))}
                 disabled={settings.borderWidthFromMarker}
+                linkTarget={linkTargets.borderWidth}
               />
-              <ColorRow
+              <LinkedColorRow
                 label={m["image_export.vector_by_walls.marker_index_fill_color"]()}
                 color={settings.fillColor}
                 onChange={(fillColor) => onChange({ fillColor })}
                 priorityColors={fillColorPriority}
                 defaultColor={fillColorDefault}
                 fieldName={fillColorFieldName}
+                linkTarget={linkTargets.fillColor}
               />
-              <ColorRow
+              <LinkedColorRow
                 label={m["image_export.vector_by_walls.marker_index_text_color"]()}
                 color={settings.textColor}
                 onChange={(textColor) => onChange({ textColor })}
                 priorityColors={textColorPriority}
                 defaultColor={textColorDefault}
                 fieldName={textColorFieldName}
+                linkTarget={linkTargets.textColor}
               />
-              <ToggleRow
+              <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_border_color_from_marker"]()}
                 checked={settings.borderColorFromMarker}
                 onChange={(borderColorFromMarker) => onChange({ borderColorFromMarker })}
+                linkTarget={linkTargets.borderColorFromMarker}
               />
-              <ColorRow
+              <LinkedColorRow
                 label={m["image_export.vector_by_walls.marker_index_border_color"]()}
                 color={settings.borderColor}
                 onChange={(borderColor) => onChange({ borderColor })}
@@ -176,6 +210,7 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton, fillCol
                 priorityColors={borderColorPriority}
                 defaultColor={borderColorDefault}
                 fieldName={borderColorFieldName}
+                linkTarget={linkTargets.borderColor}
               />
             </div>
           </div>
