@@ -574,6 +574,17 @@ removed as a leftover of the pre-#644 override model once the link-list dialog b
 actual place to manage links — `forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`/
 `forceLinks` still exist in the store/engine but are no longer wired to any UI.)
 
+An info button (`ⓘ`, secondary-variant, same height as "Manage links", GitHub issue #669) sits next
+to "Manage links" and opens `ParamLinksInfoModal` — a plain-language, end-user-facing explainer of
+the whole parameter-link system (what a link does, how to add/edit one from either entry point, how
+setting a linked field's value by hand turns its own link off instead of being overwritten, what a
+color modifier is — illustrated with the marker border/fill darkening example rather than any
+internal type name — what the link-status chain icon's states mean, and what the "Link icons"
+visibility switch above does). Deliberately free of this spec's own internal terminology (driving/
+dependent link, `ParamModifier`/`ColorModifier`, override) and silent on already-expected behavior
+(e.g. that links and modifiers persist with the project) — those belong to this spec, not to the
+in-app explanation.
+
 **Parameter-links dialog (`ParameterLinksDialog.tsx`, GitHub issue #644, redesigned link-centric
 per follow-up feedback, then trimmed to just a filter/add toolbar plus the link list).** No
 explanatory hint text above the list — the toolbar and cards are self-explanatory. The toolbar holds

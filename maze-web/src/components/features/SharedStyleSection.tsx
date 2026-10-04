@@ -1,8 +1,10 @@
 import type React from "react";
 import { useState } from "react";
-import { indent, spacing } from "../../styles/theme";
+import { indent, spacing, typography, muted } from "../../styles/theme";
 import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
+import { Inline } from "../Layout";
+import { Modal } from "../Modal";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
@@ -10,6 +12,21 @@ import type { CornerStyle } from "../../pixi/renderers/types";
 import type { LinkIconVisibility } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
+
+/** Explains the parameter-link system to end users (GitHub issue #669) — plain-language only, no
+ *  internal terminology (driving/dependent link, `ParamModifier`, etc.) and no mention of
+ *  already-expected behavior (e.g. that links/modifiers persist with the project). */
+function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title={m["image_export.param_links.info_title"]()} onClose={onClose}>
+      <div style={styles.infoText}>{m["image_export.param_links.info_what"]()}</div>
+      <div style={styles.infoText}>{m["image_export.param_links.info_how"]()}</div>
+      <div style={styles.infoText}>{m["image_export.param_links.info_modifiers"]()}</div>
+      <div style={styles.infoText}>{m["image_export.param_links.info_icon"]()}</div>
+      <div style={styles.infoText}>{m["image_export.param_links.info_visibility"]()}</div>
+    </Modal>
+  );
+}
 
 /** The "Shared style" section (GitHub issue #322) — one collapsible section, always first, shared
  *  by `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store
@@ -59,6 +76,7 @@ export function SharedStyleSection<P extends string>({
   activePaths: Set<P>;
 }) {
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
   const setLinkIconVisibility = useMazeStore((s) => s.setLinkIconVisibility);
 
@@ -114,12 +132,18 @@ export function SharedStyleSection<P extends string>({
         format={(v) => String(v)}
         linkTarget={"gapWidth" as P}
       />
-      <Button variant="secondary" onClick={() => setLinksDialogOpen(true)}>
-        {m["image_export.param_links.manage_links"]()}
-      </Button>
+      <Inline gap="rowGap" align="stretch">
+        <Button variant="secondary" layoutStyle={styles.manageLinksButton} onClick={() => setLinksDialogOpen(true)}>
+          {m["image_export.param_links.manage_links"]()}
+        </Button>
+        <Button variant="secondary" layoutStyle={styles.infoButton} onClick={() => setInfoOpen(true)} title={m["image_export.param_links.info_title"]()}>
+          &#8505;
+        </Button>
+      </Inline>
       <Button variant="destructive" onClick={onResetAll}>
         {m["image_export.vector_by_walls.shared_style_reset_all"]()}
       </Button>
+      {infoOpen && <ParamLinksInfoModal onClose={() => setInfoOpen(false)} />}
       {linksDialogOpen && (
         <ParameterLinksDialog
           registry={registry}
@@ -138,4 +162,14 @@ export function SharedStyleSection<P extends string>({
 
 const styles: Record<string, React.CSSProperties> = {
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  manageLinksButton: { flex: 1 },
+  infoButton: {
+    flex: "none",
+    padding: "0 10px",
+    fontSize: typography.icon.fontSize,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoText: { ...muted(typography.body) },
 };
