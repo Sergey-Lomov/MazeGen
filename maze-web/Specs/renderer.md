@@ -80,6 +80,15 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 
 ## Layer Renderers
 
+### GridRenderer
+
+The viewport grid is cached while panning: moving the viewport without changing the visible grid
+cell bounds reuses the existing world-space geometry, while zoom and newly exposed grid ranges still
+redraw it. If the viewport would require more than `MAX_VIEWPORT_GRID_CELLS` cells, the background
+grid is temporarily suppressed because it is below a useful visual scale; maze geometry remains
+visible. This also prevents extreme zoom-out from turning every pointermove into an unbounded grid
+rebuild (GitHub issue #650).
+
 ### CellFillRenderer
 Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Uses `getCellVertices` for polygon geometry.
 
