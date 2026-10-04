@@ -123,5 +123,5 @@ export function resolvePresetSplitShapeLabel(
     ctx.presetConnections, ctx.splitPoints, ctx.activeSplitNode, normalizedLevel,
   ));
   const kind = detectSplitSpecialShapeKind(faceKindsByNode);
-  return kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]();
+  return kind !== null ? splitPointShapeName(kind) : m["preset.split_tile"]();
 }

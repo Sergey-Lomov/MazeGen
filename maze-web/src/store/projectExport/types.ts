@@ -209,6 +209,9 @@ export interface ProjectFile {
     /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y"
      * (GitHub issue #231) — mirrors `postEdit.splitPoints` below. */
     splitPoints: Record<string, number[]>;
+    /** Optional stable ids/order for the preset list; absent in older project files. */
+    splitPointIds?: Record<string, string>;
+    entityOrder?: string[];
   };
   postEdit: ProjectFilePostEdit | null;
   dirtyFlags: ProjectFileDirtyFlags;

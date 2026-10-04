@@ -61,6 +61,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     presetElevators: [],
     presetElevatorPending: null,
     presetSplitPoints: {},
+    presetSplitPointIds: {},
+    presetEntityOrder: [],
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
     postEditDirty: false,
@@ -381,6 +383,19 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.presets.teleports).toEqual(serialized.presets.teleports);
+  });
+
+  it("round-trips preset list identity and creation-order metadata", () => {
+    const state = makeState({
+      presetSplitPoints: { "2,2": [0] },
+      presetSplitPointIds: { "2,2": "s4" },
+      presetEntityOrder: ["teleport:2", "split:2,2"],
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+
+    expect(reparsed.presets.splitPointIds).toEqual({ "2,2": "s4" });
+    expect(reparsed.presets.entityOrder).toEqual(["teleport:2", "split:2,2"]);
   });
 
   it("defaults presets.teleports to empty array for a project file saved before teleports existed", () => {

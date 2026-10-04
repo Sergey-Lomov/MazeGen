@@ -78,6 +78,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       verticalPassages: state.presetVerticalPassages,
       elevators: state.presetElevators,
       splitPoints: state.presetSplitPoints,
+      splitPointIds: state.presetSplitPointIds,
+      entityOrder: state.presetEntityOrder,
     },
     postEdit,
     dirtyFlags: {

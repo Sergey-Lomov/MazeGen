@@ -5,7 +5,6 @@ import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { computeIsolatedNodeKeys, computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import { formatTargetLabel } from "../../pixi/targetLabel";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
@@ -16,7 +15,6 @@ import { ConfirmModal } from "../ConfirmModal";
 import { SectionHeader } from "../SectionHeader";
 import { Switch } from "../Switch";
 import { Stack, Grid } from "../Layout";
-import { StatusTag } from "../StatusTag";
 import { WarningBubble } from "../WarningBubble";
 import { FloorBadgeRow } from "../FloorBadgeRow";
 import { notificationPalette } from "../EmbeddedNotification";
@@ -25,13 +23,14 @@ import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog"
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import { PresetEntityDeleteDialog } from "../dialogs/PresetEntityDeleteDialog";
+import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
   return [
     ["wall", m["preset.wall"]()],
     ["passage", m["preset.passage"]()],
-    ["reset", m["preset.reset"]()],
+    ["reset", `${m["preset.reset"]()}\n${m["preset.reset_tooltip"]()}`],
     ["one_way", m["preset.one_way"]()],
   ];
 }
@@ -95,8 +94,6 @@ export function PresetConnectionsFeature() {
   const defaultEdgeState = useMazeStore((s) => s.defaultEdgeState);
   const setDefaultEdgeState = useMazeStore((s) => s.setDefaultEdgeState);
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
-  const presetTeleportPendingFrom = useMazeStore((s) => s.presetTeleportPendingFrom);
-  const setPresetTeleportPendingFrom = useMazeStore((s) => s.setPresetTeleportPendingFrom);
   const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
   const presetVerticalPassagePending = useMazeStore((s) => s.presetVerticalPassagePending);
   const cancelPresetVerticalPassagePlacement = useMazeStore((s) => s.cancelPresetVerticalPassagePlacement);
@@ -123,6 +120,7 @@ export function PresetConnectionsFeature() {
   const lockToolActive = isPresetLockTool(tool);
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const [presetListOpen, setPresetListOpen] = useState(true);
 
   // Nodes locked both in and out AND with no explicit passage preset are fully isolated. Scoped
   // to the active floor (GitHub issue #340 follow-up) — mixing keys across floors here previously
@@ -262,19 +260,13 @@ export function PresetConnectionsFeature() {
               variant={defaultEdgeState === s ? "toggle-selected" : "toggle"}
               onClick={() => setDefaultEdgeState(s)}
             >
-              {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
+              {s === "undefined"
+                ? m["preset.default_undefined_short"]()
+                : m[`preset.default_${s}` as "preset.default_wall" | "preset.default_passage"]()}
             </Button>
           ))}
         </Grid>
       </div>
-
-      {presetTeleportPendingFrom && (
-        <Stack gap="itemGap">
-          <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
-            {m["preset.teleport_pending"]()}: {formatTargetLabel(presetTeleportPendingFrom.point, presetTeleportPendingFrom.level ?? 0, floors.length > 1, undefined)}
-          </StatusTag>
-        </Stack>
-      )}
 
       {presetElevatorPending && (
         <PresetElevatorFloorDialog onClose={cancelPresetElevatorPlacement} />
@@ -297,6 +289,13 @@ export function PresetConnectionsFeature() {
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>
         <Stack gap="itemGap">
+          <Button
+            variant={presetListOpen ? "toggle-selected" : "toggle"}
+            layoutStyle={{ width: "100%" }}
+            onClick={() => setPresetListOpen(!presetListOpen)}
+          >
+            {m["preset.list_tool"]()}
+          </Button>
           <Button
             variant="destructive"
             layoutStyle={{ width: "100%" }}
@@ -348,6 +347,8 @@ export function PresetConnectionsFeature() {
           onCancel={() => setConfirmReset(false)}
         />
       )}
+
+      {presetListOpen && <PresetList onClose={() => setPresetListOpen(false)} />}
 
       {presetFocusedPoint && (
         <PresetSplitNodesDialog

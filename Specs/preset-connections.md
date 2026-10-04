@@ -627,6 +627,35 @@ One deliberate divergence between the two (GitHub issue #595's compact-display f
 
 **Controller wiring** (`PresetConnectionsController.ts`). An `isPresetModalOpen` guard blocks pointer input from continuing to drive canvas tools while either prompt (or a VP/elevator pending placement) is open — without it, a drag gesture that opened the dialog on its first cell kept re-targeting it to whatever cell the cursor moved to next. RMB vertex-tools collect every matching hit's endpoint into a list first (still one hit-test per kind, unchanged), then dispatch by count instead of an if/else priority chain.
 
+## Preset list cells (GitHub issue #664)
+
+The Presets card exposes an open-by-default `Preset list` management panel. It contains the complete
+list of user-authored preset entities in the docked `SidePanel` beside the canvas, matching the
+post-edit Changes panel. Rows are sorted with the newest entity first and use the same stable,
+type-prefixed IDs as post-edit where an entity has an identity: start/finish use `s`/`f`, the
+generation source uses `gs`, locks use `lN`, teleports use `tN`, vertical passages `vN`, elevators
+use `eN`, and whole split tiles use `sN`. Walls and passages have no ID bubble.
+Each cell follows the post-edit event-cell layout:
+
+- row 1 contains the localized preset title on the left and, where applicable, a plain,
+  non-interactive stable preset ID on the right;
+- row 2 contains related endpoint coordinates as hoverable, clickable bubbles on the left;
+- one-way edges, teleports, and vertical passages expose a direction-toggle icon on the right;
+- elevators expose a gear icon that opens their existing floor picker;
+- split tiles expose a gear icon that opens the split-node editor for that tile;
+- every cell has a delete icon after the optional control, or at the far right when no control exists.
+
+Only `source: "user"` edge entries are listed. `source: "default"` edges and auto-locks are
+derived state, not user-authored list cells. A split tile is one list entity: its generated
+face-by-face wall/passage records are not shown as separate rows. Bubble hover drives the same
+post-edit semantics: each bubble highlights only its endpoint cell; split bubbles use the split's
+outset highlight; teleport, vertical-passage, and elevator rows highlight their endpoint cells;
+wall/passage/one-way edge rows use post-edit's boundary/one-way row highlight. Clicking a bubble
+navigates to that endpoint's floor. Deleting a cell dispatches through the existing per-entity
+removal actions, so resetting an edge restores the current default state.
+The persisted `presetEntityOrder` and split-tile IDs are removed together with their entities (including
+when invalid preset data is cleared), so a later re-addition receives a fresh newest position.
+
 ### Invalidity
 
 A fourth invalidity check, `computeInvalidSplitPoints`, applies the same "point outside the current field" criterion `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers` already use, to `presetSplitPoints`'s keys. Needed separately because an orphan slot has no referencing preset/teleport/marker to be caught invalid through. Folded into "Clear invalid" and the combined invalid count alongside the other three categories. `generateConfigBuilder.ts` filters `split_points` through it before building the wire payload — the Rust side is guaranteed never to see a `split_points` entry for a point outside the field (see "Applying split points" below for what would happen if it did).
