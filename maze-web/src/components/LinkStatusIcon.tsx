@@ -59,6 +59,7 @@ export function LinkStatusIcon<P extends string>({
   onSetLinkEnabled,
   onAddLink,
   unsupportedHint,
+  activePaths,
 }: {
   target: P | null;
   links: ParamLink<P>[];
@@ -69,6 +70,8 @@ export function LinkStatusIcon<P extends string>({
    *  a reason other than a missing enum type — e.g. a toggle that actually drives a multi-value
    *  field underneath it, where the generic hint would be misleading. */
   unsupportedHint?: string;
+  /** Paths currently shown in the settings panel (GitHub issue #670), passed through to `LinkEditor`. */
+  activePaths: Set<P>;
 }) {
   const visibility = useMazeStore((s) => s.linkIconVisibility);
   const [editing, setEditing] = useState(false);
@@ -186,6 +189,7 @@ export function LinkStatusIcon<P extends string>({
       {editing && (
         <LinkEditor
           registry={registry}
+          activePaths={activePaths}
           initialSource={incoming?.source ?? null}
           initialTarget={linkTarget}
           initialModifiers={incoming?.modifiers}

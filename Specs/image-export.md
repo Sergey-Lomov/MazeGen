@@ -663,6 +663,40 @@ link's source re-syncs the target's value as part of the save. The whole dialog 
 render mode's panel opened it (`SharedStyleSection`'s own `links`/`registry`/`settings` props, generic
 over `P`) — not persisted any differently than `links` itself (see "Persistence" below).
 
+**Inactive parameters (`store/parameterLinksActivity.ts`, GitHub issue #670).** A registry path can
+be currently hidden by the settings panel itself, independent of whether it has a link at all — e.g.
+every `teleportLine*`/`teleportFloorBadge.*` path while the maze has no teleports, or
+`twoWayArrowColor` while `verticalStyle` is `"decorative"`. Each `VectorByWallsSettingsPanel`/
+`VectorByCorridorsSettingsPanel` computes a `Set<P>` of currently-active paths
+(`computeActivePaths`, memoized on the same maze-derived flags — `hasOneWays`/`hasTeleports`/
+`hasCrossFloorTeleports`/`hasTwoWayPassages`/`hasOneWayPassages`/`hasElevators`/
+`hasVerticalSection` — that already gate those sections' own rendering, plus the handful of
+settings fields — `verticalStyle`, `showGrid`, `showInnerGrid`, `elevatorBadges.enabled`,
+`markerIndex.enabled` — that hide a subsection regardless of the maze) and threads it through
+`LinkContext`'s `activePaths` field alongside `links`/`registry`/`onSetLinkEnabled`/`onAddLink`, so
+both `LinkStatusIcon` (opened from a single field row) and `SharedStyleSection`'s own
+`ParameterLinksDialog` (opened via "Manage links...") see the same activity data.
+`isPathActive`/`computeActivePaths` match path names by prefix/exact string rather than against the
+registry's own (localized) `group` arrays, so the logic stays locale-independent. Only fully
+hidden/unmounted fields count as inactive — a merely `disabled`-but-still-rendered field (e.g.
+`markerIndex.borderWidth` while `borderWidthFromMarker` is on) is not.
+
+In the link list, any row mentioning an inactive parameter — as its target (line 1) or its source
+(line 2, after "=") — gets a closed-eye badge (`EyeOff`, from `lucide-react`) right after that
+path's `HierarchicalLabelSegments`, with a tooltip explaining why ("this parameter is currently
+inactive..."). This is independent of `LinkEditor`'s own toggle below — a link already set up on a
+now-inactive parameter always shows the badge in the list, whether or not `LinkEditor` happens to be
+showing inactive paths at the time.
+
+In `LinkEditor`'s Target/Source pickers, a "Show inactive" switch sits at the bottom of the dialog,
+to the left of Cancel/Save, default off. Off (default): both pickers list only active paths, plus
+whichever path is already selected as that picker's current Target/Source even if it's since gone
+inactive (so editing an existing link never looks like its own endpoint vanished). On: every
+registry path is listed, with the same `EyeOff` badge marking the inactive ones inline, after each
+leaf's label — letting a link be deliberately set up on a parameter that's hidden right now but
+might become relevant later (e.g. pre-wiring a teleport-related link before any teleport exists in
+the maze yet).
+
 The four "Shared style" source fields (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`)
 carry `group: ["Shared style"]` (the section they actually live in), not an empty `group` — so they
 too show up nested under "Shared style" in the picker tree and in any `hierarchicalLabel`, instead of

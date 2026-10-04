@@ -15,6 +15,7 @@ import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./Telep
 import { SharedStyleSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
+import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
@@ -233,6 +234,16 @@ export function VectorByCorridorsSettingsPanel() {
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
+  // Which registry paths the panel currently shows (GitHub issue #670) — see
+  // `VectorByWallsSettingsPanel`'s own doc comment on this.
+  const activePaths = useMemo(
+    () => computeActivePaths(VECTOR_BY_CORRIDORS_PARAM_REGISTRY, {
+      hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
+      hasVerticalSection: hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1,
+    }, settings),
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, floors.length, settings],
+  );
+
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
   // pairs included (GitHub issue #484) — see `VectorByWallsSettingsPanel`'s own doc comment on this.
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(
@@ -244,7 +255,7 @@ export function VectorByCorridorsSettingsPanel() {
   const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
     <div style={styles.root}>
       <ExportWarningsSection
         warnings={exportWarnings}
@@ -276,6 +287,7 @@ export function VectorByCorridorsSettingsPanel() {
           onSetLinkEnabled={setLinkEnabled}
           onAddLink={addLink}
           onRemoveLink={removeLink}
+          activePaths={activePaths}
         />
       )}
 

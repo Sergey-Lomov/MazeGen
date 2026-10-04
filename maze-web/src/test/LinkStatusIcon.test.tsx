@@ -24,6 +24,7 @@ function renderIcon(target: P | null, links: ParamLink<P>[]) {
       registry={registry}
       onSetLinkEnabled={vi.fn()}
       onAddLink={vi.fn()}
+      activePaths={new Set<P>(["a", "b", "c"])}
     />,
   );
 }
@@ -91,6 +92,7 @@ describe("LinkStatusIcon", () => {
         registry={registry}
         onSetLinkEnabled={vi.fn()}
         onAddLink={vi.fn()}
+        activePaths={new Set<P>(["a", "b", "c"])}
         unsupportedHint="Custom explanation"
       />,
     );

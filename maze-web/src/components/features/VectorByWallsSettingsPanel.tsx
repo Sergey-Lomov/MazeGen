@@ -19,6 +19,7 @@ import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./Telep
 import { SharedStyleSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
+import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
@@ -202,6 +203,17 @@ export function VectorByWallsSettingsPanel() {
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
+  // Which registry paths the panel currently shows (GitHub issue #670) — mirrors the section/
+  // subsection visibility conditions above, so the parameter-links dialog can tell an inactive
+  // parameter (e.g. a teleport field with no teleports in the maze) apart from an active one.
+  const activePaths = useMemo(
+    () => computeActivePaths(VECTOR_BY_WALLS_PARAM_REGISTRY, {
+      hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
+      hasVerticalSection: hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1,
+    }, settings),
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, floors.length, settings],
+  );
+
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
   const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
@@ -267,7 +279,7 @@ export function VectorByWallsSettingsPanel() {
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
 
   return (
-    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink } as unknown as LinkContextValue<string>}>
+    <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
     <div style={styles.root}>
       <ExportWarningsSection
         warnings={exportWarnings}
@@ -299,6 +311,7 @@ export function VectorByWallsSettingsPanel() {
           onSetLinkEnabled={setLinkEnabled}
           onAddLink={addLink}
           onRemoveLink={removeLink}
+          activePaths={activePaths}
         />
       )}
 

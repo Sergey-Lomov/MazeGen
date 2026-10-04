@@ -36,7 +36,7 @@ function openPicker() {
 describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () => {
   function renderRow(links: ParamLink<P>[], onChange = vi.fn(), onSetLinkEnabled = vi.fn()) {
     return render(
-      <LinkContextProvider value={{ links, registry, onSetLinkEnabled, onAddLink: vi.fn() }}>
+      <LinkContextProvider value={{ links, registry, onSetLinkEnabled, onAddLink: vi.fn(), activePaths: new Set<P>(["source", "target"]) }}>
         <LinkedColorRow label="Target" color={0x000000} onChange={onChange} linkTarget="target" />
       </LinkContextProvider>,
     );
@@ -90,7 +90,7 @@ describe("LinkedColorRow cancel/override interaction (GitHub issue #666)", () =>
     openPicker();
     const disabledLinks: ParamLink<P>[] = [{ id: "l1", source: "source", target: "target", enabled: false }];
     rerender(
-      <LinkContextProvider value={{ links: disabledLinks, registry, onSetLinkEnabled, onAddLink: vi.fn() }}>
+      <LinkContextProvider value={{ links: disabledLinks, registry, onSetLinkEnabled, onAddLink: vi.fn(), activePaths: new Set<P>(["source", "target"]) }}>
         <LinkedColorRow label="Target" color={0x000000} onChange={vi.fn()} linkTarget="target" />
       </LinkContextProvider>,
     );

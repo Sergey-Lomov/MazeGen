@@ -2074,6 +2074,8 @@
   "image_export.param_links.shared_gap_width": "Gap",
   "image_export.param_links.boolean_on": "On",
   "image_export.param_links.boolean_off": "Off",
+  "image_export.param_links.show_inactive_toggle": "Show inactive",
+  "image_export.param_links.inactive_hint": "This parameter is currently inactive, the renderer's settings hide it (e.g. the related elements aren't present in the maze).",
   "link_status.header_active": "Driving link active",
   "link_status.header_disabled": "Driving link disabled",
   "link_status.header_no_links": "No links",

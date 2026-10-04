@@ -13,6 +13,10 @@ export interface LinkContextValue<P extends string> {
   registry: Record<P, ParamDescriptor>;
   onSetLinkEnabled: (target: P, enabled: boolean) => void;
   onAddLink: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
+  /** Paths currently shown in the settings panel (GitHub issue #670) — passed through to
+   *  `LinkEditor` so its Target/Source pickers can hide/mark paths the renderer currently hides
+   *  (e.g. teleport fields when the maze has no teleports). */
+  activePaths: Set<P>;
 }
 
 const LinkContext = createContext<LinkContextValue<string> | null>(null);

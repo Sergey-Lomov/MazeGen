@@ -23,29 +23,29 @@ import type React from "react";
 
 type SelectRowProps<T extends string> = Parameters<typeof SelectRow<T>>[0];
 export function LinkedSelectRow<T extends string, P extends string>({ linkTarget, unsupportedHint, ...rest }: SelectRowProps<T> & { linkTarget: P | null; unsupportedHint?: string }) {
-  const { links, registry, onSetLinkEnabled, onAddLink } = useLinkContext<P>();
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
   return (
     <SelectRow
       {...rest}
-      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} />}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
     />
   );
 }
 
 type SliderRowProps = React.ComponentProps<typeof SliderRow>;
 export function LinkedSliderRow<P extends string>({ linkTarget, unsupportedHint, ...rest }: SliderRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
-  const { links, registry, onSetLinkEnabled, onAddLink } = useLinkContext<P>();
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
   return (
     <SliderRow
       {...rest}
-      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} />}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
     />
   );
 }
 
 type ColorRowProps = React.ComponentProps<typeof ColorRow>;
 export function LinkedColorRow<P extends string>({ linkTarget, unsupportedHint, ...rest }: ColorRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
-  const { links, registry, onSetLinkEnabled, onAddLink } = useLinkContext<P>();
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
   // GitHub issue #666: a preview/commit tick while the picker is open disables the field's
   // incoming link as an override (correct for a real edit), but Cancel must leave the link's
   // enabled state exactly as it was when the picker opened — snapshotted here since the link may
@@ -60,29 +60,29 @@ export function LinkedColorRow<P extends string>({ linkTarget, unsupportedHint, 
       onCancel={() => {
         if (linkTarget !== null && wasLinkEnabledRef.current) onSetLinkEnabled(linkTarget, true);
       }}
-      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} />}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
     />
   );
 }
 
 type ToggleRowProps = React.ComponentProps<typeof ToggleRow>;
 export function LinkedToggleRow<P extends string>({ linkTarget, unsupportedHint, ...rest }: ToggleRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
-  const { links, registry, onSetLinkEnabled, onAddLink } = useLinkContext<P>();
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
   return (
     <ToggleRow
       {...rest}
-      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} />}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
     />
   );
 }
 
 type TextFieldRowProps = React.ComponentProps<typeof TextFieldRow>;
 export function LinkedTextFieldRow<P extends string>({ linkTarget, unsupportedHint, ...rest }: TextFieldRowProps & { linkTarget: P | null; unsupportedHint?: string }) {
-  const { links, registry, onSetLinkEnabled, onAddLink } = useLinkContext<P>();
+  const { links, registry, onSetLinkEnabled, onAddLink, activePaths } = useLinkContext<P>();
   return (
     <TextFieldRow
       {...rest}
-      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} />}
+      resetButton={<LinkStatusIcon target={linkTarget} links={links} registry={registry} onSetLinkEnabled={onSetLinkEnabled} onAddLink={onAddLink} unsupportedHint={unsupportedHint} activePaths={activePaths} />}
     />
   );
 }

@@ -35,6 +35,7 @@ export function SharedStyleSection<P extends string>({
   onSetLinkEnabled,
   onAddLink,
   onRemoveLink,
+  activePaths,
 }: {
   cornerStyle: CornerStyle;
   markerSize: number;
@@ -53,6 +54,9 @@ export function SharedStyleSection<P extends string>({
   onSetLinkEnabled: (target: P, enabled: boolean) => void;
   onAddLink: (source: P, target: P, modifiers?: ParamModifier[], colorModifiers?: ColorModifier[]) => void;
   onRemoveLink: (target: P) => void;
+  /** Paths currently shown in the settings panel (GitHub issue #670) — passed through to the
+   *  parameter-links dialog so inactive parameters can be told apart from active ones. */
+  activePaths: Set<P>;
 }) {
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
   const linkIconVisibility = useMazeStore((s) => s.linkIconVisibility);
@@ -125,6 +129,7 @@ export function SharedStyleSection<P extends string>({
           onAddLink={onAddLink}
           onRemoveLink={onRemoveLink}
           onClose={() => setLinksDialogOpen(false)}
+          activePaths={activePaths}
         />
       )}
     </div>
