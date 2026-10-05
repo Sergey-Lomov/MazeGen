@@ -200,6 +200,13 @@
   "preset.list_edit_elevator": "Изменить этажи лифта",
   "preset.list_edit_split": "Настроить сплит",
   "preset.list_delete": "Удалить пресет",
+  "preset.list_filters": "Фильтры (активно {active} из {total})",
+  "preset.list_filter_teleport": "Телепорт",
+  "preset.list_filter_floor": "Этаж",
+  "preset.list_all_floors": "Все этажи",
+  "preset.list_filter_enable_all": "Включить все",
+  "preset.list_filter_disable_all": "Выключить все",
+  "preset.list_filter_empty": "Нет пресетов, соответствующих фильтрам",
   "preset.split": "Сплит",
   "preset.split_tile": "Сплит-тайл",
 

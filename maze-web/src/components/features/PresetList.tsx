@@ -1,6 +1,6 @@
 import { ArrowLeftRight, Settings, Trash2 } from "lucide-react";
 import type React from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import {
   canonicalizePresetPair,
@@ -13,15 +13,46 @@ import {
 } from "../../pixi/fieldEditUtils";
 import type { PresetPointEntityDescriptor } from "../../pixi/pointEntities";
 import { type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
+import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeLockKind } from "../../wasm/types";
-import { muted, radius, spacing, typography, ui } from "../../styles/theme";
+import { useLocale } from "../../i18n/useLocale";
+import { indent, muted, radius, spacing, typography, ui } from "../../styles/theme";
 import { SidePanel } from "../SidePanel";
+import { SectionHeader } from "../SectionHeader";
+import { SelectRow } from "../SelectRow";
+import { ToolIconButton } from "../ToolIconButton";
+import { Button } from "../Button";
+import { ToolGlyph } from "./ToolGlyph";
+import type { ToolGlyphKey } from "./toolGlyphs";
 import * as m from "~/paraglide/messages";
+
+export const PRESET_LIST_TYPES = [
+  "wall", "passage", "undefined", "one_way", "start", "finish", "gen_source",
+  "teleport", "vertical_passage_one_way", "vertical_passage_two_way", "elevator",
+  "lock_in", "lock_out", "full_lock", "split",
+] as const;
+
+export type PresetListType = typeof PRESET_LIST_TYPES[number];
+export type PresetListFloor = number | "all";
+
+export const PRESET_LIST_TYPES_OFF_BY_DEFAULT = ["wall", "passage", "undefined"] as const;
+const PRESET_LIST_TYPES_OFF_BY_DEFAULT_SET = new Set<PresetListType>(PRESET_LIST_TYPES_OFF_BY_DEFAULT);
+
+interface PresetListFilterDefinition {
+  type: PresetListType;
+  glyph: ToolGlyphKey;
+  label: string;
+  multiFloorOnly?: boolean;
+}
+
+export interface PresetListFilters {
+  types: ReadonlySet<PresetListType>;
+  floor: PresetListFloor;
+}
 
 export interface PresetListBubble {
   text: string;
@@ -35,6 +66,8 @@ export type PresetListControl =
 
 export interface PresetListCell {
   key: string;
+  /** One filter is shared by one-way and two-way teleport rows. */
+  type: PresetListType;
   title: string;
   id?: string;
   bubbles: PresetListBubble[];
@@ -59,16 +92,26 @@ export interface PresetListInput {
   presetSplitPointIds?: Record<string, string>;
   presetSplitShapeLabels?: Record<string, string>;
   presetEntityOrder?: string[];
+  splitCtx?: PresetSplitLabelContext | null;
   multiFloor: boolean;
 }
 
-function endpointText(endpoint: PresetEndpoint, multiFloor: boolean): string {
-  const splitLabel = endpoint.slotId === undefined ? undefined : `N${endpoint.slotId + 2}`;
-  return formatTargetLabel(endpoint.point, endpoint.level ?? 0, multiFloor, splitLabel);
+function endpointText(
+  endpoint: PresetEndpoint,
+  multiFloor: boolean,
+  splitCtx: PresetSplitLabelContext | null | undefined,
+): string {
+  return splitCtx
+    ? presetTargetLabel(splitCtx, endpoint, multiFloor)
+    : formatTargetLabel(endpoint.point, endpoint.level ?? 0, multiFloor, undefined);
 }
 
-function bubble(endpoint: PresetEndpoint, multiFloor: boolean): PresetListBubble {
-  return { text: endpointText(endpoint, multiFloor), endpoint };
+function bubble(
+  endpoint: PresetEndpoint,
+  multiFloor: boolean,
+  splitCtx: PresetSplitLabelContext | null | undefined,
+): PresetListBubble {
+  return { text: endpointText(endpoint, multiFloor, splitCtx), endpoint };
 }
 
 function edgeTitle(state: PresetConnectionEntry["state"]): string {
@@ -80,6 +123,55 @@ function edgeTitle(state: PresetConnectionEntry["state"]): string {
     case "undefined": return m["preset.default_undefined"]();
   }
   return m["preset.default_undefined"]();
+}
+
+function edgeType(state: PresetConnectionEntry["state"]): PresetListType {
+  switch (state) {
+    case "wall": return "wall";
+    case "passage": return "passage";
+    case "one_way_forward":
+    case "one_way_backward": return "one_way";
+    case "undefined": return "undefined";
+    case "teleport_forward":
+    case "teleport_backward":
+    case "teleport_two_way": return "teleport";
+  }
+}
+
+function presetTypeLabel(type: PresetListType): string {
+  switch (type) {
+    case "wall": return m["preset.wall"]();
+    case "passage": return m["preset.passage"]();
+    case "undefined": return m["preset.default_undefined"]();
+    case "one_way": return m["preset.one_way"]();
+    case "start": return m["status.cell_start"]();
+    case "finish": return m["status.cell_finish"]();
+    case "gen_source": return m["status.cell_gen_source"]();
+    case "teleport": return m["preset.list_filter_teleport"]();
+    case "vertical_passage_one_way": return m["preset.vertical_passage_one_way"]();
+    case "vertical_passage_two_way": return m["preset.vertical_passage_two_way"]();
+    case "elevator": return m["preset.elevator"]();
+    case "lock_in": return m["preset.lock_in"]();
+    case "lock_out": return m["preset.lock_out"]();
+    case "full_lock": return m["preset.full_lock"]();
+    case "split": return m["preset.split"]();
+  }
+}
+
+function presetListFilterDefinitions(): PresetListFilterDefinition[] {
+  return PRESET_LIST_TYPES.map((type) => ({
+    type,
+    glyph: type === "undefined" ? "reset"
+      : type === "start" ? "set_start"
+      : type === "finish" ? "set_finish"
+        : type === "split" ? "manage_split_nodes"
+            : type === "teleport" ? "teleport_two_way"
+            : type,
+    label: presetTypeLabel(type),
+    ...(type === "vertical_passage_one_way" || type === "vertical_passage_two_way" || type === "elevator"
+      ? { multiFloorOnly: true }
+      : {}),
+  }));
 }
 
 function lockTitle(kind: NodeLockKind): string {
@@ -110,6 +202,7 @@ function descriptor(kind: PresetPointEntityDescriptor["kind"], id: string, endpo
  * a title/id row and a coordinate-bubble/action row. */
 export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
   const { multiFloor } = input;
+  const pointBubble = (endpoint: PresetEndpoint) => bubble(endpoint, multiFloor, input.splitCtx);
   const cells: PresetListCell[] = [];
   const add = (cell: PresetListCell) => cells.push(cell);
   const splitKeys = new Set(Object.entries(input.presetSplitPoints)
@@ -128,8 +221,9 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const edgeId = presetEdgeKey(from, to);
     add({
       key: `edge:${edgeId}`,
+      type: edgeType(entry.state),
       title,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow,
       control: entry.state === "one_way_forward" || entry.state === "one_way_backward"
         ? { kind: "direction", id: key }
@@ -145,9 +239,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
   const addMarker = (key: string, id: string, title: string, endpoint: PresetEndpoint, kind: "start" | "finish" | "gen_source") => {
     add({
       key,
+      type: kind,
       title,
       id,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       descriptor: descriptor(kind, key, endpoint, title),
     });
   };
@@ -159,9 +254,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const title = entry.direction === "two_way" ? m["preset.teleport_two_way"]() : m["preset.teleport_one_way"]();
     add({
       key: `teleport:${entry.id}`,
+      type: "teleport",
       title,
       id: `t${entry.id}`,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow: directedArrow(entry.direction),
       control: entry.direction === "two_way" ? undefined : { kind: "direction", id: String(entry.id) },
       descriptor: descriptor("teleport", String(entry.id), entry.from, title),
@@ -172,9 +268,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const title = entry.direction === "two_way" ? m["preset.vertical_passage_two_way"]() : m["preset.vertical_passage_one_way"]();
     add({
       key: `vertical_passage:${entry.id}`,
+      type: entry.direction === "two_way" ? "vertical_passage_two_way" : "vertical_passage_one_way",
       title,
       id: `v${entry.id}`,
-      bubbles: [bubble(entry.from, multiFloor), bubble(entry.to, multiFloor)],
+      bubbles: [pointBubble(entry.from), pointBubble(entry.to)],
       arrow: directedArrow(entry.direction),
       control: entry.direction === "two_way" ? undefined : { kind: "direction", id: String(entry.id) },
       descriptor: descriptor("vertical_passage", String(entry.id), entry.from, title),
@@ -186,9 +283,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const title = m["preset.elevator"]();
     add({
       key: `elevator:${entry.id}`,
+      type: "elevator",
       title,
       id: `e${entry.id}`,
-      bubbles: entry.floors.map((endpoint) => bubble(endpoint, multiFloor)),
+      bubbles: entry.floors.map(pointBubble),
       control: { kind: "elevator", endpoint: entry.floors[0] },
       descriptor: descriptor("elevator", String(entry.id), entry.floors[0], title),
     });
@@ -201,9 +299,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const title = lockTitle(kind);
     add({
       key: `lock:${key}`,
+      type: kind === "in" ? "lock_in" : kind === "out" ? "lock_out" : "full_lock",
       title,
       id: `l${++lockIndex}`,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       descriptor: descriptor("lock", `lock:${key}`, endpoint, title),
     });
   }
@@ -215,9 +314,10 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
     const title = shapeLabel ? `${shapeLabel} (${m["preset.split"]()})` : m["preset.split_tile"]();
     add({
       key: `split:${key}`,
+      type: "split",
       title,
       id: input.presetSplitPointIds?.[key] ?? `s${Object.keys(input.presetSplitPoints).indexOf(key) + 1}`,
-      bubbles: [bubble(endpoint, multiFloor)],
+      bubbles: [pointBubble(endpoint)],
       control: { kind: "split", endpoint },
       entityHighlightMode: "outset",
       descriptor: descriptor("split_node", `split:${key}`, endpoint, title),
@@ -227,6 +327,16 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
   const order = new Map((input.presetEntityOrder ?? []).map((key, index) => [key, index]));
   cells.sort((a, b) => (order.get(b.key) ?? -1) - (order.get(a.key) ?? -1));
   return cells;
+}
+
+/** Returns cells matching both the selected preset types and floor. A multi-floor entity is
+ * visible for every floor touched by one of its endpoint bubbles. */
+export function filterPresetListCells(cells: PresetListCell[], filters: PresetListFilters): PresetListCell[] {
+  return cells.filter((cell) => {
+    if (!filters.types.has(cell.type)) return false;
+    if (filters.floor === "all") return true;
+    return cell.bubbles.some(({ endpoint }) => (endpoint.level ?? 0) === filters.floor);
+  });
 }
 
 function endpointFromKey(key: string): PresetEndpoint | null {
@@ -240,6 +350,7 @@ function endpointFromKey(key: string): PresetEndpoint | null {
 }
 
 export function PresetList({ onClose }: { onClose: () => void }) {
+  const { locale } = useLocale();
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
@@ -262,11 +373,16 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
   const setPresetHoveredEntity = useMazeStore((s) => s.setPresetHoveredEntity);
   const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
-  const presetSplitShapeLabels = useMemo(() => {
-    const labels: Record<string, string> = {};
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const filterDefinitions = useMemo(() => presetListFilterDefinitions(), [locale]);
+  const [selectedTypes, setSelectedTypes] = useState<Set<PresetListType>>(
+    () => new Set(PRESET_LIST_TYPES.filter((type) => !PRESET_LIST_TYPES_OFF_BY_DEFAULT_SET.has(type))),
+  );
+  const [floorFilter, setFloorFilter] = useState<PresetListFloor>("all");
+  const splitLabelContext = useMemo<PresetSplitLabelContext | null>(() => {
     const fallbackField = floors[0] ? floorFields[floors[0].id] : undefined;
-    if (!fallbackField) return labels;
-    const splitLabelContext: PresetSplitLabelContext = {
+    if (!fallbackField) return null;
+    return {
       splitPoints: presetSplitPoints,
       presetConnections,
       activeSplitNode,
@@ -276,6 +392,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
         return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig));
       },
     };
+  }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
+  const presetSplitShapeLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    if (!splitLabelContext) return labels;
     for (const key of Object.keys(presetSplitPoints)) {
       const endpoint = endpointFromKey(key);
       if (!endpoint) continue;
@@ -283,15 +403,34 @@ export function PresetList({ onClose }: { onClose: () => void }) {
       if (label && label !== m["preset.split_tile"]()) labels[key] = label;
     }
     return labels;
-  }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);
+  }, [presetSplitPoints, splitLabelContext, locale]);
   const cells = useMemo(() => buildPresetListCells({
     presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports,
     presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints,
     presetSplitPointIds,
     presetSplitShapeLabels,
     presetEntityOrder,
+    splitCtx: splitLabelContext,
     multiFloor: floors.length > 1,
-  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, floors.length]);
+  }), [presetConnections, presetStart, presetFinish, presetGenSource, presetTeleports, presetVerticalPassages, presetElevators, lockedNodes, presetSplitPoints, presetSplitPointIds, presetSplitShapeLabels, presetEntityOrder, splitLabelContext, floors.length]);
+  const visibleCells = useMemo(
+    () => filterPresetListCells(cells, { types: selectedTypes, floor: floorFilter }),
+    [cells, selectedTypes, floorFilter],
+  );
+  const visibleFilterDefinitions = floors.length > 1
+    ? filterDefinitions
+    : filterDefinitions.filter((definition) => !definition.multiFloorOnly);
+  const activeFilterCount = visibleFilterDefinitions.filter((definition) => selectedTypes.has(definition.type)).length;
+  const toggleType = (type: PresetListType) => {
+    setSelectedTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+  const enableAllTypes = () => setSelectedTypes(new Set(PRESET_LIST_TYPES));
+  const disableAllTypes = () => setSelectedTypes(new Set());
 
   const cycleDirection = (cell: PresetListCell) => {
     if (!cell.control || cell.control.kind !== "direction") return;
@@ -302,12 +441,56 @@ export function PresetList({ onClose }: { onClose: () => void }) {
 
   return (
     <SidePanel title={m["preset.list"]()} onClose={onClose}>
+      <div style={styles.filterSection}>
+        <SectionHeader
+          label={m["preset.list_filters"]({ active: activeFilterCount, total: visibleFilterDefinitions.length })}
+          expanded={filtersExpanded}
+          onToggle={() => setFiltersExpanded((expanded) => !expanded)}
+        />
+        {filtersExpanded && (
+          <div style={styles.filterContent}>
+            <div style={styles.filterIcons}>
+              {visibleFilterDefinitions.map((definition) => (
+                <ToolIconButton
+                  key={definition.type}
+                  selected={selectedTypes.has(definition.type)}
+                  title={definition.label}
+                  onClick={() => toggleType(definition.type)}
+                >
+                  <ToolGlyph tool={definition.glyph} />
+                </ToolIconButton>
+              ))}
+            </div>
+            {floors.length > 1 && (
+              <SelectRow
+                label={m["preset.list_filter_floor"]()}
+                value={floorFilter === "all" ? "all" : String(floorFilter)}
+                options={[
+                  { value: "all", label: m["preset.list_all_floors"]() },
+                  ...floors.map((floor, level) => ({ value: String(level), label: floor.title })),
+                ]}
+                onChange={(value) => setFloorFilter(value === "all" ? "all" : Number(value))}
+                selectStyle={{ minWidth: 0 }}
+              />
+            )}
+            <div style={styles.filterActions}>
+              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={enableAllTypes}>
+                {m["preset.list_filter_enable_all"]()}
+              </Button>
+              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={disableAllTypes}>
+                {m["preset.list_filter_disable_all"]()}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={styles.filterDivider} />
       <div style={styles.listSection}>
-        {cells.length === 0 ? (
-          <div style={styles.empty}>{m["preset.list_empty"]()}</div>
+        {visibleCells.length === 0 ? (
+          <div style={styles.empty}>{cells.length === 0 ? m["preset.list_empty"]() : m["preset.list_filter_empty"]()}</div>
         ) : (
           <div style={styles.list}>
-            {cells.map((cell) => <PresetCell
+            {visibleCells.map((cell) => <PresetCell
               key={cell.key}
               cell={cell}
               onCycleDirection={() => cycleDirection(cell)}
@@ -425,6 +608,14 @@ function PresetCell({
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  // Keep the first interactive area away from the SidePanel header/body boundary. SectionHeader
+  // has a small negative vertical margin for use inside ordinary sections; this extra inset keeps
+  // its hit box and the first icon row fully inside the panel body.
+  filterSection: { position: "relative", zIndex: 1, flexShrink: 0, padding: `${spacing.groupGap}px ${spacing.groupGap}px ${spacing.groupGap}px` },
+  filterContent: { display: "flex", flexDirection: "column", gap: spacing.groupGap, paddingTop: spacing.groupGap, paddingLeft: indent.tree },
+  filterIcons: { display: "flex", flexWrap: "wrap", gap: spacing.itemGap },
+  filterActions: { display: "flex", gap: spacing.itemGap },
+  filterDivider: { borderTop: `1px solid ${ui.border.default}`, flexShrink: 0 },
   // Keep the first interactive row clear of the SidePanel header/body boundary. The top row was
   // hit-tested unreliably while rows below it worked; the inset also keeps the list's action layer
   // away from that boundary without changing the action button's own hit box.
