@@ -138,8 +138,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.entityHighlightContainer = new Container();
 
     this.root.addChild(this.backgroundImageContainer);
-    this.root.addChild(this.floorContainer);
     this.root.addChild(this.gridContainer);
+    this.root.addChild(this.floorContainer);
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
@@ -163,7 +163,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
-    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
+    this.backgroundImage = new BackgroundImageLayer(
+      this.backgroundImageContainer,
+      this.floorContainer,
+      this.gridContainer,
+      this.invalidPassagesContainer,
+    );
     this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
@@ -261,6 +266,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (
       state.showBackgroundImage !== prev.showBackgroundImage ||
       state.backgroundImage !== prev.backgroundImage ||
+      state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning ||
       fieldChanged ||
       state.activeFloorId !== prev.activeFloorId ||
       state.presetConnections !== prev.presetConnections ||
@@ -360,7 +366,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
-    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
 
     const { undecided, preset, invalidPassages } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);

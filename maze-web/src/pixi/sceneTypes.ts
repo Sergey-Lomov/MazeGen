@@ -1,10 +1,21 @@
+import type { MazeState } from "../store/storeTypes";
+
 export interface ViewportListener {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void;
 }
 
+/** Whether the active editor can route canvas interaction to the shared underlay controller. */
+export function canManipulateBackgroundImage(state: MazeState): boolean {
+  const field = state.floorFields[state.activeFloorId];
+  return (state.openCard !== "field_setup" || field?.fieldEditMode === "custom")
+    && (state.openCard === "field_setup"
+    || state.openCard === "preset_connections"
+    || state.openCard === "post_edit");
+}
+
 export interface PointerHandler {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean, clickCount?: number): void;
-  onPointerMove(canvasX: number, canvasY: number, buttons?: number): void;
+  onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean): void;
   onPointerUp(button?: number): void;
   cancelPointerGesture(): void;
   clearHover?(): void;

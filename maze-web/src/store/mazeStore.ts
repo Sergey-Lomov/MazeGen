@@ -22,6 +22,7 @@ export type {
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
+  BackgroundImageLayerMode,
   FieldPrimitive, FieldOperation, FeatureId, RenderModeId, LinkIconVisibility, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
   DigitalExportSettings, PrintExportSettings, PngExportSettings, FloorState,
@@ -211,7 +212,14 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
       showBackgroundImage: file.showBackgroundImage ?? false,
-      backgroundImage: file.backgroundImage ?? null,
+      backgroundImage: file.backgroundImage === null || file.backgroundImage === undefined
+        ? null
+        : {
+            ...file.backgroundImage,
+            layer: file.backgroundImage.layer ?? "below_grid",
+            opacity: file.backgroundImage.opacity ?? 0.5,
+          },
+      backgroundImageManualPositioning: file.backgroundImageManualPositioning ?? false,
       showPrimitiveFrame: true,
       smoothPrimitives: true,
       symmetrySnapMode: "centers",

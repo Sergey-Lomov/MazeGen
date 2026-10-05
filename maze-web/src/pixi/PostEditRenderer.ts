@@ -107,8 +107,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.splitPanelTargetContainer = new Container();
 
     this.root.addChild(this.backgroundImageContainer);
-    this.root.addChild(this.floorContainer);
     this.root.addChild(this.gridContainer);
+    this.root.addChild(this.floorContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
     this.splitJunctionContainer = new Container();
@@ -131,7 +131,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
-    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
+    this.backgroundImage = new BackgroundImageLayer(
+      this.backgroundImageContainer,
+      this.floorContainer,
+      this.gridContainer,
+      this.closedCellsContainer,
+    );
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls       = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
@@ -208,8 +213,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
     if (state.showBackgroundImage !== prev.showBackgroundImage
-      || state.backgroundImage !== prev.backgroundImage) {
-      this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+      || state.backgroundImage !== prev.backgroundImage
+      || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning) {
+      this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
     }
 
     if (
@@ -480,7 +486,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
-    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
 
     // Split points (GitHub issue #223) render every node's passages at once, as colored lines
     // from a small per-node point to each face it connects across — see `buildSplitPassages`.

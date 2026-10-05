@@ -2,7 +2,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { FeatureId, RenderModeId, LinkIconVisibility } from "../mazeStore";
+import type { FeatureId, RenderModeId, LinkIconVisibility, BackgroundImageLayerMode } from "../mazeStore";
 import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
 import type { ParamLink } from "../parameterLinks";
@@ -16,6 +16,10 @@ export interface ProjectFileBackgroundImage {
   displayHeight: number;
   centerX: number;
   centerY: number;
+  /** Optional for files saved before background-image settings existed; defaults to below_grid. */
+  layer?: BackgroundImageLayerMode;
+  /** Optional for files saved before background-image settings existed; defaults to 0.5. */
+  opacity?: number;
 }
 
 /** Replayable command log (GitHub issue #543) — replaces the old per-entity draft snapshot +
@@ -231,6 +235,8 @@ export interface ProjectFile {
   /** Shared editor-only underlay (GitHub issue #673). */
   showBackgroundImage?: boolean;
   backgroundImage?: ProjectFileBackgroundImage | null;
+  /** Shared underlay direct-manipulation mode (GitHub issue #674). */
+  backgroundImageManualPositioning?: boolean;
   imageExport: ProjectFileImageExport;
   floors: ProjectFileFloors;
 }

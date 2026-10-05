@@ -22,6 +22,7 @@ import {
   validateNodeLockKind, validateSplitPoints,
 } from "./validateSections";
 import { validateImageExport } from "./validateImageExport";
+import type { BackgroundImageLayerMode } from "../tessellationTypes";
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
 // No migrations currently registered — old files at an unregistered version fail to load with a
@@ -248,9 +249,12 @@ export function parseAndValidate(raw: unknown): ProjectFile {
         displayHeight: assertPositiveFiniteNumber(image.displayHeight, "backgroundImage.displayHeight"),
         centerX: assertFiniteNumber(image.centerX, "backgroundImage.centerX"),
         centerY: assertFiniteNumber(image.centerY, "backgroundImage.centerY"),
+        layer: optEnum(image, "layer", ["below_grid", "above_grid", "above_floor", "above_everything"] as const, "below_grid") as BackgroundImageLayerMode,
+        opacity: validateBackgroundOpacity(image),
       };
     })();
   const showBackgroundImage = backgroundImage !== null && optBool(migrated, "showBackgroundImage", false);
+  const backgroundImageManualPositioning = optBool(migrated, "backgroundImageManualPositioning", false);
 
   // floors (optional section — defaults to a single floor for old files)
   const floors: ProjectFileFloors = validateFloors(migrated.floors, "floors");
@@ -297,7 +301,15 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     ui,
     showBackgroundImage,
     backgroundImage,
+    backgroundImageManualPositioning,
     imageExport: validateImageExport(migrated.imageExport, "imageExport"),
     floors,
   };
+}
+
+function validateBackgroundOpacity(image: Record<string, unknown>): number {
+  if (!("opacity" in image)) return 0.5;
+  const opacity = assertFiniteNumber(image.opacity, "backgroundImage.opacity");
+  if (opacity < 0 || opacity > 1) throw new Error("Expected backgroundImage.opacity between 0 and 1");
+  return opacity;
 }

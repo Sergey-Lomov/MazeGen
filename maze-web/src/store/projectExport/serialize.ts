@@ -111,7 +111,14 @@ export function serializeProject(state: MazeState): ProjectFile {
       postEditAutoConfirm: state.postEditAutoConfirm,
     },
     showBackgroundImage: state.showBackgroundImage ?? false,
-    backgroundImage: state.backgroundImage ?? null,
+    backgroundImage: state.backgroundImage == null
+      ? null
+      : {
+          ...state.backgroundImage,
+          layer: state.backgroundImage.layer ?? "below_grid",
+          opacity: state.backgroundImage.opacity ?? 0.5,
+        },
+    backgroundImageManualPositioning: state.backgroundImageManualPositioning ?? false,
     imageExport: {
       activeRenderMode: state.activeRenderMode,
       openRenderModeSettings: state.openRenderModeSettings,

@@ -346,17 +346,31 @@ Grid rendering is embedded in each feature renderer, not in a standalone compone
 ## Synchronized underlay (GitHub issue #673)
 
 The Field Setup, Preset Connections, and Post-Edit feature cards share one visual-only background
-underlay. Each card shows a `Show underlay` switch, initially off. Enabling it for the first
+underlay. Each card shows an `Underlay` switch, initially off. Enabling it for the first
 time opens an image upload dialog; cancelling leaves the switch off. The uploaded file and its
 natural dimensions are shared between the three cards and persisted in the project file.
 
-The underlay is drawn below the grid and the editable-cell fill, while remaining above the base
-canvas background, with 50% opacity. The underlay is not passed to generation, renderers, image
-export, analytics, or any other processing. When the switch is enabled, the underlay is scaled once
-with `cover` semantics against the current field bounds, centered on the field, and its display
-transform is retained while the field is edited. Turning it off and on again recalculates that
-transform. The original aspect ratio
-is always preserved, so an image may extend past the field boundary.
+The underlay defaults to below the grid with 50% opacity, and can be configured from the gear
+button beside the switch (GitHub issue #674): below the grid, above the grid, above the floor, or
+above everything, plus opacity from 0 to 1. The underlay is not passed to generation, renderers, image export,
+analytics, or any other processing. When the image is first uploaded, it is scaled once with
+`cover` semantics against the current field bounds and centered on the field. Its display
+transform is retained when the switch is turned off and on again. The settings panel also offers
+`Position to field`, which explicitly reapplies the initial cover-and-center calculation. The
+original aspect ratio is always preserved, so an image may extend past the field boundary.
+
+For the `above_grid` mode, the render order is grid, underlay, floor cells, then the remaining
+feature overlays. This keeps the underlay above grid lines but below field/floor cells. In the
+`above_floor` mode, the order is grid, floor cells, underlay, then the remaining feature overlays.
+This keeps walls, markers, and other feature elements above the underlay. In the Field Setup card,
+the controls are ordered as primitive frame, smoothing, paper layout, underlay, and origin.
+
+The settings panel also provides `Replace underlay` and a manual positioning mode. These related
+positioning/image buttons are grouped with a compact item gap. In manual mode
+the shared canvas interaction consumes left-button drags over the image to move it; dragging a
+corner resizes it while preserving the source aspect ratio. The resulting transform, layer, and
+opacity are persisted with the image. Files saved before issue #674 default to the original
+below-grid/50% behavior.
 
 ## Hover highlight (custom mode)
 

@@ -129,6 +129,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("round-trips the synchronized editor underlay", () => {
     const serialized = serializeProject(makeState({
       showBackgroundImage: true,
+      backgroundImageManualPositioning: true,
       backgroundImage: {
         dataUrl: "data:image/png;base64,abc",
         naturalWidth: 200,
@@ -137,11 +138,37 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         displayHeight: 200,
         centerX: 12,
         centerY: -8,
+        layer: "above_floor",
+        opacity: 0.35,
       },
     }));
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.showBackgroundImage).toBe(true);
+    expect(reparsed.backgroundImageManualPositioning).toBe(true);
     expect(reparsed.backgroundImage).toEqual(serialized.backgroundImage);
+  });
+
+  it("defaults new underlay settings when loading a file saved before issue #674", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState({
+      backgroundImage: {
+        dataUrl: "data:image/png;base64,abc",
+        naturalWidth: 100,
+        naturalHeight: 100,
+        displayWidth: 100,
+        displayHeight: 100,
+        centerX: 0,
+        centerY: 0,
+        layer: "below_grid",
+        opacity: 0.5,
+      },
+    }))));
+    delete raw.backgroundImage.layer;
+    delete raw.backgroundImage.opacity;
+    delete raw.backgroundImageManualPositioning;
+
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.backgroundImage).toMatchObject({ layer: "below_grid", opacity: 0.5 });
+    expect(reparsed.backgroundImageManualPositioning).toBe(false);
   });
 
   it("does not enable an underlay without persisted image data", () => {
@@ -161,6 +188,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
         displayHeight: 200,
         centerX: 0,
         centerY: 0,
+        layer: "below_grid",
+        opacity: 0.5,
       },
     }));
     expect(() => parseAndValidate(JSON.parse(JSON.stringify(serialized)))).toThrow(/backgroundImage\.naturalWidth/);

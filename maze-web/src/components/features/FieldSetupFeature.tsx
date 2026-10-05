@@ -294,12 +294,15 @@ export function FieldSetupFeature() {
           ))}
           </Inline>
           <div style={styles.originRow}>
-            <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
-            <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
-          </div>
-          <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
             <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} />
+          </div>
+          <div style={styles.originRow}>
+            <span style={styles.smoothingLabelGroup}>
+              <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
+              <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
+            </span>
+            <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} />
           </div>
           <div style={styles.originRow}>
             <ToggleRow
@@ -315,11 +318,8 @@ export function FieldSetupFeature() {
           </div>
           <BackgroundImageToggle />
           <div style={styles.originRow}>
-            <span style={styles.smoothingLabelGroup}>
-              <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
-              <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
-            </span>
-            <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} />
+            <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
+            <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
           </div>
           <Button
             variant="destructive"

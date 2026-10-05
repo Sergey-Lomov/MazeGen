@@ -17,8 +17,10 @@ import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
+import { canManipulateBackgroundImage } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
+import { BackgroundImageController } from "./BackgroundImageController";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
@@ -86,6 +88,7 @@ export class MazeScene {
   private exportFrameOverlay: ExportFrameOverlay;
   private pngExporter: PngExporter;
   private interaction: SceneInteraction;
+  private backgroundImageController: BackgroundImageController;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
   private viewportScaleCallback: ((scale: number) => void) | null = null;
@@ -156,6 +159,7 @@ export class MazeScene {
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
+    this.backgroundImageController = new BackgroundImageController(() => this.viewport);
 
     this.viewportListeners = [
       this.generationRenderer,
@@ -190,6 +194,7 @@ export class MazeScene {
       viewport: this.viewport,
       getFieldEditController: () => this.fieldEditController,
       fieldEditorOverlay: this.fieldEditorOverlay,
+      getBackgroundImageCursor: (x, y) => this.backgroundImageController.getCursor(x, y),
       getController: (st) => this.getController(st),
       getHoverProvider: (st) => this.getHoverProvider(st),
       onHoverChanged: (info) => this.hoverCallback?.(info),
@@ -250,6 +255,10 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
+    if (canManipulateBackgroundImage(st)
+      && st.showBackgroundImage && st.backgroundImageManualPositioning && st.backgroundImage !== null) {
+      return this.backgroundImageController;
+    }
     if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") return this.fieldEditController;
     if (st.openCard === "preset_connections") return this.presetConnectionsController;
     if (st.openCard === "post_edit") return this.postEditController;

@@ -486,6 +486,120 @@ describe("zoom reset controls", () => {
     interaction.destroy();
   });
 
+  it("exits background positioning when a pointer is pressed outside the canvas", () => {
+    const canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    const state = useMazeStore.getState();
+    const previous = {
+      openCard: state.openCard,
+      showBackgroundImage: state.showBackgroundImage,
+      backgroundImage: state.backgroundImage,
+      backgroundImageManualPositioning: state.backgroundImageManualPositioning,
+    };
+    const cancelPointerGesture = vi.fn();
+    useMazeStore.setState({
+      openCard: "preset_connections",
+      showBackgroundImage: true,
+      backgroundImage: state.backgroundImage ?? {
+        dataUrl: "data:image/png;base64,test",
+        naturalWidth: 100,
+        naturalHeight: 100,
+        displayWidth: 100,
+        displayHeight: 100,
+        centerX: 0,
+        centerY: 0,
+        layer: "below_grid",
+        opacity: 0.5,
+      },
+      backgroundImageManualPositioning: true,
+    });
+    const interaction = new SceneInteraction({
+      app: {
+        stage: { interactive: false, hitArea: null, on: vi.fn() },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({ cancelPointerGesture } as any),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(false);
+    expect(cancelPointerGesture).toHaveBeenCalledTimes(1);
+    interaction.destroy();
+    canvas.remove();
+    useMazeStore.setState(previous);
+  });
+
+  it("pans the canvas with the middle button during background positioning", () => {
+    const stageHandlers: Record<string, (event: any) => void> = {};
+    const state = useMazeStore.getState();
+    const previous = {
+      openCard: state.openCard,
+      showBackgroundImage: state.showBackgroundImage,
+      backgroundImage: state.backgroundImage,
+      backgroundImageManualPositioning: state.backgroundImageManualPositioning,
+    };
+    const viewport = fakeViewport(10, 20);
+    useMazeStore.setState({
+      openCard: "preset_connections",
+      showBackgroundImage: true,
+      backgroundImage: state.backgroundImage ?? {
+        dataUrl: "data:image/png;base64,test",
+        naturalWidth: 100,
+        naturalHeight: 100,
+        displayWidth: 100,
+        displayHeight: 100,
+        centerX: 0,
+        centerY: 0,
+        layer: "below_grid",
+        opacity: 0.5,
+      },
+      backgroundImageManualPositioning: true,
+    });
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport,
+      getFieldEditController: () => ({}) as any,
+      fieldEditorOverlay: {} as any,
+      getController: () => ({
+        onPointerDown: vi.fn(),
+        onPointerMove: vi.fn(),
+        onPointerUp: vi.fn(),
+        cancelPointerGesture: vi.fn(),
+      }),
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+
+    stageHandlers.pointerdown({ button: 1, globalX: 5, globalY: 6 });
+    stageHandlers.pointermove({ buttons: 4, globalX: 15, globalY: 26 });
+    stageHandlers.pointerup({ button: 1 });
+
+    expect(viewport.x).toBe(20);
+    expect(viewport.y).toBe(40);
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
+    interaction.destroy();
+    useMazeStore.setState(previous);
+  });
+
   it("cancels the active pointer gesture outside the canvas and on window blur", () => {
     const stageHandlers: Record<string, () => void> = {};
     const cancelPointerGesture = vi.fn();

@@ -12,6 +12,7 @@ export type FieldOperation = "add" | "remove" | "select";
 export type SymmetrySnapMode = "centers" | "corners" | "free";
 export type SymmetryScope = "everything" | "one_side" | "polygon";
 export type SymmetryPoint = { x: number; y: number };
+export type BackgroundImageLayerMode = "below_grid" | "above_grid" | "above_floor" | "above_everything";
 export interface BackgroundImage {
   dataUrl: string;
   naturalWidth: number;
@@ -20,6 +21,8 @@ export interface BackgroundImage {
   displayHeight: number;
   centerX: number;
   centerY: number;
+  layer: BackgroundImageLayerMode;
+  opacity: number;
 }
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
@@ -68,6 +71,8 @@ export interface TessellationState {
   /** Shared visual-only underlay used by the field, preset, and post-edit editors. */
   showBackgroundImage: boolean;
   backgroundImage: BackgroundImage | null;
+  /** Enables direct drag/resize interaction with the shared underlay on the canvas. */
+  backgroundImageManualPositioning: boolean;
   smoothPrimitives: boolean;
   symmetrySnapMode: SymmetrySnapMode;
   symmetryScope: SymmetryScope;
@@ -96,6 +101,10 @@ export interface TessellationActions {
   setShowPaperLayout: (show: boolean) => void;
   setShowBackgroundImage: (show: boolean) => void;
   setBackgroundImage: (image: BackgroundImage) => void;
+  setBackgroundImageLayer: (layer: BackgroundImageLayerMode) => void;
+  setBackgroundImageOpacity: (opacity: number) => void;
+  setBackgroundImageManualPositioning: (enabled: boolean) => void;
+  setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;

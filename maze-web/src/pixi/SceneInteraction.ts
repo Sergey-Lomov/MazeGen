@@ -3,8 +3,8 @@ import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
+import { canManipulateBackgroundImage, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
-import { PanState } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "./colorTokens";
 
@@ -13,6 +13,7 @@ interface SceneInteractionDeps {
   viewport: Container;
   getFieldEditController: () => FieldEditController;
   fieldEditorOverlay: FieldEditorOverlay;
+  getBackgroundImageCursor?: (canvasX: number, canvasY: number) => string;
   getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
   getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
   onHoverChanged: (info: HoverInfo | null) => void;
@@ -25,6 +26,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
+function setCanvasCursor(canvas: HTMLCanvasElement, cursor: string): void {
+  if (canvas.style) canvas.style.cursor = cursor;
+}
+
 /** Wires pointer/wheel DOM events to the active feature controller, or to default viewport pan when none is active. */
 export class SceneInteraction {
   private deps: SceneInteractionDeps;
@@ -32,6 +37,16 @@ export class SceneInteraction {
   private onWheel: (e: WheelEvent) => void = () => {};
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
+    const state = useMazeStore.getState();
+    if (canManipulateBackgroundImage(state)
+      && state.showBackgroundImage
+      && state.backgroundImageManualPositioning
+      && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
+      e.preventDefault();
+      state.setBackgroundImageManualPositioning(false);
+      this.deps.getController(state)?.cancelPointerGesture();
+      return;
+    }
     if (e.shiftKey && e.code === "Digit1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       this.deps.onResetZoom();
@@ -44,7 +59,19 @@ export class SceneInteraction {
     this.defaultPan.end();
     controller?.cancelPointerGesture();
     controller?.clearHover?.();
+    setCanvasCursor(this.deps.app.canvas, "");
     this.deps.onHoverChanged(null);
+  };
+
+  private onWindowPointerDown = (e: PointerEvent) => {
+    const state = useMazeStore.getState();
+    if (!state.showBackgroundImage
+      || !state.backgroundImageManualPositioning
+      || this.isInsideCanvas(e.target)) return;
+    const controller = this.deps.getController(state);
+    state.setBackgroundImageManualPositioning(false);
+    controller?.cancelPointerGesture();
+    setCanvasCursor(this.deps.app.canvas, "");
   };
 
   constructor(deps: SceneInteractionDeps) {
@@ -70,6 +97,14 @@ export class SceneInteraction {
     stage.on("pointerdown", (e) => {
       const st = useMazeStore.getState();
       const controller = getController(st);
+      const manualBackground = canManipulateBackgroundImage(st)
+        && st.showBackgroundImage
+        && st.backgroundImageManualPositioning
+        && st.backgroundImage !== null;
+      if (manualBackground && e.button === 1) {
+        this.defaultPan.begin(e.globalX, e.globalY);
+        return;
+      }
       if (controller) {
         controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey, e.detail);
         if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
@@ -83,6 +118,24 @@ export class SceneInteraction {
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
       onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
+      const manualBackground = canManipulateBackgroundImage(st)
+        && st.showBackgroundImage
+        && st.backgroundImageManualPositioning
+        && st.backgroundImage !== null;
+      if (manualBackground && (e.buttons & 4) !== 0) {
+        setCanvasCursor(app.canvas, "grabbing");
+        this.defaultPan.move(e.globalX, e.globalY);
+        return;
+      }
+      // Manual underlay positioning owns pointer movement even on the custom-field card, whose
+      // normal pointer path otherwise takes precedence for cell editing.
+      if (canManipulateBackgroundImage(st)
+        && st.showBackgroundImage && st.backgroundImageManualPositioning && st.backgroundImage !== null) {
+        setCanvasCursor(app.canvas, this.deps.getBackgroundImageCursor?.(e.globalX, e.globalY) ?? "move");
+        getController(st)?.onPointerMove(e.globalX, e.globalY, e.buttons, e.shiftKey);
+        return;
+      }
+      setCanvasCursor(app.canvas, "");
       if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
@@ -125,6 +178,14 @@ export class SceneInteraction {
 
     stage.on("pointerup", (e) => {
       const st = useMazeStore.getState();
+      const manualBackground = canManipulateBackgroundImage(st)
+        && st.showBackgroundImage
+        && st.backgroundImageManualPositioning
+        && st.backgroundImage !== null;
+      if (manualBackground && e.button === 1) {
+        this.defaultPan.end();
+        return;
+      }
       const controller = getController(st);
       if (controller) {
         controller.onPointerUp(e.button);
@@ -148,6 +209,7 @@ export class SceneInteraction {
       }
       controller?.clearHover?.();
       onHoverChanged(null);
+      setCanvasCursor(app.canvas, "");
       if (st.openCard === "field_setup") {
         fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
       }
@@ -157,6 +219,7 @@ export class SceneInteraction {
     stage.on("pointerleave", () => {
       const st = useMazeStore.getState();
       onHoverChanged(null);
+      setCanvasCursor(app.canvas, "");
       if (st.openCard === "field_setup") {
         fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
       }
@@ -164,6 +227,7 @@ export class SceneInteraction {
 
     window.addEventListener("blur", this.onBlur);
     window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("pointerdown", this.onWindowPointerDown, true);
 
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -184,6 +248,14 @@ export class SceneInteraction {
   destroy(): void {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("pointerdown", this.onWindowPointerDown, true);
     this.deps.app.canvas.removeEventListener("wheel", this.onWheel);
+    setCanvasCursor(this.deps.app.canvas, "");
+  }
+
+  private isInsideCanvas(target: EventTarget | null): boolean {
+    if (target === this.deps.app.canvas) return true;
+    const contains = (this.deps.app.canvas as unknown as { contains?: (node: Node) => boolean }).contains;
+    return typeof contains === "function" && target instanceof Node && contains.call(this.deps.app.canvas, target);
   }
 }

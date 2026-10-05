@@ -16,8 +16,41 @@ class FakeImage {
   set src(_value: string) { pixi.images.push(this); }
 }
 
+const FakeContainer = vi.hoisted(() => class FakeContainer {
+  parent: FakeContainer | null = null;
+  children: unknown[] = [];
+  visible = true;
+  eventMode = "none";
+  x = 0;
+  y = 0;
+
+  addChild(child: unknown): unknown {
+    this.children.push(child);
+    if (child && typeof child === "object") (child as { parent?: FakeContainer }).parent = this;
+    return child;
+  }
+
+  getChildIndex(child: unknown): number { return this.children.indexOf(child); }
+
+  setChildIndex(child: unknown, index: number): void {
+    const current = this.getChildIndex(child);
+    if (current < 0) return;
+    this.children.splice(current, 1);
+    this.children.splice(index, 0, child);
+  }
+
+  destroy(): void {}
+});
+
 vi.mock("pixi.js", () => ({
-  Container: class { addChild = vi.fn(); },
+  Container: FakeContainer,
+  Graphics: class {
+    clear() { return this; }
+    rect() { return this; }
+    circle() { return this; }
+    stroke() { return this; }
+    fill() { return this; }
+  },
   Sprite: class {
     visible = true;
     position = { set: vi.fn() };
@@ -50,6 +83,8 @@ const baseImage = {
   displayHeight: 200,
   centerX: 0,
   centerY: 0,
+  layer: "below_grid" as const,
+  opacity: 0.5,
 };
 
 describe("underlay layout", () => {
@@ -103,5 +138,44 @@ describe("underlay layout", () => {
     expect(image.displayWidth).toBe(200);
     expect(image.displayHeight).toBe(400);
     expect(image.displayHeight / image.displayWidth).toBe(2);
+  });
+
+  it("keeps the above-grid image between grid and floor containers", () => {
+    const root = new FakeContainer();
+    const imageContainer = new FakeContainer();
+    const gridContainer = new FakeContainer();
+    const floorContainer = new FakeContainer();
+    const overlayContainer = new FakeContainer();
+    root.addChild(imageContainer);
+    root.addChild(gridContainer);
+    root.addChild(floorContainer);
+    root.addChild(overlayContainer);
+    const layer = new BackgroundImageLayer(
+      imageContainer as never,
+      floorContainer as never,
+      gridContainer as never,
+      overlayContainer as never,
+    );
+
+    layer.render({ ...baseImage, layer: "above_grid" }, false);
+
+    expect(root.children[0]).toBe(gridContainer);
+    expect(root.children[1]).toBe(imageContainer);
+    expect(root.children[2]).toBe(floorContainer);
+    layer.render({ ...baseImage, layer: "above_floor" }, false);
+
+    expect(root.children[0]).toBe(gridContainer);
+    expect(root.children[1]).toBe(floorContainer);
+    expect(root.children[2]).toBe(imageContainer);
+    expect(root.children[3]).toBe(overlayContainer);
+    layer.render({ ...baseImage, layer: "below_grid" }, false);
+    expect(root.children[0]).toBe(imageContainer);
+    expect(root.children[1]).toBe(gridContainer);
+    layer.render({ ...baseImage, layer: "above_everything" }, false);
+    expect(root.children[0]).toBe(gridContainer);
+    expect(root.children[1]).toBe(floorContainer);
+    expect(root.children[2]).toBe(overlayContainer);
+    expect(root.children[3]).toBe(imageContainer);
+    layer.destroy();
   });
 });

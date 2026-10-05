@@ -57,15 +57,20 @@ export class FieldEditorOverlay {
     this.originContainer = new Container();
     this.hoverContainer = new Container();
     this.root.addChild(this.backgroundImageContainer);
-    this.root.addChild(this.floorContainer);
     this.root.addChild(this.gridContainer);
+    this.root.addChild(this.floorContainer);
     this.root.addChild(this.paperLayoutContainer);
     this.root.addChild(this.symmetryContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
-    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
+    this.backgroundImage = new BackgroundImageLayer(
+      this.backgroundImageContainer,
+      this.floorContainer,
+      this.gridContainer,
+      this.paperLayoutContainer,
+    );
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
@@ -129,8 +134,14 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && (state.showBackgroundImage !== prev.showBackgroundImage
-        || state.backgroundImage !== prev.backgroundImage)) {
-        this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+        || state.backgroundImage !== prev.backgroundImage
+        || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning
+        || field.fieldEditMode !== prevField.fieldEditMode)) {
+        this.backgroundImage.render(
+          state.backgroundImage,
+          this.shouldShowBackgroundImage(state),
+          state.backgroundImageManualPositioning,
+        );
       }
     });
   }
@@ -165,7 +176,11 @@ export class FieldEditorOverlay {
     const field = state.floorFields[state.activeFloorId];
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
     this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
-    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+    this.backgroundImage.render(
+      state.backgroundImage,
+      this.shouldShowBackgroundImage(state),
+      state.backgroundImageManualPositioning,
+    );
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
@@ -179,6 +194,11 @@ export class FieldEditorOverlay {
       if (!rendered.has(key)) cells.push(decodePoint(key));
     }
     this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
+  }
+
+  private shouldShowBackgroundImage(state: ReturnType<typeof useMazeStore.getState>): boolean {
+    const field = state.floorFields[state.activeFloorId];
+    return state.showBackgroundImage && field.fieldEditMode === "custom";
   }
 
   setSelectionMovePreview(sourceCells: [number, number][], temporaryCells: [number, number][]): void {

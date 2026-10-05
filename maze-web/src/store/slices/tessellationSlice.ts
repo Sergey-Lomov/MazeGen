@@ -24,6 +24,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showPaperLayout: false,
   showBackgroundImage: false,
   backgroundImage: null,
+  backgroundImageManualPositioning: false,
   smoothPrimitives: true,
   symmetrySnapMode: "centers",
   symmetryScope: "one_side",
@@ -169,6 +170,16 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setShowPaperLayout: (show) => set({ showPaperLayout: show }),
   setShowBackgroundImage: (show) => set({ showBackgroundImage: show }),
   setBackgroundImage: (image) => set({ backgroundImage: image, showBackgroundImage: true }),
+  setBackgroundImageLayer: (layer) => set((state) => state.backgroundImage === null ? {} : {
+    backgroundImage: { ...state.backgroundImage, layer },
+  }),
+  setBackgroundImageOpacity: (opacity) => set((state) => state.backgroundImage === null ? {} : {
+    backgroundImage: { ...state.backgroundImage, opacity: Math.min(1, Math.max(0, opacity)) },
+  }),
+  setBackgroundImageManualPositioning: (enabled) => set({ backgroundImageManualPositioning: enabled }),
+  setBackgroundImageTransform: (transform) => set((state) => state.backgroundImage === null ? {} : {
+    backgroundImage: { ...state.backgroundImage, ...transform },
+  }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),
