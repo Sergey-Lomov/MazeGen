@@ -22,6 +22,7 @@ export {
   DEFAULT_MARKER_INDEX_SETTINGS,
   DEFAULT_ONE_WAY_SETTINGS,
   DEFAULT_SHARED_STYLE_SOURCE,
+  DEFAULT_VERTICAL_SHARED_STYLE,
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   DEFAULT_PNG_EXPORT_SETTINGS,
@@ -487,6 +488,12 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       const settings = { ...s.vectorByCorridorsSettings, gapWidth: v };
       return { vectorByCorridorsSettings: propagate(settings, settings.links, ["gapWidth"]) };
     }),
+  patchVectorByCorridorsVerticalSharedStyle: (patch) =>
+    set((s) => {
+      const settings = { ...s.vectorByCorridorsSettings, ...patch };
+      const changed = Object.keys(patch) as VectorByCorridorsParamPath[];
+      return { vectorByCorridorsSettings: propagate(settings, settings.links, changed) };
+    }),
   resetVectorByCorridorsSharedStyleField: (target) =>
     set((s) => {
       const { settings, links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target, true);
@@ -926,6 +933,12 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => {
       const settings = { ...s.vectorByWallsSettings, gapWidth: v };
       return { vectorByWallsSettings: propagate(settings, settings.links, ["gapWidth"]) };
+    }),
+  patchVectorByWallsVerticalSharedStyle: (patch) =>
+    set((s) => {
+      const settings = { ...s.vectorByWallsSettings, ...patch };
+      const changed = Object.keys(patch) as VectorByWallsParamPath[];
+      return { vectorByWallsSettings: propagate(settings, settings.links, changed) };
     }),
   resetVectorByWallsSharedStyleField: (target) =>
     set((s) => {

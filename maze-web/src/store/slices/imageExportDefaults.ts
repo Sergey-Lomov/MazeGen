@@ -2,6 +2,7 @@ import type {
   VectorByWallsSettings,
   VectorByCorridorsSettings,
   SharedStyleSourceFields,
+  VerticalSharedStyleFields,
   TeleportSettingsFields,
   OneWaySettingsFields,
   VerticalSettingsFields,
@@ -44,6 +45,25 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
+};
+
+/** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub
+ *  issue #668) — every link out of these starts disabled (`parameterLinksDefaults.ts`), so these
+ *  values only take effect once the user links a vertical-marker field to one. Seeded from the
+ *  two-way passage marker's own defaults (the "primary" vertical-connection look) for structural
+ *  fields/fill color/arrow, and from `canvas.vertical.default` for the decorative line color
+ *  (matching `DEFAULT_VERTICAL_DECORATIVE_SETTINGS`'s own per-section line color default). */
+export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
+  verticalCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.cornerStyle,
+  verticalShape: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.shape,
+  verticalSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.size,
+  verticalBorderWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.borderWidth,
+  verticalGapWidth: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.gapWidth,
+  verticalFillColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker.fillColor,
+  verticalArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowColor,
+  verticalArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowSize,
+  verticalArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowStyle,
+  verticalArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowCornerStyle,
 };
 
 /** Shared by both `VectorByWallsSettings` and `VectorByCorridorsSettings` — GitHub issue #313
@@ -222,11 +242,19 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
     splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    ...DEFAULT_VERTICAL_SHARED_STYLE,
+    verticalDecorativeLineColor: canvas.vertical.default,
+    verticalDecorativeLineWidth: 2,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
-  ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
+  [
+    "cornerStyle", "markerSize", "markerBorderWidth", "gapWidth",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
+    "verticalDecorativeLineColor", "verticalDecorativeLineWidth",
+  ],
 ) as unknown as VectorByWallsSettings;
 
 /** Shared by `VectorByCorridorsSettings` and `projectExport/validate.ts`'s recovery defaults, same
@@ -273,11 +301,16 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     splitGapWidth: 0,
     splitDiagonalBowAmount: 0.5,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    ...DEFAULT_VERTICAL_SHARED_STYLE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
-  ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
+  [
+    "cornerStyle", "markerSize", "markerBorderWidth", "gapWidth",
+    "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+    "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
+  ],
 ) as unknown as VectorByCorridorsSettings;
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as

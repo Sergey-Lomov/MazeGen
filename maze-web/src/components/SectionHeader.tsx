@@ -39,7 +39,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
     padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
   },
-  subsectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3 },
+  subsectionHeaderRow: {
+    display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
+    padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
+  },
   subsectionHeader: { ...typography.body },
   disabled: { cursor: "default" },
 };

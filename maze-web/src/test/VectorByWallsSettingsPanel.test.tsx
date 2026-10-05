@@ -4,7 +4,7 @@ import { VectorByWallsSettingsPanel } from "../components/features/VectorByWalls
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import * as m from "~/paraglide/messages";
 
@@ -75,6 +75,9 @@ beforeEach(() => {
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
       ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+      ...DEFAULT_VERTICAL_SHARED_STYLE,
+      verticalDecorativeLineColor: 0x123456,
+      verticalDecorativeLineWidth: 2,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
@@ -97,11 +100,11 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().hoveredExportWarningKey).toBeNull();
   });
 
-  it("renders elevator simplification under the vertical style setting", () => {
+  it("renders elevator simplification under the elevator marker sub-section", () => {
     useMazeStore.setState({
       floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
       edges: [{ from: 0, to: 1, kind: "elevator" }],
-      vectorByWallsSectionsExpanded: { vertical: true },
+      vectorByWallsSectionsExpanded: { vertical: true, vertical_elevator: true },
     });
     render(<VectorByWallsSettingsPanel />);
 
@@ -168,6 +171,9 @@ describe("VectorByWallsSettingsPanel", () => {
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+        ...DEFAULT_VERTICAL_SHARED_STYLE,
+        verticalDecorativeLineColor: 0,
+        verticalDecorativeLineWidth: 2,
         splitNodeColors: [], splitSpecialShapes: false,
         markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
         ...DEFAULT_SHARED_STYLE_SOURCE,

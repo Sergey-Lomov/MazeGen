@@ -28,23 +28,14 @@ function ParamLinksInfoModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** The "Shared style" section (GitHub issue #322) — one collapsible section, always first, shared
- *  by `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store
- *  setters differ, same per-mode-setters-only-differ reuse convention as `MarkerSettingsGroup`/
- *  `TeleportSettingsSection`). Four rows (corner style, marker size, marker border, gap) each set
- *  a shared value that every non-overridden dependent field across the panel follows; "Reset all
- *  settings" restores the whole render mode's settings object. Per-field reset buttons live on the
- *  *dependent* field's own row elsewhere in the panel (e.g. the "Waypoints" section's marker size
- *  slider), not here — this section only owns the four shared values themselves. */
-export function SharedStyleSection<P extends string>({
-  cornerStyle,
-  markerSize,
-  markerBorderWidth,
-  gapWidth,
-  onCornerStyleChange,
-  onMarkerSizeChange,
-  onMarkerBorderWidthChange,
-  onGapWidthChange,
+/** The "Settings" section (GitHub issue #668) — one collapsible section, placed before "Shared
+ *  style", holding every link-editing/management control that isn't itself a style value: link
+ *  icon visibility, "Manage links...", and the destructive "Reset all settings". Split out of what
+ *  used to be one combined "Shared style" section (GitHub issue #322/#643) so style configuration
+ *  and management actions don't clutter each other, per the issue's own rationale. Shared by
+ *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel`, same per-mode-setters-only-differ
+ *  reuse convention as `SharedStyleSection` itself. */
+export function SettingsSection<P extends string>({
   onResetAll,
   settings,
   links,
@@ -54,14 +45,6 @@ export function SharedStyleSection<P extends string>({
   onRemoveLink,
   activePaths,
 }: {
-  cornerStyle: CornerStyle;
-  markerSize: number;
-  markerBorderWidth: number;
-  gapWidth: number;
-  onCornerStyleChange: (v: CornerStyle) => void;
-  onMarkerSizeChange: (v: number) => void;
-  onMarkerBorderWidthChange: (v: number) => void;
-  onGapWidthChange: (v: number) => void;
   onResetAll: () => void;
   /** Backs the "Manage links..." dialog (GitHub issue #644) — the active render mode's own link
    *  graph/registry and mutators, generic over that mode's `ParamPath` union. */
@@ -92,6 +75,64 @@ export function SharedStyleSection<P extends string>({
         ]}
         onChange={setLinkIconVisibility}
       />
+      <Inline gap="rowGap" align="stretch">
+        <Button variant="secondary" layoutStyle={styles.manageLinksButton} onClick={() => setLinksDialogOpen(true)}>
+          {m["image_export.param_links.manage_links"]()}
+        </Button>
+        <Button variant="secondary" layoutStyle={styles.infoButton} onClick={() => setInfoOpen(true)} title={m["image_export.param_links.info_title"]()}>
+          &#8505;
+        </Button>
+      </Inline>
+      <Button variant="destructive" onClick={onResetAll}>
+        {m["image_export.vector_by_walls.shared_style_reset_all"]()}
+      </Button>
+      {infoOpen && <ParamLinksInfoModal onClose={() => setInfoOpen(false)} />}
+      {linksDialogOpen && (
+        <ParameterLinksDialog
+          registry={registry}
+          settings={settings}
+          links={links}
+          onSetLinkEnabled={onSetLinkEnabled}
+          onAddLink={onAddLink}
+          onRemoveLink={onRemoveLink}
+          onClose={() => setLinksDialogOpen(false)}
+          activePaths={activePaths}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The "Shared style" section (GitHub issue #322) — one collapsible section, shared by
+ *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store setters
+ *  differ, same per-mode-setters-only-differ reuse convention as `MarkerSettingsGroup`/
+ *  `TeleportSettingsSection`). Four rows (corner style, marker size, marker border, gap) each set a
+ *  shared value that every non-overridden dependent field across the panel follows. Per-field reset
+ *  buttons live on the *dependent* field's own row elsewhere in the panel (e.g. the "Waypoints"
+ *  section's marker size slider), not here — this section only owns the four shared values
+ *  themselves. Link editing/icon-visibility/"Reset all settings" live in the separate "Settings"
+ *  section (GitHub issue #668) — this section is style values only. */
+export function SharedStyleSection<P extends string>({
+  cornerStyle,
+  markerSize,
+  markerBorderWidth,
+  gapWidth,
+  onCornerStyleChange,
+  onMarkerSizeChange,
+  onMarkerBorderWidthChange,
+  onGapWidthChange,
+}: {
+  cornerStyle: CornerStyle;
+  markerSize: number;
+  markerBorderWidth: number;
+  gapWidth: number;
+  onCornerStyleChange: (v: CornerStyle) => void;
+  onMarkerSizeChange: (v: number) => void;
+  onMarkerBorderWidthChange: (v: number) => void;
+  onGapWidthChange: (v: number) => void;
+}) {
+  return (
+    <div style={styles.block}>
       <LinkedSelectRow
         label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
         value={cornerStyle}
@@ -132,30 +173,6 @@ export function SharedStyleSection<P extends string>({
         format={(v) => String(v)}
         linkTarget={"gapWidth" as P}
       />
-      <Inline gap="rowGap" align="stretch">
-        <Button variant="secondary" layoutStyle={styles.manageLinksButton} onClick={() => setLinksDialogOpen(true)}>
-          {m["image_export.param_links.manage_links"]()}
-        </Button>
-        <Button variant="secondary" layoutStyle={styles.infoButton} onClick={() => setInfoOpen(true)} title={m["image_export.param_links.info_title"]()}>
-          &#8505;
-        </Button>
-      </Inline>
-      <Button variant="destructive" onClick={onResetAll}>
-        {m["image_export.vector_by_walls.shared_style_reset_all"]()}
-      </Button>
-      {infoOpen && <ParamLinksInfoModal onClose={() => setInfoOpen(false)} />}
-      {linksDialogOpen && (
-        <ParameterLinksDialog
-          registry={registry}
-          settings={settings}
-          links={links}
-          onSetLinkEnabled={onSetLinkEnabled}
-          onAddLink={onAddLink}
-          onRemoveLink={onRemoveLink}
-          onClose={() => setLinksDialogOpen(false)}
-          activePaths={activePaths}
-        />
-      )}
     </div>
   );
 }

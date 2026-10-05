@@ -65,9 +65,9 @@ describe("isPathActive", () => {
     expect(active("oneWayColor", { hasOneWays: true })).toBe(true);
   });
 
-  it("gates the vertical root path on hasVerticalSection", () => {
-    expect(active("replaceTwoFloorElevatorsWithStairs", { hasVerticalSection: false })).toBe(false);
-    expect(active("replaceTwoFloorElevatorsWithStairs", { hasVerticalSection: true })).toBe(true);
+  it("gates replaceTwoFloorElevatorsWithStairs on hasElevators", () => {
+    expect(active("replaceTwoFloorElevatorsWithStairs", { hasElevators: false })).toBe(false);
+    expect(active("replaceTwoFloorElevatorsWithStairs", { hasElevators: true })).toBe(true);
   });
 
   it("hides gridColor only when showGrid is explicitly false", () => {

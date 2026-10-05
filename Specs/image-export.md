@@ -114,6 +114,40 @@ Sections:
 
   `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`'s `cornerStyle`/`size`/`borderWidth`/`gapWidth` are wired into "Shared style" (GitHub issue #322 follow-up, generalized to the generic `ParamLink` engine by #643) the same mechanism `startMarker`/`finishMarker` use — a `"twoWayPassageMarker.<field>"`/`"oneWayPassageMarker.<field>"`/`"elevatorMarker.<field>"` link per group in `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, and the panel's own per-field `OverrideResetButton`s on each sub-group's `MarkerSettingsGroup` corner-style/size/border-width/gap-width rows — but those links **start `enabled: false`** in all four groups, unlike `startMarker`/`finishMarker` (whose links start out enabled, following the shared value). This is deliberate: all three vertical markers' own default (`DEFAULT_VERTICAL_SETTINGS`) is derived from `DEFAULT_MAZE_RENDER_STYLE.verticalConnections` (also exposed to existing live-canvas callers through the `DEFAULT_VERTICAL_STYLE` alias) — border width 3 for all three of `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` — raised from `2` in GitHub issue #347's sixth follow-up for the first two, seventh follow-up for `elevatorMarker`; size 0.22 for all three, rather than the Shared style baseline (border width 3, size 0.16) — so the exported image looks identical to the editor view until changed — the user can still pull a field onto the shared value via its own reset button. `shape`/`fillColor`/`borderColor` stay independent, same as `startMarker`/`finishMarker`'s own fill/border colors. Default fill colors are chosen so the three sub-groups read apart out of the box: all three fill with `canvas.vertical.default` (elevator additionally uses a diamond shape to read apart from the passage's circle) — a one-way passage's two ends are told apart from each other (and from the two-way/elevator look) by the dark-accent redesign below, not by a distinct base fill color.
 
+  **Vertical "Shared style" group** (GitHub issue #668) — one level up from the per-group
+  `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` links above: a dedicated "Shared
+  style" subsection inside the "Vertical connections" section itself, so all three sub-groups'
+  marker look and arrow look can be driven from one place without touching the panel-level
+  "Shared style" section (which stays reserved for fields shared with the start/finish/teleport
+  markers too). `VerticalSharedStyleFields` (`imageExportTypes.ts`) mirrors `MarkerSettings`' own
+  shape, for both `VectorByWallsSettings` and `VectorByCorridorsSettings`: `verticalCornerStyle`,
+  `verticalShape`, `verticalSize`, `verticalBorderWidth`, `verticalGapWidth`, `verticalFillColor`,
+  `verticalArrowColor`, `verticalArrowSize`, `verticalArrowStyle`, `verticalArrowCornerStyle` — plus,
+  walls-only, `verticalDecorativeLineColor`/`verticalDecorativeLineWidth` for the decorative pictogram
+  style. Each source field links to its three per-group counterparts
+  (`"twoWayPassageMarker.<field>"`/`"oneWayPassageMarker.<field>"`/`"elevatorMarker.<field>"`, or the
+  matching `<kind>Arrow*`/`decorativeStairs*`/`decorativeElevator.lineColor`/`lineWidth` field) via
+  `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, same disabled-by-default
+  convention as every other vertical link — editing a sub-group's own field through its per-group
+  setter disables just that one link, leaving the other two groups still following the shared value.
+  The panel splits this subsection's fields the same way the per-group sub-groups do: a "Marker" row
+  block (shape/corner style/size/border/gap/fill) shown only for `verticalStyle === "abstract"`
+  ("Vector by corridors" has no `verticalStyle` at all, so it always shows this block) and an "Arrow"
+  block (color/size/style/corner style) shown the same way, plus a decorative-only flat row block
+  (size/arrow size/line width/line color) for walls-mode `verticalStyle === "decorative"` —
+  `parameterLinksActivity.ts`'s `VERTICAL_SHARED_STYLE_ABSTRACT_ONLY`/`_DECORATIVE_ONLY` sets gate
+  which half is active in the parameter-links dialog, mirroring this same split. `verticalFillColor`/
+  `verticalArrowColor`/`verticalDecorativeLineColor` are registered in the color picker's "Project
+  colors" list as `PC.verticalFill`/`PC.verticalArrow`/`PC.verticalDecorLine` (`projectColorsSelector.ts`,
+  `verticalSharedStyleColors`) under the dedicated `vertical` section label "Верт. общий стиль" — shown
+  only for the matching `verticalStyle` (`verticalFill`/`verticalArrow` for abstract, `verticalDecorLine`
+  for decorative; corridors is always abstract), same mode-gating as the panel rows themselves. Every
+  per-group marker/arrow fill/border/arrow color row's own `priorityColors` ends with these two shared
+  colors (then the floor/background tail) so a user editing e.g. `twoWayPassageMarker.fillColor` sees
+  the vertical shared-style fill/arrow colors as nearby picks; symmetrically, `verticalFillColor`'s own
+  priority list leads with `verticalArrowColor` (and vice versa), never both at once via a shared tail
+  constant — the two are siblings of each other, not each other's own downstream receiver.
+
   **One-way passage redesign** (GitHub issue #347 fourth/fifth follow-up): a one-way `VerticalPassage`'s two markers (`filled: false` on both ends, `VerticalConnectionMarker`'s own doc comment) no longer draw an empty/floor-colored circle distinguished only by an outline-vs-solid arrow. Instead both ends now read as an accented variant of the ordinary two-way/elevator look, driven by exactly two colors — **primary** and **secondary** (GitHub issue #347 fifth follow-up, replacing the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the same accent anyway): the primary color is just the marker's own ordinary `fillColor` — no dedicated field of its own; the secondary color is one field, `oneWayAccentColor` (`VerticalSettingsFields`). The **departure end** (`arrowFilled: true`, this marker's own node is the edge's `from`) draws the primary fill with its border recolored to `oneWayAccentColor` — an accent marking "you can leave from here"; the **arrival end** (`arrowFilled: false`, this marker's own node is the edge's `to`) draws its *entire* fill in `oneWayAccentColor` instead, with no separate border color, reading as sealed off — no way back out (GitHub issue #428 sixth follow-up swapped which end gets which treatment from an earlier, backwards version of this same redesign: the arrival end must be the fully-darkened one, the departure end the light-with-border one). `oneWayAccentColor` defaults to a fixed value (`ONE_WAY_ACCENT_DARK`, `0x196c64`, a darker shade of the primary teal `canvas.vertical.default`/`#2ec4b6` — the fifth follow-up's `0x2a2a2a` was replaced with a lighter, but too-gray, `0x5a9c94`, then the sixth follow-up settled on this same-hue darker shade instead per user feedback, defined once per file that needs it per the feature-renderer ownership rule — `imageExportDefaults.ts` and each fixed-style live-canvas renderer), independently adjustable via the panel's own single "Secondary color" row (renamed from "Accent color" in GitHub issue #347's seventh follow-up — the i18n key itself, `one_way_accent_color`, is unchanged; `oneWayAccentColor` in `patchVectorByWallsVerticalSettings`'s own field allowlist). The one-way sub-group's `MarkerSettingsGroup` hides its own "Border color" row (`hideBorderColor`, `MarkerSettingsGroup.tsx`) since `oneWayPassageMarker.borderColor` is no longer read by the renderer for a one-way marker — showing it would be a dead control.
 
   Each of the three vertical sub-groups (`vertical_two_way`/`vertical_one_way`/`vertical_elevator`) is itself split into two further sub-subsections (GitHub issue #347 seventh/eighth follow-up), scoped to this section only — no other panel section got this treatment: "Marker" (the sub-group's own `MarkerSettingsGroup`, plus — for the one-way sub-group only — the "Secondary color" row, since it drives the marker's own fill/border rather than the arrow) and "Arrow" (`<kind>ArrowColor`/`<kind>ArrowSize`/`<kind>ArrowStyle`/`<kind>ArrowCornerStyle`, renamed from "Arrows" in the eighth follow-up; each of these four rows also dropped its own trailing "arrow" word — "Color"/"Size"/"Style"/"Corner style" — since the "Arrow" sub-subsection header already establishes that). Unlike the outer sub-group, these two are **plain indented labels, not collapsible** (GitHub issue #347 eighth follow-up: the sixth/seventh follow-ups' own nested-collapsible treatment was reverted) — always visible once their parent sub-group is expanded, following the same plain-label pattern `MarkerSettingsGroup`'s own `title` prop already uses for "Start"/"Finish".
@@ -745,6 +779,16 @@ one level shallower (no "Маркер" subsection exists in decorative mode) and
 `VECTOR_BY_WALLS_PARAM_REGISTRY` — `VectorByCorridorsSettings` has no `VerticalDecorativeFields` at
 all (corridors mode has no decorative/abstract `verticalStyle` toggle), so neither these three
 sub-objects nor `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize` exist for corridors.
+
+The vertical "Shared style" group's own ten (twelve for walls) fields (`verticalCornerStyle`/
+`verticalShape`/`verticalSize`/`verticalBorderWidth`/`verticalGapWidth`/`verticalFillColor`/
+`verticalArrowColor`/`verticalArrowSize`/`verticalArrowStyle`/`verticalArrowCornerStyle`, plus
+walls-only `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`, see "Vertical 'Shared style'
+group" above) are registered in both `VECTOR_BY_WALLS_PARAM_REGISTRY` and
+`VECTOR_BY_CORRIDORS_PARAM_REGISTRY` (the walls-only pair omitted from the corridors one) under
+`G.verticalSharedStyle()` — nested one level under "Vertical connections" alongside the three
+per-group sub-groups, not flattened to the section's own top level, same as every other nested
+sub-group in this registry.
 
 **`EditIconButton`/`RemoveIconButton`/`AddIconButton` (`components/EditIconButton.tsx`,
 `components/RemoveIconButton.tsx`, `components/AddIconButton.tsx`).** Reusable icon-button components
