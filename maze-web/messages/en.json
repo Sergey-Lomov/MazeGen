@@ -128,6 +128,8 @@
   "floors.count_active": "{count} floor",
   "floors.count_active_plural": "{count} floors",
   "field.title": "Field",
+  "background.show": "Show underlay",
+  "background.upload": "Upload underlay",
   "preset.title": "Presets",
   "preset.tools": "Tools",
   "preset.wall": "Wall",

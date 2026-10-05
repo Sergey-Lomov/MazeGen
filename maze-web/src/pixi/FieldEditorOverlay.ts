@@ -12,6 +12,7 @@ import { ACTIVE_CELL_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
+import { BackgroundImageLayer } from "./BackgroundImageLayer";
 import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 
 const CELL_HOVER_COLOR = 0x888888;
@@ -25,6 +26,7 @@ const SYMMETRY_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
+  private readonly backgroundImageContainer: Container;
   private readonly paperLayoutContainer: Container;
   private readonly floorContainer: Container;
   private readonly symmetryContainer: Container;
@@ -32,6 +34,7 @@ export class FieldEditorOverlay {
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
+  private readonly backgroundImage: BackgroundImageLayer;
   private readonly paperLayout: PaperLayoutRenderer;
   private readonly floor: CellFillRenderer;
   private readonly symmetryCells: CellFillRenderer;
@@ -47,19 +50,22 @@ export class FieldEditorOverlay {
   constructor(container: Container) {
     this.root = container;
     this.gridContainer = new Container();
+    this.backgroundImageContainer = new Container();
     this.paperLayoutContainer = new Container();
     this.floorContainer = new Container();
     this.symmetryContainer = new Container();
     this.originContainer = new Container();
     this.hoverContainer = new Container();
+    this.root.addChild(this.backgroundImageContainer);
+    this.root.addChild(this.floorContainer);
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.paperLayoutContainer);
-    this.root.addChild(this.floorContainer);
     this.root.addChild(this.symmetryContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
+    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
@@ -121,6 +127,11 @@ export class FieldEditorOverlay {
         || state.pngExportSettings.print !== prev.pngExportSettings.print)) {
         this.redrawPaperLayout(state);
       }
+
+      if (isOpen && (state.showBackgroundImage !== prev.showBackgroundImage
+        || state.backgroundImage !== prev.backgroundImage)) {
+        this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+      }
     });
   }
 
@@ -154,6 +165,7 @@ export class FieldEditorOverlay {
     const field = state.floorFields[state.activeFloorId];
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
     this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
@@ -315,6 +327,7 @@ export class FieldEditorOverlay {
   destroy(): void {
     this.unsubscribe?.();
     this.grid.destroy();
+    this.backgroundImage.destroy();
     this.paperLayout.destroy();
     this.floor.destroy();
     this.symmetryCells.destroy();
@@ -322,6 +335,7 @@ export class FieldEditorOverlay {
     this.origin.destroy();
     this.hover.destroy();
     this.gridContainer.destroy();
+    this.backgroundImageContainer.destroy();
     this.paperLayoutContainer.destroy();
     this.floorContainer.destroy();
     this.symmetryContainer.destroy();

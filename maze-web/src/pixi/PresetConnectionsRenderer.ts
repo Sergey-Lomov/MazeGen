@@ -40,6 +40,7 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
+import { BackgroundImageLayer } from "./BackgroundImageLayer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
 import { isPresetLockTool } from "../store/storeTypes";
 
@@ -52,6 +53,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private readonly gridContainer: Container;
   private readonly floorContainer: Container;
+  private readonly backgroundImageContainer: Container;
   private readonly invalidPassagesContainer: Container;
   private readonly undecidedWallsContainer: Container;
   private readonly presetWallsContainer: Container;
@@ -75,6 +77,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
+  private readonly backgroundImage: BackgroundImageLayer;
   private readonly invalidPassages: WallRenderer;
   private readonly undecidedWalls: WallRenderer;
   private readonly presetWalls: WallRenderer;
@@ -112,6 +115,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.gridContainer           = new Container();
     this.floorContainer          = new Container();
+    this.backgroundImageContainer = new Container();
     this.invalidPassagesContainer = new Container();
     this.undecidedWallsContainer = new Container();
     this.presetWallsContainer    = new Container();
@@ -133,8 +137,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.linkHoverContainer      = new Container();
     this.entityHighlightContainer = new Container();
 
-    this.root.addChild(this.gridContainer);
+    this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.floorContainer);
+    this.root.addChild(this.gridContainer);
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
@@ -158,6 +163,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
+    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
     this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
@@ -253,6 +259,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     }
 
     if (
+      state.showBackgroundImage !== prev.showBackgroundImage ||
+      state.backgroundImage !== prev.backgroundImage ||
       fieldChanged ||
       state.activeFloorId !== prev.activeFloorId ||
       state.presetConnections !== prev.presetConnections ||
@@ -352,6 +360,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
 
     const { undecided, preset, invalidPassages } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
@@ -683,6 +692,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   protected destroyChildren(): void {
     this.grid.destroy();
+    this.backgroundImage.destroy();
     this.floor.destroy();
     this.invalidPassages.destroy();
     this.undecidedWalls.destroy();
@@ -705,6 +715,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.entityHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
+    this.backgroundImageContainer.destroy();
     this.floorContainer.destroy();
     this.invalidPassagesContainer.destroy();
     this.undecidedWallsContainer.destroy();

@@ -343,6 +343,21 @@ Grid rendering is embedded in each feature renderer, not in a standalone compone
 - **`FieldEditorOverlay`** — renders grid using `tessellationConfig` while `fieldSetupOpen = true`. Redraws on viewport change or config change.
 - **`PresetConnectionsRenderer`** — renders grid using `tessellationConfig` while `presetConnectionsOpen = true`. Redraws on viewport change or config change.
 
+## Synchronized underlay (GitHub issue #673)
+
+The Field Setup, Preset Connections, and Post-Edit feature cards share one visual-only background
+underlay. Each card shows a `Show underlay` switch, initially off. Enabling it for the first
+time opens an image upload dialog; cancelling leaves the switch off. The uploaded file and its
+natural dimensions are shared between the three cards and persisted in the project file.
+
+The underlay is drawn below the grid and the editable-cell fill, while remaining above the base
+canvas background, with 50% opacity. The underlay is not passed to generation, renderers, image
+export, analytics, or any other processing. When the switch is enabled, the underlay is scaled once
+with `cover` semantics against the current field bounds, centered on the field, and its display
+transform is retained while the field is edited. Turning it off and on again recalculates that
+transform. The original aspect ratio
+is always preserved, so an image may extend past the field boundary.
+
 ## Hover highlight (custom mode)
 
 While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted

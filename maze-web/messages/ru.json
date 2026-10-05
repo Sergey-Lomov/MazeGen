@@ -132,6 +132,8 @@
   "floors.count_active_plural": "{count} этажей",
 
   "field.title": "Поле",
+  "background.show": "Показывать подложку",
+  "background.upload": "Загрузить подложку",
 
   "preset.title": "Предустановки",
   "preset.tools": "Инструменты",

@@ -15,6 +15,7 @@ import { Switch } from "../Switch";
 import { Stack, Inline } from "../Layout";
 import { InfoIconButton } from "../InfoIconButton";
 import { ToggleRow } from "../ToggleRow";
+import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { SettingsIconButton } from "../SettingsIconButton";
 import { Modal } from "../Modal";
 import { isPredefinedFieldConfig } from "../../pixi/fieldPrintSizing";
@@ -312,6 +313,7 @@ export function FieldSetupFeature() {
               />}
             />
           </div>
+          <BackgroundImageToggle />
           <div style={styles.originRow}>
             <span style={styles.smoothingLabelGroup}>
               <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>

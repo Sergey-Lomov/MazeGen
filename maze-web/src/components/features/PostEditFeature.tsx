@@ -7,6 +7,7 @@ import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { typography, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
+import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { IssuesBlock } from "../IssuesBlock";
 import { Stack } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
@@ -223,6 +224,7 @@ export function PostEditFeature() {
             onChange={setAutoCompact}
             info={() => setAutoCompactInfoOpen(true)}
           />
+          <BackgroundImageToggle />
         </Stack>
       </div>
 

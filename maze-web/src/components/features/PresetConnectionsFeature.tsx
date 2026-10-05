@@ -14,6 +14,7 @@ import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
 import { SectionHeader } from "../SectionHeader";
 import { Switch } from "../Switch";
+import { BackgroundImageToggle } from "../BackgroundImageToggle";
 import { Stack, Grid } from "../Layout";
 import { WarningBubble } from "../WarningBubble";
 import { FloorBadgeRow } from "../FloorBadgeRow";
@@ -338,6 +339,7 @@ export function PresetConnectionsFeature() {
             <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
             <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
           </div>
+          <BackgroundImageToggle />
         </Stack>
       </div>
       {confirmReset && (
