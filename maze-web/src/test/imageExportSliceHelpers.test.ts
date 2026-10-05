@@ -355,15 +355,14 @@ describe("registry format functions", () => {
     expect(new Set(rendered).size).toBe(styles.length);
   });
 
-  it("elevator badges and marker index use different i18n keys for IndexLabelStyle, even where the rendered wording happens to coincide in some locales", () => {
-    // Wording can coincide by accident in one locale (e.g. ru's "roman"/"letters" strings currently
-    // match) — what must hold is that each format function is backed by its own key set, so a future
-    // wording change to one doesn't silently affect the other. "arabic" has distinct wording in both
-    // locales today ("Numbers"/"Цифры" vs "Arabic numerals"/"Арабские цифры"), enough to prove the
-    // two functions aren't aliases of the same key set.
+  it("elevator badges and marker index use separate format functions for IndexLabelStyle, not one aliasing the other", () => {
+    // The rendered wording is intentionally identical across all three options in every current
+    // locale (GitHub issue #678: unified terminology) — what must hold is that each format function
+    // is backed by its own key set, so a future wording change to one doesn't silently affect the
+    // other. Pin that the two descriptors reference distinct functions.
     const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.labelType"].format;
     const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.labelStyle"].format;
-    expect(badgeFormat("arabic")).not.toBe(indexFormat("arabic"));
+    expect(badgeFormat).not.toBe(indexFormat);
   });
 
   it("teleport floor badge reuses the elevator badges IndexLabelStyle wording, not marker index's", () => {

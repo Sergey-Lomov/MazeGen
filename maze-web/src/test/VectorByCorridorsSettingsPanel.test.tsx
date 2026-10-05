@@ -111,7 +111,10 @@ describe("VectorByCorridorsSettingsPanel", () => {
   it("renders the corridor color/join/thickness controls once expanded", () => {
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_corridors.color"]())).toBeInTheDocument();
-    expect(screen.getByText(m["image_export.vector_by_corridors.join"]())).toBeInTheDocument();
+    // "Corner style" is shared wording across several join/corner-style pickers on this same
+    // panel (GitHub issue #678: unified terminology) — assert it's present, not that the text
+    // is unique.
+    expect(screen.getAllByText(m["image_export.vector_by_corridors.join"]()).length).toBeGreaterThan(0);
     expect(screen.getByText(m["image_export.vector_by_corridors.thickness"]())).toBeInTheDocument();
   });
 

@@ -702,8 +702,8 @@ describe("VectorByWallsSettingsPanel", () => {
       const header = screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]());
       // The "Marker"/"Arrows" sub-subsections are plain indented labels, not collapsible — only
       // the outer sub-group's own header click toggles visibility of everything under it.
-      // `vertical_arrow_style`'s own label ("Style") isn't unique on the page (shared with
-      // `wall_join`'s always-visible "Tiles" row), and `vertical_subsection_arrows`'s own label
+      // `vertical_arrow_style`'s own label ("Style") isn't unique on the page (shared with other
+      // style pickers), and `vertical_subsection_arrows`'s own label
       // ("Arrow") collides with the arrow-style `<select>`'s own "Arrow" pattern `<option>` — assert
       // on the arrow-style select's own default display value instead, same as the "changing the
       // two-way arrow style" test below.
