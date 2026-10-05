@@ -110,6 +110,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       openCard: state.openCard,
       postEditAutoConfirm: state.postEditAutoConfirm,
     },
+    showBackgroundImage: state.showBackgroundImage ?? false,
+    backgroundImage: state.backgroundImage ?? null,
     imageExport: {
       activeRenderMode: state.activeRenderMode,
       openRenderModeSettings: state.openRenderModeSettings,

@@ -12,6 +12,15 @@ export type FieldOperation = "add" | "remove" | "select";
 export type SymmetrySnapMode = "centers" | "corners" | "free";
 export type SymmetryScope = "everything" | "one_side" | "polygon";
 export type SymmetryPoint = { x: number; y: number };
+export interface BackgroundImage {
+  dataUrl: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  centerX: number;
+  centerY: number;
+}
 export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 export type PendingFieldEdit =
@@ -56,6 +65,9 @@ export interface TessellationState {
   showPrimitiveFrame: boolean;
   /** Whether the custom-field editor shows the shared print paper and margin guides. */
   showPaperLayout: boolean;
+  /** Shared visual-only underlay used by the field, preset, and post-edit editors. */
+  showBackgroundImage: boolean;
+  backgroundImage: BackgroundImage | null;
   smoothPrimitives: boolean;
   symmetrySnapMode: SymmetrySnapMode;
   symmetryScope: SymmetryScope;
@@ -82,6 +94,8 @@ export interface TessellationActions {
   setShowFieldOrigin: (show: boolean) => void;
   setShowPrimitiveFrame: (show: boolean) => void;
   setShowPaperLayout: (show: boolean) => void;
+  setShowBackgroundImage: (show: boolean) => void;
+  setBackgroundImage: (image: BackgroundImage) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;

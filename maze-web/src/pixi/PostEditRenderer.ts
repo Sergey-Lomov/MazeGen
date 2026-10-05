@@ -22,6 +22,7 @@ import { WALL_THICKNESS } from "./renderConstants";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
+import { BackgroundImageLayer } from "./BackgroundImageLayer";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -37,6 +38,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   private readonly gridContainer: Container;
   private readonly floorContainer: Container;
+  private readonly backgroundImageContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
   private readonly teleportContainer: Container;
@@ -53,6 +55,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
+  private readonly backgroundImage: BackgroundImageLayer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
   private readonly teleports: TeleportRenderer;
@@ -94,6 +97,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.gridContainer        = new Container();
     this.floorContainer       = new Container();
+    this.backgroundImageContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer       = new Container();
     this.teleportContainer    = new Container();
@@ -102,8 +106,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hoverContainer       = new Container();
     this.splitPanelTargetContainer = new Container();
 
-    this.root.addChild(this.gridContainer);
+    this.root.addChild(this.backgroundImageContainer);
     this.root.addChild(this.floorContainer);
+    this.root.addChild(this.gridContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
     this.splitJunctionContainer = new Container();
@@ -126,6 +131,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
+    this.backgroundImage = new BackgroundImageLayer(this.backgroundImageContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls       = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
@@ -201,6 +207,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
+    if (state.showBackgroundImage !== prev.showBackgroundImage
+      || state.backgroundImage !== prev.backgroundImage) {
+      this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
+    }
+
     if (
       state.postEditDraftEdges !== prev.postEditDraftEdges ||
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
@@ -469,6 +480,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage);
 
     // Split points (GitHub issue #223) render every node's passages at once, as colored lines
     // from a small per-node point to each face it connects across — see `buildSplitPassages`.
@@ -635,6 +647,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   protected destroyChildren(): void {
     this.grid.destroy();
+    this.backgroundImage.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
@@ -651,6 +664,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.issueHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
+    this.backgroundImageContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();

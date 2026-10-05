@@ -8,6 +8,16 @@ import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSetting
 import type { ParamLink } from "../parameterLinks";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 
+export interface ProjectFileBackgroundImage {
+  dataUrl: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  centerX: number;
+  centerY: number;
+}
+
 /** Replayable command log (GitHub issue #543) — replaces the old per-entity draft snapshot +
  * suppression-set persistence shape. `commands` replays on top of the freshly-regenerated
  * baseline at load time (see `mazeStore.ts`'s load path); the high-water marks are persisted
@@ -218,6 +228,9 @@ export interface ProjectFile {
   analytics: ProjectFileAnalytics;
   debug: ProjectFileDebug;
   ui: ProjectFileUi;
+  /** Shared editor-only underlay (GitHub issue #673). */
+  showBackgroundImage?: boolean;
+  backgroundImage?: ProjectFileBackgroundImage | null;
   imageExport: ProjectFileImageExport;
   floors: ProjectFileFloors;
 }

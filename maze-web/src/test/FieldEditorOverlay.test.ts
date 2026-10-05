@@ -67,6 +67,13 @@ vi.mock("../pixi/PaperLayoutRenderer", () => ({
   },
 }));
 
+vi.mock("../pixi/BackgroundImageLayer", () => ({
+  BackgroundImageLayer: class {
+    render = vi.fn();
+    destroy = vi.fn();
+  },
+}));
+
 vi.mock("../pixi/tessellationProjection", () => ({
   encodePoint: (x: number, y: number) => ((x & 0xFFFF) << 16) | (y & 0xFFFF),
   decodePoint: (key: number): [number, number] => [key >> 16, ((key & 0xFFFF) << 16) >> 16],

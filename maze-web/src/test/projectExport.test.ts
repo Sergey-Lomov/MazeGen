@@ -126,6 +126,46 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed).toEqual(serialized);
   });
 
+  it("round-trips the synchronized editor underlay", () => {
+    const serialized = serializeProject(makeState({
+      showBackgroundImage: true,
+      backgroundImage: {
+        dataUrl: "data:image/png;base64,abc",
+        naturalWidth: 200,
+        naturalHeight: 100,
+        displayWidth: 400,
+        displayHeight: 200,
+        centerX: 12,
+        centerY: -8,
+      },
+    }));
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.showBackgroundImage).toBe(true);
+    expect(reparsed.backgroundImage).toEqual(serialized.backgroundImage);
+  });
+
+  it("does not enable an underlay without persisted image data", () => {
+    const serialized = serializeProject(makeState({ showBackgroundImage: true, backgroundImage: null }));
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.showBackgroundImage).toBe(false);
+    expect(reparsed.backgroundImage).toBeNull();
+  });
+
+  it("rejects non-positive persisted underlay dimensions", () => {
+    const serialized = serializeProject(makeState({
+      backgroundImage: {
+        dataUrl: "data:image/png;base64,abc",
+        naturalWidth: 0,
+        naturalHeight: 100,
+        displayWidth: 200,
+        displayHeight: 200,
+        centerX: 0,
+        centerY: 0,
+      },
+    }));
+    expect(() => parseAndValidate(JSON.parse(JSON.stringify(serialized)))).toThrow(/backgroundImage\.naturalWidth/);
+  });
+
   it("round-trips the export color-warning visibility setting", () => {
     const state = makeState({ showColorWarnings: false });
     const serialized = serializeProject(state);

@@ -210,6 +210,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       showPresetLocks: file.ui.showPresetLocks,
       showPresetLocksBeforeLockTool: null,
       showFieldOrigin: file.ui.showFieldOrigin,
+      showBackgroundImage: file.showBackgroundImage ?? false,
+      backgroundImage: file.backgroundImage ?? null,
       showPrimitiveFrame: true,
       smoothPrimitives: true,
       symmetrySnapMode: "centers",

@@ -30,6 +30,18 @@ import { validateImageExport } from "./validateImageExport";
 
 const migrations: Record<number, (data: unknown) => unknown> = {};
 
+function assertFiniteNumber(v: unknown, path: string): number {
+  const value = assertNumber(v, path);
+  if (!Number.isFinite(value)) throw new Error(`Expected finite number at ${path}`);
+  return value;
+}
+
+function assertPositiveFiniteNumber(v: unknown, path: string): number {
+  const value = assertFiniteNumber(v, path);
+  if (value <= 0) throw new Error(`Expected positive number at ${path}`);
+  return value;
+}
+
 function migrateToLatest(data: unknown, fromVersion: number): unknown {
   let result = data;
   for (let v = fromVersion; v < CURRENT_VERSION; v++) {
@@ -224,6 +236,22 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     postEditAutoConfirm: optBool(uiObj, "postEditAutoConfirm", true),
   };
 
+  const backgroundImage = migrated.backgroundImage == null
+    ? null
+    : (() => {
+      const image = assertObject(migrated.backgroundImage, "backgroundImage");
+      return {
+        dataUrl: assertString(image.dataUrl, "backgroundImage.dataUrl"),
+        naturalWidth: assertPositiveFiniteNumber(image.naturalWidth, "backgroundImage.naturalWidth"),
+        naturalHeight: assertPositiveFiniteNumber(image.naturalHeight, "backgroundImage.naturalHeight"),
+        displayWidth: assertPositiveFiniteNumber(image.displayWidth, "backgroundImage.displayWidth"),
+        displayHeight: assertPositiveFiniteNumber(image.displayHeight, "backgroundImage.displayHeight"),
+        centerX: assertFiniteNumber(image.centerX, "backgroundImage.centerX"),
+        centerY: assertFiniteNumber(image.centerY, "backgroundImage.centerY"),
+      };
+    })();
+  const showBackgroundImage = backgroundImage !== null && optBool(migrated, "showBackgroundImage", false);
+
   // floors (optional section — defaults to a single floor for old files)
   const floors: ProjectFileFloors = validateFloors(migrated.floors, "floors");
 
@@ -267,6 +295,8 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     analytics,
     debug,
     ui,
+    showBackgroundImage,
+    backgroundImage,
     imageExport: validateImageExport(migrated.imageExport, "imageExport"),
     floors,
   };
