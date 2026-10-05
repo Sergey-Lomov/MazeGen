@@ -38,6 +38,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: 0,
     verticalDecorativeLineWidth: 2,
+    verticalDecorativeSize: 0.22,
+    verticalDecorativeArrowSize: 0.75,
     splitNodeColors: [], splitSpecialShapes: true,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,

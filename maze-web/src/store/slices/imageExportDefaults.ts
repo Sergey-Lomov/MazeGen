@@ -245,6 +245,8 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: canvas.vertical.default,
     verticalDecorativeLineWidth: 2,
+    verticalDecorativeSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay.size,
+    verticalDecorativeArrowSize: DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   } as unknown as Record<string, unknown>,
@@ -253,7 +255,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     "cornerStyle", "markerSize", "markerBorderWidth", "gapWidth",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-    "verticalDecorativeLineColor", "verticalDecorativeLineWidth",
+    "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
   ],
 ) as unknown as VectorByWallsSettings;
 

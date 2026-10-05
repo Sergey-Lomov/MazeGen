@@ -439,6 +439,8 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     verticalArrowCornerStyle: optCornerStyle(obj, "verticalArrowCornerStyle", d.verticalArrowCornerStyle),
     verticalDecorativeLineColor: optNumber(obj, "verticalDecorativeLineColor", d.verticalDecorativeLineColor),
     verticalDecorativeLineWidth: optNumber(obj, "verticalDecorativeLineWidth", d.verticalDecorativeLineWidth),
+    verticalDecorativeSize: optNumber(obj, "verticalDecorativeSize", d.verticalDecorativeSize),
+    verticalDecorativeArrowSize: optNumber(obj, "verticalDecorativeArrowSize", d.verticalDecorativeArrowSize),
     links,
     markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
   };

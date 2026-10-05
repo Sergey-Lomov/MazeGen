@@ -507,9 +507,17 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
    *  "Vector by corridors" has no decorative treatment (see `VerticalDecorativeFields`), so these
-   *  live directly here rather than in `VerticalSharedStyleFields`. */
+   *  live directly here rather than in `VerticalSharedStyleFields`. Same reasoning for
+   *  `verticalDecorativeSize`/`verticalDecorativeArrowSize`, decorative-only counterparts of
+   *  `VerticalSharedStyleFields.verticalSize`/`verticalArrowSize`: the decorative style's "size" is
+   *  the stairs line's length and its "arrow size" is the arrow drawn along that line, visually
+   *  unrelated to the abstract marker's own radius/internal arrow (GitHub issue #677 follow-up) —
+   *  sharing one field across both meanings is what produced the duplicate-looking fields the issue
+   *  reported in the first place. */
   verticalDecorativeLineColor: number;
   verticalDecorativeLineWidth: number;
+  verticalDecorativeSize: number;
+  verticalDecorativeArrowSize: number;
   background: number;
   /** Original viewport grid, drawn behind the maze. */
   showGrid: boolean;
@@ -1008,7 +1016,7 @@ export interface ImageExportActions {
   setVectorByWallsSharedGapWidth: (v: number) => void;
   /** Same role as `patchVectorByCorridorsVerticalSharedStyle`, over `VectorByWallsSettings` — also
    *  covers `verticalDecorativeLineColor` (Walls-only, GitHub issue #668). */
-  patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth">>) => void;
+  patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth" | "verticalDecorativeSize" | "verticalDecorativeArrowSize">>) => void;
   /** Same role as `resetVectorByCorridorsSharedStyleField`, over `VectorByWallsParamPath`. */
   resetVectorByWallsSharedStyleField: (target: VectorByWallsParamPath) => void;
   /** "Synchronize" — clears every override across every group, re-applying all four shared values

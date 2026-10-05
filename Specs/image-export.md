@@ -123,10 +123,17 @@ Sections:
   shape, for both `VectorByWallsSettings` and `VectorByCorridorsSettings`: `verticalCornerStyle`,
   `verticalShape`, `verticalSize`, `verticalBorderWidth`, `verticalGapWidth`, `verticalFillColor`,
   `verticalArrowColor`, `verticalArrowSize`, `verticalArrowStyle`, `verticalArrowCornerStyle` — plus,
-  walls-only, `verticalDecorativeLineColor`/`verticalDecorativeLineWidth` for the decorative pictogram
-  style. Each source field links to its three per-group counterparts
+  walls-only, `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`/`verticalDecorativeSize`/
+  `verticalDecorativeArrowSize` for the decorative pictogram style. `verticalSize`/`verticalArrowSize`
+  are abstract-only (GitHub issue #677 follow-up, split from an earlier shared pair) — the decorative
+  style's own "size"/"arrow size" (the stairs line's length / the arrow drawn along it) are visually
+  unrelated to the abstract marker's own radius/internal arrow, so they're independent fields
+  (`verticalDecorativeSize`/`verticalDecorativeArrowSize`), not the same field reused across modes.
+  Each source field links to its three per-group counterparts
   (`"twoWayPassageMarker.<field>"`/`"oneWayPassageMarker.<field>"`/`"elevatorMarker.<field>"`, or the
-  matching `<kind>Arrow*`/`decorativeStairs*`/`decorativeElevator.lineColor`/`lineWidth` field) via
+  matching `<kind>Arrow*`/`decorativeStairs*`/`decorativeElevator.lineColor`/`lineWidth`/`size` field;
+  `verticalDecorativeArrowSize` links only to `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize`
+  — `decorativeElevator` has no arrow of its own, see "Vertical connections" above) via
   `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS`, same disabled-by-default
   convention as every other vertical link — editing a sub-group's own field through its per-group
   setter disables just that one link, leaving the other two groups still following the shared value.
@@ -136,7 +143,17 @@ Sections:
   block (color/size/style/corner style) shown the same way, plus a decorative-only flat row block
   (size/arrow size/line width/line color) for walls-mode `verticalStyle === "decorative"` —
   `parameterLinksActivity.ts`'s `VERTICAL_SHARED_STYLE_ABSTRACT_ONLY`/`_DECORATIVE_ONLY` sets gate
-  which half is active in the parameter-links dialog, mirroring this same split. `verticalFillColor`/
+  which half is active in the parameter-links dialog, mirroring this same split. Both the abstract and
+  decorative field sets are registered under the very same `group` path (`G.verticalSharedStyle()` —
+  the settings panel has exactly one "Shared style" subsection, not a separate one per mode) rather
+  than a mode-specific group each: since their `label`s would otherwise collide (e.g. both pairs read
+  as "Marker size"/"Arrow size"), each decorative-only label instead carries an appended
+  "(Декоративный)" suffix (`decorativeLabel`, `parameterLinksRegistry.ts`) and each abstract-only one
+  a "(Абстрактный)" suffix (`abstractLabel`) — this one-shared-group-plus-label-suffix convention is
+  used throughout the "Vertical connections" section below for every field that exists in only one
+  `verticalStyle` mode, not just here; fields that render identically in both modes
+  (`elevatorBadges.*`, `replaceTwoFloorElevatorsWithStairs`) carry no suffix, having no same-group
+  counterpart to disambiguate from. `verticalFillColor`/
   `verticalArrowColor`/`verticalDecorativeLineColor` are registered in the color picker's "Project
   colors" list as `PC.verticalFill`/`PC.verticalArrow`/`PC.verticalDecorLine` (`projectColorsSelector.ts`,
   `verticalSharedStyleColors`) under the dedicated `vertical` section label "Верт. общий стиль" — shown
@@ -774,21 +791,29 @@ subsection), not a shallower one for the first four and a deeper one for `shape`
 all five inside the same `MarkerSettingsGroup`, under one `vertical_subsection_marker` wrapper, so the
 registry's `group` path mirrors that rather than splitting one object's fields across two picker-tree
 depths. The decorative-mode counterparts (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/
-`decorativeElevator`, each a walls-only `DecorativeLineStyle`, see "Vertical connections" above) sit
-one level shallower (no "Маркер" subsection exists in decorative mode) and are registered only in
-`VECTOR_BY_WALLS_PARAM_REGISTRY` — `VectorByCorridorsSettings` has no `VerticalDecorativeFields` at
-all (corridors mode has no decorative/abstract `verticalStyle` toggle), so neither these three
-sub-objects nor `decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize` exist for corridors.
+`decorativeElevator`, each a walls-only `DecorativeLineStyle`, see "Vertical connections" above) are
+registered under the very same group as their abstract counterpart — `decorativeStairsTwoWay.*` under
+`G.verticalTwoWayMarker()`, etc. (GitHub issue #677 follow-up correction: an earlier version of this
+registry gave decorative fields their own shallower group, and before that a short-lived top-level
+Abstract/Decorative split, neither of which matched the panel; the panel in fact renders exactly one
+"Marker" sub-subsection per sub-group regardless of `verticalStyle` — only *which* fields appear
+inside it changes with the mode toggle). Decorative-mode `label`s instead carry the "(Декоративный)"
+suffix (`decorativeLabel`) described under "Vertical 'Shared style' group" above, same convention used
+there for `verticalSize`/`verticalArrowSize` vs. `verticalDecorativeSize`/`verticalDecorativeArrowSize`.
+These three sub-objects are registered only in `VECTOR_BY_WALLS_PARAM_REGISTRY` —
+`VectorByCorridorsSettings` has no `VerticalDecorativeFields` at all (corridors mode has no
+decorative/abstract `verticalStyle` toggle), so neither these three sub-objects nor
+`decorativeStairsArrowSize`/`decorativeStairsOneWayArrowSize` exist for corridors.
 
-The vertical "Shared style" group's own ten (twelve for walls) fields (`verticalCornerStyle`/
+The vertical "Shared style" group's own ten (fourteen for walls) fields (`verticalCornerStyle`/
 `verticalShape`/`verticalSize`/`verticalBorderWidth`/`verticalGapWidth`/`verticalFillColor`/
 `verticalArrowColor`/`verticalArrowSize`/`verticalArrowStyle`/`verticalArrowCornerStyle`, plus
-walls-only `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`, see "Vertical 'Shared style'
-group" above) are registered in both `VECTOR_BY_WALLS_PARAM_REGISTRY` and
-`VECTOR_BY_CORRIDORS_PARAM_REGISTRY` (the walls-only pair omitted from the corridors one) under
-`G.verticalSharedStyle()` — nested one level under "Vertical connections" alongside the three
-per-group sub-groups, not flattened to the section's own top level, same as every other nested
-sub-group in this registry.
+walls-only `verticalDecorativeLineColor`/`verticalDecorativeLineWidth`/`verticalDecorativeSize`/
+`verticalDecorativeArrowSize`, see "Vertical 'Shared style' group" above) are registered in both
+`VECTOR_BY_WALLS_PARAM_REGISTRY` and `VECTOR_BY_CORRIDORS_PARAM_REGISTRY` (the walls-only quartet
+omitted from the corridors one) under `G.verticalSharedStyle()` — nested one level under "Vertical
+connections" alongside the three per-group sub-groups, not flattened to the section's own top level,
+same as every other nested sub-group in this registry.
 
 **`EditIconButton`/`RemoveIconButton`/`AddIconButton` (`components/EditIconButton.tsx`,
 `components/RemoveIconButton.tsx`, `components/AddIconButton.tsx`).** Reusable icon-button components

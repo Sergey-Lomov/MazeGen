@@ -9,6 +9,11 @@ type P =
   | "replaceTwoFloorElevatorsWithStairs"
   | "gridColor"
   | "innerGridColor"
+  | "verticalCornerStyle"
+  | "verticalSize"
+  | "verticalArrowSize"
+  | "verticalDecorativeSize"
+  | "verticalDecorativeArrowSize"
   | "twoWayArrowColor"
   | "decorativeStairsArrowColor"
   | "oneWayAccentColor"
@@ -25,7 +30,9 @@ type P =
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
     "teleportLineColor", "teleportFloorBadge.enabled", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
-    "gridColor", "innerGridColor", "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayAccentColor",
+    "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
+    "verticalDecorativeSize", "verticalDecorativeArrowSize",
+    "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayAccentColor",
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
     "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor",
@@ -83,6 +90,19 @@ describe("isPathActive", () => {
     expect(active("innerGridColor", {}, { showGrid: true, showInnerGrid: true })).toBe(true);
   });
 
+  it("gates vertical shared-style fields on hasVerticalSection, abstract/decorative split by verticalStyle", () => {
+    expect(active("verticalCornerStyle", { hasVerticalSection: false }, { verticalStyle: "abstract" })).toBe(false);
+    expect(active("verticalSize", { hasVerticalSection: true }, { verticalStyle: "abstract" })).toBe(true);
+    expect(active("verticalSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(false);
+    expect(active("verticalArrowSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(false);
+    expect(active("verticalDecorativeSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(true);
+    expect(active("verticalDecorativeSize", { hasVerticalSection: true }, { verticalStyle: "abstract" })).toBe(false);
+    expect(active("verticalDecorativeArrowSize", { hasVerticalSection: true }, { verticalStyle: "decorative" })).toBe(true);
+    // Corridors mode has no `verticalStyle` (undefined) — abstract-only fields stay active there.
+    expect(active("verticalSize", { hasVerticalSection: true }, {})).toBe(true);
+    expect(active("verticalCornerStyle", { hasVerticalSection: true }, {})).toBe(true);
+  });
+
   it("shows two-way abstract fields only when hasTwoWayPassages and verticalStyle isn't decorative", () => {
     expect(active("twoWayArrowColor", { hasTwoWayPassages: false }, { verticalStyle: "abstract" })).toBe(false);
     expect(active("twoWayArrowColor", { hasTwoWayPassages: true }, { verticalStyle: "abstract" })).toBe(true);
@@ -109,11 +129,11 @@ describe("isPathActive", () => {
     expect(active("decorativeElevator.fillColor", { hasElevators: false }, { verticalStyle: "decorative" })).toBe(false);
   });
 
-  it("gates elevatorBadges.* on hasElevators + decorative style, except enabled/cornerStyle which only need the section itself", () => {
+  it("gates elevatorBadges.* on hasElevators only, regardless of verticalStyle (the subsection renders in both modes)", () => {
     expect(active("elevatorBadges.enabled", { hasElevators: true }, { verticalStyle: "decorative" })).toBe(true);
     expect(active("elevatorBadges.cornerStyle", { hasElevators: true }, { verticalStyle: "decorative" })).toBe(true);
     expect(active("elevatorBadges.enabled", { hasElevators: false }, { verticalStyle: "decorative" })).toBe(false);
-    expect(active("elevatorBadges.enabled", { hasElevators: true }, { verticalStyle: "abstract" })).toBe(false);
+    expect(active("elevatorBadges.enabled", { hasElevators: true }, { verticalStyle: "abstract" })).toBe(true);
   });
 
   it("gates other elevatorBadges.* subfields additionally on elevatorBadges.enabled", () => {

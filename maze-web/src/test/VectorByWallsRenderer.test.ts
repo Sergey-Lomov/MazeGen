@@ -244,6 +244,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     verticalArrowCornerStyle: "round",
     verticalDecorativeLineColor: 0x33bbff,
     verticalDecorativeLineWidth: 3,
+    verticalDecorativeSize: 0.22,
+    verticalDecorativeArrowSize: 0.75,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     ...overrides,
   };

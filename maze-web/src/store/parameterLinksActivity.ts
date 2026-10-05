@@ -37,17 +37,23 @@ const ONE_WAY_PATHS = new Set([
 const VERTICAL_ROOT_PATHS = new Set([
   "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
   "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
-  "verticalDecorativeLineColor", "verticalDecorativeLineWidth",
+  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
 ]);
 // Vertical "Shared style" fields that only make sense for one of the two "Vector by walls"
-// `verticalStyle` modes (GitHub issue #668 follow-up) — mirrors the panel's own filtering inside
-// that sub-block. "Vector by corridors" has no `verticalStyle` at all, so `settings.verticalStyle`
-// is `undefined` there and these sets are never consulted (`VERTICAL_ROOT_PATHS` alone gates them).
+// `verticalStyle` modes (GitHub issue #668 follow-up, #677 follow-up) — mirrors the panel's own
+// filtering inside that sub-block. "Vector by corridors" has no `verticalStyle` at all, so
+// `settings.verticalStyle` is `undefined` there and these sets are never consulted
+// (`VERTICAL_ROOT_PATHS` alone gates them) — `verticalSize`/`verticalArrowSize` stay active there
+// despite being listed as abstract-only below, since that branch is only reached once
+// `ctx.hasVerticalSection` is true and `verticalStyle` is still checked against `"decorative"`,
+// which corridors' `undefined` never equals.
 const VERTICAL_SHARED_STYLE_ABSTRACT_ONLY = new Set([
-  "verticalCornerStyle", "verticalShape", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
-  "verticalArrowColor", "verticalArrowStyle", "verticalArrowCornerStyle",
+  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+  "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
 ]);
-const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set(["verticalDecorativeLineColor", "verticalDecorativeLineWidth"]);
+const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set([
+  "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
+]);
 
 const TWO_WAY_ABSTRACT_PATHS = new Set(["twoWayArrowColor", "twoWayArrowSize", "twoWayArrowStyle", "twoWayArrowCornerStyle"]);
 const TWO_WAY_DECORATIVE_PATHS = new Set(["decorativeStairsArrowSize", "decorativeStairsArrowColor"]);
@@ -116,7 +122,7 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
     return verticalStyle === "decorative";
   }
   if (p.startsWith("elevatorBadges.")) {
-    if (!ctx.hasElevators || verticalStyle !== "decorative") return false;
+    if (!ctx.hasElevators) return false;
     if (p === "elevatorBadges.enabled" || p === "elevatorBadges.cornerStyle") return true;
     return settings.elevatorBadges?.enabled !== false;
   }

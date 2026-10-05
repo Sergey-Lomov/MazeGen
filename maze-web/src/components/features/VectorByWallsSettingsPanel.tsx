@@ -686,23 +686,23 @@ export function VectorByWallsSettingsPanel() {
                 <div style={styles.subGroup}>
                   <LinkedSliderRow
                     label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
-                    value={settings.verticalSize}
-                    onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
+                    value={settings.verticalDecorativeSize}
+                    onChange={(verticalDecorativeSize) => patchVerticalSharedStyle({ verticalDecorativeSize })}
                     min={0}
                     max={1}
                     step={0.01}
                     format={(v) => v.toFixed(2)}
-                    linkTarget="verticalSize"
+                    linkTarget="verticalDecorativeSize"
                   />
                   <LinkedSliderRow
                     label={m["image_export.vector_by_walls.vertical_shared_style_arrow_size"]()}
-                    value={settings.verticalArrowSize}
-                    onChange={(verticalArrowSize) => patchVerticalSharedStyle({ verticalArrowSize })}
+                    value={settings.verticalDecorativeArrowSize}
+                    onChange={(verticalDecorativeArrowSize) => patchVerticalSharedStyle({ verticalDecorativeArrowSize })}
                     min={0.2}
                     max={1}
                     step={0.05}
                     format={(v) => v.toFixed(2)}
-                    linkTarget="verticalArrowSize"
+                    linkTarget="verticalDecorativeArrowSize"
                   />
                   <LinkedSliderRow
                     label={m["image_export.vector_by_walls.vertical_shared_style_line_width"]()}

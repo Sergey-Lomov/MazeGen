@@ -44,6 +44,8 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: 0x123456,
     verticalDecorativeLineWidth: 2,
+    verticalDecorativeSize: 0.22,
+    verticalDecorativeArrowSize: 0.75,
     splitNodeColors: [], splitSpecialShapes: false,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...DEFAULT_SHARED_STYLE_SOURCE,

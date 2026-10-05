@@ -81,6 +81,11 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("verticalDecorativeLineWidth", "decorativeStairsTwoWay.lineWidth", false),
   link("verticalDecorativeLineWidth", "decorativeStairsOneWay.lineWidth", false),
   link("verticalDecorativeLineWidth", "decorativeElevator.lineWidth", false),
+  link("verticalDecorativeSize", "decorativeStairsTwoWay.size", false),
+  link("verticalDecorativeSize", "decorativeStairsOneWay.size", false),
+  link("verticalDecorativeSize", "decorativeElevator.size", false),
+  link("verticalDecorativeArrowSize", "decorativeStairsArrowSize", false),
+  link("verticalDecorativeArrowSize", "decorativeStairsOneWayArrowSize", false),
 ];
 
 /** Same role as `DEFAULT_VECTOR_BY_WALLS_LINKS`, for "Vector by corridors" — `join` instead of
