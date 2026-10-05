@@ -3,7 +3,7 @@ import type { ElevatorBadgeSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import { MARKER_SHAPE_OPTIONS } from "./MarkerSettingsGroup";
+import { markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import * as m from "~/paraglide/messages";
 
 /** "Badges" sub-subsection of the Elevator sub-group (GitHub issue #430) — plain-weight label, not
@@ -97,7 +97,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.elevator_badges_shape"]()}
               value={settings.shape}
-              options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+              options={markerShapeSelectOptions()}
               onChange={(shape) => onChange({ shape })}
               linkTarget={linkTargets.shape}
             />

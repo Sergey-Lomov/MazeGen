@@ -20,6 +20,12 @@ export const MARKER_SHAPE_OPTIONS: { value: MarkerShape; label: () => string }[]
   { value: "cross", label: m["image_export.vector_by_walls.marker_shape_cross"] },
 ];
 
+/** `MARKER_SHAPE_OPTIONS` with labels resolved — the shape `Linked*Row`s all need, since
+ *  `LinkedSelectRow`'s `options` takes string labels, not label factories. */
+export function markerShapeSelectOptions(): { value: MarkerShape; label: string }[] {
+  return MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }));
+}
+
 /** One "Start"/"Finish" sub-group of a "Waypoints" section — plain-weight label (not a
  *  `SectionHeader`, always visible, no collapse) indented under the section header, per GitHub
  *  issue #296. Shape, corner style, size, fill color, border color, border width and gap width;
@@ -60,7 +66,7 @@ export function MarkerSettingsGroup<P extends string>({ title, settings, onChang
         <LinkedSelectRow
           label={m["image_export.vector_by_walls.marker_shape"]()}
           value={settings.shape}
-          options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+          options={markerShapeSelectOptions()}
           onChange={(shape) => onChange({ shape })}
           linkTarget={linkTargets.shape}
         />

@@ -155,6 +155,7 @@ const G = {
   splits: () => [m["image_export.vector_by_walls.section_splits"]()],
   background: () => [m["image_export.vector_by_walls.section_background"]()],
   cells: () => [m["image_export.vector_by_corridors.section_cells"]()],
+  verticalSharedStyle: () => [m["image_export.vector_by_walls.section_vertical"](), m["image_export.vector_by_walls.vertical_subsection_shared_style"]()],
 };
 
 /** "Vector by walls" mode's linkable parameter registry (GitHub issue #643) — one entry per field
@@ -170,6 +171,18 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   markerSize: descriptor("number", m["image_export.param_links.shared_marker_size"](), G.sharedStyle()),
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
+  verticalCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_corner_style"](), G.verticalSharedStyle()),
+  verticalShape: descriptor("markerShape", m["image_export.param_links.vertical_shared_shape"](), G.verticalSharedStyle()),
+  verticalSize: descriptor("number", m["image_export.param_links.vertical_shared_size"](), G.verticalSharedStyle()),
+  verticalBorderWidth: descriptor("number", m["image_export.param_links.vertical_shared_border_width"](), G.verticalSharedStyle()),
+  verticalGapWidth: descriptor("number", m["image_export.param_links.vertical_shared_gap_width"](), G.verticalSharedStyle()),
+  verticalFillColor: descriptor("color", m["image_export.param_links.vertical_shared_fill_color"](), G.verticalSharedStyle()),
+  verticalArrowColor: descriptor("color", m["image_export.param_links.vertical_shared_arrow_color"](), G.verticalSharedStyle()),
+  verticalArrowSize: descriptor("number", m["image_export.param_links.vertical_shared_arrow_size"](), G.verticalSharedStyle()),
+  verticalArrowStyle: descriptor("verticalArrowStyle", m["image_export.param_links.vertical_shared_arrow_style"](), G.verticalSharedStyle()),
+  verticalArrowCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_arrow_corner_style"](), G.verticalSharedStyle()),
+  verticalDecorativeLineColor: descriptor("color", m["image_export.param_links.vertical_shared_decorative_line_color"](), G.verticalSharedStyle()),
+  verticalDecorativeLineWidth: descriptor("number", m["image_export.param_links.vertical_shared_decorative_line_width"](), G.verticalSharedStyle()),
 
   wallJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.wall_join"](), [m["image_export.vector_by_walls.section_tiles"]()]),
   oneWayJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.one_way_join"](), [m["image_export.vector_by_walls.section_one_ways"]()]),
@@ -306,6 +319,16 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   markerSize: descriptor("number", m["image_export.param_links.shared_marker_size"](), G.sharedStyle()),
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
+  verticalCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_corner_style"](), G.verticalSharedStyle()),
+  verticalShape: descriptor("markerShape", m["image_export.param_links.vertical_shared_shape"](), G.verticalSharedStyle()),
+  verticalSize: descriptor("number", m["image_export.param_links.vertical_shared_size"](), G.verticalSharedStyle()),
+  verticalBorderWidth: descriptor("number", m["image_export.param_links.vertical_shared_border_width"](), G.verticalSharedStyle()),
+  verticalGapWidth: descriptor("number", m["image_export.param_links.vertical_shared_gap_width"](), G.verticalSharedStyle()),
+  verticalFillColor: descriptor("color", m["image_export.param_links.vertical_shared_fill_color"](), G.verticalSharedStyle()),
+  verticalArrowColor: descriptor("color", m["image_export.param_links.vertical_shared_arrow_color"](), G.verticalSharedStyle()),
+  verticalArrowSize: descriptor("number", m["image_export.param_links.vertical_shared_arrow_size"](), G.verticalSharedStyle()),
+  verticalArrowStyle: descriptor("verticalArrowStyle", m["image_export.param_links.vertical_shared_arrow_style"](), G.verticalSharedStyle()),
+  verticalArrowCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_arrow_corner_style"](), G.verticalSharedStyle()),
 
   join: descriptor("cornerStyle", m["image_export.vector_by_corridors.join"](), [m["image_export.vector_by_corridors.section_cells"]()]),
   oneWayJoin: descriptor("cornerStyle", m["image_export.vector_by_walls.one_way_join"](), [m["image_export.vector_by_walls.section_one_ways"]()]),

@@ -232,6 +232,9 @@ describe("selectActiveProfileColors", () => {
     const abstractNames = selectActiveProfileColors(stateAbstract).map((c) => c.name);
     expect(abstractNames).toContain(PC.elevatorFill.name());
     expect(abstractNames).not.toContain(PC.decorLineElevator.name());
+    expect(abstractNames).toContain(PC.verticalFill.name());
+    expect(abstractNames).toContain(PC.verticalArrow.name());
+    expect(abstractNames).not.toContain(PC.verticalDecorLine.name());
 
     const stateDecorative = makeState({
       openRenderModeSettings: "vector_by_walls",
@@ -243,6 +246,22 @@ describe("selectActiveProfileColors", () => {
     const decorativeNames = selectActiveProfileColors(stateDecorative).map((c) => c.name);
     expect(decorativeNames).toContain(PC.decorLineElevator.name());
     expect(decorativeNames).not.toContain(PC.elevatorFill.name());
+    expect(decorativeNames).toContain(PC.verticalDecorLine.name());
+    expect(decorativeNames).not.toContain(PC.verticalFill.name());
+    expect(decorativeNames).not.toContain(PC.verticalArrow.name());
+  });
+
+  it("always shows the abstract vertical shared-style colors for vector-by-corridors (no verticalStyle field)", () => {
+    const state = makeState({
+      openRenderModeSettings: "vector_by_corridors",
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      nodes: [node(1, 0, 0, 0), node(2, 0, 0, 1)],
+      edges: [edge(1, 2, "elevator")],
+    });
+    const names = selectActiveProfileColors(state).map((c) => c.name);
+    expect(names).toContain(PC.verticalFill.name());
+    expect(names).toContain(PC.verticalArrow.name());
+    expect(names).not.toContain(PC.verticalDecorLine.name());
   });
 
   it("shows elevator badge colors alongside abstract elevator colors when elevators are present", () => {

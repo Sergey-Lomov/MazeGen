@@ -405,6 +405,29 @@ export interface SharedStyleSourceFields {
   gapWidth: number;
 }
 
+/** "Shared style" source values for the "Vertical connections" section (GitHub issue #668) — same
+ *  no-incoming-link source convention as `SharedStyleSourceFields`, scoped to the three vertical-
+ *  connection marker groups (`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`) instead
+ *  of the whole panel, since those three groups' own fields overlap far more with each other than
+ *  with `startMarker`/`finishMarker`/teleport fields. Every link to these sources starts disabled
+ *  (`parameterLinksDefaults.ts`), same as the panel-level "Shared style" links into this section's
+ *  own fields — the three markers' defaults are pinned to `GenerationRenderer`'s fixed look, not
+ *  this group. `borderColor`/`oneWayAccentColor` are deliberately excluded — each marker's border
+ *  semantics still differ (a one-way marker uses `oneWayAccentColor` where the other two use
+ *  `borderColor`); folding that in is a later follow-up once `oneWayAccentColor` itself goes away. */
+export interface VerticalSharedStyleFields {
+  verticalCornerStyle: CornerStyle;
+  verticalShape: MarkerShape;
+  verticalSize: number;
+  verticalBorderWidth: number;
+  verticalGapWidth: number;
+  verticalFillColor: number;
+  verticalArrowColor: number;
+  verticalArrowSize: number;
+  verticalArrowStyle: VerticalArrowStyle;
+  verticalArrowCornerStyle: CornerStyle;
+}
+
 /** "Marker indices" settings (GitHub issue #471) — an independent decorative layer, drawn only in
  *  the two vector export modes, that links the two endpoints of every cross-floor connection
  *  (stairs / elevator / teleport) with a shared numeric index so the player can match entrance and
@@ -480,7 +503,13 @@ export interface MarkerIndexCoverage {
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields {
+export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+  /** "Vertical connections" shared-style source for the "decorative" style's line color/width
+   *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
+   *  "Vector by corridors" has no decorative treatment (see `VerticalDecorativeFields`), so these
+   *  live directly here rather than in `VerticalSharedStyleFields`. */
+  verticalDecorativeLineColor: number;
+  verticalDecorativeLineWidth: number;
   background: number;
   /** Original viewport grid, drawn behind the maze. */
   showGrid: boolean;
@@ -585,7 +614,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields {
+export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
    *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
@@ -842,6 +871,12 @@ export interface ImageExportActions {
   setVectorByCorridorsSharedMarkerSize: (v: number) => void;
   setVectorByCorridorsSharedMarkerBorderWidth: (v: number) => void;
   setVectorByCorridorsSharedGapWidth: (v: number) => void;
+  /** Patches the "Vertical connections" section's own "Shared style" source fields
+   *  (`VerticalSharedStyleFields`, GitHub issue #668) and re-applies each changed field to its
+   *  non-overridden dependents (`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` plus
+   *  each group's own arrow fields) via the link graph, same propagate-on-change convention as
+   *  `setVectorByCorridorsSharedCornerStyle` et al. */
+  patchVectorByCorridorsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields>) => void;
   /** Re-enables the link (if any) targeting `target`, re-applying that link's current source value
    *  to it (GitHub issue #643, generalizing #322's per-field reset button). No-op if the field isn't
    *  linkable. */
@@ -971,6 +1006,9 @@ export interface ImageExportActions {
   setVectorByWallsSharedMarkerSize: (v: number) => void;
   setVectorByWallsSharedMarkerBorderWidth: (v: number) => void;
   setVectorByWallsSharedGapWidth: (v: number) => void;
+  /** Same role as `patchVectorByCorridorsVerticalSharedStyle`, over `VectorByWallsSettings` — also
+   *  covers `verticalDecorativeLineColor` (Walls-only, GitHub issue #668). */
+  patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth">>) => void;
   /** Same role as `resetVectorByCorridorsSharedStyleField`, over `VectorByWallsParamPath`. */
   resetVectorByWallsSharedStyleField: (target: VectorByWallsParamPath) => void;
   /** "Synchronize" — clears every override across every group, re-applying all four shared values

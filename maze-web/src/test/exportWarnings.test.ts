@@ -5,7 +5,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
 
@@ -35,6 +35,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+    ...DEFAULT_VERTICAL_SHARED_STYLE,
+    verticalDecorativeLineColor: 0,
+    verticalDecorativeLineWidth: 2,
     splitNodeColors: [], splitSpecialShapes: true,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
@@ -56,6 +59,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
+    ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,

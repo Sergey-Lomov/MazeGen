@@ -276,6 +276,16 @@ isn't a human-facing name, so the row is named by the group's 1-based *display* 
 the same `key.localeCompare` `buildTeleportGroups` uses for the settings panel's own group list, so
 a color's "Группа N" always matches the row numbered N there. GitHub issue #503 follow-up.
 
+**Mode-gated members within one section** (GitHub issue #668) — `PC.verticalFill`/`PC.verticalArrow`/
+`PC.verticalDecorLine` (`vertical` section, label "Верт. общий стиль" / "Vert. shared style") are the
+"Vertical connections" section's own vertical-"Shared style" colors (see `image-export.md`'s "Vertical
+'Shared style' group"). Unlike every other section above, whether a *specific* member shows isn't
+just "is the section visible" — `verticalSharedStyleColors` additionally branches on the settings'
+own `verticalStyle` ("Vector by corridors" has none, so it's always treated as abstract): the fill/
+arrow pair shows only for `"abstract"`, the line color only for `"decorative"`, mirroring the panel's
+own per-field visibility inside that subsection rather than listing every member whenever the section
+itself is on.
+
 De-duplication is **only between groups**: a bottom row whose exact `name` + `color` pair already
 appears in the top group is dropped. Never dedup by color value alone. Divider shown only when
 both groups are non-empty and the bottom group is expanded.

@@ -4,7 +4,7 @@ import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
 import { splitSlotColor } from "../pixi/colorUtils";
-import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
 import { TRI_TILE_SIZE } from "../pixi/triGeometry";
@@ -64,6 +64,9 @@ beforeEach(() => {
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
       ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+      ...DEFAULT_VERTICAL_SHARED_STYLE,
+      verticalDecorativeLineColor: 0x123456,
+      verticalDecorativeLineWidth: 2,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
@@ -199,6 +202,9 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
       ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+      ...DEFAULT_VERTICAL_SHARED_STYLE,
+      verticalDecorativeLineColor: 0x123456,
+      verticalDecorativeLineWidth: 2,
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,

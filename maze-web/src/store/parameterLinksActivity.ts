@@ -34,7 +34,20 @@ const ONE_WAY_PATHS = new Set([
   "oneWayJoin", "oneWayColor", "oneWayGapWidth", "oneWaySize", "oneWayThickness",
   "oneWayCount", "oneWayGap", "oneWayWidth", "oneWayLength",
 ]);
-const VERTICAL_ROOT_PATHS = new Set(["replaceTwoFloorElevatorsWithStairs"]);
+const VERTICAL_ROOT_PATHS = new Set([
+  "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+  "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
+  "verticalDecorativeLineColor", "verticalDecorativeLineWidth",
+]);
+// Vertical "Shared style" fields that only make sense for one of the two "Vector by walls"
+// `verticalStyle` modes (GitHub issue #668 follow-up) — mirrors the panel's own filtering inside
+// that sub-block. "Vector by corridors" has no `verticalStyle` at all, so `settings.verticalStyle`
+// is `undefined` there and these sets are never consulted (`VERTICAL_ROOT_PATHS` alone gates them).
+const VERTICAL_SHARED_STYLE_ABSTRACT_ONLY = new Set([
+  "verticalCornerStyle", "verticalShape", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
+  "verticalArrowColor", "verticalArrowStyle", "verticalArrowCornerStyle",
+]);
+const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set(["verticalDecorativeLineColor", "verticalDecorativeLineWidth"]);
 
 const TWO_WAY_ABSTRACT_PATHS = new Set(["twoWayArrowColor", "twoWayArrowSize", "twoWayArrowStyle", "twoWayArrowCornerStyle"]);
 const TWO_WAY_DECORATIVE_PATHS = new Set(["decorativeStairsArrowSize", "decorativeStairsArrowColor"]);
@@ -64,7 +77,14 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
 
   if (ONE_WAY_PATHS.has(p)) return ctx.hasOneWays;
 
-  if (VERTICAL_ROOT_PATHS.has(p)) return ctx.hasVerticalSection;
+  if (p === "replaceTwoFloorElevatorsWithStairs") return ctx.hasElevators;
+
+  if (VERTICAL_ROOT_PATHS.has(p)) {
+    if (!ctx.hasVerticalSection) return false;
+    if (VERTICAL_SHARED_STYLE_ABSTRACT_ONLY.has(p)) return verticalStyle !== "decorative";
+    if (VERTICAL_SHARED_STYLE_DECORATIVE_ONLY.has(p)) return verticalStyle === "decorative";
+    return true;
+  }
 
   if (p === "gridColor") return settings.showGrid !== false;
   if (p === "innerGridColor") return settings.showGrid !== false && settings.showInnerGrid !== false;

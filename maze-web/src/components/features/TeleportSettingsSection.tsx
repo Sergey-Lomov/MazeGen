@@ -16,7 +16,7 @@ import {
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { MARKER_SHAPE_OPTIONS } from "./MarkerSettingsGroup";
+import { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -343,7 +343,7 @@ export function TeleportSettingsSection<P extends string>({
         <LinkedSelectRow
           label={m["image_export.vector_by_walls.teleport_shape"]()}
           value={settings.teleportLineShape}
-          options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+          options={markerShapeSelectOptions()}
           onChange={(v) => onChange({ teleportLineShape: v })}
           linkTarget={linkTargets.lineShape}
         />
@@ -476,7 +476,7 @@ export function TeleportSettingsSection<P extends string>({
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_shape"]()}
               value={settings.teleportFloorBadge.shape}
-              options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+              options={markerShapeSelectOptions()}
               onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, shape: v } })}
               linkTarget={linkTargets.floorBadgeShape}
             />

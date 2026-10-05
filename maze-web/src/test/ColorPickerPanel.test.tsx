@@ -4,7 +4,7 @@ import { ColorPickerPanel } from "../components/ColorPickerPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { PC } from "../pixi/selectors/projectColorsSelector";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
@@ -41,6 +41,9 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+    ...DEFAULT_VERTICAL_SHARED_STYLE,
+    verticalDecorativeLineColor: 0x123456,
+    verticalDecorativeLineWidth: 2,
     splitNodeColors: [], splitSpecialShapes: false,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...DEFAULT_SHARED_STYLE_SOURCE,

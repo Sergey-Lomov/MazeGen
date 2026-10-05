@@ -11,12 +11,12 @@ import { canvas } from "../../pixi/colorTokens";
 import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
+import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
-import { SharedStyleSection } from "./SharedStyleSection";
+import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeActivePaths } from "../../store/parameterLinksActivity";
@@ -82,6 +82,7 @@ export function VectorByWallsSettingsPanel() {
   const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerGapWidth);
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerSize);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
+  const patchVerticalSharedStyle = useMazeStore((s) => s.patchVectorByWallsVerticalSharedStyle);
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByWallsElevatorBadges);
   const patchMarkerIndex = useMazeStore((s) => s.patchVectorByWallsMarkerIndexSettings);
@@ -268,11 +269,13 @@ export function VectorByWallsSettingsPanel() {
     PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
     PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
   ];
-  // Every vertical-connection / elevator color row ends with the floor color (the corridor-color
-  // analogue this mode has), then (for the rows that already carry it) the background — GitHub
-  // issue #503.
-  const vTail = [floor];
-  const vTailBg = [floor, background];
+  // Every vertical-connection / elevator color row ends with the "Vertical connections" section's
+  // own "Shared style" fill/arrow colors (GitHub issue #668 — these feed all three marker groups
+  // via disabled-by-default links), then the floor color (the corridor-color analogue this mode
+  // has), then (for the rows that already carry it) the background — GitHub issue #503.
+  const vShared = [PC.verticalFill.at(settings.verticalFillColor), PC.verticalArrow.at(settings.verticalArrowColor)];
+  const vTail = [...vShared, floor];
+  const vTailBg = [...vShared, floor, background];
   // Elevator floor-badge fill / text prioritize each other first (they sit one on the other), then
   // every elevator color, then the floor and the background.
   const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
@@ -290,6 +293,26 @@ export function VectorByWallsSettingsPanel() {
       />
 
       <SectionHeader
+        label={m["image_export.vector_by_walls.section_settings"]()}
+        expanded={isExpanded("settings")}
+        onToggle={() => toggleSection("settings")}
+      />
+      {isExpanded("settings") && (
+        <SettingsSection
+          onResetAll={resetAllSettings}
+          settings={settings}
+          links={settings.links}
+          registry={VECTOR_BY_WALLS_PARAM_REGISTRY}
+          onSetLinkEnabled={setLinkEnabled}
+          onAddLink={addLink}
+          onRemoveLink={removeLink}
+          activePaths={activePaths}
+        />
+      )}
+
+      <div style={styles.divider} />
+
+      <SectionHeader
         label={m["image_export.vector_by_walls.section_shared_style"]()}
         expanded={isExpanded("shared_style")}
         onToggle={() => toggleSection("shared_style")}
@@ -304,14 +327,6 @@ export function VectorByWallsSettingsPanel() {
           onMarkerSizeChange={setSharedMarkerSize}
           onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
           onGapWidthChange={setSharedGapWidth}
-          onResetAll={resetAllSettings}
-          settings={settings}
-          links={settings.links}
-          registry={VECTOR_BY_WALLS_PARAM_REGISTRY}
-          onSetLinkEnabled={setLinkEnabled}
-          onAddLink={addLink}
-          onRemoveLink={removeLink}
-          activePaths={activePaths}
         />
       )}
 
@@ -660,12 +675,169 @@ export function VectorByWallsSettingsPanel() {
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
                 linkTarget={null}
               />
-              <LinkedToggleRow
-                label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
-                checked={settings.replaceTwoFloorElevatorsWithStairs}
-                onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
-                linkTarget="replaceTwoFloorElevatorsWithStairs"
-              />
+
+              <div style={styles.subGroupWrap}>
+                <SubsectionHeader
+                  label={m["image_export.vector_by_walls.vertical_subsection_shared_style"]()}
+                  expanded={isExpanded("vertical_shared_style")}
+                  onToggle={() => toggleSection("vertical_shared_style")}
+                />
+                {isExpanded("vertical_shared_style") && settings.verticalStyle === "decorative" && (
+                <div style={styles.subGroup}>
+                  <LinkedSliderRow
+                    label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
+                    value={settings.verticalSize}
+                    onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    format={(v) => v.toFixed(2)}
+                    linkTarget="verticalSize"
+                  />
+                  <LinkedSliderRow
+                    label={m["image_export.vector_by_walls.vertical_shared_style_arrow_size"]()}
+                    value={settings.verticalArrowSize}
+                    onChange={(verticalArrowSize) => patchVerticalSharedStyle({ verticalArrowSize })}
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    format={(v) => v.toFixed(2)}
+                    linkTarget="verticalArrowSize"
+                  />
+                  <LinkedSliderRow
+                    label={m["image_export.vector_by_walls.vertical_shared_style_line_width"]()}
+                    value={settings.verticalDecorativeLineWidth}
+                    onChange={(verticalDecorativeLineWidth) => patchVerticalSharedStyle({ verticalDecorativeLineWidth })}
+                    min={0}
+                    max={10}
+                    step={1}
+                    format={(v) => String(v)}
+                    linkTarget="verticalDecorativeLineWidth"
+                  />
+                  <LinkedColorRow
+                    label={m["image_export.vector_by_walls.vertical_shared_style_line_color"]()}
+                    color={settings.verticalDecorativeLineColor}
+                    onChange={(verticalDecorativeLineColor) => patchVerticalSharedStyle({ verticalDecorativeLineColor })}
+                    priorityColors={[wall, floor]}
+                    defaultColor={D.verticalDecorativeLineColor}
+                    fieldName={PC.verticalDecorLine.name()}
+                    linkTarget="verticalDecorativeLineColor"
+                  />
+                </div>
+                )}
+                {isExpanded("vertical_shared_style") && settings.verticalStyle === "abstract" && (
+                <div style={styles.subGroup}>
+                  <div style={styles.subGroupWrap}>
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
+                    <div style={styles.subGroup}>
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
+                        value={settings.verticalCornerStyle}
+                        options={[
+                          { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                          { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                        ]}
+                        onChange={(verticalCornerStyle) => patchVerticalSharedStyle({ verticalCornerStyle })}
+                        linkTarget="verticalCornerStyle"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.marker_shape"]()}
+                        value={settings.verticalShape}
+                        options={markerShapeSelectOptions()}
+                        onChange={(verticalShape) => patchVerticalSharedStyle({ verticalShape })}
+                        linkTarget="verticalShape"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
+                        value={settings.verticalSize}
+                        onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        format={(v) => v.toFixed(2)}
+                        linkTarget="verticalSize"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.vertical_shared_style_border_width"]()}
+                        value={settings.verticalBorderWidth}
+                        onChange={(verticalBorderWidth) => patchVerticalSharedStyle({ verticalBorderWidth })}
+                        min={0}
+                        max={10}
+                        step={1}
+                        format={(v) => String(v)}
+                        linkTarget="verticalBorderWidth"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.shared_style_gap_width"]()}
+                        value={settings.verticalGapWidth}
+                        onChange={(verticalGapWidth) => patchVerticalSharedStyle({ verticalGapWidth })}
+                        min={0}
+                        max={10}
+                        step={1}
+                        format={(v) => String(v)}
+                        linkTarget="verticalGapWidth"
+                      />
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.vertical_shared_style_fill_color"]()}
+                        color={settings.verticalFillColor}
+                        onChange={(verticalFillColor) => patchVerticalSharedStyle({ verticalFillColor })}
+                        priorityColors={[PC.verticalArrow.at(settings.verticalArrowColor), floor]}
+                        defaultColor={D.verticalFillColor}
+                        fieldName={PC.verticalFill.name()}
+                        linkTarget="verticalFillColor"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.subGroupWrap}>
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                    <div style={styles.subGroup}>
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                        color={settings.verticalArrowColor}
+                        onChange={(verticalArrowColor) => patchVerticalSharedStyle({ verticalArrowColor })}
+                        priorityColors={[PC.verticalFill.at(settings.verticalFillColor), floor, background]}
+                        defaultColor={D.verticalArrowColor}
+                        fieldName={PC.verticalArrow.name()}
+                        linkTarget="verticalArrowColor"
+                      />
+                      <LinkedSliderRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                        value={settings.verticalArrowSize}
+                        onChange={(verticalArrowSize) => patchVerticalSharedStyle({ verticalArrowSize })}
+                        min={0.2}
+                        max={1}
+                        step={0.05}
+                        format={(v) => v.toFixed(2)}
+                        linkTarget="verticalArrowSize"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                        value={settings.verticalArrowStyle}
+                        options={[
+                          { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                          { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                          { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
+                        ]}
+                        onChange={(verticalArrowStyle) => patchVerticalSharedStyle({ verticalArrowStyle })}
+                        linkTarget="verticalArrowStyle"
+                      />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                        value={settings.verticalArrowCornerStyle}
+                        options={[
+                          { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                          { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                        ]}
+                        onChange={(verticalArrowCornerStyle) => patchVerticalSharedStyle({ verticalArrowCornerStyle })}
+                        linkTarget="verticalArrowCornerStyle"
+                      />
+                    </div>
+                  </div>
+                </div>
+                )}
+              </div>
 
               {settings.verticalStyle === "decorative" && (
                 <div style={styles.subGroupWrap}>
@@ -756,6 +928,12 @@ export function VectorByWallsSettingsPanel() {
                   <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
                   {isExpanded("vertical_elevator") && hasElevators && (
                   <div style={styles.subGroup}>
+                    <LinkedToggleRow
+                      label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
+                      checked={settings.replaceTwoFloorElevatorsWithStairs}
+                      onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
+                      linkTarget="replaceTwoFloorElevatorsWithStairs"
+                    />
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeElevator}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeElevator", patch)}
@@ -990,6 +1168,12 @@ export function VectorByWallsSettingsPanel() {
                   <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
                   {isExpanded("vertical_elevator") && hasElevators && (
                   <div style={styles.subGroup}>
+                    <LinkedToggleRow
+                      label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
+                      checked={settings.replaceTwoFloorElevatorsWithStairs}
+                      onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
+                      linkTarget="replaceTwoFloorElevatorsWithStairs"
+                    />
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
                       <div style={styles.subGroup}>

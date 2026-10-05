@@ -96,7 +96,8 @@ type SectionKey =
   | "one_way"
   | "elevator"
   | "splits"
-  | "marker_index";
+  | "marker_index"
+  | "vertical";
 
 type RoleKey =
   | "fill"
@@ -133,6 +134,7 @@ const sectionLabel: Record<SectionKey, () => string> = {
   elevator: m["color_picker.entry.section.elevator"],
   splits: m["image_export.vector_by_walls.section_splits"],
   marker_index: m["color_picker.entry.section.marker_index"],
+  vertical: m["color_picker.entry.section.vertical_shared_style"],
 };
 
 const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
@@ -215,6 +217,14 @@ export const PC = {
   // (`overrideActiveProfileColor`) and the warning-role lookup (`colorRoleForField`).
   decorArrowTwoWay: field(["tiles"], "arrow"),
   decorArrowOneWay: field(["one_ways"], "arrow"),
+
+  // "Vertical connections" section's own "Shared style" colors (GitHub issue #668) — the
+  // panel-level analogue of `twoWayFill`/`twoWayArrow` etc., one section up: these feed the three
+  // marker groups' overlapping fields via disabled-by-default links rather than being drawn
+  // themselves.
+  verticalFill: field(["vertical"], "fill"),
+  verticalArrow: field(["vertical"], "arrow"),
+  verticalDecorLine: field(["vertical"], "line"),
 
   twoWayFill: field(["two_way"], "fill"),
   twoWayBorder: field(["two_way"], "border"),
@@ -343,6 +353,20 @@ function verticalDecorativeColors(s: VectorByWallsSettings, vis: SectionVisibili
   return rows;
 }
 
+/** "Vertical connections" section's own "Shared style" colors (GitHub issue #668) — mirrors the
+ *  panel's own per-field `verticalStyle` filtering inside that sub-block: `verticalFillColor`/
+ *  `verticalArrowColor` only show for the abstract style (fill/border/arrow-shape fields), and
+ *  `verticalDecorativeLineColor` (walls-only) only for the decorative style. "Vector by corridors"
+ *  has no `verticalStyle` at all, so it always gets the abstract pair. */
+function verticalSharedStyleColors(s: VectorByWallsSettings | VectorByCorridorsSettings, vis: SectionVisibility): ProjectColorEntry[] {
+  if (!vis.vertical) return [];
+  const verticalStyle = "verticalStyle" in s ? s.verticalStyle : "abstract";
+  if (verticalStyle === "decorative") {
+    return "verticalDecorativeLineColor" in s ? [PC.verticalDecorLine.at(s.verticalDecorativeLineColor)] : [];
+  }
+  return [PC.verticalFill.at(s.verticalFillColor), PC.verticalArrow.at(s.verticalArrowColor)];
+}
+
 function markerIndexColors(s: VectorByWallsSettings | VectorByCorridorsSettings, vis: SectionVisibility): ProjectColorEntry[] {
   if (!vis.markerIndex) return [];
   const rows = [
@@ -373,6 +397,7 @@ function vectorByWallsColors(state: MazeState, s: VectorByWallsSettings, slotCou
     ...markerColors(PC.startFill, PC.startBorder, s.startMarker),
     ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker),
     ...teleportColors(s, vis),
+    ...verticalSharedStyleColors(s, vis),
     ...(s.verticalStyle === "abstract"
       ? verticalAbstractColors(s, vis)
       : verticalDecorativeColors(s, vis)),
@@ -392,6 +417,7 @@ function vectorByCorridorsColors(state: MazeState, s: VectorByCorridorsSettings,
     ...markerColors(PC.startFill, PC.startBorder, s.startMarker),
     ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker),
     ...teleportColors(s, vis),
+    ...verticalSharedStyleColors(s, vis),
     ...verticalAbstractColors(s, vis),
     ...elevatorBadgeColors(s, vis),
     ...splitColors(s.splitNodeColors, slotCount),
