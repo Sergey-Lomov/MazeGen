@@ -64,6 +64,11 @@ export class SceneInteraction {
   private onWindowPointerDown = (e: PointerEvent) => {
     const state = useMazeStore.getState();
     if (backgroundImageEditMode(state) === null || this.isInsideCanvas(e.target)) return;
+    // Mode buttons live in the side panel, outside the canvas. Let their click handlers
+    // toggle the current mode; otherwise this capture listener would disable the mode on
+    // pointerdown and the button's onClick would immediately enable it again.
+    const target = e.target as Element | null;
+    if (target?.closest?.("[data-background-image-mode-control]")) return;
     const controller = this.deps.getController(state);
     exitBackgroundImageMode(state);
     controller?.cancelPointerGesture();

@@ -26,6 +26,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   backgroundImage: null,
   backgroundImageManualPositioning: false,
   backgroundImageCropping: false,
+  backgroundAutoFillPreview: null,
   smoothPrimitives: true,
   symmetrySnapMode: "centers",
   symmetryScope: "one_side",
@@ -73,6 +74,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationConfirmed: true,
       ...buildPreviewState(kind, hexOrientation, triOrientation),
       floorFields,
+      backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
@@ -137,6 +139,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     return {
       tessellationKind: kind,
       floorFields,
+      backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
@@ -186,6 +189,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setBackgroundImageTransform: (transform) => set((state) => state.backgroundImage === null ? {} : {
     backgroundImage: { ...state.backgroundImage, ...transform },
   }),
+  setBackgroundAutoFillPreview: (points) => set({ backgroundAutoFillPreview: points }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),

@@ -1,15 +1,20 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
-import type { BackgroundImageLayerMode } from "../store/tessellationTypes";
+import type { BackgroundAutoFillMode, BackgroundImageLayerMode } from "../store/tessellationTypes";
 import { resolveCells } from "../pixi/fieldEditUtils";
 import { backgroundImageCrop, calculateBackgroundImageLayout, calculateBackgroundImagePageLayout, fieldBounds } from "../pixi/BackgroundImageLayer";
+import { buildBackgroundFieldPreviewFromImage, getBackgroundImageTopLeftColor } from "../pixi/backgroundFieldAutofill";
 import { ToggleRow } from "./ToggleRow";
 import { SettingsIconButton } from "./SettingsIconButton";
 import { SidePanel } from "./SidePanel";
 import { SelectRow } from "./SelectRow";
 import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
-import { spacing, inset } from "../styles/theme";
+import { ColorRow } from "./ColorRow";
+import { SectionHeader } from "./SectionHeader";
+import { hasOpenModal } from "./Modal";
+import { ConfirmModal } from "./ConfirmModal";
+import { spacing, inset, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 import { BackgroundImagePrintDialog, type PageLayoutInput } from "./dialogs/BackgroundImagePrintDialog";
 
@@ -56,6 +61,7 @@ export function BackgroundImageToggle() {
   const showPaperLayout = useMazeStore((s) => s.showPaperLayout);
   const openCard = useMazeStore((s) => s.openCard);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const autoFillTessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
   const setShowBackgroundImage = useMazeStore((s) => s.setShowBackgroundImage);
   const setBackgroundImage = useMazeStore((s) => s.setBackgroundImage);
   const setBackgroundImageLayer = useMazeStore((s) => s.setBackgroundImageLayer);
@@ -70,6 +76,131 @@ export function BackgroundImageToggle() {
   const setPrintMargins = useMazeStore((s) => s.setPrintMargins);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const hasDisplayedPaperLayout = openCard === "field_setup" && fieldEditMode === "custom" && showPaperLayout;
+  const [autoFillSectionOpen, setAutoFillSectionOpen] = useState(true);
+  const [autoFillMode, setAutoFillMode] = useState<BackgroundAutoFillMode>("transparent");
+  const [autoFillColor, setAutoFillColor] = useState(0xffffff);
+  const [autoFillThreshold, setAutoFillThreshold] = useState(0.5);
+  const [autoFillPreviewActive, setAutoFillPreviewActive] = useState(false);
+  const [autoFillCalculating, setAutoFillCalculating] = useState(false);
+  const [autoFillError, setAutoFillError] = useState(false);
+  const [autoFillConfirmOpen, setAutoFillConfirmOpen] = useState(false);
+  const [pendingAutoFill, setPendingAutoFill] = useState<Set<number> | null>(null);
+  const autoFillRequest = useRef(0);
+  const backgroundAutoFillPreview = useMazeStore((s) => s.backgroundAutoFillPreview);
+  const setBackgroundAutoFillPreview = useMazeStore((s) => s.setBackgroundAutoFillPreview);
+  const applyBackgroundAutoFill = useMazeStore((s) => s.applyBackgroundAutoFill);
+  const canAutoFill = settingsOpen && openCard === "field_setup" && fieldEditMode === "custom" && backgroundImage !== null;
+
+  useEffect(() => {
+    if (autoFillMode !== "color" || !backgroundImage) return;
+    let active = true;
+    void getBackgroundImageTopLeftColor(backgroundImage.dataUrl).then((color) => {
+      if (active) setAutoFillColor(color);
+    }).catch(() => {
+      // Keep the safe default when the source image cannot be decoded for color sampling.
+    });
+    return () => { active = false; };
+    // The inferred color is intentionally refreshed only when the detection mode changes.
+    // Manual color edits and other auto-fill setting changes must remain untouched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFillMode]);
+
+  async function calculateAutoFill(): Promise<Set<number> | null> {
+    const state = useMazeStore.getState();
+    const image = state.backgroundImage;
+    if (!image || state.openCard !== "field_setup" || state.floorFields[state.activeFloorId].fieldEditMode !== "custom") return null;
+    return buildBackgroundFieldPreviewFromImage(
+      image,
+      state.floorFields[state.activeFloorId].tessellationConfig,
+      autoFillMode,
+      autoFillColor,
+      autoFillThreshold,
+    );
+  }
+
+  function cancelAutoFillPreview() {
+    autoFillRequest.current++;
+    setAutoFillPreviewActive(false);
+    setAutoFillCalculating(false);
+    setAutoFillError(false);
+    setPendingAutoFill(null);
+    setBackgroundAutoFillPreview(null);
+  }
+
+  async function requestAutoFillConfirmation() {
+    if (autoFillCalculating || autoFillError) return;
+    let candidate = backgroundAutoFillPreview;
+    if (candidate === null) {
+      setAutoFillCalculating(true);
+      setAutoFillError(false);
+      try {
+        candidate = await calculateAutoFill();
+      } catch {
+        setAutoFillError(true);
+      } finally {
+        setAutoFillCalculating(false);
+      }
+    }
+    if (candidate === null) return;
+    setPendingAutoFill(new Set(candidate));
+    setAutoFillConfirmOpen(true);
+  }
+
+  function confirmAutoFill() {
+    if (!pendingAutoFill) return;
+    applyBackgroundAutoFill(pendingAutoFill);
+    setAutoFillConfirmOpen(false);
+    cancelAutoFillPreview();
+  }
+
+  useEffect(() => {
+    if (!autoFillPreviewActive || !canAutoFill || !backgroundImage) return;
+    const request = ++autoFillRequest.current;
+    setAutoFillCalculating(true);
+    setAutoFillError(false);
+    void buildBackgroundFieldPreviewFromImage(
+      backgroundImage,
+      autoFillTessellationConfig,
+      autoFillMode,
+      autoFillColor,
+      autoFillThreshold,
+    ).then((points) => {
+      if (request !== autoFillRequest.current) return;
+      setBackgroundAutoFillPreview(points);
+      setAutoFillCalculating(false);
+    }).catch(() => {
+      if (request !== autoFillRequest.current) return;
+      setAutoFillError(true);
+      setAutoFillCalculating(false);
+    });
+    return () => { autoFillRequest.current++; };
+  }, [autoFillPreviewActive, canAutoFill, backgroundImage, autoFillTessellationConfig, autoFillMode, autoFillColor, autoFillThreshold, setBackgroundAutoFillPreview]);
+
+  useEffect(() => {
+    if (!canAutoFill && (autoFillPreviewActive || backgroundAutoFillPreview !== null)) {
+      cancelAutoFillPreview();
+    }
+  }, [canAutoFill, autoFillPreviewActive, backgroundAutoFillPreview]);
+
+  useEffect(() => () => {
+    setBackgroundAutoFillPreview(null);
+  }, [setBackgroundAutoFillPreview]);
+
+  useEffect(() => {
+    if (!autoFillPreviewActive) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (hasOpenModal()) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelAutoFillPreview();
+      } else if (event.key === "Enter" && !autoFillCalculating) {
+        event.preventDefault();
+        void requestAutoFillConfirmation();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [autoFillPreviewActive, autoFillCalculating]);
 
   function enable() {
     if (backgroundImage) {
@@ -77,6 +208,12 @@ export function BackgroundImageToggle() {
       return;
     }
     inputRef.current?.click();
+  }
+
+  function disable() {
+    cancelAutoFillPreview();
+    setSettingsOpen(false);
+    setShowBackgroundImage(false);
   }
 
   function positionToField() {
@@ -130,14 +267,14 @@ export function BackgroundImageToggle() {
 
   async function handleFile(file: File | undefined) {
     if (!file) {
-      setShowBackgroundImage(false);
+      disable();
       return;
     }
     try {
       const loaded = await readImageFile(file);
       const { bounds } = currentFieldLayout();
       if (!bounds) {
-        setShowBackgroundImage(false);
+        disable();
         return;
       }
       const layout = calculateBackgroundImageLayout(
@@ -152,7 +289,7 @@ export function BackgroundImageToggle() {
         opacity: backgroundImage?.opacity ?? 0.5,
       });
     } catch {
-      setShowBackgroundImage(false);
+      disable();
     }
   }
 
@@ -161,7 +298,7 @@ export function BackgroundImageToggle() {
       <ToggleRow
         label={m["background.show"]()}
         checked={showBackgroundImage}
-        onChange={(show) => show ? enable() : setShowBackgroundImage(false)}
+        onChange={(show) => show ? enable() : disable()}
         action={<SettingsIconButton title={m["background.configure"]()} onClick={() => setSettingsOpen(true)} />}
       />
       <input
@@ -177,7 +314,7 @@ export function BackgroundImageToggle() {
         }}
       />
       {settingsOpen && (
-        <SidePanel title={m["background.settings_title"]()} onClose={() => setSettingsOpen(false)}>
+        <SidePanel title={m["background.settings_title"]()} onClose={() => { cancelAutoFillPreview(); setSettingsOpen(false); }}>
           <div style={styles.panelBody}>
             {backgroundImage && (
               <>
@@ -200,18 +337,20 @@ export function BackgroundImageToggle() {
                 <div style={styles.buttonGroup}>
                   <div style={styles.modeButtonGroup}>
                     <Button
+                      data-background-image-mode-control="true"
                       variant={backgroundImageCropping ? "toggle-selected" : "secondary"}
                       layoutStyle={{ flex: 1 }}
                       aria-pressed={backgroundImageCropping}
-                      onClick={() => setBackgroundImageCropping(true)}
+                      onClick={() => setBackgroundImageCropping(!backgroundImageCropping)}
                     >
                       {m["background.crop"]()}
                     </Button>
                     <Button
+                      data-background-image-mode-control="true"
                       variant={backgroundImageManualPositioning ? "toggle-selected" : "secondary"}
                       layoutStyle={{ flex: 1 }}
                       aria-pressed={backgroundImageManualPositioning}
-                      onClick={() => setBackgroundImageManualPositioning(true)}
+                      onClick={() => setBackgroundImageManualPositioning(!backgroundImageManualPositioning)}
                     >
                       {m["background.transform"]()}
                     </Button>
@@ -226,6 +365,65 @@ export function BackgroundImageToggle() {
                     {m["background.replace"]()}
                   </Button>
                 </div>
+                {canAutoFill && (
+                  <div style={styles.autoFillSection}>
+                    <SectionHeader
+                      label={m["background.autofill.section"]()}
+                      expanded={autoFillSectionOpen}
+                      onToggle={() => setAutoFillSectionOpen((open) => !open)}
+                    />
+                    {autoFillSectionOpen && (
+                      <div style={styles.autoFillBody}>
+                        <SelectRow
+                          label={m["background.autofill.mode"]()}
+                          value={autoFillMode}
+                          options={[
+                            { value: "transparent", label: m["background.autofill.mode.transparent"]() },
+                            { value: "color", label: m["background.autofill.mode.color"]() },
+                          ]}
+                          onChange={(value) => setAutoFillMode(value as BackgroundAutoFillMode)}
+                        />
+                        {autoFillMode === "color" && (
+                          <ColorRow
+                            label={m["background.autofill.color"]()}
+                            color={autoFillColor}
+                            onChange={setAutoFillColor}
+                            fieldName={m["background.autofill.color"]()}
+                          />
+                        )}
+                        <SliderRow
+                          label={m["background.autofill.threshold"]()}
+                          value={autoFillThreshold}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          format={(value) => `${Math.round(value * 100)}%`}
+                          onChange={setAutoFillThreshold}
+                        />
+                        <div style={styles.autoFillButtons}>
+                          <Button
+                            variant={autoFillPreviewActive ? "toggle-selected" : "secondary"}
+                            layoutStyle={{ flex: 1 }}
+                            aria-pressed={autoFillPreviewActive}
+                            disabled={autoFillCalculating && !autoFillPreviewActive}
+                            onClick={() => autoFillPreviewActive ? cancelAutoFillPreview() : setAutoFillPreviewActive(true)}
+                          >
+                            {m["background.autofill.preview"]()}
+                          </Button>
+                          <Button
+                            variant="primary"
+                            layoutStyle={{ flex: 1 }}
+                            disabled={autoFillCalculating || autoFillError}
+                            onClick={() => void requestAutoFillConfirmation()}
+                          >
+                            {m["background.autofill.confirm"]()}
+                          </Button>
+                        </div>
+                        {autoFillError && <div style={styles.autoFillError}>{m["background.autofill.error"]()}</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
             {!backgroundImage && (
@@ -240,6 +438,14 @@ export function BackgroundImageToggle() {
         <BackgroundImagePrintDialog
           onApply={applyPageLayout}
           onClose={() => setPrintDialogOpen(false)}
+        />
+      )}
+      {autoFillConfirmOpen && (
+        <ConfirmModal
+          title={m["background.autofill.warning_title"]()}
+          message={m["background.autofill.warning"]()}
+          onConfirm={confirmAutoFill}
+          onCancel={() => setAutoFillConfirmOpen(false)}
         />
       )}
     </>
@@ -261,5 +467,26 @@ const styles = {
   modeButtonGroup: {
     display: "flex",
     gap: spacing.itemGap,
+  },
+  autoFillSection: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: spacing.itemGap,
+    borderTop: "1px solid rgba(255, 255, 255, 0.12)",
+    paddingTop: spacing.sectionGap,
+  },
+  autoFillBody: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: spacing.itemGap,
+    paddingLeft: indent.tree,
+  },
+  autoFillButtons: {
+    display: "flex",
+    gap: spacing.itemGap,
+  },
+  autoFillError: {
+    color: "#f28b82",
+    fontSize: 12,
   },
 };

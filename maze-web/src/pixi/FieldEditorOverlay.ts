@@ -95,7 +95,11 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && field.fieldPoints !== prevField.fieldPoints) {
-        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+        this.redrawFloor(state);
+      }
+
+      if (isOpen && state.backgroundAutoFillPreview !== prev.backgroundAutoFillPreview) {
+        this.redrawFloor(state);
       }
 
       if (isOpen && field.tessellationConfig !== prevField.tessellationConfig) {
@@ -103,7 +107,7 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
-        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+        this.redrawFloor(state);
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
         this.redrawPaperLayout(state);
       }
@@ -169,14 +173,19 @@ export class FieldEditorOverlay {
   private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const field = state.floorFields[state.activeFloorId];
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
-    this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+    this.redrawFloor(state);
     this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
   }
 
-  private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
+  private redrawFloor(state: ReturnType<typeof useMazeStore.getState>): void {
+    const field = state.floorFields[state.activeFloorId];
+    const preview = state.backgroundAutoFillPreview;
+    const fieldPoints = preview ?? field.fieldPoints;
+    const fieldEditMode = preview !== null ? "custom" : field.fieldEditMode;
+    const cfg = field.tessellationConfig;
     const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg)
       .filter(([x, y]) => !this.selectionMoveHidden.has(encodePoint(x, y)));
     const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
@@ -202,8 +211,7 @@ export class FieldEditorOverlay {
     this.selectionMoveTemporary = temporary;
     const state = useMazeStore.getState();
     if (state.openCard === "field_setup") {
-      const field = state.floorFields[state.activeFloorId];
-      this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+      this.redrawFloor(state);
     }
   }
 

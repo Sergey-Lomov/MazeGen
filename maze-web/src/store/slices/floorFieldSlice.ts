@@ -134,6 +134,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       return {
         ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point", fieldDirty: true }),
         ...buildResetDownstreamState(),
+        backgroundAutoFillPreview: null,
         debugStale: debugStaleOf(state),
       };
     }
@@ -141,6 +142,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       ...buildResetDownstreamState(),
+      backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),
     };
   }),
@@ -267,6 +269,31 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     return {
       ...withActiveFloorField(state, { ...source, fieldDirty: true }),
       ...buildResetDownstreamState(),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  applyBackgroundAutoFill: (points) => set((state) => {
+    const fieldPoints = new Set(points);
+    const field = activeFloorField(state);
+    const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+    const tessellationConfig = buildFreeConfig(
+      state.tessellationKind,
+      fieldPoints,
+      state.hexOrientation,
+      state.triOrientation,
+    );
+    return {
+      ...withActiveFloorField(state, {
+        fieldEditMode: "custom",
+        isEditingField: true,
+        fieldPoints,
+        freeFieldPoints,
+        tessellationConfig,
+        fieldDirty: true,
+      }),
+      ...buildResetDownstreamState(),
+      backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),
     };
   }),

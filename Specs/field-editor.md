@@ -114,6 +114,26 @@ layout is already visible, the action skips the dialog and applies the current d
 geometry immediately; otherwise it opens the page-layout dialog without changing the paper-layout
 visibility.
 
+### Background image field auto-fill (GitHub issue #676)
+
+When the field editor is open in custom mode, the background-image settings panel contains an
+**Auto-fill field** section. The section is not shown in other editors or for predefined fields.
+It contains a background detection mode (transparent pixels or a selected RGB color), the selected
+background color, and a threshold describing the required share of non-background pixels inside a
+cell. When the selected-color mode is entered, its default color is read from the source image's
+top-left pixel. This inferred color is refreshed only when the detection mode changes; changing
+the threshold or manually editing the color does not replace it. The calculation uses the current
+grid geometry and the underlay's current crop, scale, and position, classifying the pixels covered
+by each grid-cell polygon.
+
+**Preview** is a toggle. Enabling it keeps the current field in memory but hides it on the canvas
+and draws the calculated field instead. Changing the mode, color, threshold, grid, or underlay
+transform recalculates the preview immediately. Pressing Preview again or Escape cancels the
+preview and restores the original field. **Confirm** can be pressed directly without preview; in
+preview mode it also accepts Enter. Either path opens a warning that the new shape will completely
+replace the existing field. Only after the user confirms does the preview become the active custom
+field, the old point set is discarded, and downstream generated/post-edit results are reset.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
@@ -389,9 +409,11 @@ manual positioning mode, here called `Transform`. The modes are mutually exclusi
 entered from any of the three shared-underlay editors: Field Setup, Preset Connections, and
 Post-Edit. `Crop` changes the source-image rectangle that remains visible and renders only that
 source fragment; it is not viewport clipping. The cropped fragment keeps its current transform,
-and `Transform` scales and moves that fragment. Switching modes at any time preserves the crop,
-scale, and position. Escape, Enter, Space, clicking outside the canvas, or clicking outside the
-active underlay exits the active mode using the same interaction contract as Transform.
+and `Transform` scales and moves that fragment. Clicking the active mode button toggles that mode
+off; clicking the other mode switches directly to it. Switching modes at any time preserves the
+crop, scale, and position. Escape, Enter, Space, clicking outside the canvas, or clicking outside
+the active underlay exits the active mode using the same interaction contract as Transform. Hiding
+the underlay also closes its settings panel.
 
 ## Hover highlight (custom mode)
 
