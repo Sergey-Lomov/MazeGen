@@ -9,6 +9,12 @@ vi.mock("../pixi/fieldEditUtils", () => ({
 }));
 
 vi.mock("../pixi/BackgroundImageLayer", () => ({
+  backgroundImageCrop: (image: { cropX?: number; cropY?: number; cropWidth?: number; cropHeight?: number; naturalWidth: number; naturalHeight: number }) => ({
+    x: image.cropX ?? 0,
+    y: image.cropY ?? 0,
+    width: image.cropWidth ?? image.naturalWidth,
+    height: image.cropHeight ?? image.naturalHeight,
+  }),
   fieldBounds: () => ({ minX: -10, minY: -10, maxX: 10, maxY: 10 }),
   calculateBackgroundImageLayout: (
     dataUrl: string,
@@ -147,15 +153,21 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    expect(screen.getByRole("button", { name: "Manual positioning" })).toHaveClass("btn-secondary");
-    expect(screen.getByRole("button", { name: "Position to field" })).toHaveClass("btn-secondary");
-    expect(screen.getByRole("button", { name: "Calculate for print" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform to field" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform for print" })).toHaveClass("btn-secondary");
     expect(screen.getByRole("button", { name: "Replace underlay" })).toHaveClass("btn-secondary");
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "above_floor" } });
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0.75" } });
-    fireEvent.click(screen.getByRole("button", { name: "Manual positioning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform" }));
 
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ layer: "above_floor", opacity: 0.75 });
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(true);
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Transform" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(false);
     expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
   });
 
@@ -177,7 +189,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
     expect(screen.queryByText("Cell size")).not.toBeInTheDocument();
@@ -211,7 +223,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ displayWidth: 300, displayHeight: 150, centerX: 0, centerY: 0 });
     expect(useMazeStore.getState().showPaperLayout).toBe(true);
@@ -237,7 +249,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
   });

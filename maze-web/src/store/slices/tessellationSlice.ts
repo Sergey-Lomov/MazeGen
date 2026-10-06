@@ -25,6 +25,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showBackgroundImage: false,
   backgroundImage: null,
   backgroundImageManualPositioning: false,
+  backgroundImageCropping: false,
   smoothPrimitives: true,
   symmetrySnapMode: "centers",
   symmetryScope: "one_side",
@@ -176,7 +177,12 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setBackgroundImageOpacity: (opacity) => set((state) => state.backgroundImage === null ? {} : {
     backgroundImage: { ...state.backgroundImage, opacity: Math.min(1, Math.max(0, opacity)) },
   }),
-  setBackgroundImageManualPositioning: (enabled) => set({ backgroundImageManualPositioning: enabled }),
+  setBackgroundImageManualPositioning: (enabled) => set(enabled
+    ? { backgroundImageManualPositioning: true, backgroundImageCropping: false }
+    : { backgroundImageManualPositioning: false }),
+  setBackgroundImageCropping: (enabled) => set(enabled
+    ? { backgroundImageCropping: true, backgroundImageManualPositioning: false }
+    : { backgroundImageCropping: false }),
   setBackgroundImageTransform: (transform) => set((state) => state.backgroundImage === null ? {} : {
     backgroundImage: { ...state.backgroundImage, ...transform },
   }),

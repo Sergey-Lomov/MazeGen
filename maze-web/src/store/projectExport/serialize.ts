@@ -115,10 +115,15 @@ export function serializeProject(state: MazeState): ProjectFile {
       ? null
       : {
           ...state.backgroundImage,
+          cropX: state.backgroundImage.cropX ?? 0,
+          cropY: state.backgroundImage.cropY ?? 0,
+          cropWidth: state.backgroundImage.cropWidth ?? state.backgroundImage.naturalWidth,
+          cropHeight: state.backgroundImage.cropHeight ?? state.backgroundImage.naturalHeight,
           layer: state.backgroundImage.layer ?? "below_grid",
           opacity: state.backgroundImage.opacity ?? 0.5,
         },
     backgroundImageManualPositioning: state.backgroundImageManualPositioning ?? false,
+    backgroundImageCropping: state.backgroundImageCropping ?? false,
     imageExport: {
       activeRenderMode: state.activeRenderMode,
       openRenderModeSettings: state.openRenderModeSettings,

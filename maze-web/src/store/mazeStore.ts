@@ -220,6 +220,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
             opacity: file.backgroundImage.opacity ?? 0.5,
           },
       backgroundImageManualPositioning: file.backgroundImageManualPositioning ?? false,
+      backgroundImageCropping: file.backgroundImageCropping ?? false,
       showPrimitiveFrame: true,
       smoothPrimitives: true,
       symmetrySnapMode: "centers",

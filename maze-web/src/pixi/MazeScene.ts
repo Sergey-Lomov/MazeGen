@@ -17,7 +17,7 @@ import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
-import { canManipulateBackgroundImage } from "./sceneTypes";
+import { backgroundImageEditMode } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
@@ -255,8 +255,7 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
-    if (canManipulateBackgroundImage(st)
-      && st.showBackgroundImage && st.backgroundImageManualPositioning && st.backgroundImage !== null) {
+    if (backgroundImageEditMode(st) !== null) {
       return this.backgroundImageController;
     }
     if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") return this.fieldEditController;

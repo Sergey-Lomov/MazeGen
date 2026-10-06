@@ -17,6 +17,11 @@ export interface BackgroundImage {
   dataUrl: string;
   naturalWidth: number;
   naturalHeight: number;
+  /** Source-image crop rectangle in natural-image pixels. Optional for in-memory legacy fixtures. */
+  cropX?: number;
+  cropY?: number;
+  cropWidth?: number;
+  cropHeight?: number;
   displayWidth: number;
   displayHeight: number;
   centerX: number;
@@ -73,6 +78,8 @@ export interface TessellationState {
   backgroundImage: BackgroundImage | null;
   /** Enables direct drag/resize interaction with the shared underlay on the canvas. */
   backgroundImageManualPositioning: boolean;
+  /** Enables source-image crop interaction with the shared underlay on the canvas. */
+  backgroundImageCropping: boolean;
   smoothPrimitives: boolean;
   symmetrySnapMode: SymmetrySnapMode;
   symmetryScope: SymmetryScope;
@@ -104,6 +111,7 @@ export interface TessellationActions {
   setBackgroundImageLayer: (layer: BackgroundImageLayerMode) => void;
   setBackgroundImageOpacity: (opacity: number) => void;
   setBackgroundImageManualPositioning: (enabled: boolean) => void;
+  setBackgroundImageCropping: (enabled: boolean) => void;
   setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;

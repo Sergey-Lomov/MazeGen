@@ -129,11 +129,16 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("round-trips the synchronized editor underlay", () => {
     const serialized = serializeProject(makeState({
       showBackgroundImage: true,
-      backgroundImageManualPositioning: true,
+      backgroundImageManualPositioning: false,
+      backgroundImageCropping: true,
       backgroundImage: {
         dataUrl: "data:image/png;base64,abc",
         naturalWidth: 200,
         naturalHeight: 100,
+        cropX: 20,
+        cropY: 10,
+        cropWidth: 150,
+        cropHeight: 70,
         displayWidth: 400,
         displayHeight: 200,
         centerX: 12,
@@ -144,7 +149,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     }));
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.showBackgroundImage).toBe(true);
-    expect(reparsed.backgroundImageManualPositioning).toBe(true);
+    expect(reparsed.backgroundImageManualPositioning).toBe(false);
+    expect(reparsed.backgroundImageCropping).toBe(true);
     expect(reparsed.backgroundImage).toEqual(serialized.backgroundImage);
   });
 
@@ -164,11 +170,18 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     }))));
     delete raw.backgroundImage.layer;
     delete raw.backgroundImage.opacity;
+    delete raw.backgroundImage.cropX;
+    delete raw.backgroundImage.cropY;
+    delete raw.backgroundImage.cropWidth;
+    delete raw.backgroundImage.cropHeight;
     delete raw.backgroundImageManualPositioning;
+    delete raw.backgroundImageCropping;
 
     const reparsed = parseAndValidate(raw);
     expect(reparsed.backgroundImage).toMatchObject({ layer: "below_grid", opacity: 0.5 });
+    expect(reparsed.backgroundImage).toMatchObject({ cropX: 0, cropY: 0, cropWidth: 100, cropHeight: 100 });
     expect(reparsed.backgroundImageManualPositioning).toBe(false);
+    expect(reparsed.backgroundImageCropping).toBe(false);
   });
 
   it("does not enable an underlay without persisted image data", () => {

@@ -12,7 +12,7 @@ import { ACTIVE_CELL_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
-import { BackgroundImageLayer } from "./BackgroundImageLayer";
+import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
 import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 
 const CELL_HOVER_COLOR = 0x888888;
@@ -34,7 +34,7 @@ export class FieldEditorOverlay {
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
-  private readonly backgroundImage: BackgroundImageLayer;
+  private readonly backgroundImage: BackgroundImageHost;
   private readonly paperLayout: PaperLayoutRenderer;
   private readonly floor: CellFillRenderer;
   private readonly symmetryCells: CellFillRenderer;
@@ -65,12 +65,12 @@ export class FieldEditorOverlay {
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
-    this.backgroundImage = new BackgroundImageLayer(
-      this.backgroundImageContainer,
-      this.floorContainer,
-      this.gridContainer,
-      this.paperLayoutContainer,
-    );
+    this.backgroundImage = new BackgroundImageHost({
+      image: this.backgroundImageContainer,
+      floor: this.floorContainer,
+      grid: this.gridContainer,
+      layerAnchor: this.paperLayoutContainer,
+    });
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
@@ -133,15 +133,9 @@ export class FieldEditorOverlay {
         this.redrawPaperLayout(state);
       }
 
-      if (isOpen && (state.showBackgroundImage !== prev.showBackgroundImage
-        || state.backgroundImage !== prev.backgroundImage
-        || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning
+      if (isOpen && (backgroundImageChanged(state, prev)
         || field.fieldEditMode !== prevField.fieldEditMode)) {
-        this.backgroundImage.render(
-          state.backgroundImage,
-          this.shouldShowBackgroundImage(state),
-          state.backgroundImageManualPositioning,
-        );
+        this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
       }
     });
   }
@@ -176,11 +170,7 @@ export class FieldEditorOverlay {
     const field = state.floorFields[state.activeFloorId];
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
     this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
-    this.backgroundImage.render(
-      state.backgroundImage,
-      this.shouldShowBackgroundImage(state),
-      state.backgroundImageManualPositioning,
-    );
+    this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);

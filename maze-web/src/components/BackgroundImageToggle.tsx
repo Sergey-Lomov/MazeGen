@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import type { BackgroundImageLayerMode } from "../store/tessellationTypes";
 import { resolveCells } from "../pixi/fieldEditUtils";
-import { calculateBackgroundImageLayout, calculateBackgroundImagePageLayout, fieldBounds } from "../pixi/BackgroundImageLayer";
+import { backgroundImageCrop, calculateBackgroundImageLayout, calculateBackgroundImagePageLayout, fieldBounds } from "../pixi/BackgroundImageLayer";
 import { ToggleRow } from "./ToggleRow";
 import { SettingsIconButton } from "./SettingsIconButton";
 import { SidePanel } from "./SidePanel";
@@ -61,6 +61,9 @@ export function BackgroundImageToggle() {
   const setBackgroundImageLayer = useMazeStore((s) => s.setBackgroundImageLayer);
   const setBackgroundImageOpacity = useMazeStore((s) => s.setBackgroundImageOpacity);
   const setBackgroundImageManualPositioning = useMazeStore((s) => s.setBackgroundImageManualPositioning);
+  const backgroundImageManualPositioning = useMazeStore((s) => s.backgroundImageManualPositioning);
+  const setBackgroundImageCropping = useMazeStore((s) => s.setBackgroundImageCropping);
+  const backgroundImageCropping = useMazeStore((s) => s.backgroundImageCropping);
   const setPrintPaperSize = useMazeStore((s) => s.setPrintPaperSize);
   const setPrintCustomSize = useMazeStore((s) => s.setPrintCustomSize);
   const setPrintOrientation = useMazeStore((s) => s.setPrintOrientation);
@@ -85,8 +88,13 @@ export function BackgroundImageToggle() {
       backgroundImage.naturalWidth,
       backgroundImage.naturalHeight,
       bounds,
+      backgroundImageCrop(backgroundImage),
     );
-    setBackgroundImage({ ...layout, layer: backgroundImage.layer, opacity: backgroundImage.opacity });
+    setBackgroundImage({
+      ...layout,
+      layer: backgroundImage.layer,
+      opacity: backgroundImage.opacity,
+    });
   }
 
   function positionToPage() {
@@ -100,8 +108,13 @@ export function BackgroundImageToggle() {
         backgroundImage.naturalHeight,
         field.tessellationConfig,
         state.pngExportSettings.print,
+        backgroundImageCrop(backgroundImage),
       );
-      state.setBackgroundImage({ ...layout, layer: backgroundImage.layer, opacity: backgroundImage.opacity });
+      state.setBackgroundImage({
+        ...layout,
+        layer: backgroundImage.layer,
+        opacity: backgroundImage.opacity,
+      });
     } catch {
       // Invalid persisted print settings are ignored; the existing image transform remains intact.
     }
@@ -185,13 +198,24 @@ export function BackgroundImageToggle() {
                   onChange={setBackgroundImageOpacity}
                 />
                 <div style={styles.buttonGroup}>
-                  <Button
-                    variant="secondary"
-                    layoutStyle={{ width: "100%" }}
-                    onClick={() => setBackgroundImageManualPositioning(true)}
-                  >
-                    {m["background.manual_positioning"]()}
-                  </Button>
+                  <div style={styles.modeButtonGroup}>
+                    <Button
+                      variant={backgroundImageCropping ? "toggle-selected" : "secondary"}
+                      layoutStyle={{ flex: 1 }}
+                      aria-pressed={backgroundImageCropping}
+                      onClick={() => setBackgroundImageCropping(true)}
+                    >
+                      {m["background.crop"]()}
+                    </Button>
+                    <Button
+                      variant={backgroundImageManualPositioning ? "toggle-selected" : "secondary"}
+                      layoutStyle={{ flex: 1 }}
+                      aria-pressed={backgroundImageManualPositioning}
+                      onClick={() => setBackgroundImageManualPositioning(true)}
+                    >
+                      {m["background.transform"]()}
+                    </Button>
+                  </div>
                   <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={positionToField}>
                     {m["background.position_to_field"]()}
                   </Button>
@@ -232,6 +256,10 @@ const styles = {
   buttonGroup: {
     display: "flex",
     flexDirection: "column" as const,
+    gap: spacing.itemGap,
+  },
+  modeButtonGroup: {
+    display: "flex",
     gap: spacing.itemGap,
   },
 };

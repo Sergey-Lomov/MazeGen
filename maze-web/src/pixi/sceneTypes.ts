@@ -13,6 +13,12 @@ export function canManipulateBackgroundImage(state: MazeState): boolean {
     || state.openCard === "post_edit");
 }
 
+/** Active shared-underlay interaction mode, if the current editor can receive it. */
+export function backgroundImageEditMode(state: MazeState): "transform" | "crop" | null {
+  if (!canManipulateBackgroundImage(state) || !state.showBackgroundImage || state.backgroundImage === null) return null;
+  return state.backgroundImageCropping ? "crop" : state.backgroundImageManualPositioning ? "transform" : null;
+}
+
 export interface PointerHandler {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean, clickCount?: number): void;
   onPointerMove(canvasX: number, canvasY: number, buttons?: number, shiftKey?: boolean): void;

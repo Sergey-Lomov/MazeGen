@@ -68,7 +68,13 @@ vi.mock("../pixi/PaperLayoutRenderer", () => ({
 }));
 
 vi.mock("../pixi/BackgroundImageLayer", () => ({
-  BackgroundImageLayer: class {
+  backgroundImageChanged: (state: { showBackgroundImage?: boolean; backgroundImage?: unknown; backgroundImageManualPositioning?: boolean; backgroundImageCropping?: boolean }, prev: { showBackgroundImage?: boolean; backgroundImage?: unknown; backgroundImageManualPositioning?: boolean; backgroundImageCropping?: boolean }) => (
+    state.showBackgroundImage !== prev.showBackgroundImage
+    || state.backgroundImage !== prev.backgroundImage
+    || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning
+    || state.backgroundImageCropping !== prev.backgroundImageCropping
+  ),
+  BackgroundImageHost: class {
     render = vi.fn();
     destroy = vi.fn();
   },

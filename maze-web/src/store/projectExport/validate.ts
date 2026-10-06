@@ -245,6 +245,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
         dataUrl: assertString(image.dataUrl, "backgroundImage.dataUrl"),
         naturalWidth: assertPositiveFiniteNumber(image.naturalWidth, "backgroundImage.naturalWidth"),
         naturalHeight: assertPositiveFiniteNumber(image.naturalHeight, "backgroundImage.naturalHeight"),
+        ...validateBackgroundCrop(image),
         displayWidth: assertPositiveFiniteNumber(image.displayWidth, "backgroundImage.displayWidth"),
         displayHeight: assertPositiveFiniteNumber(image.displayHeight, "backgroundImage.displayHeight"),
         centerX: assertFiniteNumber(image.centerX, "backgroundImage.centerX"),
@@ -255,6 +256,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     })();
   const showBackgroundImage = backgroundImage !== null && optBool(migrated, "showBackgroundImage", false);
   const backgroundImageManualPositioning = optBool(migrated, "backgroundImageManualPositioning", false);
+  const backgroundImageCropping = optBool(migrated, "backgroundImageCropping", false);
 
   // floors (optional section — defaults to a single floor for old files)
   const floors: ProjectFileFloors = validateFloors(migrated.floors, "floors");
@@ -302,6 +304,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     showBackgroundImage,
     backgroundImage,
     backgroundImageManualPositioning,
+    backgroundImageCropping,
     imageExport: validateImageExport(migrated.imageExport, "imageExport"),
     floors,
   };
@@ -312,4 +315,28 @@ function validateBackgroundOpacity(image: Record<string, unknown>): number {
   const opacity = assertFiniteNumber(image.opacity, "backgroundImage.opacity");
   if (opacity < 0 || opacity > 1) throw new Error("Expected backgroundImage.opacity between 0 and 1");
   return opacity;
+}
+
+function validateBackgroundCrop(image: Record<string, unknown>): {
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+} {
+  const naturalWidth = assertPositiveFiniteNumber(image.naturalWidth, "backgroundImage.naturalWidth");
+  const naturalHeight = assertPositiveFiniteNumber(image.naturalHeight, "backgroundImage.naturalHeight");
+  const cropX = optionalFiniteNumber(image.cropX, 0, "backgroundImage.cropX");
+  const cropY = optionalFiniteNumber(image.cropY, 0, "backgroundImage.cropY");
+  const cropWidth = optionalFiniteNumber(image.cropWidth, naturalWidth, "backgroundImage.cropWidth");
+  const cropHeight = optionalFiniteNumber(image.cropHeight, naturalHeight, "backgroundImage.cropHeight");
+  if (cropX < 0 || cropY < 0 || cropWidth <= 0 || cropHeight <= 0
+    || cropX + cropWidth > naturalWidth || cropY + cropHeight > naturalHeight) {
+    throw new Error("Expected backgroundImage crop to be inside the source image");
+  }
+  return { cropX, cropY, cropWidth, cropHeight };
+}
+
+function optionalFiniteNumber(value: unknown, fallback: number, path: string): number {
+  if (value === undefined) return fallback;
+  return assertFiniteNumber(value, path);
 }

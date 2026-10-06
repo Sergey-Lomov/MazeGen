@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const pixi = vi.hoisted(() => ({
   images: [] as FakeImage[],
+  textures: [] as unknown[],
   sprites: [] as Array<{
     position: { set: ReturnType<typeof vi.fn> };
     alpha?: number;
@@ -51,6 +52,9 @@ vi.mock("pixi.js", () => ({
     stroke() { return this; }
     fill() { return this; }
   },
+  Rectangle: class {
+    constructor(public x: number, public y: number, public width: number, public height: number) {}
+  },
   Sprite: class {
     visible = true;
     position = { set: vi.fn() };
@@ -59,7 +63,11 @@ vi.mock("pixi.js", () => ({
     destroy = vi.fn();
     constructor() { pixi.sprites.push(this); }
   },
-  Texture: { from: vi.fn(() => ({})) },
+  Texture: class {
+    static from = vi.fn(() => ({ source: {} }));
+    destroy = vi.fn();
+    constructor(options?: unknown) { pixi.textures.push(options); }
+  },
 }));
 
 vi.mock("../pixi/tessellationGeometry", () => ({
@@ -70,7 +78,9 @@ vi.stubGlobal("Image", FakeImage);
 
 import {
   BACKGROUND_IMAGE_ALPHA,
+  BackgroundImageHost,
   BackgroundImageLayer,
+  backgroundImageChanged,
   calculateBackgroundImageLayout,
   calculateBackgroundImagePageLayout,
   fieldBounds,
@@ -97,6 +107,53 @@ describe("underlay layout", () => {
     expect(BACKGROUND_IMAGE_ALPHA).toBe(0.5);
   });
 
+  it("detects only underlay state changes", () => {
+    const state = {
+      showBackgroundImage: true,
+      backgroundImage: baseImage,
+      backgroundImageManualPositioning: false,
+      backgroundImageCropping: false,
+    };
+
+    expect(backgroundImageChanged(state as never, state as never)).toBe(false);
+    expect(backgroundImageChanged(state as never, { ...state, backgroundImageCropping: true } as never)).toBe(true);
+  });
+
+  it("hosts the shared layer and renders from store state", async () => {
+    pixi.images.length = 0;
+    const root = new FakeContainer();
+    const imageContainer = new FakeContainer();
+    const floorContainer = new FakeContainer();
+    const gridContainer = new FakeContainer();
+    const anchorContainer = new FakeContainer();
+    root.addChild(imageContainer);
+    root.addChild(floorContainer);
+    root.addChild(gridContainer);
+    root.addChild(anchorContainer);
+    const host = new BackgroundImageHost({
+      image: imageContainer as never,
+      floor: floorContainer as never,
+      grid: gridContainer as never,
+      layerAnchor: anchorContainer as never,
+    });
+
+    host.render({
+      openCard: "post_edit",
+      activeFloorId: "floor-1",
+      floorFields: {},
+      showBackgroundImage: true,
+      backgroundImage: baseImage,
+      backgroundImageManualPositioning: false,
+      backgroundImageCropping: false,
+    } as never);
+    pixi.images[0].onload?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(pixi.sprites).toHaveLength(1);
+    host.destroy();
+  });
+
   it("uses the latest layout if the image finishes loading after a recalculation", async () => {
     pixi.images.length = 0;
     pixi.sprites.length = 0;
@@ -114,6 +171,24 @@ describe("underlay layout", () => {
     layer.destroy();
   });
 
+  it("renders only the persisted source crop in the sprite texture", async () => {
+    pixi.images.length = 0;
+    pixi.sprites.length = 0;
+    pixi.textures.length = 0;
+    const layer = new BackgroundImageLayer({ addChild: vi.fn() } as never);
+    layer.render({ ...baseImage, cropX: 10, cropY: 20, cropWidth: 40, cropHeight: 30 }, true);
+
+    pixi.images[0].onload?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(pixi.textures[0]).toMatchObject({
+      frame: { x: 10, y: 20, width: 40, height: 30 },
+      orig: { x: 0, y: 0, width: 40, height: 30 },
+    });
+    layer.destroy();
+  });
+
   it("fits inside the field while preserving the source aspect ratio", () => {
     const image = calculateBackgroundImageLayout(
       "data:image/png;base64,abc",
@@ -126,6 +201,27 @@ describe("underlay layout", () => {
     expect(image.displayHeight).toBe(50);
     expect(image.centerX).toBe(0);
     expect(image.centerY).toBe(0);
+  });
+
+  it("fits the selected crop instead of the complete source image", () => {
+    const image = calculateBackgroundImageLayout(
+      "data:image/png;base64,abc",
+      1000,
+      1000,
+      { minX: -50, minY: -50, maxX: 50, maxY: 50 },
+      { x: 100, y: 200, width: 200, height: 100 },
+    );
+
+    expect(image).toMatchObject({
+      cropX: 100,
+      cropY: 200,
+      cropWidth: 200,
+      cropHeight: 100,
+      displayWidth: 100,
+      displayHeight: 50,
+      centerX: 0,
+      centerY: 0,
+    });
   });
 
   it("leaves empty space in the shorter field dimension instead of cropping the image", () => {

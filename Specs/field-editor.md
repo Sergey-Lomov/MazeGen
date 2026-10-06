@@ -105,7 +105,7 @@ generated field or export image.
 
 ### Background image print fitting (GitHub issue #675)
 
-Custom mode's background-image settings provide **Calculate for print**. The action uses the same
+Custom mode's background-image settings provide **Transform for print**. The action uses the same
 paper format, orientation, and horizontal/vertical margin controls as the field editor's paper
 layout, but does not ask for or change cell size, field shape, or any generation parameter. It
 fits the loaded image to the selected page's margin-inset rectangle while preserving the image
@@ -367,7 +367,8 @@ above everything, plus opacity from 0 to 1. The underlay is not passed to genera
 analytics, or any other processing. When the image is first uploaded, it is scaled once with
 `contain` semantics against the current field bounds and centered on the field. Its display
 transform is retained when the switch is turned off and on again. The settings panel also offers
-`Position to field`, which explicitly reapplies the initial contain-and-center calculation. The
+`Transform to field`, which reapplies the contain-and-center calculation to the current cropped
+fragment. The
 original aspect ratio is always preserved, so empty space may remain along one axis of the field.
 
 For the `above_grid` mode, the render order is grid, underlay, floor cells, then the remaining
@@ -382,6 +383,15 @@ the shared canvas interaction consumes left-button drags over the image to move 
 corner resizes it while preserving the source aspect ratio. The resulting transform, layer, and
 opacity are persisted with the image. Files saved before issue #674 default to the original
 below-grid/50% behavior.
+
+The same settings panel provides a `Crop` mode (GitHub issue #680), separate from the existing
+manual positioning mode, here called `Transform`. The modes are mutually exclusive and can be
+entered from any of the three shared-underlay editors: Field Setup, Preset Connections, and
+Post-Edit. `Crop` changes the source-image rectangle that remains visible and renders only that
+source fragment; it is not viewport clipping. The cropped fragment keeps its current transform,
+and `Transform` scales and moves that fragment. Switching modes at any time preserves the crop,
+scale, and position. Escape, Enter, Space, clicking outside the canvas, or clicking outside the
+active underlay exits the active mode using the same interaction contract as Transform.
 
 ## Hover highlight (custom mode)
 

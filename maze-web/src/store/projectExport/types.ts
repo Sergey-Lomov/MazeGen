@@ -12,6 +12,11 @@ export interface ProjectFileBackgroundImage {
   dataUrl: string;
   naturalWidth: number;
   naturalHeight: number;
+  /** Optional source-image crop rectangle; absent means the complete image. */
+  cropX?: number;
+  cropY?: number;
+  cropWidth?: number;
+  cropHeight?: number;
   displayWidth: number;
   displayHeight: number;
   centerX: number;
@@ -237,6 +242,8 @@ export interface ProjectFile {
   backgroundImage?: ProjectFileBackgroundImage | null;
   /** Shared underlay direct-manipulation mode (GitHub issue #674). */
   backgroundImageManualPositioning?: boolean;
+  /** Shared underlay source-image crop mode (GitHub issue #680). */
+  backgroundImageCropping?: boolean;
   imageExport: ProjectFileImageExport;
   floors: ProjectFileFloors;
 }
