@@ -196,11 +196,10 @@ export type ExportWarning = {
   crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
 };
 
-/** Squared marker "radius" in world units for the given `MarkerSettings`-like fraction, mirroring
- *  `buildMazeMarkers`'s own `size * TILE_SIZE` scaling — used only for the overlap distance check
- *  below, not for actual drawing. */
-function markerWorldRadius(sizeFraction: number, borderWidth: number): number {
-  return sizeFraction * TILE_SIZE + borderWidth;
+/** Marker "radius" in world px for the given `MarkerSettings`-like size — used only for the
+ *  overlap distance check below, not for actual drawing. */
+function markerWorldRadius(size: number, borderWidth: number): number {
+  return size / 2 + borderWidth;
 }
 
 /** One point-key -> fill-state pass over every teleport edge, mirroring
@@ -967,13 +966,13 @@ export function computeVectorByWallsWarnings(
   // every flagged marker (not just the specific overlapping pair, or the specific overflowing side)
   // so the hover highlight can show a click-to-navigate bubble per floor, same as
   // `IssueHighlightOverlay`'s cross-floor markers. Mirrors `VerticalConnectionRenderer.
-  // drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation exactly (`elevatorMarker.size
-  // * TILE_SIZE`, no border-width addition — unlike `markerWorldRadius` above, which is only used
+  // drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation exactly (`elevatorMarker.size`,
+  // no border-width addition — unlike `markerWorldRadius` above, which is only used
   // for the teleport/waypoint overlap check). ---
   if (settings.elevatorBadges.enabled) {
     const verticalPairs = selectVerticalPassagePairSet(edges);
     const markers = buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, 0, verticalPairs, edges);
-    const markerRadius = settings.elevatorMarker.size * TILE_SIZE;
+    const markerRadius = settings.elevatorMarker.size / 2;
     const badgeRadius = markerRadius * settings.elevatorBadges.size;
     const overlappingNodeIds: number[] = [];
     const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];

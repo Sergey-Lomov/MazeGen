@@ -31,29 +31,31 @@ function newG(): FakeG {
 }
 
 describe("drawOneWayTriangle", () => {
-  it("positions the tip 65% ahead and the base 35% behind the wall's midpoint along (dx, dy)", () => {
+  it("positions the tip at 0.65*length, base at -0.35*length, length = 1.5*radius, radius = size/2 (GitHub issue #681 third follow-up: `size` is the triangle's own circumscribed-circle diameter)", () => {
     const g = newG();
     // dx=1,dy=0, size=20 (resolvedSize default*... use explicit style.size for a round number).
     drawOneWayTriangle(g, 0, 0, 1, 0, { size: 20 });
     const [roundPolyCall] = g.calls.filter((c) => c.fn === "roundPoly");
     const [cx, , radius] = roundPolyCall.args as [number, number, number, number, number, number];
-    // tip = cx + radius (roundPoly's own vertex-0 distance from center along rotation).
-    // Solved so tip lands at +0.65*length and base at -0.35*length from (0,0), length = size.
-    const length = 20;
+    const size = 20;
+    const expectedRadius = size * 0.5;
+    const expectedLength = 1.5 * expectedRadius;
     const tip = cx + radius;
     const base = cx - radius * 0.5;
-    expect(tip).toBeCloseTo(0.65 * length, 5);
-    expect(base).toBeCloseTo(-0.35 * length, 5);
+    expect(tip).toBeCloseTo(0.65 * expectedLength, 5);
+    expect(base).toBeCloseTo(-0.35 * expectedLength, 5);
   });
 
-  it("scales the tip/base split proportionally with size, keeping the 65/35 ratio", () => {
+  it("scales the tip/base split proportionally with size", () => {
     const g = newG();
     drawOneWayTriangle(g, 0, 0, 1, 0, { size: 40 });
     const [roundPolyCall] = g.calls.filter((c) => c.fn === "roundPoly");
     const [cx, , radius] = roundPolyCall.args as [number, number, number, number, number, number];
-    const length = 40;
-    expect(cx + radius).toBeCloseTo(0.65 * length, 5);
-    expect(cx - radius * 0.5).toBeCloseTo(-0.35 * length, 5);
+    const size = 40;
+    const expectedRadius = size * 0.5;
+    const expectedLength = 1.5 * expectedRadius;
+    expect(cx + radius).toBeCloseTo(0.65 * expectedLength, 5);
+    expect(cx - radius * 0.5).toBeCloseTo(-0.35 * expectedLength, 5);
   });
 
   it("rotates the polygon so vertex 0 points toward (dx, dy)", () => {
@@ -158,10 +160,12 @@ describe("drawOneWayChevronRow", () => {
     const g = newG();
     drawOneWayChevronRow(g, 0, 0, 1, 0, 2, 10, 6, { thickness: 4 });
     const lineTos = g.calls.filter((c) => c.fn === "lineTo");
-    // Each chevron's tip sits at its own center + size (drawOneWayChevron's own convention) — so
-    // each chevron's own center = tipX - length (length = 10 here).
-    const firstCenterX = (lineTos[0].args as [number, number])[0] - 10;
-    const secondCenterX = (lineTos[2].args as [number, number])[0] - 10;
+    // Each chevron's tip sits at its own center + width/1.4 (drawOneWayChevron's own convention,
+    // with no `style.width` override here, width = size*0.5*WINGSPAN_FRACTION = 3.75) — so each
+    // chevron's own center = tipX - (3.75 / 1.4).
+    const tipOffset = (10 * 0.5 * 0.75) / 1.4;
+    const firstCenterX = (lineTos[0].args as [number, number])[0] - tipOffset;
+    const secondCenterX = (lineTos[2].args as [number, number])[0] - tipOffset;
     expect(firstCenterX + secondCenterX).toBeCloseTo(0, 5);
   });
 
@@ -198,10 +202,11 @@ describe("drawOneWayArrow", () => {
     drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
     const [firstLineTo] = g.calls.filter((c) => c.fn === "lineTo");
     const [x] = firstLineTo.args as [number, number];
-    // tip would be at x=20; the shaft's first lineTo must stop short of it, at the arrowhead base
-    // (headSize = size*0.5 back from the tip => x = 20 - 10 = 10).
-    expect(x).toBeCloseTo(10, 5);
-    expect(x).toBeLessThan(20);
+    // half = size*0.5*WINGSPAN_FRACTION = 7.5, tip at x=7.5; the shaft's first lineTo must stop
+    // short of it, at the arrowhead base (headSize = half*0.5 = 3.75 back from the tip => x =
+    // 7.5 - 3.75 = 3.75).
+    expect(x).toBeCloseTo(3.75, 5);
+    expect(x).toBeLessThan(7.5);
   });
 
   it("uses the thickness style knob for its stroke width, independent of size", () => {
@@ -274,8 +279,9 @@ describe("drawOneWayWallHighlight", () => {
     drawOneWayWallHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 3, 0.9);
     const [roundPolyCall] = g.calls.filter((c) => c.fn === "roundPoly");
     const [, , radius] = roundPolyCall.args as [number, number, number];
-    // radius = (2/3) * size (drawOneWayTriangle's own relation, size = MAP_ONE_WAY_SIZE here).
-    expect(radius).toBeCloseTo((2 / 3) * MAP_ONE_WAY_SIZE, 5);
+    // radius = size*0.5, size = MAP_ONE_WAY_SIZE here (GitHub issue #681 third follow-up: `size`
+    // is the triangle's own circumscribed-circle diameter).
+    expect(radius).toBeCloseTo(MAP_ONE_WAY_SIZE * 0.5, 5);
   });
 
   it("returns false and draws nothing for two cells that aren't tessellation-adjacent", () => {

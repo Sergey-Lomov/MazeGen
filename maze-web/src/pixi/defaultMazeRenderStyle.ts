@@ -20,6 +20,12 @@ export interface MazeRenderStyle {
 
 const ONE_WAY_ACCENT_DARK = 0x196c64;
 
+// Shared marker standard (GitHub issue #681 follow-up) — every bordered marker (start, finish,
+// teleport edge/floor badge, vertical passage, elevator) defaults to the same size/border so they
+// read as one visual system regardless of type.
+const MARKER_SIZE = 17;
+const MARKER_BORDER_WIDTH = 3;
+
 /** Canonical live-canvas style and source for matching image-export defaults. */
 export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
   backgroundColor: canvas.stage.background,
@@ -30,34 +36,35 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     pattern: "triangle", color: 0xffaa00, gapColor: canvas.floor.default, gapWidth: 3,
     size: TILE_SIZE * 0.3, thickness: 4, join: "round", cap: "round",
   },
-  startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
-  finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
+  startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
+  finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
   teleport: {
-    shape: "diamond", cornerStyle: "round", size: 0.16,
+    shape: "diamond", cornerStyle: "round", size: MARKER_SIZE,
     edgeColor: canvas.teleport.default, edgeBorderColor: canvas.teleport.default,
-    borderWidth: 3, edgeGapWidth: 3,
+    borderWidth: MARKER_BORDER_WIDTH, edgeGapWidth: 3,
     connectorColor: canvas.teleport.default, connectorWidth: 3, connectorStyle: "orthogonal",
     arrowMode: "periodic", arrowPeriod: 5, arrowSize: 10, connectorGapWidth: 3,
     floorColor: canvas.floor.default,
     // GitHub issue #485 — defaults reproduce the pre-#485 hardcoded look exactly: a circle at the
-    // edge marker's own default `size` (0.16), an Arabic digit in a floor-colored knockout, a
-    // 3px border (the shared `borderWidth` above). `textPadding: 3.4` makes the shared-font fit
-    // land on `2 * (r + borderWidth) - 2 * 3.4 = 12` px for a single-digit label at the default
-    // radius — the exact `Math.max(r * 1.6, 12)` value the old per-badge sizing produced.
-    // `fillColor`/`borderColor` default to the connector color, matching the pre-#503 locked look.
-    floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, textColor: canvas.floor.default, textPadding: 3.4 },
+    // edge marker's own default `size` (now a diameter — GitHub issue #681 follow-up), an Arabic
+    // digit in a floor-colored knockout, a 3px border (the shared `borderWidth` above).
+    // `textPadding: 3.4` makes the shared-font fit land on `2 * (r + borderWidth) - 2 * 3.4 = 12`
+    // px for a single-digit label at the default radius — the exact `Math.max(r * 1.6, 12)` value
+    // the old per-badge sizing produced. `fillColor`/`borderColor` default to the connector color,
+    // matching the pre-#503 locked look.
+    floorBadge: { shape: "circle", labelType: "arabic", size: MARKER_SIZE, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: MARKER_BORDER_WIDTH, textColor: canvas.floor.default, textPadding: 3.4 },
   },
   verticalConnections: {
     style: "abstract",
-    twoWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, gapColor: canvas.floor.default, size: 0.22 },
-    oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, gapColor: canvas.floor.default, size: 0.22 },
-    elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, gapColor: canvas.floor.default, size: 0.22 },
+    twoWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: MARKER_BORDER_WIDTH, gapWidth: 3, gapColor: canvas.floor.default, size: MARKER_SIZE },
+    oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: MARKER_BORDER_WIDTH, gapWidth: 3, gapColor: canvas.floor.default, size: MARKER_SIZE },
+    elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: MARKER_BORDER_WIDTH, gapWidth: 3, gapColor: canvas.floor.default, size: MARKER_SIZE },
     twoWayArrowColor: canvas.floor.default, twoWayArrowSize: 0.75, twoWayArrowStyle: "triangle", twoWayArrowCornerStyle: "round",
     oneWayArrowColor: canvas.floor.default, oneWayArrowSize: 0.75, oneWayArrowStyle: "triangle", oneWayArrowCornerStyle: "round", oneWayAccentColor: ONE_WAY_ACCENT_DARK,
     elevatorArrowColor: canvas.floor.default, elevatorArrowSize: 0.75, elevatorArrowStyle: "triangle", elevatorArrowCornerStyle: "round",
-    decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-    decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-    decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+    decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
+    decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
+    decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
     decorativeStairsArrowColor: canvas.floor.default, decorativeStairsArrowSize: 0.75,
     decorativeStairsOneWayArrowColor: ONE_WAY_ACCENT_DARK, decorativeStairsOneWayArrowSize: 0.75,
     elevatorBadges: { enabled: false, labelType: "arabic", size: 0.7, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, textColor: canvas.floor.default, fontWeight: "bold" },

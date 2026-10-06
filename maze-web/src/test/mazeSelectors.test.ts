@@ -1367,18 +1367,18 @@ describe("buildMazeMarkers", () => {
     expect(dist).toBeCloseTo(10);
   });
 
-  it("a custom MarkerStyle's size/cornerStyle/gapWidth/gapColor pass through into MarkerData (GitHub issue #302 follow-up — size drives radius via TILE_SIZE, the rest map straight across)", () => {
+  it("a custom MarkerStyle's size/cornerStyle/gapWidth/gapColor pass through into MarkerData (GitHub issue #302 follow-up — size is the diameter, GitHub issue #681 diameter follow-up; the rest map straight across)", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 1, 1)]]);
     const startStyle: MarkerStyle = {
       shape: "star", fillColor: 0x111, borderColor: 0x222, borderWidth: 4,
-      size: 0.5, cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
+      size: 20, cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
     };
     const markers = buildMazeMarkers(nodeById, 0, 1, squareCfg, startStyle);
     expect(markers[0]).toMatchObject({
       shape: "star", color: 0x111, borderColor: 0x222, borderWidth: 4,
       cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
     });
-    expect(markers[0].radius).toBe(0.5 * 40);
+    expect(markers[0].radius).toBe(10);
     // finishStyle omitted — falls back to the default circle (GitHub issue #347 follow-up:
     // matches "Vector by walls"' own Shared style default), unaffected by startStyle's own
     // custom fields.

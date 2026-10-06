@@ -2,7 +2,6 @@ import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
 import { buildNodePositions } from "../../tessellationGeometry";
-import { TILE_SIZE } from "../../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) by design — kept as its own type since
@@ -13,7 +12,7 @@ export interface MarkerStyle {
   fillColor: number;
   borderColor: number;
   borderWidth: number;
-  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
+  /** Marker diameter in px (GitHub issue #681 follow-up) — same convention as
    *  `VectorByWallsSettings.teleportLineSize`. */
   size: number;
   /** Sharp (`"miter"`) vs. round (`"round"`) corners (GitHub issue #302 follow-up) — only affects
@@ -31,7 +30,7 @@ export interface MarkerStyle {
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
 export function buildMarkerData(pos: [number, number], style: MarkerStyle): MarkerData {
   return {
-    pos, radius: style.size * TILE_SIZE,
+    pos, radius: style.size / 2,
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
   };

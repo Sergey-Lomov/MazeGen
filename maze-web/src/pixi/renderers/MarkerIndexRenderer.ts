@@ -1,7 +1,6 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
 import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
-import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { drawRoundedRect } from "./markerShapes";
 
@@ -70,9 +69,9 @@ export class MarkerIndexRenderer {
     const { labels, allLabelStrings, style, floorColor } = data;
     if (!style.enabled || labels.length === 0) return;
 
-    const plateH = style.height * TILE_SIZE;
-    const paddingX = style.paddingX * TILE_SIZE;
-    const cornerRadius = style.cornerRadius * TILE_SIZE;
+    const plateH = style.height;
+    const paddingX = style.paddingX;
+    const cornerRadius = style.cornerRadius;
     const gap = Math.max(0, style.gap);
     const fontSize = fitMarkerIndexFontSize(plateH);
     const fontFamily = msdfFontFamily(style.fontWeight);
@@ -92,7 +91,7 @@ export class MarkerIndexRenderer {
     const boxes: PlateBox[] = labels.map((item) => {
       const [cx, cy] = item.pos;
       // `offset` is the distance from the marker's outer edge to the plate's *center*.
-      const plateCenterY = cy + item.markerOuterRadius + style.offset * TILE_SIZE;
+      const plateCenterY = cy + item.markerOuterRadius + style.offset;
       const borderColor = style.borderColorFromMarker ? item.borderMatchColor : style.borderColor;
       return {
         x: cx - plateW / 2,

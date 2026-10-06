@@ -182,17 +182,18 @@ describe("fitTeleportBadgeFontSize", () => {
     expect(fitTeleportBadgeFontSize(["1"], 4, 10, 0)).toBe(0);
   });
 
-  // GitHub issue #485 — the default `textPadding` (3.4) must reproduce the pre-#485 hardcoded badge
-  // label size: `Math.max(r * 1.6, 12)` = 12 for a single-digit label at the default badge radius
-  // (`floorBadge.size` 0.16 * TILE_SIZE = 6.4) and the default border width (3).
-  it("with the shipped defaults, a single-digit label fits at exactly the pre-#485 size (12)", async () => {
+  // The default `textPadding` (3.4) is fixed regardless of the shared marker size/border standard
+  // (GitHub issue #681 follow-up: every bordered marker, including the floor badge, now defaults
+  // to size 17 / borderWidth 3) — the box-side cap (`2*(r+bw) - 2*textPadding`) scales with it.
+  it("with the shipped defaults, a single-digit label fits the box-side cap", async () => {
     const { DEFAULT_MAZE_RENDER_STYLE } = await import("../pixi/defaultMazeRenderStyle");
     const badge = DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge;
-    const r = badge.size * 40; // TILE_SIZE
+    const r = badge.size / 2; // size is a diameter in px (GitHub issue #681 diameter follow-up)
     const bw = DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth;
     // The mock BitmapText models a digit as 0.6 em wide, so for "1" the width bound is slack and
-    // the box-side cap (`2*(r+bw) - 2*textPadding`) is what lands the result on 12.
-    expect(fitTeleportBadgeFontSize(["1"], r, badge.textPadding, bw)).toBeCloseTo(12);
+    // the box-side cap (`2*(r+bw) - 2*textPadding`) is what the result lands on.
+    const expectedCap = 2 * (r + bw) - 2 * badge.textPadding;
+    expect(fitTeleportBadgeFontSize(["1"], r, badge.textPadding, bw)).toBeCloseTo(expectedCap);
   });
 });
 

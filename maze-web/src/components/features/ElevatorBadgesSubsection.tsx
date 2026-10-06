@@ -115,7 +115,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               label={m["image_export.vector_by_walls.elevator_badges_size"]()}
               value={settings.size}
               onChange={(size) => onChange({ size })}
-              min={0.1}
+              min={0.2}
               max={1}
               step={0.05}
               format={(v) => v.toFixed(2)}

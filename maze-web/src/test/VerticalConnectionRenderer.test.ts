@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
-import { TILE_SIZE } from "../pixi/constants";
 
 const navigateToFloorMock = vi.fn();
 vi.mock("../pixi/renderers/floorNavigation", () => ({
@@ -110,7 +109,7 @@ function circleMarkerStyle(overrides: Partial<VerticalMarkerStyle> = {}): Vertic
   return {
     shape: "circle", cornerStyle: "round",
     fillColor: 0x111111, borderColor: 0x222222, borderWidth: 0, gapWidth: 0, gapColor: 0x333333,
-    size: 0.22,
+    size: 8.8, // 0.22 * TILE_SIZE (GitHub issue #681 — now a direct px value; a diameter — GitHub issue #681 diameter follow-up, so the effective radius is 4.4)
     ...overrides,
   };
 }
@@ -410,8 +409,8 @@ describe("VerticalConnectionRenderer", () => {
     });
 
     const moveCalls = g.calls.filter((call) => call.method === "moveTo");
-    expect(Math.abs(moveCalls[0].args[1] - moveCalls[2].args[1])).toBeGreaterThan(TILE_SIZE * 0.1);
-    expect(Math.abs(moveCalls[0].args[0] - moveCalls[1].args[0])).toBeCloseTo(TILE_SIZE * 0.22 * 0.75);
+    expect(Math.abs(moveCalls[0].args[1] - moveCalls[2].args[1])).toBeGreaterThan(4);
+    expect(Math.abs(moveCalls[0].args[0] - moveCalls[1].args[0])).toBeCloseTo((8.8 / 2) * 0.75);
     const yCoordinates = g.calls
       .filter((call) => call.method === "moveTo" || call.method === "lineTo")
       .flatMap((call) => [call.args[1]]);
@@ -525,18 +524,18 @@ describe("VerticalConnectionRenderer", () => {
     expect((firstHit as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled();
   });
 
-  it("size unit consistency: circle radius equals settings.size * TILE_SIZE with no border/gap", () => {
+  it("size unit consistency: circle radius equals settings.size / 2, in px (GitHub issue #681 diameter follow-up)", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
 
     render(renderer, {
       markers: [marker({ pos: [0, 0] })],
-      style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ size: 0.3, borderWidth: 0, gapWidth: 0 }) }),
+      style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ size: 12, borderWidth: 0, gapWidth: 0 }) }),
     });
 
     const polyCalls = g.calls.filter((c) => c.method === "poly");
-    expect(polygonRadius(polyCalls[0].args, 0, 0)).toBeCloseTo(0.3 * TILE_SIZE);
+    expect(polygonRadius(polyCalls[0].args, 0, 0)).toBeCloseTo(6);
   });
 
   it.each(["triangle", "chevron", "arrow"] as const)(
@@ -545,7 +544,7 @@ describe("VerticalConnectionRenderer", () => {
       const container = new Container();
       const renderer = new VerticalConnectionRenderer(container as never);
       const g = (renderer as unknown as { g: FakeGraphics }).g;
-      const size = 0.4;
+      const size = 16; // px diameter (GitHub issue #681 — previously a 0.4 tile fraction; GitHub issue #681 diameter follow-up)
 
       render(renderer, {
         markers: [marker({ pos: [0, 0], kind: "vertical_passage", direction: "up", filled: true, arrowFilled: true })],
@@ -556,7 +555,7 @@ describe("VerticalConnectionRenderer", () => {
         }),
       });
 
-      const radius = size * TILE_SIZE;
+      const radius = size / 2;
       if (pattern === "triangle") {
         // Triangle's own tip sits at `0.65 * length` from `drawOneWayTriangle`'s own input origin
         // (`wallUtils.ts`) — `drawArrowPattern` rescales `size` by `1/patternTipFraction` so this

@@ -10,6 +10,7 @@ import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
 import type { CornerStyle } from "../../pixi/renderers/types";
 import type { LinkIconVisibility } from "../../store/imageExportTypes";
+import { TILE_SIZE } from "../../pixi/constants";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
 
@@ -147,10 +148,10 @@ export function SharedStyleSection<P extends string>({
         label={m["image_export.vector_by_walls.shared_style_marker_size"]()}
         value={markerSize}
         onChange={onMarkerSizeChange}
-        min={0}
-        max={1}
-        step={0.01}
-        format={(v) => v.toFixed(2)}
+        min={0.1 * TILE_SIZE}
+        max={TILE_SIZE}
+        step={1}
+        format={(v) => String(Math.round(v))}
         linkTarget={"markerSize" as P}
       />
       <LinkedSliderRow

@@ -2,8 +2,7 @@ import { BitmapText, Container, Graphics } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, CornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
-import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
-import { TILE_SIZE } from "../constants";
+import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
@@ -103,16 +102,23 @@ export type VerticalConnectionStyle = {
 export const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = DEFAULT_MAZE_RENDER_STYLE.verticalConnections;
 
 /** Each pattern's own tip reach, as a fraction of its `size` param (`wallUtils.ts`) — none of the
- *  three shared primitives puts its tip exactly at `size` from `(cx, cy)`: `drawOneWayTriangle`'s
- *  tip sits at `0.65 * length` where `length = size` (its own "tip 65% ahead" convention, GitHub
- *  issue #292 follow-up); `drawOneWayChevron`/`drawOneWayArrow` both put their tip at exactly
- *  `size`. Used to rescale the `size` passed to each primitive so the drawn tip always lands
- *  exactly at the caller's own `arrowSize` regardless of pattern — otherwise a triangle visibly
- *  fell short of the marker's own radius at `arrowSizeFraction: 1` while a chevron/arrow already
- *  reached it exactly (GitHub issue #347 fourth follow-up: "arrow size 1 should fill the marker's
- *  own radius, for every pattern"). */
+ *  three shared primitives puts its tip at `size` from `(cx, cy)` any more (GitHub issue #681
+ *  third follow-up: `wallUtils.ts`'s own `size` param was redefined from a center-to-tip reach to
+ *  each pattern's full linear extent — circumscribed-circle diameter for `triangle`, wingspan for
+ *  `chevron`, full tail-to-tip length for `arrow` — so a caller wanting a specific tip reach must
+ *  now pass `2 * reach`). Used to rescale the `size` passed to each primitive so the drawn tip
+ *  always lands exactly at the caller's own `arrowSize` reach regardless of pattern. */
 function patternTipFraction(pattern: OneWayPattern): number {
-  return pattern === "triangle" ? 0.65 : 1;
+  // `triangle`'s own tip sits at `0.975 * radius` (`0.65 * length`, `length = 1.5 * radius`), and
+  // `radius = drawnSize * 0.5` — so tip = `0.4875 * drawnSize`. Solving `0.4875 * (size / f) =
+  // size` gives `f = 0.4875`.
+  if (pattern === "triangle") return 0.4875;
+  // `chevron`'s own tip sits at `+length`, `length = width / 1.4`, `width = drawnSize * 0.5 *
+  // WINGSPAN_FRACTION` (`wallUtils.ts`, GitHub issue #681 fourth follow-up) — so tip =
+  // `drawnSize * 0.5 * WINGSPAN_FRACTION / 1.4`.
+  if (pattern === "chevron") return (0.5 * WINGSPAN_FRACTION) / 1.4;
+  // `arrow`'s own tip sits at `+half`, `half = drawnSize * 0.5 * WINGSPAN_FRACTION`.
+  return 0.5 * WINGSPAN_FRACTION;
 }
 
 /** `chevron`/`arrow`'s own stroke thickness range (GitHub issue #347 fifth follow-up) — the arrow
@@ -178,21 +184,20 @@ function drawDirectionSign(g: Graphics, cx: number, cy: number, direction: numbe
 }
 
 /** Each pattern's own tip/base visual midpoint, as a fraction of `size` — the tip-reach `size`
- *  `drawArrowPattern` itself is called with (GitHub issue #347 fourth follow-up; NOT the rescaled
- *  `drawnSize` passed further down to `wallUtils.ts`, which differs by `patternTipFraction`) —
- *  ahead of the `(cx, cy)` origin. None of the three shared primitives is actually centered on its
- *  own input origin: `drawOneWayChevron`'s tip sits at `+drawnSize` (= `+size`, `patternTipFraction`
- *  is 1), back at `-0.6*drawnSize` (midpoint `+0.2*size` ahead of its own input `cy`, since it draws
- *  directly off the input with no internal recentering); `drawOneWayTriangle` *does* recenter
- *  internally (its own `centroidOffset`, tip at `+0.65*drawnSize` and base at `-0.35*drawnSize` from
- *  the *input* origin, but then redrawn around a `roundPoly` centroid offset by
- *  `0.65*drawnSize - (2/3)*drawnSize = -drawnSize/60` from that same input — and `drawnSize =
- *  size/0.65`, so as a fraction of `size` this residual offset is `-1/(0.65*60) = -1/39`) —
- *  netting a much smaller residual midpoint offset than the input-relative tip/base numbers alone
- *  would suggest; `drawOneWayArrow`'s tail/tip are symmetric (`-drawnSize`/`+drawnSize`, offset
- *  `0`). Used to compensate a bidirectional pair's own `oy` so both arrows' visual centers land on
- *  the same on-screen row instead of straddling it (mirrors the old hand-built
- *  `drawDirectionArrow`'s own `size*0.25` constant, replaced when this dispatch was introduced). */
+ *  `drawArrowPattern` itself is called with (GitHub issue #347 fourth follow-up) — ahead of the
+ *  `(cx, cy)` origin. None of the three shared primitives is actually centered on its own input
+ *  origin: `drawOneWayChevron`'s tip sits at `+length`, back at `-0.6*length` (`wallUtils.ts`) —
+ *  since `patternTipFraction` always normalizes the drawn tip to exactly `+size` (i.e. `length =
+ *  size` here), the midpoint `(tip + back) / 2 = 0.2*length` is `+0.2*size`, independent of
+ *  `WINGSPAN_FRACTION`; `drawOneWayTriangle` *does* recenter internally (its own `centroidOffset`,
+ *  GitHub issue #681 third follow-up: `centroidOffset = 0.65*length - radius = -radius/40`, since
+ *  the primitive's internal `radius = drawnSize/2`, `length = 1.5*radius` — and here `drawnSize =
+ *  size/0.4875` (`patternTipFraction` for `triangle`), so `radius = size/0.975` and as a fraction
+ *  of `size` the offset is `-(1/40)/0.975 = -1/39`); `drawOneWayArrow`'s tail/tip are symmetric
+ *  (`-size`/`+size`, offset `0`). Used to compensate a bidirectional pair's own `oy` so both
+ *  arrows' visual centers land on the same on-screen row instead of straddling it (mirrors the
+ *  old hand-built `drawDirectionArrow`'s own `size*0.25` constant, replaced when this dispatch was
+ *  introduced). */
 function patternMidpointOffset(pattern: VerticalArrowStyle): number {
   if (pattern === "triangle") return -1 / 39;
   if (pattern === "chevron") return 0.2;
@@ -527,7 +532,7 @@ export class VerticalConnectionRenderer {
     // same for every elevator in one pass (one style mode applies to the whole render call), sourced
     // from whichever branch this pass actually uses.
     const decorative = data.style.style === "decorative";
-    const elevatorMarkerRadius = (decorative ? data.style.decorativeElevator.size : data.style.elevatorMarker.size) * TILE_SIZE;
+    const elevatorMarkerRadius = (decorative ? data.style.decorativeElevator.size : data.style.elevatorMarker.size) / 2;
     const badgeRadius = elevatorMarkerRadius * data.style.elevatorBadges.size;
     const allBadgeLabels = data.markers
       .filter((m) => m.kind === "elevator" && m.targetFloorIndices)
@@ -550,7 +555,7 @@ export class VerticalConnectionRenderer {
           : marker.filled
             ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
             : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
-      const radius = settings.size * TILE_SIZE;
+      const radius = settings.size / 2;
       let cx = marker.pos[0];
       const cy = marker.pos[1];
       if (group.length > 1) {
@@ -695,7 +700,7 @@ export class VerticalConnectionRenderer {
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
-    const radius = lineStyle.size * TILE_SIZE;
+    const radius = lineStyle.size / 2;
     let cx = marker.pos[0];
     const cy = marker.pos[1];
     if (group.length > 1) {

@@ -2180,7 +2180,7 @@
   "image_export.vector_by_walls.vertical_arrow_style_sign": "Знак",
   "image_export.vector_by_walls.one_way_color": "Цвет",
   "image_export.vector_by_walls.one_way_gap_width": "Ширина зазора",
-  "image_export.vector_by_walls.one_way_join": "Углы и концы",
+  "image_export.vector_by_walls.one_way_join": "Стиль углов",
   "image_export.vector_by_walls.one_way_size": "Размер",
   "image_export.vector_by_walls.one_way_thickness": "Толщина",
   "image_export.vector_by_walls.section_markers": "Путевые точки",

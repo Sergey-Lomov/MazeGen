@@ -20,25 +20,25 @@ const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,
-  borderWidth: 0, gapWidth: 0, size: 0.3,
+  borderWidth: 0, gapWidth: 0, size: 12,
 };
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
     background: 0, showGrid: true, gridColor: 0x808080, showInnerGrid: false, innerGridColor: 0x808080, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
-    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 0.3, oneWayThickness: 4, oneWayJoin: "round",
+    oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 12, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
-    teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
+    teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 6.4,
     teleportEdgeColor: 0xff0000, teleportEdgeBorderColor: 0xff0000, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 6.4, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: 0,
     verticalDecorativeLineWidth: 2,
-    verticalDecorativeSize: 0.22,
+    verticalDecorativeSize: 8.8,
     verticalDecorativeArrowSize: 0.75,
     splitNodeColors: [], splitSpecialShapes: true,
     ...DEFAULT_SHARED_STYLE_SOURCE,
@@ -55,11 +55,11 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
-    teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
+    teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 6.4,
     teleportEdgeColor: 0xff0000, teleportEdgeBorderColor: 0xff0000, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 6.4, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
@@ -211,7 +211,7 @@ describe("computeVectorByWallsWarnings", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
       // start sits at node 0's own position -> distance 0, definitely overlapping.
-      const settings = baseSettings({ teleportLineSize: 0.3, teleportEdgeBorderWidth: 2 });
+      const settings = baseSettings({ teleportLineSize: 12, teleportEdgeBorderWidth: 2 });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, null);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
       expect(matches).toHaveLength(1);
@@ -221,7 +221,7 @@ describe("computeVectorByWallsWarnings", () => {
     it("collapses overlaps with both start and finish into one warning", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      const settings = baseSettings({ teleportLineSize: 0.3, teleportEdgeBorderWidth: 2 });
+      const settings = baseSettings({ teleportLineSize: 12, teleportEdgeBorderWidth: 2 });
       // Both start and finish sit exactly on the teleport's two endpoints -> two overlaps, one warning.
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 0, 1);
       const matches = warnings.filter((w) => w.id === "teleport_waypoint_overlap");
@@ -240,7 +240,7 @@ describe("computeVectorByWallsWarnings", () => {
     it("does not flag (and does not throw) when start/finish is a stale id absent from nodes", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const edges = [teleport(0, 1)];
-      const settings = baseSettings({ teleportLineSize: 0.3, teleportEdgeBorderWidth: 2 });
+      const settings = baseSettings({ teleportLineSize: 12, teleportEdgeBorderWidth: 2 });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, 99, null);
       expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(0);
     });
@@ -580,7 +580,7 @@ describe("computeVectorByCorridorsWarnings", () => {
     it("flags a teleport marker overlapping the start marker's footprint", () => {
       const nodes = [n(0, 0, 0), n(1, 0, 0), n(2, 3, 3)];
       const edges = [teleport(1, 2)];
-      const settings = baseCorridorsSettings({ teleportLineSize: 0.4 });
+      const settings = baseCorridorsSettings({ teleportLineSize: 32 });
       const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null);
       expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(1);
     });

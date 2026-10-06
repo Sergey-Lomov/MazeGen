@@ -337,8 +337,8 @@ describe("VectorByWallsSettingsPanel", () => {
     render(<VectorByWallsSettingsPanel />);
     const slider = screen.getAllByText(m["image_export.vector_by_walls.marker_size"]())[0]
       .parentElement!.querySelector('input[type="range"]')!;
-    fireEvent.change(slider, { target: { value: "0.5" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.size).toBe(0.5);
+    fireEvent.change(slider, { target: { value: "20" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.size).toBe(20);
   });
 
   it("changing the finish marker gap width updates only the finish marker", () => {
@@ -411,8 +411,8 @@ describe("VectorByWallsSettingsPanel", () => {
     render(<VectorByWallsSettingsPanel />);
     const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]());
     const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
-    fireEvent.change(slider, { target: { value: "0.3" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(0.3);
+    fireEvent.change(slider, { target: { value: "12" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(12);
   });
 
   it("changing the one-way thickness updates the store", () => {
@@ -453,8 +453,8 @@ describe("VectorByWallsSettingsPanel", () => {
       // only marker-size) match, `teleport_arrow_size`'s own field appears later in the DOM.
       const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_size"]())[0]
         .parentElement!.querySelector('input[type="range"]')!;
-      fireEvent.change(slider, { target: { value: "0.6" } });
-      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineSize).toBe(0.6);
+      fireEvent.change(slider, { target: { value: "24" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineSize).toBe(24);
     });
 
     it("changing the edge gap width updates the store (GitHub issue #302)", () => {

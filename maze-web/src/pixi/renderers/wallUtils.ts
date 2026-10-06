@@ -39,6 +39,12 @@ export type OneWayDrawStyle = {
 // so any caller wanting to visually match the map's marker (e.g. the wall-highlight overlays)
 // reads the same constant instead of re-hardcoding `TILE_SIZE * 0.3`.
 export const MAP_ONE_WAY_SIZE = TILE_SIZE * 0.3;
+
+// `drawOneWayChevron`/`drawOneWayArrow`'s own visual scale-down relative to their raw `size`
+// param (GitHub issue #681 fourth follow-up) — at the same `size`, both looked visibly bigger
+// than `drawOneWayTriangle`'s circumscribed-circle diameter ("chevron at 40 should look like the
+// triangle looks at 30" => 30/40 = 0.75).
+export const WINGSPAN_FRACTION = 0.75;
 /** Extra room around a boundary highlight, per side. Shared by one-way, wall and passage
  * highlights so their transverse span uses the same visual clearance. */
 export const BOUNDARY_HIGHLIGHT_PADDING = 5;
@@ -118,13 +124,17 @@ export function drawOneWayTriangle(
   dy: number,
   style?: OneWayDrawStyle,
 ): void {
-  const size = resolvedSize(style) * 0.5;
-  const length = size * 2; // full tip-to-base length
+  // `size` is the triangle's own circumscribed-circle *diameter* (GitHub issue #681 third
+  // follow-up — matches `drawOneWayChevron`'s wingspan and `drawOneWayArrow`'s own full length:
+  // all three read `size` as the indicator's full linear extent, not a center-to-tip reach, so a
+  // slider maxed at `TILE_SIZE` fills the cell for every pattern).
+  const radius = resolvedSize(style) * 0.5;
   // roundPoly's circumradius R relates to an equilateral triangle's tip-to-base length as
   // length = 1.5*R (tip sits at +R from the centroid, base at -0.5*R). Solved so the tip lands at
   // +0.65*length and the base at -0.35*length from the wall's midpoint (cx, cy) — GitHub issue
   // #292 follow-up ("tip 65% ahead, base 35% behind").
-  const radius = (2 / 3) * length;
+  const length = 1.5 * radius;
+  const size = length * 0.5;
   const centroidOffset = 0.65 * length - radius;
   const centroidX = cx + dx * centroidOffset;
   const centroidY = cy + dy * centroidOffset;
@@ -303,14 +313,26 @@ export function drawOneWayChevron(
   dy: number,
   style?: OneWayDrawStyle,
 ): void {
-  const size = resolvedSize(style);
+  // `size` is the chevron's own tip-to-back length along the direction. When `style.width` is not
+  // set, `size` is instead read as the chevron's own wingspan (`2 * width`, GitHub issue #681
+  // third follow-up — matches `drawOneWayTriangle`'s circumscribed-circle diameter and
+  // `drawOneWayArrow`'s full length, all read as the indicator's own full linear extent) scaled by
+  // `WINGSPAN_FRACTION` (0.75 — GitHub issue #681 fourth follow-up: at the same `size`, an
+  // unscaled chevron/arrow looked visibly bigger than the triangle/circle markers, "looks right at
+  // size 30 like the triangle looks at 40") and `length` is derived from the resulting `width` to
+  // keep the pre-#681-third-follow-up aspect ratio (`width / length = 1.4`, "shallow: twice the
+  // original opening angle"). When `style.width` IS set, `width` stays its own independent knob
+  // (no `WINGSPAN_FRACTION` scaling — that only governs the default wingspan reading of `size`)
+  // and `length` is read from `size` directly — `drawOneWayChevronRow` relies on this to size the
+  // row's own opening (`oneWayWidth`) separately from each chevron's own length (`oneWayLength`).
+  const width = style?.width ?? resolvedSize(style) * 0.5 * WINGSPAN_FRACTION;
+  const length = style?.width !== undefined ? resolvedSize(style) : width / 1.4;
   const px = -dy;
   const py = dx;
-  const tipX = cx + dx * size;
-  const tipY = cy + dy * size;
-  const backX = cx - dx * size * 0.6;
-  const backY = cy - dy * size * 0.6;
-  const width = style?.width ?? size * 1.4; // shallow: twice the original opening angle
+  const tipX = cx + dx * length;
+  const tipY = cy + dy * length;
+  const backX = cx - dx * length * 0.6;
+  const backY = cy - dy * length * 0.6;
   const color = style?.color ?? canvas.edge.oneWay;
   const strokeWidth = resolvedThickness(style);
   const join = style?.join ?? "round";
@@ -406,14 +428,18 @@ export function drawOneWayArrow(
   dy: number,
   style?: OneWayDrawStyle,
 ): void {
-  const size = resolvedSize(style);
-  const tailX = cx - dx * size;
-  const tailY = cy - dy * size;
-  const tipX = cx + dx * size;
-  const tipY = cy + dy * size;
+  // `size` is the arrow's own full tail-to-tip length (GitHub issue #681 third follow-up — matches
+  // `drawOneWayTriangle`'s circumscribed-circle diameter and `drawOneWayChevron`'s wingspan),
+  // scaled by `WINGSPAN_FRACTION` (GitHub issue #681 fourth follow-up — see `drawOneWayChevron`'s
+  // own doc comment for why).
+  const half = resolvedSize(style) * 0.5 * WINGSPAN_FRACTION;
+  const tailX = cx - dx * half;
+  const tailY = cy - dy * half;
+  const tipX = cx + dx * half;
+  const tipY = cy + dy * half;
   const px = -dy;
   const py = dx;
-  const headSize = size * 0.5;
+  const headSize = half * 0.5;
   const headBackX = tipX - dx * headSize;
   const headBackY = tipY - dy * headSize;
   const color = style?.color ?? canvas.edge.oneWay;
