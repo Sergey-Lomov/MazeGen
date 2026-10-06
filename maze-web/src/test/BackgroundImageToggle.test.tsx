@@ -268,6 +268,51 @@ describe("BackgroundImageToggle", () => {
     expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(new Set([0x00010001]));
   });
 
+  it("locks editing immediately while the first preview calculation is pending", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    const originalPoints = new Set([0x00050005]);
+    autoFillStub.delayed = true;
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: {
+        [fieldId]: {
+          ...field,
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: originalPoints,
+        },
+      },
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(originalPoints);
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(originalPoints);
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+
+    useMazeStore.getState().addFieldPoints([[2, 0]]);
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(originalPoints);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull();
+    autoFillStub.resolve?.();
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull());
+  });
+
   it("keeps the previous preview while recalculating after a setting change", async () => {
     const fieldId = useMazeStore.getState().activeFloorId;
     const field = useMazeStore.getState().floorFields[fieldId];

@@ -8,6 +8,7 @@ const stubs = vi.hoisted(() => ({
   symmetryCells: [] as unknown[],
   origins: [] as unknown[],
   papers: [] as unknown[],
+  walls: [] as unknown[],
   graphics: [] as unknown[],
 }));
 
@@ -19,6 +20,12 @@ vi.mock("pixi.js", () => {
     y = 0;
     scale = { x: 1, y: 1 };
     addChild(child: unknown) { this.children.push(child); return child; }
+    setChildIndex(child: unknown, index: number) {
+      const current = this.children.indexOf(child);
+      if (current < 0) return;
+      this.children.splice(current, 1);
+      this.children.splice(index, 0, child);
+    }
     destroy() {}
   }
   class FakeGraphics {
@@ -40,6 +47,14 @@ vi.mock("../pixi/renderers/GridRenderer", () => ({
     render = vi.fn();
     destroy = vi.fn();
     constructor() { stubs.grids.push(this); }
+  },
+}));
+
+vi.mock("../pixi/renderers/WallRenderer", () => ({
+  WallRenderer: class {
+    render = vi.fn();
+    destroy = vi.fn();
+    constructor() { stubs.walls.push(this); }
   },
 }));
 
@@ -114,6 +129,7 @@ beforeEach(() => {
   stubs.symmetryCells.length = 0;
   stubs.origins.length = 0;
   stubs.papers.length = 0;
+  stubs.walls.length = 0;
   stubs.graphics.length = 0;
   overlays = [];
   useMazeStore.setState({
@@ -179,6 +195,19 @@ describe("FieldEditorOverlay", () => {
     expect((stubs.papers[0] as Stub).render).toHaveBeenCalled();
   });
 
+  it("uses the preset wall renderer for the field boundary even without an underlay", () => {
+    openOverlay();
+    const boundary = stubs.walls[0] as Stub;
+
+    expect(boundary.render).toHaveBeenCalledWith(
+      { edges: expect.arrayContaining([
+        expect.objectContaining({ a: [0, 0], b: [0, 1], kind: "none", style: "solid" }),
+      ]) },
+      expect.objectContaining({ type: "square" }),
+    );
+    expect(boundary.render.mock.calls[0][0].edges).toHaveLength(6);
+  });
+
   it("draws symmetry cells and polygon geometry only while symmetry is active", () => {
     const { overlay } = openOverlay();
     const state = useMazeStore.getState();
@@ -229,7 +258,7 @@ describe("FieldEditorOverlay", () => {
 
   it("cleans up subscriptions and renderer resources", () => {
     const { overlay } = openOverlay();
-    const renderers = [...stubs.grids, ...stubs.floors, ...stubs.origins, ...stubs.papers] as Stub[];
+    const renderers = [...stubs.grids, ...stubs.floors, ...stubs.origins, ...stubs.papers, ...stubs.walls] as Stub[];
     overlay.destroy();
     overlays = [];
     expect(renderers.every(renderer => renderer.destroy.mock.calls.length === 1)).toBe(true);

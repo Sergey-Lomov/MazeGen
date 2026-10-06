@@ -127,6 +127,16 @@ export function BackgroundImageToggle() {
     setBackgroundAutoFillPreview(null);
   }
 
+  function startAutoFillPreview() {
+    // Mark the editor read-only before the asynchronous pixel scan starts. Keep the current field
+    // visible until the calculated candidate is ready instead of rendering an empty placeholder.
+    const state = useMazeStore.getState();
+    setBackgroundAutoFillPreview(new Set(state.floorFields[state.activeFloorId].fieldPoints));
+    setAutoFillCalculating(true);
+    setAutoFillError(false);
+    setAutoFillPreviewActive(true);
+  }
+
   async function requestAutoFillConfirmation() {
     if (autoFillCalculating || autoFillError) return;
     let candidate = backgroundAutoFillPreview;
@@ -406,7 +416,7 @@ export function BackgroundImageToggle() {
                             layoutStyle={{ flex: 1 }}
                             aria-pressed={autoFillPreviewActive}
                             disabled={autoFillCalculating && !autoFillPreviewActive}
-                            onClick={() => autoFillPreviewActive ? cancelAutoFillPreview() : setAutoFillPreviewActive(true)}
+                            onClick={() => autoFillPreviewActive ? cancelAutoFillPreview() : startAutoFillPreview()}
                           >
                             {m["background.autofill.preview"]()}
                           </Button>

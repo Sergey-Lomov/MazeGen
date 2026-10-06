@@ -133,6 +133,10 @@ preview and restores the original field. **Confirm** can be pressed directly wit
 preview mode it also accepts Enter. Either path opens a warning that the new shape will completely
 replace the existing field. Only after the user confirms does the preview become the active custom
 field, the old point set is discarded, and downstream generated/post-edit results are reset.
+While the preview is active, field editing is read-only: canvas gestures, keyboard shortcuts,
+selection moves/deletes, primitive/mode controls, field clearing, and field-shape/configuration
+actions are disabled or ignored. This prevents edits from being applied to the hidden original
+field and reappearing if the preview is cancelled. Preview controls themselves remain available.
 
 ## Default shape per kind
 
@@ -414,6 +418,17 @@ off; clicking the other mode switches directly to it. Switching modes at any tim
 crop, scale, and position. Escape, Enter, Space, clicking outside the canvas, or clicking outside
 the active underlay exits the active mode using the same interaction contract as Transform. Hiding
 the underlay also closes its settings panel.
+
+## Field boundary frame (GitHub issue #684)
+
+While the Field Setup card is open, the editor draws a single wall-style frame around the currently
+displayed field, both with and without a background underlay and in both default and custom modes.
+It uses the same `buildPresetWallGroups` boundary-edge selection and `WallRenderer` as Preset
+Connections, including the shared wall color, width, cap, and join. The frame follows holes,
+disconnected regions, and irregular square, hexagonal, and triangular fields rather than assuming a
+rectangular outer box. It follows auto-fill and selection-move previews as well as the committed
+field. The frame is an editor aid only; it is not included in field points, generation, post-edit
+results, or image export.
 
 ## Hover highlight (custom mode)
 

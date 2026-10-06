@@ -90,6 +90,7 @@ export class FieldEditController {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
     const field = state.floorFields[state.activeFloorId];
+    if (state.backgroundAutoFillPreview !== null) return;
     if (state.openCard === "field_setup" && field.fieldEditMode === "custom" && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const operation = e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd"
         ? "add"
@@ -196,6 +197,15 @@ export class FieldEditController {
     const s = useMazeStore.getState();
     const field = s.floorFields[s.activeFloorId];
     if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
+
+    if (s.backgroundAutoFillPreview !== null) {
+      if (this.spaceHeld || button === 1) {
+        this.gestureActive = true;
+        this.gestureButton = button;
+        this.panCallbacks.startPan(canvasX, canvasY);
+      }
+      return;
+    }
 
     // Selection is strictly a left-button operation. In particular, RMB must not
     // confirm/move the current selection or start another selection gesture.
@@ -335,6 +345,13 @@ export class FieldEditController {
     const field = s.floorFields[s.activeFloorId];
     if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
 
+    if (s.backgroundAutoFillPreview !== null) {
+      if (this.gestureActive && (this.spaceHeld || this.gestureButton === 1)) {
+        this.panCallbacks.movePan(canvasX, canvasY);
+      }
+      return;
+    }
+
     if (!this.gestureActive) {
       if (field.fieldPrimitive === "symmetry") {
         this.updateSymmetryCursor(canvasX, canvasY);
@@ -459,6 +476,7 @@ export class FieldEditController {
   onDoubleClick(canvasX: number, canvasY: number, button = 0): void {
     if (button !== 0) return;
     const state = useMazeStore.getState();
+    if (state.backgroundAutoFillPreview !== null) return;
     const field = state.floorFields[state.activeFloorId];
     if (field.fieldPrimitive === "symmetry") {
       if (state.symmetryScope === "polygon" && state.symmetryPolygon.length >= 3 && state.symmetryAxisPoints.length === 2) {
@@ -557,6 +575,12 @@ export class FieldEditController {
   }
 
   onPointerUp(): void {
+    const previewing = useMazeStore.getState().backgroundAutoFillPreview !== null;
+    if (previewing) {
+      if (this.gestureActive && (this.spaceHeld || this.gestureButton === 1)) this.panCallbacks.endPan();
+      this.cancelGesture();
+      return;
+    }
     if (!this.gestureActive) return;
 
     if (this.spaceHeld || this.gestureButton === 1) {
@@ -618,6 +642,7 @@ export class FieldEditController {
   }
 
   getHoverCell(canvasX: number, canvasY: number): [number, number] | null {
+    if (useMazeStore.getState().backgroundAutoFillPreview !== null) return null;
     const grid = this.toGrid(canvasX, canvasY);
     if (!grid) return null;
     return [grid.x, grid.y];
@@ -625,6 +650,7 @@ export class FieldEditController {
 
   getMagicWandPreview(canvasX: number, canvasY: number): [number, number][] {
     const state = useMazeStore.getState();
+    if (state.backgroundAutoFillPreview !== null) return [];
     const field = state.floorFields[state.activeFloorId];
     if (field.fieldPrimitive !== "magic_wand") return [];
     const grid = this.toGrid(canvasX, canvasY);
@@ -1015,6 +1041,7 @@ export class FieldEditController {
   }
 
   private commitSelectionMove(): boolean {
+    if (useMazeStore.getState().backgroundAutoFillPreview !== null) return false;
     if (!this.selectionPreviewVisible) return false;
     const hasPendingMove = this.selectionPendingDelta.x !== 0 || this.selectionPendingDelta.y !== 0;
     if (hasPendingMove) {
@@ -1030,6 +1057,7 @@ export class FieldEditController {
   }
 
   private deleteSelection(): void {
+    if (useMazeStore.getState().backgroundAutoFillPreview !== null) return;
     if (!this.selectionPreviewVisible || this.selectionSourceCells.length === 0) return;
     this.primitiveCallbacks.onPrimitiveCommit(this.selectionSourceCells, 2);
     this.exitSelectionMode();

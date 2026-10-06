@@ -15,6 +15,10 @@ function invalidateIfChanged(patch: Partial<import("../storeTypes").MazeState>) 
 }
 
 function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () => Partial<MazeState>) {
+  // Auto-fill preview is read-only: the canvas renders the candidate set instead of the stored
+  // field, so accepting edits here would make them invisible and resurrect them when preview is
+  // cancelled. The preview's Confirm action uses applyBackgroundAutoFill, not this guard.
+  if (state.backgroundAutoFillPreview !== null) return {};
   return state.mazeDirty || state.postEditDirty
     ? { fieldEditConfirmation: pending }
     : apply();
@@ -86,6 +90,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => {
     const state = get();
+    if (state.backgroundAutoFillPreview !== null) return;
     if (state.mazeDirty || state.postEditDirty) {
       set({ fieldEditConfirmation: { kind: "setTessellationConfigForFloors", config: cfg, applyToAllStandardFloors } });
       return;
@@ -95,6 +100,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setTessellationConfigsForFloors: (configs, applyToAllStandardFloors) => {
     const state = get();
+    if (state.backgroundAutoFillPreview !== null) return;
     if (state.mazeDirty || state.postEditDirty) {
       set({ fieldEditConfirmation: { kind: "setTessellationConfigsForFloors", configs, applyToAllStandardFloors } });
       return;
@@ -117,6 +123,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   }))),
 
   setFieldEditMode: (mode) => set((state) => {
+    if (state.backgroundAutoFillPreview !== null) return {};
     if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
     const field = activeFloorField(state);
     if (mode === "custom") {
@@ -194,6 +201,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   })))),
 
   setFieldOperation: (operation) => set((state) => {
+    if (state.backgroundAutoFillPreview !== null) return {};
     const field = activeFloorField(state);
     const selectingWithSymmetry = operation === "select" && field.fieldPrimitive === "symmetry";
     return {
@@ -207,12 +215,15 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     };
   }),
 
-  setFieldPrimitive: (p) => set((state) => ({
-    ...withActiveFloorField(state, { fieldPrimitive: p }),
-    ...(p === "symmetry"
-      ? {}
-      : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
-  })),
+  setFieldPrimitive: (p) => set((state) => {
+    if (state.backgroundAutoFillPreview !== null) return {};
+    return {
+      ...withActiveFloorField(state, { fieldPrimitive: p }),
+      ...(p === "symmetry"
+        ? {}
+        : { symmetryAxisPoints: [], symmetryPolygon: [], symmetryPolygonFinished: false }),
+    };
+  }),
 
   applySymmetry: () => set((state) => guardFieldEdit(state, { kind: "applySymmetry" }, () => {
     const field = activeFloorField(state);
@@ -265,6 +276,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   copyFloorField: (sourceFloorId) => set((state) => {
     const source = state.floorFields[sourceFloorId];
     if (!source) return {};
+    if (state.backgroundAutoFillPreview !== null) return {};
     if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "copyFloorField", sourceFloorId } };
     return {
       ...withActiveFloorField(state, { ...source, fieldDirty: true }),
@@ -299,6 +311,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   }),
 
   confirmFieldEdit: () => {
+    if (get().backgroundAutoFillPreview !== null) return;
     const pending = get().fieldEditConfirmation;
     if (!pending) return;
     set(buildResetDownstreamState());
