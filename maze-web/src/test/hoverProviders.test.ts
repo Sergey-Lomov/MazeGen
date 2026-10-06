@@ -756,4 +756,59 @@ describe("zoom reset controls", () => {
       fieldEditConfirmation: previousFieldEditConfirmation,
     });
   });
+
+  it("does not exit Transform or Crop when their side-panel buttons receive pointerdown", () => {
+    const previous = useMazeStore.getState();
+    const stageHandlers: Record<string, (event?: any) => void> = {};
+    const canvas = document.createElement("canvas");
+    const interaction = new SceneInteraction({
+      app: {
+        stage: {
+          interactive: false,
+          hitArea: null,
+          on: vi.fn((event: string, handler: (event?: any) => void) => { stageHandlers[event] = handler; }),
+        },
+        canvas,
+        screen: { width: 100, height: 100 },
+      } as any,
+      viewport: fakeViewport(0, 0),
+      getFieldEditController: () => ({ cancelPointerGesture: vi.fn() }) as any,
+      fieldEditorOverlay: { updateHover: vi.fn() } as any,
+      getController: () => null,
+      getHoverProvider: () => ({ getHoverInfo: () => null }),
+      onHoverChanged: vi.fn(),
+      onViewportChanged: vi.fn(),
+      onResetZoom: vi.fn(),
+    });
+    const button = document.createElement("button");
+    button.setAttribute("data-background-image-mode-control", "true");
+    document.body.appendChild(button);
+
+    for (const mode of ["transform", "crop"] as const) {
+      useMazeStore.setState({
+        showBackgroundImage: true,
+        backgroundImage: {
+          dataUrl: "data:image/png;base64,test",
+          naturalWidth: 100,
+          naturalHeight: 100,
+          displayWidth: 100,
+          displayHeight: 100,
+          centerX: 0,
+          centerY: 0,
+          layer: "below_grid",
+          opacity: 0.5,
+        },
+        backgroundImageManualPositioning: mode === "transform",
+        backgroundImageCropping: mode === "crop",
+      });
+      button.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(mode === "transform");
+      expect(useMazeStore.getState().backgroundImageCropping).toBe(mode === "crop");
+    }
+
+    button.remove();
+    interaction.destroy();
+    useMazeStore.setState(previous);
+    expect(stageHandlers.pointerdown).toBeDefined();
+  });
 });

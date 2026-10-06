@@ -25,6 +25,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showBackgroundImage: false,
   backgroundImage: null,
   backgroundImageManualPositioning: false,
+  backgroundImageCropping: false,
+  backgroundAutoFillPreview: null,
   smoothPrimitives: true,
   symmetrySnapMode: "centers",
   symmetryScope: "one_side",
@@ -72,6 +74,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationConfirmed: true,
       ...buildPreviewState(kind, hexOrientation, triOrientation),
       floorFields,
+      backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
@@ -136,6 +139,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     return {
       tessellationKind: kind,
       floorFields,
+      backgroundAutoFillPreview: null,
       symmetryAxisPoints: [],
       symmetryPolygon: [],
       symmetryPolygonFinished: false,
@@ -176,10 +180,16 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   setBackgroundImageOpacity: (opacity) => set((state) => state.backgroundImage === null ? {} : {
     backgroundImage: { ...state.backgroundImage, opacity: Math.min(1, Math.max(0, opacity)) },
   }),
-  setBackgroundImageManualPositioning: (enabled) => set({ backgroundImageManualPositioning: enabled }),
+  setBackgroundImageManualPositioning: (enabled) => set(enabled
+    ? { backgroundImageManualPositioning: true, backgroundImageCropping: false }
+    : { backgroundImageManualPositioning: false }),
+  setBackgroundImageCropping: (enabled) => set(enabled
+    ? { backgroundImageCropping: true, backgroundImageManualPositioning: false }
+    : { backgroundImageCropping: false }),
   setBackgroundImageTransform: (transform) => set((state) => state.backgroundImage === null ? {} : {
     backgroundImage: { ...state.backgroundImage, ...transform },
   }),
+  setBackgroundAutoFillPreview: (points) => set({ backgroundAutoFillPreview: points }),
   setSmoothPrimitives: (smooth) => set({ smoothPrimitives: smooth }),
   setSymmetrySnapMode: (mode) => set({ symmetrySnapMode: mode }),
   setSymmetryScope: (scope) => set({ symmetryScope: scope }),

@@ -40,7 +40,7 @@ import { DEFAULT_MAZE_RENDER_STYLE } from "./defaultMazeRenderStyle";
 import { drawCellBoundaryHighlight, oneWayIndicatorSpan, WALL_HIGHLIGHT_SPAN } from "./renderers/wallUtils";
 import { getCellHighlightInset } from "./cellHighlightGeometry";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { BackgroundImageLayer } from "./BackgroundImageLayer";
+import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
 import { isPresetLockTool } from "../store/storeTypes";
 
@@ -77,7 +77,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
-  private readonly backgroundImage: BackgroundImageLayer;
+  private readonly backgroundImage: BackgroundImageHost;
   private readonly invalidPassages: WallRenderer;
   private readonly undecidedWalls: WallRenderer;
   private readonly presetWalls: WallRenderer;
@@ -163,12 +163,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
-    this.backgroundImage = new BackgroundImageLayer(
-      this.backgroundImageContainer,
-      this.floorContainer,
-      this.gridContainer,
-      this.invalidPassagesContainer,
-    );
+    this.backgroundImage = new BackgroundImageHost({
+      image: this.backgroundImageContainer,
+      floor: this.floorContainer,
+      grid: this.gridContainer,
+      layerAnchor: this.invalidPassagesContainer,
+    });
     this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
@@ -264,9 +264,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     }
 
     if (
-      state.showBackgroundImage !== prev.showBackgroundImage ||
-      state.backgroundImage !== prev.backgroundImage ||
-      state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning ||
+      backgroundImageChanged(state, prev) ||
       fieldChanged ||
       state.activeFloorId !== prev.activeFloorId ||
       state.presetConnections !== prev.presetConnections ||
@@ -366,7 +364,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
-    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
+    this.backgroundImage.render(state);
 
     const { undecided, preset, invalidPassages } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);

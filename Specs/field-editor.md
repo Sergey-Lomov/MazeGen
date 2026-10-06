@@ -105,7 +105,7 @@ generated field or export image.
 
 ### Background image print fitting (GitHub issue #675)
 
-Custom mode's background-image settings provide **Calculate for print**. The action uses the same
+Custom mode's background-image settings provide **Transform for print**. The action uses the same
 paper format, orientation, and horizontal/vertical margin controls as the field editor's paper
 layout, but does not ask for or change cell size, field shape, or any generation parameter. It
 fits the loaded image to the selected page's margin-inset rectangle while preserving the image
@@ -113,6 +113,30 @@ aspect ratio and centers the result at the page origin. When the custom field ed
 layout is already visible, the action skips the dialog and applies the current displayed page
 geometry immediately; otherwise it opens the page-layout dialog without changing the paper-layout
 visibility.
+
+### Background image field auto-fill (GitHub issue #676)
+
+When the field editor is open in custom mode, the background-image settings panel contains an
+**Auto-fill field** section. The section is not shown in other editors or for predefined fields.
+It contains a background detection mode (transparent pixels or a selected RGB color), the selected
+background color, and a threshold describing the required share of non-background pixels inside a
+cell. When the selected-color mode is entered, its default color is read from the source image's
+top-left pixel. This inferred color is refreshed only when the detection mode changes; changing
+the threshold or manually editing the color does not replace it. The calculation uses the current
+grid geometry and the underlay's current crop, scale, and position, classifying the pixels covered
+by each grid-cell polygon.
+
+**Preview** is a toggle. Enabling it keeps the current field in memory but hides it on the canvas
+and draws the calculated field instead. Changing the mode, color, threshold, grid, or underlay
+transform recalculates the preview immediately. Pressing Preview again or Escape cancels the
+preview and restores the original field. **Confirm** can be pressed directly without preview; in
+preview mode it also accepts Enter. Either path opens a warning that the new shape will completely
+replace the existing field. Only after the user confirms does the preview become the active custom
+field, the old point set is discarded, and downstream generated/post-edit results are reset.
+While the preview is active, field editing is read-only: canvas gestures, keyboard shortcuts,
+selection moves/deletes, primitive/mode controls, field clearing, and field-shape/configuration
+actions are disabled or ignored. This prevents edits from being applied to the hidden original
+field and reappearing if the preview is cancelled. Preview controls themselves remain available.
 
 ## Default shape per kind
 
@@ -367,7 +391,8 @@ above everything, plus opacity from 0 to 1. The underlay is not passed to genera
 analytics, or any other processing. When the image is first uploaded, it is scaled once with
 `contain` semantics against the current field bounds and centered on the field. Its display
 transform is retained when the switch is turned off and on again. The settings panel also offers
-`Position to field`, which explicitly reapplies the initial contain-and-center calculation. The
+`Transform to field`, which reapplies the contain-and-center calculation to the current cropped
+fragment. The
 original aspect ratio is always preserved, so empty space may remain along one axis of the field.
 
 For the `above_grid` mode, the render order is grid, underlay, floor cells, then the remaining
@@ -382,6 +407,28 @@ the shared canvas interaction consumes left-button drags over the image to move 
 corner resizes it while preserving the source aspect ratio. The resulting transform, layer, and
 opacity are persisted with the image. Files saved before issue #674 default to the original
 below-grid/50% behavior.
+
+The same settings panel provides a `Crop` mode (GitHub issue #680), separate from the existing
+manual positioning mode, here called `Transform`. The modes are mutually exclusive and can be
+entered from any of the three shared-underlay editors: Field Setup, Preset Connections, and
+Post-Edit. `Crop` changes the source-image rectangle that remains visible and renders only that
+source fragment; it is not viewport clipping. The cropped fragment keeps its current transform,
+and `Transform` scales and moves that fragment. Clicking the active mode button toggles that mode
+off; clicking the other mode switches directly to it. Switching modes at any time preserves the
+crop, scale, and position. Escape, Enter, Space, clicking outside the canvas, or clicking outside
+the active underlay exits the active mode using the same interaction contract as Transform. Hiding
+the underlay also closes its settings panel.
+
+## Field boundary frame (GitHub issue #684)
+
+While the Field Setup card is open, the editor draws a single wall-style frame around the currently
+displayed field, both with and without a background underlay and in both default and custom modes.
+It uses the same `buildPresetWallGroups` boundary-edge selection and `WallRenderer` as Preset
+Connections, including the shared wall color, width, cap, and join. The frame follows holes,
+disconnected regions, and irregular square, hexagonal, and triangular fields rather than assuming a
+rectangular outer box. It follows auto-fill and selection-move previews as well as the committed
+field. The frame is an editor aid only; it is not included in field points, generation, post-edit
+results, or image export.
 
 ## Hover highlight (custom mode)
 

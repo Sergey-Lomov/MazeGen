@@ -3,7 +3,7 @@ import type { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
-import { canManipulateBackgroundImage, PanState } from "./sceneTypes";
+import { backgroundImageEditMode, PanState } from "./sceneTypes";
 import type { PointerHandler } from "./sceneTypes";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { canvas } from "./colorTokens";
@@ -38,12 +38,10 @@ export class SceneInteraction {
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
-    if (canManipulateBackgroundImage(state)
-      && state.showBackgroundImage
-      && state.backgroundImageManualPositioning
+    if (backgroundImageEditMode(state) !== null
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
-      state.setBackgroundImageManualPositioning(false);
+      exitBackgroundImageMode(state);
       this.deps.getController(state)?.cancelPointerGesture();
       return;
     }
@@ -65,11 +63,14 @@ export class SceneInteraction {
 
   private onWindowPointerDown = (e: PointerEvent) => {
     const state = useMazeStore.getState();
-    if (!state.showBackgroundImage
-      || !state.backgroundImageManualPositioning
-      || this.isInsideCanvas(e.target)) return;
+    if (backgroundImageEditMode(state) === null || this.isInsideCanvas(e.target)) return;
+    // Mode buttons live in the side panel, outside the canvas. Let their click handlers
+    // toggle the current mode; otherwise this capture listener would disable the mode on
+    // pointerdown and the button's onClick would immediately enable it again.
+    const target = e.target as Element | null;
+    if (target?.closest?.("[data-background-image-mode-control]")) return;
     const controller = this.deps.getController(state);
-    state.setBackgroundImageManualPositioning(false);
+    exitBackgroundImageMode(state);
     controller?.cancelPointerGesture();
     setCanvasCursor(this.deps.app.canvas, "");
   };
@@ -97,11 +98,8 @@ export class SceneInteraction {
     stage.on("pointerdown", (e) => {
       const st = useMazeStore.getState();
       const controller = getController(st);
-      const manualBackground = canManipulateBackgroundImage(st)
-        && st.showBackgroundImage
-        && st.backgroundImageManualPositioning
-        && st.backgroundImage !== null;
-      if (manualBackground && e.button === 1) {
+      const backgroundEditActive = backgroundImageEditMode(st) !== null;
+      if (backgroundEditActive && e.button === 1) {
         this.defaultPan.begin(e.globalX, e.globalY);
         return;
       }
@@ -118,19 +116,15 @@ export class SceneInteraction {
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
       onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
-      const manualBackground = canManipulateBackgroundImage(st)
-        && st.showBackgroundImage
-        && st.backgroundImageManualPositioning
-        && st.backgroundImage !== null;
-      if (manualBackground && (e.buttons & 4) !== 0) {
+      const backgroundEditActive = backgroundImageEditMode(st) !== null;
+      if (backgroundEditActive && (e.buttons & 4) !== 0) {
         setCanvasCursor(app.canvas, "grabbing");
         this.defaultPan.move(e.globalX, e.globalY);
         return;
       }
       // Manual underlay positioning owns pointer movement even on the custom-field card, whose
       // normal pointer path otherwise takes precedence for cell editing.
-      if (canManipulateBackgroundImage(st)
-        && st.showBackgroundImage && st.backgroundImageManualPositioning && st.backgroundImage !== null) {
+      if (backgroundImageEditMode(st) !== null) {
         setCanvasCursor(app.canvas, this.deps.getBackgroundImageCursor?.(e.globalX, e.globalY) ?? "move");
         getController(st)?.onPointerMove(e.globalX, e.globalY, e.buttons, e.shiftKey);
         return;
@@ -178,11 +172,8 @@ export class SceneInteraction {
 
     stage.on("pointerup", (e) => {
       const st = useMazeStore.getState();
-      const manualBackground = canManipulateBackgroundImage(st)
-        && st.showBackgroundImage
-        && st.backgroundImageManualPositioning
-        && st.backgroundImage !== null;
-      if (manualBackground && e.button === 1) {
+      const backgroundEditActive = backgroundImageEditMode(st) !== null;
+      if (backgroundEditActive && e.button === 1) {
         this.defaultPan.end();
         return;
       }
@@ -258,4 +249,9 @@ export class SceneInteraction {
     const contains = (this.deps.app.canvas as unknown as { contains?: (node: Node) => boolean }).contains;
     return typeof contains === "function" && target instanceof Node && contains.call(this.deps.app.canvas, target);
   }
+}
+
+function exitBackgroundImageMode(state: ReturnType<typeof useMazeStore.getState>): void {
+  if (state.backgroundImageCropping) state.setBackgroundImageCropping(false);
+  else state.setBackgroundImageManualPositioning(false);
 }

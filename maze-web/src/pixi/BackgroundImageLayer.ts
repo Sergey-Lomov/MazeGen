@@ -1,11 +1,36 @@
-import { Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import type { BackgroundImage, BackgroundImageLayerMode } from "../store/tessellationTypes";
 import type { PrintExportSettings } from "../store/storeTypes";
+import type { MazeState } from "../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { getCellVertices } from "./tessellationGeometry";
 import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
+import { backgroundImageEditMode } from "./sceneTypes";
 
 export const BACKGROUND_IMAGE_ALPHA = 0.5;
+
+export interface BackgroundImageHostContainers {
+  image: Container;
+  floor: Container;
+  grid: Container;
+  layerAnchor: Container;
+}
+
+export function backgroundImageChanged(state: MazeState, prev: MazeState): boolean {
+  return state.showBackgroundImage !== prev.showBackgroundImage
+    || state.backgroundImage !== prev.backgroundImage
+    || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning
+    || state.backgroundImageCropping !== prev.backgroundImageCropping;
+}
+
+export type BackgroundImageEditMode = "transform" | "crop" | null;
+
+export interface BackgroundImageCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface FieldBounds {
   minX: number;
@@ -30,25 +55,66 @@ export function fieldBounds(cells: readonly [number, number][], cfg: Tessellatio
   return Object.values(bounds).every(Number.isFinite) ? bounds : null;
 }
 
+/** Returns a valid source-image crop, defaulting old in-memory/project values to the full image. */
+export function backgroundImageCrop(image: BackgroundImage): BackgroundImageCrop {
+  const x = Number.isFinite(image.cropX) ? image.cropX! : 0;
+  const y = Number.isFinite(image.cropY) ? image.cropY! : 0;
+  const width = Number.isFinite(image.cropWidth) ? image.cropWidth! : image.naturalWidth;
+  const height = Number.isFinite(image.cropHeight) ? image.cropHeight! : image.naturalHeight;
+  return {
+    x: Math.max(0, Math.min(image.naturalWidth - 1, x)),
+    y: Math.max(0, Math.min(image.naturalHeight - 1, y)),
+    width: Math.max(1, Math.min(image.naturalWidth - Math.max(0, Math.min(image.naturalWidth - 1, x)), width)),
+    height: Math.max(1, Math.min(image.naturalHeight - Math.max(0, Math.min(image.naturalHeight - 1, y)), height)),
+  };
+}
+
+/** World-units-per-source-pixel scale for the already-cropped fragment. */
+export function backgroundImageSourceScale(image: BackgroundImage): number {
+  const crop = backgroundImageCrop(image);
+  return image.displayWidth / crop.width;
+}
+
+/** World-space center of the complete source image under the current crop transform. */
+export function backgroundImageFullCenter(image: BackgroundImage): { x: number; y: number } {
+  const crop = backgroundImageCrop(image);
+  const scale = backgroundImageSourceScale(image);
+  return {
+    x: image.centerX - (crop.x + crop.width / 2 - image.naturalWidth / 2) * scale,
+    y: image.centerY - (crop.y + crop.height / 2 - image.naturalHeight / 2) * scale,
+  };
+}
+
 /** Computes a centered contain transform once when the image is enabled. */
 export function calculateBackgroundImageLayout(
   dataUrl: string,
   naturalWidth: number,
   naturalHeight: number,
   bounds: FieldBounds,
+  crop: BackgroundImageCrop = { x: 0, y: 0, width: naturalWidth, height: naturalHeight },
 ): BackgroundImage {
   if (!Number.isFinite(naturalWidth) || naturalWidth <= 0 || !Number.isFinite(naturalHeight) || naturalHeight <= 0) {
     throw new Error("Underlay dimensions must be positive finite numbers");
   }
+  if (!Number.isFinite(crop.x) || !Number.isFinite(crop.y)
+    || !Number.isFinite(crop.width) || !Number.isFinite(crop.height)
+    || crop.x < 0 || crop.y < 0 || crop.width <= 0 || crop.height <= 0
+    || crop.x + crop.width > naturalWidth || crop.y + crop.height > naturalHeight) {
+    throw new Error("Underlay crop must be inside the source image");
+  }
   const fieldWidth = Math.max(1, bounds.maxX - bounds.minX);
   const fieldHeight = Math.max(1, bounds.maxY - bounds.minY);
-  const scale = Math.min(fieldWidth / naturalWidth, fieldHeight / naturalHeight);
+  const scale = Math.min(fieldWidth / crop.width, fieldHeight / crop.height);
   return {
     dataUrl,
     naturalWidth,
     naturalHeight,
-    displayWidth: naturalWidth * scale,
-    displayHeight: naturalHeight * scale,
+    cropX: crop.x,
+    cropY: crop.y,
+    cropWidth: crop.width,
+    cropHeight: crop.height,
+    displayWidth: crop.width * scale,
+    displayHeight: crop.height * scale,
     centerX: (bounds.minX + bounds.maxX) / 2,
     centerY: (bounds.minY + bounds.maxY) / 2,
     layer: "below_grid",
@@ -66,6 +132,7 @@ export function calculateBackgroundImagePageLayout(
   naturalHeight: number,
   config: Pick<TessellationConfig, "type">,
   settings: PrintExportSettings,
+  crop: BackgroundImageCrop = { x: 0, y: 0, width: naturalWidth, height: naturalHeight },
 ): BackgroundImage {
   const geometry = paperLayoutWorldGeometry(config, settings);
   if (!geometry) throw new Error("Paper layout has invalid dimensions");
@@ -80,7 +147,7 @@ export function calculateBackgroundImagePageLayout(
     minY: -pageHeight / 2,
     maxX: pageWidth / 2,
     maxY: pageHeight / 2,
-  });
+  }, crop);
 }
 
 /** A deliberately feature-local display primitive. It is mounted only by the field, preset,
@@ -90,10 +157,13 @@ export class BackgroundImageLayer {
   private readonly frameContainer: Container;
   private readonly frame: Graphics;
   private sprite: Sprite | null = null;
+  private fullSprite: Sprite | null = null;
+  private sourceTexture: Texture | null = null;
   private dataUrl: string | null = null;
   private loadingDataUrl: string | null = null;
   private loadingImage: BackgroundImage | null = null;
-  private loadingInteractive = false;
+  private loadingInteractive: BackgroundImageEditMode = null;
+  private renderedCropKey: string | null = null;
   private loadToken = 0;
 
   constructor(
@@ -111,23 +181,29 @@ export class BackgroundImageLayer {
     (container.parent ?? container).addChild(this.frameContainer);
   }
 
-  render(image: BackgroundImage | null, visible: boolean, interactive = false): void {
+  render(image: BackgroundImage | null, visible: boolean, interactive: boolean | BackgroundImageEditMode = false): void {
+    const editMode: BackgroundImageEditMode = interactive === true ? "transform" : interactive || null;
     this.applyLayerOrder(image?.layer ?? "below_grid");
     if (!image || !visible) {
       this.loadToken++;
       this.loadingDataUrl = null;
       this.loadingImage = null;
       if (this.sprite) this.sprite.visible = false;
+      if (this.fullSprite) this.fullSprite.visible = false;
       this.frameContainer.visible = false;
       return;
     }
 
     if (this.dataUrl !== image.dataUrl) {
-      this.sprite?.destroy();
+      this.destroySprite(this.sprite);
+      this.destroySprite(this.fullSprite);
+      this.sourceTexture?.destroy?.();
       this.sprite = null;
+      this.fullSprite = null;
+      this.sourceTexture = null;
       this.dataUrl = null;
       this.loadingImage = image;
-      this.loadingInteractive = interactive;
+      this.loadingInteractive = editMode;
       this.frameContainer.visible = false;
       if (this.loadingDataUrl !== image.dataUrl) {
         this.loadingDataUrl = image.dataUrl;
@@ -136,46 +212,107 @@ export class BackgroundImageLayer {
       return;
     }
 
-    if (!this.sprite) return;
+    if (!this.sprite || !this.sourceTexture) return;
+    const crop = backgroundImageCrop(image);
+    const cropKey = `${crop.x}:${crop.y}:${crop.width}:${crop.height}`;
+    if (this.renderedCropKey !== cropKey) {
+      this.destroySprite(this.sprite);
+      this.sprite = this.createSprite(this.sourceTexture.source, image);
+      this.container.addChild(this.sprite);
+      this.renderedCropKey = cropKey;
+    }
     this.sprite.visible = true;
-    this.applyLayout(this.sprite, image, interactive);
+    this.applyLayout(this.sprite, image, editMode);
+    this.applyFullLayout(image, editMode);
   }
 
   private async loadSprite(image: BackgroundImage, token: number): Promise<void> {
     try {
       const resource = await loadImageElement(image.dataUrl);
       if (token !== this.loadToken || this.loadingDataUrl !== image.dataUrl) return;
-      const latestImage = this.loadingImage ?? image;
-      const sprite = new Sprite(Texture.from(resource, true));
-      sprite.anchor.set(0.5);
-      this.container.addChild(sprite);
-      this.sprite = sprite;
-      this.dataUrl = image.dataUrl;
-      this.loadingDataUrl = null;
-      this.loadingImage = null;
-      sprite.visible = true;
-      this.applyLayout(sprite, latestImage, this.loadingInteractive);
-      this.loadingInteractive = false;
+       const latestImage = this.loadingImage ?? image;
+       const sourceTexture = Texture.from(resource, true);
+       const sprite = this.createSprite(sourceTexture.source, latestImage);
+       const fullSprite = this.loadingInteractive === "crop"
+         ? this.createFullSprite(sourceTexture.source, resource.naturalWidth, resource.naturalHeight)
+         : null;
+       if (fullSprite) this.container.addChild(fullSprite);
+       this.container.addChild(sprite);
+       this.sprite = sprite;
+       this.fullSprite = fullSprite;
+       this.sourceTexture = sourceTexture;
+       this.dataUrl = image.dataUrl;
+       this.renderedCropKey = this.cropKey(latestImage);
+       this.loadingDataUrl = null;
+       this.loadingImage = null;
+       sprite.visible = true;
+       this.applyLayout(sprite, latestImage, this.loadingInteractive);
+       this.applyFullLayout(latestImage, this.loadingInteractive);
+       this.loadingInteractive = null;
     } catch {
       if (token === this.loadToken) this.loadingDataUrl = null;
     }
   }
 
-  private applyLayout(sprite: Sprite, image: BackgroundImage, interactive: boolean): void {
+  private createSprite(source: Texture["source"], image: BackgroundImage): Sprite {
+    const crop = backgroundImageCrop(image);
+    const texture = new Texture({
+      source,
+      frame: new Rectangle(crop.x, crop.y, crop.width, crop.height),
+      orig: new Rectangle(0, 0, crop.width, crop.height),
+    });
+    const sprite = new Sprite(texture);
+    sprite.anchor.set(0.5);
+    return sprite;
+  }
+
+  private createFullSprite(source: Texture["source"], width: number, height: number): Sprite {
+    const sprite = new Sprite(new Texture({
+      source,
+      frame: new Rectangle(0, 0, width, height),
+      orig: new Rectangle(0, 0, width, height),
+    }));
+    sprite.anchor.set(0.5);
+    return sprite;
+  }
+
+  private applyLayout(sprite: Sprite, image: BackgroundImage, editMode: BackgroundImageEditMode): void {
+    const crop = backgroundImageCrop(image);
     sprite.position.set(image.centerX, image.centerY);
     sprite.alpha = Number.isFinite(image.opacity)
       ? Math.min(1, Math.max(0, image.opacity))
       : BACKGROUND_IMAGE_ALPHA;
     sprite.scale.set(
-      image.displayWidth / image.naturalWidth,
-      image.displayHeight / image.naturalHeight,
+      image.displayWidth / crop.width,
+      image.displayHeight / crop.height,
     );
-    this.drawFrame(image, interactive);
+    this.drawFrame(image, editMode);
   }
 
-  private drawFrame(image: BackgroundImage, interactive: boolean): void {
+  private applyFullLayout(image: BackgroundImage, editMode: BackgroundImageEditMode): void {
+    if (editMode !== "crop") {
+      if (this.fullSprite) this.fullSprite.visible = false;
+      return;
+    }
+    if (!this.fullSprite && this.sourceTexture) {
+      this.fullSprite = this.createFullSprite(this.sourceTexture.source, image.naturalWidth, image.naturalHeight);
+      this.container.addChild(this.fullSprite);
+      this.container.setChildIndex(this.fullSprite, 0);
+    }
+    if (!this.fullSprite) return;
+    const scale = backgroundImageSourceScale(image);
+    const center = backgroundImageFullCenter(image);
+    this.fullSprite.position.set(center.x, center.y);
+    this.fullSprite.alpha = (Number.isFinite(image.opacity)
+      ? Math.min(1, Math.max(0, image.opacity))
+      : BACKGROUND_IMAGE_ALPHA) * 0.35;
+    this.fullSprite.scale.set(scale, scale);
+    this.fullSprite.visible = true;
+  }
+
+  private drawFrame(image: BackgroundImage, editMode: BackgroundImageEditMode): void {
     this.frame.clear();
-    if (!interactive) {
+    if (editMode === null) {
       this.frameContainer.visible = false;
       return;
     }
@@ -201,6 +338,18 @@ export class BackgroundImageLayer {
     this.frameContainer.parent?.setChildIndex(this.frameContainer, this.frameContainer.parent.children.length - 1);
   }
 
+  private cropKey(image: BackgroundImage): string {
+    const crop = backgroundImageCrop(image);
+    return `${crop.x}:${crop.y}:${crop.width}:${crop.height}`;
+  }
+
+  private destroySprite(sprite: Sprite | null): void {
+    if (!sprite) return;
+    const texture = (sprite as unknown as { texture?: Texture & { destroy?: () => void } }).texture;
+    if (texture) texture.destroy?.();
+    sprite.destroy();
+  }
+
   private applyLayerOrder(layer: BackgroundImageLayerMode): void {
     const parent = this.container.parent;
     if (!parent) return;
@@ -220,14 +369,41 @@ export class BackgroundImageLayer {
   }
 
   destroy(): void {
-    this.sprite?.destroy();
+    this.destroySprite(this.sprite);
+    this.destroySprite(this.fullSprite);
     this.sprite = null;
+    this.fullSprite = null;
+    this.sourceTexture?.destroy?.();
+    this.sourceTexture = null;
     this.dataUrl = null;
     this.loadingDataUrl = null;
     this.loadingImage = null;
-    this.loadingInteractive = false;
+    this.loadingInteractive = null;
+    this.renderedCropKey = null;
     this.loadToken++;
     this.frameContainer.destroy?.({ children: true });
+  }
+}
+
+/** Owns the shared underlay layer's feature-renderer wiring. */
+export class BackgroundImageHost {
+  private readonly layer: BackgroundImageLayer;
+
+  constructor(containers: BackgroundImageHostContainers) {
+    this.layer = new BackgroundImageLayer(
+      containers.image,
+      containers.floor,
+      containers.grid,
+      containers.layerAnchor,
+    );
+  }
+
+  render(state: MazeState, visible = state.showBackgroundImage): void {
+    this.layer.render(state.backgroundImage, visible, backgroundImageEditMode(state));
+  }
+
+  destroy(): void {
+    this.layer.destroy();
   }
 }
 

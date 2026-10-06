@@ -22,6 +22,7 @@ beforeEach(() => {
     mazeDirty: false,
     postEditDirty: false,
     fieldEditConfirmation: null,
+    backgroundAutoFillPreview: null,
   });
 });
 
@@ -209,6 +210,37 @@ describe("mazeStore tessellation misc actions", () => {
     const field = activeField();
     expect(field.fieldPoints.size).toBe(3);
     expect(field.fieldDirty).toBe(true);
+  });
+
+  it("locks field mutations while the auto-fill preview is active", () => {
+    const originalPoints = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
+    setActiveField({
+      fieldEditMode: "custom",
+      fieldPoints: originalPoints,
+      freeFieldPoints: { ...emptyFreePoints(), square: originalPoints },
+      fieldPrimitive: "point",
+      fieldOperation: "add",
+      tessellationConfig: { type: "square_custom", points: [[0, 0], [1, 0]] },
+    });
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(4, 4)]) });
+
+    const store = useMazeStore.getState();
+    store.setFieldOperation("remove");
+    store.setFieldPrimitive("polygon");
+    store.addFieldPoints([[2, 0]]);
+    store.removeFieldPoints([[0, 0]]);
+    store.moveFieldPoints([[0, 0]], 3, 3);
+    store.clearFieldPoints();
+    store.setTessellationConfig({ type: "square", width: 8, height: 8 });
+    store.setFieldEditMode("default");
+
+    const field = activeField();
+    expect(field.fieldPoints).toEqual(originalPoints);
+    expect(field.fieldPrimitive).toBe("point");
+    expect(field.fieldOperation).toBe("add");
+    expect(field.tessellationConfig).toEqual({ type: "square_custom", points: [[0, 0], [1, 0]] });
+    expect(field.fieldEditMode).toBe("custom");
+    expect(useMazeStore.getState().fieldEditConfirmation).toBeNull();
   });
 
   it("addFieldPoints is no-op when all cells already present", () => {

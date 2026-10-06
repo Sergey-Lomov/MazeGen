@@ -13,10 +13,16 @@ export type SymmetrySnapMode = "centers" | "corners" | "free";
 export type SymmetryScope = "everything" | "one_side" | "polygon";
 export type SymmetryPoint = { x: number; y: number };
 export type BackgroundImageLayerMode = "below_grid" | "above_grid" | "above_floor" | "above_everything";
+export type BackgroundAutoFillMode = "transparent" | "color";
 export interface BackgroundImage {
   dataUrl: string;
   naturalWidth: number;
   naturalHeight: number;
+  /** Source-image crop rectangle in natural-image pixels. Optional for in-memory legacy fixtures. */
+  cropX?: number;
+  cropY?: number;
+  cropWidth?: number;
+  cropHeight?: number;
   displayWidth: number;
   displayHeight: number;
   centerX: number;
@@ -73,6 +79,10 @@ export interface TessellationState {
   backgroundImage: BackgroundImage | null;
   /** Enables direct drag/resize interaction with the shared underlay on the canvas. */
   backgroundImageManualPositioning: boolean;
+  /** Enables source-image crop interaction with the shared underlay on the canvas. */
+  backgroundImageCropping: boolean;
+  /** Transient custom-field preview produced by the underlay auto-fill tool. */
+  backgroundAutoFillPreview: Set<number> | null;
   smoothPrimitives: boolean;
   symmetrySnapMode: SymmetrySnapMode;
   symmetryScope: SymmetryScope;
@@ -104,7 +114,9 @@ export interface TessellationActions {
   setBackgroundImageLayer: (layer: BackgroundImageLayerMode) => void;
   setBackgroundImageOpacity: (opacity: number) => void;
   setBackgroundImageManualPositioning: (enabled: boolean) => void;
+  setBackgroundImageCropping: (enabled: boolean) => void;
   setBackgroundImageTransform: (transform: Pick<BackgroundImage, "displayWidth" | "displayHeight" | "centerX" | "centerY">) => void;
+  setBackgroundAutoFillPreview: (points: Set<number> | null) => void;
   setSmoothPrimitives: (smooth: boolean) => void;
   setSymmetrySnapMode: (mode: SymmetrySnapMode) => void;
   setSymmetryScope: (scope: SymmetryScope) => void;
@@ -177,6 +189,7 @@ export interface FloorFieldsActions {
   /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
    * #338's "Copy floor" dialog). */
   copyFloorField: (sourceFloorId: string) => void;
+  applyBackgroundAutoFill: (points: Set<number>) => void;
   confirmFieldEdit: () => void;
   cancelFieldEdit: () => void;
 }

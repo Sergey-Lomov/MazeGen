@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { FieldSetupFeature, fieldSetupSubtitle } from "../components/features/FieldSetupFeature";
 import { configSizeDescription } from "../components/dialogs/FieldPrintSizingDialog";
@@ -8,11 +8,30 @@ import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
 
+vi.mock("../components/BackgroundImageToggle", () => ({
+  BackgroundImageToggle: () => null,
+}));
+
 beforeEach(() => {
-  useMazeStore.setState(baseStoreState());
+  useMazeStore.setState({ ...baseStoreState(), backgroundAutoFillPreview: null });
 });
 
 describe("FieldSetupFeature — Copy floor button", () => {
+  it("disables field editing controls while an auto-fill preview is active", () => {
+    useMazeStore.setState({
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldEditMode: "custom", isEditingField: true }),
+      },
+      backgroundAutoFillPreview: new Set([0]),
+    });
+    render(<FieldSetupFeature />);
+
+    expect(screen.getByRole("button", { name: "Standard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add (+)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
+  });
+
   const descriptionCases: [FieldConfig, string][] = [
     [{ type: "square", width: 20, height: 28 }, "Field size: 20 × 28 cells"],
     [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],

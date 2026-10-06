@@ -58,6 +58,7 @@ function lastPolygon(updates: PrimitiveWorldGeometry[]): Extract<PrimitiveWorldG
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
+    backgroundAutoFillPreview: null,
     openCard: "field_setup",
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
@@ -521,6 +522,31 @@ describe("FieldEditController symmetry interaction", () => {
 });
 
 describe("FieldEditController point interaction", () => {
+  it("ignores editing gestures and shortcuts while an auto-fill preview is active", () => {
+    const originalPoints = new Set([encodePoint(0, 0)]);
+    useMazeStore.setState({
+      backgroundAutoFillPreview: new Set([encodePoint(3, 3)]),
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          fieldEditMode: "custom",
+          fieldPrimitive: "point",
+          fieldOperation: "add",
+          fieldPoints: originalPoints,
+        }),
+      },
+    });
+    const { controller, commits } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerMove(60, -20, 1);
+    controller.onPointerUp();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "+", code: "Equal" }));
+
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(originalPoints);
+    expect(commits).toHaveLength(0);
+    expect(controller.getHoverCell(20, -20)).toBeNull();
+  });
+
   it("inverts add/remove with RMB", () => {
     useMazeStore.setState({
       floorFields: {

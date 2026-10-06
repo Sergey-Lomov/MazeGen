@@ -32,9 +32,10 @@ interface SizeParamProps {
   min: number;
   max: number;
   onCommit: (v: number) => void;
+  disabled?: boolean;
 }
 
-function SizeParam({ label, value, min, max, onCommit }: SizeParamProps) {
+function SizeParam({ label, value, min, max, onCommit, disabled = false }: SizeParamProps) {
   const [local, setLocal] = useState(String(value));
 
   useEffect(() => { setLocal(String(value)); }, [value]);
@@ -55,6 +56,7 @@ function SizeParam({ label, value, min, max, onCommit }: SizeParamProps) {
         min={min}
         max={max}
         value={local}
+        disabled={disabled}
         onChange={(e) => setLocal(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); } }}
@@ -97,6 +99,7 @@ export function FieldSetupFeature() {
   const smoothPrimitives = useMazeStore((s) => s.smoothPrimitives);
   const setSmoothPrimitives = useMazeStore((s) => s.setSmoothPrimitives);
   const floorCount = useMazeStore((s) => s.floors.length);
+  const fieldEditLocked = useMazeStore((s) => s.backgroundAutoFillPreview !== null);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
   const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
@@ -139,6 +142,7 @@ export function FieldSetupFeature() {
           {m["field.shape"]()}
           <select style={styles.select} value={squareShape}
             name="field-square-shape"
+            disabled={fieldEditLocked}
             onChange={(e) => setSquareShape(e.target.value as SquareShape)}>
             <option value="rect">{m["field.shape.rect"]()}</option>
             <option value="circle">{m["field.shape.circle"]()}</option>
@@ -153,6 +157,7 @@ export function FieldSetupFeature() {
           {m["field.shape"]()}
           <select style={styles.select} value={hexShape}
             name="field-hex-shape"
+            disabled={fieldEditLocked}
             onChange={(e) => setHexShape(e.target.value as HexShape)}>
             <option value="rectangle">{m["field.shape.rectangle"]()}</option>
             <option value="circle">{m["field.shape.circle"]()}</option>
@@ -168,6 +173,7 @@ export function FieldSetupFeature() {
         {m["field.shape"]()}
         <select style={styles.select} value={triangleShape}
           name="field-triangle-shape"
+          disabled={fieldEditLocked}
           onChange={(e) => setTriangleShape(e.target.value as TriangleShape)}>
           <option value="rect">{m["field.shape.rect"]()}</option>
           <option value="triangle">{m["field.shape.triangle"]()}</option>
@@ -182,44 +188,44 @@ export function FieldSetupFeature() {
     if (tessellationConfig.type === "square") {
       return (
         <>
-          <SizeParam label={m["field.width"]()} value={tessellationConfig.width} min={1} max={200} onCommit={(v) => setField("width", v)} />
-          <SizeParam label={m["field.height"]()} value={tessellationConfig.height} min={1} max={200} onCommit={(v) => setField("height", v)} />
+          <SizeParam label={m["field.width"]()} value={tessellationConfig.width} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("width", v)} />
+          <SizeParam label={m["field.height"]()} value={tessellationConfig.height} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("height", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "square_circle") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={100} onCommit={(v) => setField("radius", v)} />;
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
     }
     if (tessellationConfig.type === "square_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} onCommit={(v) => setField("side", v)} />;
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
     }
     if (tessellationConfig.type === "hex_rectangle" || tessellationConfig.type === "hex_parallelogram") {
       return (
         <>
-          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
+          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
+          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "hex_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} onCommit={(v) => setField("side", v)} />;
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
     }
     if (tessellationConfig.type === "hex_circle" || tessellationConfig.type === "hex_hexagon") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} onCommit={(v) => setField("radius", v)} />;
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
     }
     if (tessellationConfig.type === "triangle_rect") {
       return (
         <>
-          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
+          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
+          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "triangle_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={30} onCommit={(v) => setField("side", v)} />;
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={30} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
     }
     if (tessellationConfig.type === "triangle_circle" || tessellationConfig.type === "triangle_hexagon") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={15} onCommit={(v) => setField("radius", v)} />;
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={15} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
     }
     return null;
   }
@@ -234,12 +240,14 @@ export function FieldSetupFeature() {
       <Inline gap="itemGap">
         <Button
           variant={isCustom ? "toggle" : "toggle-selected"}
+          disabled={fieldEditLocked}
           onClick={handleSwitchToDefault}
         >
           {m["field.default"]()}
         </Button>
         <Button
           variant={isCustom ? "toggle-selected" : "toggle"}
+          disabled={fieldEditLocked}
           onClick={() => setFieldEditMode("custom")}
         >
           {m["field.custom"]()}
@@ -251,6 +259,7 @@ export function FieldSetupFeature() {
           {renderParams()}
           <Button
             variant="secondary"
+            disabled={fieldEditLocked}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={() => setPrintSizingDialogOpen(true)}
           >
@@ -266,6 +275,7 @@ export function FieldSetupFeature() {
               <ToolIconButton
                 key={operation}
                 selected={fieldOperation === operation}
+                disabled={fieldEditLocked}
                 title={m[`field.mode.${operation}` as "field.mode.add" | "field.mode.remove" | "field.mode.select"]()}
                 onClick={() => setFieldOperation(operation)}
               >
@@ -279,7 +289,7 @@ export function FieldSetupFeature() {
             <ToolIconButton
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
-              disabled={tool.primitive === "symmetry" && fieldOperation === "select"}
+              disabled={fieldEditLocked || (tool.primitive === "symmetry" && fieldOperation === "select")}
               title={tool.primitive === "polygon"
                 ? tool.label + "\n" + m["field.polygon.shift_tooltip"]()
                 : tool.primitive === "magic_wand"
@@ -295,14 +305,14 @@ export function FieldSetupFeature() {
           </Inline>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_primitive_frame"]()}</span>
-            <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} />
+            <Switch checked={showPrimitiveFrame} onChange={setShowPrimitiveFrame} disabled={fieldEditLocked} />
           </div>
           <div style={styles.originRow}>
             <span style={styles.smoothingLabelGroup}>
               <span style={styles.originLabel}>{m["field.smooth_primitives"]()}</span>
               <InfoIconButton onClick={() => setSmoothingInfoOpen(true)} />
             </span>
-            <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} />
+            <Switch checked={smoothPrimitives} onChange={setSmoothPrimitives} disabled={fieldEditLocked} />
           </div>
           <div style={styles.originRow}>
             <ToggleRow
@@ -323,6 +333,7 @@ export function FieldSetupFeature() {
           </div>
           <Button
             variant="destructive"
+            disabled={fieldEditLocked}
             layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={handleClearField}
           >
@@ -333,6 +344,7 @@ export function FieldSetupFeature() {
       {floorCount > 1 && (
         <Button
           variant="secondary"
+          disabled={fieldEditLocked}
           layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
           onClick={() => setCopyFloorDialogOpen(true)}
         >

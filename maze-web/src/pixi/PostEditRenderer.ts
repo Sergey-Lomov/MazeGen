@@ -22,7 +22,7 @@ import { WALL_THICKNESS } from "./renderConstants";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { BackgroundImageLayer } from "./BackgroundImageLayer";
+import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -55,7 +55,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
-  private readonly backgroundImage: BackgroundImageLayer;
+  private readonly backgroundImage: BackgroundImageHost;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
   private readonly teleports: TeleportRenderer;
@@ -131,12 +131,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
-    this.backgroundImage = new BackgroundImageLayer(
-      this.backgroundImageContainer,
-      this.floorContainer,
-      this.gridContainer,
-      this.closedCellsContainer,
-    );
+    this.backgroundImage = new BackgroundImageHost({
+      image: this.backgroundImageContainer,
+      floor: this.floorContainer,
+      grid: this.gridContainer,
+      layerAnchor: this.closedCellsContainer,
+    });
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls       = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
@@ -212,10 +212,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
-    if (state.showBackgroundImage !== prev.showBackgroundImage
-      || state.backgroundImage !== prev.backgroundImage
-      || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning) {
-      this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
+    if (backgroundImageChanged(state, prev)) {
+      this.backgroundImage.render(state);
     }
 
     if (
@@ -486,7 +484,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
-    this.backgroundImage.render(state.backgroundImage, state.showBackgroundImage, state.backgroundImageManualPositioning);
+    this.backgroundImage.render(state);
 
     // Split points (GitHub issue #223) render every node's passages at once, as colored lines
     // from a small per-node point to each face it connects across — see `buildSplitPassages`.

@@ -4,11 +4,36 @@ import { BackgroundImageToggle } from "../components/BackgroundImageToggle";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 
+const autoFillStub = vi.hoisted(() => ({
+  delayed: false,
+  nextPoints: new Set([0x00010001]),
+  resolve: null as (() => void) | null,
+  topLeftColor: vi.fn(() => Promise.resolve(0x123456)),
+  rejectPreview: false,
+}));
+
+vi.mock("../pixi/backgroundFieldAutofill", () => ({
+  getBackgroundImageTopLeftColor: autoFillStub.topLeftColor,
+  buildBackgroundFieldPreviewFromImage: vi.fn(() => {
+    if (autoFillStub.rejectPreview) return Promise.reject(new Error("preview failed"));
+    if (!autoFillStub.delayed) return Promise.resolve(new Set(autoFillStub.nextPoints));
+    return new Promise<Set<number>>((resolve) => {
+      autoFillStub.resolve = () => resolve(new Set(autoFillStub.nextPoints));
+    });
+  }),
+}));
+
 vi.mock("../pixi/fieldEditUtils", () => ({
   resolveCells: () => [[0, 0]],
 }));
 
 vi.mock("../pixi/BackgroundImageLayer", () => ({
+  backgroundImageCrop: (image: { cropX?: number; cropY?: number; cropWidth?: number; cropHeight?: number; naturalWidth: number; naturalHeight: number }) => ({
+    x: image.cropX ?? 0,
+    y: image.cropY ?? 0,
+    width: image.cropWidth ?? image.naturalWidth,
+    height: image.cropHeight ?? image.naturalHeight,
+  }),
   fieldBounds: () => ({ minX: -10, minY: -10, maxX: 10, maxY: 10 }),
   calculateBackgroundImageLayout: (
     dataUrl: string,
@@ -61,6 +86,11 @@ class FakeImage {
 }
 
 beforeEach(() => {
+  autoFillStub.delayed = false;
+  autoFillStub.nextPoints = new Set([0x00010001]);
+  autoFillStub.resolve = null;
+  autoFillStub.topLeftColor.mockClear();
+  autoFillStub.rejectPreview = false;
   useMazeStore.setState({
     ...baseStoreState(),
     showBackgroundImage: false,
@@ -147,16 +177,269 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    expect(screen.getByRole("button", { name: "Manual positioning" })).toHaveClass("btn-secondary");
-    expect(screen.getByRole("button", { name: "Position to field" })).toHaveClass("btn-secondary");
-    expect(screen.getByRole("button", { name: "Calculate for print" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform to field" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Transform for print" })).toHaveClass("btn-secondary");
     expect(screen.getByRole("button", { name: "Replace underlay" })).toHaveClass("btn-secondary");
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "above_floor" } });
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0.75" } });
-    fireEvent.click(screen.getByRole("button", { name: "Manual positioning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform" }));
 
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ layer: "above_floor", opacity: 0.75 });
     expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(true);
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Transform" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(false);
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Transform" }));
+    expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(useMazeStore.getState().backgroundImageCropping).toBe(false);
+  });
+
+  it("closes the settings panel when the underlay is hidden", () => {
+    useMazeStore.setState({
+      showBackgroundImage: true,
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    expect(screen.getByText("Underlay settings")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Underlay" }));
+
+    expect(useMazeStore.getState().showBackgroundImage).toBe(false);
+    expect(screen.queryByText("Underlay settings")).not.toBeInTheDocument();
+  });
+
+  it("offers auto-fill only for a custom field and keeps preview separate until confirmation", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: {
+        [fieldId]: {
+          ...field,
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: new Set([0x00050005]),
+        },
+      },
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    expect(screen.getByText("Auto-fill field")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).not.toBeNull());
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(new Set([0x00050005]));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByText("The new field shape will completely replace the existing field. Continue?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Ok" }));
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(new Set([0x00010001]));
+  });
+
+  it("locks editing immediately while the first preview calculation is pending", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    const originalPoints = new Set([0x00050005]);
+    autoFillStub.delayed = true;
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: {
+        [fieldId]: {
+          ...field,
+          fieldEditMode: "custom",
+          isEditingField: true,
+          fieldPoints: originalPoints,
+        },
+      },
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(originalPoints);
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(originalPoints);
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+
+    useMazeStore.getState().addFieldPoints([[2, 0]]);
+    expect(useMazeStore.getState().floorFields[fieldId].fieldPoints).toEqual(originalPoints);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull();
+    autoFillStub.resolve?.();
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull());
+  });
+
+  it("keeps the previous preview while recalculating after a setting change", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: { [fieldId]: { ...field, fieldEditMode: "custom", isEditingField: true } },
+    });
+    render(<BackgroundImageToggle />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001])));
+
+    autoFillStub.delayed = true;
+    autoFillStub.nextPoints = new Set([0x00020002]);
+    fireEvent.change(screen.getAllByRole("slider")[1], { target: { value: "0.6" } });
+
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001]));
+    autoFillStub.resolve?.();
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00020002])));
+  });
+
+  it("recalculates preview when the field grid configuration changes", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: { [fieldId]: { ...field, fieldEditMode: "custom", isEditingField: true } },
+    });
+    render(<BackgroundImageToggle />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001])));
+
+    autoFillStub.delayed = true;
+    autoFillStub.nextPoints = new Set([0x00030003]);
+    useMazeStore.setState({
+      floorFields: {
+        [fieldId]: {
+          ...useMazeStore.getState().floorFields[fieldId],
+          tessellationConfig: { type: "square", width: 7, height: 7 },
+        },
+      },
+    });
+
+    expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001]));
+    await waitFor(() => expect(autoFillStub.resolve).not.toBeNull());
+    autoFillStub.resolve?.();
+    await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00030003])));
+  });
+
+  it("infers the selected background color only when the detection mode changes", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: { [fieldId]: { ...field, fieldEditMode: "custom", isEditingField: true } },
+    });
+    render(<BackgroundImageToggle />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+
+    const modeSelect = screen.getAllByRole("combobox")[1];
+    fireEvent.change(modeSelect, { target: { value: "color" } });
+    await waitFor(() => expect(autoFillStub.topLeftColor).toHaveBeenCalledWith("data:image/png;base64:saved"));
+    expect(autoFillStub.topLeftColor).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getAllByRole("slider")[1], { target: { value: "0.7" } });
+    expect(autoFillStub.topLeftColor).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not confirm the stale preview after a recalculation error", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      openCard: "field_setup",
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      floorFields: { [fieldId]: { ...field, fieldEditMode: "custom", isEditingField: true } },
+    });
+    render(<BackgroundImageToggle />);
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    autoFillStub.rejectPreview = true;
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => expect(screen.getByText("The underlay could not be read for field detection.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   });
 
   it("opens the page-layout dialog when the paper layout is not visible", () => {
@@ -177,7 +460,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
     expect(screen.queryByText("Cell size")).not.toBeInTheDocument();
@@ -211,7 +494,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ displayWidth: 300, displayHeight: 150, centerX: 0, centerY: 0 });
     expect(useMazeStore.getState().showPaperLayout).toBe(true);
@@ -237,7 +520,7 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transform for print" }));
 
     expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
   });

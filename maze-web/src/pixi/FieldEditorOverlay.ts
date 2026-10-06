@@ -12,8 +12,10 @@ import { ACTIVE_CELL_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 import { PaperLayoutRenderer } from "./PaperLayoutRenderer";
-import { BackgroundImageLayer } from "./BackgroundImageLayer";
+import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLayer";
 import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
+import { WallRenderer } from "./renderers/WallRenderer";
+import { buildPresetWallGroups } from "./selectors/presetSelectors";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
@@ -22,20 +24,21 @@ const SYMMETRY_POLYGON_ALPHA = 0.9;
 const SYMMETRY_POLYGON_WIDTH = 1.25;
 const SYMMETRY_POLYGON_DASH_LENGTH = TILE_SIZE * 0.35;
 const SYMMETRY_POLYGON_GAP_LENGTH = TILE_SIZE * 0.22;
-
 export class FieldEditorOverlay {
   private readonly root: Container;
   private readonly gridContainer: Container;
   private readonly backgroundImageContainer: Container;
   private readonly paperLayoutContainer: Container;
+  private readonly fieldBoundaryContainer: Container;
   private readonly floorContainer: Container;
   private readonly symmetryContainer: Container;
   private readonly originContainer: Container;
   private readonly hoverContainer: Container;
 
   private readonly grid: GridRenderer;
-  private readonly backgroundImage: BackgroundImageLayer;
+  private readonly backgroundImage: BackgroundImageHost;
   private readonly paperLayout: PaperLayoutRenderer;
+  private readonly fieldBoundary: WallRenderer;
   private readonly floor: CellFillRenderer;
   private readonly symmetryCells: CellFillRenderer;
   private readonly symmetryGraphics: Graphics;
@@ -52,6 +55,7 @@ export class FieldEditorOverlay {
     this.gridContainer = new Container();
     this.backgroundImageContainer = new Container();
     this.paperLayoutContainer = new Container();
+    this.fieldBoundaryContainer = new Container();
     this.floorContainer = new Container();
     this.symmetryContainer = new Container();
     this.originContainer = new Container();
@@ -65,19 +69,22 @@ export class FieldEditorOverlay {
     this.root.addChild(this.hoverContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
-    this.backgroundImage = new BackgroundImageLayer(
-      this.backgroundImageContainer,
-      this.floorContainer,
-      this.gridContainer,
-      this.paperLayoutContainer,
-    );
+    this.backgroundImage = new BackgroundImageHost({
+      image: this.backgroundImageContainer,
+      floor: this.floorContainer,
+      grid: this.gridContainer,
+      layerAnchor: this.paperLayoutContainer,
+    });
     this.paperLayout = new PaperLayoutRenderer(this.paperLayoutContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.symmetryCells = new CellFillRenderer(this.symmetryContainer);
     this.symmetryGraphics = new Graphics();
     this.symmetryContainer.addChild(this.symmetryGraphics);
+    this.fieldBoundary = new WallRenderer(this.fieldBoundaryContainer);
     this.origin = new OriginRenderer(this.originContainer);
     this.hover = new CellFillRenderer(this.hoverContainer);
+    // Keep the editor-only boundary above every underlay layer, including "above everything".
+    this.root.addChild(this.fieldBoundaryContainer);
 
     this.root.visible = false;
 
@@ -95,7 +102,13 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && field.fieldPoints !== prevField.fieldPoints) {
-        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+        this.redrawFloor(state);
+        this.redrawFieldBoundary(state);
+      }
+
+      if (isOpen && state.backgroundAutoFillPreview !== prev.backgroundAutoFillPreview) {
+        this.redrawFloor(state);
+        this.redrawFieldBoundary(state);
       }
 
       if (isOpen && field.tessellationConfig !== prevField.tessellationConfig) {
@@ -103,7 +116,8 @@ export class FieldEditorOverlay {
       }
 
       if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
-        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+        this.redrawFloor(state);
+        this.redrawFieldBoundary(state);
         this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
         this.redrawPaperLayout(state);
       }
@@ -133,15 +147,10 @@ export class FieldEditorOverlay {
         this.redrawPaperLayout(state);
       }
 
-      if (isOpen && (state.showBackgroundImage !== prev.showBackgroundImage
-        || state.backgroundImage !== prev.backgroundImage
-        || state.backgroundImageManualPositioning !== prev.backgroundImageManualPositioning
+      if (isOpen && (backgroundImageChanged(state, prev)
         || field.fieldEditMode !== prevField.fieldEditMode)) {
-        this.backgroundImage.render(
-          state.backgroundImage,
-          this.shouldShowBackgroundImage(state),
-          state.backgroundImageManualPositioning,
-        );
+        this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
+        this.redrawFieldBoundary(state);
       }
     });
   }
@@ -175,25 +184,53 @@ export class FieldEditorOverlay {
   private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const field = state.floorFields[state.activeFloorId];
     this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
-    this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
-    this.backgroundImage.render(
-      state.backgroundImage,
-      this.shouldShowBackgroundImage(state),
-      state.backgroundImageManualPositioning,
-    );
+    this.redrawFloor(state);
+    this.backgroundImage.render(state, this.shouldShowBackgroundImage(state));
+    this.redrawFieldBoundary(state);
     this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     this.redrawPaperLayout(state);
     this.redrawSymmetry(state);
   }
 
-  private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
-    const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg)
+  private redrawFloor(state: ReturnType<typeof useMazeStore.getState>): void {
+    const field = state.floorFields[state.activeFloorId];
+    const cfg = field.tessellationConfig;
+    const cells = this.visibleFieldCells(state);
+    this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
+  }
+
+  /** Draws a visual-only wall-style contour around the field. The exposed-edge union handles
+   * holes, disconnected cells, and every supported tessellation without introducing walls or
+   * changing the field sent to generation. */
+  private redrawFieldBoundary(state: ReturnType<typeof useMazeStore.getState>): void {
+    const field = state.floorFields[state.activeFloorId];
+    this.fieldBoundaryContainer.visible = true;
+
+    // Reuse the same boundary-edge selector as Preset Connections and the same WallRenderer,
+    // including the configured wall color, width, cap, and join.
+    const { preset: boundaryWalls } = buildPresetWallGroups(
+      this.visibleFieldCells(state),
+      new Map(),
+      field.tessellationConfig,
+    );
+    this.fieldBoundary.render({ edges: boundaryWalls }, field.tessellationConfig);
+    // BackgroundImageLayer keeps its interactive transform/crop frame last; stay immediately
+    // below that frame while remaining above the image itself.
+    this.root.setChildIndex(this.fieldBoundaryContainer, Math.max(0, this.root.children.length - 2));
+  }
+
+  private visibleFieldCells(state: ReturnType<typeof useMazeStore.getState>): [number, number][] {
+    const field = state.floorFields[state.activeFloorId];
+    const preview = state.backgroundAutoFillPreview;
+    const fieldPoints = preview ?? field.fieldPoints;
+    const fieldEditMode = preview !== null ? "custom" : field.fieldEditMode;
+    const cells = buildActiveCells(fieldPoints, fieldEditMode, field.tessellationConfig)
       .filter(([x, y]) => !this.selectionMoveHidden.has(encodePoint(x, y)));
     const rendered = new Set(cells.map(([x, y]) => encodePoint(x, y)));
     for (const key of this.selectionMoveTemporary) {
       if (!rendered.has(key)) cells.push(decodePoint(key));
     }
-    this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
+    return cells;
   }
 
   private shouldShowBackgroundImage(state: ReturnType<typeof useMazeStore.getState>): boolean {
@@ -212,8 +249,8 @@ export class FieldEditorOverlay {
     this.selectionMoveTemporary = temporary;
     const state = useMazeStore.getState();
     if (state.openCard === "field_setup") {
-      const field = state.floorFields[state.activeFloorId];
-      this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+      this.redrawFloor(state);
+      this.redrawFieldBoundary(state);
     }
   }
 
@@ -349,6 +386,7 @@ export class FieldEditorOverlay {
     this.grid.destroy();
     this.backgroundImage.destroy();
     this.paperLayout.destroy();
+    this.fieldBoundary.destroy();
     this.floor.destroy();
     this.symmetryCells.destroy();
     this.symmetryGraphics.destroy();
@@ -357,6 +395,7 @@ export class FieldEditorOverlay {
     this.gridContainer.destroy();
     this.backgroundImageContainer.destroy();
     this.paperLayoutContainer.destroy();
+    this.fieldBoundaryContainer.destroy();
     this.floorContainer.destroy();
     this.symmetryContainer.destroy();
     this.originContainer.destroy();
