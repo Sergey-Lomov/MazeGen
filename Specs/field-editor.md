@@ -103,6 +103,17 @@ settings as well. With automatic print scale enabled, the guide uses a 10 mm cel
 the user confirms a physical size. The guide is hidden outside custom mode and is not part of the
 generated field or export image.
 
+### Background image print fitting (GitHub issue #675)
+
+Custom mode's background-image settings provide **Calculate for print**. The action uses the same
+paper format, orientation, and horizontal/vertical margin controls as the field editor's paper
+layout, but does not ask for or change cell size, field shape, or any generation parameter. It
+fits the loaded image to the selected page's margin-inset rectangle while preserving the image
+aspect ratio and centers the result at the page origin. When the custom field editor's paper
+layout is already visible, the action skips the dialog and applies the current displayed page
+geometry immediately; otherwise it opens the page-layout dialog without changing the paper-layout
+visibility.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
@@ -354,10 +365,10 @@ The underlay defaults to below the grid with 50% opacity, and can be configured 
 button beside the switch (GitHub issue #674): below the grid, above the grid, above the floor, or
 above everything, plus opacity from 0 to 1. The underlay is not passed to generation, renderers, image export,
 analytics, or any other processing. When the image is first uploaded, it is scaled once with
-`cover` semantics against the current field bounds and centered on the field. Its display
+`contain` semantics against the current field bounds and centered on the field. Its display
 transform is retained when the switch is turned off and on again. The settings panel also offers
-`Position to field`, which explicitly reapplies the initial cover-and-center calculation. The
-original aspect ratio is always preserved, so an image may extend past the field boundary.
+`Position to field`, which explicitly reapplies the initial contain-and-center calculation. The
+original aspect ratio is always preserved, so empty space may remain along one axis of the field.
 
 For the `above_grid` mode, the render order is grid, underlay, floor cells, then the remaining
 feature overlays. This keeps the underlay above grid lines but below field/floor cells. In the

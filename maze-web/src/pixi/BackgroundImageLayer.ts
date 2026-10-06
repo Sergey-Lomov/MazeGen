@@ -1,7 +1,9 @@
 import { Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { BackgroundImage, BackgroundImageLayerMode } from "../store/tessellationTypes";
+import type { PrintExportSettings } from "../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { getCellVertices } from "./tessellationGeometry";
+import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
 
 export const BACKGROUND_IMAGE_ALPHA = 0.5;
 
@@ -28,7 +30,7 @@ export function fieldBounds(cells: readonly [number, number][], cfg: Tessellatio
   return Object.values(bounds).every(Number.isFinite) ? bounds : null;
 }
 
-/** Computes a centered cover transform once when the image is enabled. */
+/** Computes a centered contain transform once when the image is enabled. */
 export function calculateBackgroundImageLayout(
   dataUrl: string,
   naturalWidth: number,
@@ -40,7 +42,7 @@ export function calculateBackgroundImageLayout(
   }
   const fieldWidth = Math.max(1, bounds.maxX - bounds.minX);
   const fieldHeight = Math.max(1, bounds.maxY - bounds.minY);
-  const scale = Math.max(fieldWidth / naturalWidth, fieldHeight / naturalHeight);
+  const scale = Math.min(fieldWidth / naturalWidth, fieldHeight / naturalHeight);
   return {
     dataUrl,
     naturalWidth,
@@ -52,6 +54,33 @@ export function calculateBackgroundImageLayout(
     layer: "below_grid",
     opacity: BACKGROUND_IMAGE_ALPHA,
   };
+}
+
+/** Fits an underlay to the shared paper layout used by the custom field editor. The page is
+ * centered at the editor origin; the image keeps its aspect ratio and uses the same contain
+ * semantics as the existing "position to field" action. Cell size is intentionally read from
+ * the current print settings rather than calculated or changed by this feature. */
+export function calculateBackgroundImagePageLayout(
+  dataUrl: string,
+  naturalWidth: number,
+  naturalHeight: number,
+  config: Pick<TessellationConfig, "type">,
+  settings: PrintExportSettings,
+): BackgroundImage {
+  const geometry = paperLayoutWorldGeometry(config, settings);
+  if (!geometry) throw new Error("Paper layout has invalid dimensions");
+  const pageWidth = geometry.sheetWidth - geometry.marginHorizontal * 2;
+  const pageHeight = geometry.sheetHeight - geometry.marginVertical * 2;
+  if (![pageWidth, pageHeight, geometry.marginHorizontal, geometry.marginVertical].every(Number.isFinite)
+    || pageWidth <= 0 || pageHeight <= 0) {
+    throw new Error("Paper layout margins leave no printable area");
+  }
+  return calculateBackgroundImageLayout(dataUrl, naturalWidth, naturalHeight, {
+    minX: -pageWidth / 2,
+    minY: -pageHeight / 2,
+    maxX: pageWidth / 2,
+    maxY: pageHeight / 2,
+  });
 }
 
 /** A deliberately feature-local display primitive. It is mounted only by the field, preset,

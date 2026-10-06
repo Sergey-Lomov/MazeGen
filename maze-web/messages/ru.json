@@ -146,6 +146,9 @@
   "background.replace": "Заменить подложку",
   "background.manual_positioning": "Ручное позиционирование",
   "background.position_to_field": "Позиционирование по полю",
+  "background.calculate_for_print": "Рассчитать под печать",
+  "background.print.title": "Подогнать подложку под страницу",
+  "background.print.invalid": "Выбранный размер страницы и отступы некорректны.",
 
   "preset.title": "Предустановки",
   "preset.tools": "Инструменты",

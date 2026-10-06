@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import type { BackgroundImageLayerMode } from "../store/tessellationTypes";
 import { resolveCells } from "../pixi/fieldEditUtils";
-import { calculateBackgroundImageLayout, fieldBounds } from "../pixi/BackgroundImageLayer";
+import { calculateBackgroundImageLayout, calculateBackgroundImagePageLayout, fieldBounds } from "../pixi/BackgroundImageLayer";
 import { ToggleRow } from "./ToggleRow";
 import { SettingsIconButton } from "./SettingsIconButton";
 import { SidePanel } from "./SidePanel";
@@ -11,6 +11,7 @@ import { SliderRow } from "./SliderRow";
 import { Button } from "./Button";
 import { spacing, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+import { BackgroundImagePrintDialog, type PageLayoutInput } from "./dialogs/BackgroundImagePrintDialog";
 
 function readImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -52,12 +53,20 @@ export function BackgroundImageToggle() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const showBackgroundImage = useMazeStore((s) => s.showBackgroundImage);
   const backgroundImage = useMazeStore((s) => s.backgroundImage);
-  const backgroundImageManualPositioning = useMazeStore((s) => s.backgroundImageManualPositioning);
+  const showPaperLayout = useMazeStore((s) => s.showPaperLayout);
+  const openCard = useMazeStore((s) => s.openCard);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const setShowBackgroundImage = useMazeStore((s) => s.setShowBackgroundImage);
   const setBackgroundImage = useMazeStore((s) => s.setBackgroundImage);
   const setBackgroundImageLayer = useMazeStore((s) => s.setBackgroundImageLayer);
   const setBackgroundImageOpacity = useMazeStore((s) => s.setBackgroundImageOpacity);
   const setBackgroundImageManualPositioning = useMazeStore((s) => s.setBackgroundImageManualPositioning);
+  const setPrintPaperSize = useMazeStore((s) => s.setPrintPaperSize);
+  const setPrintCustomSize = useMazeStore((s) => s.setPrintCustomSize);
+  const setPrintOrientation = useMazeStore((s) => s.setPrintOrientation);
+  const setPrintMargins = useMazeStore((s) => s.setPrintMargins);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const hasDisplayedPaperLayout = openCard === "field_setup" && fieldEditMode === "custom" && showPaperLayout;
 
   function enable() {
     if (backgroundImage) {
@@ -78,6 +87,32 @@ export function BackgroundImageToggle() {
       bounds,
     );
     setBackgroundImage({ ...layout, layer: backgroundImage.layer, opacity: backgroundImage.opacity });
+  }
+
+  function positionToPage() {
+    if (!backgroundImage) return;
+    const state = useMazeStore.getState();
+    const field = state.floorFields[state.activeFloorId];
+    try {
+      const layout = calculateBackgroundImagePageLayout(
+        backgroundImage.dataUrl,
+        backgroundImage.naturalWidth,
+        backgroundImage.naturalHeight,
+        field.tessellationConfig,
+        state.pngExportSettings.print,
+      );
+      state.setBackgroundImage({ ...layout, layer: backgroundImage.layer, opacity: backgroundImage.opacity });
+    } catch {
+      // Invalid persisted print settings are ignored; the existing image transform remains intact.
+    }
+  }
+
+  function applyPageLayout(input: PageLayoutInput) {
+    setPrintPaperSize(input.paperSize);
+    setPrintCustomSize(input.customWidthMm, input.customHeightMm);
+    setPrintOrientation(input.orientation);
+    setPrintMargins(input.marginHMm, input.marginVMm);
+    positionToPage();
   }
 
   async function handleFile(file: File | undefined) {
@@ -151,14 +186,17 @@ export function BackgroundImageToggle() {
                 />
                 <div style={styles.buttonGroup}>
                   <Button
-                    variant={backgroundImageManualPositioning ? "toggle-selected" : "toggle"}
+                    variant="secondary"
                     layoutStyle={{ width: "100%" }}
                     onClick={() => setBackgroundImageManualPositioning(true)}
                   >
                     {m["background.manual_positioning"]()}
                   </Button>
-                  <Button variant="toggle" layoutStyle={{ width: "100%" }} onClick={positionToField}>
+                  <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={positionToField}>
                     {m["background.position_to_field"]()}
+                  </Button>
+                  <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={() => hasDisplayedPaperLayout ? positionToPage() : setPrintDialogOpen(true)}>
+                    {m["background.calculate_for_print"]()}
                   </Button>
                   <Button variant="secondary" layoutStyle={{ width: "100%" }} onClick={() => inputRef.current?.click()}>
                     {m["background.replace"]()}
@@ -173,6 +211,12 @@ export function BackgroundImageToggle() {
             )}
           </div>
         </SidePanel>
+      )}
+      {printDialogOpen && backgroundImage && (
+        <BackgroundImagePrintDialog
+          onApply={applyPageLayout}
+          onClose={() => setPrintDialogOpen(false)}
+        />
       )}
     </>
   );

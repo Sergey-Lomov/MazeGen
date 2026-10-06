@@ -24,6 +24,19 @@ vi.mock("../pixi/BackgroundImageLayer", () => ({
     centerX: 0,
     centerY: 0,
   }),
+  calculateBackgroundImagePageLayout: (
+    dataUrl: string,
+    naturalWidth: number,
+    naturalHeight: number,
+  ) => ({
+    dataUrl,
+    naturalWidth,
+    naturalHeight,
+    displayWidth: 300,
+    displayHeight: 150,
+    centerX: 0,
+    centerY: 0,
+  }),
 }));
 
 class FakeFileReader {
@@ -134,11 +147,98 @@ describe("BackgroundImageToggle", () => {
     render(<BackgroundImageToggle />);
 
     fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    expect(screen.getByRole("button", { name: "Manual positioning" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Position to field" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Calculate for print" })).toHaveClass("btn-secondary");
+    expect(screen.getByRole("button", { name: "Replace underlay" })).toHaveClass("btn-secondary");
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "above_floor" } });
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0.75" } });
     fireEvent.click(screen.getByRole("button", { name: "Manual positioning" }));
 
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ layer: "above_floor", opacity: 0.75 });
     expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
+  });
+
+  it("opens the page-layout dialog when the paper layout is not visible", () => {
+    useMazeStore.setState({
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      showPaperLayout: false,
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
+    expect(screen.queryByText("Cell size")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Landscape"));
+    fireEvent.change(document.querySelector('input[name="background-print-margin-horizontal"]')!, { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(useMazeStore.getState().showPaperLayout).toBe(false);
+    expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({ orientation: "landscape", marginHMm: 7, marginVMm: 5 });
+  });
+
+  it("fits immediately to the displayed page layout", () => {
+    const savedImage = {
+      dataUrl: "data:image/png;base64:saved",
+      naturalWidth: 800,
+      naturalHeight: 600,
+      displayWidth: 731,
+      displayHeight: 419,
+      centerX: 37,
+      centerY: -24,
+      layer: "below_grid" as const,
+      opacity: 0.4,
+    };
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      backgroundImage: savedImage,
+      showPaperLayout: true,
+      openCard: "field_setup",
+      floorFields: { [fieldId]: { ...field, fieldEditMode: "custom" } },
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(useMazeStore.getState().backgroundImage).toMatchObject({ displayWidth: 300, displayHeight: 150, centerX: 0, centerY: 0 });
+    expect(useMazeStore.getState().showPaperLayout).toBe(true);
+    expect(screen.queryByText("Fit underlay to page")).not.toBeInTheDocument();
+  });
+
+  it("does not reuse the field paper layout from another editor", () => {
+    useMazeStore.setState({
+      backgroundImage: {
+        dataUrl: "data:image/png;base64:saved",
+        naturalWidth: 800,
+        naturalHeight: 600,
+        displayWidth: 731,
+        displayHeight: 419,
+        centerX: 37,
+        centerY: -24,
+        layer: "below_grid",
+        opacity: 0.4,
+      },
+      showPaperLayout: true,
+      openCard: "preset_connections",
+    });
+    render(<BackgroundImageToggle />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure underlay" }));
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+
+    expect(screen.getByText("Fit underlay to page")).toBeInTheDocument();
   });
 });

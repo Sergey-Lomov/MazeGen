@@ -72,6 +72,7 @@ import {
   BACKGROUND_IMAGE_ALPHA,
   BackgroundImageLayer,
   calculateBackgroundImageLayout,
+  calculateBackgroundImagePageLayout,
   fieldBounds,
 } from "../pixi/BackgroundImageLayer";
 
@@ -113,7 +114,7 @@ describe("underlay layout", () => {
     layer.destroy();
   });
 
-  it("covers the field while preserving the source aspect ratio", () => {
+  it("fits inside the field while preserving the source aspect ratio", () => {
     const image = calculateBackgroundImageLayout(
       "data:image/png;base64,abc",
       200,
@@ -121,13 +122,13 @@ describe("underlay layout", () => {
       { minX: -50, minY: -50, maxX: 50, maxY: 50 },
     );
 
-    expect(image.displayWidth).toBe(200);
-    expect(image.displayHeight).toBe(100);
+    expect(image.displayWidth).toBe(100);
+    expect(image.displayHeight).toBe(50);
     expect(image.centerX).toBe(0);
     expect(image.centerY).toBe(0);
   });
 
-  it("lets the image extend past the shorter field dimension", () => {
+  it("leaves empty space in the shorter field dimension instead of cropping the image", () => {
     const image = calculateBackgroundImageLayout(
       "data:image/png;base64,abc",
       100,
@@ -135,9 +136,82 @@ describe("underlay layout", () => {
       { minX: -100, minY: -25, maxX: 100, maxY: 25 },
     );
 
-    expect(image.displayWidth).toBe(200);
-    expect(image.displayHeight).toBe(400);
+    expect(image.displayWidth).toBe(25);
+    expect(image.displayHeight).toBe(50);
     expect(image.displayHeight / image.displayWidth).toBe(2);
+  });
+
+  it("fits the image to the shared paper page, preserving aspect ratio and centering it", () => {
+    const image = calculateBackgroundImagePageLayout(
+      baseImage.dataUrl,
+      200,
+      100,
+      { type: "square" },
+      {
+        density: "screen_96",
+        paperSize: "a4",
+        customWidthMm: 210,
+        customHeightMm: 297,
+        orientation: "portrait",
+        marginHMm: 5,
+        marginVMm: 5,
+        scale: 1,
+        scaleAutoFit: true,
+        anchor: "center",
+        offsetXMm: 0,
+        offsetYMm: 0,
+      },
+    );
+
+    expect(image.centerX).toBe(0);
+    expect(image.centerY).toBe(0);
+    expect(image.displayHeight / image.displayWidth).toBe(0.5);
+    expect(image.displayWidth).toBeGreaterThan(0);
+
+    const noMargins = calculateBackgroundImagePageLayout(
+      baseImage.dataUrl,
+      200,
+      100,
+      { type: "square" },
+      {
+        density: "screen_96",
+        paperSize: "a4",
+        customWidthMm: 210,
+        customHeightMm: 297,
+        orientation: "portrait",
+        marginHMm: 0,
+        marginVMm: 0,
+        scale: 1,
+        scaleAutoFit: true,
+        anchor: "center",
+        offsetXMm: 0,
+        offsetYMm: 0,
+      },
+    );
+    expect(image.displayWidth).toBeLessThan(noMargins.displayWidth);
+  });
+
+  it("rejects non-finite page geometry instead of persisting an invalid transform", () => {
+    expect(() => calculateBackgroundImagePageLayout(
+      baseImage.dataUrl,
+      200,
+      100,
+      { type: "square" },
+      {
+        density: "screen_96",
+        paperSize: "a4",
+        customWidthMm: 210,
+        customHeightMm: 297,
+        orientation: "portrait",
+        marginHMm: Number.NaN,
+        marginVMm: 5,
+        scale: 1,
+        scaleAutoFit: true,
+        anchor: "center",
+        offsetXMm: 0,
+        offsetYMm: 0,
+      },
+    )).toThrow("Paper layout has invalid dimensions");
   });
 
   it("keeps the above-grid image between grid and floor containers", () => {
