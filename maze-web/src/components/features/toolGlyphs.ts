@@ -114,14 +114,14 @@ type MarkerLike = {
   borderWidth: number;
   gapWidth: number;
   gapColor: number;
-  size: number; // fraction of TILE_SIZE
+  size: number; // px (GitHub issue #681)
 };
 
 /** The exact gap-ring → fill → outer-aligned-border sequence `WaypointsRenderer` /
  *  `VerticalConnectionRenderer` / `TeleportRenderer` all use. */
 function drawMarker(g: Graphics, m: MarkerLike, opts?: { fillOverride?: number; borderOverride?: number }): void {
   const rounded = m.cornerStyle === "round";
-  const r = m.size * TILE_SIZE;
+  const r = m.size / 2;
   const fill = opts?.fillOverride ?? m.fillColor;
   const border = opts?.borderOverride ?? m.borderColor ?? m.fillColor;
   // Single true outward offset of the fill path (`r`) by `borderWidth + gapWidth` (GitHub issue
@@ -183,7 +183,7 @@ function drawVerticalArrows(
     const oy = C - dy * midpointOffset + (both ? side * originOffset : 0);
     drawOneWayTriangle(g, C, oy, 0, dy, {
       color: arrowColor,
-      size: pairArrowSize / 0.65, // `drawArrowPattern` rescales by `patternTipFraction` (0.65 for triangle)
+      size: pairArrowSize / 0.4875, // `drawArrowPattern` rescales by `patternTipFraction` (0.4875 for triangle, GitHub issue #681 third follow-up)
       join: "round",
       cap: "round",
     });
@@ -196,7 +196,7 @@ const elevatorMarker: MarkerLike = { ...S.verticalConnections.elevatorMarker };
 
 const vertical_passage_two_way: GlyphFn = (g) => {
   drawMarker(g, vpTwoWay);
-  drawVerticalArrows(g, vpTwoWay.size * TILE_SIZE, S.verticalConnections.twoWayArrowColor, S.verticalConnections.twoWayArrowSize, "up");
+  drawVerticalArrows(g, vpTwoWay.size / 2, S.verticalConnections.twoWayArrowColor, S.verticalConnections.twoWayArrowSize, "up");
 };
 
 const vertical_passage_one_way: GlyphFn = (g) => {
@@ -205,12 +205,12 @@ const vertical_passage_one_way: GlyphFn = (g) => {
   // is the "from" end), border the same accent, arrow pointing down (into this floor).
   const accent = S.verticalConnections.oneWayAccentColor;
   drawMarker(g, vpOneWay, { fillOverride: accent, borderOverride: accent });
-  drawVerticalArrows(g, vpOneWay.size * TILE_SIZE, S.verticalConnections.oneWayArrowColor, S.verticalConnections.oneWayArrowSize, "down");
+  drawVerticalArrows(g, vpOneWay.size / 2, S.verticalConnections.oneWayArrowColor, S.verticalConnections.oneWayArrowSize, "down");
 };
 
 const elevator: GlyphFn = (g) => {
   drawMarker(g, elevatorMarker);
-  drawVerticalArrows(g, elevatorMarker.size * TILE_SIZE, S.verticalConnections.elevatorArrowColor, S.verticalConnections.elevatorArrowSize, "both");
+  drawVerticalArrows(g, elevatorMarker.size / 2, S.verticalConnections.elevatorArrowColor, S.verticalConnections.elevatorArrowSize, "both");
 };
 
 // ─── Lock-family — copied from `LockRenderer.drawLockIcon` ───────────────────

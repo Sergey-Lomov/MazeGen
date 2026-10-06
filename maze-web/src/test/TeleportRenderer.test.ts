@@ -376,14 +376,15 @@ describe("TeleportRenderer.render orthogonal connector routing", () => {
     const routeSpy = vi.spyOn(TeleportConnectorRouter.prototype, "route");
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "orthogonal", size: 0.2, borderWidth: 2, edgeGapWidth: 5 }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "orthogonal", size: 8, borderWidth: 2, edgeGapWidth: 5 }) });
 
     expect(routeSpy).toHaveBeenCalledTimes(1);
     const [, , maxEndpointOffset, , endpointStyle] = routeSpy.mock.calls[0];
-    // size (0.2 * TILE_SIZE 40 = 8) + borderWidth (2) + edgeGapWidth (5) = 15, for both the
-    // endpoint-collision-radius input and the corridor-offset clamp.
+    // size (8, a diameter in px — GitHub issue #681 diameter follow-up) / 2 + borderWidth (2) +
+    // edgeGapWidth (5) = 11, for both the endpoint-collision-radius input and the corridor-offset
+    // clamp.
     expect(endpointStyle).toMatchObject({ markerBorderWidth: 2 + 5 });
-    expect(maxEndpointOffset).toBe(8 + 2 + 5);
+    expect(maxEndpointOffset).toBe(8 / 2 + 2 + 5);
     routeSpy.mockRestore();
   });
 });
@@ -496,11 +497,11 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge radius follows floorBadge.size, independent of the edge marker's own style.size", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 0.2, floorBadge: { shape: "circle", labelType: "arabic", size: 0.5, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 8, floorBadge: { shape: "circle", labelType: "arabic", size: 20, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
-    // The badge's own fill circle at the badge point — radius is floorBadge.size * TILE_SIZE, not size * TILE_SIZE.
+    // The badge's own fill circle at the badge point — radius is floorBadge.size (px), not size.
     const badgePolygon = g.calls.find((c) => c.fn === "poly" && Array.isArray(c.args[0]) &&
-      polygonRadiusAt(c.args[0] as number[], 10, 10) > 0.2 * 40);
+      polygonRadiusAt(c.args[0] as number[], 10, 10) > 8);
     expect(badgePolygon).toBeDefined();
   });
 

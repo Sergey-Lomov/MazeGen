@@ -2191,7 +2191,7 @@
   "image_export.vector_by_walls.vertical_arrow_style_sign": "Sign",
   "image_export.vector_by_walls.one_way_color": "Color",
   "image_export.vector_by_walls.one_way_gap_width": "Gap width",
-  "image_export.vector_by_walls.one_way_join": "Corners & ends",
+  "image_export.vector_by_walls.one_way_join": "Corner style",
   "image_export.vector_by_walls.one_way_size": "Size",
   "image_export.vector_by_walls.one_way_thickness": "Thickness",
   "image_export.vector_by_walls.section_markers": "Waypoints",

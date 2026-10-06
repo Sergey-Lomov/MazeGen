@@ -37,12 +37,12 @@ describe("buildPresetMarkers", () => {
 
     expect(markers).toEqual([
       {
-        pos: [startCenter.x, startCenter.y], radius: 0.16 * TILE_SIZE,
+        pos: [startCenter.x, startCenter.y], radius: 8.5,
         shape: "circle", color: canvas.node.start, borderColor: canvas.node.start,
         borderWidth: 3, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default,
       },
       {
-        pos: [finishCenter.x, finishCenter.y], radius: 0.16 * TILE_SIZE,
+        pos: [finishCenter.x, finishCenter.y], radius: 8.5,
         shape: "circle", color: canvas.node.finish, borderColor: canvas.node.finish,
         borderWidth: 3, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default,
       },

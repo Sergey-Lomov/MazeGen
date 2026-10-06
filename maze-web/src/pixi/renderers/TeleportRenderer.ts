@@ -190,7 +190,7 @@ export class TeleportRenderer {
           : [...this.selectionFloorBadges.values()].map((n) => formatIndexLabel(n - 1, style.floorBadge.labelType));
       this.selectionFloorBadgeFontSize = fitTeleportBadgeFontSize(
         badgeLabels,
-        style.floorBadge.size * TILE_SIZE,
+        style.floorBadge.size / 2,
         style.floorBadge.textPadding,
         style.floorBadge.borderWidth ?? style.borderWidth,
       );
@@ -236,10 +236,10 @@ export class TeleportRenderer {
     const gap = (style.connectorWidth + style.connectorGapWidth) * 1.5;
     // `edgeGapWidth` (GitHub issue #302) folded into `markerBorderWidth` here — the marker's real
     // visual footprint that `endpointCollisionRadius`/corridor-offset clamping must stay clear of is
-    // `size*TILE_SIZE + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
-    // just `size*TILE_SIZE + borderWidth` — omitting the gap ring here would let another connector's
+    // `size + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
+    // just `size + borderWidth` — omitting the gap ring here would let another connector's
     // routed path visually cut through it even though it correctly avoids the marker/border proper.
-    const endpointRadius = style.size * TILE_SIZE;
+    const endpointRadius = style.size / 2;
     const endpointStyle: EndpointMarkerStyle = {
       markerRadius: endpointRadius,
       markerBorderWidth: style.borderWidth + style.edgeGapWidth,
@@ -286,7 +286,7 @@ export class TeleportRenderer {
     // rationale; the marker's own border (drawn on top, also `alignment: 0` from the same `r`, see
     // `drawMarker`) covers the ring's inner `borderWidth`-wide band, leaving only the outer
     // `edgeGapWidth`-wide band visible.
-    const markerR = style.size * TILE_SIZE;
+    const markerR = style.size / 2;
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
@@ -297,7 +297,7 @@ export class TeleportRenderer {
         // marker's `style.size`, and its border follows `style.borderWidth`. The gap ring matches
         // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
         // `drawGroupPoints` below), not a forced circle.
-        const badgeR = style.floorBadge.size * TILE_SIZE;
+        const badgeR = style.floorBadge.size / 2;
         drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, (style.floorBadge.borderWidth ?? style.borderWidth) + Math.max(style.edgeGapWidth, 1), style.floorColor);
         continue;
       }
@@ -320,14 +320,14 @@ export class TeleportRenderer {
     edges: TeleportEdge[],
     style: TeleportLineStyle,
   ): void {
-    const r = style.size * TILE_SIZE;
+    const r = style.size / 2;
     const shape = override?.shape ?? style.shape;
     const color = override?.fillColor ?? style.edgeColor;
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
     // GitHub issue #485: the cross-floor badge has its own configurable shape/label/size/text
     // color, distinct from the edge marker's own `shape`/`style.size` above; the font size is the
     // one shared across every badge in the maze (`selectionFloorBadgeFontSize`).
-    const badgeR = style.floorBadge.size * TILE_SIZE;
+    const badgeR = style.floorBadge.size / 2;
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
@@ -386,7 +386,7 @@ export class TeleportRenderer {
     this.view.removeChildren().forEach((c) => c.destroy());
     this.overlayLayer.removeChildren().forEach((c) => c.destroy());
     const style = this.selectionStyle;
-    const r = style.size * TILE_SIZE;
+    const r = style.size / 2;
 
     const plan = planGroupDrawOrder(this.selectionGroups, this.selectionConnectors, selectedKey);
 
@@ -517,7 +517,7 @@ export class TeleportRenderer {
     this.view.off("pointertap");
     this.view.eventMode = "static";
     this.view.cursor = "pointer";
-    const r = this.selectionStyle.size * TILE_SIZE;
+    const r = this.selectionStyle.size / 2;
     const hitRadius = r + HIT_AREA_PADDING;
 
     // Bucket every point into `hitRadius`-sized grid cells so a click only scans its own 3x3

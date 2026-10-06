@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { buildMarkerIndexEndpointResolver } from "../pixi/imageExport/exportStyleBuilders";
-import { TILE_SIZE } from "../pixi/constants";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
 
@@ -42,12 +41,12 @@ describe("buildMarkerIndexEndpointResolver", () => {
     expect(withBorder(2, "elevator").borderMatchColor).toBe(0x0000bb);
   });
 
-  it("reports the marker outer radius as size*TILE_SIZE + borderWidth", () => {
+  it("reports the marker outer radius as size + borderWidth", () => {
     const resolve = buildMarkerIndexEndpointResolver({
       teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
       verticalStyle: verticalStyle({ elevatorMarker: marker({ size: 0.25, borderWidth: 4 }) }),
     });
-    expect(resolve(2, "elevator").outerRadius).toBeCloseTo(0.25 * TILE_SIZE + 4);
+    expect(resolve(2, "elevator").outerRadius).toBeCloseTo(0.25 / 2 + 4);
   });
 
   it("uses the drawn decorative line color and size for vertical indices", () => {
@@ -59,8 +58,8 @@ describe("buildMarkerIndexEndpointResolver", () => {
         decorativeElevator: { lineColor: 0x654321, lineWidth: 6, size: 0.27 },
       }),
     });
-    expect(resolve(1, "vertical")).toEqual({ outerRadius: 0.31 * TILE_SIZE, borderWidth: 5, borderMatchColor: 0x123456 });
-    expect(resolve(2, "elevator")).toEqual({ outerRadius: 0.27 * TILE_SIZE, borderWidth: 6, borderMatchColor: 0x654321 });
+    expect(resolve(1, "vertical")).toEqual({ outerRadius: 0.31 / 2, borderWidth: 5, borderMatchColor: 0x123456 });
+    expect(resolve(2, "elevator")).toEqual({ outerRadius: 0.27 / 2, borderWidth: 6, borderMatchColor: 0x654321 });
   });
 
   it("uses the one-way decorative line color for one-way vertical indices", () => {
@@ -72,7 +71,7 @@ describe("buildMarkerIndexEndpointResolver", () => {
         decorativeStairsOneWay: { lineColor: 0xabcdef, lineWidth: 5, size: 0.29 },
       }),
     });
-    expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 * TILE_SIZE, borderWidth: 5, borderMatchColor: 0xabcdef });
+    expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 / 2, borderWidth: 5, borderMatchColor: 0xabcdef });
   });
 
   it("uses the one-way secondary color for abstract vertical indices", () => {

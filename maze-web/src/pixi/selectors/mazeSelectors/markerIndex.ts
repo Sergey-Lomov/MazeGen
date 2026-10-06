@@ -12,7 +12,8 @@ export type MarkerIndexLinkKind = "teleport" | "vertical" | "elevator";
  *  (which already resolved every teleport/vertical marker style, group overrides included), so
  *  this selector stays free of per-kind marker-settings knowledge. */
 export interface MarkerEndpointVisual {
-  /** Marker's visual outer radius in world px (`size * TILE_SIZE + borderWidth`). */
+  /** Marker's visual outer radius in world px (`size / 2 + borderWidth`, `size` being a diameter —
+   *  GitHub issue #681). */
   outerRadius: number;
   /** Marker border thickness in whole pixels; the index plate mirrors it. */
   borderWidth: number;

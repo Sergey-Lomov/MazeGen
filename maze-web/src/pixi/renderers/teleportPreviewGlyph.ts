@@ -1,5 +1,4 @@
 import type { Graphics } from "pixi.js";
-import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { clipDistance } from "./teleportGeometry";
@@ -23,10 +22,10 @@ export function drawTeleportPreview(
   cursorY: number,
 ): void {
   const style = DEFAULT_MAZE_RENDER_STYLE.teleport;
-  const r = style.size * TILE_SIZE;
+  const r = style.size / 2;
   const rounded = style.cornerStyle === "round";
   const strokeWidth = style.connectorWidth;
-  // The real marker's outer edge is `size + borderWidth + edgeGapWidth` (`TeleportRenderer`'s gap
+  // The real marker's outer edge is `r + borderWidth + edgeGapWidth` (`TeleportRenderer`'s gap
   // ring / connector-clip formula) — the connector must clip to that, not the bare fill radius.
   const outerR = r + style.borderWidth + style.edgeGapWidth;
 

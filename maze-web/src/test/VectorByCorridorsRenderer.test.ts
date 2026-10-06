@@ -7,7 +7,6 @@ import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBuilders";
-import { TILE_SIZE } from "../pixi/constants";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -204,7 +203,7 @@ describe("buildTeleportWidenMarkers", () => {
     expect(marker.cornerStyle).toBe(settingsA.teleportLineCornerStyle);
     expect(marker.borderWidth).toBe(settingsA.teleportEdgeBorderWidth);
     expect(marker.gapWidth).toBe(settingsA.teleportEdgeGapWidth);
-    expect(marker.radius).toBe(settingsA.teleportLineSize * TILE_SIZE);
+    expect(marker.radius).toBe(settingsA.teleportLineSize / 2);
   });
 
   it("uses a group's own override shape for its points when group customization is on", () => {
@@ -273,8 +272,8 @@ describe("buildTeleportWidenMarkers", () => {
       settings,
       [],
     );
-    expect(real.radius).toBe(0.16 * TILE_SIZE);
-    expect(badge.radius).toBe(0.4 * TILE_SIZE);
+    expect(real.radius).toBe(0.16 / 2);
+    expect(badge.radius).toBe(0.4 / 2);
   });
 
   it("shapes a fromFloor-tagged badge endpoint patch as teleportFloorBadge.shape too", () => {
@@ -332,7 +331,7 @@ describe("buildVerticalWidenMarkers", () => {
 
   it("uses elevatorMarker's size/shape/cornerStyle for an elevator marker", () => {
     const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator" })], settingsA);
-    expect(marker.radius).toBe(settingsA.elevatorMarker.size * TILE_SIZE);
+    expect(marker.radius).toBe(settingsA.elevatorMarker.size / 2);
     expect(marker.shape).toBe(settingsA.elevatorMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.elevatorMarker.cornerStyle);
     expect(marker.borderWidth).toBe(settingsA.elevatorMarker.borderWidth);
@@ -341,7 +340,7 @@ describe("buildVerticalWidenMarkers", () => {
 
   it("uses twoWayPassageMarker's size/shape/cornerStyle for a filled vertical_passage marker", () => {
     const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "vertical_passage", filled: true })], settingsA);
-    expect(marker.radius).toBe(settingsA.twoWayPassageMarker.size * TILE_SIZE);
+    expect(marker.radius).toBe(settingsA.twoWayPassageMarker.size / 2);
     expect(marker.shape).toBe(settingsA.twoWayPassageMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.twoWayPassageMarker.cornerStyle);
     expect(marker.borderWidth).toBe(settingsA.twoWayPassageMarker.borderWidth);
@@ -350,7 +349,7 @@ describe("buildVerticalWidenMarkers", () => {
 
   it("uses oneWayPassageMarker's size/shape/cornerStyle for an unfilled vertical_passage marker", () => {
     const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "vertical_passage", filled: false })], settingsA);
-    expect(marker.radius).toBe(settingsA.oneWayPassageMarker.size * TILE_SIZE);
+    expect(marker.radius).toBe(settingsA.oneWayPassageMarker.size / 2);
     expect(marker.shape).toBe(settingsA.oneWayPassageMarker.shape);
     expect(marker.cornerStyle).toBe(settingsA.oneWayPassageMarker.cornerStyle);
     expect(marker.borderWidth).toBe(settingsA.oneWayPassageMarker.borderWidth);

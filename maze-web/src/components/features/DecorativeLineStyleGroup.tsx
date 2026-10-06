@@ -3,6 +3,7 @@ import type { DecorativeLineStyle } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing } from "../../styles/theme";
 import { LinkedColorRow, LinkedSliderRow } from "./LinkedRows";
+import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
 /** One decorative-style vertical-connection pictogram's line settings (GitHub issue #428) — line
@@ -40,10 +41,10 @@ export function DecorativeLineStyleGroup<P extends string>({ settings, onChange,
         label={m["image_export.vector_by_walls.marker_size"]()}
         value={settings.size}
         onChange={(size) => onChange({ size })}
-        min={0}
-        max={1}
-        step={0.01}
-        format={(v) => v.toFixed(2)}
+        min={0.1 * TILE_SIZE}
+        max={TILE_SIZE}
+        step={1}
+        format={(v) => String(Math.round(v))}
         linkTarget={linkTargets.size}
       />
     </div>

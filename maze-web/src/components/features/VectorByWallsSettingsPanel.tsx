@@ -18,6 +18,7 @@ import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
+import { TILE_SIZE } from "../../pixi/constants";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
@@ -566,10 +567,10 @@ export function VectorByWallsSettingsPanel() {
                 label={m["image_export.vector_by_walls.one_way_size"]()}
                 value={settings.oneWaySize}
                 onChange={setOneWaySize}
-                min={0.05}
-                max={0.5}
-                step={0.01}
-                format={(v) => v.toFixed(2)}
+                min={0.05 * TILE_SIZE}
+                max={TILE_SIZE}
+                step={1}
+                format={(v) => String(Math.round(v))}
                 linkTarget="oneWaySize"
               />
               <LinkedSliderRow
@@ -688,10 +689,10 @@ export function VectorByWallsSettingsPanel() {
                     label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
                     value={settings.verticalDecorativeSize}
                     onChange={(verticalDecorativeSize) => patchVerticalSharedStyle({ verticalDecorativeSize })}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    format={(v) => v.toFixed(2)}
+                    min={0.1 * TILE_SIZE}
+                    max={TILE_SIZE}
+                    step={1}
+                    format={(v) => String(Math.round(v))}
                     linkTarget="verticalDecorativeSize"
                   />
                   <LinkedSliderRow
@@ -751,10 +752,10 @@ export function VectorByWallsSettingsPanel() {
                         label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
                         value={settings.verticalSize}
                         onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        format={(v) => v.toFixed(2)}
+                        min={0.1 * TILE_SIZE}
+                        max={TILE_SIZE}
+                        step={1}
+                        format={(v) => String(Math.round(v))}
                         linkTarget="verticalSize"
                       />
                       <LinkedSliderRow

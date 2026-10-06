@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
-import { TILE_SIZE } from "../pixi/constants";
 import { clipDistance } from "../pixi/renderers/teleportGeometry";
 
 vi.mock("pixi.js", () => ({
@@ -44,7 +43,7 @@ describe("drawTeleportPreview", () => {
 
     const firstMove = spy.calls.find((c) => c.fn === "moveTo");
     expect(firstMove).toBeDefined();
-    const r = style.size * TILE_SIZE;
+    const r = style.size / 2;
     const outerR = r + style.borderWidth + style.edgeGapWidth;
     const expectedClip = clipDistance(1, 0, outerR, style.connectorWidth);
     expect(firstMove!.args[0] as number).toBeCloseTo(expectedClip);

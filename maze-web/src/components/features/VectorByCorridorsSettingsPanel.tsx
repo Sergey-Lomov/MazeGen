@@ -673,10 +673,10 @@ export function VectorByCorridorsSettingsPanel() {
                         label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
                         value={settings.verticalSize}
                         onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        format={(v) => v.toFixed(2)}
+                        min={0.1 * TILE_SIZE}
+                        max={TILE_SIZE}
+                        step={1}
+                        format={(v) => String(Math.round(v))}
                         linkTarget="verticalSize"
                       />
                       <LinkedSliderRow

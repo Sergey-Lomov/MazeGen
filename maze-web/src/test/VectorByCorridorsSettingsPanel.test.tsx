@@ -253,13 +253,15 @@ describe("VectorByCorridorsSettingsPanel", () => {
     it("changing the teleport size slider patches vectorByCorridorsSettings, same reuse convention as MarkerSettingsGroup", () => {
       useMazeStore.setState({ vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true } });
       render(<VectorByCorridorsSettingsPanel />);
-      // GitHub issue #322 follow-up: `teleportLineSize` now shares its default (0.16) with
-      // `startMarker`/`finishMarker.size`, so `getByDisplayValue` alone is ambiguous with the
-      // "Waypoints" section's own size sliders also expanded — the Teleports section's slider is
-      // the last of the three "0.16" sliders in document order.
-      const sliders = screen.getAllByDisplayValue(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.teleportLineSize.toFixed(2));
-      fireEvent.change(sliders[sliders.length - 1], { target: { value: "0.5" } });
-      expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(0.5);
+      // The Teleports section's own "Size" label — the last of the matching labels in document
+      // order, same disambiguation convention as `VectorByWallsSettingsPanel`'s own teleport-size test.
+      // `teleport_size` (marker size) renders the same "Size" text as `startMarker`/`finishMarker`'s
+      // own size sliders (all three share the 6.4px default) and `teleport_arrow_size`'s field —
+      // the Teleports section's slider is the last of the three size-range (not arrow-range) matches.
+      const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_size"]())[2]
+        .parentElement!.querySelector('input[type="range"]')!;
+      fireEvent.change(slider, { target: { value: "20" } });
+      expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(20);
     });
 
     it("stays visible when the only teleport is on another floor (GitHub issue #484)", () => {

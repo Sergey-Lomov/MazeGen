@@ -2,7 +2,6 @@ import type { Graphics } from "pixi.js";
 import type { TeleportEdge, MarkerData, VerticalConnectionMarker } from "../renderers/types";
 import type { TeleportGroup } from "../selectors/teleportGroups";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
-import { TILE_SIZE } from "../constants";
 
 /** Builds one `MarkerData` per unique teleport point (GitHub issue #313 follow-up: teleport markers
  *  also need their corridor-line widen patch, same `markerWidenPadding` waypoints use — no separate
@@ -43,10 +42,10 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
     if (e.toFloor !== undefined) badgeKeys.add(`${e.to[0]},${e.to[1]}`);
   }
 
-  const radius = settings.teleportLineSize * TILE_SIZE;
+  const radius = settings.teleportLineSize / 2;
   // A badge's own radius follows `teleportFloorBadge.size`, not the edge marker's `teleportLineSize`
   // — `TeleportRenderer` draws it that way (GitHub issue #485), so the widen patch must too.
-  const badgeRadius = settings.teleportFloorBadge.size * TILE_SIZE;
+  const badgeRadius = settings.teleportFloorBadge.size / 2;
   const seen = new Set<string>();
   const markers: MarkerData[] = [];
   for (const e of teleportEdges) {
@@ -91,7 +90,7 @@ export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], s
     return {
       pos: marker.pos,
       color: 0,
-      radius: markerSettings.size * TILE_SIZE,
+      radius: markerSettings.size / 2,
       shape: markerSettings.shape,
       cornerStyle: markerSettings.cornerStyle,
       borderWidth: markerSettings.borderWidth,

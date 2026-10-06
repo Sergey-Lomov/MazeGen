@@ -158,17 +158,18 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
  * `projectExport/validateImageExport.ts`'s recovery defaults, same single-const convention as
  * `DEFAULT_TELEPORT_SETTINGS` etc. Disabled by default (opt-in decorative layer). Roman numerals
  * by default (stay legible at small font sizes). `height`/`offset`/`cornerRadius`/`paddingX` are
- * TILE_SIZE fractions; `borderWidth` and `gap` are whole pixels. A plate ~0.35 tall whose center
- * sits on the marker's bottom edge, lightly rounded corners, a 3px gap ring (follows "Shared
- * style"'s `gapWidth` — not pre-overridden), border color taken from the connection marker, a
- * yellow accent plate with dark text matching the elevator-badge palette. */
+ * all in px (GitHub issue #681 — previously TILE_SIZE fractions); `borderWidth` and `gap` are also
+ * whole pixels. A plate ~0.35 * TILE_SIZE tall whose center sits on the marker's bottom edge,
+ * lightly rounded corners, a 3px gap ring (follows "Shared style"'s `gapWidth` — not
+ * pre-overridden), border color taken from the connection marker, a yellow accent plate with dark
+ * text matching the elevator-badge palette. */
 export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
   enabled: false,
   labelStyle: "roman",
-  height: 0.35,
+  height: 0.35 * TILE_SIZE,
   offset: 0,
-  cornerRadius: 0.03,
-  paddingX: 0.04,
+  cornerRadius: 0.03 * TILE_SIZE,
+  paddingX: 0.04 * TILE_SIZE,
   gap: 3,
   fillColor: 0xf0c900,
   textColor: canvas.floor.default,
@@ -197,9 +198,9 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   // until changed" rationale as every other section's own defaults.
   // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
   // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: TILE_SIZE * 0.44 },
   // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
   // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
   // one-way arrow still uses its own dedicated color (`decorativeStairsOneWayArrowColor`) below,
@@ -231,7 +232,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     oneWayPattern: DEFAULT_MAZE_RENDER_STYLE.oneWay.pattern,
     oneWayColor: DEFAULT_MAZE_RENDER_STYLE.oneWay.color,
     oneWayGapWidth: DEFAULT_MAZE_RENDER_STYLE.oneWay.gapWidth,
-    oneWaySize: DEFAULT_MAZE_RENDER_STYLE.oneWay.size / TILE_SIZE,
+    oneWaySize: DEFAULT_MAZE_RENDER_STYLE.oneWay.size,
     oneWayThickness: DEFAULT_MAZE_RENDER_STYLE.oneWay.thickness,
     oneWayJoin: DEFAULT_MAZE_RENDER_STYLE.oneWay.join,
     startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker),

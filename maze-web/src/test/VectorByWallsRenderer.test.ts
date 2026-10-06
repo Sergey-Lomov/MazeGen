@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
-import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
@@ -310,9 +309,9 @@ describe("buildOneWayStyle", () => {
     expect(style.gapColor).toBe(0xdead00);
   });
 
-  it("scales oneWaySize (a tile fraction) into world-space via TILE_SIZE", () => {
-    const style = buildOneWayStyle(baseSettings({ oneWaySize: 0.5 }));
-    expect(style.size).toBe(TILE_SIZE * 0.5);
+  it("passes oneWaySize through unchanged — already in world-space px (GitHub issue #681)", () => {
+    const style = buildOneWayStyle(baseSettings({ oneWaySize: 20 }));
+    expect(style.size).toBe(20);
   });
 
   it("derives a square cap for a miter join, round for round", () => {

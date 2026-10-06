@@ -100,7 +100,7 @@ export interface PngExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** One decorative-style vertical-connection pictogram's line appearance (GitHub issue #428) — a
  *  stroke-only icon (stairs zigzag or elevator shaft box), no fill/border/gap concept the way
- *  `MarkerSettings` has. `size` is a fraction of the tile size (0-1), same convention as
+ *  `MarkerSettings` has. `size` is in px (GitHub issue #681), same convention as
  *  `MarkerSettings.size`. */
 export interface DecorativeLineStyle {
   lineColor: number;
@@ -304,7 +304,7 @@ export interface VerticalDecorativeFields {
 export interface TeleportFloorBadgeSettings {
   shape: MarkerShape;
   labelType: IndexLabelStyle;
-  /** Badge radius, as a fraction of the tile size (0-1) — same convention as
+  /** Badge radius, in px (GitHub issue #681) — same convention as
    *  `teleportLineSize`/`MarkerSettings.size`. */
   size: number;
   /** Badge body fill (GitHub issue #503 follow-up) — independent of the connector color. */
@@ -329,8 +329,7 @@ export interface TeleportFloorBadgeSettings {
 export interface TeleportSettingsFields {
   teleportLineCornerStyle: CornerStyle;
   teleportLineShape: MarkerShape;
-  /** Marker radius, as a fraction of the tile size (0-1, GitHub issue #293 follow-up — matches
-   *  `OneWayStyleOverride.size`'s convention, not a fixed pixel radius). */
+  /** Marker radius, in px (GitHub issue #681 — previously a fraction of the tile size). */
   teleportLineSize: number;
   teleportEdgeColor: number;
   teleportEdgeBorderColor: number;
@@ -388,8 +387,8 @@ export interface MarkerSettings {
    *  draws no gap, same convention as `teleportConnectorGapWidth`. Color always mirrors
    *  `VectorByWallsSettings.floorColor`, not independently settable. */
   gapWidth: number;
-  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
-   *  `VectorByWallsSettings.teleportLineSize`. */
+  /** Marker radius, in px (GitHub issue #681 — previously a fraction of the tile size) — same
+   *  convention as `VectorByWallsSettings.teleportLineSize`. */
   size: number;
 }
 
@@ -442,10 +441,10 @@ export interface VerticalSharedStyleFields {
  *  numbering closes up over what remains. The surviving connections are numbered `1..N` by a
  *  canonical order (endpoint `node.level`, then `nodeId`), stable under any input reordering.
  *
- *  `height` / `offset` / `cornerRadius` / `paddingX` are a fraction of `TILE_SIZE` — the unit
- *  system the vector export settings use; `borderWidth` and `gap` are whole-pixel counts. The
- *  plate width is uniform across the whole project: sized to the widest label in the project (so
- *  a given index looks identical on every floor), plus `2 * paddingX`. */
+ *  `height` / `offset` / `cornerRadius` / `paddingX` are all in px (GitHub issue #681 — previously
+ *  a fraction of `TILE_SIZE`), same as `borderWidth` and `gap`. The plate width is uniform across
+ *  the whole project: sized to the widest label in the project (so a given index looks identical
+ *  on every floor), plus `2 * paddingX`. */
 export interface MarkerIndexSettings {
   /** Off by default. */
   enabled: boolean;
@@ -547,6 +546,7 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
    *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
    *  color always mirrors `floorColor`, not independently settable. */
   oneWayGapWidth: number;
+  /** Indicator size, in px (GitHub issue #681 — previously a fraction of the tile size). */
   oneWaySize: number;
   /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
    *  effect on the `triangle` pattern. */
@@ -586,10 +586,11 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
 /** One-way passage indicator settings (GitHub issue #312) — a row of chevrons ("`>`" shapes with
  *  no base) drawn as a break in the corridor curve, replacing the plain stroke there. `count`
  *  chevrons in a row, each `thickness` (stroke width) and `width` (extent across the corridor, as
- *  a fraction of `VectorByCorridorsSettings.thickness` — `1` spans the full corridor width, same
- *  0-1-fraction-of-a-size convention `MarkerSettings.size`/`TeleportSettingsFields.teleportLineSize`
- *  use), separated by `gap` (visible pixel gap between two adjacent chevrons' own stroked edges,
- *  along the corridor). `color` defaults to the canvas background (GitHub issue #312's own spec —
+ *  a fraction of `VectorByCorridorsSettings.thickness` — `1` spans the full corridor width;
+ *  deliberately kept relative to the corridor's own thickness rather than converted to px, unlike
+ *  `MarkerSettings.size`/`TeleportSettingsFields.teleportLineSize` — GitHub issue #681), separated
+ *  by `gap` (visible pixel gap between two adjacent chevrons' own stroked edges, along the
+ *  corridor). `color` defaults to the canvas background (GitHub issue #312's own spec —
  *  reads as a gap cut into the corridor stroke, not an indicator drawn on top of it, unlike
  *  `VectorByWallsSettings.oneWayColor`'s always-own-color convention). */
 export interface OneWaySettingsFields {
@@ -692,10 +693,11 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
    *  specific to the bridge shape by name. */
   splitGapWidth: number;
   /** How far a diagonal split point's two connector arcs bow away from the straight line between
-   *  their own two shares, as a fraction of the tile size (0-1, same 0-1-fraction convention
-   *  `MarkerSettings.size`/`teleportLineSize` use) — only meaningful while `splitSpecialShapes` is
-   *  on. `0` draws a plain straight connector (the two nodes' lines would coincide at the tile
-   *  center, same as the generic non-special reading). */
+   *  their own two shares, as a fraction (0..1) of each long edge's own ray-intersection distance —
+   *  not a tile-size fraction (kept relative on purpose, GitHub issue #681: it scales with face
+   *  geometry, not `TILE_SIZE`) — only meaningful while `splitSpecialShapes` is on. `0` draws a
+   *  plain straight connector (the two nodes' lines would coincide at the tile center, same as the
+   *  generic non-special reading). */
   splitDiagonalBowAmount: number;
   /** Same role as `VectorByWallsSettings.links` (GitHub issue #643), over `VectorByCorridorsParamPath`. */
   links: ParamLink<VectorByCorridorsParamPath>[];

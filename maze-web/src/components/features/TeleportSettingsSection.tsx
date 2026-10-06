@@ -6,6 +6,7 @@ import type { TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
+import { TILE_SIZE } from "../../pixi/constants";
 import { ColorSwatch } from "../ColorSwatch";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import {
@@ -351,10 +352,10 @@ export function TeleportSettingsSection<P extends string>({
           label={m["image_export.vector_by_walls.teleport_size"]()}
           value={settings.teleportLineSize}
           onChange={(v) => onChange({ teleportLineSize: v })}
-          min={0}
-          max={1}
-          step={0.01}
-          format={(v) => v.toFixed(2)}
+          min={0.1 * TILE_SIZE}
+          max={TILE_SIZE}
+          step={1}
+          format={(v) => String(Math.round(v))}
           linkTarget={linkTargets.lineSize}
         />
         <LinkedColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} priorityColors={edgeColorPriority} defaultColor={edgeColorDefault} fieldName={edgeColorFieldName} linkTarget={linkTargets.edgeColor} />
@@ -495,10 +496,10 @@ export function TeleportSettingsSection<P extends string>({
               label={m["image_export.vector_by_walls.teleport_floor_badge_size"]()}
               value={settings.teleportFloorBadge.size}
               onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, size: v } })}
-              min={0}
-              max={1}
-              step={0.01}
-              format={(v) => v.toFixed(2)}
+              min={0.1 * TILE_SIZE}
+              max={TILE_SIZE}
+              step={1}
+              format={(v) => String(Math.round(v))}
               linkTarget={linkTargets.floorBadgeSize}
             />
             <LinkedColorRow

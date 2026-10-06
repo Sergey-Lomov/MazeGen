@@ -4,6 +4,7 @@ import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
+import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
 /** Shared shape option list (GitHub issue #293 follow-up unified `MarkerShape` for both start/
@@ -84,10 +85,10 @@ export function MarkerSettingsGroup<P extends string>({ title, settings, onChang
           label={m["image_export.vector_by_walls.marker_size"]()}
           value={settings.size}
           onChange={(size) => onChange({ size })}
-          min={0}
-          max={1}
-          step={0.01}
-          format={(v) => v.toFixed(2)}
+          min={0.1 * TILE_SIZE}
+          max={TILE_SIZE}
+          step={1}
+          format={(v) => String(Math.round(v))}
           linkTarget={linkTargets.size}
         />
         <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} fieldName={fieldNames?.fillColor} linkTarget={linkTargets.fillColor} />

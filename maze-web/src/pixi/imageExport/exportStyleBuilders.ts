@@ -42,15 +42,15 @@ export function buildWallStyle(settings: ReturnType<typeof useMazeStore.getState
 
 /** Builds `WallRenderer`'s `OneWayStyleOverride` from `VectorByWallsSettings` — exported as a pure
  *  function for the same testability reason as `buildWallStyle`. The gap color always mirrors
- *  `floorColor` (not independently settable — GitHub issue #292) and `size` is scaled from the
- *  settings' tile-fraction into world-space via `TILE_SIZE`. */
+ *  `floorColor` (not independently settable — GitHub issue #292); `size` is already in
+ *  world-space px. */
 export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): OneWayStyleOverride {
   return {
     pattern: settings.oneWayPattern,
     color: settings.oneWayColor,
     gapColor: settings.floorColor,
     gapWidth: settings.oneWayGapWidth,
-    size: TILE_SIZE * settings.oneWaySize,
+    size: settings.oneWaySize,
     thickness: settings.oneWayThickness,
     join: settings.oneWayJoin,
     cap: settings.oneWayJoin === "miter" ? "square" : "round",
@@ -99,9 +99,9 @@ function buildVerticalMarkerStyle(settings: MarkerSettings, floorColor: number):
  *  caller — it has no `verticalStyle`/decorative fields of its own at all. */
 const INERT_DECORATIVE_FILLER: VerticalDecorativeFields = {
   verticalStyle: "abstract",
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
   decorativeStairsArrowColor: canvas.floor.default,
   decorativeStairsArrowSize: 0.75,
   decorativeStairsOneWayArrowColor: canvas.floor.default,
@@ -192,7 +192,7 @@ export function resolveEffectiveEndpoints(
  *  (GitHub issue #471, `borderColorFromMarker` refinement). */
 function markerEndpointVisual(m: MarkerSettings | VerticalMarkerStyle, fill: number, border: number, borderWidth: number): MarkerEndpointVisual {
   return {
-    outerRadius: m.size * TILE_SIZE + Math.max(0, borderWidth),
+    outerRadius: m.size / 2 + Math.max(0, borderWidth),
     borderWidth: Math.max(0, borderWidth),
     borderMatchColor: borderWidth > 0 ? border : fill,
   };
@@ -239,7 +239,7 @@ export function buildMarkerIndexEndpointResolver(args: {
       const fill = override?.fillColor ?? teleportStyle.edgeColor;
       const border = override?.borderColor ?? teleportStyle.edgeBorderColor;
       return {
-        outerRadius: teleportStyle.size * TILE_SIZE + Math.max(0, teleportStyle.borderWidth),
+        outerRadius: teleportStyle.size / 2 + Math.max(0, teleportStyle.borderWidth),
         borderWidth: Math.max(0, teleportStyle.borderWidth),
         borderMatchColor: teleportStyle.borderWidth > 0 ? border : fill,
       };
@@ -250,7 +250,7 @@ export function buildMarkerIndexEndpointResolver(args: {
         ? verticalStyle.decorativeElevator
         : oneWay ? verticalStyle.decorativeStairsOneWay : verticalStyle.decorativeStairsTwoWay;
       return {
-        outerRadius: lineStyle.size * TILE_SIZE,
+        outerRadius: lineStyle.size / 2,
         // Decorative vertical elements have no marker border; their visible stroke is the line.
         borderWidth: Math.max(0, lineStyle.lineWidth),
         borderMatchColor: lineStyle.lineColor,
@@ -259,7 +259,7 @@ export function buildMarkerIndexEndpointResolver(args: {
     if (kind === "vertical" && oneWay) {
       const m = verticalStyle.oneWayPassageMarker;
       return {
-        outerRadius: m.size * TILE_SIZE + Math.max(0, m.borderWidth ?? 0),
+        outerRadius: m.size / 2 + Math.max(0, m.borderWidth ?? 0),
         borderWidth: Math.max(0, m.borderWidth ?? 0),
         borderMatchColor: verticalStyle.oneWayAccentColor,
       };

@@ -3,6 +3,7 @@ import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
 /** "Marker indices" section body (GitHub issue #471) — a self-contained collapsible section,
@@ -12,8 +13,8 @@ import * as m from "~/paraglide/messages";
  *
  *  Only the master "Show marker indices" toggle sits at the section's top level. Everything else
  *  is nested one indent deep: a "Coverage" sub-group of per-connection-kind toggles, then a
- *  "Settings" sub-group with the plate's appearance. All geometric fields are fractions of
- *  `TILE_SIZE` except `borderWidth` / `gap` (whole pixels). */
+ *  "Settings" sub-group with the plate's appearance. All geometric fields are in px (GitHub issue
+ *  #681 — `height`/`offset`/`cornerRadius`/`paddingX` were previously fractions of `TILE_SIZE`). */
 export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorFieldName, textColorFieldName, borderColorFieldName }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
@@ -127,32 +128,32 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 label={m["image_export.vector_by_walls.marker_index_padding_x"]()}
                 value={settings.paddingX}
                 onChange={(paddingX) => onChange({ paddingX })}
-                min={0} max={0.2} step={0.01}
-                format={(v) => v.toFixed(2)}
+                min={0} max={0.2 * TILE_SIZE} step={1}
+                format={(v) => String(Math.round(v))}
                 linkTarget={linkTargets.paddingX}
               />
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_height"]()}
                 value={settings.height}
                 onChange={(height) => onChange({ height })}
-                min={0.05} max={0.5} step={0.01}
-                format={(v) => v.toFixed(2)}
+                min={0.05 * TILE_SIZE} max={0.5 * TILE_SIZE} step={1}
+                format={(v) => String(Math.round(v))}
                 linkTarget={linkTargets.height}
               />
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_offset"]()}
                 value={settings.offset}
                 onChange={(offset) => onChange({ offset })}
-                min={0} max={0.3} step={0.01}
-                format={(v) => v.toFixed(2)}
+                min={0} max={0.3 * TILE_SIZE} step={1}
+                format={(v) => String(Math.round(v))}
                 linkTarget={linkTargets.offset}
               />
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_corner_radius"]()}
                 value={settings.cornerRadius}
                 onChange={(cornerRadius) => onChange({ cornerRadius })}
-                min={0} max={0.25} step={0.01}
-                format={(v) => v.toFixed(2)}
+                min={0} max={0.25 * TILE_SIZE} step={1}
+                format={(v) => String(Math.round(v))}
                 linkTarget={linkTargets.cornerRadius}
               />
               <LinkedSliderRow

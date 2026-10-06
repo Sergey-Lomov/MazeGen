@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { TILE_SIZE } from "../pixi/constants";
 import type { MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 
@@ -74,10 +73,10 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
   return {
     enabled: true,
     labelStyle: "arabic",
-    height: 0.35,
+    height: 14,
     offset: 0,
-    cornerRadius: 0.03,
-    paddingX: 0.04,
+    cornerRadius: 1.2,
+    paddingX: 1.6,
     gap: 3,
     fillColor: 0xf0c900,
     textColor: 0x333333,
@@ -130,21 +129,21 @@ describe("MarkerIndexRenderer.render", () => {
 
   it("positions the plate so its center sits markerOuterRadius + offset below the cell center", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ pos: [100, 200], markerOuterRadius: 10 })], allLabelStrings: ["1"], style: style({ offset: 0.1, height: 0.35 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label({ pos: [100, 200], markerOuterRadius: 10 })], allLabelStrings: ["1"], style: style({ offset: 4, height: 14 }), floorColor: 0x000000 });
     const plate = bodyLayer()[0] as FakeGraphics;
     const { y, h } = pathBounds(plate.fillPathPoints.at(-1)!);
     const plateCenterY = y + h / 2;
-    expect(plateCenterY).toBeCloseTo(200 + 10 + 0.1 * TILE_SIZE);
-    expect(h).toBeCloseTo(0.35 * TILE_SIZE);
+    expect(plateCenterY).toBeCloseTo(200 + 10 + 4);
+    expect(h).toBeCloseTo(14);
   });
 
   it("sizes the plate width to the widest label across the whole project", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ label: "1" })], allLabelStrings: ["1", "8888"], style: style({ paddingX: 0.04 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label({ label: "1" })], allLabelStrings: ["1", "8888"], style: style({ paddingX: 1.6 }), floorColor: 0x000000 });
     const plate = bodyLayer()[0] as FakeGraphics;
-    const fontSize = 0.35 * TILE_SIZE * 0.72;
+    const fontSize = 14 * 0.72;
     const widest = 4 * fontSize * 0.6; // "8888"
-    expect(pathBounds(plate.fillPathPoints.at(-1)!).w).toBeCloseTo(widest + 2 * 0.04 * TILE_SIZE);
+    expect(pathBounds(plate.fillPathPoints.at(-1)!).w).toBeCloseTo(widest + 2 * 1.6);
   });
 
   it("draws a floor-colored gap ring outset by gap + borderWidth, below the body", () => {
