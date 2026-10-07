@@ -461,6 +461,14 @@ export function PresetList({ onClose }: { onClose: () => void }) {
                 </ToolIconButton>
               ))}
             </div>
+            <div style={styles.filterActions}>
+              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={enableAllTypes}>
+                {m["preset.list_filter_enable_all"]()}
+              </Button>
+              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={disableAllTypes}>
+                {m["preset.list_filter_disable_all"]()}
+              </Button>
+            </div>
             {floors.length > 1 && (
               <SelectRow
                 label={m["preset.list_filter_floor"]()}
@@ -473,14 +481,6 @@ export function PresetList({ onClose }: { onClose: () => void }) {
                 selectStyle={{ minWidth: 0 }}
               />
             )}
-            <div style={styles.filterActions}>
-              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={enableAllTypes}>
-                {m["preset.list_filter_enable_all"]()}
-              </Button>
-              <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={disableAllTypes}>
-                {m["preset.list_filter_disable_all"]()}
-              </Button>
-            </div>
           </div>
         )}
       </div>

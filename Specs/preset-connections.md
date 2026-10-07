@@ -681,7 +681,8 @@ start, finish, generation source, teleport, one-way/two-way vertical passage, el
 lock-out, full lock, and split. Wall, passage, and undefined edge are disabled by default; the
 other twelve are enabled. Vertical-passage/elevator filters and the floor selector are hidden for
 a single-floor maze. On multi-floor mazes, the selector offers all floors and every current floor;
-an entity is shown for a selected floor when at least one endpoint belongs to that floor.
+an entity is shown for a selected floor when at least one endpoint belongs to that floor. Within the
+expanded filter section, the "Enable all"/"Disable all" action row appears above the floor selector.
 
 ### Invalidity
 

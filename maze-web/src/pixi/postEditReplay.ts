@@ -7,7 +7,7 @@ import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, edgeKey, endpointKey,
 } from "./postEditEndpoint";
 import {
-  cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
+  cyclePostEditTeleportDirection, removePostEditTeleport,
 } from "./postEditTeleportUtils";
 import {
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage,
@@ -111,8 +111,12 @@ export function applyPostEditCommand(
     }
     case "moveTeleportEndpoint": {
       if (!state.teleports.some((t) => t.id === command.id)) return fail(state);
-      const next = movePostEditTeleportEndpoint(state.teleports, { id: command.id, end: command.end }, command.endpoint);
-      return ok({ ...state, teleports: next });
+      // `from`/`to` are the complete resulting pair captured when the command was created. Apply
+      // both directly so one blueprint migration command can move both endpoints when a teleport
+      // happens to have both ends on the replaced split point.
+      const teleports = state.teleports.map((t) =>
+        t.id === command.id ? { ...t, from: command.from, to: command.to } : t);
+      return ok({ ...state, teleports });
     }
     case "removeTeleport": {
       if (!state.teleports.some((t) => t.id === command.id)) return fail(state);
@@ -266,10 +270,21 @@ export function applyPostEditCommand(
         ...(originalEndpoint ? [originalEndpoint] : []),
         ...existingSlots.map((slotId) => splitEndpoint(command.point, slotId, command.level)),
       ];
+      // A confirmed split node can be referenced either by its stable `split` form or by the
+      // resolved `node` form (manual edge commands use the latter). Strip both forms while the
+      // blueprint replaces the point; follow-up movement commands then retarget vertex elements
+      // without leaving stale edges behind.
+      for (const node of context.nodes) {
+        if (node.x !== command.point[0] || node.y !== command.point[1] || (node.level ?? 0) !== (command.level ?? 0)) continue;
+        if (node.i === 0 || existingSlots.includes(node.i - 1)) existingNodeEndpoints.push(nodeEndpoint(node.id));
+      }
       const refsExisting = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
         existingNodeEndpoints.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
       const edges = Object.fromEntries(Object.entries(state.edges).filter(([, e]) => !refsExisting(e)));
-      const teleports = state.teleports.filter((t) => !refsExisting(t));
+      // Vertex elements are moved by the store action immediately after this single blueprint
+      // command. Keep them in the replay state here so those follow-up movement commands can
+      // preserve them instead of silently deleting teleports that were anchored on an old slot.
+      const teleports = state.teleports;
 
       const slotEndpoints: PostEditEndpoint[] = command.resolvedSlots.map((s) => splitEndpoint(command.point, s.slotId, command.level));
       // `resolvedSlots` carries only the minted slots' faces — the original node (when present)

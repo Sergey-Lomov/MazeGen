@@ -796,13 +796,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const existingNodeEndpoints: PresetEndpoint[] = [presetEndpoint(point, undefined, level), ...existingSlots.map((slotId) => presetEndpoint(point, slotId, level))];
     const refsExistingNode = (ep: PresetEndpoint) => existingNodeEndpoints.some((t) => presetEndpointsEqual(ep, t));
 
-    if ((state.presetStart && refsExistingNode(state.presetStart))
-      || (state.presetFinish && refsExistingNode(state.presetFinish))
-      || (state.presetGenSource && refsExistingNode(state.presetGenSource))) {
-      set({ error: "Cannot apply a blueprint while an existing split node is assigned as start/finish/gen-source — reassign it first." });
-      return;
-    }
-
     set((state) => {
       const presetConnections = new Map(state.presetConnections);
       const removedEntityKeys = new Set<string>();
@@ -812,15 +805,55 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
           if (entry.source === "user") removedEntityKeys.add(edgeEntityKey(k));
         }
       }
-      const presetTeleports = state.presetTeleports.filter((t) => {
-        const removed = refsExistingNode(t.from) || refsExistingNode(t.to);
-        if (removed) removedEntityKeys.add(`teleport:${t.id}`);
-        return !removed;
-      });
-      const presetActiveSplitNode = { ...state.presetActiveSplitNode };
-      delete presetActiveSplitNode[key];
-
       const nodeEndpoints: PresetEndpoint[] = blueprint.nodeFaces.map((_, i) => (i === 0 ? presetEndpoint(point, undefined, level) : presetEndpoint(point, i - 1, level)));
+      const originalEndpoint = nodeEndpoints[0] ?? presetEndpoint(point, undefined, level);
+      const targetForExistingEndpoint = (endpoint: PresetEndpoint): PresetEndpoint => {
+        if (endpoint.point[0] !== point[0] || endpoint.point[1] !== point[1] || (endpoint.level ?? 0) !== (level ?? 0)) return endpoint;
+        if (endpoint.slotId === undefined) return originalEndpoint;
+        const oldIndex = existingSlots.indexOf(endpoint.slotId);
+        return oldIndex >= 0 ? (nodeEndpoints[oldIndex + 1] ?? originalEndpoint) : originalEndpoint;
+      };
+      const presetTeleports = state.presetTeleports.map((t) => ({
+        ...t, from: targetForExistingEndpoint(t.from), to: targetForExistingEndpoint(t.to),
+      }));
+      const presetVerticalPassages = state.presetVerticalPassages.map((p) => ({
+        ...p, from: targetForExistingEndpoint(p.from), to: targetForExistingEndpoint(p.to),
+      }));
+      const presetElevators = state.presetElevators.map((e) => ({
+        ...e, floors: e.floors.map(targetForExistingEndpoint),
+      }));
+      const presetStart = state.presetStart ? targetForExistingEndpoint(state.presetStart) : null;
+      const presetFinish = state.presetFinish ? targetForExistingEndpoint(state.presetFinish) : null;
+      const presetGenSource = state.presetGenSource ? targetForExistingEndpoint(state.presetGenSource) : null;
+
+      const lockedNodes = new Map(state.lockedNodes);
+      const lockKeyRemap = new Map<string, string>();
+      const mergeLock = (a: NodeLockKind | undefined, b: NodeLockKind): NodeLockKind =>
+        a === undefined || a === b ? (a ?? b) : "both";
+      for (const oldEndpoint of existingNodeEndpoints) {
+        const oldKey = presetEndpointKey(oldEndpoint);
+        const oldKind = lockedNodes.get(oldKey);
+        if (oldKind === undefined) continue;
+        const targetKey = presetEndpointKey(targetForExistingEndpoint(oldEndpoint));
+        lockKeyRemap.set(oldKey, targetKey);
+        if (targetKey !== oldKey) {
+          lockedNodes.delete(oldKey);
+          lockedNodes.set(targetKey, mergeLock(lockedNodes.get(targetKey), oldKind));
+        }
+      }
+      const presetActiveSplitNode = { ...state.presetActiveSplitNode };
+      const active = presetActiveSplitNode[key];
+      if (active) {
+        const target = targetForExistingEndpoint(active);
+        if (target.slotId === undefined) delete presetActiveSplitNode[key];
+        else presetActiveSplitNode[key] = target;
+      }
+      const presetEntityOrder = state.presetEntityOrder.reduce<string[]>((order, entityKey) => {
+        const remapped = entityKey.startsWith("lock:")
+          ? `lock:${lockKeyRemap.get(entityKey.slice("lock:".length)) ?? entityKey.slice("lock:".length)}`
+          : entityKey;
+        return order.includes(remapped) ? order : [...order, remapped];
+      }, []);
 
       const field = activeFloorField(state);
       const { offsets } = getNeighborData(field.tessellationConfig, point[0], point[1]);
@@ -881,11 +914,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       }
 
       return withRecomputedAutoLock(state, {
-        presetConnections, presetTeleports,
+        presetConnections, presetTeleports, presetVerticalPassages, presetElevators,
+        presetStart, presetFinish, presetGenSource, lockedNodes,
         presetSplitPoints: nextSplitPoints, presetActiveSplitNode,
         presetSplitPointIds,
         _nextPresetSplitPointId: createsSplit ? state._nextPresetSplitPointId + 1 : state._nextPresetSplitPointId,
-        presetEntityOrder: (createsSplit ? appendPresetEntityOrder(state.presetEntityOrder, splitEntityKey(key)) : state.presetEntityOrder)
+        presetEntityOrder: (createsSplit ? appendPresetEntityOrder(presetEntityOrder, splitEntityKey(key)) : presetEntityOrder)
           .filter((entityKey) => !removedEntityKeys.has(entityKey)),
         presetsDirty: true,
       });

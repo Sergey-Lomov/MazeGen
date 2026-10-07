@@ -595,7 +595,7 @@ describe("mazeStore preset connections", () => {
       expect(s.presetConnections.has("0,0:5-5,5")).toBe(false);
     });
 
-    it("rejects applying a blueprint while an existing slot is assigned as presetStart", () => {
+    it("preserves a preset start marker assigned to a slot while applying a blueprint", () => {
       setActiveFieldConfig({ tessellationConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
@@ -604,7 +604,34 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
-      expect(s.error).toContain("start/finish/gen-source");
+      expect(s.presetStart).toEqual(presetEndpoint([0, 0], 0));
+      expect(s.error).toBeNull();
+    });
+
+    it("moves occupied preset elements from a dropped slot onto the original node", () => {
+      const oldSlot = presetEndpoint([0, 0], 5);
+      const singleNode = { id: 1, degree: 4, nodeFaces: [[0, 2]] };
+      setActiveFieldConfig({ tessellationConfig: wideField });
+      useMazeStore.setState({
+        presetSplitPoints: { "0,0": [5] },
+        presetStart: oldSlot,
+        presetFinish: oldSlot,
+        presetGenSource: oldSlot,
+        presetTeleports: [{ id: 1, from: oldSlot, to: presetEndpoint([1, 0]), direction: "forward" }],
+        presetVerticalPassages: [{ id: 2, from: oldSlot, to: presetEndpoint([1, 0], undefined, 1), direction: "two_way" }],
+        presetElevators: [{ id: 3, floors: [oldSlot, presetEndpoint([0, 0], undefined, 1)] }],
+      });
+
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], singleNode);
+      const s = useMazeStore.getState();
+      const original = presetEndpoint([0, 0]);
+      expect(s.presetSplitPoints["0,0"]).toBeUndefined();
+      expect(s.presetStart).toEqual(original);
+      expect(s.presetFinish).toEqual(original);
+      expect(s.presetGenSource).toEqual(original);
+      expect(s.presetTeleports[0]).toMatchObject({ from: original });
+      expect(s.presetVerticalPassages[0]).toMatchObject({ from: original });
+      expect(s.presetElevators[0].floors[0]).toEqual(original);
     });
 
     it("skips a face index beyond the tile's real degree instead of throwing (blueprint authored for a different degree)", () => {
