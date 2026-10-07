@@ -223,6 +223,88 @@ describe("drawOneWayArrow", () => {
     expect(strokeCalls).toHaveLength(2);
     expect(strokeCalls[0].args[0]).toMatchObject({ width: 4 + 2 * 2, color: 0x111111 });
   });
+
+  it("fills a pentagon patch between the shaft's stroked edges and the wings' stroked edges, closing the notch between them for any corner style", () => {
+    // GitHub issue #690: the shaft's stroked outline and the wings' stroked outline are two
+    // separate open paths (the shaft ends on-axis, the wings start off-axis) — no cap style can
+    // close the gap/protrusion between them on its own. The pentagon is the shaft's own two side
+    // edges extended forward to where they meet each wing's own outer edge, then straight to the
+    // tip, filled solid so the shaft reads as flush with the arrowhead regardless of corner style.
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
+    const polyCall = g.calls.find((c) => c.fn === "poly");
+    expect(polyCall).toBeDefined();
+    const [points] = polyCall!.args as [number[]];
+    expect(points).toHaveLength(10); // 5 points
+    // The pentagon's tip vertex (3rd point) must be the arrowhead's own tip.
+    // half = size*0.5*WINGSPAN_FRACTION = 7.5 => tip at x=7.5.
+    expect(points[4]).toBeCloseTo(7.5, 5);
+    expect(points[5]).toBeCloseTo(0, 5);
+    const fillCall = g.calls.find((c) => c.fn === "fill");
+    expect(fillCall).toBeDefined();
+  });
+
+  it("widens the pentagon's own base past the arrowhead's natural wing-base span when the shaft is thicker than it", () => {
+    // Small arrowhead with an independently-set, comparatively thick stroke can make the shaft
+    // thicker than the wings' own base offset (headSize * 0.6) — the pentagon's two base corners
+    // must still sit exactly on the shaft's own side lines (shaftHalf off-axis), not narrower, so
+    // the shaft's sides are never left poking out past the patch.
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 8 });
+    const polyCall = g.calls.find((c) => c.fn === "poly");
+    const [points] = polyCall!.args as [number[]];
+    // First point's lateral (y) coordinate must be exactly shaftHalf = 4.
+    expect(Math.abs(points[1])).toBeCloseTo(4, 5);
+  });
+
+  it("disables the joint patch entirely below the minimum size, where its clamped geometry would itself look wrong", () => {
+    // GitHub issue #690 follow-up: at very small sizes the patch's own geometry (clamped against
+    // the arrow's short axis) produced visible artifacts — better to skip it than draw it
+    // degenerate. The plain shaft+wing strokes (pre-patch behavior) are used instead below size 20.
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 19, thickness: 4 });
+    const polyCall = g.calls.find((c) => c.fn === "poly");
+    expect(polyCall).toBeUndefined();
+  });
+
+  it("fills a second, wider joint patch in the gap color when gapWidth is set, matching the gap ring's own width", () => {
+    // The gap ring is its own separately-stroked, wider outline with the same on-axis/off-axis
+    // notch as the main shape — without its own patch, the main patch (drawn at the narrower main
+    // stroke width) would leave the gap ring's own wider notch unfixed.
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4, gapWidth: 2, gapColor: 0x111111 });
+    const polyCalls = g.calls.filter((c) => c.fn === "poly");
+    const fillCalls = g.calls.filter((c) => c.fn === "fill");
+    expect(polyCalls).toHaveLength(2); // gap patch, then main patch
+    expect(fillCalls).toHaveLength(2);
+    expect(fillCalls[0].args[0]).toMatchObject({ color: 0x111111 });
+    // The gap patch's own base half-width (4+2*2)/2 = 4 must be wider than the main patch's (2).
+    const [gapPoints] = polyCalls[0].args as [number[]];
+    const [mainPoints] = polyCalls[1].args as [number[]];
+    expect(Math.abs(gapPoints[1])).toBeCloseTo(4, 5);
+    expect(Math.abs(mainPoints[1])).toBeCloseTo(2, 5);
+  });
+
+  it("clamps the patch's own base to the arrowhead's base (never behind it, let alone past the tail) when thickness is extreme relative to size", () => {
+    // headSize = (size*0.5*WINGSPAN_FRACTION)*0.5 = 3.75 for size=20; a thickness of 100 would
+    // otherwise solve for a meeting point far behind the tail. The clamp keeps the patch's base at
+    // or ahead of headBack (axial distance 0 from it) instead of producing a degenerate shape.
+    const g = newG();
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 100 });
+    const polyCall = g.calls.find((c) => c.fn === "poly");
+    const [points] = polyCall!.args as [number[]];
+    // headBackX = tipX - headSize = 3.75 - 3.75 = 0. Base corners' axial (x) coordinate must be
+    // at or ahead of headBackX, never negative (which would be behind headBack, toward the tail).
+    expect(points[0]).toBeGreaterThanOrEqual(0 - 1e-9);
+    expect(points[8]).toBeGreaterThanOrEqual(0 - 1e-9);
+  });
+
+  it("does not throw when size is 0 (degenerate, zero-length arrow; patch is skipped below the minimum size)", () => {
+    const g = newG();
+    expect(() => drawOneWayArrow(g, 0, 0, 1, 0, { size: 0, thickness: 4 })).not.toThrow();
+    const polyCall = g.calls.find((c) => c.fn === "poly");
+    expect(polyCall).toBeUndefined();
+  });
 });
 
 describe("drawDirectionArrow", () => {
