@@ -752,4 +752,6 @@ These per-node marker lines are built by `buildPresetNodeMarkerLines`, itself a 
 | `defaultEdgeState` changes | All `source:"default"` entries removed and repopulated; auto-lock recomputed |
 
 When an existing teleport endpoint is dragged to another cell, its current floor is preserved;
-moving to a different cell drops any split-node slot attached to the old cell.
+floor 0 remains represented by an omitted `level` (the canonical in-memory form), while non-zero
+floors keep their numeric level. Moving to a different cell drops any split-node slot attached to
+the old cell.

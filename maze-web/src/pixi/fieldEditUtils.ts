@@ -276,8 +276,10 @@ export function moveTeleportEndpoint(
   return teleports.map(t => {
     if (t.id !== hit.id) return t;
     // Moving to a different cell drops any slot the endpoint previously addressed — the slot
-    // belonged to the old point, not the new one.
-    return { ...t, [hit.end]: presetEndpoint(cell, undefined, level) };
+    // belonged to the old point, not the new one. Floor 0 is represented by an omitted level
+    // throughout preset state; keep the moved endpoint canonical so structural endpoint matching
+    // (including the clear-tool entity picker) still finds it.
+    return { ...t, [hit.end]: presetEndpoint(cell, undefined, level === 0 ? undefined : level) };
   });
 }
 
