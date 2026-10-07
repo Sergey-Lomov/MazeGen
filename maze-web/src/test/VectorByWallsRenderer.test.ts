@@ -211,7 +211,6 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWayArrowSize: 0.6,
     oneWayArrowStyle: "triangle",
     oneWayArrowCornerStyle: "round",
-    oneWayAccentColor: 0x2a2a2a,
     elevatorArrowColor: 0x111111,
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",

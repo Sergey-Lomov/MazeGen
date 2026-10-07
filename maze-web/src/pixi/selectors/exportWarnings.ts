@@ -101,11 +101,7 @@ export type ExportWarningId =
   | "teleport_badge_text_low_contrast"
   | "vertical_arrow_low_contrast"
   | "vertical_one_way_arrow_low_contrast_fill"
-  | "vertical_two_way_fill_low_contrast_one_way_accent"
-  | "vertical_two_way_border_low_contrast_one_way_accent"
   | "elevator_arrow_low_contrast"
-  | "vertical_one_way_accent_low_contrast_fill"
-  | "vertical_one_way_accent_low_contrast_arrow"
   | "elevator_badge_fill_low_contrast"
   | "elevator_badge_fill_low_contrast_corridor"
   | "elevator_badge_fill_low_contrast_floor"
@@ -129,7 +125,7 @@ export type ExportWarningColorRole =
   | "one_way" | "split" | "marker_fill" | "marker_border" | "label_text" | "label_background"
   | "teleport_connector" | "teleport_badge_border" | "teleport_badge_fill" | "teleport_badge_text"
   | "vertical_two_way_fill" | "vertical_two_way_border" | "vertical_two_way_arrow"
-  | "vertical_two_way_line" | "vertical_one_way_fill" | "vertical_one_way_accent" | "vertical_one_way_arrow" | "vertical_one_way_line"
+  | "vertical_two_way_line" | "vertical_one_way_fill" | "vertical_one_way_border" | "vertical_one_way_arrow" | "vertical_one_way_line"
   | "vertical_one_way_decorative_arrow"
   | "elevator_fill" | "elevator_border" | "elevator_arrow" | "elevator_line"
   | "elevator_badge_fill";
@@ -146,9 +142,7 @@ const COLOR_ROLES_BY_WARNING_ID: Partial<Record<ExportWarningId, [ExportWarningC
   marker_border_low_contrast_corridor: ["marker_border", "corridor"], marker_border_low_contrast_floor: ["marker_border", "floor"],
   label_low_contrast: ["label_text", "label_background"], teleport_badge_text_low_contrast: ["teleport_badge_text", "teleport_badge_fill"],
   vertical_arrow_low_contrast: ["vertical_two_way_arrow", "vertical_two_way_fill"], vertical_one_way_arrow_low_contrast_fill: ["vertical_one_way_arrow", "vertical_one_way_fill"],
-  vertical_two_way_fill_low_contrast_one_way_accent: ["vertical_two_way_fill", "vertical_one_way_accent"], vertical_two_way_border_low_contrast_one_way_accent: ["vertical_two_way_border", "vertical_one_way_accent"],
-  elevator_arrow_low_contrast: ["elevator_arrow", "elevator_fill"], vertical_one_way_accent_low_contrast_fill: ["vertical_one_way_accent", "vertical_one_way_fill"],
-  vertical_one_way_accent_low_contrast_arrow: ["vertical_one_way_accent", "vertical_one_way_arrow"], elevator_badge_fill_low_contrast: ["elevator_badge_fill", "floor"],
+  elevator_arrow_low_contrast: ["elevator_arrow", "elevator_fill"], elevator_badge_fill_low_contrast: ["elevator_badge_fill", "floor"],
   elevator_badge_fill_low_contrast_corridor: ["elevator_badge_fill", "corridor"], elevator_badge_fill_low_contrast_floor: ["elevator_badge_fill", "floor"],
   teleport_badge_border_low_contrast: ["teleport_badge_border", "floor"], teleport_badge_border_low_contrast_corridor: ["teleport_badge_border", "corridor"],
   teleport_badge_border_low_contrast_floor: ["teleport_badge_border", "floor"],
@@ -743,7 +737,7 @@ function addCommonContrastWarnings(
     if (!oneWayVertical.includes(edge)) addMarker(settings.twoWayPassageMarker, [edge.from, edge.to]);
   }
   for (const edge of oneWayVertical) {
-    addMarker({ ...settings.oneWayPassageMarker, borderColor: settings.oneWayAccentColor }, [edge.from, edge.to]);
+    addMarker(settings.oneWayPassageMarker, [edge.from, edge.to]);
   }
   for (const edge of elevator) addMarker(settings.elevatorMarker, [edge.from, edge.to]);
   pushContrastWarningEntries(warnings, markerFillWarningId, fillEntries);
@@ -777,16 +771,8 @@ function addCommonContrastWarnings(
   const twoWay = vertical.filter((edge) => !oneWayVertical.includes(edge));
   if (verticalStyle === "abstract") {
     pushContrastWarningEntries(warnings, "vertical_arrow_low_contrast", twoWay.length > 0 ? [{ foreground: settings.twoWayArrowColor, background: settings.twoWayPassageMarker.fillColor, nodes: edgeNodeIds(twoWay, warningNodeById), edges: edgePairs(twoWay) }] : []);
-    if (oneWayVertical.length > 0 && settings.oneWayArrowColor !== settings.oneWayAccentColor) {
-      pushContrastWarningEntries(warnings, "vertical_one_way_arrow_low_contrast_fill", [{ foreground: settings.oneWayArrowColor, background: settings.oneWayPassageMarker.fillColor, nodes: edgeNodeIds(oneWayVertical, warningNodeById), edges: edgePairs(oneWayVertical) }]);
-    }
+    pushContrastWarningEntries(warnings, "vertical_one_way_arrow_low_contrast_fill", oneWayVertical.length > 0 ? [{ foreground: settings.oneWayArrowColor, background: settings.oneWayPassageMarker.fillColor, nodes: edgeNodeIds(oneWayVertical, warningNodeById), edges: edgePairs(oneWayVertical) }] : []);
     pushContrastWarningEntries(warnings, "elevator_arrow_low_contrast", elevator.length > 0 ? [{ foreground: settings.elevatorArrowColor, background: settings.elevatorMarker.fillColor, nodes: edgeNodeIds(elevator, warningNodeById), edges: edgePairs(elevator) }] : []);
-    const twoWayAccentEntries = twoWay.flatMap((edge) => [
-      { foreground: settings.twoWayPassageMarker.fillColor, background: settings.oneWayAccentColor, nodes: [edge.from, edge.to], edges: edgePairs([edge]) },
-      { foreground: settings.twoWayPassageMarker.borderColor, background: settings.oneWayAccentColor, nodes: [edge.from, edge.to], edges: edgePairs([edge]) },
-    ]);
-    pushContrastWarningEntries(warnings, "vertical_two_way_fill_low_contrast_one_way_accent", twoWayAccentEntries.filter((_, index) => index % 2 === 0));
-    pushContrastWarningEntries(warnings, "vertical_two_way_border_low_contrast_one_way_accent", twoWayAccentEntries.filter((_, index) => index % 2 === 1));
   }
   if (surfaceKind === "floor") {
     const wallsSettings = settings as VectorByWallsSettings;
@@ -824,12 +810,6 @@ function addCommonContrastWarnings(
       nodes: edgeNodeIds(elevator, warningNodeById),
       edges: edgePairs(elevator),
     }] : []);
-  }
-  if (oneWayVertical.length > 0) {
-    pushContrastWarning(warnings, "vertical_one_way_accent_low_contrast_fill", [[settings.oneWayAccentColor, settings.oneWayPassageMarker.fillColor]], edgeNodeIds(oneWayVertical, warningNodeById), edgePairs(oneWayVertical));
-    if (verticalStyle === "abstract") {
-      pushContrastWarning(warnings, "vertical_one_way_accent_low_contrast_arrow", [[settings.oneWayAccentColor, settings.oneWayArrowColor]], edgeNodeIds(oneWayVertical, warningNodeById), edgePairs(oneWayVertical));
-    }
   }
   if (settings.elevatorBadges.enabled && elevator.length > 0) {
     pushContrastWarning(warnings, elevatorBadgeFillWarningId, [[settings.elevatorBadges.fillColor, baseColor]], edgeNodeIds(elevator, warningNodeById), edgePairs(elevator));

@@ -149,7 +149,7 @@ export function VectorByCorridorsSettingsPanel() {
   ];
   const vOneWay = [
     PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor),
-    PC.oneWayAccent.at(settings.oneWayAccentColor),
+    PC.oneWayBorder.at(settings.oneWayPassageMarker.borderColor),
     PC.oneWayArrow.at(settings.oneWayArrowColor),
   ];
   const vElevator = [
@@ -859,22 +859,18 @@ export function VectorByCorridorsSettingsPanel() {
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
                       <div style={styles.subGroup}>
-                        <LinkedColorRow
-                          label={m["image_export.vector_by_walls.one_way_accent_color"]()}
-                          color={settings.oneWayAccentColor}
-                          onChange={(oneWayAccentColor) => patchVerticalSettings({ oneWayAccentColor })}
-                          priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail]}
-                          defaultColor={D.oneWayAccentColor}
-                          fieldName={PC.oneWayAccent.name()}
-                          linkTarget="oneWayAccentColor"
-                        />
                         <MarkerSettingsGroup
                           title=""
                           settings={settings.oneWayPassageMarker}
-                          hideBorderColor
-                          priorityColors={{ fillColor: [PC.oneWayAccent.at(settings.oneWayAccentColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail] }}
-                          defaultColors={{ fillColor: D.oneWayPassageMarker.fillColor }}
-                          fieldNames={{ fillColor: PC.oneWayFill.name() }}
+                          priorityColors={{
+                            fillColor: [PC.oneWayBorder.at(settings.oneWayPassageMarker.borderColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail],
+                            borderColor: [PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail],
+                          }}
+                          defaultColors={{ fillColor: D.oneWayPassageMarker.fillColor, borderColor: D.oneWayPassageMarker.borderColor }}
+                          fieldNames={{
+                            fillColor: PC.oneWayFill.name(),
+                            borderColor: PC.oneWayBorder.name(),
+                          }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setOneWayPassageMarkerShape(patch.shape);
                             if (patch.cornerStyle !== undefined) setOneWayPassageMarkerCornerStyle(patch.cornerStyle);
@@ -903,7 +899,7 @@ export function VectorByCorridorsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.oneWayArrowColor}
                           onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
-                          priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayAccent.at(settings.oneWayAccentColor), ...vTwoWay, ...vElevator, ...vTailBg]}
+                          priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayBorder.at(settings.oneWayPassageMarker.borderColor), ...vTwoWay, ...vElevator, ...vTailBg]}
                           defaultColor={D.oneWayArrowColor}
                           fieldName={PC.oneWayArrow.name()}
                           linkTarget="oneWayArrowColor"

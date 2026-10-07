@@ -162,16 +162,16 @@ the marker has no border (`borderWidth === 0`). This covers:
 - vertical one-way passage marker;
 - elevator marker.
 
-Teleport group overrides use their effective fill color. For a one-way vertical passage, the
-departure/arrival rendering uses the effective one-way colors at the corresponding endpoint; each
-visible fill is checked against the base surface.
+Teleport group overrides use their effective fill color. A one-way vertical passage's marker fill
+is checked the same way as the two-way passage's — both ends draw the ordinary marker fill, with no
+accent treatment of their own (GitHub issue #693).
 
 #### Marker borders and their base surface
 
 For every enabled/drawn marker kind, compare its border color with the mode's primary surface when
 the marker has a non-zero border (`borderWidth > 0`). This covers the same marker kinds as the fill
-rule, including effective teleport group border overrides and the one-way vertical passage's
-secondary accent border.
+rule, including effective teleport group border overrides and the one-way vertical passage's own
+`borderColor` (same field and check as the two-way passage's).
 
 The fill and border rules are mutually exclusive for each marker instance: zero-width borders use
 the fill-vs-base check; non-zero borders use the border-vs-base check. The warning text names
@@ -199,27 +199,10 @@ marker's fill color:
 - one-way passage arrow vs one-way passage fill;
 - elevator arrow vs elevator fill (with a dedicated elevator warning label).
 
-One-way arrow-vs-fill is a separate warning from the two-way passage warning. If the one-way arrow
-and one-way secondary color are identical, the duplicate arrow-vs-fill warning is suppressed when
-the secondary-color-vs-arrow warning already describes the same collision.
+One-way arrow-vs-fill is a separate warning from the two-way passage warning.
 
 Decorative vertical styles are excluded from this rule because they use line pictograms rather than
 the abstract marker-plus-arrow composition.
-
-#### One-way vertical secondary color vs fill
-
-For one-way vertical passages, compare `oneWayAccentColor` with the one-way passage fill only on
-the two endpoints of actual one-way passages. Two-way passages are excluded.
-
-#### One-way vertical secondary color vs arrow
-
-When `verticalStyle === "abstract"`, compare `oneWayAccentColor` with the one-way vertical arrow
-color only on actual one-way passage endpoints. This catches the case where the one-way secondary
-distinction and the direction arrow merge into one indistinguishable mark.
-
-Also, in abstract mode, compare the two-way passage fill and border with the one-way secondary
-color. These are two separate warnings, one for the fill and one for the border. This catches a
-two-way marker whose appearance merges with the one-way marker treatment.
 
 #### Elevator floor badge fill vs base surface
 

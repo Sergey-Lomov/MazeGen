@@ -298,7 +298,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitDiagonalBowAmount: v } })),
   patchVectorByCorridorsVerticalSettings: (patch) =>
     set((s) => {
-      const overridable: VectorByCorridorsParamPath[] = ["twoWayArrowColor", "oneWayArrowColor", "oneWayAccentColor", "elevatorArrowColor"];
+      const overridable: VectorByCorridorsParamPath[] = ["twoWayArrowColor", "oneWayArrowColor", "elevatorArrowColor"];
       let links = s.vectorByCorridorsSettings.links;
       const detached: VectorByCorridorsParamPath[] = [];
       for (const target of overridable) {
@@ -668,7 +668,6 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       const overridable: VectorByWallsParamPath[] = [
         "twoWayArrowColor",
         "oneWayArrowColor",
-        "oneWayAccentColor",
         "elevatorArrowColor",
         "decorativeStairsArrowColor",
         "decorativeStairsOneWayArrowColor",

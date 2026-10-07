@@ -268,7 +268,6 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     oneWayArrowSize: optNumber(obj, "oneWayArrowSize", d.oneWayArrowSize),
     oneWayArrowStyle: optVerticalArrowStyle(obj, "oneWayArrowStyle", d.oneWayArrowStyle),
     oneWayArrowCornerStyle: optCornerStyle(obj, "oneWayArrowCornerStyle", d.oneWayArrowCornerStyle),
-    oneWayAccentColor: optNumber(obj, "oneWayAccentColor", d.oneWayAccentColor),
     elevatorArrowColor: optNumber(obj, "elevatorArrowColor", d.elevatorArrowColor),
     elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
     elevatorArrowStyle: optVerticalArrowStyle(obj, "elevatorArrowStyle", d.elevatorArrowStyle),

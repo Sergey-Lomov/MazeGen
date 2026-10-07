@@ -34,7 +34,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  show-border/show-gap toggle for either. Shared by `VectorByWallsSettingsPanel` and
  *  `VectorByCorridorsSettingsPanel` (GitHub issue #311) — both modes' waypoint settings mirror
  *  each other exactly, only the underlying store setters differ. */
-export function MarkerSettingsGroup<P extends string>({ title, settings, onChange, linkTargets, hideBorderColor, priorityColors, defaultColors, fieldNames }: {
+export function MarkerSettingsGroup<P extends string>({ title, settings, onChange, linkTargets, priorityColors, defaultColors, fieldNames }: {
   title: string;
   settings: MarkerSettings;
   onChange: (patch: Partial<MarkerSettings>) => void;
@@ -54,11 +54,6 @@ export function MarkerSettingsGroup<P extends string>({ title, settings, onChang
    *  rendering `LinkStatusIcon`'s "unsupported" state there instead of omitting the icon — every
    *  field row gets one either way. */
   linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null };
-  /** Hides the "Border color" row (GitHub issue #347 fourth follow-up) — a one-way passage marker's
-   *  own `borderColor` field is no longer read by the renderer (its border/fill colors are driven
-   *  entirely by `oneWayAccentColor` instead, see `VerticalConnectionRenderer`), so showing it here
-   *  would be a dead control. */
-  hideBorderColor?: boolean;
 }) {
   return (
     <div style={styles.markerGroupWrap}>
@@ -92,9 +87,7 @@ export function MarkerSettingsGroup<P extends string>({ title, settings, onChang
           linkTarget={linkTargets.size}
         />
         <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} fieldName={fieldNames?.fillColor} linkTarget={linkTargets.fillColor} />
-        {!hideBorderColor && (
-          <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} fieldName={fieldNames?.borderColor} linkTarget={linkTargets.borderColor} />
-        )}
+        <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} fieldName={fieldNames?.borderColor} linkTarget={linkTargets.borderColor} />
         <LinkedSliderRow
           label={m["image_export.vector_by_walls.marker_border_width"]()}
           value={settings.borderWidth}

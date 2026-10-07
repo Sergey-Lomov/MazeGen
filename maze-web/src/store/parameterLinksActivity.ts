@@ -57,7 +57,7 @@ const VERTICAL_SHARED_STYLE_DECORATIVE_ONLY = new Set([
 
 const TWO_WAY_ABSTRACT_PATHS = new Set(["twoWayArrowColor", "twoWayArrowSize", "twoWayArrowStyle", "twoWayArrowCornerStyle"]);
 const TWO_WAY_DECORATIVE_PATHS = new Set(["decorativeStairsArrowSize", "decorativeStairsArrowColor"]);
-const ONE_WAY_PASSAGE_ABSTRACT_PATHS = new Set(["oneWayAccentColor", "oneWayArrowColor", "oneWayArrowSize", "oneWayArrowStyle", "oneWayArrowCornerStyle"]);
+const ONE_WAY_PASSAGE_ABSTRACT_PATHS = new Set(["oneWayArrowColor", "oneWayArrowSize", "oneWayArrowStyle", "oneWayArrowCornerStyle"]);
 const ONE_WAY_PASSAGE_DECORATIVE_PATHS = new Set(["decorativeStairsOneWayArrowSize", "decorativeStairsOneWayArrowColor"]);
 const ELEVATOR_ABSTRACT_PATHS = new Set(["elevatorArrowColor", "elevatorArrowSize", "elevatorArrowStyle", "elevatorArrowCornerStyle"]);
 

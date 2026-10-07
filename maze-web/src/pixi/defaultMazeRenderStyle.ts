@@ -18,7 +18,7 @@ export interface MazeRenderStyle {
   split: { nodeColors: readonly number[]; specialShapes: boolean };
 }
 
-const ONE_WAY_ACCENT_DARK = 0x196c64;
+const DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK = 0x196c64;
 
 // Shared marker standard (GitHub issue #681 follow-up) — every bordered marker (start, finish,
 // teleport edge/floor badge, vertical passage, elevator) defaults to the same size/border so they
@@ -60,13 +60,13 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: MARKER_BORDER_WIDTH, gapWidth: 3, gapColor: canvas.floor.default, size: MARKER_SIZE },
     elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: MARKER_BORDER_WIDTH, gapWidth: 3, gapColor: canvas.floor.default, size: MARKER_SIZE },
     twoWayArrowColor: canvas.floor.default, twoWayArrowSize: 0.75, twoWayArrowStyle: "triangle", twoWayArrowCornerStyle: "round",
-    oneWayArrowColor: canvas.floor.default, oneWayArrowSize: 0.75, oneWayArrowStyle: "triangle", oneWayArrowCornerStyle: "round", oneWayAccentColor: ONE_WAY_ACCENT_DARK,
+    oneWayArrowColor: canvas.floor.default, oneWayArrowSize: 0.75, oneWayArrowStyle: "triangle", oneWayArrowCornerStyle: "round",
     elevatorArrowColor: canvas.floor.default, elevatorArrowSize: 0.75, elevatorArrowStyle: "triangle", elevatorArrowCornerStyle: "round",
     decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
     decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
     decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
     decorativeStairsArrowColor: canvas.floor.default, decorativeStairsArrowSize: 0.75,
-    decorativeStairsOneWayArrowColor: ONE_WAY_ACCENT_DARK, decorativeStairsOneWayArrowSize: 0.75,
+    decorativeStairsOneWayArrowColor: DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK, decorativeStairsOneWayArrowSize: 0.75,
     elevatorBadges: { enabled: false, labelType: "arabic", size: 0.7, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, textColor: canvas.floor.default, fontWeight: "bold" },
   },
   split: { nodeColors: [], specialShapes: true },

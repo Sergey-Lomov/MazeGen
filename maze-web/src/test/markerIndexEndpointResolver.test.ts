@@ -19,7 +19,6 @@ const verticalStyle = (patch: Partial<VerticalConnectionStyle> = {}): VerticalCo
   twoWayPassageMarker: marker({ fillColor: 0x00aa00, borderColor: 0x00bb00 }),
   oneWayPassageMarker: marker({ fillColor: 0x00aa00, borderColor: 0x00bb00 }),
   elevatorMarker: marker({ fillColor: 0x0000aa, borderColor: 0x0000bb }),
-  oneWayAccentColor: 0x00cc00,
   ...patch,
 } as VerticalConnectionStyle);
 
@@ -74,10 +73,10 @@ describe("buildMarkerIndexEndpointResolver", () => {
     expect(resolve(1, "vertical", true)).toEqual({ outerRadius: 0.29 / 2, borderWidth: 5, borderMatchColor: 0xabcdef });
   });
 
-  it("uses the one-way secondary color for abstract vertical indices", () => {
+  it("uses the one-way passage marker's own border color for abstract vertical indices", () => {
     const resolve = buildMarkerIndexEndpointResolver({
       teleportEdges: [], teleportStyle: teleportStyle(), groupCustomization: false, groupOverrides: {},
-      verticalStyle: verticalStyle({ oneWayAccentColor: 0xfedcba }),
+      verticalStyle: verticalStyle({ oneWayPassageMarker: marker({ fillColor: 0x00aa00, borderColor: 0xfedcba, borderWidth: 2 }) }),
     });
     expect(resolve(1, "vertical", true).borderMatchColor).toBe(0xfedcba);
   });

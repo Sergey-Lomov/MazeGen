@@ -16,7 +16,7 @@ type P =
   | "verticalDecorativeArrowSize"
   | "twoWayArrowColor"
   | "decorativeStairsArrowColor"
-  | "oneWayAccentColor"
+  | "oneWayArrowColor"
   | "decorativeStairsOneWayArrowColor"
   | "elevatorArrowColor"
   | "decorativeElevator.fillColor"
@@ -32,7 +32,7 @@ const registry: Record<P, ParamDescriptor> = Object.fromEntries(
     "teleportLineColor", "teleportFloorBadge.enabled", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
     "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
     "verticalDecorativeSize", "verticalDecorativeArrowSize",
-    "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayAccentColor",
+    "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
     "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor",
@@ -116,8 +116,8 @@ describe("isPathActive", () => {
   });
 
   it("shows one-way-passage abstract/decorative fields mirroring the two-way split", () => {
-    expect(active("oneWayAccentColor", { hasOneWayPassages: true }, { verticalStyle: "abstract" })).toBe(true);
-    expect(active("oneWayAccentColor", { hasOneWayPassages: true }, { verticalStyle: "decorative" })).toBe(false);
+    expect(active("oneWayArrowColor", { hasOneWayPassages: true }, { verticalStyle: "abstract" })).toBe(true);
+    expect(active("oneWayArrowColor", { hasOneWayPassages: true }, { verticalStyle: "decorative" })).toBe(false);
     expect(active("decorativeStairsOneWayArrowColor", { hasOneWayPassages: true }, { verticalStyle: "decorative" })).toBe(true);
     expect(active("decorativeStairsOneWayArrowColor", { hasOneWayPassages: false }, { verticalStyle: "decorative" })).toBe(false);
   });

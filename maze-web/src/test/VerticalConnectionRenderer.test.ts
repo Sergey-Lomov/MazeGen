@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
+import { patternVisualTipFraction, patternBaseFraction } from "../pixi/renderers/VerticalConnectionRenderer";
 
 const navigateToFloorMock = vi.fn();
 vi.mock("../pixi/renderers/floorNavigation", () => ({
@@ -11,7 +12,7 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
 // this session added (same-cell spread, arrow side-by-side offset) is only observable through the
 // exact coordinates each draw call receives, unlike most other mocked-pixi tests in this repo that
 // only assert *that* something was drawn.
-type Call = { method: "circle" | "poly" | "roundPoly" | "moveTo" | "lineTo"; args: number[] };
+type Call = { method: "circle" | "poly" | "roundPoly" | "roundRect" | "moveTo" | "lineTo"; args: number[] };
 type StrokeCall = { width?: number; color?: number; cap?: string; join?: string; alignment?: number };
 interface FakeGraphics {
   clear: () => FakeGraphics;
@@ -19,6 +20,7 @@ interface FakeGraphics {
   circle: (x: number, y: number, r: number) => FakeGraphics;
   poly: (points: number[]) => FakeGraphics;
   roundPoly: (x: number, y: number, radius: number, sides: number, corner: number) => FakeGraphics;
+  roundRect: (x: number, y: number, w: number, h: number, radius: number) => FakeGraphics;
   rect: (x: number, y: number, w: number, h: number) => FakeGraphics;
   moveTo: (x: number, y: number) => FakeGraphics;
   lineTo: (x: number, y: number) => FakeGraphics;
@@ -50,6 +52,7 @@ function installFakeGraphics(target: FakeGraphics): void {
   target.circle = (x, y, r) => { target.calls.push({ method: "circle", args: [x, y, r] }); return target; };
   target.poly = (points) => { target.calls.push({ method: "poly", args: points }); return target; };
   target.roundPoly = (x, y, radius, sides, corner) => { target.calls.push({ method: "roundPoly", args: [x, y, radius, sides, corner] }); return target; };
+  target.roundRect = (x, y, w, h, radius) => { target.calls.push({ method: "roundRect", args: [x, y, w, h, radius] }); return target; };
   target.rect = () => target;
   target.moveTo = (x, y) => { target.calls.push({ method: "moveTo", args: [x, y] }); return target; };
   target.lineTo = (x, y) => { target.calls.push({ method: "lineTo", args: [x, y] }); return target; };
@@ -128,7 +131,6 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     oneWayArrowSize: 0.6,
     oneWayArrowStyle: "triangle",
     oneWayArrowCornerStyle: "round",
-    oneWayAccentColor: 0x2a2a2a,
     elevatorArrowColor: 0x444444,
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",
@@ -170,6 +172,27 @@ function polygonCenter(points: number[]): [number, number] {
 function polygonRadius(points: number[], cx: number, cy: number): number {
   return Math.max(...Array.from({ length: points.length / 2 }, (_, i) => Math.hypot(points[i * 2] - cx, points[i * 2 + 1] - cy)));
 }
+
+describe("patternVisualTipFraction / patternBaseFraction (GitHub issue #693, wall-tick centering)", () => {
+  it("triangle's visual tip sits short of the nominal +1, inset by roundPoly's corner rounding", () => {
+    // drawOneWayTriangle rounds its roundPoly corners (corner = (length*0.5)*0.3) — the tip
+    // vertex's 60° interior angle means the cut shortens its axial reach non-negligibly, unlike a
+    // plain stroked pattern's exact `+1` tip. Regression guard for the geometry derivation in
+    // `patternVisualTipFraction`'s own doc comment.
+    expect(patternVisualTipFraction("triangle")).toBeCloseTo(0.6003, 3);
+  });
+
+  it("chevron/arrow have no roundPoly corner rounding, so their visual tip stays the nominal +1", () => {
+    expect(patternVisualTipFraction("chevron")).toBe(1);
+    expect(patternVisualTipFraction("arrow")).toBe(1);
+  });
+
+  it("triangle's own base sits behind the origin; chevron/arrow's back sits exactly at it", () => {
+    expect(patternBaseFraction("triangle")).toBeCloseTo(-0.5385, 3);
+    expect(patternBaseFraction("chevron")).toBe(0);
+    expect(patternBaseFraction("arrow")).toBe(0);
+  });
+});
 
 describe("VerticalConnectionRenderer", () => {
   it("draws a lone marker centered at its own position, unshifted", () => {
@@ -763,6 +786,31 @@ describe("VerticalConnectionRenderer", () => {
     expect(moveToCalls).toHaveLength(5);
   });
 
+  it("tail-ticked (departure end) arrow draws an arrowhead plus a tick past the shaft's own tail (GitHub issue #693, decorative follow-up — the departure-end counterpart to the arrival end's crossed-out tick)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    // departure end: filled: false, arrowFilled: true -> tailTick: true
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+
+    // Same shape count as the crossed-out (arrival) end: stairs icon (1 moveTo) + arrow shaft (1
+    // moveTo) + arrowhead (2 moveTo) + tail tick (1 moveTo) = 5.
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    expect(moveToCalls).toHaveLength(5);
+
+    // The tail tick sits past the shaft's own tail, not past the arrowhead's tip — so its own
+    // moveTo (the last one) must land clearly further from the arrowhead's tip moveTo (the first
+    // one after the stairs icon's own) than the shaft is long, confirming it wasn't drawn at the
+    // tip by mistake (which would make the two nearly coincide instead).
+    const [, shaftStart, , , tailTickStart] = moveToCalls;
+    const shaftToTailTick = Math.hypot(tailTickStart.args[0] - shaftStart.args[0], tailTickStart.args[1] - shaftStart.args[1]);
+    expect(shaftToTailTick).toBeGreaterThan(0);
+  });
+
   it("style 'decorative' draws a two-way VerticalPassage's own direction arrow too (not just one-way), adding extra moveTo calls beyond the stairs icon alone", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
@@ -810,28 +858,31 @@ describe("VerticalConnectionRenderer", () => {
     expect(upTipMoveTo.args[1]).toBeLessThan(downTipMoveTo.args[1] as number);
   });
 
-  it("a one-way passage's departure end draws the primary fill with a secondary-accent border, and arrival end draws entirely in the secondary accent (GitHub issue #347 fifth follow-up redesign, sixth follow-up swapped which end gets which treatment)", () => {
+  it("a one-way passage's departure and arrival ends both draw the ordinary fill/border, with a wall tick in the arrow color (GitHub issue #693)", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
 
     const style = baseStyle({
       oneWayPassageMarker: circleMarkerStyle({ fillColor: 0x555555, borderColor: 0x666666, borderWidth: 2 }),
-      oneWayAccentColor: 0x2a2a2a,
     });
 
-    const departure = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: true });
+    const departure = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" });
     render(renderer, { markers: [departure], style });
-    expect(g.fillCalls[0]).toBe(0x2a2a2a);
-    expect(g.fillCalls.at(-1)).toBe(0x555555);
+    expect(g.fillCalls[0]).toBe(0x666666);
+    expect(g.fillCalls[1]).toBe(0x555555);
+    // Wall tick is a filled rounded rect (GitHub issue #693, rounded-rect follow-up), not a
+    // stroked line — its own fill call is the last one, after the arrow triangle's fill.
+    expect(g.fillCalls.at(-1)).toBe(style.oneWayArrowColor);
 
     g.calls.length = 0;
     g.strokeCalls.length = 0;
     g.fillCalls.length = 0;
-    const arrival = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: false });
+    const arrival = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: false, direction: "up" });
     render(renderer, { markers: [arrival], style });
-    expect(g.fillCalls[0]).toBe(0x2a2a2a);
-    expect(g.fillCalls.at(-1)).toBe(0x2a2a2a);
+    expect(g.fillCalls[0]).toBe(0x666666);
+    expect(g.fillCalls[1]).toBe(0x555555);
+    expect(g.fillCalls.at(-1)).toBe(style.oneWayArrowColor);
   });
 
   describe("elevator floor-number badges (GitHub issue #430)", () => {

@@ -381,7 +381,6 @@ describe("buildVerticalConnectionStyle (Vector by corridors call site, no decora
   it("carries the caller's own marker/arrow settings through unchanged", () => {
     const style = buildVerticalConnectionStyle(settingsA, settingsA.color);
     expect(style.twoWayArrowColor).toBe(settingsA.twoWayArrowColor);
-    expect(style.oneWayAccentColor).toBe(settingsA.oneWayAccentColor);
     expect(style.elevatorArrowStyle).toBe(settingsA.elevatorArrowStyle);
     expect(style.elevatorBadges).toBe(settingsA.elevatorBadges);
   });

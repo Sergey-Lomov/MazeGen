@@ -103,15 +103,13 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
  * correct for a physical single-sheet two-floor build, per the issue's own rationale;
  * `"decorative"` is an opt-in choice for a purely visual/print export. A two-way passage/elevator
  * marker draws solid (`filled: true`), so its own `fillColor` defaults to `canvas.vertical.default`
- * same as its border; a one-way passage marker (GitHub issue #347 fourth follow-up redesign) reads
- * as a dark-accented variant of that same look at both ends — its own `fillColor` defaults to
- * `canvas.vertical.default` too (the "primary" color, the arrival end's ordinary fill), while
- * `oneWayAccentColor` (the "secondary" color) defaults to a fixed dark accent
- * (`ONE_WAY_ACCENT_DARK`) driving both the arrival-end border and the departure-end's entire fill.
+ * same as its border; a one-way passage marker draws the same ordinary fill/border at both ends
+ * (GitHub issue #693 removed the earlier accent-tinted redesign in favor of a wall-tick indicator
+ * on the direction arrow itself, see `VerticalConnectionRenderer`).
  * Every section's own `*ArrowColor` defaults to `canvas.floor.default` (GitHub issue #347 fifth
  * follow-up — `oneWayArrowColor` moved off `canvas.vertical.default` to match the other two
  * sections), so the arrow reads as a floor-colored cutout against the marker's own fill. */
-const ONE_WAY_ACCENT_DARK = DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayAccentColor;
+const DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK = DEFAULT_MAZE_RENDER_STYLE.verticalConnections.decorativeStairsOneWayArrowColor;
 
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   replaceTwoFloorElevatorsWithStairs: true,
@@ -126,7 +124,6 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   oneWayArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowSize,
   oneWayArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowStyle,
   oneWayArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowCornerStyle,
-  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
   elevatorArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowColor,
   elevatorArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowSize,
   elevatorArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowStyle,
@@ -207,7 +204,7 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
   // since that distinction is the whole point of the one-way from/to treatment.
   decorativeStairsArrowColor: canvas.vertical.default,
   decorativeStairsArrowSize: 0.75,
-  decorativeStairsOneWayArrowColor: ONE_WAY_ACCENT_DARK,
+  decorativeStairsOneWayArrowColor: DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK,
   decorativeStairsOneWayArrowSize: 0.75,
 };
 

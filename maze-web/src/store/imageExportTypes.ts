@@ -190,11 +190,11 @@ export interface ElevatorBadgeSettings {
  *  independent panel sections/marker settings (GitHub issue #347 follow-up), split by how the
  *  marker actually reads on the map, not just by `EdgeDto.kind`: `twoWayPassageMarker` for a
  *  two-way `VerticalPassage` (`direction` set but `filled: true` — no departure/arrival
- *  distinction), `oneWayPassageMarker` for a one-way `VerticalPassage` (`filled: false` — reads as
- *  a dark-accented variant of the ordinary marker at both ends, GitHub issue #347 fourth/fifth
- *  follow-up redesign: the arrival end draws the ordinary ("primary") fill with a `oneWayAccentColor`
- *  ("secondary") border, the departure end draws its entire fill in that same accent), and
- *  `elevatorMarker` for every `Elevator` (always two-way by construction, but visually distinct from
+ *  distinction), `oneWayPassageMarker` for a one-way `VerticalPassage` (`filled: false` — draws the
+ *  same ordinary fill/border as the two-way marker at both ends; GitHub issue #693 replaced the
+ *  earlier accent-tinted fill/border redesign with a wall-tick indicator on the direction arrow
+ *  itself, see `VerticalConnectionRenderer`), and `elevatorMarker` for every `Elevator` (always
+ *  two-way by construction, but visually distinct from
  *  a two-way `VerticalPassage` — its own shape/color, own section). Each has distinct defaults
  *  (shape/color) so all three read apart on the map without the user configuring anything;
  *  `cornerStyle`/`size`/`borderWidth`/`gapWidth` on all three follow "Shared style" (GitHub issue
@@ -210,9 +210,8 @@ export interface ElevatorBadgeSettings {
  *  shape/stairs — `direction` is set for two-way markers too (GitHub issue #337/#347 design
  *  follow-up: a two-way connection still has a real "which floor(s)" to point at), drawn in the
  *  marker's own gap color so it reads as a cutout against the solid `filled: true` circle; a one-way
- *  `VerticalPassage`'s arrow now draws solid on both ends (GitHub issue #347 fourth follow-up —
- *  the old outline-only arrival arrow is redundant with `oneWayAccentColor`'s own border/fill
- *  distinction). Each
+ *  `VerticalPassage`'s arrow draws solid on both ends and carries its own wall-tick indicator
+ *  (GitHub issue #693, see `VerticalConnectionRenderer`). Each
  *  section's own `*ArrowColor`/`*ArrowSize` (the latter a fraction of the marker's own radius, 0-1)
  *  colors/scales that section's own arrow independently.
  *
@@ -230,10 +229,9 @@ export interface ElevatorBadgeSettings {
  *  arrowhead pattern reads as a point indicator, not a direction-of-travel-along-a-line one): a
  *  two-way `VerticalPassage` draws it in `decorativeStairsArrowColor`/`decorativeStairsArrowSize`;
  *  a one-way `VerticalPassage` draws it in `decorativeStairsOneWayArrowColor`/
- *  `decorativeStairsOneWayArrowSize` at both ends, crossed-out at the arrival (`to`) end
- *  (mirrors `oneWayAccentColor`'s own from/to distinction, but as one shared color instead of a
- *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
- *  of its own, decorative or not. */
+ *  `decorativeStairsOneWayArrowSize` at both ends, crossed-out at the arrival (`to`) end — a
+ *  line-icon analogue of the abstract marker's own wall-tick indicator (GitHub issue #693). The
+ *  elevator pictogram never draws an arrow of its own, decorative or not. */
 export interface VerticalSettingsFields {
   /** Render elevators spanning exactly two floors with the stairs settings instead. */
   replaceTwoFloorElevatorsWithStairs: boolean;
@@ -258,12 +256,6 @@ export interface VerticalSettingsFields {
   oneWayArrowSize: number;
   oneWayArrowStyle: VerticalArrowStyle;
   oneWayArrowCornerStyle: CornerStyle;
-  /** One-way passage's "secondary" accent color (GitHub issue #347 fifth follow-up, simplified from
-   *  the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the
-   *  same accent anyway): the arrival end draws the ordinary ("primary") fill with its border
-   *  recolored to this accent; the departure end draws its entire fill in this same accent, no
-   *  separate border color. The "primary" color is just `oneWayPassageMarker.fillColor` itself. */
-  oneWayAccentColor: number;
   elevatorArrowColor: number;
   elevatorArrowSize: number;
   elevatorArrowStyle: VerticalArrowStyle;
@@ -288,8 +280,8 @@ export interface VerticalDecorativeFields {
   decorativeStairsArrowSize: number;
   /** One-way stairs arrow color, both ends (GitHub issue #428, renamed from `decorativeStairsAccentColor`
    *  in issue #583 to match its actual role — it only ever draws the arrow, not a marker accent)
-   *  — mirrors `oneWayAccentColor`'s own from/to distinction but as one shared color, not a
-   *  fill/border split (there's no fill on a line icon to split). */
+   *  — one shared color for both ends, no fill/border to split (there's no fill on a line icon to
+   *  split, unlike the abstract marker's own former accent field). */
   decorativeStairsOneWayArrowColor: number;
   /** One-way stairs arrow size (GitHub issue #583), independent of `decorativeStairsArrowSize` —
    *  brings the one-way passage in line with the two-way passage's own dedicated Arrow subsection. */
@@ -411,9 +403,9 @@ export interface SharedStyleSourceFields {
  *  with `startMarker`/`finishMarker`/teleport fields. Every link to these sources starts disabled
  *  (`parameterLinksDefaults.ts`), same as the panel-level "Shared style" links into this section's
  *  own fields — the three markers' defaults are pinned to `GenerationRenderer`'s fixed look, not
- *  this group. `borderColor`/`oneWayAccentColor` are deliberately excluded — each marker's border
- *  semantics still differ (a one-way marker uses `oneWayAccentColor` where the other two use
- *  `borderColor`); folding that in is a later follow-up once `oneWayAccentColor` itself goes away. */
+ *  this group. `borderColor` is deliberately excluded — a future follow-up could fold it in now
+ *  that all three marker groups share the same ordinary fill/border semantics (GitHub issue #693
+ *  removed the one-way marker's former accent-color distinction). */
 export interface VerticalSharedStyleFields {
   verticalCornerStyle: CornerStyle;
   verticalShape: MarkerShape;
@@ -839,7 +831,6 @@ export interface ImageExportActions {
         | "oneWayArrowSize"
         | "oneWayArrowStyle"
         | "oneWayArrowCornerStyle"
-        | "oneWayAccentColor"
         | "elevatorArrowColor"
         | "elevatorArrowSize"
         | "elevatorArrowStyle"
@@ -953,7 +944,6 @@ export interface ImageExportActions {
         | "oneWayArrowSize"
         | "oneWayArrowStyle"
         | "oneWayArrowCornerStyle"
-        | "oneWayAccentColor"
         | "elevatorArrowColor"
         | "elevatorArrowSize"
         | "elevatorArrowStyle"
