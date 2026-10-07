@@ -750,14 +750,20 @@ inactive..."). This is independent of `LinkEditor`'s own toggle below — a link
 now-inactive parameter always shows the badge in the list, whether or not `LinkEditor` happens to be
 showing inactive paths at the time.
 
-In `LinkEditor`'s Target/Source pickers, a "Show inactive" switch sits at the bottom of the dialog,
-to the left of Cancel/Save, default off. Off (default): both pickers list only active paths, plus
-whichever path is already selected as that picker's current Target/Source even if it's since gone
-inactive (so editing an existing link never looks like its own endpoint vanished). On: every
-registry path is listed, with the same `EyeOff` badge marking the inactive ones inline, after each
-leaf's label — letting a link be deliberately set up on a parameter that's hidden right now but
-might become relevant later (e.g. pre-wiring a teleport-related link before any teleport exists in
-the maze yet).
+In `LinkEditor`'s Target/Source pickers, a "Show inactive" toggle (`ToggleRow`, label left switch
+right — same convention as every other labeled toggle in the app) sits at the bottom of the dialog,
+to the left of Cancel/Save, default on. Off: both pickers list only active paths, plus whichever
+path is already selected as that picker's current Target/Source even if it's since gone inactive
+(so editing an existing link never looks like its own endpoint vanished). On (default): every
+registry path is listed, with the same `EyeOff` badge marking the inactive ones inline after each
+leaf's label, and the row itself dimmed (`muted(typography.body)`) for extra visual distinction —
+letting a link be deliberately set up on a parameter that's hidden right now but might become
+relevant later (e.g. pre-wiring a teleport-related link before any teleport exists in the maze yet).
+A group row is dimmed and gets the same badge whenever every leaf nested under it is inactive
+(`allLeavesInactive`, GitHub issue #688) — before this, a section with nothing active inside it
+looked identical to a fully active one in the picker tree, with no way to tell without expanding it;
+the link list's own path-mention badges (previous paragraph) already covered the single-parameter
+case, this extends the same signal to whole collapsed sections.
 
 The four "Shared style" source fields (`cornerStyle`/`markerSize`/`markerBorderWidth`/`gapWidth`)
 carry `group: ["Shared style"]` (the section they actually live in), not an empty `group` — so they

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, EyeOff, X } from "lucide-react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
+import { ToggleRow } from "../ToggleRow";
 import { Button } from "../Button";
 import { EditIconButton } from "../EditIconButton";
 import { RemoveIconButton } from "../RemoveIconButton";
@@ -118,7 +119,7 @@ function HierarchicalLabelSegments<P extends string>({
 
 /** One node of the picker's group tree — either a leaf (an actual `P` path) or a group folder
  *  (one `registry[path].group` segment) holding further children, built by `buildPickerTree`. */
-type PickerNode<P extends string> =
+export type PickerNode<P extends string> =
   | { kind: "leaf"; path: P; label: string }
   | { kind: "group"; label: string; groupKey: string; children: PickerNode<P>[] };
 
@@ -156,6 +157,17 @@ function buildPickerTree<P extends string>(paths: P[], registry: Record<P, Param
     return [...groupNodes, ...leafNodes];
   }
   return toNodes(root, "");
+}
+
+/** Whether every leaf under `node` is inactive (GitHub issue #688) — a group node gets the same
+ *  closed-eye badge and dimming as a leaf once none of its descendants are currently shown in the
+ *  settings panel, so a fully-hidden section doesn't look identical to an active one just because
+ *  its own row has no `activePaths` entry of its own. An empty group (no leaves at all, impossible
+ *  via `buildPickerTree` but kept defensive) counts as not-inactive — nothing to hide. */
+export function allLeavesInactive<P extends string>(node: PickerNode<P>, activePaths: Set<P>): boolean {
+  if (node.kind === "leaf") return !activePaths.has(node.path);
+  if (node.children.length === 0) return false;
+  return node.children.every((child) => allLeavesInactive(child, activePaths));
 }
 
 /** Resolves `buildPickerTree`'s nodes down to the group addressed by `path` (empty = root) —
@@ -373,6 +385,7 @@ function ParamPicker<P extends string>({
             style={{
               ...styles.pickerRow,
               paddingLeft: depth * indent.tree + 4,
+              ...(inactive ? styles.pickerRowInactive : {}),
               ...(node.path === selected ? styles.pickerRowSelected : {}),
             }}
             onClick={() => onPick(node.path)}
@@ -387,15 +400,25 @@ function ParamPicker<P extends string>({
         );
       }
       const isExpanded = expanded.has(node.groupKey);
+      const groupInactive = allLeavesInactive(node, activePaths);
       return (
         <div key={node.groupKey}>
           <div
             className="hoverable"
-            style={{ ...styles.pickerGroupRow, paddingLeft: depth * indent.tree + 4 }}
+            style={{
+              ...styles.pickerGroupRow,
+              paddingLeft: depth * indent.tree + 4,
+              ...(groupInactive ? styles.pickerRowInactive : {}),
+            }}
             onClick={() => toggle(node.groupKey)}
           >
             {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
             {node.label}
+            {groupInactive && (
+              <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
+                <EyeOff size={13} strokeWidth={2.5} />
+              </span>
+            )}
           </div>
           {isExpanded && renderNodes(node.children, depth + 1)}
         </div>
@@ -648,10 +671,10 @@ export function LinkEditor<P extends string>({
 }: {
   registry: Record<P, ParamDescriptor>;
   /** Paths currently shown in the settings panel (GitHub issue #670) — governs the Target/Source
-   *  pickers below together with `showInactive`: hidden entirely while it's off (default), listed
-   *  with a closed-eye badge once turned on. The currently selected target/source stays listed
-   *  either way, even if it's since gone inactive, so editing an existing link never looks like its
-   *  own endpoint vanished. */
+   *  pickers below together with `showInactive`: listed with a closed-eye badge (and dimmed, GitHub
+   *  issue #688) once on (default), hidden entirely once turned off. The currently selected
+   *  target/source stays listed either way, even if it's since gone inactive, so editing an
+   *  existing link never looks like its own endpoint vanished. */
   activePaths: Set<P>;
   initialSource: P | null;
   initialTarget: P | null;
@@ -668,7 +691,7 @@ export function LinkEditor<P extends string>({
   const [colorModifiers, setColorModifiers] = useState<ColorModifier[]>(initialColorModifiers ?? []);
   const [editingColorStepIndex, setEditingColorStepIndex] = useState<number | null>(null);
   const [addingColorStep, setAddingColorStep] = useState(false);
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = useState(true);
   const allPaths = Object.keys(registry) as P[];
   const visiblePaths = showInactive ? allPaths : allPaths.filter((p) => activePaths.has(p) || p === target || p === source);
   const sourceCandidates = target === null ? [] : visiblePaths.filter((p) => p !== target && registry[p].type === registry[target].type);
@@ -764,10 +787,12 @@ export function LinkEditor<P extends string>({
               </div>
             </div>
             <div style={styles.editorFooterRow}>
-              <span style={styles.showInactiveLabel}>
-                <Switch checked={showInactive} onChange={setShowInactive} ariaLabel={m["image_export.param_links.show_inactive_toggle"]()} />
-                <span onClick={() => setShowInactive((v) => !v)}>{m["image_export.param_links.show_inactive_toggle"]()}</span>
-              </span>
+              <ToggleRow
+                label={m["image_export.param_links.show_inactive_toggle"]()}
+                checked={showInactive}
+                onChange={setShowInactive}
+                layoutStyle={styles.showInactiveToggle}
+              />
               <div style={styles.editorFooter}>
                 <Button variant="secondary" onClick={onClose}>{m["image_export.param_links.cancel"]()}</Button>
                 <Button variant="primary" disabled={!canSave} onClick={save}>
@@ -1078,6 +1103,10 @@ const styles: Record<string, React.CSSProperties> = {
   editorColumnTitle: { ...typography.body, position: "sticky" as const, top: 0, background: ui.bg.panel, paddingBottom: spacing.elementsGap, zIndex: 1 },
   pickerList: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   pickerRow: { ...typography.body, cursor: "default", padding: "2px 4px", borderRadius: 3 },
+  // GitHub issue #688 — dims a hidden leaf/group row so it reads as inactive at a glance, on top of
+  // the closed-eye badge; applied before `pickerRowSelected` so a selected-but-inactive row still
+  // shows its selection highlight.
+  pickerRowInactive: { ...muted(typography.body) },
   pickerRowSelected: { background: ui.state.selected },
   pickerGroupRow: {
     ...typography.body,
@@ -1114,5 +1143,8 @@ const styles: Record<string, React.CSSProperties> = {
   addModifierRow: { ...typography.body, color: ui.text.tertiary, cursor: "default", padding: "2px 4px", borderRadius: 3 },
   editorFooter: { display: "flex", justifyContent: "flex-end", gap: spacing.groupGap, flexShrink: 0 },
   editorFooterRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacing.groupGap, paddingTop: spacing.groupGap, flexShrink: 0 },
-  showInactiveLabel: { display: "flex", alignItems: "center", gap: spacing.itemGap, ...typography.body, cursor: "default" },
+  // `ToggleRow`'s own `Inline` defaults to `flex: 1` on its label group, which would stretch it
+  // across the whole footer row and push the Cancel/Save buttons off to the far right rather than
+  // sitting right next to the toggle (GitHub issue #688) — capped to its content width instead.
+  showInactiveToggle: { flex: "none" },
 };
