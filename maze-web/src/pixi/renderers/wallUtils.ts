@@ -447,15 +447,61 @@ export function drawOneWayArrow(
   const join = style?.join ?? "round";
   const cap = style?.cap ?? "round";
 
+  // Each wing's own base sits this fraction of `headSize` off-axis — shared between the path
+  // below and `fillJointPatch`'s own wing-line math so the two can never drift apart.
+  const WING_OFFSET_RATIO = 0.6;
+  const wingBaseOffset = headSize * WING_OFFSET_RATIO;
+
   const path = (g: Graphics) =>
     // Shaft ends at the arrowhead's own base (not the tip) — otherwise a square cap makes the
     // shaft's flat end protrude past the narrower arrowhead strokes (GitHub issue #292 follow-up).
     g.moveTo(tailX, tailY).lineTo(headBackX, headBackY)
-      .moveTo(headBackX + px * headSize * 0.6, headBackY + py * headSize * 0.6).lineTo(tipX, tipY)
-      .lineTo(headBackX - px * headSize * 0.6, headBackY - py * headSize * 0.6);
+      .moveTo(headBackX + px * wingBaseOffset, headBackY + py * wingBaseOffset).lineTo(tipX, tipY)
+      .lineTo(headBackX - px * wingBaseOffset, headBackY - py * wingBaseOffset);
+
+  // Fills the notch between a stroked shaft's own side edges and the arrowhead's two wing
+  // strokes with a solid pentagon, so no cap style (round or miter) ever leaves a visible gap or
+  // protrusion there (GitHub issue #690) — the shaft's stroked outline and each wing's stroked
+  // outline are two separate open paths, and the wings start off-axis while the shaft ends
+  // on-axis, so neither path's own cap can reach the other's. The pentagon is exactly the shaft's
+  // two side edges (at the given `halfWidth`), extended forward to where each meets its own
+  // wing's outer edge, then straight to the tip — i.e. the corner the ordinary (infinitely thin)
+  // shaft+wing outline would have had, filled solid so it reads as one continuous shape
+  // regardless of corner style. Shared between the main stroke and the (wider) gap stroke so
+  // the gap ring's own notch closes the same way as the main shape's.
+  const fillJointPatch = (halfWidth: number, fillColor: number) => {
+    // Wing line (axis-local): lateral offset goes from `wingBaseOffset` at the base (t=0, at
+    // headBack) to 0 at the tip (t=headSize) — i.e. offset(t) = wingBaseOffset * (1 - t /
+    // headSize). The shaft's own side edge is the constant line offset = halfWidth; solving for
+    // where they meet gives this axial distance, which can run negative (behind headBack) when
+    // the shaft is wider than the wings' own base — clamped to 0 so an extreme
+    // `thickness`/`gapWidth` relative to `size` never pushes the patch's own base behind the
+    // shaft's drawn end (or, in a degenerate case, past the tail).
+    const meetT = Math.max(0, wingBaseOffset > 0 ? headSize * (1 - halfWidth / wingBaseOffset) : headSize);
+    const meetBackX = headBackX + dx * meetT;
+    const meetBackY = headBackY + dy * meetT;
+    g.poly([
+      headBackX + px * halfWidth, headBackY + py * halfWidth,
+      meetBackX + px * halfWidth, meetBackY + py * halfWidth,
+      tipX, tipY,
+      meetBackX - px * halfWidth, meetBackY - py * halfWidth,
+      headBackX - px * halfWidth, headBackY - py * halfWidth,
+    ]);
+    g.fill({ color: fillColor });
+  };
+
+  // Below this `size`, the patch's own geometry (clamped to the arrow's own short axis) produces
+  // visible artifacts of its own — disabled rather than drawn degenerate (GitHub issue #690
+  // follow-up).
+  const JOINT_PATCH_MIN_SIZE = 20;
+  const drawJointPatch = resolvedSize(style) >= JOINT_PATCH_MIN_SIZE;
 
   if (style?.gapWidth) {
-    path(g).stroke({ width: strokeWidth + style.gapWidth * 2, color: style.gapColor ?? canvas.floor.default, cap, join });
+    const gapColor = style.gapColor ?? canvas.floor.default;
+    const gapStrokeWidth = strokeWidth + style.gapWidth * 2;
+    path(g).stroke({ width: gapStrokeWidth, color: gapColor, cap, join });
+    if (drawJointPatch) fillJointPatch(gapStrokeWidth * 0.5, gapColor);
   }
   path(g).stroke({ width: strokeWidth, color, cap, join });
+  if (drawJointPatch) fillJointPatch(strokeWidth * 0.5, color);
 }
