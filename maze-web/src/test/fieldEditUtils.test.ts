@@ -36,6 +36,9 @@ import {
   moveVerticalPassageEndpoint,
   moveElevatorEndpoint,
   presetVerticalPassageDirectionToDto,
+  pickTeleportEndpointAt,
+  pickVerticalPassageEndpointAt,
+  pickElevatorEndpointAt,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -68,6 +71,43 @@ describe("edgeKey", () => {
 
   it("format is canonical", () => {
     expect(edgeKey([0, 0], [1, 0])).toBe("0,0-1,0");
+  });
+});
+
+describe("preset endpoint hit-testing", () => {
+  const cfg = { type: "square" as const, width: 4, height: 4 };
+  const point: [number, number] = [1, 2];
+  const markerCenter = makeProjection(cfg).gridToScreen(point[0], point[1]);
+  const insideCell = { x: markerCenter.x + 15, y: markerCenter.y + 15 };
+
+  it("picks teleport endpoints from anywhere in their cell, not only the marker radius", () => {
+    const teleports: PresetTeleportEntry[] = [{
+      id: 1,
+      from: presetEndpoint(point),
+      to: presetEndpoint([3, 2]),
+      direction: "two_way",
+    }];
+
+    expect(pickTeleportEndpointAt(insideCell.x, insideCell.y, cfg, teleports)).toEqual({ id: 1, end: "from" });
+    expect(pickTeleportEndpointAt(85, markerCenter.y + 15, cfg, teleports)).toBeNull();
+  });
+
+  it("picks vertical-passage and elevator endpoints from anywhere in their cell", () => {
+    const passages: PresetVerticalPassageEntry[] = [{
+      id: 1,
+      from: presetEndpoint(point, undefined, 0),
+      to: presetEndpoint(point, undefined, 1),
+      direction: "two_way",
+    }];
+    const elevators: PresetElevatorEntry[] = [{
+      id: 1,
+      floors: [presetEndpoint(point, undefined, 0), presetEndpoint(point, undefined, 1)],
+    }];
+
+    expect(pickVerticalPassageEndpointAt(insideCell.x, insideCell.y, cfg, passages, 0)).toEqual({ id: 1, end: "from" });
+    expect(pickElevatorEndpointAt(insideCell.x, insideCell.y, cfg, elevators, 0)).toEqual({ id: 1, level: 0 });
+    expect(pickVerticalPassageEndpointAt(85, markerCenter.y + 15, cfg, passages, 0)).toBeNull();
+    expect(pickElevatorEndpointAt(85, markerCenter.y + 15, cfg, elevators, 0)).toBeNull();
   });
 });
 

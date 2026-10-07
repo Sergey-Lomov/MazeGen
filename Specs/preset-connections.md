@@ -113,7 +113,7 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 
 ### Editing existing teleports
 
-Hit-testing an existing endpoint (`pickTeleportEndpointAt`, radius `TILE_SIZE * 0.3`, closest endpoint across all teleports wins) while a teleport tool is active:
+Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell determines the hit and the closest endpoint in that cell wins) while a teleport tool is active:
 
 - **RMB on an existing endpoint** — removes that entire teleport entry (`removePresetTeleport`).
 - **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor (`movePresetTeleportEndpoint`), live-updating on every cell change during the drag. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
@@ -199,6 +199,10 @@ Semantically distinct from preset teleports: both endpoints of a planted vertica
 | `elevator` | Vertex | Single click sets the point, then opens the floor-picker dialog to choose which floors it reaches |
 
 All three only appear when the maze has more than one floor (`floors.length > 1`).
+
+### Endpoint hit-testing
+
+Preset endpoint markers — teleports, vertical passages, and elevators — are hit-tested from anywhere inside their cell, not only from the drawn marker body (GitHub issue #694; matches Post-Edit).
 
 ### Vertical passage placement
 
