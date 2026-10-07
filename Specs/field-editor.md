@@ -408,6 +408,9 @@ corner resizes it while preserving the source aspect ratio. The resulting transf
 opacity are persisted with the image. Files saved before issue #674 default to the original
 below-grid/50% behavior.
 
+Closing the settings panel or hiding the underlay cancels any in-progress auto-fill preview and
+restores the committed field; it does not apply an unconfirmed candidate.
+
 The same settings panel provides a `Crop` mode (GitHub issue #680), separate from the existing
 manual positioning mode, here called `Transform`. The modes are mutually exclusive and can be
 entered from any of the three shared-underlay editors: Field Setup, Preset Connections, and

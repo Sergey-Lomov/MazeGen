@@ -185,6 +185,9 @@ describe("BackgroundImageToggle", () => {
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0.75" } });
     fireEvent.click(screen.getByRole("button", { name: "Transform" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Transform to field" }));
+    expect(useMazeStore.getState().backgroundImage).toMatchObject({ displayWidth: 200, displayHeight: 100, centerX: 0, centerY: 0 });
+
     expect(useMazeStore.getState().backgroundImage).toMatchObject({ layer: "above_floor", opacity: 0.75 });
     expect(useMazeStore.getState().backgroundImageManualPositioning).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Crop" }));
