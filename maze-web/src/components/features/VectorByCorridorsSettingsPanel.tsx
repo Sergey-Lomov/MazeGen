@@ -237,15 +237,16 @@ export function VectorByCorridorsSettingsPanel() {
       (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
+  const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
 
   // Which registry paths the panel currently shows (GitHub issue #670) — see
   // `VectorByWallsSettingsPanel`'s own doc comment on this.
   const activePaths = useMemo(
     () => computeActivePaths(VECTOR_BY_CORRIDORS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection: hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1,
+      hasVerticalSection,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, floors.length, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, settings],
   );
 
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
@@ -623,7 +624,7 @@ export function VectorByCorridorsSettingsPanel() {
         </>
       )}
 
-      {(hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1) && (
+      {hasVerticalSection && (
         <>
           <div style={styles.divider} />
 

@@ -13,7 +13,7 @@ export interface ParamActivityContext {
   hasOneWayPassages: boolean;
   hasElevators: boolean;
   /** `true` once the "Vertical connections" section itself is shown — mirrors both panels' own
-   *  `hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1` gate. */
+   *  `hasTwoWayPassages || hasOneWayPassages || hasElevators` gate. */
   hasVerticalSection: boolean;
 }
 

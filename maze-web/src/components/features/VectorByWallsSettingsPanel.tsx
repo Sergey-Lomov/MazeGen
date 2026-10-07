@@ -204,6 +204,7 @@ export function VectorByWallsSettingsPanel() {
       (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
+  const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
 
   // Which registry paths the panel currently shows (GitHub issue #670) — mirrors the section/
   // subsection visibility conditions above, so the parameter-links dialog can tell an inactive
@@ -211,9 +212,9 @@ export function VectorByWallsSettingsPanel() {
   const activePaths = useMemo(
     () => computeActivePaths(VECTOR_BY_WALLS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection: hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1,
+      hasVerticalSection,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, floors.length, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, settings],
   );
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
@@ -655,7 +656,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {(hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1) && (
+      {hasVerticalSection && (
         <>
           <div style={styles.divider} />
 
