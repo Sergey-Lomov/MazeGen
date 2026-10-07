@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { PresetList } from "../components/features/PresetList";
+import { presetEndpoint } from "../pixi/presetEndpoint";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
@@ -74,5 +75,27 @@ describe("PresetList filters", () => {
 
     expect(screen.queryByRole("button", { name: m["preset.wall"]() })).not.toBeInTheDocument();
     expect(document.querySelector('[style*="border-top"]')).toBeInTheDocument();
+  });
+
+  it("clears the wall hover when its delete icon is pressed", () => {
+    const from = presetEndpoint([0, 0]);
+    const to = presetEndpoint([1, 0]);
+    useMazeStore.setState({
+      presetConnections: new Map([
+        ["0,0-1,0", { from, to, state: "wall" as const, source: "user" as const }],
+      ]),
+    });
+    render(<PresetList onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: m["preset.wall"]() }));
+    const cell = screen.getByTestId("preset-cell");
+    fireEvent.mouseEnter(cell);
+    expect(useMazeStore.getState().presetHoveredLink).not.toBeNull();
+
+    fireEvent.pointerDown(screen.getByTestId("preset-action-delete"));
+
+    expect(useMazeStore.getState().presetHoveredLink).toBeNull();
+    expect(useMazeStore.getState().presetHoveredEntity).toBeNull();
+    expect(screen.queryByTestId("preset-cell")).not.toBeInTheDocument();
   });
 });

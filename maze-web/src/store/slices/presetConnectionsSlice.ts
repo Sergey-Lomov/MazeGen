@@ -1137,6 +1137,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         break;
     }
 
+    // A preset-list row can be deleted while its own hover is still active. Clear both hover
+    // sources so the canvas cannot keep highlighting the removed entity (GitHub issue #691).
+    set({ presetHoveredLink: null, presetHoveredEntity: null });
+
     const prompt = get().presetEntityDeletePrompt;
     if (!prompt) return;
     const stateAfter = get();

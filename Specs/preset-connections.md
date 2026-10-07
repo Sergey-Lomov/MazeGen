@@ -647,7 +647,9 @@ Each cell follows the post-edit event-cell layout:
 - one-way edges, teleports, and vertical passages expose a direction-toggle icon on the right;
 - elevators expose a gear icon that opens their existing floor picker;
 - split tiles expose a gear icon that opens the split-node editor for that tile;
-- every cell has a delete icon after the optional control, or at the far right when no control exists.
+- every cell has a delete icon after the optional control, or at the far right when no control exists;
+  deleting a cell also clears its active list hover so a removed wall or endpoint cannot remain
+  highlighted on the canvas (GitHub issue #691).
 
 Only `source: "user"` edge entries are listed. `source: "default"` edges and auto-locks are
 derived state, not user-authored list cells. A split tile is one list entity: its generated

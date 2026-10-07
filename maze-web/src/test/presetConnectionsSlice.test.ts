@@ -1636,6 +1636,26 @@ describe("mazeStore preset connections", () => {
       expect(after.presetConnections.get("0,0-1,0")).toMatchObject({ state: "wall", source: "default" });
     });
 
+    it("clears the preset-list hover when removing an edge row", () => {
+      const from = presetEndpoint([0, 0]);
+      const to = presetEndpoint([1, 0]);
+      useMazeStore.setState({
+        presetConnections: new Map([
+          ["0,0-1,0", { from, to, state: "wall" as const, source: "user" as const }],
+        ]),
+        presetHoveredLink: { from, to, highlightStyle: "boundary" },
+        presetHoveredEntity: [from],
+      });
+
+      useMazeStore.getState().removePresetPointEntity({
+        kind: "edge", id: "0,0-1,0", endpoint: from, nodeIndex: 0, title: "",
+      });
+
+      const after = useMazeStore.getState();
+      expect(after.presetHoveredLink).toBeNull();
+      expect(after.presetHoveredEntity).toBeNull();
+    });
+
     it("removing an explicit undefined edge restores the current default", () => {
       useMazeStore.setState({
         defaultEdgeState: "wall",
