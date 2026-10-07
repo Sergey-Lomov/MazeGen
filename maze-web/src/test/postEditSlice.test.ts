@@ -101,6 +101,23 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditTool).toBe("passage");
   });
 
+  it("clears the split-node panel selection when another tool becomes active", () => {
+    useMazeStore.setState({
+      postEditTool: "manage_split_nodes",
+      postEditFocusedPoint: [1, 1],
+      postEditFocusedPointCovered: true,
+    });
+    useMazeStore.getState().setPostEditTool("passage");
+    const s = useMazeStore.getState();
+    expect(s.postEditFocusedPoint).toBeNull();
+    expect(s.postEditFocusedPointCovered).toBe(false);
+
+    useMazeStore.setState({ postEditFocusedPoint: [2, 2], postEditFocusedPointCovered: true });
+    useMazeStore.getState().setPostEditTool("manage_split_nodes");
+    expect(useMazeStore.getState().postEditFocusedPoint).toEqual([2, 2]);
+    expect(useMazeStore.getState().postEditFocusedPointCovered).toBe(true);
+  });
+
   it("setPostEditAutoCompact updates its field, off by default", () => {
     expect(useMazeStore.getState().postEditAutoCompact).toBe(false);
     useMazeStore.getState().setPostEditAutoCompact(true);

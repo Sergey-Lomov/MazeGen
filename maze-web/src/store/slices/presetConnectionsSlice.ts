@@ -136,6 +136,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       presetElevatorPending: null,
       presetSplitTargetPrompt: null,
       presetEntityDeletePrompt: null,
+      ...(tool !== "manage_split_nodes" ? { presetFocusedPoint: null } : {}),
     };
   }),
 

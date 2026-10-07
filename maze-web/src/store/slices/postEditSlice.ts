@@ -191,7 +191,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ postEditAutoCompact: v });
     if (v) get().compactPostEditLog();
   },
-  setPostEditTool: (tool) => set({ postEditTool: tool }),
+  setPostEditTool: (tool) => set({
+    postEditTool: tool,
+    ...(tool !== "manage_split_nodes" ? { postEditFocusedPoint: null, postEditFocusedPointCovered: false } : {}),
+  }),
 
   applyPostEditTool: (edgeKey, from_, to_) => {
     get().applyPostEditToolAt(get().postEditTool, edgeKey, from_, to_);

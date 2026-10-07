@@ -516,6 +516,8 @@ Both remaps rebuild `presetConnections`' map keys (via `presetEdgeKey`) and ever
 
 ### Declaring split points
 
+The `manage_split_nodes` panel is visible only while `manage_split_nodes` is the active preset tool. Selecting any other preset tool clears `presetFocusedPoint` and unmounts the panel (GitHub issue #699).
+
 `presetSplitPoints: Record<string, number[]>` (keyed `"x,y"`, values are that point's declared slotIds) mirrors post-edit's `postEditDraftSplitPoints` exactly — same slot-minting rule (`max(existing)+1`, or `0` if none yet), same per-point-only uniqueness. `presetActiveSplitNode: Record<string, PresetEndpoint>` mirrors `postEditActiveSplitNode` — which node of a point new preset entries on that point's faces currently target; absence means the original node.
 
 The shared, endpoint-type-agnostic slot-list bookkeeping (`addSlot`/`removeSlot`/`cycleActive`/`setActive`) lives in `pixi/splitPointsCore.ts`, used by both this feature and post-edit's own split-node actions — see that module's doc comment and `Specs/post-edit.md`.

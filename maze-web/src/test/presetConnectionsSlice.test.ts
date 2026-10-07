@@ -47,6 +47,16 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
   });
 
+  it("clears the split-node panel selection when another tool becomes active", () => {
+    useMazeStore.setState({ presetConnectionsTool: "manage_split_nodes", presetFocusedPoint: [1, 2] });
+    useMazeStore.getState().setPresetConnectionsTool("passage");
+    expect(useMazeStore.getState().presetFocusedPoint).toBeNull();
+
+    useMazeStore.setState({ presetFocusedPoint: [2, 3] });
+    useMazeStore.getState().setPresetConnectionsTool("manage_split_nodes");
+    expect(useMazeStore.getState().presetFocusedPoint).toEqual([2, 3]);
+  });
+
   it("applyPresetConnectionsTool('wall') sets a wall entry and marks presetsDirty", () => {
     useMazeStore.setState({ presetConnectionsTool: "wall" });
     useMazeStore.getState().applyPresetConnectionsTool("0,0-1,0", [0, 0], [1, 0]);
