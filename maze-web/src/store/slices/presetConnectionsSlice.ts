@@ -144,11 +144,13 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
+    if (presetConnections === state.presetConnections) return state;
     return withRecomputedAutoLock(state, { presetConnections, presetEntityOrder: addNewUserEdgeOrder(state.presetConnections, presetConnections, state.presetEntityOrder), presetsDirty: true });
   }),
 
   applyPresetConnectionsToolAt: (tool, key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, tool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
+    if (presetConnections === state.presetConnections) return state;
     return withRecomputedAutoLock(state, { presetConnections, presetEntityOrder: addNewUserEdgeOrder(state.presetConnections, presetConnections, state.presetEntityOrder), presetsDirty: true });
   }),
 
@@ -1134,6 +1136,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         get().removePresetSplitAll(descriptor.endpoint.point, descriptor.endpoint.level);
         break;
     }
+
+    // A preset-list row can be deleted while its own hover is still active. Clear both hover
+    // sources so the canvas cannot keep highlighting the removed entity (GitHub issue #691).
+    set({ presetHoveredLink: null, presetHoveredEntity: null });
 
     const prompt = get().presetEntityDeletePrompt;
     if (!prompt) return;

@@ -855,7 +855,7 @@ export function applyTool(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
   tool: PresetConnectionTool,
-  _defaultEdgeState: PresetConnectionClientState = "undefined",
+  defaultEdgeState: PresetConnectionClientState = "undefined",
   activeMap: Record<string, PresetEndpoint> = {},
   level?: number,
 ): Map<string, PresetConnectionEntry> {
@@ -863,10 +863,15 @@ export function applyTool(
   const to = resolvePresetActiveEndpoint(edge.to, activeMap, level);
   const key = presetEdgeKey(from, to);
   if (tool === "reset") {
-    const next = new Map(connections);
-    // An explicit undefined assignment is distinct from an absent/default entry.
-    next.set(key, { from, to, state: "undefined", source: "user" });
-    return next;
+    // Clearing an edge only removes an override that is actually present on that edge. A missing
+    // entry (or a derived default entry) is not a user preset, so changing it would mutate an edge
+    // the user never configured (GitHub issue #689).
+    const current = connections.get(key);
+    if (!current || current.source !== "user") return connections;
+    // Removing a user preset restores the configured default, rather than pinning this edge to an
+    // explicit `undefined` state. Build the reset key from resolved endpoints so floor/slot-aware
+    // edges are restored at their actual map key (the raw FieldEdge key is floor-agnostic).
+    return materializeReset(connections, { ...edge, key }, defaultEdgeState, from, to);
   }
   const next = new Map(connections);
   if (tool === "one_way") {

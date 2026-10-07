@@ -148,16 +148,30 @@ describe("applyTool — passage", () => {
 });
 
 describe("applyTool — reset", () => {
-  it("stores explicit undefined when the default is undefined", () => {
-    const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
-    const result = applyTool(connections, fe(0, 0, 1, 0), "reset");
-    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
+  it("does nothing when the edge has no user preset", () => {
+    const result = applyTool(new Map(), fe(0, 0, 1, 0), "reset", "wall");
+    expect(result).toEqual(new Map());
   });
 
-  it("stores reset as an explicit undefined user entry", () => {
+  it("leaves a derived default entry unchanged", () => {
+    const key = edgeKey([0, 0], [1, 0]);
+    const connections = new Map([[key, {
+      from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall" as const, source: "default" as const,
+    }]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "wall");
+    expect(result).toEqual(connections);
+  });
+
+  it("removes a user preset when the default is undefined", () => {
+    const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "reset");
+    expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
+  });
+
+  it("restores the selected default as a derived entry", () => {
     const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "wall");
-    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
+    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "wall", source: "default" });
   });
 
   it("resolves the active split slot before resetting — targets the slot's own key, not the plain point key", () => {
@@ -168,15 +182,14 @@ describe("applyTool — reset", () => {
       }],
     ]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "undefined", activeMap);
-    expect(result.get(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])))).toMatchObject({ state: "undefined", source: "user" });
+    expect(result.has(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])))).toBe(false);
     expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
   });
 
-  it("reset with an active split slot stores the slot-addressed undefined key", () => {
+  it("does nothing for an unset active split slot", () => {
     const activeMap = { "0,0": presetEndpoint([0, 0], 0) };
     const result = applyTool(new Map(), fe(0, 0, 1, 0), "reset", "wall", activeMap);
-    const key = presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0]));
-    expect(result.get(key)).toMatchObject({ from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "undefined", source: "user" });
+    expect(result).toEqual(new Map());
   });
 });
 
