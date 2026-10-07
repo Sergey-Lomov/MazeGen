@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 describe("VectorByCorridorsSettingsPanel", () => {
-  it("shows all vertical subsections disabled when a multi-floor maze has no vertical edges", () => {
+  it("hides the vertical connections section when a multi-floor maze has no vertical edges", () => {
     useMazeStore.setState({
       floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
       vectorByCorridorsSectionsExpanded: { vertical: true },
@@ -46,18 +46,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
 
     render(<VectorByCorridorsSettingsPanel />);
 
-    for (const label of [
-      m["image_export.vector_by_walls.two_way_passage_marker"](),
-      m["image_export.vector_by_walls.one_way_passage_marker"](),
-      m["image_export.vector_by_walls.elevator_marker"](),
-    ]) {
-      const header = screen.getByText(label);
-      expect(header.parentElement).toHaveAttribute("aria-disabled", "true");
-      fireEvent.click(header);
-    }
-    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_two_way).toBeUndefined();
-    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_one_way).toBeUndefined();
-    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_elevator).toBeUndefined();
+    expect(screen.queryByText(m["image_export.vector_by_walls.section_vertical"]())).not.toBeInTheDocument();
   });
 
   it("enables the two-way passage settings for elevators when replacement is enabled", () => {
