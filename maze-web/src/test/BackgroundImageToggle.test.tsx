@@ -12,6 +12,11 @@ const autoFillStub = vi.hoisted(() => ({
   rejectPreview: false,
 }));
 
+const backgroundLayoutStub = vi.hoisted(() => ({
+  fieldBounds: vi.fn<() => { minX: number; minY: number; maxX: number; maxY: number } | null>(() => ({ minX: -10, minY: -10, maxX: 10, maxY: 10 })),
+  bounds: [] as unknown[],
+}));
+
 vi.mock("../pixi/backgroundFieldAutofill", () => ({
   getBackgroundImageTopLeftColor: autoFillStub.topLeftColor,
   buildBackgroundFieldPreviewFromImage: vi.fn(() => {
@@ -34,21 +39,24 @@ vi.mock("../pixi/BackgroundImageLayer", () => ({
     width: image.cropWidth ?? image.naturalWidth,
     height: image.cropHeight ?? image.naturalHeight,
   }),
-  fieldBounds: () => ({ minX: -10, minY: -10, maxX: 10, maxY: 10 }),
+  fieldBounds: () => backgroundLayoutStub.fieldBounds(),
   calculateBackgroundImageLayout: (
     dataUrl: string,
     naturalWidth: number,
     naturalHeight: number,
-    _bounds: unknown,
-  ) => ({
-    dataUrl,
-    naturalWidth,
-    naturalHeight,
-    displayWidth: 200,
-    displayHeight: 100,
-    centerX: 0,
-    centerY: 0,
-  }),
+    bounds: unknown,
+  ) => {
+    backgroundLayoutStub.bounds.push(bounds);
+    return {
+      dataUrl,
+      naturalWidth,
+      naturalHeight,
+      displayWidth: 200,
+      displayHeight: 100,
+      centerX: 0,
+      centerY: 0,
+    };
+  },
   calculateBackgroundImagePageLayout: (
     dataUrl: string,
     naturalWidth: number,
@@ -91,6 +99,9 @@ beforeEach(() => {
   autoFillStub.resolve = null;
   autoFillStub.topLeftColor.mockClear();
   autoFillStub.rejectPreview = false;
+  backgroundLayoutStub.fieldBounds.mockReset();
+  backgroundLayoutStub.fieldBounds.mockReturnValue({ minX: -10, minY: -10, maxX: 10, maxY: 10 });
+  backgroundLayoutStub.bounds.length = 0;
   useMazeStore.setState({
     ...baseStoreState(),
     showBackgroundImage: false,
@@ -136,6 +147,55 @@ describe("BackgroundImageToggle", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Underlay" }));
     expect(useMazeStore.getState().showBackgroundImage).toBe(false);
+  });
+
+  it("uses default fitting bounds for empty and very small fields", async () => {
+    const fieldId = useMazeStore.getState().activeFloorId;
+    const field = useMazeStore.getState().floorFields[fieldId];
+    useMazeStore.setState({
+      floorFields: {
+        [fieldId]: {
+          ...field,
+          fieldEditMode: "custom",
+          fieldPoints: new Set(),
+          tessellationConfig: { type: "square_custom", points: [] },
+        },
+      },
+    });
+    backgroundLayoutStub.fieldBounds
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce({ minX: 10, minY: 20, maxX: 10.5, maxY: 21 });
+    render(<BackgroundImageToggle />);
+    const toggle = screen.getByRole("checkbox", { name: "Underlay" });
+    const input = screen.getByLabelText("Upload underlay");
+
+    fireEvent.click(toggle);
+    fireEvent.change(input, {
+      target: { files: [new File(["empty"], "empty.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(useMazeStore.getState().showBackgroundImage).toBe(true));
+
+    fireEvent.change(input, {
+      target: { files: [new File(["small"], "small.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(backgroundLayoutStub.bounds).toHaveLength(2));
+
+    expect(backgroundLayoutStub.bounds).toEqual([
+      { minX: -200, minY: -200, maxX: 200, maxY: 200 },
+      { minX: -189.75, minY: -179.5, maxX: 210.25, maxY: 220.5 },
+    ]);
+  });
+
+  it("preserves field bounds that are already large enough for fitting", async () => {
+    backgroundLayoutStub.fieldBounds.mockReturnValue({ minX: -300, minY: -250, maxX: 300, maxY: 250 });
+    render(<BackgroundImageToggle />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Underlay" }));
+    fireEvent.change(screen.getByLabelText("Upload underlay"), {
+      target: { files: [new File(["large"], "large.png", { type: "image/png" })] },
+    });
+
+    await waitFor(() => expect(backgroundLayoutStub.bounds).toHaveLength(1));
+    expect(backgroundLayoutStub.bounds[0]).toEqual({ minX: -300, minY: -250, maxX: 300, maxY: 250 });
   });
 
   it("restores the saved transform instead of recalculating it when shown again", () => {
