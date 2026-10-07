@@ -27,7 +27,9 @@ export function ToolIconButton({ selected, title, onClick, children, disabled, d
       onClick={onClick}
       disabled={disabled}
     >
-      {children}
+      <span className="tool-icon-face">
+        <span className="tool-icon-content">{children}</span>
+      </span>
     </button>
   );
 }

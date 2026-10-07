@@ -138,6 +138,13 @@ selection moves/deletes, primitive/mode controls, field clearing, and field-shap
 actions are disabled or ignored. This prevents edits from being applied to the hidden original
 field and reappearing if the preview is cancelled. Preview controls themselves remain available.
 
+### Background image sizing on empty fields (GitHub issue #687)
+
+When an underlay is loaded or transformed to the field, fitting uses the current field bounds when
+they are large enough to be useful. Empty fields and fields smaller than the default fitting area
+use a centered 10-cell by 10-cell world-space rectangle instead. This fallback is used only for
+image sizing; it does not add cells, change the custom field, or alter any generation settings.
+
 ## Default shape per kind
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
@@ -245,7 +252,10 @@ operation; right mouse input is ignored in Select mode. The Symmetry tool remain
 but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
 its operation also comes from the active mode.
 
-Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`:
+Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`.
+The operation and primitive tools are square icon buttons. Their pressed-state feedback must not
+move or resize the button itself, so every point within the visible button, including its top edge,
+remains clickable (GitHub issue #685):
 
 Connected Area (magic_wand) — a click processes the connected component containing the clicked
 cell. Select previews the occupied component, Remove deletes it, and Add fills a bounded empty
