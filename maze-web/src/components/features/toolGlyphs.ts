@@ -6,6 +6,7 @@ import { drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/marker
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "../../pixi/renderers/wallUtils";
+import { drawOneWayWallTick, arrowThickness, ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION, ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION, patternVisualTipFraction, patternBaseFraction } from "../../pixi/renderers/VerticalConnectionRenderer";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
 import { TILE_SIZE } from "../../pixi/constants";
 import { canvas } from "../../pixi/colorTokens";
@@ -168,6 +169,9 @@ function drawVerticalArrows(
   arrowColor: number,
   arrowSizeFraction: number,
   dir: ArrowDir,
+  // One-way wall tick (GitHub issue #693) — drawn only for the one-way passage glyph, near the
+  // arrow's tip (`atTip: true`, the "to"/arrival end this glyph shows) or tail.
+  wallTickAtTip?: boolean,
 ): void {
   // Mirrors `VerticalConnectionRenderer`'s triangle-pattern branch (the default arrow style).
   const both = dir === "both";
@@ -178,15 +182,35 @@ function drawVerticalArrows(
   const pairArrowSize = arrowSize * pairFraction;
   const midpointFraction = -1 / 39; // triangle, `patternMidpointOffset`
   const midpointOffset = midpointFraction * pairArrowSize;
+  // One-way glyph only: recenters the triangle+tick *pair* in the button, instead of leaving the
+  // triangle alone centered and the tick sitting off to one side of that (GitHub issue #693,
+  // centering follow-up) — mirrors `VerticalConnectionRenderer.render`'s own copy of this same
+  // centering math. The pair's own extent along the arrow axis runs between its two outermost
+  // points: the tick's own far edge on one side, and whichever of the triangle's own visual tip
+  // (`patternVisualTipFraction` — NOT the nominal `+1`: `drawOneWayTriangle`'s `roundPoly` corner
+  // rounding cuts its sharp tip back along the axis by a non-negligible amount, see that
+  // function's own doc comment) or base (`patternBaseFraction`, `-0.35/0.65` of its own rescaled
+  // tip reach — see `drawOneWayTriangle`'s own doc comment) ends up furthest from the tick on the
+  // other side — for the arrival end (`wallTickAtTip: true`) the tick sits past the tip, so the
+  // triangle's own base is the other extreme; for the departure end (`false`) the tick sits past
+  // the base, so the triangle's own (visual) tip is the other extreme.
+  const triangleBaseFraction = patternBaseFraction("triangle");
+  const triangleVisualTipFraction = patternVisualTipFraction("triangle");
+  const pairCenterFraction = wallTickAtTip === undefined ? 0
+    : wallTickAtTip ? (triangleBaseFraction + ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION) / 2
+    : (triangleVisualTipFraction - ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION) / 2;
   dys.forEach((dy, i) => {
     const side = i === 0 ? -1 : 1;
-    const oy = C - dy * midpointOffset + (both ? side * originOffset : 0);
+    const oy = C - dy * midpointOffset - dy * pairCenterFraction * pairArrowSize + (both ? side * originOffset : 0);
     drawOneWayTriangle(g, C, oy, 0, dy, {
       color: arrowColor,
       size: pairArrowSize / 0.4875, // `drawArrowPattern` rescales by `patternTipFraction` (0.4875 for triangle, GitHub issue #681 third follow-up)
       join: "round",
       cap: "round",
     });
+    if (wallTickAtTip !== undefined) {
+      drawOneWayWallTick(g, C, oy, 0, dy, pairArrowSize, wallTickAtTip, arrowColor, arrowThickness(arrowSizeFraction));
+    }
   });
 }
 
@@ -201,11 +225,10 @@ const vertical_passage_two_way: GlyphFn = (g) => {
 
 const vertical_passage_one_way: GlyphFn = (g) => {
   // The "to" / arrival end, exactly as `VerticalConnectionRenderer` draws it (`arrowFilled: false`):
-  // the ENTIRE marker filled with `oneWayAccentColor` (not the ordinary fill + accent border — that
-  // is the "from" end), border the same accent, arrow pointing down (into this floor).
-  const accent = S.verticalConnections.oneWayAccentColor;
-  drawMarker(g, vpOneWay, { fillOverride: accent, borderOverride: accent });
-  drawVerticalArrows(g, vpOneWay.size / 2, S.verticalConnections.oneWayArrowColor, S.verticalConnections.oneWayArrowSize, "down");
+  // the ordinary marker fill/border (GitHub issue #693 removed the old accent-color distinction),
+  // arrow pointing down (into this floor), with the wall tick near the arrow's tip.
+  drawMarker(g, vpOneWay);
+  drawVerticalArrows(g, vpOneWay.size / 2, S.verticalConnections.oneWayArrowColor, S.verticalConnections.oneWayArrowSize, "down", true);
 };
 
 const elevator: GlyphFn = (g) => {

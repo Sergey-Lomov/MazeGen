@@ -36,7 +36,7 @@ function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
     ["teleport_badge_fill", PC.teleportBadgeFill.name()], ["teleport_badge_border", PC.teleportBadgeBorder.name()],
     ["teleport_badge_text", PC.teleportBadgeText.name()], ["vertical_two_way_fill", PC.twoWayFill.name()],
     ["vertical_two_way_border", PC.twoWayBorder.name()], ["vertical_two_way_arrow", PC.twoWayArrow.name()],
-    ["vertical_one_way_fill", PC.oneWayFill.name()], ["vertical_one_way_accent", PC.oneWayAccent.name()],
+    ["vertical_one_way_fill", PC.oneWayFill.name()], ["vertical_one_way_border", PC.oneWayBorder.name()],
     ["vertical_one_way_arrow", PC.oneWayArrow.name()], ["elevator_fill", PC.elevatorFill.name()],
     ["elevator_border", PC.elevatorBorder.name()], ["elevator_arrow", PC.elevatorArrow.name()],
     ["elevator_badge_fill", PC.elevatorBadgeFill.name()], ["label_text", PC.markerIndexText.name()],

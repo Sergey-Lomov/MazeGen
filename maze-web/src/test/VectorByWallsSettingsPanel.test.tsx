@@ -735,7 +735,7 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(useMazeStore.getState().vectorByWallsSettings.twoWayArrowStyle).toBe("chevron");
     });
 
-    it("one-way sub-group shows the secondary accent color and hides the marker's own border color (GitHub issue #347 fifth follow-up redesign)", () => {
+    it("one-way sub-group shows the marker's own border color, same as the two-way marker (GitHub issue #693)", () => {
       useMazeStore.setState({
         nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
         edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
@@ -747,13 +747,12 @@ describe("VectorByWallsSettingsPanel", () => {
         },
       });
       render(<VectorByWallsSettingsPanel />);
-      expect(screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]())).toBeInTheDocument();
-      // "Border color" still appears for the always-rendered Start/Finish markers section — only
-      // the one-way sub-group's own `MarkerSettingsGroup` (`hideBorderColor`) must drop it.
-      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(2);
+      // "Border color" appears for Start/Finish markers, the "Vertical connections" shared-style
+      // marker row, and the one-way sub-group's own marker.
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(3);
     });
 
-    it("changing the one-way accent color updates the store", () => {
+    it("changing the one-way marker's border color updates the store", () => {
       useMazeStore.setState({
         nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
         edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
@@ -765,8 +764,9 @@ describe("VectorByWallsSettingsPanel", () => {
         },
       });
       render(<VectorByWallsSettingsPanel />);
-      pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]()), "#112233");
-      expect(useMazeStore.getState().vectorByWallsSettings.oneWayAccentColor).toBe(0x112233);
+      const borderRows = screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]());
+      pickColorForLabel(borderRows[borderRows.length - 1], "#112233");
+      expect(useMazeStore.getState().vectorByWallsSettings.oneWayPassageMarker.borderColor).toBe(0x112233);
     });
 
     describe("Elevator badges subsection (GitHub issue #430)", () => {

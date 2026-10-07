@@ -129,7 +129,6 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
     oneWayArrowSize: settings.oneWayArrowSize,
     oneWayArrowStyle: settings.oneWayArrowStyle,
     oneWayArrowCornerStyle: settings.oneWayArrowCornerStyle,
-    oneWayAccentColor: settings.oneWayAccentColor,
     elevatorArrowColor: settings.elevatorArrowColor,
     elevatorArrowSize: settings.elevatorArrowSize,
     elevatorArrowStyle: settings.elevatorArrowStyle,
@@ -204,8 +203,8 @@ function markerEndpointVisual(m: MarkerSettings | VerticalMarkerStyle, fill: num
  *
  *  A teleport endpoint's color follows any `TeleportGroupOverride` covering its cell (same rule
  *  `TeleportRenderer.drawGroupPoints` uses); a vertical/elevator endpoint uses the elevator marker
- *  style for elevators and the two-way-passage marker style otherwise (the dominant look — the
- *  one-way tinted variant only differs in fill, which `borderColorFromMarker` rarely reaches). */
+ *  style for elevators, the one-way passage marker style for a one-way `VerticalPassage` endpoint,
+ *  and the two-way-passage marker style otherwise. */
 export function buildMarkerIndexEndpointResolver(args: {
   teleportEdges: TeleportEdge[];
   teleportStyle: TeleportLineStyle;
@@ -256,15 +255,7 @@ export function buildMarkerIndexEndpointResolver(args: {
         borderMatchColor: lineStyle.lineColor,
       };
     }
-    if (kind === "vertical" && oneWay) {
-      const m = verticalStyle.oneWayPassageMarker;
-      return {
-        outerRadius: m.size / 2 + Math.max(0, m.borderWidth ?? 0),
-        borderWidth: Math.max(0, m.borderWidth ?? 0),
-        borderMatchColor: verticalStyle.oneWayAccentColor,
-      };
-    }
-    const m = kind === "elevator" ? verticalStyle.elevatorMarker : verticalStyle.twoWayPassageMarker;
+    const m = kind === "elevator" ? verticalStyle.elevatorMarker : kind === "vertical" && oneWay ? verticalStyle.oneWayPassageMarker : verticalStyle.twoWayPassageMarker;
     return markerEndpointVisual(m, m.fillColor, m.borderColor, m.borderWidth ?? 0);
   };
 }

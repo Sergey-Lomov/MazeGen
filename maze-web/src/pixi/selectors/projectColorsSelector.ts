@@ -231,7 +231,7 @@ export const PC = {
   twoWayArrow: field(["two_way"], "arrow"),
 
   oneWayFill: field(["one_way"], "fill"),
-  oneWayAccent: field(["one_way"], "accent"),
+  oneWayBorder: field(["one_way"], "border"),
   oneWayArrow: field(["one_way"], "arrow"),
 
   elevatorFill: field(["elevator"], "fill"),
@@ -260,8 +260,7 @@ export const PC = {
   },
 } as const;
 
-/** Every `MarkerSettings` color field. `borderColor` is skipped when the panel hides it (a one-way
- *  passage marker — its border color is driven by the accent color instead). */
+/** Every `MarkerSettings` color field. `borderColor` is skipped when the panel hides it. */
 function markerColors(fill: ColorField, border: ColorField | null, marker: MarkerSettings): ProjectColorEntry[] {
   const rows = [fill.at(marker.fillColor)];
   if (border) rows.push(border.at(marker.borderColor));
@@ -313,8 +312,7 @@ function verticalAbstractColors(
     rows.push(PC.twoWayArrow.at(s.twoWayArrowColor));
   }
   if (vis.oneWayPassages) {
-    rows.push(...markerColors(PC.oneWayFill, null, s.oneWayPassageMarker));
-    rows.push(PC.oneWayAccent.at(s.oneWayAccentColor));
+    rows.push(...markerColors(PC.oneWayFill, PC.oneWayBorder, s.oneWayPassageMarker));
     rows.push(PC.oneWayArrow.at(s.oneWayArrowColor));
   }
   if (vis.elevators) {
@@ -477,7 +475,7 @@ export function overrideActiveProfileColor(
       set(PC.teleportConnector, (v) => { settings.teleportConnectorColor = v; }) ||
       set(PC.teleportBadgeFill, (v) => { settings.teleportFloorBadge.fillColor = v; }) || set(PC.teleportBadgeBorder, (v) => { settings.teleportFloorBadge.borderColor = v; }) || set(PC.teleportBadgeText, (v) => { settings.teleportFloorBadge.textColor = v; }) ||
       marker(PC.twoWayFill, PC.twoWayBorder, settings.twoWayPassageMarker) || set(PC.twoWayArrow, (v) => { settings.twoWayArrowColor = v; }) ||
-      marker(PC.oneWayFill, PC.oneWayFill, settings.oneWayPassageMarker) || set(PC.oneWayAccent, (v) => { settings.oneWayAccentColor = v; }) || set(PC.oneWayArrow, (v) => { settings.oneWayArrowColor = v; }) ||
+      marker(PC.oneWayFill, PC.oneWayBorder, settings.oneWayPassageMarker) || set(PC.oneWayArrow, (v) => { settings.oneWayArrowColor = v; }) ||
       marker(PC.elevatorFill, PC.elevatorBorder, settings.elevatorMarker) || set(PC.elevatorArrow, (v) => { settings.elevatorArrowColor = v; }) ||
       set(PC.elevatorBadgeFill, (v) => { settings.elevatorBadges.fillColor = v; }) || set(PC.elevatorBadgeText, (v) => { settings.elevatorBadges.textColor = v; }) ||
       set(PC.markerIndexFill, (v) => { settings.markerIndex.fillColor = v; }) || set(PC.markerIndexText, (v) => { settings.markerIndex.textColor = v; }) || set(PC.markerIndexBorder, (v) => { settings.markerIndex.borderColor = v; })) return settings;
