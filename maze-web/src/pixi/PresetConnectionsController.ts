@@ -114,6 +114,11 @@ export class PresetConnectionsController extends BaseController {
         useMazeStore.getState().setPresetDragOverride({
           kind: "marker", marker: this.draggingMarker === "set_start" ? "start" : "finish", point: coords,
         });
+      } else if (useMazeStore.getState().presetDragOverride?.kind === "marker") {
+        // Returning to the drag origin restores the committed marker position in the live preview.
+        // Keep the gesture armed so a later move can create a new override again (GitHub issue
+        // #695).
+        useMazeStore.getState().setPresetDragOverride(null);
       }
       return;
     }
