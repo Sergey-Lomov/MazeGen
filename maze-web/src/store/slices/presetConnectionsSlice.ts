@@ -144,11 +144,13 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
+    if (presetConnections === state.presetConnections) return state;
     return withRecomputedAutoLock(state, { presetConnections, presetEntityOrder: addNewUserEdgeOrder(state.presetConnections, presetConnections, state.presetEntityOrder), presetsDirty: true });
   }),
 
   applyPresetConnectionsToolAt: (tool, key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, tool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
+    if (presetConnections === state.presetConnections) return state;
     return withRecomputedAutoLock(state, { presetConnections, presetEntityOrder: addNewUserEdgeOrder(state.presetConnections, presetConnections, state.presetEntityOrder), presetsDirty: true });
   }),
 

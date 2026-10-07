@@ -29,10 +29,12 @@ Each `PresetConnectionEntry` carries a `source: "user" | "default"` field:
 - `"user"` — set explicitly by the user via a tool
 - `"default"` — injected automatically by the active `defaultEdgeState`
 
-Applying the `reset` tool or RMB stores `{ state: "undefined", source: "user" }`. This explicit
-assignment remains undecided regardless of `defaultEdgeState` and appears in the entity-delete
-picker. Removing it restores the current default (or removes the map entry when that default is
-`"undefined"`).
+Applying the `reset` tool or RMB to an edge with a user preset removes that override and restores
+the current default: a `source: "default"` entry for `"wall"`/`"passage"`, or no map entry when
+the default is `"undefined"`. If the edge has no user preset (including when it already only has a
+derived `source: "default"` entry), reset is a no-op and leaves its effective state unchanged.
+Explicit `{ state: "undefined", source: "user" }` assignments remain available through the split
+face editor, where they intentionally override the default.
 
 ## Canonical edge key
 
@@ -269,7 +271,9 @@ When `defaultEdgeState` changes, `applyDefaultEdgeState` is called:
 1. All existing `source: "default"` entries are removed, across all floors.
 2. If new state is not `"undefined"`, default entries are added for all interior edges on every floor that have no `source: "user"` entry (including edges with `state: "undefined", source: "user"` — those are intentionally excluded from the default), using each floor's own field shape (`levelFieldsOf`).
 
-Applying the `reset` tool or RMB clears the edge's user override and re-materializes it as the current default (see "Entry source" above) — it does not pin the edge as explicitly undecided.
+Applying the `reset` tool or RMB clears an edge's user override and re-materializes it as the current
+default (see "Entry source" above); when no user override exists, it is a no-op. It does not pin an
+edge as explicitly undecided.
 
 Changing `defaultEdgeState` also triggers `_recomputeAutoLock` if auto-lock is enabled.
 

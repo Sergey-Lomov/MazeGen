@@ -85,24 +85,24 @@ describe("mazeStore preset connections", () => {
     expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
-  it("applyPresetConnectionsToolAt('reset', ...) stores an explicit undefined entry", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) restores the selected default", () => {
     useMazeStore.setState({
       presetConnections: new Map([["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }]]),
     });
     useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
-    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toMatchObject({ state: "undefined", source: "user" });
+    expect(useMazeStore.getState().presetConnections.has("0,0-1,0")).toBe(false);
   });
 
-  it("explicit undefined remains undefined when the default is wall", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) restores wall instead of undefined", () => {
     useMazeStore.setState({
       defaultEdgeState: "wall",
       presetConnections: new Map([["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage", source: "user" }]]),
     });
     useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
-    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toMatchObject({ state: "undefined", source: "user" });
+    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toMatchObject({ state: "wall", source: "default" });
   });
 
-  it("applyPresetConnectionsToolAt('reset', ...) does not auto-lock from an undefined edge", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) restores the default and recomputes auto-locks", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
     setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.setState({
@@ -111,13 +111,17 @@ describe("mazeStore preset connections", () => {
     });
     useMazeStore.getState().applyPresetConnectionsToolAt("reset", "-1,0-0,0", [-1, 0], [0, 0]);
     const s = useMazeStore.getState();
-    expect(s.autoLockedNodes.has("-1,0")).toBe(false);
-    expect(s.autoLockedNodes.has("0,0")).toBe(false);
+    expect(s.presetConnections.get("-1,0-0,0")).toMatchObject({ state: "wall", source: "default" });
+    expect(s.autoLockedNodes.has("-1,0")).toBe(true);
+    expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
-  it("applyPresetConnectionsToolAt('reset', ...) records a missing edge as explicit undefined", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) ignores an edge without a user preset", () => {
+    const before = useMazeStore.getState();
     useMazeStore.getState().applyPresetConnectionsToolAt("reset", "9,9-9,8", [9, 9], [9, 8]);
-    expect(useMazeStore.getState().presetConnections.get("9,8-9,9")).toMatchObject({ state: "undefined", source: "user" });
+    const state = useMazeStore.getState();
+    expect(state).toBe(before);
+    expect(state.presetConnections.has("9,8-9,9")).toBe(false);
   });
 
   it("applyPresetConnectionsToolAt('reset', ...) resolves the level-suffixed key on floor 1, not the bare geometric key (GitHub issue #433)", () => {
@@ -129,7 +133,7 @@ describe("mazeStore preset connections", () => {
       presetConnections: new Map([["0,0@1-1,0@1", { from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([1, 0], undefined, 1), state: "wall", source: "user" }]]),
     });
     useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
-    expect(useMazeStore.getState().presetConnections.get("0,0@1-1,0@1")).toMatchObject({ state: "undefined", source: "user" });
+    expect(useMazeStore.getState().presetConnections.has("0,0@1-1,0@1")).toBe(false);
   });
 
   it("clearInvalidPresetConnections removes entries outside the field", () => {
