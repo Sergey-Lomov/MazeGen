@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { StrictMode } from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { StrictMode, type MouseEvent } from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SidePanel } from "../components/SidePanel";
 import { ConfirmModal } from "../components/ConfirmModal";
 
@@ -199,5 +199,78 @@ describe("SidePanel Escape-to-close (GitHub issue #631)", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(onClosePanel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SidePanel missing-down recovery (GitHub issue #679)", () => {
+  it("replays a button click when Opera delivers mouseup without pointerdown/mousedown", async () => {
+    const onClick = vi.fn((event: MouseEvent<HTMLButtonElement>) => {
+      expect(event.currentTarget).toHaveAttribute("data-side-panel-recovered-press", "true");
+    });
+    render(
+      <SidePanel title="Panel" onClose={vi.fn()}>
+        <button type="button" onClick={onClick}>Action</button>
+      </SidePanel>,
+    );
+
+    fireEvent.mouseUp(screen.getByRole("button", { name: "Action" }), { button: 0 });
+
+    await waitFor(() => expect(onClick).toHaveBeenCalledTimes(1));
+  });
+
+  it("replays consecutive clicks when each press starts without pointerdown/mousedown", async () => {
+    const onClick = vi.fn();
+    render(
+      <SidePanel title="Panel" onClose={vi.fn()}>
+        <button type="button" onClick={onClick}>Action</button>
+      </SidePanel>,
+    );
+
+    const button = screen.getByRole("button", { name: "Action" });
+    fireEvent.mouseUp(button, { button: 0 });
+    await waitFor(() => expect(onClick).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseUp(button, { button: 0 });
+    await waitFor(() => expect(onClick).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not replay a real press or a release outside the active panel", async () => {
+    const onInsideClick = vi.fn();
+    const onOutsideClick = vi.fn();
+    render(
+      <>
+        <button type="button" onClick={onOutsideClick}>Outside</button>
+        <SidePanel title="Panel" onClose={vi.fn()}>
+          <button type="button" onClick={onInsideClick}>Inside</button>
+        </SidePanel>
+      </>,
+    );
+
+    const outside = screen.getByRole("button", { name: "Outside" });
+    const inside = screen.getByRole("button", { name: "Inside" });
+    fireEvent.mouseUp(outside, { button: 0 });
+    fireEvent.mouseDown(outside, { button: 0 });
+    fireEvent.mouseUp(inside, { button: 0 });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onInsideClick).not.toHaveBeenCalled();
+    expect(onOutsideClick).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate a normal click with pointerdown and mousedown", () => {
+    const onClick = vi.fn();
+    render(
+      <SidePanel title="Panel" onClose={vi.fn()}>
+        <button type="button" onClick={onClick}>Action</button>
+      </SidePanel>,
+    );
+
+    const button = screen.getByRole("button", { name: "Action" });
+    fireEvent.pointerDown(button, { button: 0 });
+    fireEvent.mouseDown(button, { button: 0 });
+    fireEvent.mouseUp(button, { button: 0 });
+    fireEvent.click(button, { button: 0 });
+
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

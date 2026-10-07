@@ -66,6 +66,32 @@ outline while covered, `PngExportSettingsPanel` hides its print-frame canvas ove
 settings, overlay for nested config), `PostEditChangesPanel`, `SplitNodesDialogView`,
 `VertexBasedSettingsPanel`.
 
+### Top-edge hit testing (issue #679)
+
+`SectionHeader` and `SubsectionHeader` keep their small negative vertical margin so their spacing
+inside ordinary sections does not change. They must also remain `position: relative`: without that
+positioning, Chromium-based browsers (notably Opera) can drop pointer events for the first
+negative-margin flex item near the top edge of the panel's `overflow-y: auto` body. Do not fix this
+by adding global top padding to `SidePanel`, since that shifts unrelated panel content.
+
+For a browser-specific reproduction, enable diagnostics before opening the panel:
+
+```js
+localStorage.setItem("maze.debug.sidePanelHitTesting", "1");
+location.reload();
+```
+
+The browser console then receives `[SidePanel #679 ...]` records for panel geometry, computed
+styles, `elementFromPoint()` samples around the header/body boundary, and document-capture pointer
+events. Remove the key to disable the logs. The equivalent temporary URL switch is
+`?debugSidePanel=1`.
+
+As a browser-compatibility fallback, the active panel replays a left-button click when it receives
+`mouseup` without any preceding page-level `pointerdown` or `mousedown`. A genuine press or drag
+keeps the normal event path. Because the replay happens after `mouseup`, it also briefly applies
+`data-side-panel-recovered-press` so the affected control keeps visible pressed feedback instead
+of changing selection without the usual `:active` styling.
+
 ## `Modal`
 
 Centered, blocking dialog (`Modal.tsx`), portaled to `document.body`, with a dimmed full-viewport
