@@ -120,7 +120,7 @@ Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell d
 - **LMB click (no drag) on an existing endpoint**, when no placement is pending — cycles that entry's direction: `forward ↔ backward`; `two_way` is unaffected (`cyclePresetTeleportDirection`). This is how a one-way teleport's direction is flipped after creation; there's no other UI path to reach `"backward"`.
 - **LMB click (no drag) on an existing endpoint's cell**, while a placement *is* pending — completes the pending placement at that cell (starts a new link) rather than cycling the existing entry's direction.
 
-A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags.
+A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags. The controller captures the pointerdown viewport position so this release-only resolution remains correct even when no `pointermove` event was delivered.
 
 ### Validity
 
@@ -440,6 +440,8 @@ Layers (bottom to top):
 **`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
 
 `PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`tessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
+
+**Pointer cleanup and modal ownership.** `PresetConnectionsController.clearHover()` clears edge hover, cell hover, and teleport preview together. While a preset split-target/entity-delete picker or a pending vertical-passage/elevator placement is open, pointerdown is ignored and pointermove clears both hover targets without dispatching canvas mutations. The controller keeps the active-floor teleport hit-test scoped to entries whose `from` endpoint belongs to that floor; cross-floor entries are edited from their owning floor.
 
 ## Gen source marker
 
