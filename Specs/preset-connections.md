@@ -93,7 +93,7 @@ Both live in the single Tools section (GitHub issue #456 — see "## Tools" belo
 
 All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_two_way`) share one editing mode: whichever vertex tool is active, drag-to-move and right-click-to-delete apply uniformly to the start marker, the finish marker, and every teleport endpoint — not just the element type matching the active tool.
 
-- **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker. Live preview only (`presetDragOverride`'s `marker` variant, GitHub issue #613): the pointermove handler writes the drag's current cell to `presetDragOverride` instead of calling `setPresetStart` on every move — `PresetConnectionsRenderer` substitutes it in place of the committed `presetStart` while it's set. Nothing is written to `presetStart` until pointerup, and only if the cursor actually left the origin cell; a plain click that never moved stays a no-op.
+- **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker. Live preview only (`presetDragOverride`'s `marker` variant, GitHub issue #613): the pointermove handler writes the drag's current cell to `presetDragOverride` instead of calling `setPresetStart` on every move — `PresetConnectionsRenderer` substitutes it in place of the committed `presetStart` while it's set. Returning to the origin clears the preview back to the committed marker, while the drag remains armed so a later cell is still previewed (GitHub issue #695). Nothing is written to `presetStart` until pointerup, and only if the cursor actually left the origin cell; a plain click that never moved stays a no-op.
 - **Left press-drag starting on the finish marker's cell**, while any vertex tool is active → moves the finish marker the same way, via `presetDragOverride`/`setPresetFinish` on release.
 - **Left press-drag starting on an existing teleport endpoint**, while any vertex tool is active → moves that endpoint live (see "Editing existing teleports" below).
 - **Right-click on the start marker's cell**, while any vertex tool is active → clears the start marker (`setPresetStart(null)`).
@@ -113,14 +113,14 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 
 ### Editing existing teleports
 
-Hit-testing an existing endpoint (`pickTeleportEndpointAt`, radius `TILE_SIZE * 0.3`, closest endpoint across all teleports wins) while a teleport tool is active:
+Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell determines the hit and the closest endpoint in that cell wins) while a teleport tool is active:
 
 - **RMB on an existing endpoint** — removes that entire teleport entry (`removePresetTeleport`).
 - **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor (`movePresetTeleportEndpoint`), live-updating on every cell change during the drag. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
 - **LMB click (no drag) on an existing endpoint**, when no placement is pending — cycles that entry's direction: `forward ↔ backward`; `two_way` is unaffected (`cyclePresetTeleportDirection`). This is how a one-way teleport's direction is flipped after creation; there's no other UI path to reach `"backward"`.
 - **LMB click (no drag) on an existing endpoint's cell**, while a placement *is* pending — completes the pending placement at that cell (starts a new link) rather than cycling the existing entry's direction.
 
-A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags.
+A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags. The controller captures the pointerdown viewport position so this release-only resolution remains correct even when no `pointermove` event was delivered.
 
 ### Validity
 
@@ -199,6 +199,10 @@ Semantically distinct from preset teleports: both endpoints of a planted vertica
 | `elevator` | Vertex | Single click sets the point, then opens the floor-picker dialog to choose which floors it reaches |
 
 All three only appear when the maze has more than one floor (`floors.length > 1`).
+
+### Endpoint hit-testing
+
+Preset endpoint markers — teleports, vertical passages, and elevators — are hit-tested from anywhere inside their cell, not only from the drawn marker body (GitHub issue #694; matches Post-Edit).
 
 ### Vertical passage placement
 
@@ -436,6 +440,8 @@ Layers (bottom to top):
 **`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
 
 `PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`tessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
+
+**Pointer cleanup and modal ownership.** `PresetConnectionsController.clearHover()` clears edge hover, cell hover, and teleport preview together. While a preset split-target/entity-delete picker or a pending vertical-passage/elevator placement is open, pointerdown is ignored and pointermove clears both hover targets without dispatching canvas mutations. The controller keeps the active-floor teleport hit-test scoped to entries whose `from` endpoint belongs to that floor; cross-floor entries are edited from their owning floor.
 
 ## Gen source marker
 
@@ -752,4 +758,6 @@ These per-node marker lines are built by `buildPresetNodeMarkerLines`, itself a 
 | `defaultEdgeState` changes | All `source:"default"` entries removed and repopulated; auto-lock recomputed |
 
 When an existing teleport endpoint is dragged to another cell, its current floor is preserved;
-moving to a different cell drops any split-node slot attached to the old cell.
+floor 0 remains represented by an omitted `level` (the canonical in-memory form), while non-zero
+floors keep their numeric level. Moving to a different cell drops any split-node slot attached to
+the old cell.

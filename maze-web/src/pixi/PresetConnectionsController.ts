@@ -7,8 +7,8 @@ import { encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
 import { activeFloorLevel } from "../store/storeHelpers";
-import type { PresetTeleportEntry } from "./fieldEditUtils";
-import { cancelPendingPointerAction, isPointerModalOpen, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
+import { cancelPendingPointerAction, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
+import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnectionsInteraction";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -17,28 +17,6 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 // Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
 // the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
 const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source"]);
-
-/** True while any preset modal picker/prompt is open — pointer input must not keep driving canvas
- *  tools underneath it (GitHub issue #540 follow-up bug report): without this guard, an in-flight
- *  cell/edge drag gesture that opened `presetEntityDeletePrompt` on its first cell kept running as
- *  the cursor moved to further cells (button still down), silently re-targeting the open dialog to
- *  whatever cell the mouse happened to be over. */
-function isPresetModalOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
-  return isPointerModalOpen(
-    state.presetSplitTargetPrompt !== null,
-    state.presetEntityDeletePrompt !== null,
-    state.presetVerticalPassagePending !== null,
-    state.presetElevatorPending !== null,
-  );
-}
-
-/** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
- * floor's own teleport endpoints (GitHub issue #340); a teleport landing on another floor is
- * edited from that floor instead. `from` (not `to`) decides ownership, mirroring
- * `GenerationRenderer`'s own cross-floor teleport handling (`Specs/floors.md`). */
-function teleportsOnLevel(teleports: PresetTeleportEntry[], level: number | undefined): PresetTeleportEntry[] {
-  return teleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
-}
 
 export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
@@ -82,7 +60,7 @@ export class PresetConnectionsController extends BaseController {
 
     const state = useMazeStore.getState();
     if (state.openCard !== "preset_connections") return;
-    if (isPresetModalOpen(state)) {
+    if (isPresetConnectionsModalOpen(state)) {
       this.renderer.updateHover(null);
       this.renderer.updateCellHover(null);
       return;
@@ -114,6 +92,11 @@ export class PresetConnectionsController extends BaseController {
         useMazeStore.getState().setPresetDragOverride({
           kind: "marker", marker: this.draggingMarker === "set_start" ? "start" : "finish", point: coords,
         });
+      } else if (useMazeStore.getState().presetDragOverride?.kind === "marker") {
+        // Returning to the drag origin restores the committed marker position in the live preview.
+        // Keep the gesture armed so a later move can create a new override again (GitHub issue
+        // #695).
+        useMazeStore.getState().setPresetDragOverride(null);
       }
       return;
     }
@@ -304,7 +287,7 @@ export class PresetConnectionsController extends BaseController {
   onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean): void {
     const state = useMazeStore.getState();
     if (state.openCard !== "preset_connections") return;
-    if (isPresetModalOpen(state)) return;
+    if (isPresetConnectionsModalOpen(state)) return;
 
     if (this.tryStartPan(canvasX, canvasY, button)) return;
     // Held shift bypasses the entity picker dialog for this gesture — captured here (not read
@@ -313,6 +296,10 @@ export class PresetConnectionsController extends BaseController {
     this.bulkDelete = shiftKey === true;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
+    // A click on an existing teleport endpoint can complete a pending placement on pointerup
+    // without producing any pointermove first. Capture the down position so that release-only
+    // resolution targets the cell actually clicked rather than the previous/default position.
+    this.lastViewportPos = { x: vpX, y: vpY };
     const tool = state.presetConnectionsTool;
 
     // Locks are cell tools (not VERTEX_TOOLS), but a split cell still needs an explicit node
@@ -697,6 +684,7 @@ export class PresetConnectionsController extends BaseController {
   clearHover(): void {
     resetPointerHover({
       updateHover: (edge) => this.renderer.updateHover(edge),
+      updateCellHover: (cell) => this.renderer.updateCellHover(cell),
       updateTeleportPreview: (point, x, y) => this.renderer.updateTeleportPreview(point, x, y),
     });
   }

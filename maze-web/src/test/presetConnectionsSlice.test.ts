@@ -1266,6 +1266,17 @@ describe("mazeStore preset connections", () => {
       expect(s.presetStart).toBeNull();
     });
 
+    it("clear finds a teleport endpoint moved on floor 0", () => {
+      useMazeStore.setState({
+        presetTeleports: [{ id: 1, from: presetEndpoint([0, 0]), to: presetEndpoint([1, 1]), direction: "forward" }],
+      });
+
+      useMazeStore.getState().movePresetTeleportEndpoint(1, "from", [1, 0], 0);
+      useMazeStore.getState().requestPresetEntityDelete([1, 0], undefined, { kind: "point_all" });
+
+      expect(useMazeStore.getState().presetTeleports).toEqual([]);
+    });
+
     it("requestPresetEntityDelete with more than one entity opens the dialog", () => {
       useMazeStore.setState({
         presetStart: presetEndpoint([0, 0]),

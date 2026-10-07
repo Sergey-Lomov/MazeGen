@@ -1,4 +1,3 @@
-import { TILE_SIZE } from "./constants";
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getNeighborData } from "./tessellationGeometry";
@@ -92,8 +91,6 @@ export interface PresetElevatorEndpointHit {
   level: number;
 }
 
-const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
-
 /** Filters a flat, maze-wide `presetConnections` map (GitHub issue #340) down to the entries
  * living entirely on `level` — both endpoints on the same floor. Used by the renderer, which only
  * ever draws one floor's own edges/wall groups/split passages at a time; a future cross-floor
@@ -177,6 +174,8 @@ export function setOnLevel(set: Set<string>, level: number | undefined): Set<str
   return result;
 }
 
+/** Hit-tests preset teleport endpoints by the cell under the pointer, not by the drawn marker's
+ * radius (GitHub issue #694). The nearest candidate in that cell wins when endpoints overlap. */
 export function pickTeleportEndpointAt(
   viewportX: number,
   viewportY: number,
@@ -184,7 +183,7 @@ export function pickTeleportEndpointAt(
   teleports: PresetTeleportEntry[],
 ): PresetTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   const candidates = teleports.flatMap((teleport) => ([
     { id: teleport.id, end: "from" as const, point: teleport.from.point },
     { id: teleport.id, end: "to" as const, point: teleport.to.point },
@@ -194,14 +193,14 @@ export function pickTeleportEndpointAt(
     viewportY,
     candidates,
     (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
-    (_candidate, distanceSq) => distanceSq < thresholdSq,
+    (candidate) => candidate.point[0] === pointerCell.x && candidate.point[1] === pointerCell.y,
   );
   return hit ? { id: hit.id, end: hit.end } : null;
 }
 
-/** Same hit-test as `pickTeleportEndpointAt`, for vertical passages — only ever tests the endpoint
- * on the *active* floor (the caller pre-filters `passages` to the active level's own `from`, same
- * as `teleportsOnLevel`), so only that one endpoint's screen position is ever checked per entry. */
+/** Same cell-based hit-test as `pickTeleportEndpointAt`, for vertical passages — only ever tests the
+ * endpoint on the *active* floor (the caller pre-filters `passages` to the active level's own
+ * `from`, same as `teleportsOnLevel`), so only that one endpoint is checked per entry. */
 export function pickVerticalPassageEndpointAt(
   viewportX: number,
   viewportY: number,
@@ -210,7 +209,7 @@ export function pickVerticalPassageEndpointAt(
   activeLevel: number | undefined,
 ): PresetVerticalPassageEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   const candidates = passages.flatMap((passage) => (["from", "to"] as const).flatMap((end) => {
     const endpoint = end === "from" ? passage.from : passage.to;
     return (endpoint.level ?? 0) === (activeLevel ?? 0)
@@ -222,14 +221,15 @@ export function pickVerticalPassageEndpointAt(
     viewportY,
     candidates,
     (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
-    (_candidate, distanceSq) => distanceSq < thresholdSq,
+    (candidate) => candidate.point[0] === pointerCell.x && candidate.point[1] === pointerCell.y,
   );
   return hit ? { id: hit.id, end: hit.end } : null;
 }
 
-/** Same hit-test as `pickVerticalPassageEndpointAt`, for elevators (GitHub issue #566) — only ever
- * tests the active floor's own endpoint of each elevator entry (mirrors `buildPresetVerticalMarkers`'s
- * own active-floor filter), so `PresetElevatorEndpointHit.level` is always the active floor. */
+/** Same cell-based hit-test as `pickVerticalPassageEndpointAt`, for elevators (GitHub issue #566) —
+ * only ever tests the active floor's own endpoint of each elevator entry (mirrors
+ * `buildPresetVerticalMarkers`'s own active-floor filter), so `PresetElevatorEndpointHit.level` is
+ * always the active floor. */
 export function pickElevatorEndpointAt(
   viewportX: number,
   viewportY: number,
@@ -238,7 +238,7 @@ export function pickElevatorEndpointAt(
   activeLevel: number | undefined,
 ): PresetElevatorEndpointHit | null {
   const proj = makeProjection(cfg);
-  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  const pointerCell = proj.screenToGrid(viewportX, viewportY);
   const candidates = elevators.flatMap((elevator) => {
     const own = elevator.floors.find((floor) => (floor.level ?? 0) === (activeLevel ?? 0));
     return own ? [{ id: elevator.id, level: activeLevel ?? 0, point: own.point }] : [];
@@ -248,7 +248,7 @@ export function pickElevatorEndpointAt(
     viewportY,
     candidates,
     (candidate) => proj.gridToScreen(candidate.point[0], candidate.point[1]),
-    (_candidate, distanceSq) => distanceSq < thresholdSq,
+    (candidate) => candidate.point[0] === pointerCell.x && candidate.point[1] === pointerCell.y,
   );
   return hit ? { id: hit.id, level: hit.level } : null;
 }
@@ -276,8 +276,10 @@ export function moveTeleportEndpoint(
   return teleports.map(t => {
     if (t.id !== hit.id) return t;
     // Moving to a different cell drops any slot the endpoint previously addressed — the slot
-    // belonged to the old point, not the new one.
-    return { ...t, [hit.end]: presetEndpoint(cell, undefined, level) };
+    // belonged to the old point, not the new one. Floor 0 is represented by an omitted level
+    // throughout preset state; keep the moved endpoint canonical so structural endpoint matching
+    // (including the clear-tool entity picker) still finds it.
+    return { ...t, [hit.end]: presetEndpoint(cell, undefined, level === 0 ? undefined : level) };
   });
 }
 
