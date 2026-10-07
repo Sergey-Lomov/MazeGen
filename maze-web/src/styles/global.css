@@ -416,23 +416,53 @@ input[type="number"]::-webkit-inner-spin-button {
 /* Tool-icon button (`ToolIconButton`, GitHub issue #456) — its own button type, not a toggle.
    Face is the exact canvas floor fill (`canvas.floor.default` = `base.bgSurfaceRaised`, the
    `lighten` chain #111111 -> #181818 -> #242424 -> #2d2d2d) so the live-rendered pictogram inside
-   reads exactly as it does on the field; selection/hover is a border + subtle lift, never a fill
-   swap. Keep this value in sync with `base.bgSurfaceRaised` in palette.ts. */
-.btn-tool-icon {
+   reads exactly as it does on the field; selection/hover is a border, never a fill swap. Keep this
+   value in sync with `base.bgSurfaceRaised` in palette.ts. */
+.btn-tool-icon,
+.btn-tool-icon-selected,
+.btn-tool-icon-selected-danger {
+  position: relative;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+}
+
+.tool-icon-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.tool-icon-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-tool-icon .tool-icon-face {
   background: #2d2d2d;
   border: 1px solid #3a3a3a;
   color: inherit;
 }
 
-.btn-tool-icon:hover {
+.btn-tool-icon:hover .tool-icon-face {
   border-color: #5a5a5a;
 }
 
-.btn-tool-icon:active {
+/* Keep the button itself stationary as the hit area, while moving its complete visual face. */
+.btn-tool-icon:active .tool-icon-face {
+  border-color: #4a9eff;
+  box-shadow: inset 0 0 0 1px #4a9eff;
+  filter: brightness(0.9);
   transform: translateY(1px);
 }
 
-.btn-tool-icon-selected {
+.btn-tool-icon-selected .tool-icon-face {
   background: #2d2d2d;
   border: 1px solid #4a9eff; /* canvas.node.default — the canvas "active/selected" accent */
   box-shadow: inset 0 0 0 1px #4a9eff;
@@ -440,19 +470,20 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* Selected state for a destructive tool (e.g. preset "clear") — danger-hued border instead of
    the accent one. Keep the color in sync with `base.error` in palette.ts. */
-.btn-tool-icon-selected-danger {
+.btn-tool-icon-selected-danger .tool-icon-face {
   background: #2d2d2d;
   border: 1px solid #ff6b6b;
   box-shadow: inset 0 0 0 1px #ff6b6b;
   color: inherit;
 }
 
-.btn-tool-icon-selected-danger:hover {
+.btn-tool-icon-selected-danger:hover .tool-icon-face {
   border-color: #ff6b6b;
 }
 
-.btn-tool-icon-selected:active,
-.btn-tool-icon-selected-danger:active {
+.btn-tool-icon-selected:active .tool-icon-face,
+.btn-tool-icon-selected-danger:active .tool-icon-face {
+  filter: brightness(0.9);
   transform: translateY(1px);
 }
 
@@ -460,6 +491,12 @@ input[type="number"]::-webkit-inner-spin-button {
 .btn-tool-icon-selected:disabled,
 .btn-tool-icon-selected-danger:disabled {
   opacity: 0.4;
+  transform: none;
+}
+
+.btn-tool-icon:disabled .tool-icon-face,
+.btn-tool-icon-selected:disabled .tool-icon-face,
+.btn-tool-icon-selected-danger:disabled .tool-icon-face {
   transform: none;
 }
 

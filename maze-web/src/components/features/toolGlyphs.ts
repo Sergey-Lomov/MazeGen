@@ -39,7 +39,7 @@ const RESOLUTION = Math.min(3, Math.max(2, Math.round(typeof window !== "undefin
 
 const S = DEFAULT_MAZE_RENDER_STYLE;
 
-// Button face is the canvas floor fill (`.btn-tool-icon` in global.css matches
+// Button face is the canvas floor fill (`.tool-icon-face` in global.css matches
 // `canvas.floor.default`), so every gap ring / one-way gap / lock knockout uses the floor color
 // exactly as it does on the field — the gap then reads as a true hole in the marker.
 const GAP = canvas.floor.default;

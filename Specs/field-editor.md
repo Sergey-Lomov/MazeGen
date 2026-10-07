@@ -245,7 +245,10 @@ operation; right mouse input is ignored in Select mode. The Symmetry tool remain
 but is disabled in Select mode because it only adds or removes reflected cells. The polygon tool is a single tool;
 its operation also comes from the active mode.
 
-Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`:
+Custom mode supports point, shape, polygon, and magic-wand interaction modes controlled by `fieldPrimitive`.
+The operation and primitive tools are square icon buttons. Their pressed-state feedback must not
+move or resize the button itself, so every point within the visible button, including its top edge,
+remains clickable (GitHub issue #685):
 
 Connected Area (magic_wand) — a click processes the connected component containing the clicked
 cell. Select previews the occupied component, Remove deletes it, and Add fills a bounded empty
