@@ -8,10 +8,10 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
   navigateToFloor: (floorIndex: number) => navigateToFloorMock(floorIndex),
 }));
 
-// Records every `circle`/`poly` call's own args (not just call count) — the offset/spread math
-// this session added (same-cell spread, arrow side-by-side offset) is only observable through the
-// exact coordinates each draw call receives, unlike most other mocked-pixi tests in this repo that
-// only assert *that* something was drawn.
+// Records every `circle`/`poly` call's own args (not just call count) — marker positioning and
+// arrow side-by-side offset are only observable through the exact coordinates each draw call
+// receives, unlike most other mocked-pixi tests in this repo that only assert *that* something was
+// drawn.
 type Call = { method: "circle" | "poly" | "roundPoly" | "roundRect" | "moveTo" | "lineTo"; args: number[] };
 type StrokeCall = { width?: number; color?: number; cap?: string; join?: string; alignment?: number };
 interface FakeGraphics {
@@ -246,35 +246,36 @@ describe("VerticalConnectionRenderer", () => {
     expect(g.calls.filter((c) => c.method === "poly")).toHaveLength(2);
   });
 
-  it("spreads two markers sharing the same cell left/right, symmetric around the shared position", () => {
+  it("draws co-located passage, elevator, and one-way markers at the exact shared position", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
 
-    const a = marker({ pos: [50, 60], kind: "vertical_passage" });
-    const b = marker({ pos: [50, 60], kind: "elevator" });
-    render(renderer, { markers: [a, b], style: baseStyle() });
+    render(renderer, {
+      markers: [
+        marker({ pos: [50, 60], kind: "vertical_passage", filled: true }),
+        marker({ pos: [50, 60], kind: "elevator" }),
+        marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: false }),
+      ],
+      style: baseStyle(),
+    });
 
     const polyCalls = g.calls.filter((c) => c.method === "poly");
-    expect(polyCalls).toHaveLength(2);
-    const [xA, yA] = polygonCenter(polyCalls[0].args);
-    const [xB, yB] = polygonCenter(polyCalls[1].args);
-    // Symmetric around the shared position, on opposite sides, same Y (no vertical drift).
-    expect(xA + xB).toBeCloseTo(100); // 2 * 50
-    expect(xA).not.toBeCloseTo(xB);
-    expect(yA).toBeCloseTo(60);
-    expect(yB).toBeCloseTo(60);
+    expect(polyCalls).toHaveLength(3);
+    for (const call of polyCalls) {
+      expect(polygonCenter(call.args)).toEqual([expect.closeTo(50), expect.closeTo(60)]);
+    }
   });
 
-  it("a marker at a cell with no other marker there keeps its own center even when other cells have groups", () => {
+  it("a lone marker keeps its own center when other markers occupy another cell", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
 
-    const grouped1 = marker({ pos: [0, 0], kind: "vertical_passage" });
-    const grouped2 = marker({ pos: [0, 0], kind: "elevator" });
+    const coLocated1 = marker({ pos: [0, 0], kind: "vertical_passage" });
+    const coLocated2 = marker({ pos: [0, 0], kind: "elevator" });
     const lone = marker({ pos: [200, 200], kind: "vertical_passage" });
-    render(renderer, { markers: [grouped1, grouped2, lone], style: baseStyle() });
+    render(renderer, { markers: [coLocated1, coLocated2, lone], style: baseStyle() });
 
     const polyCalls = g.calls.filter((c) => c.method === "poly");
     expect(polyCalls).toHaveLength(3);
@@ -618,7 +619,7 @@ describe("VerticalConnectionRenderer", () => {
     expect(g.strokeCalls.length).toBeGreaterThan(0);
   });
 
-  it("style 'decorative' spreads two same-cell markers apart sideways instead of overlapping at the same position", () => {
+  it("style 'decorative' draws co-located markers at the exact shared position", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
@@ -632,22 +633,12 @@ describe("VerticalConnectionRenderer", () => {
     });
 
     // No `direction` on either marker means each draws only `drawStairsIcon`'s own single moveTo
-    // (the icon's `left = cx - r` start point) — one moveTo per marker, so the two calls' own X
-    // directly show each icon's own shifted `cx`. `renderDecorativeMarker`'s
-    // `(slot - (group.length - 1) / 2) * radius * 2.2` spread must land them symmetrically apart,
-    // straddling the shared `pos[0]` (50), not both drawing on top of each other at 50.
+    // (the icon's `left = cx - r` start point) — one moveTo per marker, so equal X coordinates
+    // prove that both icons use the exact shared marker position.
     const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
     expect(moveToCalls).toHaveLength(2);
     const [xA, xB] = moveToCalls.map((c) => c.args[0]);
-    // Both markers share the same `left = cx - r` offset from their own `cx`, and the spread shifts
-    // the two `cx`s symmetrically around the shared `pos[0]` (50) — so the two start-Xs must differ
-    // from each other but average back to the same `50 - r` a lone marker's own start-X would be.
-    expect(xA).not.toBeCloseTo(xB);
-    const soloRender = new VerticalConnectionRenderer(container as never);
-    const soloG = (soloRender as unknown as { g: FakeGraphics }).g;
-    render(soloRender, { markers: [marker({ pos: [50, 60], kind: "vertical_passage", direction: undefined })], style: baseStyle({ style: "decorative" }) });
-    const soloX = soloG.calls.find((c) => c.method === "moveTo")!.args[0];
-    expect((xA + xB) / 2).toBeCloseTo(soloX);
+    expect(xA).toBeCloseTo(xB);
   });
 
   it("stairs zigzag has 3 steps (7 points: vert-horiz-vert-horiz-vert-horiz-vert), starting and ending on a vertical riser", () => {

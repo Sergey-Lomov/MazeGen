@@ -639,18 +639,6 @@ export class VerticalConnectionRenderer {
     this.badgeLayer.removeChildren().forEach((c) => c.destroy());
     this.hitLayer.removeChildren().forEach((c) => c.destroy());
 
-    // Two markers can share the same cell (an Elevator + VerticalPassage from the same node, or a
-    // one-way VerticalPassage's departure end sharing a cell with another edge's arrival end) — GitHub
-    // issue #337 follow-up. Spread same-position markers left/right along X so their circles don't
-    // stack directly on top of each other; a lone marker at a position keeps its original center.
-    const groupByPos = new Map<string, VerticalConnectionMarker[]>();
-    for (const marker of data.markers) {
-      const key = `${marker.pos[0]},${marker.pos[1]}`;
-      const group = groupByPos.get(key);
-      if (group) group.push(marker);
-      else groupByPos.set(key, [marker]);
-    }
-
     // Shared across every elevator badge drawn this render pass (round-4 GitHub issue #430
     // follow-up) — see `fitElevatorBadgeFontSize`'s own doc comment for why this must be computed
     // once over every elevator's own `targetFloorIndices`, not per marker. `markerRadius` is the
@@ -665,10 +653,8 @@ export class VerticalConnectionRenderer {
     const badgeFontSize = fitElevatorBadgeFontSize(allBadgeLabels, badgeRadius, data.style.elevatorBadges.fontWeight);
 
     for (const marker of data.markers) {
-      const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;
-
       if (decorative) {
-        this.renderDecorativeMarker(marker, group, data.style, data.interactive, badgeFontSize);
+        this.renderDecorativeMarker(marker, data.style, data.interactive, badgeFontSize);
         continue;
       }
 
@@ -681,13 +667,8 @@ export class VerticalConnectionRenderer {
             ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
             : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
       const radius = settings.size / 2;
-      let cx = marker.pos[0];
+      const cx = marker.pos[0];
       const cy = marker.pos[1];
-      if (group.length > 1) {
-        const slot = group.indexOf(marker);
-        const offset = radius + Math.max(settings.borderWidth ?? 0, 0) + Math.max(settings.gapWidth ?? 0, 0) * 0.5;
-        cx += (slot - (group.length - 1) / 2) * offset * 2;
-      }
       const rounded = settings.cornerStyle === "round";
       const borderWidth = settings.borderWidth ?? 0;
       const gapWidth = settings.gapWidth ?? 0;
@@ -833,12 +814,10 @@ export class VerticalConnectionRenderer {
    *  (`arrowFilled: false`) end and tail-ticked at the departure (`arrowFilled: true`) end (GitHub
    *  issue #693, decorative follow-up — both ends mark the same physical wall, mirroring the
    *  abstract marker style's own departure/arrival wall-tick pair). `Elevator` never draws an
-   *  arrow, decorative or not (see `VerticalConnectionStyle`'s own doc comment). Position-grouping
-   *  (same-cell spread) mirrors the marker-shape branch's own logic, sized off each icon's own
-   *  `size` instead of a marker's `borderWidth`/`gapWidth` (neither exists here). */
+   *  arrow, decorative or not (see `VerticalConnectionStyle`'s own doc comment). The icon is drawn
+   *  at the marker's exact `pos`, matching the marker-shape branch. */
   private renderDecorativeMarker(
     marker: VerticalConnectionMarker,
-    group: VerticalConnectionMarker[],
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
     badgeFontSize: number,
@@ -846,12 +825,8 @@ export class VerticalConnectionRenderer {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
     const radius = lineStyle.size / 2;
-    let cx = marker.pos[0];
+    const cx = marker.pos[0];
     const cy = marker.pos[1];
-    if (group.length > 1) {
-      const slot = group.indexOf(marker);
-      cx += (slot - (group.length - 1) / 2) * radius * 2.2;
-    }
 
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
