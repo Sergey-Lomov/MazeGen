@@ -666,3 +666,62 @@ mod transform_face_index_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod coordinate_gap_tests {
+    use super::super::*;
+    use crate::space::{SquareFace, SquarePoint};
+
+    struct GappedSquareTessellation;
+
+    impl Tessellation for GappedSquareTessellation {
+        type Point = SquarePoint;
+        type Face = SquareFace;
+
+        fn step(point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
+            if point == (SquarePoint { x: 0, y: 0 }) && face == SquareFace::E {
+                None
+            } else {
+                SquareTessellation::step(point, face)
+            }
+        }
+
+        fn faces() -> &'static [SquareFace] {
+            SquareTessellation::faces()
+        }
+
+        fn face_between(from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
+            SquareTessellation::face_between(from, to)
+        }
+
+        fn rotation_symmetries() -> &'static [&'static [usize]] {
+            SquareTessellation::rotation_symmetries()
+        }
+
+        fn mirror_symmetries() -> &'static [&'static [usize]] {
+            SquareTessellation::mirror_symmetries()
+        }
+
+        fn cartesian(point: SquarePoint) -> (f64, f64) {
+            SquareTessellation::cartesian(point)
+        }
+    }
+
+    #[test]
+    fn field_neighbors_skip_faces_without_a_coordinate() {
+        let origin = SquarePoint { x: 0, y: 0 };
+        let north = SquarePoint { x: 0, y: 1 };
+        let east = SquarePoint { x: 1, y: 0 };
+        let mut ids = IdGenerator::new();
+        let field: Field<GappedSquareTessellation> =
+            Field::new([origin, north, east], &mut ids).unwrap();
+
+        assert_eq!(GappedSquareTessellation::step(origin, SquareFace::E), None);
+        assert_eq!(
+            GappedSquareTessellation::step(origin, SquareFace::N),
+            Some(north)
+        );
+        let neighbors = field.neighbors(field.node_at(origin).unwrap());
+        assert_eq!(neighbors, vec![field.node_at(north).unwrap()]);
+    }
+}

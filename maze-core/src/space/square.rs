@@ -20,8 +20,8 @@ impl Tessellation for SquareTessellation {
     type Point = SquarePoint;
     type Face = SquareFace;
 
-    fn step(point: SquarePoint, face: SquareFace) -> SquarePoint {
-        match face {
+    fn step(point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
+        Some(match face {
             SquareFace::N => SquarePoint {
                 x: point.x,
                 y: point.y + 1,
@@ -38,7 +38,7 @@ impl Tessellation for SquareTessellation {
                 x: point.x - 1,
                 y: point.y,
             },
-        }
+        })
     }
 
     fn faces() -> &'static [SquareFace] {

@@ -35,7 +35,9 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
                     let Some(face) = T::face_at(face_index) else {
                         return SplitFaceRequirement::Wall;
                     };
-                    let neighbor_point = T::step(point, face);
+                    let Some(neighbor_point) = T::step(point, face) else {
+                        return SplitFaceRequirement::Wall;
+                    };
                     let candidates = field.nodes_at(level, neighbor_point);
                     if candidates.is_empty() {
                         return SplitFaceRequirement::Wall;

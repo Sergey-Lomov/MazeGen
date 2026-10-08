@@ -17,13 +17,14 @@ pub trait Tessellation {
     type Point: Copy + Eq + Hash;
     type Face: Copy + PartialEq + 'static;
 
-    /// Moves from `point` through `face` to the adjacent point.
+    /// Moves from `point` through `face` to the adjacent point, if that face has a neighboring
+    /// coordinate in this tessellation.
     ///
     /// Invariant: for a fixed `point`, `step(point, f1)` and `step(point, f2)` never coincide for
-    /// `f1 != f2` — every future `Tessellation` impl must uphold this (all three current ones
-    /// already do). `Field::neighbors` relies on it to guarantee it never visits the same
-    /// neighboring point twice while iterating `faces()`.
-    fn step(point: Self::Point, face: Self::Face) -> Self::Point;
+    /// `f1 != f2` — every future `Tessellation` impl must uphold this for the `Some` results (all
+    /// three current ones already do). `Field::neighbors` relies on it to guarantee it never
+    /// visits the same neighboring point twice while iterating `faces()`.
+    fn step(point: Self::Point, face: Self::Face) -> Option<Self::Point>;
     fn faces() -> &'static [Self::Face];
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
 
@@ -433,8 +434,9 @@ impl<T: Tessellation> Field<T> {
         T::faces()
             .iter()
             .flat_map(|&face| {
-                let neighbor_point = T::step(point, face);
-                self.nodes_at(neighbor_point).iter().copied()
+                T::step(point, face)
+                    .into_iter()
+                    .flat_map(|neighbor_point| self.nodes_at(neighbor_point).iter().copied())
             })
             .collect()
     }
