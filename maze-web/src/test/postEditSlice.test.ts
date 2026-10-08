@@ -101,6 +101,23 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditTool).toBe("passage");
   });
 
+  it("clears the split-node panel selection when another tool becomes active", () => {
+    useMazeStore.setState({
+      postEditTool: "manage_split_nodes",
+      postEditFocusedPoint: [1, 1],
+      postEditFocusedPointCovered: true,
+    });
+    useMazeStore.getState().setPostEditTool("passage");
+    const s = useMazeStore.getState();
+    expect(s.postEditFocusedPoint).toBeNull();
+    expect(s.postEditFocusedPointCovered).toBe(false);
+
+    useMazeStore.setState({ postEditFocusedPoint: [2, 2], postEditFocusedPointCovered: true });
+    useMazeStore.getState().setPostEditTool("manage_split_nodes");
+    expect(useMazeStore.getState().postEditFocusedPoint).toEqual([2, 2]);
+    expect(useMazeStore.getState().postEditFocusedPointCovered).toBe(true);
+  });
+
   it("setPostEditAutoCompact updates its field, off by default", () => {
     expect(useMazeStore.getState().postEditAutoCompact).toBe(false);
     useMazeStore.getState().setPostEditAutoCompact(true);
@@ -2643,7 +2660,7 @@ describe("mazeStore applySplitBlueprint", () => {
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([5]);
   });
 
-  it("rejects applying a blueprint while an existing slot is assigned as start/finish", () => {
+  it("preserves a start marker assigned to a slot while applying a blueprint", () => {
     const target = splitEndpoint([0, 0], 0);
     seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
@@ -2657,10 +2674,11 @@ describe("mazeStore applySplitBlueprint", () => {
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
-    expect(s.error).toContain("start/finish");
+    expect(s.postEditDraftMeta?.start).toEqual(target);
+    expect(s.error).toBeNull();
   });
 
-  it("rejects applying a blueprint while an existing slot is assigned as finish", () => {
+  it("preserves a finish marker assigned to a slot while applying a blueprint", () => {
     const target = splitEndpoint([0, 0], 0);
     seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
@@ -2674,7 +2692,38 @@ describe("mazeStore applySplitBlueprint", () => {
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
-    expect(s.error).toContain("start/finish");
+    expect(s.postEditDraftMeta?.finish).toEqual(target);
+    expect(s.error).toBeNull();
+  });
+
+  it("moves every occupied post-edit element from a dropped slot onto Node 0", () => {
+    const oldSlot = splitEndpoint([0, 0], 5);
+    const singleNode: SplitNodeBlueprint = { id: 1, degree: 4, nodeFaces: [[0, 2]] };
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [], start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 5, pointId: "s1" },
+        { kind: "setMeta", slot: "start", endpoint: oldSlot },
+        { kind: "addTeleport", id: "t1", from: oldSlot, to: n(1), direction: "forward" },
+        { kind: "addVerticalPassage", id: "v1", from: oldSlot, to: n(1), direction: "two_way" },
+        { kind: "addElevator", id: "e1", floors: [oldSlot, n(1)] },
+      ],
+      nextSplitSlotId: { "0,0": 6 },
+    }, { activeTessellationConfig: wideField });
+
+    useMazeStore.getState().applySplitBlueprint([0, 0], singleNode);
+    const s = useMazeStore.getState();
+    const original = n(0);
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
+    expect(s.postEditDraftMeta?.start).toEqual(original);
+    expect(s.postEditDraftTeleports[0]).toMatchObject({ from: original, to: n(1) });
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: original, to: n(1) });
+    expect(s.postEditDraftElevators[0].floors).toEqual([original, n(1)]);
+    expect(s.postEditCommands.map((command) => command.kind)).toEqual([
+      "addSplitNode", "setMeta", "addTeleport", "addVerticalPassage", "addElevator",
+      "applySplitBlueprint", "setMeta", "moveTeleportEndpoint", "moveVerticalPassageEndpoint", "updateElevatorFloors",
+    ]);
   });
 
   it("skips a face index beyond the tile's real degree instead of throwing (blueprint authored for a different degree)", () => {

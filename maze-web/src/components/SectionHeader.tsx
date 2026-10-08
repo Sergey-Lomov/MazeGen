@@ -8,7 +8,7 @@ import { sharedStyles } from "../styles/shared";
  *  expand/collapse row reads identically everywhere. */
 export function SectionHeader({ label, expanded, onToggle }: { label: React.ReactNode; expanded: boolean; onToggle: () => void }) {
   return (
-    <div className="hoverable" style={styles.sectionHeaderRow} onClick={onToggle}>
+    <div className="hoverable" data-side-panel-clickable="true" style={styles.sectionHeaderRow} onClick={onToggle}>
       {expanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
       <div style={sharedStyles.sectionHeader}>{label}</div>
     </div>
@@ -24,6 +24,7 @@ export function SubsectionHeader({ label, expanded, disabled, onToggle }: {
   return (
     <div
       className={disabled ? undefined : "hoverable"}
+      data-side-panel-clickable={disabled ? undefined : "true"}
       style={{ ...styles.subsectionHeaderRow, ...(disabled ? styles.disabled : {}) }}
       onClick={disabled ? undefined : onToggle}
       aria-disabled={disabled || undefined}
@@ -37,10 +38,16 @@ export function SubsectionHeader({ label, expanded, disabled, onToggle }: {
 const styles: Record<string, React.CSSProperties> = {
   sectionHeaderRow: {
     display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
+    // Keep the existing negative margin so headers retain their ordinary-section spacing. The
+    // positioning is also a hit-testing workaround for Chromium-based browsers: an unpositioned
+    // flex item with a negative margin can lose pointer events near the top edge of an overflow
+    // scroll container (GitHub issue #679).
+    position: "relative",
     padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
   },
   subsectionHeaderRow: {
     display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
+    position: "relative",
     padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
   },
   subsectionHeader: { ...typography.body },

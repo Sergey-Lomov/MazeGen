@@ -188,6 +188,13 @@ input[type="number"]::-webkit-inner-spin-button {
   background: #282828; /* darken(#2d2d2d, 0.12) */
 }
 
+/* Issue #679: Opera may require SidePanel to replay a click after losing pointerdown. The replay
+   happens after mouseup, so CSS `:active` never becomes true; mirror the short pressed state on
+   the element while the recovered click is dispatched. */
+.hoverable[data-side-panel-recovered-press="true"] {
+  background: #282828;
+}
+
 /* Same base as `.hoverable` (explicit transparent background, overriding any inline value)
    but without the `:hover`/`:active` highlight — for a clickable control that must not look
    interactive right now (e.g. a feature card header while already expanded, GitHub issue #628). */
@@ -399,6 +406,34 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #666666; /* ui.text.disabled */
 }
 
+/* Mirror the active appearance for semantic buttons when issue #679 requires a replayed click. */
+.btn-primary[data-side-panel-recovered-press="true"],
+.btn-toggle-selected[data-side-panel-recovered-press="true"],
+.btn-destructive[data-side-panel-recovered-press="true"],
+.btn-toggle-danger-selected[data-side-panel-recovered-press="true"] {
+  background: #315f91;
+  transform: translateY(1px);
+}
+
+.btn-secondary[data-side-panel-recovered-press="true"] {
+  background: #25292d;
+  border-color: #555e66;
+  color: #d0d4d7;
+  transform: translateY(1px);
+}
+
+.btn-toggle[data-side-panel-recovered-press="true"] {
+  background: #323a41;
+  border-color: #626a72;
+  transform: translateY(1px);
+}
+
+.btn-toggle-danger[data-side-panel-recovered-press="true"] {
+  background: #683b40;
+  border-color: #874a50;
+  transform: translateY(1px);
+}
+
 /* :disabled wins the cascade for background/border/color (declared after :active), but the
    :active rules' `transform: translateY(1px)` has no :disabled counterpart to lose to — so a
    disabled button still shifts on mousedown even though it never fires onClick. Cancel it here
@@ -456,6 +491,15 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* Keep the button itself stationary as the hit area, while moving its complete visual face. */
 .btn-tool-icon:active .tool-icon-face {
+  border-color: #4a9eff;
+  box-shadow: inset 0 0 0 1px #4a9eff;
+  filter: brightness(0.9);
+  transform: translateY(1px);
+}
+
+.btn-tool-icon[data-side-panel-recovered-press="true"] .tool-icon-face,
+.btn-tool-icon-selected[data-side-panel-recovered-press="true"] .tool-icon-face,
+.btn-tool-icon-selected-danger[data-side-panel-recovered-press="true"] .tool-icon-face {
   border-color: #4a9eff;
   box-shadow: inset 0 0 0 1px #4a9eff;
   filter: brightness(0.9);

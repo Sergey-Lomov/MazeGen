@@ -191,7 +191,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ postEditAutoCompact: v });
     if (v) get().compactPostEditLog();
   },
-  setPostEditTool: (tool) => set({ postEditTool: tool }),
+  setPostEditTool: (tool) => set({
+    postEditTool: tool,
+    ...(tool !== "manage_split_nodes" ? { postEditFocusedPoint: null, postEditFocusedPointCovered: false } : {}),
+  }),
 
   applyPostEditTool: (edgeKey, from_, to_) => {
     get().applyPostEditToolAt(get().postEditTool, edgeKey, from_, to_);
@@ -957,10 +960,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const level = activeFloorLevel(state);
     const target = splitEndpoint(point, slotId, level);
+    const meta = state.postEditDraftMeta;
 
     // Structural comparison (not a resolved id) — rejects the removal the same way whether or
     // not this split node has been confirmed yet.
-    const meta = state.postEditDraftMeta;
     if (meta && ((meta.start && endpointsEqual(meta.start, target)) || (meta.finish && endpointsEqual(meta.finish, target)))) {
       set({ error: "Cannot remove a node assigned as start/finish — reassign start/finish first." });
       return;
@@ -1027,7 +1030,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const level = activeFloorLevel(state);
     const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
-    const meta = state.postEditDraftMeta;
     const originalId = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0))?.id;
     const originalEndpoint: PostEditEndpoint | null = originalId !== undefined ? nodeEndpoint(originalId) : null;
     // Every node currently at this point — original plus every declared slot — is about to have
@@ -1043,15 +1045,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // left the reused-looking survivor as an orphaned, all-wall node while the blueprint's face
     // list landed on a brand-new id, so the maze visibly kept "one connected node plus a floating
     // empty one" instead of properly rewiring both. Any existing slot beyond what the new blueprint
-    // needs is dropped entirely (not left empty) — guarded by the same start/finish check below.
+    // needs is dropped entirely (not left empty); elements that referenced a dropped slot are
+    // migrated to the original node after the blueprint command is applied.
     const slotsNeeded = Math.max(blueprint.nodeFaces.length - 1, 0);
     const reusedSlotIds = existingSlots.slice(0, slotsNeeded);
-    if (meta && existingNodeEndpoints.some((t) =>
-      (meta.start && endpointsEqual(meta.start, t)) || (meta.finish && endpointsEqual(meta.finish, t)))) {
-      set({ error: "Cannot apply a blueprint while an existing split node is assigned as start/finish — reassign it first." });
-      return;
-    }
-
     // Slot ids beyond the reused ones are minted from the point's high-water mark (GitHub issue
     // #543 plan section 7), not reused positional indices — a point-reset can prune a
     // previously-issued high slotId out of the log while the mark stays put, so a fresh mint must
@@ -1061,6 +1058,20 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const mintedSlotIds = [...reusedSlotIds, ...freshSlotIds];
     const slotEndpoints: PostEditEndpoint[] = mintedSlotIds.map((slotId) => splitEndpoint(point, slotId, level));
     const nodeEndpoints: PostEditEndpoint[] = [originalEndpoint, ...slotEndpoints].filter((e): e is PostEditEndpoint => e !== null);
+    const targetForExistingEndpoint = (endpoint: PostEditEndpoint): PostEditEndpoint => {
+      if (endpoint.kind === "split") {
+        if (endpoint.point[0] !== point[0] || endpoint.point[1] !== point[1] || (endpoint.level ?? 0) !== (level ?? 0)) return endpoint;
+        const oldIndex = existingSlots.indexOf(endpoint.slotId);
+        return oldIndex >= 0 ? (nodeEndpoints[oldIndex + 1] ?? originalEndpoint ?? endpoint) : (originalEndpoint ?? endpoint);
+      }
+      const sourceNode = state.nodes.find((n) => n.id === endpoint.id)
+        ?? state.postEditBaseline?.context.nodes.find((n) => n.id === endpoint.id);
+      if (!sourceNode || sourceNode.x !== point[0] || sourceNode.y !== point[1] || (sourceNode.level ?? 0) !== (level ?? 0)) return endpoint;
+      if (sourceNode.i === 0) return originalEndpoint ?? endpoint;
+      const oldIndex = existingSlots.indexOf(sourceNode.i - 1);
+      return oldIndex >= 0 ? (nodeEndpoints[oldIndex + 1] ?? originalEndpoint ?? endpoint) : (originalEndpoint ?? endpoint);
+    };
+    const remapEndpoint = (endpoint: PostEditEndpoint): PostEditEndpoint => targetForExistingEndpoint(endpoint);
     const nextActiveSplitNode = { ...state.postEditActiveSplitNode };
     delete nextActiveSplitNode[key];
 
@@ -1146,6 +1157,51 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           ? { ...nextActiveSplitNode, [key]: splitEndpoint(point, mintedSlotIds[0], level) }
           : nextActiveSplitNode,
       }));
+
+      // A blueprint changes node identity at a point, so every vertex element already attached to
+      // one of the old nodes must be moved onto its corresponding new node.  Keep this as ordinary
+      // per-element commands after the single blueprint command: the Changes log then shows one
+      // split creation and one movement event per affected element, and replay/undo retain their
+      // existing lifeline semantics.
+      const current = get().postEditDerived;
+      if (current) {
+        const moveMeta = (slot: "start" | "finish", id: "s" | "f", endpoint: PostEditEndpoint | null) => {
+          if (!endpoint) return;
+          const target = remapEndpoint(endpoint);
+          if (endpointsEqual(endpoint, target)) return;
+          appendPostEditCommand(get, set, { kind: "setMeta", slot, id, endpoint: target, previousEndpoint: endpoint });
+        };
+        moveMeta("start", "s", current.meta.start);
+        moveMeta("finish", "f", current.meta.finish);
+
+        for (const teleport of current.teleports) {
+          const from = remapEndpoint(teleport.from);
+          const to = remapEndpoint(teleport.to);
+          if (endpointsEqual(from, teleport.from) && endpointsEqual(to, teleport.to)) continue;
+          appendPostEditCommand(get, set, {
+            kind: "moveTeleportEndpoint", id: teleport.id,
+            end: !endpointsEqual(from, teleport.from) ? "from" : "to",
+            endpoint: !endpointsEqual(from, teleport.from) ? from : to,
+            from, to, direction: teleport.direction,
+          });
+        }
+
+        for (const passage of current.verticalPassages) {
+          const from = remapEndpoint(passage.from);
+          const to = remapEndpoint(passage.to);
+          if (endpointsEqual(from, passage.from) && endpointsEqual(to, passage.to)) continue;
+          appendPostEditCommand(get, set, {
+            kind: "moveVerticalPassageEndpoint", id: passage.id, end: "from",
+            endpoint: from, from, to, direction: passage.direction,
+          });
+        }
+
+        for (const elevator of current.elevators) {
+          const floors = elevator.floors.map(remapEndpoint);
+          if (floors.every((target, i) => endpointsEqual(target, elevator.floors[i]))) continue;
+          appendPostEditCommand(get, set, { kind: "updateElevatorFloors", id: elevator.id, floors });
+        }
+      }
     }
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();

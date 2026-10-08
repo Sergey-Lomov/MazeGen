@@ -57,7 +57,10 @@ describe("PresetList filters", () => {
     const { unmount } = render(<PresetList onClose={() => {}} />);
     expect(screen.getByText(m["preset.list_filters"]({ active: 12, total: 15 }))).toBeInTheDocument();
     expect(screen.getByRole("button", { name: m["preset.elevator"]() })).toBeInTheDocument();
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    const floorSelect = screen.getByRole("combobox");
+    const enableAll = screen.getByRole("button", { name: m["preset.list_filter_enable_all"]() });
+    expect(floorSelect).toBeInTheDocument();
+    expect(enableAll.compareDocumentPosition(floorSelect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     unmount();
     useMazeStore.setState({

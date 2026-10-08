@@ -82,6 +82,58 @@ function useKeepsFlowWidth(id: symbol): boolean {
  *  always docks next to the canvas rather than wherever its owning feature happens to live in the
  *  left features panel. */
 export const SIDE_PANEL_SLOT_ID = "side-panel-slot";
+export const SIDE_PANEL_DIAGNOSTICS_STORAGE_KEY = "maze.debug.sidePanelHitTesting";
+
+function sidePanelDiagnosticsEnabled(): boolean {
+  if (new URLSearchParams(window.location.search).get("debugSidePanel") === "1") return true;
+  try {
+    return window.localStorage.getItem(SIDE_PANEL_DIAGNOSTICS_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function describeRect(rect: DOMRect | undefined) {
+  if (!rect) return null;
+  return {
+    left: Math.round(rect.left * 100) / 100,
+    top: Math.round(rect.top * 100) / 100,
+    right: Math.round(rect.right * 100) / 100,
+    bottom: Math.round(rect.bottom * 100) / 100,
+    width: Math.round(rect.width * 100) / 100,
+    height: Math.round(rect.height * 100) / 100,
+  };
+}
+
+function describeElement(element: Element | null) {
+  if (!element) return null;
+  const htmlElement = element as HTMLElement;
+  const style = window.getComputedStyle(element);
+  return {
+    node: element.tagName.toLowerCase(),
+    id: element.id || undefined,
+    className: typeof element.className === "string" ? element.className || undefined : undefined,
+    role: element.getAttribute("role") || undefined,
+    ariaLabel: element.getAttribute("aria-label") || undefined,
+    title: element.getAttribute("title") || undefined,
+    testId: element.getAttribute("data-testid") || undefined,
+    rect: describeRect(htmlElement.getBoundingClientRect()),
+    pointerEvents: style.pointerEvents,
+    position: style.position,
+    zIndex: style.zIndex,
+    display: style.display,
+    visibility: style.visibility,
+    overflowX: style.overflowX,
+    overflowY: style.overflowY,
+  };
+}
+
+function pointFromEvent(event: Event): { x: number; y: number } | null {
+  if (!("clientX" in event) || !("clientY" in event)) return null;
+  const x = Number((event as MouseEvent).clientX);
+  const y = Number((event as MouseEvent).clientY);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
 
 interface Props {
   title: string;
@@ -128,6 +180,9 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   // Register this instance on the shared mount-order stack for the panel's whole lifetime (GitHub
   // issue #629) — a stable id (not `useId`, which isn't guaranteed unique across independently
@@ -209,6 +264,212 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
   // suppresses the current list, not future diagnostics.
   useEffect(() => { setWarningsDismissed(false); }, [warnings?.join("\n")]);
 
+  // Opera can deliver a mouseup inside the panel without delivering the corresponding
+  // pointerdown/mousedown (GitHub issue #679). Native buttons normally synthesize click only from
+  // a complete press sequence, so the action silently disappears. Remember down events globally
+  // to avoid treating a genuine drag/release that started elsewhere as a click; when both down
+  // events are missing, replay the browser's own click on the element that received mouseup.
+  useEffect(() => {
+    if (!isTop) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    let downSeen = false;
+    let clickSeen = false;
+    let sequence = 0;
+    let downPoint: { x: number; y: number } | null = null;
+    let downTarget: Element | null = null;
+    const clickableSelector = "button, [role=button], [data-side-panel-clickable]";
+
+    const markDown = (event: Event) => {
+      const mouseEvent = event as MouseEvent;
+      if (mouseEvent.button !== 0) return;
+      downSeen = true;
+      clickSeen = false;
+      sequence += 1;
+      downPoint = pointFromEvent(event);
+      downTarget = event.target instanceof Element ? event.target : null;
+      if (sidePanelDiagnosticsEnabled()) {
+        const hit = downPoint ? document.elementFromPoint(downPoint.x, downPoint.y) : null;
+        console.log(`[SidePanel #679 ${title}] window-capture:${event.type}\n${JSON.stringify({
+          point: downPoint,
+          target: describeElement(downTarget),
+          targetInsidePanel: downTarget ? panel.contains(downTarget) : false,
+          elementFromPoint: describeElement(hit),
+          hitInsidePanel: hit ? panel.contains(hit) : false,
+        }, null, 2)}`);
+      }
+    };
+    const markClick = (event: Event) => {
+      if (event.target instanceof Element && panel.contains(event.target)) clickSeen = true;
+    };
+    const recoverMouseupClick = (event: MouseEvent) => {
+      if (event.button !== 0 || event.defaultPrevented) return;
+      const hadDown = downSeen;
+      downSeen = false;
+      clickSeen = false;
+      downPoint = null;
+      downTarget = null;
+      // Any page-level down event means this release belongs to a real press or drag. The
+      // compatibility path is strictly for Opera's missing-down sequence.
+      if (hadDown) return;
+
+      const target = event.target instanceof Element
+        ? event.target.closest(clickableSelector)
+        : null;
+      const clickable = target instanceof HTMLElement
+        && panel.contains(target)
+        && !target.matches(":disabled, [aria-disabled='true']")
+        ? target
+        : null;
+      if (!clickable) return;
+      const recoverySequence = ++sequence;
+
+      window.setTimeout(() => {
+        if (recoverySequence !== sequence || clickSeen || !clickable.isConnected) return;
+        if (sidePanelDiagnosticsEnabled()) {
+          console.log(`[SidePanel #679 ${title}] recovered click after missing pointerdown`, {
+            target: describeElement(clickable),
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }
+        // `.click()` runs after mouseup and therefore cannot activate the browser's `:active`
+        // state. Keep the same pressed visual for one short frame so Opera's recovered click
+        // feels like a normal press instead of changing selection without feedback.
+        clickable.setAttribute("data-side-panel-recovered-press", "true");
+        window.setTimeout(() => clickable.removeAttribute("data-side-panel-recovered-press"), 120);
+        clickable.click();
+      }, 0);
+    };
+
+    window.addEventListener("pointerdown", markDown, true);
+    window.addEventListener("mousedown", markDown, true);
+    window.addEventListener("click", markClick, true);
+    window.addEventListener("mouseup", recoverMouseupClick, true);
+    return () => {
+      window.removeEventListener("pointerdown", markDown, true);
+      window.removeEventListener("mousedown", markDown, true);
+      window.removeEventListener("click", markClick, true);
+      window.removeEventListener("mouseup", recoverMouseupClick, true);
+    };
+  }, [isTop, title]);
+
+  // Optional hit-testing diagnostics for GitHub issue #679. The document capture listener is
+  // intentional: if it stops reporting while the pointer is visibly inside the panel, the
+  // browser failed before React (and even the panel DOM) could receive the event.
+  useEffect(() => {
+    if (!isTop || !sidePanelDiagnosticsEnabled()) return;
+    const panel = panelRef.current;
+    const header = headerRef.current;
+    const body = bodyRef.current;
+    if (!panel || !header || !body) return;
+
+    const prefix = `[SidePanel #679 ${title}]`;
+    const describePoint = (point: { x: number; y: number } | null) => {
+      if (!point) return null;
+      let hit: Element | null = null;
+      let hits: Element[] = [];
+      try {
+        hit = document.elementFromPoint(point.x, point.y);
+        hits = document.elementsFromPoint?.(point.x, point.y) ?? [];
+      } catch {
+        // Some browsers can reject coordinates outside the current viewport.
+      }
+      return {
+        x: point.x,
+        y: point.y,
+        elementFromPoint: describeElement(hit),
+        elementsFromPoint: hits.slice(0, 3).map(describeElement),
+      };
+    };
+    const logSnapshot = (reason: string, point: { x: number; y: number } | null = null) => {
+      const bodyRect = body.getBoundingClientRect();
+      const firstChild = body.firstElementChild;
+      const snapshot = {
+        point: describePoint(point),
+        panel: describeElement(panel),
+        header: describeElement(header),
+        body: describeElement(body),
+        firstChild: describeElement(firstChild),
+        bodyDirectChildren: Array.from(body.children).slice(0, 4).map(describeElement),
+        boundarySamples: [-4, -1, 0, 1, 4, 16].map((offset) => {
+          const sample = { x: bodyRect.left + Math.min(bodyRect.width / 2, 8), y: bodyRect.top + offset };
+          return { offset, ...describePoint(sample) };
+        }),
+      };
+      // Print JSON rather than a live object so DevTools cannot hide the useful nested fields
+      // behind a collapsed object preview when this bug is reproduced.
+      console.log(`${prefix} ${reason}\n${JSON.stringify(snapshot, null, 2)}`);
+    };
+    const logEvent = (reason: string, event: Event) => {
+      const point = pointFromEvent(event);
+      const mouseEvent = event as MouseEvent;
+      const hit = point && typeof document.elementFromPoint === "function"
+        ? document.elementFromPoint(point.x, point.y)
+        : null;
+      const compact = {
+        type: event.type,
+        timeStamp: Math.round(event.timeStamp * 100) / 100,
+        point,
+        target: describeElement(event.target as Element | null),
+        elementFromPoint: describeElement(hit),
+        button: mouseEvent.button,
+        buttons: mouseEvent.buttons,
+        detail: mouseEvent.detail,
+        pointerType: "pointerType" in event ? (event as PointerEvent).pointerType : undefined,
+        pointerId: "pointerId" in event ? (event as PointerEvent).pointerId : undefined,
+        defaultPrevented: event.defaultPrevented,
+        cancelBubble: event.cancelBubble,
+      };
+      console.log(`${prefix} ${reason} ${JSON.stringify(compact)}`);
+    };
+
+    logSnapshot("mounted");
+    const frame = window.requestAnimationFrame(() => logSnapshot("after-animation-frame"));
+    let lastMoveLog = 0;
+    const isInsidePanel = (point: { x: number; y: number } | null) => {
+      if (!point) return false;
+      const rect = panel.getBoundingClientRect();
+      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    };
+    const handleWindowEvent = (event: Event) => {
+      const point = pointFromEvent(event);
+      if (!isInsidePanel(point)) return;
+      logEvent(`window-capture:${event.type}`, event);
+    };
+    const handleDocumentEvent = (event: Event) => {
+      const point = pointFromEvent(event);
+      if (!isInsidePanel(point)) return;
+      logEvent(`document-capture:${event.type}`, event);
+    };
+    const handlePointerMove = (event: Event) => {
+      const point = pointFromEvent(event);
+      const bodyTop = body.getBoundingClientRect().top;
+      if (!point || Math.abs(point.y - bodyTop) > 32 || Date.now() - lastMoveLog < 100) return;
+      lastMoveLog = Date.now();
+      logEvent("document-capture:pointermove-near-body-top", event);
+    };
+    const handleResize = () => logSnapshot("window-resize");
+    const eventTypes = ["pointerdown", "mousedown", "pointerup", "mouseup", "pointercancel", "click"];
+    for (const type of eventTypes) {
+      window.addEventListener(type, handleWindowEvent, true);
+      document.addEventListener(type, handleDocumentEvent, true);
+    }
+    document.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      for (const type of eventTypes) {
+        window.removeEventListener(type, handleWindowEvent, true);
+        document.removeEventListener(type, handleDocumentEvent, true);
+      }
+      document.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isTop, title]);
+
   const showWarnings = !warningsDismissed && !!warnings && warnings.length > 0;
 
   const slot = document.getElementById(SIDE_PANEL_SLOT_ID);
@@ -216,6 +477,9 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
 
   return createPortal(
     <div
+      ref={panelRef}
+      data-side-panel="true"
+      data-side-panel-title={title}
       style={overlay
         ? { ...styles.panel, ...styles.panelOverlay, ...(isTop ? {} : styles.panelHidden) }
         // A non-overlay panel below the top one still needs `display: none` to drop out of the
@@ -231,7 +495,7 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
           onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
         />
       )}
-      <div style={styles.header}>
+      <div ref={headerRef} data-side-panel-region="header" style={styles.header}>
         <div style={styles.headerText}>
           <span style={typography.title}>{title}</span>
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
@@ -250,7 +514,7 @@ export function SidePanel({ title, subtitle, onClose, warnings, overlay, onTopCh
           </button>
         </div>
       )}
-      <div style={styles.body}>
+      <div ref={bodyRef} data-side-panel-region="body" style={styles.body}>
         {children}
       </div>
     </div>,

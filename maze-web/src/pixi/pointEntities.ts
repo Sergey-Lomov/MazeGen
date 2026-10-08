@@ -3,7 +3,7 @@ import {
   allNodesAt, canonicalizePresetPair, presetEdgeKey,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
 } from "./fieldEditUtils";
-import { presetTargetLabel, resolvePresetSplitNodeFullLabel, type PresetSplitLabelContext } from "./presetSplitLabels";
+import { presetTargetLabel, resolvePresetSplitShapeLabel, type PresetSplitLabelContext } from "./presetSplitLabels";
 import { formatTargetLabel } from "./targetLabel";
 import type { NodeLockKind } from "../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -12,12 +12,12 @@ export type PresetPointEntityKind =
   | "start" | "finish" | "gen_source" | "edge" | "teleport"
   | "vertical_passage" | "elevator" | "lock" | "split_node";
 
-/** A single removable/resettable entity anchored on one node (`endpoint`) of a preset point,
+/** A single removable/resettable entity anchored on one node (`endpoint`) or one whole split tile,
  *  built for the entity-delete dialog (GitHub issue #540). Pure data — no mutation here; the store
  *  action (`removePresetPointEntity`) maps `kind`+`id` back to the existing per-entity remover.
  *  `id` is stable and `kind`-scoped (teleport/vertical-passage/elevator's own numeric id as a
- *  string, an edge's canonical key, `"lock"`, `"split_node:<slotId>"`, or the marker kind itself
- *  for start/finish/gen-source — at most one of each per point). `nodeIndex` is 0-based, matching
+ *  string, an edge's canonical key, `"lock"`, `"split_node"`, or the marker kind itself for
+ *  start/finish/gen-source — at most one of each per point). `nodeIndex` is 0-based, matching
  *  `buildPresetCellInspection`'s "Node N" numbering (`nodeIndex + 1`) — always recomputed from the
  *  live `presetSplitPoints`, never cached as identity. */
 export interface PresetPointEntityDescriptor {
@@ -296,9 +296,9 @@ export function buildPresetPointEntities(
   // Edges — original node only, and only for a point with no split nodes at all. Once a point has
   // slots, *every* edge of the point (original node's own faces included — a bridge/diagonal
   // shape is drawn across both the original and its slot node's faces together) is part of the
-  // split shape, already represented as a single "Bridge"/"Node N" row below; no edge gets its own
-  // row there (GitHub issue #540 follow-up: no duplicate rows for a split's connections — the
-  // split is one row, period).
+  // split shape, already represented as a single whole-tile row below; no edge gets its own row
+  // there (GitHub issue #540 follow-up: no duplicate rows for a split's connections — the split is
+  // one row, period).
   const key = pointKey(point, level);
   const hasSplit = (presetSplitPoints[key]?.length ?? 0) > 0;
   if (!hasSplit) {
@@ -342,18 +342,17 @@ export function buildPresetPointEntities(
     });
   });
 
-  // Split nodes — one row per declared slot (GitHub issue #540's revised design): each row names
-  // one segment of the split ("Bridge", "Corridor 1", ... when the topology is a recognized
-  // special shape, else the generic "Node N" fallback), and removing it removes the *entire*
-  // split point at once — every slot, not just this one — migrating every entity anchored on a
-  // removed node onto the point's original node (`removePresetSplitAll`, not a per-slot delete).
-  // There's no orphan gating any more: the row is always present whenever the point has slots.
+  // Split nodes — one row for the whole split tile, regardless of how many declared slots it has
+  // (GitHub issue #700). A split tile is one removable entity: removing it removes every slot at
+  // once and migrates every entity anchored on a removed node onto the point's original node
+  // (`removePresetSplitAll`). The row is anchored on the original node because the entity belongs
+  // to the tile, not to one of its individual nodes.
   const slotIds = presetSplitPoints[key] ?? [];
-  slotIds.forEach((slotId, i) => {
-    const endpoint = nodesHere[i + 1] ?? { point, slotId, level };
-    const title = (splitCtx && resolvePresetSplitNodeFullLabel(splitCtx, endpoint)) ?? m["status.cell_node"]({ number: i + 2 });
-    out.push({ kind: "split_node", id: `split_node:${slotId}`, endpoint, nodeIndex: i + 1, title });
-  });
+  if (slotIds.length > 0) {
+    const endpoint = nodesHere[0] ?? { point, level };
+    const title = (splitCtx && resolvePresetSplitShapeLabel(splitCtx, point, level ?? 0)) ?? m["preset.split_tile"]();
+    out.push({ kind: "split_node", id: "split_node", endpoint, nodeIndex: 0, title });
+  }
 
   return decorate(out);
 }

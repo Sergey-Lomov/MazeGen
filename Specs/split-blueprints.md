@@ -58,10 +58,12 @@ Both `applySplitBlueprint` (post-edit, `postEditSlice.ts`) and `applyPresetSplit
 stage, `presetConnectionsSlice.ts`) apply a blueprint as a **full replace** of the point's current
 state, not an overlay:
 
-1. Every node currently at the point — the original node plus every declared slot — has every
-   edge/teleport/connection referencing it dropped first, and any start/finish/gen-source
-   assignment on one of them rejects the whole operation (`"...reassign it first."` error),
-   mirroring `removeSplitNode`/`removePresetSplitNode`'s own guard.
+1. Every node currently at the point — the original node plus every declared slot — has its
+   split-face connections rebuilt. Vertex elements are preserved: the original node remains
+   Node 0, existing slots are matched to the resulting blueprint nodes in slot order, and an
+   element whose old slot is dropped is retargeted to Node 0. This applies to start/finish/
+   gen-source markers, teleports, vertical passages, elevators, and locks; no occupied-cell guard
+   rejects the template operation.
 2. One fresh slot is minted per blueprint node beyond the first (`blueprint.nodeFaces.length - 1`
    slots total).
 3. For every node, every declared face gets a `Passage` to its in-field neighbor; a face pointing
@@ -177,6 +179,6 @@ face-kind helper `presetSplitNodeFaceKinds` is covered directly in `fieldEditUti
 covers the pure functions (`blueprintsForDegree`, `rotateBlueprint`,
 `fittingRotation`, `blueprintToSplitPattern`, `tileNodesForBlueprint`) directly. `postEditSlice.test.ts`
 and `presetConnectionsSlice.test.ts` cover `applySplitBlueprint`/`applyPresetSplitBlueprint`'s
-store-level behavior: full replace of stale slots/edges, the start/finish/gen-source guard, the
+store-level behavior: full replace of stale slots/edges, occupied-element migration, the
 out-of-degree face skip, and (preset only) the boundary-face skip and the explicit-wall-on-unused-face
 behavior.

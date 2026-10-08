@@ -47,6 +47,16 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
   });
 
+  it("clears the split-node panel selection when another tool becomes active", () => {
+    useMazeStore.setState({ presetConnectionsTool: "manage_split_nodes", presetFocusedPoint: [1, 2] });
+    useMazeStore.getState().setPresetConnectionsTool("passage");
+    expect(useMazeStore.getState().presetFocusedPoint).toBeNull();
+
+    useMazeStore.setState({ presetFocusedPoint: [2, 3] });
+    useMazeStore.getState().setPresetConnectionsTool("manage_split_nodes");
+    expect(useMazeStore.getState().presetFocusedPoint).toEqual([2, 3]);
+  });
+
   it("applyPresetConnectionsTool('wall') sets a wall entry and marks presetsDirty", () => {
     useMazeStore.setState({ presetConnectionsTool: "wall" });
     useMazeStore.getState().applyPresetConnectionsTool("0,0-1,0", [0, 0], [1, 0]);
@@ -595,7 +605,7 @@ describe("mazeStore preset connections", () => {
       expect(s.presetConnections.has("0,0:5-5,5")).toBe(false);
     });
 
-    it("rejects applying a blueprint while an existing slot is assigned as presetStart", () => {
+    it("preserves a preset start marker assigned to a slot while applying a blueprint", () => {
       setActiveFieldConfig({ tessellationConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
@@ -604,7 +614,34 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
-      expect(s.error).toContain("start/finish/gen-source");
+      expect(s.presetStart).toEqual(presetEndpoint([0, 0], 0));
+      expect(s.error).toBeNull();
+    });
+
+    it("moves occupied preset elements from a dropped slot onto the original node", () => {
+      const oldSlot = presetEndpoint([0, 0], 5);
+      const singleNode = { id: 1, degree: 4, nodeFaces: [[0, 2]] };
+      setActiveFieldConfig({ tessellationConfig: wideField });
+      useMazeStore.setState({
+        presetSplitPoints: { "0,0": [5] },
+        presetStart: oldSlot,
+        presetFinish: oldSlot,
+        presetGenSource: oldSlot,
+        presetTeleports: [{ id: 1, from: oldSlot, to: presetEndpoint([1, 0]), direction: "forward" }],
+        presetVerticalPassages: [{ id: 2, from: oldSlot, to: presetEndpoint([1, 0], undefined, 1), direction: "two_way" }],
+        presetElevators: [{ id: 3, floors: [oldSlot, presetEndpoint([0, 0], undefined, 1)] }],
+      });
+
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], singleNode);
+      const s = useMazeStore.getState();
+      const original = presetEndpoint([0, 0]);
+      expect(s.presetSplitPoints["0,0"]).toBeUndefined();
+      expect(s.presetStart).toEqual(original);
+      expect(s.presetFinish).toEqual(original);
+      expect(s.presetGenSource).toEqual(original);
+      expect(s.presetTeleports[0]).toMatchObject({ from: original });
+      expect(s.presetVerticalPassages[0]).toMatchObject({ from: original });
+      expect(s.presetElevators[0].floors[0]).toEqual(original);
     });
 
     it("skips a face index beyond the tile's real degree instead of throwing (blueprint authored for a different degree)", () => {
@@ -1266,6 +1303,15 @@ describe("mazeStore preset connections", () => {
       expect(s.presetStart).toBeNull();
     });
 
+    it("treats a multi-node split tile as one entity for deletion dispatch", () => {
+      useMazeStore.setState({ presetSplitPoints: { "0,0": [0, 1, 2] } });
+      useMazeStore.getState().requestPresetEntityDelete([0, 0], undefined, { kind: "point_all" });
+
+      const s = useMazeStore.getState();
+      expect(s.presetEntityDeletePrompt).toBeNull();
+      expect(s.presetSplitPoints["0,0"]).toBeUndefined();
+    });
+
     it("clear finds a teleport endpoint moved on floor 0", () => {
       useMazeStore.setState({
         presetTeleports: [{ id: 1, from: presetEndpoint([0, 0]), to: presetEndpoint([1, 1]), direction: "forward" }],
@@ -1509,11 +1555,12 @@ describe("mazeStore preset connections", () => {
       expect(entities.find((e) => e.kind === "elevator")?.bubbles).toEqual(["L1 0:0", "L2 0:0", "L3 0:0"]);
     });
 
-    it("split_node row is present regardless of whether the slot still carries other entities", () => {
+    it("represents every node of a split tile with one split_node row", () => {
       useMazeStore.setState({
-        presetSplitPoints: { "0,0": [0] },
+        presetSplitPoints: { "0,0": [0, 1] },
         presetConnections: new Map([
           ["0,0:0-1,0", { from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+          ["0,0:1-0,1", { from: presetEndpoint([0, 0], 1), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
         ]),
       });
       const state = useMazeStore.getState();
@@ -1524,9 +1571,12 @@ describe("mazeStore preset connections", () => {
       });
       const splitRow = entities.find((e) => e.kind === "split_node");
       expect(splitRow).toBeDefined();
-      expect(splitRow!.title).toBe("Node 2"); // no recognized special shape here — falls back
-      // The slot node's own edge is folded into the single split row, not listed separately.
+      expect(splitRow!.id).toBe("split_node");
+      expect(splitRow!.endpoint).toEqual(presetEndpoint([0, 0]));
+      expect(splitRow!.title).toBe(m["preset.split_tile"]()); // no recognized special shape here — falls back
+      // Every slot's edge is folded into the single split row, not listed separately.
       expect(entities.filter((e) => e.kind === "edge")).toHaveLength(0);
+      expect(entities.filter((e) => e.kind === "split_node")).toHaveLength(1);
     });
 
     it("original node's own edges are folded into the split row too, not listed separately", () => {
@@ -1553,9 +1603,10 @@ describe("mazeStore preset connections", () => {
 
     it("removing the split_node row removes the whole split (including the original node's own edges) and migrates its entities to the original node", () => {
       useMazeStore.setState({
-        presetSplitPoints: { "0,0": [0] },
+        presetSplitPoints: { "0,0": [0, 1] },
         presetConnections: new Map([
           ["0,0:0-1,0", { from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+          ["0,0:1-0,1", { from: presetEndpoint([0, 0], 1), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
           // The original node's own edge — part of the bridge shape, must drop too, not survive.
           ["0,0-0,1", { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage" as const, source: "user" as const }],
         ]),
@@ -1574,6 +1625,7 @@ describe("mazeStore preset connections", () => {
       expect(after.presetSplitPoints["0,0"]).toBeUndefined();
       // The edge from the removed node drops (reverts to default/undefined) rather than moving.
       expect(after.presetConnections.has("0,0:0-1,0")).toBe(false);
+      expect(after.presetConnections.has("0,0:1-0,1")).toBe(false);
       expect(after.presetConnections.has("0,0-1,0")).toBe(false);
       // The original node's own edge is part of the shape too — also dropped, not left standing.
       expect(after.presetConnections.has("0,0-0,1")).toBe(false);

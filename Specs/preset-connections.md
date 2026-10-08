@@ -516,6 +516,8 @@ Both remaps rebuild `presetConnections`' map keys (via `presetEdgeKey`) and ever
 
 ### Declaring split points
 
+The `manage_split_nodes` panel is visible only while `manage_split_nodes` is the active preset tool. Selecting any other preset tool clears `presetFocusedPoint` and unmounts the panel (GitHub issue #699).
+
 `presetSplitPoints: Record<string, number[]>` (keyed `"x,y"`, values are that point's declared slotIds) mirrors post-edit's `postEditDraftSplitPoints` exactly — same slot-minting rule (`max(existing)+1`, or `0` if none yet), same per-point-only uniqueness. `presetActiveSplitNode: Record<string, PresetEndpoint>` mirrors `postEditActiveSplitNode` — which node of a point new preset entries on that point's faces currently target; absence means the original node.
 
 The shared, endpoint-type-agnostic slot-list bookkeeping (`addSlot`/`removeSlot`/`cycleActive`/`setActive`) lives in `pixi/splitPointsCore.ts`, used by both this feature and post-edit's own split-node actions — see that module's doc comment and `Specs/post-edit.md`.
@@ -568,7 +570,7 @@ The shared geometric algorithm (face division among connected nodes, hub-point f
 
 ### Split-target prompt (GitHub issue #474)
 
-The split-node panel's connection sections contain only basic connections and hide empty sections. One-way connections remain basic connections. Each node card also has an Elements section for start/finish points, teleports, vertical passages, elevators, and locks, using the deletion-dialog row format without IDs in preset mode.
+The split-node panel's connection sections contain only basic connections and hide empty sections. One-way connections remain basic connections. Each node card also has an Elements section for start/finish points, the generation source, teleports, vertical passages, elevators, and locks, using the deletion-dialog row format without IDs in preset mode.
 
 Element rows omit the current node's own address: a directed element is rendered as its localized name, direction arrow, and target coordinate bubble. Target bubbles include `L{n}:` on another floor and hover the standard inward-inset cell highlight with an opaque border; elevator rows list every other floor bubble.
 Vertical-passage target bubbles contain only `L{n}`; any target-floor bubble is clickable and switches the active floor.
@@ -623,7 +625,7 @@ One deliberate divergence between the two (GitHub issue #595's compact-display f
 
 **Edge rows.** Only appear under `point_all` scope, only for the point's original node, only when the point has no declared split slots at all (once it has slots, every edge of the point — the original node's own faces included, since a recognized bridge/diagonal shape spans both — is folded into the single `split_node` row instead of listed separately), and only for a `source: "user"` entry (a `source: "default"` entry is just `defaultEdgeState`'s field-wide fill-in, not something the user placed, so it gets no row). Deduplicated by canonical `(from, to)` pair. Row title: the edge-state name (`preset.wall`/`preset.passage`/`preset.one_way`) plus a direction arrow and the neighbor's coordinates, e.g. `"Wall -> (1,0)"`, `"One-way <- (0,1)"` — the arrow reflects the edge's actual direction relative to this row's anchor node for a one-way, and is a plain `"->"` separator for wall/passage (which have no direction).
 
-**Split-node row.** Appears in `point_all` scope whenever the point has any declared slot, regardless of whether that slot currently hosts other entities — titled the same way as a `PresetSplitTargetDialog`/cell-inspector row (`"Node N"`, or the semantic shape name for a recognized special topology). Removing it calls `removePresetSplitAll` (see "Split nodes" above): the whole split point is removed at once, its hosted entities migrate onto the original node, its internal edges revert to default.
+**Split-node row.** Appears in `point_all` scope whenever the point has any declared slot, regardless of whether those slots currently host other entities. All nodes belonging to the point's split tile are represented by one row, titled with the whole-tile shape name when recognized or `preset.split_tile` otherwise. Removing it calls `removePresetSplitAll` (see "Split nodes" above): the whole split point is removed at once, its hosted entities migrate onto the original node, and its internal edges revert to default.
 
 **Lock row.** Only a manually-set lock (`lockedNodes`) gets a row — an auto-computed one (`autoLockedNodes`) isn't user-removable. The row is attached to the exact original node or split slot it addresses.
 
@@ -681,7 +683,8 @@ start, finish, generation source, teleport, one-way/two-way vertical passage, el
 lock-out, full lock, and split. Wall, passage, and undefined edge are disabled by default; the
 other twelve are enabled. Vertical-passage/elevator filters and the floor selector are hidden for
 a single-floor maze. On multi-floor mazes, the selector offers all floors and every current floor;
-an entity is shown for a selected floor when at least one endpoint belongs to that floor.
+an entity is shown for a selected floor when at least one endpoint belongs to that floor. Within the
+expanded filter section, the "Enable all"/"Disable all" action row appears above the floor selector.
 
 ### Invalidity
 
