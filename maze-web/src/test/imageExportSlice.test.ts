@@ -533,3 +533,69 @@ describe("mazeStore vectorByWallsSectionsExpanded", () => {
     expect(useMazeStore.getState().vectorByWallsSectionsExpanded).toEqual({ background: true });
   });
 });
+
+describe("mazeStore linked-field setters follow the registry (GitHub issue #704)", () => {
+  it("startMarker.shape setter propagates to a field linked from it", () => {
+    useMazeStore.getState().addVectorByWallsLink("startMarker.shape", "finishMarker.shape");
+    useMazeStore.getState().setVectorByWallsStartMarkerShape("star");
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star");
+  });
+
+  it("startMarker.textSize setter propagates and detaches its own incoming link", () => {
+    useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
+    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(33);
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.textSize).toBe(33);
+    useMazeStore.getState().setVectorByWallsFinishMarkerTextSize(7);
+    const s = useMazeStore.getState().vectorByWallsSettings;
+    expect(s.finishMarker.textSize).toBe(7);
+    expect(s.links.find((l) => l.target === "finishMarker.textSize")?.enabled).toBe(false);
+  });
+
+});
+
+describe("mazeStore linked-field setters follow the registry (GitHub issue #704)", () => {
+  it("startMarker.shape setter propagates to a field linked from it", () => {
+    useMazeStore.getState().addVectorByWallsLink("startMarker.shape", "finishMarker.shape");
+    useMazeStore.getState().setVectorByWallsStartMarkerShape("star");
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star");
+  });
+
+  it("startMarker.textSize setter propagates and detaches its own incoming link", () => {
+    useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
+    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(33);
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.textSize).toBe(33);
+    useMazeStore.getState().setVectorByWallsFinishMarkerTextSize(7);
+    const s = useMazeStore.getState().vectorByWallsSettings;
+    expect(s.finishMarker.textSize).toBe(7);
+    expect(s.links.find((l) => l.target === "finishMarker.textSize")?.enabled).toBe(false);
+  });
+
+});
+
+describe("mazeStore patch actions route through the link-aware helpers (GitHub issue #704)", () => {
+  const wallsLink = (target: string) => useMazeStore.getState().vectorByWallsSettings.links.find((l) => l.target === target);
+
+  it("patchVectorByWallsTeleportSettings detaches a nested teleportFloorBadge colour link", () => {
+    useMazeStore.getState().addVectorByWallsLink("teleportEdgeColor", "teleportFloorBadge.fillColor");
+    expect(wallsLink("teleportFloorBadge.fillColor")?.enabled).toBe(true);
+    useMazeStore.getState().patchVectorByWallsTeleportSettings({ teleportFloorBadge: { ...useMazeStore.getState().vectorByWallsSettings.teleportFloorBadge, fillColor: 0x123456 } });
+    expect(useMazeStore.getState().vectorByWallsSettings.teleportFloorBadge.fillColor).toBe(0x123456);
+    expect(wallsLink("teleportFloorBadge.fillColor")?.enabled).toBe(false);
+  });
+
+  it("patchVectorByWallsDecorativeLineStyle detaches only when lineColor is in the patch", () => {
+    useMazeStore.getState().addVectorByWallsLink("wallColor", "decorativeElevator.lineColor");
+    useMazeStore.getState().patchVectorByWallsDecorativeLineStyle("decorativeElevator", { lineWidth: 3 });
+    expect(wallsLink("decorativeElevator.lineColor")?.enabled).toBe(true);
+    useMazeStore.getState().patchVectorByWallsDecorativeLineStyle("decorativeElevator", { lineColor: 0xabcdef });
+    expect(wallsLink("decorativeElevator.lineColor")?.enabled).toBe(false);
+  });
+
+  it("patchVectorByWallsVerticalSharedStyle keeps the edited field's own incoming link enabled", () => {
+    useMazeStore.getState().addVectorByWallsLink("markerSize", "verticalSize");
+    expect(wallsLink("verticalSize")?.enabled).toBe(true);
+    useMazeStore.getState().patchVectorByWallsVerticalSharedStyle({ verticalSize: 11 });
+    expect(useMazeStore.getState().vectorByWallsSettings.verticalSize).toBe(11);
+    expect(wallsLink("verticalSize")?.enabled).toBe(true);
+  });
+});

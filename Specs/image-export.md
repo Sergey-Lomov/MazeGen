@@ -578,9 +578,21 @@ Propagation (`propagate(settings, links, changedPaths)`) is a BFS over enabled e
 are all one level deep, but supported by the engine) would carry a change at `A` through to `C`
 transitively. Editing the shared value itself (`setVectorByWallsSharedMarkerSize`, etc.) calls
 `propagate(settings, links, [sourcePath])`; editing a dependent field through its own per-mode
-setter (e.g. `setVectorByWallsStartMarkerSize`) calls `setLinkEnabledByTarget(settings, links,
-targetPath, false)` — writes the value itself and disables that field's incoming link, so sibling
-fields in the same group keep following the shared value.
+setter (e.g. `setVectorByWallsStartMarkerSize`) writes the value, disables that field's incoming link
+and propagates from it, so sibling fields in the same group keep following the shared value and
+anything linked *from* the edited field follows it too (GitHub issue #704). Every store setter for a
+registry field goes through one helper in `parameterLinksEngine.ts` rather than hand-writing that
+sequence: `writeLinkedParam(settings, path, value)` for a single field, `applyLinkedPatch(settings,
+next, rootPatch, overridable)` for `patch*` actions (detaches each `overridable` path present in the
+root-shaped patch), and `propagateLinkedSources(next, changed)` for source-style edits that must not
+detach (the vertical "Shared style" patch). Both return `Linked<S>`, a branded settings type: the
+image-export slice's `set` accepts only `Linked` values for `vectorByWallsSettings`/
+`vectorByCorridorsSettings`, so a hand-rolled `{ ...settings, field: v }` write does not compile.
+Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`,
+`markerWidenShape`, `*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
+`wallsPlain`/`corridorsPlain`, whose `path` is restricted to `WALLS_PLAIN_PATHS`/
+`CORRIDORS_PLAIN_PATHS` (a test asserts these never overlap the registry); link-management actions and
+reset-to-defaults use the explicit `markLinked` escape hatch.
 
 **Per-field link-status icon (`LinkStatusIcon.tsx`, GitHub issue #652).** Every linkable field row
 in both panels — not just the four "Shared style" fields above — carries a `LinkStatusIcon` as its

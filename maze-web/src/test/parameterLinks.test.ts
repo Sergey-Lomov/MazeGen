@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { applyModifiers, applyColorModifiers, type ColorModifier } from "../store/parameterLinks";
+import { applyModifiers, applyColorModifiers, type ColorModifier, type ParamLink } from "../store/parameterLinks";
 import { colorToRgb, colorToHsl, colorToOklch } from "../store/colorMath";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
-import { addLink, propagate } from "../store/slices/parameterLinksEngine";
+import { addLink, propagate, writeLinkedParam, applyLinkedPatch, propagateLinkedSources } from "../store/slices/parameterLinksEngine";
 
 describe("applyModifiers", () => {
   it("returns the raw value when there is no chain", () => {
@@ -106,5 +106,41 @@ describe("engine color-chain propagation", () => {
     const changed = { ...linked, source: 0x112233 };
     const next = propagate(changed, links, ["source"]);
     expect(next.target).toBe(applyColorModifiers(0x112233, colorModifiers));
+  });
+});
+
+describe("link-aware write helpers (GitHub issue #704)", () => {
+  type Path = "a" | "b" | "c" | "nested.x" | "nested.y";
+  type S = { a: number; b: number; c: number; nested: { x: number; y: number }; links: ParamLink<Path>[] };
+  const link = (source: Path, target: Path, enabled = true): ParamLink<Path> => ({ id: `${source}>${target}`, source, target, enabled });
+  const base = (links: ParamLink<Path>[]): S => ({ a: 1, b: 1, c: 1, nested: { x: 1, y: 1 }, links });
+
+  it("writeLinkedParam writes the value, detaches the field's own incoming link and refreshes dependents", () => {
+    const next = writeLinkedParam<Path, S>(base([link("a", "b"), link("b", "c")]), "b", 7);
+    expect(next.b).toBe(7);
+    expect(next.c).toBe(7);
+    expect(next.links.find((l) => l.target === "b")?.enabled).toBe(false);
+    expect(next.links.find((l) => l.target === "c")?.enabled).toBe(true);
+  });
+
+  it("writeLinkedParam on a field with no incoming link just writes and propagates", () => {
+    const next = writeLinkedParam<Path, S>(base([link("a", "b")]), "a", 5);
+    expect(next.b).toBe(5);
+    expect(next.links[0].enabled).toBe(true);
+  });
+
+  it("applyLinkedPatch detaches only the overridable paths present in the root patch (nested path included)", () => {
+    const settings = base([link("a", "nested.x"), link("a", "nested.y")]);
+    const next = applyLinkedPatch<Path, S>(settings, { ...settings, nested: { ...settings.nested, x: 9 } }, { nested: { x: 9 } }, ["nested.x", "nested.y"]);
+    expect(next.nested).toEqual({ x: 9, y: 1 });
+    expect(next.links.find((l) => l.target === "nested.x")?.enabled).toBe(false);
+    expect(next.links.find((l) => l.target === "nested.y")?.enabled).toBe(true);
+  });
+
+  it("propagateLinkedSources refreshes dependents without detaching the edited field's own link", () => {
+    const settings = base([link("a", "b"), link("b", "c")]);
+    const next = propagateLinkedSources<Path, S>({ ...settings, b: 4 }, ["b"]);
+    expect(next.c).toBe(4);
+    expect(next.links.every((l) => l.enabled)).toBe(true);
   });
 });
