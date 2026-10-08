@@ -36,9 +36,10 @@ pub use graph::stats::{
 pub use ids::{IdGenerator, NodeId};
 pub use meta::MazeMeta;
 pub use space::{
-    Field, HexFace, HexPoint, HexTessellation, LevelId, MultiLevelField, SquareFace, SquarePoint,
-    SquareTessellation, Tessellation, TriFace, TriPoint, TriTessellation, geometric_distance,
-    hex_hexagon, hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
+    CairoFace, CairoPoint, CairoTessellation, CairoTileKind, Field, HexFace, HexPoint,
+    HexTessellation, LevelId, MultiLevelField, SquareFace, SquarePoint, SquareTessellation,
+    Tessellation, TriFace, TriPoint, TriTessellation, cairo_rect, geometric_distance, hex_hexagon,
+    hex_parallelogram, square_rect, tri_hexagon, tri_rect, tri_triangle,
 };
 
 pub struct Maze<T: Tessellation> {

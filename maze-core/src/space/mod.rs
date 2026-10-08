@@ -3,6 +3,7 @@ use crate::ids::{IdGenerator, NodeId};
 use std::collections::HashMap;
 use std::hash::Hash;
 
+pub mod cairo;
 pub mod hex;
 pub mod multi_level;
 pub mod square;
@@ -10,6 +11,7 @@ pub mod square;
 pub(crate) mod test_support;
 pub mod triangle;
 
+pub use cairo::{CairoFace, CairoPoint, CairoTessellation, CairoTileKind, cairo_rect};
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
 pub use multi_level::{LevelId, MultiLevelField};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
