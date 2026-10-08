@@ -1055,3 +1055,82 @@ mod level_fields_tests {
         );
     }
 }
+
+/// Coverage for Cairo's native runner dispatch (GitHub issue #710). Cairo uses the same
+/// multi-level generation pipeline as the existing tessellations, while its integer coordinate
+/// space rejects unused pairs such as (0, 0).
+mod cairo_dispatch_tests {
+    use crate::config::{GenerateConfig, TessellationConfig, TessellationType};
+    use crate::runner::run_from_config;
+    use maze_core::space::CairoTessellation;
+
+    fn cairo_config(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
+        GenerateConfig {
+            tessellation: TessellationConfig {
+                tessellation_type: TessellationType::Cairo,
+            },
+            level_fields,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn generation_dispatches_cairo_single_level() {
+        let points: Vec<[i32; 2]> = CairoTessellation::rect(3, 3)
+            .into_iter()
+            .map(|p| [p.x, p.y])
+            .collect();
+        let result = run_from_config(710, &cairo_config(vec![points]))
+            .expect("Cairo generation must use the native pipeline");
+
+        assert_eq!(result.graph.nodes().count(), 18);
+        assert!(
+            result.graph.edges().count() > 0,
+            "Cairo generation must build graph edges"
+        );
+    }
+
+    #[test]
+    fn json_wire_config_accepts_cairo_tessellation() {
+        let config: GenerateConfig = serde_json::from_str(
+            r#"{
+                "tessellation": { "tessellation_type": "cairo" },
+                "level_fields": [[[2, 1], [2, 3]]]
+            }"#,
+        )
+        .expect("the Cairo wire tag must deserialize");
+
+        assert!(matches!(
+            config.tessellation.tessellation_type,
+            TessellationType::Cairo
+        ));
+        run_from_config(710, &config).expect("a deserialized Cairo config must run");
+    }
+
+    #[test]
+    fn generation_dispatches_cairo_multi_level() {
+        let points: Vec<[i32; 2]> = CairoTessellation::rect(2, 1)
+            .into_iter()
+            .map(|p| [p.x, p.y])
+            .collect();
+        let result = run_from_config(710, &cairo_config(vec![points.clone(), points]))
+            .expect("multi-level Cairo generation must succeed");
+
+        assert_eq!(result.graph.nodes().count(), 8);
+    }
+
+    #[test]
+    fn generation_rejects_empty_and_invalid_cairo_fields() {
+        let empty = match run_from_config(710, &cairo_config(vec![vec![]])) {
+            Err(error) => error,
+            Ok(_) => panic!("empty Cairo fields must be rejected"),
+        };
+        assert!(empty.contains("level_fields[0] must not be empty"));
+
+        let invalid = match run_from_config(710, &cairo_config(vec![vec![[0, 0]]])) {
+            Err(error) => error,
+            Ok(_) => panic!("invalid Cairo points must be rejected"),
+        };
+        assert!(invalid.contains("field contains an invalid point"));
+    }
+}

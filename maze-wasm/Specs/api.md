@@ -95,8 +95,12 @@ Discriminated union keyed on `type`:
 | `triangle_rect` | `cols: u32, rows: u32, orientation?: "r0"\|"r90"\|"r180"\|"r270"` |
 | `triangle_triangle` | `side: u32, orientation?: "r0"\|"r90"\|"r180"\|"r270"` |
 | `triangle_hexagon` | `radius: u32, orientation?: "r0"\|"r90"\|"r180"\|"r270"` |
+| `cairo` | no size fields; provide Cairo `[x, y]` points through `level_fields` |
 
 `orientation` is accepted for deserialization but ignored — rendering orientation is handled client-side.
+
+The wire tessellation kind `cairo` is also supported. Cairo configurations use integer `[x, y]`
+coordinates for the pentagonal tiling and do not have a rendering orientation field.
 
 Validation: all size fields must be `> 0`, otherwise returns error string.
 

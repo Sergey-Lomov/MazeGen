@@ -1,5 +1,8 @@
 use crate::generation_config::TessellationType;
-use maze_core::space::{HexPoint, SquarePoint, SquareTessellation, Tessellation, TriPoint};
+use maze_core::space::{
+    CairoPoint, CairoTessellation, HexPoint, SquarePoint, SquareTessellation, Tessellation,
+    TriPoint,
+};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -23,7 +26,12 @@ struct CartesianCoordsConfig {
 pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
     let cfg: CartesianCoordsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
-    let coords: Vec<[f64; 2]> = match cfg.tessellation_type {
+    let coords = cartesian_coords_for(&cfg);
+    Ok(serde_wasm_bindgen::to_value(&coords).unwrap())
+}
+
+fn cartesian_coords_for(cfg: &CartesianCoordsConfig) -> Vec<[f64; 2]> {
+    match cfg.tessellation_type {
         TessellationType::Square => cfg
             .points
             .iter()
@@ -48,6 +56,28 @@ pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
                 [cx, cy]
             })
             .collect(),
-    };
-    Ok(serde_wasm_bindgen::to_value(&coords).unwrap())
+        TessellationType::Cairo => cfg
+            .points
+            .iter()
+            .map(|&[x, y]| {
+                let (cx, cy) = CairoTessellation::cartesian(CairoPoint { x, y });
+                [cx, cy]
+            })
+            .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CartesianCoordsConfig, cartesian_coords_for};
+    use crate::generation_config::TessellationType;
+
+    #[test]
+    fn cairo_cartesian_projection_preserves_wire_coordinates() {
+        let cfg = CartesianCoordsConfig {
+            tessellation_type: TessellationType::Cairo,
+            points: vec![[-6, -5], [3, 2]],
+        };
+        assert_eq!(cartesian_coords_for(&cfg), vec![[-6.0, -5.0], [3.0, 2.0]]);
+    }
 }
