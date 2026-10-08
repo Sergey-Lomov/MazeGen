@@ -217,6 +217,56 @@ export function drawMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy:
   g.poly(points);
 }
 
+const COMPENSATION_REFERENCE_RADIUS = 100;
+const compensatedRatioCache = new Map<string, number>();
+
+/** Outer contour of `shape` at circle-equivalent radius `r`: its fill contour offset by `distance`,
+ *  with the join `drawOffsetMarkerShape` and the border/underlay draws share. */
+function offsetMarkerContour(shape: Exclude<MarkerShape, "circle">, r: number, distance: number, rounded: boolean): number[] {
+  return offsetPolygonPath(
+    markerPolygonPoints(shape, 0, 0, r), distance, 4,
+    rounded ? "round" : "miter",
+    shape === "star" ? (i) => i % 2 === 0 : undefined,
+  );
+}
+
+/** Fill-contour circle-equivalent radius for `shape` such that its *outer* contour (fill offset by
+ *  `borderWidth`, same join `drawOffsetMarkerShape` uses) has the same area as a circle's outer
+ *  contour `r + borderWidth`. Sharp-cornered shapes gain more border area/reach per `borderWidth`
+ *  than a circle, so without this the same `size`/`borderWidth` reads heavier on them (GitHub issue
+ *  #683). Equals `r` for `circle` and for `borderWidth <= 0`. Solved by bisection on the actual
+ *  offset path area, so every join/shape detail is accounted for. The problem is scale-invariant, so
+ *  the solution is cached as a fraction of `r` keyed by `borderWidth / r`. */
+export function borderCompensatedRadius(shape: MarkerShape, r: number, borderWidth: number, rounded: boolean): number {
+  if (shape === "circle" || borderWidth <= 0 || r <= 0) return r;
+  const ratio = borderWidth / r;
+  const cacheKey = `${shape}:${ratio}:${rounded ? "round" : "miter"}`;
+  let fraction = compensatedRatioCache.get(cacheKey);
+  if (fraction === undefined) {
+    // Solved at a fixed large reference radius so round-join arcs are finely tessellated (their
+    // step count scales with the offset distance) — the result is then a pure fraction of `r`.
+    const target = Math.PI * (COMPENSATION_REFERENCE_RADIUS * (1 + ratio)) ** 2;
+    const distance = COMPENSATION_REFERENCE_RADIUS * ratio;
+    const outerArea = (fillR: number): number => Math.abs(polygonSignedArea(offsetMarkerContour(shape, fillR, distance, rounded)));
+    let lo = 0.01 * COMPENSATION_REFERENCE_RADIUS;
+    let hi = COMPENSATION_REFERENCE_RADIUS;
+    if (outerArea(hi) <= target) {
+      fraction = 1;
+    } else if (outerArea(lo) >= target) {
+      fraction = 0.01;
+    } else {
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (outerArea(mid) < target) lo = mid; else hi = mid;
+      }
+      fraction = (lo + hi) / 2 / COMPENSATION_REFERENCE_RADIUS;
+    }
+    if (compensatedRatioCache.size >= 512) compensatedRatioCache.delete(compensatedRatioCache.keys().next().value!);
+    compensatedRatioCache.set(cacheKey, fraction);
+  }
+  return r * fraction;
+}
+
 function drawOffsetMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy: number, r: number, distance: number, rounded: boolean): void {
   if (shape === "circle") {
     g.poly(circlePolygonPoints(cx, cy, r + distance), true);
@@ -227,11 +277,7 @@ function drawOffsetMarkerShape(g: Graphics, shape: MarkerShape, cx: number, cy: 
   const cacheKey = `${shape}:${r}:${distance}:${rounded ? "round" : "miter"}`;
   let normalized = offsetPolygonCache.get(cacheKey);
   if (!normalized) {
-    normalized = offsetPolygonPath(
-      markerPolygonPoints(shape, 0, 0, r), distance, 4,
-      rounded ? "round" : "miter",
-      shape === "star" ? (i) => i % 2 === 0 : undefined,
-    );
+    normalized = offsetMarkerContour(shape, r, distance, rounded);
     if (offsetPolygonCache.size >= 512) offsetPolygonCache.delete(offsetPolygonCache.keys().next().value!);
     offsetPolygonCache.set(cacheKey, normalized);
   }
@@ -253,6 +299,7 @@ export function drawMarkerWithBorder(
   borderColor: MarkerColor,
   borderWidth: number,
 ): void {
+  r = borderCompensatedRadius(shape, r, borderWidth, rounded);
   if (borderWidth > 0) {
     drawOffsetMarkerShape(g, shape, cx, cy, r, borderWidth, rounded);
     g.fill(borderColor);
@@ -289,9 +336,14 @@ export function drawMarkerWithBorder(
  *  `rounded` — a sharp underlay's own corners still need a rounded *offset* arc to stay a true
  *  outward offset; the marker's own sharp corners are unaffected since this only affects the
  *  underlay path. */
-/** Draws an underlay as a filled geometric offset. Straight edges stay parallel; joins are
+/** Draws an underlay as a filled geometric offset. `borderWidth` is the border of the marker this
+ * underlay sits under (`0` when `baseRadius` is already border-compensated or the marker has no
+ * border); it is required so a new call site cannot silently offset from a different fill contour
+ * than the one `drawMarkerWithBorder` draws (GitHub issue #683). Straight edges stay parallel; joins are
  * miter-limited and rounded where the marker uses rounded corners, avoiding Pixi stroke seams. */
-export function drawMarkerUnderlay(g: Graphics, shape: MarkerShape, cx: number, cy: number, baseRadius: number, rounded: boolean, outset: number, color: number | { color: number; alpha?: number }): void {
+export function drawMarkerUnderlay(g: Graphics, shape: MarkerShape, cx: number, cy: number, baseRadius: number, rounded: boolean, outset: number, color: number | { color: number; alpha?: number }, borderWidth: number): void {
+  // Same fill contour `drawMarkerWithBorder` draws for this marker (GitHub issue #683).
+  baseRadius = borderCompensatedRadius(shape, baseRadius, borderWidth, rounded);
   // `{ color, alpha: undefined }` is NOT the same as omitting `alpha` — pixi's `fill`/`stroke`
   // resolve it to `NaN`, not their own `1` default, silently making the whole draw invisible
   // (GitHub issue #552 fourth follow-up). Only include `alpha` in the style object when the caller

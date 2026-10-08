@@ -3,7 +3,7 @@ import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./t
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
+import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
@@ -298,11 +298,11 @@ export class TeleportRenderer {
         // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
         // `drawGroupPoints` below), not a forced circle.
         const badgeR = style.floorBadge.size / 2;
-        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, (style.floorBadge.borderWidth ?? style.borderWidth) + Math.max(style.edgeGapWidth, 1), style.floorColor);
+        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, (style.floorBadge.borderWidth ?? style.borderWidth) + Math.max(style.edgeGapWidth, 1), style.floorColor, style.floorBadge.borderWidth ?? style.borderWidth);
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
-      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, style.borderWidth + style.edgeGapWidth, style.floorColor);
+      drawMarkerUnderlay(g, style.shape, px, py, markerR, rounded, style.borderWidth + style.edgeGapWidth, style.floorColor, style.borderWidth);
     }
   }
 
@@ -471,12 +471,13 @@ export class TeleportRenderer {
     mixed: boolean,
   ): void {
     const rounded = cornerStyle === "round";
+    const fillR = borderCompensatedRadius(shape, r, borderWidth, rounded);
     if (mixed) {
       drawMarkerWithBorder(g, shape, cx, cy, r, rounded, floorColor, borderColor, borderWidth);
 
       // Keep the half-fill at the marker's actual contour. Growing it by scale made the diagonal
       // half inherit the same non-uniform corner thickness as the old frame implementation.
-      const half = markerBoundingHalfExtent(shape, r);
+      const half = markerBoundingHalfExtent(shape, fillR);
       const mask = new Graphics()
         .moveTo(cx - half, cy - half)
         .lineTo(cx + half, cy - half)
@@ -484,7 +485,7 @@ export class TeleportRenderer {
         .closePath()
         .fill(0xffffff);
       const halfFillView = new Graphics();
-      drawMarkerShape(halfFillView, shape, cx, cy, r, rounded);
+      drawMarkerShape(halfFillView, shape, cx, cy, fillR, rounded);
       halfFillView.fill(color);
       halfFillView.mask = mask;
       overlay.addChild(mask);

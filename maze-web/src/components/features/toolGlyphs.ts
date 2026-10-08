@@ -2,7 +2,7 @@ import { Application, Graphics } from "pixi.js";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import type { PostEditTool } from "../../store/postEditTypes";
 import type { MarkerShape, CornerStyle } from "../../pixi/renderers/types";
-import { drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/markerShapes";
+import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay } from "../../pixi/renderers/markerShapes";
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "../../pixi/renderers/wallUtils";
@@ -122,13 +122,15 @@ type MarkerLike = {
  *  `VerticalConnectionRenderer` / `TeleportRenderer` all use. */
 function drawMarker(g: Graphics, m: MarkerLike, opts?: { fillOverride?: number; borderOverride?: number }): void {
   const rounded = m.cornerStyle === "round";
-  const r = m.size / 2;
+  // Fill radius shrunk so the outer contour (fill + border) matches a circle's, like
+  // `drawMarkerWithBorder` (GitHub issue #683).
+  const r = borderCompensatedRadius(m.shape, m.size / 2, m.borderWidth, rounded);
   const fill = opts?.fillOverride ?? m.fillColor;
   const border = opts?.borderOverride ?? m.borderColor ?? m.fillColor;
   // Single true outward offset of the fill path (`r`) by `borderWidth + gapWidth` (GitHub issue
   // #552 ninth follow-up) — see `WaypointsRenderer`'s own gap ring for the full rationale.
   if (m.gapWidth > 0) {
-    drawMarkerUnderlay(g, m.shape, C, C, r, rounded, m.borderWidth + m.gapWidth, GAP);
+    drawMarkerUnderlay(g, m.shape, C, C, r, rounded, m.borderWidth + m.gapWidth, GAP, 0); // `r` is already border-compensated
   }
   drawMarkerShape(g, m.shape, C, C, r, rounded);
   g.fill(fill);

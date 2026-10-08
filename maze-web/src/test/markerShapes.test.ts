@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { circlePolygonPoints, markerPolygonPoints, offsetPolygonPath, offsetPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
+import type { Graphics } from "pixi.js";
+import { borderCompensatedRadius, drawMarkerUnderlay, drawMarkerWithBorder, circlePolygonPoints, markerPolygonPoints, offsetPolygonPath, offsetPolygonPoints, polygonCornerRadius, cornerTangentPoint } from "../pixi/renderers/markerShapes";
 
 /** Shoelace formula for a closed polygon's area from its flat point list. */
 function polygonArea(points: number[]): number {
@@ -198,5 +199,86 @@ describe("cornerTangentPoint / polygonCornerRadius (drawRoundedPolygon's seam ma
     const midX = (pts[0] + pts[2]) / 2;
     const midY = (pts[1] + pts[3]) / 2;
     expect(Math.hypot(tx - midX, ty - midY)).toBeGreaterThan(1);
+  });
+});
+
+describe("borderCompensatedRadius", () => {
+  const shapes = ["triangle", "square", "diamond", "pentagon", "hexagon", "star", "cross"] as const;
+  const outerArea = (shape: (typeof shapes)[number], r: number, bw: number, rounded: boolean) => {
+    const outer = offsetPolygonPath(
+      markerPolygonPoints(shape, 0, 0, r), bw, 4, rounded ? "round" : "miter",
+      shape === "star" ? (i) => i % 2 === 0 : undefined,
+    );
+    return Math.abs(polygonArea(outer));
+  };
+
+  it("is identity for circle and zero border", () => {
+    expect(borderCompensatedRadius("circle", 10, 3, false)).toBe(10);
+    expect(borderCompensatedRadius("square", 10, 0, false)).toBe(10);
+  });
+
+  it("scales linearly with r for a fixed borderWidth / r ratio", () => {
+    for (const shape of shapes) {
+      expect(borderCompensatedRadius(shape, 40, 12, false)).toBeCloseTo(4 * borderCompensatedRadius(shape, 10, 3, false), 6);
+    }
+  });
+
+  it("falls back to r when compensation cannot shrink the fill (huge border on a tiny marker still stays in (0, r])", () => {
+    for (const shape of shapes) {
+      const v = borderCompensatedRadius(shape, 1, 50, false);
+      expect(v).toBeGreaterThan(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it.each(shapes)("%s outer area matches circle of radius r + borderWidth", (shape) => {
+    for (const rounded of [false, true]) {
+      const fillR = borderCompensatedRadius(shape, 10, 3, rounded);
+      expect(fillR).toBeLessThan(10);
+      // Round joins are tessellated, so allow ~1% relative error.
+      expect(outerArea(shape, fillR, 3, rounded) / (Math.PI * 13 * 13)).toBeCloseTo(1, 2);
+    }
+  });
+});
+
+describe("border-aware marker drawing", () => {
+  /** Records `poly` point lists and `fill` styles in call order. */
+  function mockGraphics() {
+    const polys: number[][] = [];
+    const fills: unknown[] = [];
+    const g = {
+      poly(points: number[]) { polys.push(points); return g; },
+      fill(style: unknown) { fills.push(style); return g; },
+    };
+    return { g: g as unknown as Graphics, polys, fills };
+  }
+  const bounds = (pts: number[]) => {
+    const xs = pts.filter((_, i) => i % 2 === 0);
+    return Math.max(...xs) - Math.min(...xs);
+  };
+
+  it("draws the border contour first, then a fill shrunk by the compensation", () => {
+    const { g, polys, fills } = mockGraphics();
+    drawMarkerWithBorder(g, "square", 0, 0, 10, false, 0x111111, 0x222222, 3);
+    expect(fills).toEqual([0x222222, 0x111111]);
+    const fillR = borderCompensatedRadius("square", 10, 3, false);
+    expect(fillR).toBeLessThan(10);
+    expect(polys[1]).toEqual(markerPolygonPoints("square", 0, 0, fillR));
+    expect(bounds(polys[0])).toBeGreaterThan(bounds(polys[1]));
+  });
+
+  it("keeps the plain fill radius when borderWidth is 0", () => {
+    const { g, polys, fills } = mockGraphics();
+    drawMarkerWithBorder(g, "square", 0, 0, 10, false, 0x111111, 0x222222, 0);
+    expect(fills).toEqual([0x111111]);
+    expect(polys[0]).toEqual(markerPolygonPoints("square", 0, 0, 10));
+  });
+
+  it("underlay with borderWidth equal to outset coincides with the marker's own border contour", () => {
+    const border = mockGraphics();
+    drawMarkerWithBorder(border.g, "diamond", 5, 5, 10, false, 0x1, 0x2, 3);
+    const underlay = mockGraphics();
+    drawMarkerUnderlay(underlay.g, "diamond", 5, 5, 10, false, 3, 0x3, 3);
+    expect(underlay.polys[0]).toEqual(border.polys[0]);
   });
 });

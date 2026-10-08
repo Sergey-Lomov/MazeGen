@@ -32,7 +32,7 @@ export class WaypointsRenderer {
       // rationale; the marker's own border (drawn on top, below) covers the ring's inner
       // `borderWidth`-wide band, leaving only the outer `gapWidth`-wide band visible.
       if (gapWidth > 0) {
-        drawMarkerUnderlay(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, borderWidth + gapWidth, m.gapColor ?? m.color);
+        drawMarkerUnderlay(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, borderWidth + gapWidth, m.gapColor ?? m.color, borderWidth);
       }
       drawMarkerWithBorder(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, m.color, m.borderColor ?? m.color, borderWidth);
       if (m.text) {
