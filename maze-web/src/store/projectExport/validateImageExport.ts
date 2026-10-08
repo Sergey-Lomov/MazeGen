@@ -1,10 +1,11 @@
 import {
-  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -60,6 +61,33 @@ export function optTeleportArrowMode(obj: Record<string, unknown> | null, key: s
   return v === "none" || v === "center" || v === "double" || v === "periodic" ? v : fallback;
 }
 
+/** The shared `MarkerAppearance` fields (GitHub issue #701), read leniently off an already-asserted
+ *  object — reused by every marker-like validator (start/finish markers, teleport edge marker,
+ *  elevator and teleport floor badges). */
+function readMarkerAppearance(obj: Record<string, unknown> | null, fallback: MarkerAppearance): MarkerAppearance {
+  return {
+    shape: optMarkerShape(obj, "shape", fallback.shape),
+    cornerStyle: optCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
+    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
+    size: optNumber(obj, "size", fallback.size),
+  };
+}
+
+/** `BadgeSettings` fields (GitHub issue #701): the shared marker look plus label type and the
+ *  required text style — shared by the elevator and teleport floor badge validators. */
+function readBadgeSettings(obj: Record<string, unknown> | null, fallback: BadgeSettings): BadgeSettings {
+  return {
+    ...readMarkerAppearance(obj, fallback),
+    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textSize: optNumber(obj, "textSize", fallback.textSize),
+  };
+}
+
 export function validateMarkerSettings(v: unknown, path: string, fallback: MarkerSettings): MarkerSettings {
   if (v == null) return fallback;
   let obj: Record<string, unknown> | null;
@@ -69,19 +97,13 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
     return fallback;
   }
   return {
-    shape: optMarkerShape(obj, "shape", fallback.shape),
-    cornerStyle: optCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
-    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
-    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
-    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
-    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
-    size: optNumber(obj, "size", fallback.size),
+    ...readMarkerAppearance(obj, fallback),
     text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
     textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
     textFontWeight: obj?.textFontWeight === undefined
       ? fallback.textFontWeight
       : optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight ?? "bold"),
-    textSize: obj?.textSize === undefined ? fallback.textSize : optNumber(obj, "textSize", fallback.textSize ?? 0.55),
+    textSize: obj?.textSize === undefined ? fallback.textSize : optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE),
     textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
   };
 }
@@ -104,13 +126,7 @@ export function tryValidateTeleportGroupOverride(v: unknown): { fillColor?: numb
  * two never need their own separate recovery logic for it. */
 export function validateTeleportSettingsFields(obj: Record<string, unknown> | null, path: string, d: TeleportSettingsFields): TeleportSettingsFields {
   return {
-    teleportLineCornerStyle: optCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
-    teleportLineShape: optMarkerShape(obj, "teleportLineShape", d.teleportLineShape),
-    teleportLineSize: optNumber(obj, "teleportLineSize", d.teleportLineSize),
-    teleportEdgeColor: optNumber(obj, "teleportEdgeColor", d.teleportEdgeColor),
-    teleportEdgeBorderColor: optNumber(obj, "teleportEdgeBorderColor", d.teleportEdgeBorderColor),
-    teleportEdgeBorderWidth: optNumber(obj, "teleportEdgeBorderWidth", d.teleportEdgeBorderWidth),
-    teleportEdgeGapWidth: optNumber(obj, "teleportEdgeGapWidth", d.teleportEdgeGapWidth),
+    teleportMarker: validateMarkerSettings(obj?.teleportMarker, `${path}.teleportMarker`, d.teleportMarker),
     teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
     teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
     teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
@@ -136,16 +152,7 @@ export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fal
   } catch {
     return fallback;
   }
-  return {
-    shape: optMarkerShape(obj, "shape", fallback.shape),
-    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
-    size: optNumber(obj, "size", fallback.size),
-    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
-    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
-    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth ?? 3),
-    textColor: optNumber(obj, "textColor", fallback.textColor),
-    textPadding: optNumber(obj, "textPadding", fallback.textPadding),
-  };
+  return readBadgeSettings(obj, fallback);
 }
 
 /** `DecorativeLineStyle` validation (GitHub issue #428) — same lenient-recovery convention as
@@ -191,19 +198,12 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
     return fallback;
   }
   return {
+    ...readBadgeSettings(obj, fallback),
     enabled: optBool(obj, "enabled", fallback.enabled),
-    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
-    size: optNumber(obj, "size", fallback.size),
     placement: optElevatorBadgePlacement(obj, "placement", fallback.placement),
     distance: optNumber(obj, "distance", fallback.distance),
     gap: optNumber(obj, "gap", fallback.gap),
-    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
-    cornerStyle: optCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
     evenDistribution: optBool(obj, "evenDistribution", fallback.evenDistribution),
-    shape: optMarkerShape(obj, "shape", fallback.shape),
-    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
-    textColor: optNumber(obj, "textColor", fallback.textColor),
-    fontWeight: optElevatorBadgeFontWeight(obj, "fontWeight", fallback.fontWeight),
   };
 }
 
@@ -430,8 +430,11 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     ...validateVerticalDecorativeFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
+    markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
+    markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
@@ -581,8 +584,11 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),
     splitDiagonalBowAmount: optNumber(obj, "splitDiagonalBowAmount", d.splitDiagonalBowAmount),
+    markerShape: optMarkerShape(obj, "markerShape", d.markerShape),
     cornerStyle: optCornerStyle(obj, "cornerStyle", d.cornerStyle),
     markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerFillColor: optNumber(obj, "markerFillColor", d.markerFillColor),
+    markerBorderColor: optNumber(obj, "markerBorderColor", d.markerBorderColor),
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),

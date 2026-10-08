@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings } from "../store/projectExport/validateImageExport";
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
@@ -29,12 +30,12 @@ describe("validateMarkerSettings", () => {
     expect(result.textColor).toBe(0xabcdef);
   });
 
-  it("falls back to true/bold/0.55/fillColor defaults when both the input and the fallback omit the fields", () => {
+  it("falls back to true/bold/default-px/fillColor defaults when both the input and the fallback omit the fields", () => {
     const { textEnabled: _e, textFontWeight: _f, textSize: _s, textColor: _c, ...bareFallback } = fallback;
     const result = validateMarkerSettings({ textEnabled: "not-a-bool", textFontWeight: "bogus", textSize: "bogus", textColor: "bogus" }, "path", bareFallback);
     expect(result.textEnabled).toBe(true);
     expect(result.textFontWeight).toBe("bold");
-    expect(result.textSize).toBe(0.55);
+    expect(result.textSize).toBe(DEFAULT_MARKER_TEXT_SIZE);
     expect(result.textColor).toBe(bareFallback.fillColor);
   });
 });
@@ -210,14 +211,14 @@ describe("validateTeleportFloorBadgeSettings", () => {
   const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
 
   it("reads a valid object's fields as-is", () => {
-    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textPadding: 4 }, "path", fallback))
-      .toEqual({ shape: "hexagon", labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textPadding: 4 });
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20 }, "path", fallback))
+      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textPadding: fallback.textPadding });
+      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize });
   });
 
   it("a project file predating the field recovers to the default badge", () => {
@@ -293,5 +294,23 @@ describe("validateLinks (GitHub issue #651)", () => {
   it("falls back to the defaults when a link references an unknown path", () => {
     const unknownPath = [{ id: "x", source: "not.a.real.path", target: "also.not.real", enabled: true }];
     expect(validateLinks(unknownPath, "path", defaults, registry)).toBe(defaults);
+  });
+});
+
+// GitHub issue #701 — the new shared-style marker sources survive a project round trip.
+describe("validateVectorByWallsSettings shared marker sources (GitHub issue #701)", () => {
+  it("falls back to the default for missing / invalid markerShape and marker colors", () => {
+    const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
+    const result = validateVectorByWallsSettings({ markerShape: "bogus", markerFillColor: "x" }, "path", DEFAULT_VECTOR_BY_WALLS_LINKS);
+    expect(result.markerShape).toBe(d.markerShape);
+    expect(result.markerFillColor).toBe(d.markerFillColor);
+    expect(result.markerBorderColor).toBe(d.markerBorderColor);
+  });
+
+  it("reads valid values as-is", () => {
+    const result = validateVectorByWallsSettings({ markerShape: "star", markerFillColor: 0x112233, markerBorderColor: 0x445566 }, "path", DEFAULT_VECTOR_BY_WALLS_LINKS);
+    expect(result.markerShape).toBe("star");
+    expect(result.markerFillColor).toBe(0x112233);
+    expect(result.markerBorderColor).toBe(0x445566);
   });
 });

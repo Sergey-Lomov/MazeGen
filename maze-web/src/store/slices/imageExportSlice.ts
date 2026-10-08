@@ -74,20 +74,46 @@ const corridorsPatch =
     vectorByCorridorsSettings: applyLinkedPatch(s.vectorByCorridorsSettings, build(s.vectorByCorridorsSettings), rootPatch, overridable),
   });
 
+/** Reduces a (possibly nested, whole-object) patch to the leaves that actually differ from `cur`, so
+ *  `applyLinkedPatch` detaches only the links of fields the user really changed — a UI handler
+ *  passing `{ teleportMarker: { ...marker, shape } }` must not detach the size/color links too. */
+function pruneUnchanged(cur: unknown, patch: object): object {
+  const out: Record<string, unknown> = {};
+  const curRec = (cur ?? {}) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch)) {
+    const before = curRec[key];
+    if (value !== null && typeof value === "object" && !Array.isArray(value) && before !== null && typeof before === "object") {
+      const nested = pruneUnchanged(before, value);
+      if (Object.keys(nested).length > 0) out[key] = nested;
+    } else if (!Object.is(value, before)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 const TELEPORT_OVERRIDABLE = [
-  "teleportLineCornerStyle",
-  "teleportLineSize",
-  "teleportEdgeColor",
-  "teleportEdgeBorderColor",
-  "teleportEdgeBorderWidth",
-  "teleportEdgeGapWidth",
+  "teleportMarker.shape",
+  "teleportMarker.cornerStyle",
+  "teleportMarker.size",
+  "teleportMarker.fillColor",
+  "teleportMarker.borderColor",
+  "teleportMarker.borderWidth",
+  "teleportMarker.gapWidth",
   "teleportConnectorColor",
   "teleportConnectorGapWidth",
+  "teleportFloorBadge.shape",
   "teleportFloorBadge.fillColor",
   "teleportFloorBadge.borderColor",
+  "teleportFloorBadge.cornerStyle",
+  "teleportFloorBadge.size",
+  "teleportFloorBadge.borderWidth",
+  "teleportFloorBadge.gapWidth",
   "teleportFloorBadge.textColor",
+  "teleportFloorBadge.textSize",
+  "teleportFloorBadge.textFontWeight",
 ] as const;
-const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.fillColor", "elevatorBadges.textColor"] as const;
+const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.shape", "elevatorBadges.fillColor", "elevatorBadges.borderColor", "elevatorBadges.borderWidth", "elevatorBadges.textColor", "elevatorBadges.textSize", "elevatorBadges.textFontWeight"] as const;
 const MARKER_INDEX_OVERRIDABLE = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"] as const;
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
@@ -216,7 +242,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   patchVectorByCorridorsOneWaySettings: (patch) =>
     set(corridorsPatch(patch, ["oneWayJoin"], (c) => ({ ...c, ...patch }))),
   patchVectorByCorridorsTeleportSettings: (patch) =>
-    set(corridorsPatch(patch, TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))),
+    set((s) => corridorsPatch(pruneUnchanged(s.vectorByCorridorsSettings, patch), TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))(s)),
   setVectorByCorridorsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByCorridorsSettings.teleportGroupOverrides };
@@ -262,10 +288,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsElevatorMarkerBorderWidth: (v) => set(corridorsParam("elevatorMarker.borderWidth", v)),
   setVectorByCorridorsElevatorMarkerGapWidth: (v) => set(corridorsParam("elevatorMarker.gapWidth", v)),
   setVectorByCorridorsElevatorMarkerSize: (v) => set(corridorsParam("elevatorMarker.size", v)),
-  setVectorByCorridorsSharedCornerStyle: (style) => set(corridorsParam("cornerStyle", style)),
-  setVectorByCorridorsSharedMarkerSize: (v) => set(corridorsParam("markerSize", v)),
-  setVectorByCorridorsSharedMarkerBorderWidth: (v) => set(corridorsParam("markerBorderWidth", v)),
-  setVectorByCorridorsSharedGapWidth: (v) => set(corridorsParam("gapWidth", v)),
+  patchVectorByCorridorsSharedStyle: (patch) =>
+    set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources({ ...s.vectorByCorridorsSettings, ...patch }, Object.keys(patch) as VectorByCorridorsParamPath[]) })),
   patchVectorByCorridorsVerticalSharedStyle: (patch) =>
     set((s) => ({ vectorByCorridorsSettings: propagateLinkedSources({ ...s.vectorByCorridorsSettings, ...patch }, Object.keys(patch) as VectorByCorridorsParamPath[]) })),
   resetVectorByCorridorsSharedStyleField: (target) =>
@@ -372,7 +396,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsElevatorMarkerGapWidth: (v) => set(wallsParam("elevatorMarker.gapWidth", v)),
   setVectorByWallsElevatorMarkerSize: (v) => set(wallsParam("elevatorMarker.size", v)),
   patchVectorByWallsTeleportSettings: (patch) =>
-    set(wallsPatch(patch, TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))),
+    set((s) => wallsPatch(pruneUnchanged(s.vectorByWallsSettings, patch), TELEPORT_OVERRIDABLE, (c) => ({ ...c, ...patch }))(s)),
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
@@ -389,10 +413,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       return wallsPlain("splitNodeColors", colors)(s);
     }),
   setVectorByWallsSplitSpecialShapes: (v) => set(wallsParam("splitSpecialShapes", v)),
-  setVectorByWallsSharedCornerStyle: (style) => set(wallsParam("cornerStyle", style)),
-  setVectorByWallsSharedMarkerSize: (v) => set(wallsParam("markerSize", v)),
-  setVectorByWallsSharedMarkerBorderWidth: (v) => set(wallsParam("markerBorderWidth", v)),
-  setVectorByWallsSharedGapWidth: (v) => set(wallsParam("gapWidth", v)),
+  patchVectorByWallsSharedStyle: (patch) =>
+    set((s) => ({ vectorByWallsSettings: propagateLinkedSources({ ...s.vectorByWallsSettings, ...patch }, Object.keys(patch) as VectorByWallsParamPath[]) })),
   patchVectorByWallsVerticalSharedStyle: (patch) =>
     set((s) => ({ vectorByWallsSettings: propagateLinkedSources({ ...s.vectorByWallsSettings, ...patch }, Object.keys(patch) as VectorByWallsParamPath[]) })),
   resetVectorByWallsSharedStyleField: (target) =>

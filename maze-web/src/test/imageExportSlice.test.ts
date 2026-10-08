@@ -44,13 +44,7 @@ beforeEach(() => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportLineCornerStyle: "miter",
-      teleportLineShape: "square",
-      teleportLineSize: 0.3,
-      teleportEdgeColor: canvas.teleport.default,
-      teleportEdgeBorderColor: canvas.teleport.default,
-      teleportEdgeBorderWidth: 3,
-      teleportEdgeGapWidth: 0,
+      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -59,7 +53,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -184,13 +178,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportLineCornerStyle: "miter",
-      teleportLineShape: "square",
-      teleportLineSize: 0.3,
-      teleportEdgeColor: canvas.teleport.default,
-      teleportEdgeBorderColor: canvas.teleport.default,
-      teleportEdgeBorderWidth: 3,
-      teleportEdgeGapWidth: 0,
+      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -199,7 +187,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -470,7 +458,7 @@ describe("mazeStore shared-style link patch/reset actions (GitHub issue #643)", 
 describe("mazeStore parameter-links management actions (GitHub issue #644)", () => {
   it("addVectorByWallsLink creates a link and propagates the source's value", () => {
     useMazeStore.getState().removeVectorByWallsLink("elevatorMarker.size");
-    useMazeStore.getState().setVectorByWallsSharedMarkerSize(0.33);
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerSize: 0.33 });
     useMazeStore.getState().addVectorByWallsLink("markerSize", "elevatorMarker.size");
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.elevatorMarker.size).toBe(0.33);
@@ -504,7 +492,7 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
 
   it("addVectorByCorridorsLink creates a link and propagates the source's value", () => {
     useMazeStore.getState().removeVectorByCorridorsLink("elevatorMarker.size");
-    useMazeStore.getState().setVectorByCorridorsSharedMarkerSize(0.21);
+    useMazeStore.getState().patchVectorByCorridorsSharedStyle({ markerSize: 0.21 });
     useMazeStore.getState().addVectorByCorridorsLink("markerSize", "elevatorMarker.size");
     const settings = useMazeStore.getState().vectorByCorridorsSettings;
     expect(settings.elevatorMarker.size).toBe(0.21);
@@ -576,7 +564,7 @@ describe("mazeStore patch actions route through the link-aware helpers (GitHub i
   const wallsLink = (target: string) => useMazeStore.getState().vectorByWallsSettings.links.find((l) => l.target === target);
 
   it("patchVectorByWallsTeleportSettings detaches a nested teleportFloorBadge colour link", () => {
-    useMazeStore.getState().addVectorByWallsLink("teleportEdgeColor", "teleportFloorBadge.fillColor");
+    useMazeStore.getState().addVectorByWallsLink("teleportMarker.fillColor", "teleportFloorBadge.fillColor");
     expect(wallsLink("teleportFloorBadge.fillColor")?.enabled).toBe(true);
     useMazeStore.getState().patchVectorByWallsTeleportSettings({ teleportFloorBadge: { ...useMazeStore.getState().vectorByWallsSettings.teleportFloorBadge, fillColor: 0x123456 } });
     expect(useMazeStore.getState().vectorByWallsSettings.teleportFloorBadge.fillColor).toBe(0x123456);
@@ -597,5 +585,46 @@ describe("mazeStore patch actions route through the link-aware helpers (GitHub i
     useMazeStore.getState().patchVectorByWallsVerticalSharedStyle({ verticalSize: 11 });
     expect(useMazeStore.getState().vectorByWallsSettings.verticalSize).toBe(11);
     expect(wallsLink("verticalSize")?.enabled).toBe(true);
+  });
+});
+
+// GitHub issue #701 — "Shared style" > "Markers" gained shape / fill / border color sources.
+describe("patchVectorBy{Walls,Corridors}SharedStyle (GitHub issue #701)", () => {
+  it("shape and color sources drive nothing out of the box (every link starts disabled)", () => {
+    const before = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerShape: "star", markerFillColor: 0xabcdef, markerBorderColor: 0x123456 });
+    const after = useMazeStore.getState().vectorByWallsSettings;
+    expect(after.markerShape).toBe("star");
+    expect(after.startMarker.shape).toBe(before.startMarker.shape);
+    expect(after.finishMarker.fillColor).toBe(before.finishMarker.fillColor);
+    expect(after.elevatorBadges.borderColor).toBe(before.elevatorBadges.borderColor);
+  });
+
+  it("walls: an enabled shape / fill / border link propagates a patched source to its target", () => {
+    const s = useMazeStore.getState();
+    s.addVectorByWallsLink("markerShape", "teleportFloorBadge.shape");
+    s.addVectorByWallsLink("markerFillColor", "finishMarker.fillColor");
+    s.addVectorByWallsLink("markerBorderColor", "elevatorBadges.borderColor");
+    useMazeStore.getState().patchVectorByWallsSharedStyle({ markerShape: "hexagon", markerFillColor: 0xabcdef, markerBorderColor: 0x123456 });
+    const after = useMazeStore.getState().vectorByWallsSettings;
+    expect(after.teleportFloorBadge.shape).toBe("hexagon");
+    expect(after.finishMarker.fillColor).toBe(0xabcdef);
+    expect(after.elevatorBadges.borderColor).toBe(0x123456);
+  });
+
+  it("corridors: an enabled link propagates a patched source to its target", () => {
+    const s = useMazeStore.getState();
+    s.addVectorByCorridorsLink("markerBorderWidth", "teleportFloorBadge.borderWidth");
+    useMazeStore.getState().patchVectorByCorridorsSharedStyle({ markerBorderWidth: 6 });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.teleportFloorBadge.borderWidth).toBe(6);
+  });
+
+  it("default links leave the badges' size / border / gap / corner style unlinked-by-default", () => {
+    const badgeTargets = ["teleportFloorBadge.size", "elevatorBadges.size", "teleportFloorBadge.borderWidth", "elevatorBadges.gapWidth", "teleportFloorBadge.cornerStyle"];
+    for (const target of badgeTargets) {
+      const l = DEFAULT_VECTOR_BY_WALLS_LINKS.find((x) => x.target === target);
+      expect(l, target).toBeDefined();
+      expect(l?.enabled, target).toBe(false);
+    }
   });
 });

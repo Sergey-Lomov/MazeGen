@@ -5,12 +5,12 @@ import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
-import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { MarkerAppearanceRows } from "./MarkerFieldRows";
+import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
+import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
 import { useMazeStore } from "../../store/mazeStore";
-import type { CornerStyle } from "../../pixi/renderers/types";
-import type { LinkIconVisibility } from "../../store/imageExportTypes";
-import { TILE_SIZE } from "../../pixi/constants";
+import type { LinkIconVisibility, SharedStyleSourceFields } from "../../store/imageExportTypes";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../../store/parameterLinks";
 import * as m from "~/paraglide/messages";
 
@@ -105,81 +105,70 @@ export function SettingsSection<P extends string>({
 }
 
 /** The "Shared style" section (GitHub issue #322) — one collapsible section, shared by
- *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store setters
- *  differ, same per-mode-setters-only-differ reuse convention as `MarkerSettingsGroup`/
- *  `TeleportSettingsSection`). Four rows (corner style, marker size, marker border, gap) each set a
- *  shared value that every non-overridden dependent field across the panel follows. Per-field reset
- *  buttons live on the *dependent* field's own row elsewhere in the panel (e.g. the "Waypoints"
- *  section's marker size slider), not here — this section only owns the four shared values
- *  themselves. Link editing/icon-visibility/"Reset all settings" live in the separate "Settings"
- *  section (GitHub issue #668) — this section is style values only. */
+ *  `VectorByWallsSettingsPanel`/`VectorByCorridorsSettingsPanel` (only the underlying store setter
+ *  differs, same per-mode-setters-only-differ reuse convention as `MarkerSettingsGroup`/
+ *  `TeleportSettingsSection`). GitHub issue #701: holds one "Markers" sub-section with every
+ *  property all markers share (shape, corner style, size, fill/border color, border width, gap
+ *  width — the same `MarkerAppearanceRows` every marker-like consumer renders), each a shared value
+ *  that every linked dependent field across the panel follows. Per-field reset buttons live on the
+ *  *dependent* field's own row elsewhere in the panel, not here. Link editing/icon-visibility/
+ *  "Reset all settings" live in the separate "Settings" section (GitHub issue #668) — this section
+ *  is style values only. */
 export function SharedStyleSection<P extends string>({
-  cornerStyle,
-  markerSize,
-  markerBorderWidth,
-  gapWidth,
-  onCornerStyleChange,
-  onMarkerSizeChange,
-  onMarkerBorderWidthChange,
-  onGapWidthChange,
+  settings,
+  onChange,
+  priorityColors,
 }: {
-  cornerStyle: CornerStyle;
-  markerSize: number;
-  markerBorderWidth: number;
-  gapWidth: number;
-  onCornerStyleChange: (v: CornerStyle) => void;
-  onMarkerSizeChange: (v: number) => void;
-  onMarkerBorderWidthChange: (v: number) => void;
-  onGapWidthChange: (v: number) => void;
+  settings: SharedStyleSourceFields;
+  onChange: (patch: Partial<SharedStyleSourceFields>) => void;
+  /** "Priority" project colors (GitHub issue #503) for the fill / border color rows. */
+  priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
 }) {
   return (
     <div style={styles.block}>
-      <LinkedSelectRow
-        label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
-        value={cornerStyle}
-        options={[
-          { value: "miter" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-          { value: "round" as CornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
-        ]}
-        onChange={onCornerStyleChange}
-        linkTarget={"cornerStyle" as P}
-      />
-      <LinkedSliderRow
-        label={m["image_export.vector_by_walls.shared_style_marker_size"]()}
-        value={markerSize}
-        onChange={onMarkerSizeChange}
-        min={0.1 * TILE_SIZE}
-        max={TILE_SIZE}
-        step={1}
-        format={(v) => String(Math.round(v))}
-        linkTarget={"markerSize" as P}
-      />
-      <LinkedSliderRow
-        label={m["image_export.vector_by_walls.shared_style_marker_border_width"]()}
-        value={markerBorderWidth}
-        onChange={onMarkerBorderWidthChange}
-        min={0}
-        max={10}
-        step={1}
-        format={(v) => String(v)}
-        linkTarget={"markerBorderWidth" as P}
-      />
-      <LinkedSliderRow
-        label={m["image_export.vector_by_walls.shared_style_gap_width"]()}
-        value={gapWidth}
-        onChange={onGapWidthChange}
-        min={0}
-        max={10}
-        step={1}
-        format={(v) => String(v)}
-        linkTarget={"gapWidth" as P}
-      />
+      <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_markers"]()}</div>
+      <div style={styles.group}>
+        <MarkerAppearanceRows
+          settings={{
+            shape: settings.markerShape,
+            cornerStyle: settings.cornerStyle,
+            size: settings.markerSize,
+            fillColor: settings.markerFillColor,
+            borderColor: settings.markerBorderColor,
+            borderWidth: settings.markerBorderWidth,
+            gapWidth: settings.gapWidth,
+          }}
+          onChange={(patch) => {
+            const mapped: Partial<SharedStyleSourceFields> = {};
+            if (patch.shape !== undefined) mapped.markerShape = patch.shape;
+            if (patch.cornerStyle !== undefined) mapped.cornerStyle = patch.cornerStyle;
+            if (patch.size !== undefined) mapped.markerSize = patch.size;
+            if (patch.fillColor !== undefined) mapped.markerFillColor = patch.fillColor;
+            if (patch.borderColor !== undefined) mapped.markerBorderColor = patch.borderColor;
+            if (patch.borderWidth !== undefined) mapped.markerBorderWidth = patch.borderWidth;
+            if (patch.gapWidth !== undefined) mapped.gapWidth = patch.gapWidth;
+            onChange(mapped);
+          }}
+          linkTargets={{
+            shape: "markerShape" as P,
+            cornerStyle: "cornerStyle" as P,
+            size: "markerSize" as P,
+            fillColor: "markerFillColor" as P,
+            borderColor: "markerBorderColor" as P,
+            borderWidth: "markerBorderWidth" as P,
+            gapWidth: "gapWidth" as P,
+          }}
+          priorityColors={priorityColors}
+          fieldNames={{ fillColor: PC.sharedMarkerFill.name(), borderColor: PC.sharedMarkerBorder.name() }}
+        />
+      </div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  group: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   manageLinksButton: { flex: 1 },
   infoButton: {
     flex: "none",

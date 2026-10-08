@@ -32,12 +32,11 @@ function baseWallsSettings(overrides: Partial<VectorByWallsSettings> = {}): Vect
     oneWayPattern: "triangle", oneWayColor: 0xff0000, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
     finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-    teleportLineCornerStyle: "miter", teleportLineShape: "square", teleportLineSize: 0.3,
-    teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
+    teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
     teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
     teleportAvoidFieldExit: false, teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+    teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
     teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -189,7 +188,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         fieldName={PC.bgFill.name()}
       />,
     );
-    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: String(8) })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: String(10) })));
     fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
   }
 
@@ -208,7 +207,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
     // bgFill is self-excluded; grid/floor/wall/one-way marker/start fill+border/finish fill+border
     // = 8 active rows. priority duplicates the floor row, so total still reflects de-dup, not a
     // double-count.
-    const header = screen.getByText(m["color_picker.project_colors"]({ count: "8" }));
+    const header = screen.getByText(m["color_picker.project_colors"]({ count: "10" }));
     fireEvent.click(header);
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
   });
@@ -223,7 +222,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         priorityColors={[PC.tilesFloor.at(0xabcdef)]}
       />,
     );
-    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "9" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "11" })));
     fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(2);
   });
@@ -242,7 +241,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         priorityColors={[PC.oneWaysMarker.at(0xff0000)]}
       />,
     );
-    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "7" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "9" })));
     expect(screen.queryByText(PC.oneWaysMarker.name())).not.toBeInTheDocument();
   });
 
@@ -256,7 +255,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         defaultColor={0x2a2a2a}
       />,
     );
-    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "9" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "11" })));
     fireEvent.click(screen.getByText(m["color_picker.project_colors_show_all"]()));
     expect(screen.getByText(m["color_picker.project_colors_default"]())).toBeInTheDocument();
     // The profile's own floor row survives too -- the generic "Default" label never collides with it.
@@ -272,7 +271,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         fieldName={PC.tilesFloor.name()}
       />,
     );
-    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "8" })));
+    fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "10" })));
     // The SidePanel header also shows fieldName verbatim as its title -- only that one occurrence
     // may exist; the list itself must contain none.
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);

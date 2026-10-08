@@ -1,7 +1,7 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, CornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
-import { drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
+import { drawMarkerUnderlay, drawMarkerWithBorder } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron, WINGSPAN_FRACTION } from "./wallUtils";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
@@ -460,13 +460,14 @@ function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: n
  *  *before* any badge's own fill (`drawElevatorBadges`' two-pass draw order below) — otherwise a
  *  gap ring drawn immediately before its own fill would still land on top of an already-drawn
  *  neighboring badge, cutting into it; drawing every gap first keeps every badge's own fill on top
- *  of any gap ring it might overlap, never the reverse. Sized to `radius + gapWidth` alone (no
- *  border-width addition; badges never draw a border) — still no inter-badge *avoidance* (two gap
- *  rings can still overlap each other), only a fixed draw order so a gap never wins over a fill. */
-function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, gapWidth: number, gapColor: number): void {
+ *  of any gap ring it might overlap, never the reverse. Sized to `radius + borderWidth + gapWidth`
+ *  (the shared marker convention, GitHub issue #701 — the badge now has its own border) — still no
+ *  inter-badge *avoidance* (two gap rings can still overlap each other), only a fixed draw order so
+ *  a gap never wins over a fill. */
+function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, borderWidth: number, gapWidth: number, gapColor: number): void {
   if (gapWidth <= 0) return;
   const gapGraphics = new Graphics();
-  drawMarkerUnderlay(gapGraphics, shape, pos.x, pos.y, radius, rounded, gapWidth, gapColor, 0);
+  drawMarkerUnderlay(gapGraphics, shape, pos.x, pos.y, radius, rounded, borderWidth + gapWidth, gapColor, borderWidth);
   container.addChild(gapGraphics);
 }
 
@@ -483,10 +484,9 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  The label is an MSDF `BitmapText` (GitHub issue #352) — stays crisp at any viewport zoom, unlike
  *  the plain `Text` this used to draw. `fontWeight` picks the regular vs. bold baked atlas
  *  (`msdfFontFamily`). */
-function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
+function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, borderColor: number, borderWidth: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
   const g = new Graphics();
-  drawMarkerShape(g, shape, pos.x, pos.y, radius, rounded);
-  g.fill(fillColor);
+  drawMarkerWithBorder(g, shape, pos.x, pos.y, radius, rounded, fillColor, borderColor, borderWidth);
   container.addChild(g);
   const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor);
   text.x = pos.x;
@@ -501,7 +501,7 @@ function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number
  *  reaching floor 8, e.g. `labelType: "roman"`'s `"VIII"`, since a shared badge size that changed
  *  per-elevator would look inconsistent across the maze). Starts at the baseline `radius * 1.4` and
  *  only ever scales *down* — every badge shares whatever the single worst-case label needs. */
-function fitElevatorBadgeFontSize(labels: string[], radius: number, fontWeight: ElevatorBadgeFontWeight): number {
+export function fitElevatorBadgeFontSize(labels: string[], radius: number, fontWeight: ElevatorBadgeFontWeight): number {
   const baseline = radius * 1.4;
   const targetWidth = radius * 1.6;
   let widest = 0;
@@ -530,8 +530,7 @@ function resolveMarkerInteractive(
  *  both the marker-shape and decorative render branches — badges are an independent layer on top of
  *  either. `gapColor` is the current floor color — callers pass `elevatorMarker.gapColor`, which
  *  already mirrors it (see `VerticalMarkerStyle`'s own doc comment), so badges don't need their own
- *  copy of that convention threaded through. `fontSize` is shared across the whole render pass (see
- *  `fitElevatorBadgeFontSize`), not recomputed per marker. Draws every badge's own gap ring first,
+ *  copy of that convention threaded through. The label font size is `settings.textSize` (px). Draws every badge's own gap ring first,
  *  then every badge's own body — never gap-then-body-then-gap-then-body — so no badge's fill ever
  *  ends up underneath a neighboring badge's gap ring. When `navigable` and a `hitLayer` are given
  *  (GitHub issue #478 follow-up), also adds one transparent click-to-switch-floor hit circle per
@@ -544,21 +543,23 @@ function drawElevatorBadges(
   markerRadius: number,
   settings: ElevatorBadgeSettings,
   gapColor: number,
-  fontSize: number,
   hitLayer?: Container,
   navigable?: boolean,
 ): void {
   if (!settings.enabled || marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length === 0) return;
-  const badgeRadius = markerRadius * settings.size;
+  // `settings.size` is the badge diameter in px (GitHub issue #701, like every `MarkerAppearance`);
+  // layout works with the outer radius, border ring included.
+  const fillRadius = settings.size / 2;
+  const badgeRadius = fillRadius + settings.borderWidth;
   const rounded = settings.cornerStyle === "round";
   const targetFloorIndices = marker.targetFloorIndices;
   const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
   const labels = targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
   for (const pos of positions) {
-    drawElevatorBadgeGap(container, pos, badgeRadius, settings.shape, rounded, settings.gapWidth, gapColor);
+    drawElevatorBadgeGap(container, pos, fillRadius, settings.shape, rounded, settings.borderWidth, settings.gapWidth, gapColor);
   }
   for (const [i, label] of labels.entries()) {
-    drawElevatorBadgeBody(container, positions[i], badgeRadius, settings.shape, rounded, label, settings.fillColor, settings.textColor, fontSize, settings.fontWeight);
+    drawElevatorBadgeBody(container, positions[i], fillRadius, settings.shape, rounded, label, settings.fillColor, settings.borderColor, settings.borderWidth, settings.textColor, settings.textSize, settings.textFontWeight);
   }
   // Click-to-switch-floor hit area per badge (GitHub issue #478 follow-up) — `computeElevatorBadgePositions`
   // returns positions in the same ascending order as `targetFloorIndices`, so `positions[i]` is the
@@ -639,22 +640,11 @@ export class VerticalConnectionRenderer {
     this.badgeLayer.removeChildren().forEach((c) => c.destroy());
     this.hitLayer.removeChildren().forEach((c) => c.destroy());
 
-    // Shared across every elevator badge drawn this render pass (round-4 GitHub issue #430
-    // follow-up) — see `fitElevatorBadgeFontSize`'s own doc comment for why this must be computed
-    // once over every elevator's own `targetFloorIndices`, not per marker. `markerRadius` is the
-    // same for every elevator in one pass (one style mode applies to the whole render call), sourced
-    // from whichever branch this pass actually uses.
     const decorative = data.style.style === "decorative";
-    const elevatorMarkerRadius = (decorative ? data.style.decorativeElevator.size : data.style.elevatorMarker.size) / 2;
-    const badgeRadius = elevatorMarkerRadius * data.style.elevatorBadges.size;
-    const allBadgeLabels = data.markers
-      .filter((m) => m.kind === "elevator" && m.targetFloorIndices)
-      .flatMap((m) => m.targetFloorIndices!.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, data.style.elevatorBadges.labelType)));
-    const badgeFontSize = fitElevatorBadgeFontSize(allBadgeLabels, badgeRadius, data.style.elevatorBadges.fontWeight);
 
     for (const marker of data.markers) {
       if (decorative) {
-        this.renderDecorativeMarker(marker, data.style, data.interactive, badgeFontSize);
+        this.renderDecorativeMarker(marker, data.style, data.interactive);
         continue;
       }
 
@@ -780,7 +770,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
     }
   }
 
@@ -820,7 +810,6 @@ export class VerticalConnectionRenderer {
     marker: VerticalConnectionMarker,
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
-    badgeFontSize: number,
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
@@ -831,7 +820,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize, this.hitLayer, resolveMarkerInteractive(interactive, marker));
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, this.hitLayer, resolveMarkerInteractive(interactive, marker));
       return;
     }
 

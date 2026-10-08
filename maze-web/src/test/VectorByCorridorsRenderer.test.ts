@@ -133,16 +133,14 @@ vi.mock("pixi.js", () => ({
 const startMarker: VectorByCorridorsSettings["startMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1, text: "S" };
 const finishMarker: VectorByCorridorsSettings["finishMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1, text: "F" };
 const teleportDefaults: Pick<VectorByCorridorsSettings,
-  "teleportLineCornerStyle" | "teleportLineShape" | "teleportLineSize" | "teleportEdgeColor" | "teleportEdgeBorderColor" |
-  "teleportEdgeBorderWidth" | "teleportEdgeGapWidth" | "teleportConnectorColor" | "teleportConnectorWidth" | "teleportConnectorStyle" |
+  "teleportMarker" | "teleportConnectorColor" | "teleportConnectorWidth" | "teleportConnectorStyle" |
   "teleportAvoidFieldExit" | "teleportArrowMode" | "teleportArrowPeriod" | "teleportArrowSize" | "teleportConnectorGapWidth" |
   "teleportFloorBadge" | "teleportGroupCustomization" | "teleportGroupOverrides"
 > = {
-  teleportLineCornerStyle: "miter", teleportLineShape: "diamond", teleportLineSize: 0.16,
-  teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
+  teleportMarker: { cornerStyle: "miter", shape: "diamond", size: 0.16, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 3 },
   teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
-  teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+  teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
   teleportGroupCustomization: false, teleportGroupOverrides: {},
 };
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
@@ -151,7 +149,7 @@ const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCou
 const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitSpecialShapes" | "splitGapWidth" | "splitDiagonalBowAmount"> = {
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
-const sharedStyleSource = { cornerStyle: "round" as const, markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3 };
+const sharedStyleSource = { markerShape: "circle" as const, markerFillColor: 0, markerBorderColor: 0, cornerStyle: "round" as const, markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3 };
 const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 
@@ -197,13 +195,13 @@ describe("buildTeleportWidenMarkers", () => {
     expect(markers.map((m) => m.pos)).toEqual([[0, 0], [1, 1], [2, 2]]);
   });
 
-  it("uses the base teleportLineShape/teleportLineCornerStyle/border/gap when group customization is off", () => {
+  it("uses the base teleportMarker.shape/cornerStyle/border/gap when group customization is off", () => {
     const [marker] = buildTeleportWidenMarkers([{ from: [0, 0], to: [1, 1], oneWay: false }], settingsA, []);
-    expect(marker.shape).toBe(settingsA.teleportLineShape);
-    expect(marker.cornerStyle).toBe(settingsA.teleportLineCornerStyle);
-    expect(marker.borderWidth).toBe(settingsA.teleportEdgeBorderWidth);
-    expect(marker.gapWidth).toBe(settingsA.teleportEdgeGapWidth);
-    expect(marker.radius).toBe(settingsA.teleportLineSize / 2);
+    expect(marker.shape).toBe(settingsA.teleportMarker.shape);
+    expect(marker.cornerStyle).toBe(settingsA.teleportMarker.cornerStyle);
+    expect(marker.borderWidth).toBe(settingsA.teleportMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.teleportMarker.gapWidth);
+    expect(marker.radius).toBe(settingsA.teleportMarker.size / 2);
   });
 
   it("uses a group's own override shape for its points when group customization is on", () => {
@@ -222,7 +220,7 @@ describe("buildTeleportWidenMarkers", () => {
     const settings: VectorByCorridorsSettings = { ...settingsA, teleportGroupCustomization: true, teleportGroupOverrides: {} };
     const edges = [{ from: [0, 0] as [number, number], to: [1, 1] as [number, number], oneWay: false }];
     const [marker] = buildTeleportWidenMarkers(edges, settings, buildTeleportGroups(edges));
-    expect(marker.shape).toBe(settingsA.teleportLineShape);
+    expect(marker.shape).toBe(settingsA.teleportMarker.shape);
   });
 
   it("ignores teleportGroupOverrides entirely when group customization is off", () => {
@@ -234,17 +232,17 @@ describe("buildTeleportWidenMarkers", () => {
     };
     const edges = [{ from: [0, 0] as [number, number], to: [1, 1] as [number, number], oneWay: false, fromNode: 0, toNode: 1 }];
     const [marker] = buildTeleportWidenMarkers(edges, settings, []);
-    expect(marker.shape).toBe(settingsA.teleportLineShape);
+    expect(marker.shape).toBe(settingsA.teleportMarker.shape);
   });
 
   it("returns an empty list for no teleport edges", () => {
     expect(buildTeleportWidenMarkers([], settingsA, [])).toEqual([]);
   });
 
-  it("gives a badge widen marker teleportFloorBadge.shape, not teleportLineShape (GitHub issue #485)", () => {
+  it("gives a badge widen marker teleportFloorBadge.shape, not teleportMarker.shape (GitHub issue #485)", () => {
     const settings: VectorByCorridorsSettings = {
       ...settingsA,
-      teleportLineShape: "square",
+      teleportMarker: { ...settingsA.teleportMarker, shape: "square" },
       teleportFloorBadge: { ...settingsA.teleportFloorBadge, shape: "hexagon" },
     };
     const markers = buildTeleportWidenMarkers(
@@ -261,10 +259,10 @@ describe("buildTeleportWidenMarkers", () => {
     expect(real?.shape).toBe("square");
   });
 
-  it("sizes a badge widen patch to teleportFloorBadge.size, not teleportLineSize (GitHub issue #485)", () => {
+  it("sizes a badge widen patch to teleportFloorBadge.size, not teleportMarker.size (GitHub issue #485)", () => {
     const settings: VectorByCorridorsSettings = {
       ...settingsA,
-      teleportLineSize: 0.16,
+      teleportMarker: { ...settingsA.teleportMarker, size: 0.16 },
       teleportFloorBadge: { ...settingsA.teleportFloorBadge, size: 0.4 },
     };
     const [real, badge] = buildTeleportWidenMarkers(
@@ -279,7 +277,7 @@ describe("buildTeleportWidenMarkers", () => {
   it("shapes a fromFloor-tagged badge endpoint patch as teleportFloorBadge.shape too", () => {
     const settings: VectorByCorridorsSettings = {
       ...settingsA,
-      teleportLineShape: "square",
+      teleportMarker: { ...settingsA.teleportMarker, shape: "square" },
       teleportFloorBadge: { ...settingsA.teleportFloorBadge, shape: "diamond" },
     };
     const [badge] = buildTeleportWidenMarkers(
@@ -1136,13 +1134,13 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(buildTeleportEdges).mockReturnValueOnce([{ from: [7, 7], to: [9, 9], oneWay: false }]);
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const markerWidenGraphics = (renderer as unknown as { markerWiden: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).markerWiden;
-    // settingsA.teleportLineShape is "diamond" — drawn via `poly`, not `circle` (see drawMarkerShape).
+    // settingsA.teleportMarker.shape is "diamond" — drawn via `poly`, not `circle` (see drawMarkerShape).
     expect(markerWidenGraphics.fill).toHaveBeenCalledWith({ color: settingsA.color });
     expect(markerWidenGraphics.poly).toHaveBeenCalled();
   });
 
   it("draws every widen patch (waypoint and teleport alike) in a fixed square when markerWidenShape isn't 'match_marker', regardless of each marker's own shape", () => {
-    // startMarker/teleportLineShape are non-square ("circle"/"diamond") in these fixtures — with
+    // startMarker/teleportMarker.shape are non-square ("circle"/"diamond") in these fixtures — with
     // markerWidenShape:"square" every widen patch must draw as a square (via `arcTo`, since
     // settingsA.join is "round" — rounded-square corners), never `circle`, regardless of each
     // marker's own shape (GitHub issue #313 follow-up).
@@ -1163,7 +1161,7 @@ describe("VectorByCorridorsRenderer", () => {
       edges: [],
       // floorColor is the corridor's own color here, not the canvas background (GitHub issue #313
       // follow-up) — a teleport point sits on the passage line, not on an empty floor tile.
-      lineStyle: expect.objectContaining({ shape: settingsA.teleportLineShape, floorColor: settingsA.color }),
+      lineStyle: expect.objectContaining({ shape: settingsA.teleportMarker.shape, floorColor: settingsA.color }),
       groupCustomization: settingsA.teleportGroupCustomization,
       groupOverrides: settingsA.teleportGroupOverrides,
       interactive: false,
@@ -1576,5 +1574,23 @@ describe("VectorByCorridorsRenderer", () => {
       const strokeArgs = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
       expect(strokeArgs).toContain(0xaaaaaa);
     });
+  });
+});
+
+// GitHub issue #701 — a floor badge is its own marker: the widen patch under it follows the badge's
+// corner style / border / gap, not the edge marker's.
+describe("buildTeleportWidenMarkers floor badges (GitHub issue #701)", () => {
+  it("uses teleportFloorBadge's own size, corner style, border and gap for a cross-floor badge point", () => {
+    const settings: VectorByCorridorsSettings = {
+      ...settingsA,
+      teleportMarker: { ...settingsA.teleportMarker, cornerStyle: "round", borderWidth: 1, gapWidth: 1 },
+      teleportFloorBadge: { ...settingsA.teleportFloorBadge, size: 14, cornerStyle: "miter", borderWidth: 4, gapWidth: 5 },
+    };
+    const edges = [{ from: [0, 0] as [number, number], to: [1, 1] as [number, number], oneWay: true, toFloor: 1 }];
+    const markers = buildTeleportWidenMarkers(edges, settings, []);
+    const badge = markers.find((m) => m.pos[0] === 1 && m.pos[1] === 1);
+    expect(badge).toMatchObject({ radius: 7, cornerStyle: "miter", borderWidth: 4, gapWidth: 5 });
+    const ordinary = markers.find((m) => m.pos[0] === 0);
+    expect(ordinary).toMatchObject({ cornerStyle: "round", borderWidth: 1, gapWidth: 1 });
   });
 });

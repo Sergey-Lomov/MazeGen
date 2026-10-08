@@ -28,7 +28,7 @@ export interface ParamActivitySettings {
   markerIndex?: { enabled: boolean };
 }
 
-const TELEPORT_PREFIXES = ["teleportLine", "teleportEdge", "teleportConnector", "teleportAvoidFieldExit", "teleportGroupCustomization", "teleportFloorBadge."];
+const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportGroupCustomization", "teleportFloorBadge."];
 const CROSS_FLOOR_TELEPORT_PREFIX = "teleportFloorBadge.";
 const ONE_WAY_PATHS = new Set([
   "oneWayJoin", "oneWayColor", "oneWayGapWidth", "oneWaySize", "oneWayThickness",

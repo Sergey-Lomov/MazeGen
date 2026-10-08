@@ -8,7 +8,7 @@ import type { VectorByCorridorsSettings } from "../../store/storeTypes";
  *  teleport-specific padding setting) so `drawMarkerWidenPatches` can widen the corridor stroke
  *  under them exactly like it does for start/finish markers. Each point's own shape/corner style
  *  come from its group's `TeleportGroupOverride` when `teleportGroupCustomization` is on and that
- *  group has one, else the base `teleportLineShape`/`teleportLineCornerStyle` — the widen patch must
+ *  group has one, else the base `teleportMarker.shape`/`teleportMarker.cornerStyle` — the widen patch must
  *  match what `TeleportRenderer` actually draws there, not always the base shape, so it doesn't leave
  *  a mismatched corner poking out from under a group-customized marker. Only `shape`/`cornerStyle`/
  *  `radius` matter here (widen patches are drawn in the corridor's own color, not the marker's), so
@@ -32,8 +32,8 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
   // keyed by coordinate exactly like `computeFloorBadges`, so a coord that is a badge on any edge is
   // a badge everywhere (matching `TeleportRenderer`), independent of which endpoint of which edge
   // this loop happens to reach first. A badge's own marker shape/size for the widen patch is
-  // `teleportFloorBadge.shape`/`.size` (GitHub issue #485 follow-up), not `teleportLineShape`/
-  // `teleportLineSize` or a group override — so when `markerWidenShape` is `"match_marker"` the
+  // `teleportFloorBadge.shape`/`.size` (GitHub issue #485 follow-up), not `teleportMarker.shape`/
+  // `teleportMarker.size` or a group override — so when `markerWidenShape` is `"match_marker"` the
   // patch copies the badge silhouette. `markerWidenShape` `"circle"`/`"square"` still overrides it
   // exactly like an ordinary marker.
   const badgeKeys = new Set<string>();
@@ -42,8 +42,8 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
     if (e.toFloor !== undefined) badgeKeys.add(`${e.to[0]},${e.to[1]}`);
   }
 
-  const radius = settings.teleportLineSize / 2;
-  // A badge's own radius follows `teleportFloorBadge.size`, not the edge marker's `teleportLineSize`
+  const radius = settings.teleportMarker.size / 2;
+  // A badge's own radius follows `teleportFloorBadge.size`, not the edge marker's `teleportMarker.size`
   // — `TeleportRenderer` draws it that way (GitHub issue #485), so the widen patch must too.
   const badgeRadius = settings.teleportFloorBadge.size / 2;
   const seen = new Set<string>();
@@ -59,11 +59,12 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
         pos,
         color: 0,
         radius: isBadge ? badgeRadius : radius,
-        shape: isBadge ? settings.teleportFloorBadge.shape : (override?.shape ?? settings.teleportLineShape),
-        // `drawFloorBadge` always draws the badge shape rounded, so a `match_marker` patch rounds too.
-        cornerStyle: isBadge ? "round" : settings.teleportLineCornerStyle,
-        borderWidth: isBadge ? (settings.teleportFloorBadge.borderWidth ?? settings.teleportEdgeBorderWidth) : settings.teleportEdgeBorderWidth,
-        gapWidth: settings.teleportEdgeGapWidth,
+        shape: isBadge ? settings.teleportFloorBadge.shape : (override?.shape ?? settings.teleportMarker.shape),
+        // The badge is its own marker (GitHub issue #701): corner style, border and gap come from
+        // `teleportFloorBadge`, matching `TeleportRenderer`'s badge draw.
+        cornerStyle: isBadge ? settings.teleportFloorBadge.cornerStyle : settings.teleportMarker.cornerStyle,
+        borderWidth: isBadge ? settings.teleportFloorBadge.borderWidth : settings.teleportMarker.borderWidth,
+        gapWidth: isBadge ? settings.teleportFloorBadge.gapWidth : settings.teleportMarker.gapWidth,
       });
     }
   }

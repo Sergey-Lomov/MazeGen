@@ -13,6 +13,7 @@ import type {
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE } from "../../pixi/renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
 import { propagate } from "./parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
@@ -29,9 +30,9 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
     ...(text !== undefined
       ? {
           text,
-          textEnabled: true,
+          textEnabled: false,
           textFontWeight: "bold" as const,
-          textSize: 0.55,
+          textSize: DEFAULT_MARKER_TEXT_SIZE,
           textColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
         }
       : {}),
@@ -50,8 +51,11 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
  * (which only follows enabled links) leaves them alone. The user is still free to pull them onto
  * the shared value via the panel's own per-field reset button. */
 export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
+  markerShape: DEFAULT_MAZE_RENDER_STYLE.startMarker.shape,
   cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
   markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
+  markerFillColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.fillColor,
+  markerBorderColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderColor,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
 };
@@ -78,17 +82,19 @@ export const DEFAULT_VERTICAL_SHARED_STYLE: VerticalSharedStyleFields = {
 /** Shared by both `VectorByWallsSettings` and `VectorByCorridorsSettings` — GitHub issue #313
  * extracted this out so the two modes' Teleports section defaults never drift apart, mirroring
  * `TeleportSettingsFields` itself being shared at the type level. The four fields driven by
- * "Shared style" (GitHub issue #322: `teleportLineCornerStyle`, `teleportLineSize`,
- * `teleportEdgeBorderWidth`, `teleportEdgeGapWidth`/`teleportConnectorGapWidth`) start from the
+ * "Shared style" (GitHub issue #322: `teleportMarker.cornerStyle`, `.size`,
+ * `.borderWidth`, `.gapWidth`/`teleportConnectorGapWidth`) start from the
  * canonical runtime values here and are reconciled once assembled into a full settings object. */
 export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
-  teleportLineCornerStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.cornerStyle,
-  teleportLineShape: DEFAULT_MAZE_RENDER_STYLE.teleport.shape,
-  teleportLineSize: DEFAULT_MAZE_RENDER_STYLE.teleport.size,
-  teleportEdgeColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeColor,
-  teleportEdgeBorderColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeBorderColor,
-  teleportEdgeBorderWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth,
-  teleportEdgeGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeGapWidth,
+  teleportMarker: {
+    shape: DEFAULT_MAZE_RENDER_STYLE.teleport.shape,
+    cornerStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.cornerStyle,
+    fillColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeColor,
+    borderColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeBorderColor,
+    borderWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth,
+    gapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeGapWidth,
+    size: DEFAULT_MAZE_RENDER_STYLE.teleport.size,
+  },
   teleportConnectorColor: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorColor,
   teleportConnectorWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorWidth,
   teleportConnectorStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorStyle,
@@ -146,7 +152,7 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   elevatorBadges: {
     enabled: true,
     labelType: "arabic",
-    size: 0.7,
+    size: 12,
     placement: "top_bottom",
     distance: 4,
     gap: 2,
@@ -155,8 +161,11 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
     evenDistribution: false,
     shape: "circle",
     fillColor: 0xf0c900,
+    borderColor: 0xf0c900,
+    borderWidth: 0,
     textColor: canvas.floor.default,
-    fontWeight: "bold",
+    textFontWeight: "bold",
+    textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
   },
 };
 
@@ -219,7 +228,7 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files
  * (GitHub issue #295) — kept as a single exported const so the two never drift apart.
- * `startMarker`/`finishMarker`/`wallJoin`/`oneWayJoin`/every `teleportLine*`/`teleportEdge*`/
+ * `startMarker`/`finishMarker`/`wallJoin`/`oneWayJoin`/every `teleportMarker.*`/
  * `teleportConnectorGapWidth` field driven by "Shared style" (GitHub issue #322, generalized by
  * #643) holds a placeholder value below, overwritten by the `propagate` call right after — see
  * `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment for exactly which fields it touches. */
@@ -259,7 +268,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "cornerStyle", "markerSize", "markerBorderWidth", "gapWidth",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
@@ -298,8 +307,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     thickness: TILE_SIZE / 2,
     join: "round",
     renderStyle: "contour",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: true, textFontWeight: "bold", textSize: 0.55, textColor: 0x2d2d2d },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: true, textFontWeight: "bold", textSize: 0.55, textColor: 0x2d2d2d },
+    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textColor: 0x2d2d2d },
+    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textColor: 0x2d2d2d },
     markerWidenPadding: 4,
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,
@@ -316,7 +325,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "cornerStyle", "markerSize", "markerBorderWidth", "gapWidth",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

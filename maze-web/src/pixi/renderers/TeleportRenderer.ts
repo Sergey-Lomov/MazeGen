@@ -9,7 +9,7 @@ import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { useMazeStore } from "../../store/mazeStore";
-import { attachFloorBadgeNavigation, drawFloorBadge, fitTeleportBadgeFontSize } from "./floorBadge";
+import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
 
@@ -58,12 +58,6 @@ export class TeleportRenderer {
   // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
   // `resolvePointFillState`, recomputed alongside it in `renderLine`.
   private selectionFloorBadges: Map<string, number> = new Map();
-  // GitHub issue #485 follow-up: one font size shared by every cross-floor badge in the maze,
-  // fitted so the widest label present fits inside a badge (see `fitTeleportBadgeFontSize`) — so a
-  // badge reading "I" draws at the same size as one reading "VIII" on another floor. `0` when
-  // there are no badge points. Recomputed in `renderLine` alongside `selectionFloorBadges`, stored
-  // here so `subscribeSelectionHighlight`'s redraw (which never re-runs `renderLine`) keeps it.
-  private selectionFloorBadgeFontSize = 0;
   // GitHub issue #337 follow-up: whether a badge point's hit-circle (added in `drawGroupPoints`)
   // wires click-to-switch-floor — independent of `selectionInteractive` (the group-selection
   // feature), see `render`'s own `floorNavigable` doc comment.
@@ -120,12 +114,6 @@ export class TeleportRenderer {
      *  regardless of group customization state. Defaults to `false` — only `GenerationRenderer`
      *  (a read-only, always-interactive canvas) opts in today. */
     floorNavigable?: boolean;
-    /** Total floor count of the whole project (GitHub issue #485 follow-up) — when set, the one
-     *  shared badge font size is fitted to the widest label any floor's badge *could* carry
-     *  (`formatIndexLabel(0 .. floorCount - 1)`), not just the badges on the currently rendered
-     *  floor, so the size stays identical across a floor switch. Omitted by non-export callers,
-     *  which fall back to fitting only this floor's own visible badges. */
-    floorCount?: number;
   }): void {
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -144,7 +132,6 @@ export class TeleportRenderer {
       data.avoidFieldExit ?? false,
       data.fieldCells ?? [],
       data.floorNavigable ?? false,
-      data.floorCount,
     );
   }
 
@@ -159,7 +146,6 @@ export class TeleportRenderer {
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
     floorNavigable: boolean,
-    floorCount: number | undefined,
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -173,28 +159,6 @@ export class TeleportRenderer {
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionEdges = edges;
     this.selectionFloorBadges = computeFloorBadges(edges);
-    // One shared badge font size fitted to the widest label any badge in the maze could carry
-    // (GitHub issue #485 follow-up). With `floorCount` (export callers) the candidate labels are
-    // every floor's display number `formatIndexLabel(0 .. floorCount - 1)` — a cross-floor teleport
-    // can point at any floor, so this upper bound keeps the size identical whichever floor is
-    // rendered and whichever badges happen to be visible. Without it, fall back to this floor's own
-    // visible badges (same label formula `drawGroupPoints` uses: `formatIndexLabel(n - 1)`).
-    // Skipped entirely when this floor draws no badge — nothing to size, and the `BitmapText`
-    // width probe is pure cost (and needs a canvas the way a headless test may not have one).
-    if (this.selectionFloorBadges.size === 0 || style.connectorStyle === "none") {
-      this.selectionFloorBadgeFontSize = 0;
-    } else {
-      const badgeLabels =
-        floorCount !== undefined
-          ? Array.from({ length: Math.max(floorCount, 1) }, (_, i) => formatIndexLabel(i, style.floorBadge.labelType))
-          : [...this.selectionFloorBadges.values()].map((n) => formatIndexLabel(n - 1, style.floorBadge.labelType));
-      this.selectionFloorBadgeFontSize = fitTeleportBadgeFontSize(
-        badgeLabels,
-        style.floorBadge.size / 2,
-        style.floorBadge.textPadding,
-        style.floorBadge.borderWidth ?? style.borderWidth,
-      );
-    }
     this.selectionInteractive = groupCustomization && interactive;
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
@@ -273,9 +237,8 @@ export class TeleportRenderer {
    *  that every connector (this point's own or another's) draws on top of it (see
    *  `renderGroups`'s own 3-pass doc comment). A point flagged in `selectionFloorBadges` (GitHub
    *  issue #337) draws its own plain circular gap ring instead — sized past the badge's own border
-   *  ring, which follows `style.borderWidth` (GitHub issue #485 follow-up), unconditional, unlike
-   *  the ordinary marker's ring below, since a badge with no gap at all reads as fused to whatever
-   *  connector segment runs under it. No-op for ordinary points when `edgeGapWidth` is `0`. */
+   *  ring, which follows `floorBadge.gapWidth` (GitHub issue #701 — previously `max(edgeGapWidth, 1)`).
+   *  No-op for ordinary points when `edgeGapWidth` is `0`. */
   private drawGroupGaps(
     g: Graphics,
     group: TeleportGroup,
@@ -293,12 +256,14 @@ export class TeleportRenderer {
         // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
         // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
         if (style.connectorStyle === "none") continue;
-        // GitHub issue #485: the badge has its own `floorBadge.size`, independent of the edge
-        // marker's `style.size`, and its border follows `style.borderWidth`. The gap ring matches
-        // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
-        // `drawGroupPoints` below), not a forced circle.
+        // GitHub issue #485/#701: the badge is its own marker — `floorBadge.size`/`borderWidth`/
+        // `gapWidth`/`cornerStyle` are independent of the edge marker's. The gap ring matches the
+        // badge's own `floorBadge.shape` and corner style, like the badge body in `drawGroupPoints`
+        // below, not a forced circle.
         const badgeR = style.floorBadge.size / 2;
-        drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, true, (style.floorBadge.borderWidth ?? style.borderWidth) + Math.max(style.edgeGapWidth, 1), style.floorColor, style.floorBadge.borderWidth ?? style.borderWidth);
+        if (style.floorBadge.gapWidth > 0) {
+          drawMarkerUnderlay(g, style.floorBadge.shape, px, py, badgeR, style.floorBadge.cornerStyle === "round", style.floorBadge.borderWidth + style.floorBadge.gapWidth, style.floorColor, style.floorBadge.borderWidth);
+        }
         continue;
       }
       if (style.edgeGapWidth <= 0) continue;
@@ -325,8 +290,7 @@ export class TeleportRenderer {
     const color = override?.fillColor ?? style.edgeColor;
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
     // GitHub issue #485: the cross-floor badge has its own configurable shape/label/size/text
-    // color, distinct from the edge marker's own `shape`/`style.size` above; the font size is the
-    // one shared across every badge in the maze (`selectionFloorBadgeFontSize`).
+    // style, distinct from the edge marker's own `shape`/`style.size` above.
     const badgeR = style.floorBadge.size / 2;
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
@@ -346,11 +310,13 @@ export class TeleportRenderer {
           shape: style.floorBadge.shape,
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,
-          fontSize: this.selectionFloorBadgeFontSize || undefined,
-          borderWidth: style.floorBadge.borderWidth ?? style.borderWidth,
+          fontWeight: style.floorBadge.textFontWeight,
+          fontSize: style.floorBadge.textSize,
+          borderWidth: style.floorBadge.borderWidth,
+          rounded: style.floorBadge.cornerStyle === "round",
         });
         if (this.selectionFloorNavigable) {
-          attachFloorBadgeNavigation(overlay, px, py, badgeR, floorNumber - 1, style.floorBadge.borderWidth ?? style.borderWidth);
+          attachFloorBadgeNavigation(overlay, px, py, badgeR, floorNumber - 1, style.floorBadge.borderWidth);
         }
         continue;
       }

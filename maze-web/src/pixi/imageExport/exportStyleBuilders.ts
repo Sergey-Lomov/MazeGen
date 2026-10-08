@@ -65,13 +65,13 @@ export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getSta
  *  supplies whatever background color its own mode occludes the connector line with. */
 export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorColor: number): TeleportLineStyle {
   return {
-    shape: settings.teleportLineShape,
-    cornerStyle: settings.teleportLineCornerStyle,
-    size: settings.teleportLineSize,
-    edgeColor: settings.teleportEdgeColor,
-    edgeBorderColor: settings.teleportEdgeBorderColor,
-    borderWidth: settings.teleportEdgeBorderWidth,
-    edgeGapWidth: settings.teleportEdgeGapWidth,
+    shape: settings.teleportMarker.shape,
+    cornerStyle: settings.teleportMarker.cornerStyle,
+    size: settings.teleportMarker.size,
+    edgeColor: settings.teleportMarker.fillColor,
+    edgeBorderColor: settings.teleportMarker.borderColor,
+    borderWidth: settings.teleportMarker.borderWidth,
+    edgeGapWidth: settings.teleportMarker.gapWidth,
     connectorColor: settings.teleportConnectorColor,
     connectorWidth: settings.teleportConnectorWidth,
     connectorStyle: settings.teleportConnectorStyle,

@@ -2,8 +2,8 @@ import type * as React from "react";
 import type { ElevatorBadgeSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
-import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import { markerShapeSelectOptions } from "./MarkerSettingsGroup";
+import { LinkedToggleRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
 /** "Badges" sub-subsection of the Elevator sub-group (GitHub issue #430) — plain-weight label, not
@@ -17,7 +17,7 @@ import * as m from "~/paraglide/messages";
  *  `links`/`registry`/`onSetLinkEnabled`/`onAddLink` from the nearest `LinkContextProvider` via the
  *  `Linked*Row` wrappers (GitHub issue #652 follow-up) rather than taking them as props. Shared by
  *  both render modes, so `P` is generic over each mode's own `ParamPath` union. */
-export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, textColorPriority, fillColorDefault, textColorDefault, fillColorFieldName, textColorFieldName }: {
+export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorFieldName, fillColorFieldName, textColorFieldName }: {
   settings: ElevatorBadgeSettings;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
@@ -25,7 +25,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
   linkTargets: {
     enabled: P | null;
     labelType: P | null;
-    fontWeight: P | null;
+    textFontWeight: P | null;
     placement: P | null;
     shape: P | null;
     cornerStyle: P | null;
@@ -35,17 +35,23 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
     gap: P | null;
     gapWidth: P | null;
     fillColor: P | null;
+    borderColor: P | null;
+    borderWidth: P | null;
     textColor: P | null;
+    textSize: P | null;
   };
   /** "Priority" project colors (GitHub issue #503) for the badge fill / text color rows. */
   fillColorPriority?: ProjectColorEntry[];
+  borderColorPriority?: ProjectColorEntry[];
   textColorPriority?: ProjectColorEntry[];
   /** Factory defaults (GitHub issue #503) — pinned as each row's first "Default" project color. */
   fillColorDefault?: number;
+  borderColorDefault?: number;
   textColorDefault?: number;
   /** Composite field names (GitHub issue #503) — the rows carry the generic "Fill color" /
    *  "Text color" labels, so an explicit name isolates the row in the "Project colors" list. */
   fillColorFieldName?: string;
+  borderColorFieldName?: string;
   textColorFieldName?: string;
 }) {
   return (
@@ -72,16 +78,6 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               linkTarget={linkTargets.labelType}
             />
             <LinkedSelectRow
-              label={m["image_export.vector_by_walls.elevator_badges_font_weight"]()}
-              value={settings.fontWeight}
-              options={[
-                { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
-                { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
-              ]}
-              onChange={(fontWeight) => onChange({ fontWeight })}
-              linkTarget={linkTargets.fontWeight}
-            />
-            <LinkedSelectRow
               label={m["image_export.vector_by_walls.elevator_badges_placement"]()}
               value={settings.placement}
               options={[
@@ -93,33 +89,6 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               ]}
               onChange={(placement) => onChange({ placement })}
               linkTarget={linkTargets.placement}
-            />
-            <LinkedSelectRow
-              label={m["image_export.vector_by_walls.elevator_badges_shape"]()}
-              value={settings.shape}
-              options={markerShapeSelectOptions()}
-              onChange={(shape) => onChange({ shape })}
-              linkTarget={linkTargets.shape}
-            />
-            <LinkedSelectRow
-              label={m["image_export.vector_by_walls.marker_corner_style"]()}
-              value={settings.cornerStyle}
-              options={[
-                { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-                { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
-              ]}
-              onChange={onCornerStyleChange}
-              linkTarget={linkTargets.cornerStyle}
-            />
-            <LinkedSliderRow
-              label={m["image_export.vector_by_walls.elevator_badges_size"]()}
-              value={settings.size}
-              onChange={(size) => onChange({ size })}
-              min={0.2}
-              max={1}
-              step={0.05}
-              format={(v) => v.toFixed(2)}
-              linkTarget={linkTargets.size}
             />
             <LinkedSliderRow
               label={m["image_export.vector_by_walls.elevator_badges_distance"]()}
@@ -148,33 +117,26 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               disabled={settings.placement === "full_circle" && settings.evenDistribution}
               linkTarget={linkTargets.gap}
             />
-            <LinkedSliderRow
-              label={m["image_export.vector_by_walls.elevator_badges_gap_width"]()}
-              value={settings.gapWidth}
-              onChange={(gapWidth) => onChange({ gapWidth })}
-              min={0}
-              max={10}
-              step={1}
-              format={(v) => String(v)}
-              linkTarget={linkTargets.gapWidth}
+            <MarkerAppearanceRows
+              settings={settings}
+              onChange={(patch) => {
+                // `cornerStyle` is "Shared style"-linked: its own handler disables that link first.
+                const { cornerStyle, ...rest } = patch;
+                if (cornerStyle !== undefined) onCornerStyleChange(cornerStyle);
+                if (Object.keys(rest).length > 0) onChange(rest);
+              }}
+              linkTargets={linkTargets}
+              priorityColors={{ fillColor: fillColorPriority, borderColor: borderColorPriority }}
+              defaultColors={{ fillColor: fillColorDefault, borderColor: borderColorDefault }}
+              fieldNames={{ fillColor: fillColorFieldName, borderColor: borderColorFieldName }}
             />
-            <LinkedColorRow
-              label={m["image_export.vector_by_walls.elevator_badges_fill_color"]()}
-              color={settings.fillColor}
-              onChange={(fillColor) => onChange({ fillColor })}
-              priorityColors={fillColorPriority}
-              defaultColor={fillColorDefault}
-              fieldName={fillColorFieldName}
-              linkTarget={linkTargets.fillColor}
-            />
-            <LinkedColorRow
-              label={m["image_export.vector_by_walls.elevator_badges_text_color"]()}
-              color={settings.textColor}
-              onChange={(textColor) => onChange({ textColor })}
+            <TextStyleRows
+              settings={settings}
+              onChange={onChange}
+              linkTargets={linkTargets}
               priorityColors={textColorPriority}
               defaultColor={textColorDefault}
               fieldName={textColorFieldName}
-              linkTarget={linkTargets.textColor}
             />
           </>
         )}

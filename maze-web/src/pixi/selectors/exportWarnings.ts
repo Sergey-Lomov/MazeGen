@@ -240,7 +240,7 @@ function filterNodesOnSpecialSplit(
 
 /** The three teleport-only checks (`teleport_marker_invisible`, `teleport_group_ambiguous`,
  *  `teleport_waypoint_overlap`) both "Vector by walls" and "Vector by corridors" share — every
- *  field they read (`teleportEdgeBorderWidth`, `teleportConnectorStyle`, `teleportGroupOverrides`,
+ *  field they read (`teleportMarker.borderWidth`, `teleportConnectorStyle`, `teleportGroupOverrides`,
  *  etc.) lives on the common `TeleportSettingsFields` (GitHub issue #313 follow-up: teleport
  *  rendering transfers as-is between the two modes, so its warnings should too — previously
  *  `computeVectorByCorridorsWarnings` detected none of these, silently missing e.g. ambiguous
@@ -259,9 +259,9 @@ function computeTeleportWarnings(
 
   // --- teleport_marker_invisible: a one-way teleport's exit-only endpoint draws "outline" —
   // floor-colored fill, not `edgeColor` — so with no border it has nothing to draw at all. Only
-  // checked when `teleportEdgeBorderWidth` is 0; a filled ("entry"/two-way) point is unaffected
+  // checked when `teleportMarker.borderWidth` is 0; a filled ("entry"/two-way) point is unaffected
   // regardless of border, since its own `edgeColor` fill is always visible. ---
-  if (settings.teleportEdgeBorderWidth === 0) {
+  if (settings.teleportMarker.borderWidth === 0) {
     const fillStates = buildPointFillStates(teleportEdges);
     const outlineNodeIds = new Set<number>();
     for (const e of teleportEdges) {
@@ -288,7 +288,7 @@ function computeTeleportWarnings(
     const groups = buildTeleportGroups(teleportEdges);
     const resolvedKey = (groupKey: string) => {
       const o = settings.teleportGroupOverrides[groupKey];
-      return `${o?.fillColor ?? settings.teleportEdgeColor}:${o?.borderColor ?? settings.teleportEdgeBorderColor}:${o?.shape ?? settings.teleportLineShape}`;
+      return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
     };
     const byResolved = new Map<string, typeof groups>();
     for (const g of groups) {
@@ -321,7 +321,7 @@ function computeTeleportWarnings(
 
   // --- teleport_waypoint_overlap: a teleport marker's visual footprint overlaps a start/finish
   // marker's footprint. One warning total, covering every overlapping pair. ---
-  const teleportRadius = markerWorldRadius(settings.teleportLineSize, settings.teleportEdgeBorderWidth);
+  const teleportRadius = markerWorldRadius(settings.teleportMarker.size, settings.teleportMarker.borderWidth);
   const overlappingNodeIds = new Set<number>();
   for (const waypoint of [startMarker, finishMarker]) {
     if (waypoint.id === null) continue;
@@ -717,7 +717,7 @@ function addCommonContrastWarnings(
     const groups = settings.teleportGroupCustomization ? buildTeleportGroups(teleportEdges) : [];
     const edgesByKey = new Map(teleportEdges.map((edge) => [teleportEdgeKey(edge), edge]));
     if (groups.length === 0) {
-      addMarker({ fillColor: settings.teleportEdgeColor, borderColor: settings.teleportEdgeBorderColor, borderWidth: settings.teleportEdgeBorderWidth }, teleportEdges.flatMap((edge) => [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined)));
+      addMarker({ fillColor: settings.teleportMarker.fillColor, borderColor: settings.teleportMarker.borderColor, borderWidth: settings.teleportMarker.borderWidth }, teleportEdges.flatMap((edge) => [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined)));
     } else {
       for (const group of groups) {
         const override = settings.teleportGroupOverrides[group.key];
@@ -726,9 +726,9 @@ function addCommonContrastWarnings(
           return edge ? [edge.fromNode, edge.toNode].filter((id): id is number => id !== undefined) : [];
         });
         addMarker({
-          fillColor: override?.fillColor ?? settings.teleportEdgeColor,
-          borderColor: override?.borderColor ?? settings.teleportEdgeBorderColor,
-          borderWidth: settings.teleportEdgeBorderWidth,
+          fillColor: override?.fillColor ?? settings.teleportMarker.fillColor,
+          borderColor: override?.borderColor ?? settings.teleportMarker.borderColor,
+          borderWidth: settings.teleportMarker.borderWidth,
         }, groupNodeIds);
       }
     }
@@ -824,7 +824,7 @@ function addCommonContrastWarnings(
   if (crossFloorTeleports.length > 0) {
     // Group overrides replace the badge border as well as the connector border. Without group
     // customization the badge has its own dedicated border color.
-    const badgeBorderWidth = settings.teleportFloorBadge.borderWidth ?? settings.teleportEdgeBorderWidth;
+    const badgeBorderWidth = settings.teleportFloorBadge.borderWidth;
     const badgeHasBorder = badgeBorderWidth > 0;
     pushContrastWarningEntries(
       warnings,
@@ -959,7 +959,7 @@ export function computeVectorByWallsWarnings(
     const verticalPairs = selectVerticalPassagePairSet(edges);
     const markers = buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, 0, verticalPairs, edges);
     const markerRadius = settings.elevatorMarker.size / 2;
-    const badgeRadius = markerRadius * settings.elevatorBadges.size;
+    const badgeRadius = settings.elevatorBadges.size / 2 + settings.elevatorBadges.borderWidth;
     const overlappingNodeIds: number[] = [];
     const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];
     const tooManyNodeIds: number[] = [];

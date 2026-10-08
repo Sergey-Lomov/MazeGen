@@ -97,7 +97,8 @@ type SectionKey =
   | "elevator"
   | "splits"
   | "marker_index"
-  | "vertical";
+  | "vertical"
+  | "shared_style";
 
 type RoleKey =
   | "fill"
@@ -115,6 +116,7 @@ type RoleKey =
   | "badge_text"
   | "badges_fill"
   | "badges_text"
+  | "badges_border"
   | "arrow"
   | "accent"
   | "line"
@@ -135,6 +137,7 @@ const sectionLabel: Record<SectionKey, () => string> = {
   splits: m["image_export.vector_by_walls.section_splits"],
   marker_index: m["color_picker.entry.section.marker_index"],
   vertical: m["color_picker.entry.section.vertical_shared_style"],
+  shared_style: m["color_picker.entry.section.shared_style"],
 };
 
 const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
@@ -153,6 +156,7 @@ const roleLabel: Record<Exclude<RoleKey, "split_node">, () => string> = {
   badge_text: m["color_picker.entry.role.badge_text"],
   badges_fill: m["color_picker.entry.role.badges_fill"],
   badges_text: m["color_picker.entry.role.badges_text"],
+  badges_border: m["color_picker.entry.role.badges_border"],
   arrow: m["color_picker.entry.role.arrow"],
   accent: m["color_picker.entry.role.accent"],
   line: m["color_picker.entry.role.line"],
@@ -224,6 +228,10 @@ export const PC = {
   // panel-level analogue of `twoWayFill`/`twoWayArrow` etc., one section up: these feed the three
   // marker groups' overlapping fields via disabled-by-default links rather than being drawn
   // themselves.
+  // GitHub issue #701 — "Shared style" > "Markers" fill / border sources.
+  sharedMarkerFill: field(["shared_style"], "fill"),
+  sharedMarkerBorder: field(["shared_style"], "border"),
+
   verticalFill: field(["vertical"], "fill"),
   verticalArrow: field(["vertical"], "arrow"),
   verticalDecorLine: field(["vertical"], "line"),
@@ -240,6 +248,7 @@ export const PC = {
   elevatorBorder: field(["elevator"], "border"),
   elevatorArrow: field(["elevator"], "arrow"),
   elevatorBadgeFill: field(["elevator"], "badges_fill"),
+  elevatorBadgeBorder: field(["elevator"], "badges_border"),
   elevatorBadgeText: field(["elevator"], "badges_text"),
 
   markerIndexFill: field(["marker_index"], "fill"),
@@ -274,8 +283,8 @@ function markerColors(fill: ColorField, border: ColorField | null, marker: Marke
 function teleportColors(s: VectorByWallsSettings | VectorByCorridorsSettings, vis: SectionVisibility): ProjectColorEntry[] {
   if (!vis.teleports) return [];
   const rows = [
-    PC.teleportEdge.at(s.teleportEdgeColor),
-    PC.teleportEdgeBorder.at(s.teleportEdgeBorderColor),
+    PC.teleportEdge.at(s.teleportMarker.fillColor),
+    PC.teleportEdgeBorder.at(s.teleportMarker.borderColor),
   ];
   // The connector color's subsection is hidden entirely when no connector line is drawn.
   if (vis.teleportConnector) rows.push(PC.teleportConnector.at(s.teleportConnectorColor));
@@ -332,6 +341,7 @@ function elevatorBadgeColors(s: VectorByWallsSettings | VectorByCorridorsSetting
   if (!vis.vertical || !vis.elevators) return [];
   return [
     PC.elevatorBadgeFill.at(s.elevatorBadges.fillColor),
+    PC.elevatorBadgeBorder.at(s.elevatorBadges.borderColor),
     PC.elevatorBadgeText.at(s.elevatorBadges.textColor),
   ];
 }
@@ -396,6 +406,8 @@ function vectorByWallsColors(state: MazeState, s: VectorByWallsSettings, slotCou
     PC.tilesFloor.at(s.floorColor),
     ...(vis.wall ? [PC.tilesWall.at(s.wallColor)] : []),
     ...(vis.oneWayIndicator ? [PC.oneWaysMarker.at(s.oneWayColor)] : []),
+    PC.sharedMarkerFill.at(s.markerFillColor),
+    PC.sharedMarkerBorder.at(s.markerBorderColor),
     ...markerColors(PC.startFill, PC.startBorder, s.startMarker, PC.startText),
     ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker, PC.finishText),
     ...teleportColors(s, vis),
@@ -416,6 +428,8 @@ function vectorByCorridorsColors(state: MazeState, s: VectorByCorridorsSettings,
     ...(vis.grid ? [PC.bgGrid.at(s.gridColor)] : []),
     PC.corridorFill.at(s.color),
     ...(vis.oneWayIndicator ? [PC.oneWaysMarker.at(s.oneWayColor)] : []),
+    PC.sharedMarkerFill.at(s.markerFillColor),
+    PC.sharedMarkerBorder.at(s.markerBorderColor),
     ...markerColors(PC.startFill, PC.startBorder, s.startMarker, PC.startText),
     ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker, PC.finishText),
     ...teleportColors(s, vis),
@@ -474,15 +488,16 @@ export function overrideActiveProfileColor(
       set(PC.tilesFloor, (v) => { if ("floorColor" in settings) settings.floorColor = v; }) ||
       set(PC.tilesWall, (v) => { if ("wallColor" in settings) settings.wallColor = v; }) ||
       set(PC.oneWaysMarker, (v) => { settings.oneWayColor = v; }) ||
+      set(PC.sharedMarkerFill, (v) => { settings.markerFillColor = v; }) || set(PC.sharedMarkerBorder, (v) => { settings.markerBorderColor = v; }) ||
       marker(PC.startFill, PC.startBorder, settings.startMarker) || marker(PC.finishFill, PC.finishBorder, settings.finishMarker) ||
       set(PC.startText, (v) => { settings.startMarker.textColor = v; }) || set(PC.finishText, (v) => { settings.finishMarker.textColor = v; }) ||
-      set(PC.teleportEdge, (v) => { settings.teleportEdgeColor = v; }) || set(PC.teleportEdgeBorder, (v) => { settings.teleportEdgeBorderColor = v; }) ||
+      set(PC.teleportEdge, (v) => { settings.teleportMarker.fillColor = v; }) || set(PC.teleportEdgeBorder, (v) => { settings.teleportMarker.borderColor = v; }) ||
       set(PC.teleportConnector, (v) => { settings.teleportConnectorColor = v; }) ||
       set(PC.teleportBadgeFill, (v) => { settings.teleportFloorBadge.fillColor = v; }) || set(PC.teleportBadgeBorder, (v) => { settings.teleportFloorBadge.borderColor = v; }) || set(PC.teleportBadgeText, (v) => { settings.teleportFloorBadge.textColor = v; }) ||
       marker(PC.twoWayFill, PC.twoWayBorder, settings.twoWayPassageMarker) || set(PC.twoWayArrow, (v) => { settings.twoWayArrowColor = v; }) ||
       marker(PC.oneWayFill, PC.oneWayBorder, settings.oneWayPassageMarker) || set(PC.oneWayArrow, (v) => { settings.oneWayArrowColor = v; }) ||
       marker(PC.elevatorFill, PC.elevatorBorder, settings.elevatorMarker) || set(PC.elevatorArrow, (v) => { settings.elevatorArrowColor = v; }) ||
-      set(PC.elevatorBadgeFill, (v) => { settings.elevatorBadges.fillColor = v; }) || set(PC.elevatorBadgeText, (v) => { settings.elevatorBadges.textColor = v; }) ||
+      set(PC.elevatorBadgeFill, (v) => { settings.elevatorBadges.fillColor = v; }) || set(PC.elevatorBadgeBorder, (v) => { settings.elevatorBadges.borderColor = v; }) || set(PC.elevatorBadgeText, (v) => { settings.elevatorBadges.textColor = v; }) ||
       set(PC.markerIndexFill, (v) => { settings.markerIndex.fillColor = v; }) || set(PC.markerIndexText, (v) => { settings.markerIndex.textColor = v; }) || set(PC.markerIndexBorder, (v) => { settings.markerIndex.borderColor = v; })) return settings;
   // Split colors are sparse overrides: an untouched profile keeps `splitNodeColors` empty and
   // falls back to the live canvas palette. The color picker still exposes every slot present in

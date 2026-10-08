@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../pixi/defaultMazeRenderStyle";
 import { DEFAULT_VERTICAL_STYLE } from "../pixi/renderers/VerticalConnectionRenderer";
 import {
@@ -28,17 +29,17 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
     expect(buildMarkerStyle(settings.startMarker, settings.floorColor)).toEqual({
       ...DEFAULT_MAZE_RENDER_STYLE.startMarker,
       text: "S",
-      textEnabled: true,
+      textEnabled: false,
       textFontWeight: "bold",
-      textSize: 0.55,
+      textSize: DEFAULT_MARKER_TEXT_SIZE,
       textColor: settings.startMarker.textColor,
     });
     expect(buildMarkerStyle(settings.finishMarker, settings.floorColor)).toEqual({
       ...DEFAULT_MAZE_RENDER_STYLE.finishMarker,
       text: "F",
-      textEnabled: true,
+      textEnabled: false,
       textFontWeight: "bold",
-      textSize: 0.55,
+      textSize: DEFAULT_MARKER_TEXT_SIZE,
       textColor: settings.finishMarker.textColor,
     });
     expect(DEFAULT_VERTICAL_STYLE).toBe(DEFAULT_MAZE_RENDER_STYLE.verticalConnections);

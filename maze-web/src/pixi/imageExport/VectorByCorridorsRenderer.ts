@@ -514,9 +514,6 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
       // so no tool-driven gating applies.
       floorNavigable: true,
-      // Fit the shared badge font to the widest label any floor could carry (GitHub issue #485
-      // follow-up) — constant across a floor switch.
-      floorCount: state.floors.length,
       cfg,
       waypoints: teleportWaypoints,
       avoidFieldExit: settings.teleportAvoidFieldExit,
