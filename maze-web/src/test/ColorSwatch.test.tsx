@@ -171,13 +171,13 @@ describe("ColorSwatch", () => {
     expect(screen.queryByTestId("color-picker-preview")).toBeNull();
   });
 
-  it("an invalid hex disables Apply and does not move the preview", () => {
+  it("an invalid hex keystroke is rejected and does not move the preview", () => {
     const onChange = vi.fn();
     render(<ColorSwatch color={0x112233} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#zz" } });
     expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(17, 34, 51)");
-    expect((screen.getByText(applyLabel()) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText(applyLabel()) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("Cancel closes the picker without committing and restores the original via onPreview", () => {

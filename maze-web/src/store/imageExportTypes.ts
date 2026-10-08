@@ -382,6 +382,31 @@ export interface MarkerSettings {
   /** Marker radius, in px (GitHub issue #681 — previously a fraction of the tile size) — same
    *  convention as `VectorByWallsSettings.teleportLineSize`. */
   size: number;
+  /** Custom badge label (GitHub issue #697), e.g. a start/finish marker's "S"/"F". Empty/omitted
+   *  draws no label. Currently restricted to a single text — UI input truncates to the first
+   *  one and restricts to the baked MSDF charset (`tools/msdf/generate.mjs`), uppercased — but the
+   *  field itself is not conceptually limited to one glyph, hence `text` rather than `text`.
+   *  Optional since only `VectorByWallsSettings`/`VectorByCorridorsSettings`'s own `startMarker`/
+   *  `finishMarker` offer this in the UI so far — the three vertical-connection markers
+   *  (`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`, which reuse this same interface)
+   *  simply never set it. */
+  text?: string;
+  /** "Show text" toggle (GitHub issue #697 follow-up) — lets `text` survive being hidden instead of
+   *  clearing it, so re-enabling restores the same text. `undefined`/`true` draws the badge
+   *  (matches pre-toggle behavior); `false` suppresses it. Optional for the same reason as `text`. */
+  textEnabled?: boolean;
+  /** Text badge font weight (GitHub issue #697 follow-up) — resolved to a baked MSDF atlas family,
+   *  same convention as every other label in this codebase. Defaults to `"bold"` when unset.
+   *  Optional for the same reason as `text`. */
+  textFontWeight?: LabelFontWeight;
+  /** Text badge font size as a fraction of `size` (diameter). Defaults to `0.55` when unset.
+   *  Optional for the same reason as `text`. */
+  textSize?: number;
+  /** Text badge color (GitHub issue #697 second follow-up) — independently configurable, same
+   *  convention as `ElevatorBadgeSettings.textColor`/`TeleportFloorBadgeSettings.textColor`.
+   *  Defaults to `gapColor` (the floor-colored knockout look the badge had before this field
+   *  existed) when unset. Optional for the same reason as `text`. */
+  textColor?: number;
 }
 
 /** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
@@ -793,6 +818,11 @@ export interface ImageExportActions {
   setVectorByCorridorsJoin: (join: CornerStyle) => void;
   setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsStartMarkerText: (text: string) => void;
+  setVectorByCorridorsStartMarkerTextEnabled: (enabled: boolean) => void;
+  setVectorByCorridorsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
+  setVectorByCorridorsStartMarkerTextSize: (v: number) => void;
+  setVectorByCorridorsStartMarkerTextColor: (color: number) => void;
   setVectorByCorridorsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsStartMarkerFillColor: (color: number) => void;
   setVectorByCorridorsStartMarkerBorderColor: (color: number) => void;
@@ -800,6 +830,11 @@ export interface ImageExportActions {
   setVectorByCorridorsStartMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsStartMarkerSize: (v: number) => void;
   setVectorByCorridorsFinishMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsFinishMarkerText: (text: string) => void;
+  setVectorByCorridorsFinishMarkerTextEnabled: (enabled: boolean) => void;
+  setVectorByCorridorsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
+  setVectorByCorridorsFinishMarkerTextSize: (v: number) => void;
+  setVectorByCorridorsFinishMarkerTextColor: (color: number) => void;
   setVectorByCorridorsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsFinishMarkerFillColor: (color: number) => void;
   setVectorByCorridorsFinishMarkerBorderColor: (color: number) => void;
@@ -916,6 +951,11 @@ export interface ImageExportActions {
   setVectorByWallsOneWayThickness: (v: number) => void;
   setVectorByWallsOneWayJoin: (join: CornerStyle) => void;
   setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsStartMarkerText: (text: string) => void;
+  setVectorByWallsStartMarkerTextEnabled: (enabled: boolean) => void;
+  setVectorByWallsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
+  setVectorByWallsStartMarkerTextSize: (v: number) => void;
+  setVectorByWallsStartMarkerTextColor: (color: number) => void;
   setVectorByWallsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsStartMarkerFillColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderColor: (color: number) => void;
@@ -923,6 +963,11 @@ export interface ImageExportActions {
   setVectorByWallsStartMarkerGapWidth: (v: number) => void;
   setVectorByWallsStartMarkerSize: (v: number) => void;
   setVectorByWallsFinishMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsFinishMarkerText: (text: string) => void;
+  setVectorByWallsFinishMarkerTextEnabled: (enabled: boolean) => void;
+  setVectorByWallsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
+  setVectorByWallsFinishMarkerTextSize: (v: number) => void;
+  setVectorByWallsFinishMarkerTextColor: (color: number) => void;
   setVectorByWallsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsFinishMarkerFillColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderColor: (color: number) => void;

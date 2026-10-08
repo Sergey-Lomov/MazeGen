@@ -196,8 +196,10 @@ export const PC = {
 
   startFill: field(["start"], "fill"),
   startBorder: field(["start"], "border"),
+  startText: field(["start"], "text"),
   finishFill: field(["finish"], "fill"),
   finishBorder: field(["finish"], "border"),
+  finishText: field(["finish"], "text"),
 
   teleportEdge: field(["teleports"], "edge"),
   teleportEdgeBorder: field(["teleports"], "edge_border"),
@@ -260,10 +262,12 @@ export const PC = {
   },
 } as const;
 
-/** Every `MarkerSettings` color field. `borderColor` is skipped when the panel hides it. */
-function markerColors(fill: ColorField, border: ColorField | null, marker: MarkerSettings): ProjectColorEntry[] {
+/** Every `MarkerSettings` color field. `border`/`text` are skipped when `null` — `text` only
+ *  applies to the start/finish markers, the only ones with a symbol (`showTextSection`). */
+function markerColors(fill: ColorField, border: ColorField | null, marker: MarkerSettings, text?: ColorField | null): ProjectColorEntry[] {
   const rows = [fill.at(marker.fillColor)];
   if (border) rows.push(border.at(marker.borderColor));
+  if (text && marker.textColor !== undefined) rows.push(text.at(marker.textColor));
   return rows;
 }
 
@@ -392,8 +396,8 @@ function vectorByWallsColors(state: MazeState, s: VectorByWallsSettings, slotCou
     PC.tilesFloor.at(s.floorColor),
     ...(vis.wall ? [PC.tilesWall.at(s.wallColor)] : []),
     ...(vis.oneWayIndicator ? [PC.oneWaysMarker.at(s.oneWayColor)] : []),
-    ...markerColors(PC.startFill, PC.startBorder, s.startMarker),
-    ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker),
+    ...markerColors(PC.startFill, PC.startBorder, s.startMarker, PC.startText),
+    ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker, PC.finishText),
     ...teleportColors(s, vis),
     ...verticalSharedStyleColors(s, vis),
     ...(s.verticalStyle === "abstract"
@@ -412,8 +416,8 @@ function vectorByCorridorsColors(state: MazeState, s: VectorByCorridorsSettings,
     ...(vis.grid ? [PC.bgGrid.at(s.gridColor)] : []),
     PC.corridorFill.at(s.color),
     ...(vis.oneWayIndicator ? [PC.oneWaysMarker.at(s.oneWayColor)] : []),
-    ...markerColors(PC.startFill, PC.startBorder, s.startMarker),
-    ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker),
+    ...markerColors(PC.startFill, PC.startBorder, s.startMarker, PC.startText),
+    ...markerColors(PC.finishFill, PC.finishBorder, s.finishMarker, PC.finishText),
     ...teleportColors(s, vis),
     ...verticalSharedStyleColors(s, vis),
     ...verticalAbstractColors(s, vis),
@@ -471,6 +475,7 @@ export function overrideActiveProfileColor(
       set(PC.tilesWall, (v) => { if ("wallColor" in settings) settings.wallColor = v; }) ||
       set(PC.oneWaysMarker, (v) => { settings.oneWayColor = v; }) ||
       marker(PC.startFill, PC.startBorder, settings.startMarker) || marker(PC.finishFill, PC.finishBorder, settings.finishMarker) ||
+      set(PC.startText, (v) => { settings.startMarker.textColor = v; }) || set(PC.finishText, (v) => { settings.finishMarker.textColor = v; }) ||
       set(PC.teleportEdge, (v) => { settings.teleportEdgeColor = v; }) || set(PC.teleportEdgeBorder, (v) => { settings.teleportEdgeBorderColor = v; }) ||
       set(PC.teleportConnector, (v) => { settings.teleportConnectorColor = v; }) ||
       set(PC.teleportBadgeFill, (v) => { settings.teleportFloorBadge.fillColor = v; }) || set(PC.teleportBadgeBorder, (v) => { settings.teleportFloorBadge.borderColor = v; }) || set(PC.teleportBadgeText, (v) => { settings.teleportFloorBadge.textColor = v; }) ||

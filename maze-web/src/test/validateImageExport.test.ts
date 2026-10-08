@@ -1,8 +1,43 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks } from "../store/projectExport/validateImageExport";
-import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
+
+describe("validateMarkerSettings", () => {
+  const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker;
+
+  it("round-trips text, textEnabled, textFontWeight, textSize and textColor", () => {
+    const result = validateMarkerSettings(
+      { ...fallback, text: "x", textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef },
+      "path",
+      fallback,
+    );
+    // sanitizeMarkerGlyph uppercases on the way through, same as the settings-panel input.
+    expect(result.text).toBe("X");
+    expect(result.textEnabled).toBe(false);
+    expect(result.textFontWeight).toBe("regular");
+    expect(result.textSize).toBe(1.5);
+    expect(result.textColor).toBe(0xabcdef);
+  });
+
+  it("falls back to the given fallback's values when the fields are absent (older project file)", () => {
+    const result = validateMarkerSettings({ shape: fallback.shape }, "path", { ...fallback, textEnabled: false, textFontWeight: "regular", textSize: 1.5, textColor: 0xabcdef });
+    expect(result.textEnabled).toBe(false);
+    expect(result.textFontWeight).toBe("regular");
+    expect(result.textSize).toBe(1.5);
+    expect(result.textColor).toBe(0xabcdef);
+  });
+
+  it("falls back to true/bold/0.55/fillColor defaults when both the input and the fallback omit the fields", () => {
+    const { textEnabled: _e, textFontWeight: _f, textSize: _s, textColor: _c, ...bareFallback } = fallback;
+    const result = validateMarkerSettings({ textEnabled: "not-a-bool", textFontWeight: "bogus", textSize: "bogus", textColor: "bogus" }, "path", bareFallback);
+    expect(result.textEnabled).toBe(true);
+    expect(result.textFontWeight).toBe("bold");
+    expect(result.textSize).toBe(0.55);
+    expect(result.textColor).toBe(bareFallback.fillColor);
+  });
+});
 
 describe("validateVerticalSettingsFields", () => {
   it("preserves elevator simplification and defaults it on for older projects", () => {
@@ -50,8 +85,8 @@ describe("validateVerticalSettingsFields", () => {
   it("seeds both twoWayPassageMarker and oneWayPassageMarker from the legacy verticalPassageMarker field", () => {
     const legacyMarker = { shape: "star", fillColor: 0x123456, borderColor: 0x654321, borderWidth: 5, gapWidth: 2, size: 0.3, cornerStyle: "round" };
     const result = validateVerticalSettingsFields({ verticalPassageMarker: legacyMarker }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.twoWayPassageMarker).toEqual(legacyMarker);
-    expect(result.oneWayPassageMarker).toEqual(legacyMarker);
+    expect(result.twoWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
+    expect(result.oneWayPassageMarker).toEqual({ ...legacyMarker, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
   });
 
   it("prefers the current twoWayPassageMarker/oneWayPassageMarker fields over the legacy shared one", () => {
@@ -63,8 +98,8 @@ describe("validateVerticalSettingsFields", () => {
       "path",
       DEFAULT_VERTICAL_SETTINGS,
     );
-    expect(result.twoWayPassageMarker).toEqual(twoWay);
-    expect(result.oneWayPassageMarker).toEqual(oneWay);
+    expect(result.twoWayPassageMarker).toEqual({ ...twoWay, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
+    expect(result.oneWayPassageMarker).toEqual({ ...oneWay, text: undefined, textEnabled: undefined, textFontWeight: undefined, textSize: undefined, textColor: undefined });
   });
 
   it("falls back to the default markers when neither the current nor the legacy field is present", () => {

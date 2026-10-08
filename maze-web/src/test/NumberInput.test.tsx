@@ -183,6 +183,16 @@ describe("NumberInput", () => {
     });
   });
 
+  it("blurs and normalizes the field on Enter", () => {
+    const onCommit = vi.fn();
+    render(<Stateful initial="5" integer onCommit={onCommit} />);
+    const input = screen.getByRole("spinbutton");
+    input.focus();
+    fireEvent.change(input, { target: { value: "7.6" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommit).toHaveBeenLastCalledWith("8");
+  });
+
   it("mirrors an external value change into the field when not focused", () => {
     const { rerender } = render(<NumberInput value="1" onChange={vi.fn()} />);
     rerender(<NumberInput value="99" onChange={vi.fn()} />);

@@ -42,8 +42,8 @@ beforeEach(() => {
       oneWaySize: 0.3,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225 },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
       teleportLineCornerStyle: "miter",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
@@ -182,8 +182,8 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWaySize: 0.3,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225 },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
       teleportLineCornerStyle: "miter",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
@@ -312,7 +312,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     useMazeStore.getState().setVectorByWallsStartMarkerSize(0.5);
     useMazeStore.getState().setVectorByWallsStartMarkerCornerStyle("round");
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.startMarker).toEqual({ shape: "circle", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3, gapWidth: 2, size: 0.5 });
+    expect(settings.startMarker).toEqual({ shape: "circle", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3, gapWidth: 2, size: 0.5, text: "S" });
     expect(settings.finishMarker.fillColor).toBe(canvas.node.finish);
   });
 
@@ -325,7 +325,7 @@ describe("mazeStore vectorByWallsSettings", () => {
     useMazeStore.getState().setVectorByWallsFinishMarkerSize(0.6);
     useMazeStore.getState().setVectorByWallsFinishMarkerCornerStyle("round");
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.finishMarker).toEqual({ shape: "star", cornerStyle: "round", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5, gapWidth: 4, size: 0.6 });
+    expect(settings.finishMarker).toEqual({ shape: "star", cornerStyle: "round", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5, gapWidth: 4, size: 0.6, text: "F" });
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 
@@ -475,6 +475,16 @@ describe("mazeStore parameter-links management actions (GitHub issue #644)", () 
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.elevatorMarker.size).toBe(0.33);
     expect(settings.links.find((l) => l.target === "elevatorMarker.size")).toMatchObject({ source: "markerSize", enabled: true });
+  });
+
+  it("a linked startMarker.textColor/textSize keeps following startMarker after the link is created (GitHub issue #697 second follow-up)", () => {
+    useMazeStore.getState().addVectorByWallsLink("startMarker.textColor", "finishMarker.textColor");
+    useMazeStore.getState().addVectorByWallsLink("startMarker.textSize", "finishMarker.textSize");
+    useMazeStore.getState().setVectorByWallsStartMarkerTextColor(0xabcdef);
+    useMazeStore.getState().setVectorByWallsStartMarkerTextSize(0.42);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.finishMarker.textColor).toBe(0xabcdef);
+    expect(settings.finishMarker.textSize).toBe(0.42);
   });
 
   it("removeVectorByWallsLink drops the link targeting the given path without touching its value", () => {

@@ -69,6 +69,11 @@ export function VectorByWallsSettingsPanel() {
   const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
   const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByWallsStartMarkerShape);
+  const setStartMarkerText = useMazeStore((s) => s.setVectorByWallsStartMarkerText);
+  const setStartMarkerTextEnabled = useMazeStore((s) => s.setVectorByWallsStartMarkerTextEnabled);
+  const setStartMarkerTextFontWeight = useMazeStore((s) => s.setVectorByWallsStartMarkerTextFontWeight);
+  const setStartMarkerTextSize = useMazeStore((s) => s.setVectorByWallsStartMarkerTextSize);
+  const setStartMarkerTextColor = useMazeStore((s) => s.setVectorByWallsStartMarkerTextColor);
   const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsStartMarkerCornerStyle);
   const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByWallsStartMarkerFillColor);
   const setStartMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsStartMarkerBorderColor);
@@ -76,6 +81,11 @@ export function VectorByWallsSettingsPanel() {
   const setStartMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsStartMarkerGapWidth);
   const setStartMarkerSize = useMazeStore((s) => s.setVectorByWallsStartMarkerSize);
   const setFinishMarkerShape = useMazeStore((s) => s.setVectorByWallsFinishMarkerShape);
+  const setFinishMarkerText = useMazeStore((s) => s.setVectorByWallsFinishMarkerText);
+  const setFinishMarkerTextEnabled = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextEnabled);
+  const setFinishMarkerTextFontWeight = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextFontWeight);
+  const setFinishMarkerTextSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextSize);
+  const setFinishMarkerTextColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextColor);
   const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsFinishMarkerCornerStyle);
   const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerFillColor);
   const setFinishMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerBorderColor);
@@ -461,12 +471,21 @@ export function VectorByWallsSettingsPanel() {
         <div style={styles.block}>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_start"]()}
+            sectionId="markers_start"
+            isExpanded={isExpanded}
+            onToggle={toggleSection}
+            showTextSection
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, finishFill, finishBorder, floor], borderColor: [startFill, finishBorder, finishFill, floor] }}
-            defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor }}
-            fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name }}
+            priorityColors={{ fillColor: [startBorder, finishFill, finishBorder, floor], borderColor: [startFill, finishBorder, finishFill, floor], textColor: [startFill, startBorder, floor] }}
+            defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
+            fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name, textColor: PC.startText.name() }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
+              if (patch.text !== undefined) setStartMarkerText(patch.text);
+              if (patch.textEnabled !== undefined) setStartMarkerTextEnabled(patch.textEnabled);
+              if (patch.textFontWeight !== undefined) setStartMarkerTextFontWeight(patch.textFontWeight);
+              if (patch.textSize !== undefined) setStartMarkerTextSize(patch.textSize);
+              if (patch.textColor !== undefined) setStartMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
               if (patch.borderColor !== undefined) setStartMarkerBorderColor(patch.borderColor);
@@ -482,16 +501,29 @@ export function VectorByWallsSettingsPanel() {
               borderColor: "startMarker.borderColor",
               borderWidth: "startMarker.borderWidth",
               gapWidth: "startMarker.gapWidth",
+              textEnabled: "startMarker.textEnabled",
+              textFontWeight: "startMarker.textFontWeight",
+              textSize: "startMarker.textSize",
+              textColor: "startMarker.textColor",
             }}
           />
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
+            sectionId="markers_finish"
+            isExpanded={isExpanded}
+            onToggle={toggleSection}
+            showTextSection
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, startFill, startBorder, floor], borderColor: [finishFill, startBorder, startFill, floor] }}
-            defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor }}
-            fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name }}
+            priorityColors={{ fillColor: [finishBorder, startFill, startBorder, floor], borderColor: [finishFill, startBorder, startFill, floor], textColor: [finishFill, finishBorder, floor] }}
+            defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
+            fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name, textColor: PC.finishText.name() }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
+              if (patch.text !== undefined) setFinishMarkerText(patch.text);
+              if (patch.textEnabled !== undefined) setFinishMarkerTextEnabled(patch.textEnabled);
+              if (patch.textFontWeight !== undefined) setFinishMarkerTextFontWeight(patch.textFontWeight);
+              if (patch.textSize !== undefined) setFinishMarkerTextSize(patch.textSize);
+              if (patch.textColor !== undefined) setFinishMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
               if (patch.borderColor !== undefined) setFinishMarkerBorderColor(patch.borderColor);
@@ -507,6 +539,10 @@ export function VectorByWallsSettingsPanel() {
               borderColor: "finishMarker.borderColor",
               borderWidth: "finishMarker.borderWidth",
               gapWidth: "finishMarker.gapWidth",
+              textEnabled: "finishMarker.textEnabled",
+              textFontWeight: "finishMarker.textFontWeight",
+              textSize: "finishMarker.textSize",
+              textColor: "finishMarker.textColor",
             }}
           />
         </div>
@@ -985,6 +1021,7 @@ export function VectorByWallsSettingsPanel() {
                       <div style={styles.subGroup}>
                         <MarkerSettingsGroup
                           title=""
+                          showTextSection={false}
                           settings={settings.twoWayPassageMarker}
                           priorityColors={{
                             fillColor: [PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor), PC.twoWayArrow.at(settings.twoWayArrowColor), ...vOneWay, ...vElevator, ...vTail],
@@ -1012,6 +1049,10 @@ export function VectorByWallsSettingsPanel() {
                             borderColor: "twoWayPassageMarker.borderColor",
                             borderWidth: "twoWayPassageMarker.borderWidth",
                             gapWidth: "twoWayPassageMarker.gapWidth",
+                            textEnabled: null,
+                            textFontWeight: null,
+                            textSize: null,
+                            textColor: null,
                           }}
                         />
                       </div>
@@ -1078,6 +1119,7 @@ export function VectorByWallsSettingsPanel() {
                       <div style={styles.subGroup}>
                         <MarkerSettingsGroup
                           title=""
+                          showTextSection={false}
                           settings={settings.oneWayPassageMarker}
                           priorityColors={{
                             fillColor: [PC.oneWayBorder.at(settings.oneWayPassageMarker.borderColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail],
@@ -1105,6 +1147,10 @@ export function VectorByWallsSettingsPanel() {
                             borderColor: "oneWayPassageMarker.borderColor",
                             borderWidth: "oneWayPassageMarker.borderWidth",
                             gapWidth: "oneWayPassageMarker.gapWidth",
+                            textEnabled: null,
+                            textFontWeight: null,
+                            textSize: null,
+                            textColor: null,
                           }}
                         />
                       </div>
@@ -1177,6 +1223,7 @@ export function VectorByWallsSettingsPanel() {
                       <div style={styles.subGroup}>
                         <MarkerSettingsGroup
                           title=""
+                          showTextSection={false}
                           settings={settings.elevatorMarker}
                           priorityColors={{
                             fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
@@ -1204,6 +1251,10 @@ export function VectorByWallsSettingsPanel() {
                             borderColor: "elevatorMarker.borderColor",
                             borderWidth: "elevatorMarker.borderWidth",
                             gapWidth: "elevatorMarker.gapWidth",
+                            textEnabled: null,
+                            textFontWeight: null,
+                            textSize: null,
+                            textColor: null,
                           }}
                         />
                       </div>

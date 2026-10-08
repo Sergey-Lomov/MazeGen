@@ -94,6 +94,7 @@ export function NumberInput({ value, onChange, min, max, integer, disabled, name
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (integer && (e.key === "." || e.key === ",")) e.preventDefault();
+    if (e.key === "Enter") e.currentTarget.blur();
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {

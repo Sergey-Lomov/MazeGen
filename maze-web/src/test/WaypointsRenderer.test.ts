@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("pixi.js", () => {
   class FakeGraphics {
@@ -12,23 +12,53 @@ vi.mock("pixi.js", () => {
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
     clear() { this.calls = []; return this; }
+    destroy() {}
   }
   class FakeContainer {
-    addChild() {}
-    destroy() {}
+    children: { destroy: (opts?: unknown) => void }[] = [];
+    addChild(c: { destroy: (opts?: unknown) => void }) { this.children.push(c); }
+    removeChildren() { const removed = this.children; this.children = []; return removed; }
+    destroy(opts?: { children?: boolean }) { if (opts?.children) this.children.forEach((c) => c.destroy()); }
   }
   return { Container: FakeContainer, Graphics: FakeGraphics };
 });
+
+vi.mock("../pixi/renderers/msdfFont", () => ({
+  msdfFontFamily: (weight: string) => `fake-${weight}`,
+  makeCenteredLabel: (text: string, fontFamily: string, fontSize: number, fill: number) => {
+    const calls = (globalThis as { __labelCalls?: unknown[] }).__labelCalls ??= [];
+    calls.push({ text, fontFamily, fontSize, fill });
+    let destroyed = false;
+    return {
+      get x() { return 0; }, set x(_v: number) {},
+      get y() { return 0; }, set y(_v: number) {},
+      destroy: () => { destroyed = true; },
+      get destroyed() { return destroyed; },
+    };
+  },
+}));
 
 const { WaypointsRenderer } = await import("../pixi/renderers/WaypointsRenderer");
 const { Container, Graphics } = await import("pixi.js");
 import type { MarkerData } from "../pixi/renderers/types";
 
+function labelCalls(): { text: string; fontFamily: string; fontSize: number; fill: number }[] {
+  return ((globalThis as { __labelCalls?: unknown[] }).__labelCalls ?? []) as { text: string; fontFamily: string; fontSize: number; fill: number }[];
+}
+
 function g(renderer: InstanceType<typeof WaypointsRenderer>) {
   return (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
 }
 
+function labels(renderer: InstanceType<typeof WaypointsRenderer>) {
+  return (renderer as unknown as { labels: InstanceType<typeof Container> & { children: { destroy: (opts?: unknown) => void; destroyed?: boolean }[] } }).labels;
+}
+
 describe("WaypointsRenderer.render", () => {
+  beforeEach(() => {
+    (globalThis as { __labelCalls?: unknown[] }).__labelCalls = [];
+  });
+
   it("a marker with no border/gap draws only a fill, no stroke", () => {
     const renderer = new WaypointsRenderer(new Container());
     const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10 };
@@ -96,5 +126,45 @@ describe("WaypointsRenderer.render", () => {
     renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10 }] });
     renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10 }] });
     expect(g(renderer).calls.filter((c) => c.fn === "poly")).toHaveLength(1);
+  });
+
+  it("a marker with no text draws no label", () => {
+    const renderer = new WaypointsRenderer(new Container());
+    renderer.render({ markers: [{ pos: [5, 5], color: 0x111, radius: 10 }] });
+    expect(labels(renderer).children).toHaveLength(0);
+  });
+
+  it("a marker with a text draws one centered label, radius-relative size, textColor over color", () => {
+    const renderer = new WaypointsRenderer(new Container());
+    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "S", textColor: 0x999 };
+    renderer.render({ markers: [marker] });
+    expect(labels(renderer).children).toHaveLength(1);
+    const calls = labelCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ text: "S", fontFamily: "fake-bold", fontSize: 11, fill: 0x999 });
+  });
+
+  it("falls back to the marker's own color when textColor is unset, and honors textFontWeight/textSize", () => {
+    const renderer = new WaypointsRenderer(new Container());
+    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "F", textFontWeight: "regular", textSize: 0.5 };
+    renderer.render({ markers: [marker] });
+    expect(labelCalls()[0]).toMatchObject({ fontFamily: "fake-regular", fontSize: 10, fill: 0x111 });
+  });
+
+  it("destroys the previous render's label badges before drawing the next batch — no leaked labels", () => {
+    const renderer = new WaypointsRenderer(new Container());
+    renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10, text: "S" }] });
+    const firstLabel = labels(renderer).children[0];
+    renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10, text: "F" }] });
+    expect(firstLabel.destroyed).toBe(true);
+    expect(labels(renderer).children).toHaveLength(1);
+  });
+
+  it("destroy() tears down the label layer along with its children", () => {
+    const renderer = new WaypointsRenderer(new Container());
+    renderer.render({ markers: [{ pos: [0, 0], color: 0x111, radius: 10, text: "S" }] });
+    const label = labels(renderer).children[0];
+    renderer.destroy();
+    expect(label.destroyed).toBe(true);
   });
 });

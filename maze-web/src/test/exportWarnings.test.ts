@@ -20,7 +20,7 @@ const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,
-  borderWidth: 0, gapWidth: 0, size: 12,
+  borderWidth: 0, gapWidth: 0, size: 12, text: "",
 };
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {

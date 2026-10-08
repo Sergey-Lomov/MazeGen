@@ -35,7 +35,14 @@ beforeEach(() => {
     // All sections start collapsed (GitHub issue #292 follow-up) — expanded here so the
     // field-interaction tests below don't each need their own expand step. Collapsed-by-default
     // itself is covered by the dedicated "all sections start collapsed" test.
-    vectorByWallsSectionsExpanded: { background: true, tiles: true, markers: true, one_ways: true },
+    // Start/Finish became their own collapsible sections, each split into "Marker"/"Symbol"
+    // sub-sections (GitHub issue #697 follow-up) — expanded here too so the marker-field
+    // interaction tests below don't each need their own expand steps.
+    vectorByWallsSectionsExpanded: {
+      background: true, tiles: true, markers: true, one_ways: true,
+      markers_start: true, markers_finish: true,
+      markers_start_marker: true, markers_finish_marker: true,
+    },
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
@@ -53,8 +60,8 @@ beforeEach(() => {
       oneWaySize: 0.18,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
-      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+      finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
       teleportLineCornerStyle: "miter",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
@@ -162,8 +169,8 @@ describe("VectorByWallsSettingsPanel", () => {
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, showInnerGrid: false, innerGridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
-        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-        finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+        finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
         teleportLineCornerStyle: "miter",
         teleportLineShape: "square", teleportLineSize: 0.3,
         teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
@@ -822,7 +829,10 @@ describe("VectorByWallsSettingsPanel", () => {
       it("changing the font weight updates the store", () => {
         setElevatorState({ elevatorBadgesEnabled: true });
         render(<VectorByWallsSettingsPanel />);
-        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
+        // GitHub issue #697 follow-up added two other "bold" font-weight selects (start/finish
+        // marker text) rendered earlier in the panel — the elevator badges one is last.
+        const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
+        const select = selects[selects.length - 1];
         fireEvent.change(select, { target: { value: "regular" } });
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fontWeight).toBe("regular");
       });

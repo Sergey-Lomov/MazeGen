@@ -146,6 +146,32 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, renderStyle: v } })),
   setVectorByCorridorsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, shape } } })),
+  setVectorByCorridorsStartMarkerText: (text) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, text } } })),
+  setVectorByCorridorsStartMarkerTextEnabled: (textEnabled) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.textEnabled", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, textEnabled }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.textEnabled"]) };
+    }),
+  setVectorByCorridorsStartMarkerTextFontWeight: (textFontWeight) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.textFontWeight", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, textFontWeight }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.textFontWeight"]) };
+    }),
+  setVectorByCorridorsStartMarkerTextSize: (textSize) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.textSize", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, textSize }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.textSize"]) };
+    }),
+  setVectorByCorridorsStartMarkerTextColor: (textColor) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.textColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, textColor }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["startMarker.textColor"]) };
+    }),
   setVectorByCorridorsStartMarkerCornerStyle: (style) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "startMarker.cornerStyle", false);
@@ -184,6 +210,32 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     }),
   setVectorByCorridorsFinishMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, shape } } })),
+  setVectorByCorridorsFinishMarkerText: (text) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, text } } })),
+  setVectorByCorridorsFinishMarkerTextEnabled: (textEnabled) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.textEnabled", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, textEnabled }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.textEnabled"]) };
+    }),
+  setVectorByCorridorsFinishMarkerTextFontWeight: (textFontWeight) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.textFontWeight", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, textFontWeight }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.textFontWeight"]) };
+    }),
+  setVectorByCorridorsFinishMarkerTextSize: (textSize) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.textSize", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, textSize }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.textSize"]) };
+    }),
+  setVectorByCorridorsFinishMarkerTextColor: (textColor) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.textColor", false);
+      const settings = { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, textColor }, links };
+      return { vectorByCorridorsSettings: propagate(settings, links, ["finishMarker.textColor"]) };
+    }),
   setVectorByCorridorsFinishMarkerCornerStyle: (style) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, "finishMarker.cornerStyle", false);
@@ -589,6 +641,32 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     }),
   setVectorByWallsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, shape } } })),
+  setVectorByWallsStartMarkerText: (text) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, text } } })),
+  setVectorByWallsStartMarkerTextEnabled: (textEnabled) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.textEnabled", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, textEnabled }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.textEnabled"]) };
+    }),
+  setVectorByWallsStartMarkerTextFontWeight: (textFontWeight) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.textFontWeight", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, textFontWeight }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.textFontWeight"]) };
+    }),
+  setVectorByWallsStartMarkerTextSize: (textSize) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.textSize", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, textSize }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.textSize"]) };
+    }),
+  setVectorByWallsStartMarkerTextColor: (textColor) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.textColor", false);
+      const settings = { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, textColor }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["startMarker.textColor"]) };
+    }),
   setVectorByWallsStartMarkerCornerStyle: (style) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "startMarker.cornerStyle", false);
@@ -627,6 +705,32 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     }),
   setVectorByWallsFinishMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, shape } } })),
+  setVectorByWallsFinishMarkerText: (text) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, text } } })),
+  setVectorByWallsFinishMarkerTextEnabled: (textEnabled) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.textEnabled", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, textEnabled }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.textEnabled"]) };
+    }),
+  setVectorByWallsFinishMarkerTextFontWeight: (textFontWeight) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.textFontWeight", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, textFontWeight }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.textFontWeight"]) };
+    }),
+  setVectorByWallsFinishMarkerTextSize: (textSize) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.textSize", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, textSize }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.textSize"]) };
+    }),
+  setVectorByWallsFinishMarkerTextColor: (textColor) =>
+    set((s) => {
+      const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.textColor", false);
+      const settings = { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, textColor }, links };
+      return { vectorByWallsSettings: propagate(settings, links, ["finishMarker.textColor"]) };
+    }),
   setVectorByWallsFinishMarkerCornerStyle: (style) =>
     set((s) => {
       const { links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, "finishMarker.cornerStyle", false);

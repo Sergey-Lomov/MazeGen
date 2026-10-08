@@ -4,6 +4,7 @@ import {
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
+import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -75,6 +76,13 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
     gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
     size: optNumber(obj, "size", fallback.size),
+    text: typeof obj?.text === "string" ? sanitizeMarkerGlyph(obj.text) : fallback.text,
+    textEnabled: obj?.textEnabled === undefined ? fallback.textEnabled : optBool(obj, "textEnabled", fallback.textEnabled ?? true),
+    textFontWeight: obj?.textFontWeight === undefined
+      ? fallback.textFontWeight
+      : optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight ?? "bold"),
+    textSize: obj?.textSize === undefined ? fallback.textSize : optNumber(obj, "textSize", fallback.textSize ?? 0.55),
+    textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
   };
 }
 
