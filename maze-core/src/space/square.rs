@@ -41,6 +41,10 @@ impl Tessellation for SquareTessellation {
         })
     }
 
+    fn is_valid_point(_point: SquarePoint) -> bool {
+        true
+    }
+
     fn faces() -> &'static [SquareFace] {
         &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
     }

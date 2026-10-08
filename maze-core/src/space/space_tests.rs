@@ -37,7 +37,8 @@ mod from_id_points_tests {
         let field: Field<SquareTessellation> = Field::from_id_points([
             (10, SquarePoint { x: 0, y: 0 }),
             (20, SquarePoint { x: 1, y: 0 }),
-        ]);
+        ])
+        .unwrap();
 
         assert_eq!(field.node_at(SquarePoint { x: 0, y: 0 }), Some(10));
         assert_eq!(field.node_at(SquarePoint { x: 1, y: 0 }), Some(20));
@@ -53,14 +54,15 @@ mod from_id_points_tests {
     #[test]
     fn groups_entries_by_point_preserving_given_order_as_creation_order() {
         let p = SquarePoint { x: 0, y: 0 };
-        let field: Field<SquareTessellation> = Field::from_id_points([(5, p), (7, p), (9, p)]);
+        let field: Field<SquareTessellation> =
+            Field::from_id_points([(5, p), (7, p), (9, p)]).unwrap();
 
         assert_eq!(field.nodes_at(p), &[5, 7, 9]);
     }
 
     #[test]
     fn empty_entries_yields_an_empty_field() {
-        let field: Field<SquareTessellation> = Field::from_id_points(std::iter::empty());
+        let field: Field<SquareTessellation> = Field::from_id_points(std::iter::empty()).unwrap();
 
         assert_eq!(field.node_count(), 0);
         assert_eq!(field.all_points().count(), 0);
@@ -670,42 +672,8 @@ mod transform_face_index_tests {
 #[cfg(test)]
 mod coordinate_gap_tests {
     use super::super::*;
-    use crate::space::{SquareFace, SquarePoint};
-
-    struct GappedSquareTessellation;
-
-    impl Tessellation for GappedSquareTessellation {
-        type Point = SquarePoint;
-        type Face = SquareFace;
-
-        fn step(point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
-            if point == (SquarePoint { x: 0, y: 0 }) && face == SquareFace::E {
-                None
-            } else {
-                SquareTessellation::step(point, face)
-            }
-        }
-
-        fn faces() -> &'static [SquareFace] {
-            SquareTessellation::faces()
-        }
-
-        fn face_between(from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
-            SquareTessellation::face_between(from, to)
-        }
-
-        fn rotation_symmetries() -> &'static [&'static [usize]] {
-            SquareTessellation::rotation_symmetries()
-        }
-
-        fn mirror_symmetries() -> &'static [&'static [usize]] {
-            SquareTessellation::mirror_symmetries()
-        }
-
-        fn cartesian(point: SquarePoint) -> (f64, f64) {
-            SquareTessellation::cartesian(point)
-        }
-    }
+    use crate::space::SquarePoint;
+    use crate::space::test_support::GappedSquareTessellation;
 
     #[test]
     fn field_neighbors_skip_faces_without_a_coordinate() {
@@ -723,5 +691,42 @@ mod coordinate_gap_tests {
         );
         let neighbors = field.neighbors(field.node_at(origin).unwrap());
         assert_eq!(neighbors, vec![field.node_at(north).unwrap()]);
+    }
+
+    #[test]
+    fn is_straight_remains_geometric_when_a_transition_is_missing() {
+        let west = SquarePoint { x: -1, y: 0 };
+        let origin = SquarePoint { x: 0, y: 0 };
+        let east = SquarePoint { x: 1, y: 0 };
+        let mut ids = IdGenerator::new();
+        let field: Field<GappedSquareTessellation> =
+            Field::new([west, origin, east], &mut ids).unwrap();
+
+        assert_eq!(GappedSquareTessellation::step(origin, SquareFace::E), None);
+        assert!(field.is_straight(
+            field.node_at(west).unwrap(),
+            field.node_at(origin).unwrap(),
+            field.node_at(east).unwrap(),
+        ));
+    }
+
+    #[test]
+    fn field_new_rejects_invalid_points_without_consuming_ids() {
+        let mut ids = IdGenerator::new();
+        let invalid =
+            Field::<GappedSquareTessellation>::new([SquarePoint { x: 99, y: 0 }], &mut ids);
+        assert!(matches!(invalid, Err("field contains an invalid point")));
+
+        let valid =
+            Field::<GappedSquareTessellation>::new([SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
+        assert_eq!(valid.node_at(SquarePoint { x: 0, y: 0 }), Some(0));
+    }
+
+    #[test]
+    fn from_id_points_rejects_invalid_points() {
+        let result =
+            Field::<GappedSquareTessellation>::from_id_points([(10, SquarePoint { x: 99, y: 0 })]);
+
+        assert!(matches!(result, Err("field contains an invalid point")));
     }
 }

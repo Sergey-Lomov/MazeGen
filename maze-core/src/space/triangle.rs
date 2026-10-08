@@ -46,6 +46,10 @@ impl Tessellation for TriTessellation {
         })
     }
 
+    fn is_valid_point(_point: TriPoint) -> bool {
+        true
+    }
+
     fn faces() -> &'static [TriFace] {
         &[TriFace::Left, TriFace::Right, TriFace::Base]
     }

@@ -51,6 +51,10 @@ impl Tessellation for HexTessellation {
         })
     }
 
+    fn is_valid_point(_point: HexPoint) -> bool {
+        true
+    }
+
     fn faces() -> &'static [HexFace] {
         &[
             HexFace::E,

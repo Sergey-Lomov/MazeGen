@@ -6,6 +6,8 @@ use std::hash::Hash;
 pub mod hex;
 pub mod multi_level;
 pub mod square;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod triangle;
 
 pub use hex::{HexFace, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
@@ -25,7 +27,15 @@ pub trait Tessellation {
     /// three current ones already do). `Field::neighbors` relies on it to guarantee it never
     /// visits the same neighboring point twice while iterating `faces()`.
     fn step(point: Self::Point, face: Self::Face) -> Option<Self::Point>;
+    /// Returns whether `point` represents an actual tile in this tessellation's coordinate space.
+    fn is_valid_point(point: Self::Point) -> bool;
     fn faces() -> &'static [Self::Face];
+    /// Returns the geometric face direction from `from` to `to`.
+    ///
+    /// This describes coordinate geometry only; it does not guarantee that
+    /// `step(from, returned_face)` reaches `to`. Callers that need a real transition must also
+    /// resolve the face through `step` (and, for a particular field, check that the resulting
+    /// point belongs to that field).
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
 
     /// Position of `face` within `Self::faces()` — the index a `SplitPattern` face refers to.
@@ -256,15 +266,19 @@ impl<T: Tessellation> Field<T> {
         points: impl IntoIterator<Item = T::Point>,
         ids: &mut IdGenerator,
     ) -> Result<Self, &'static str> {
+        let points: Vec<T::Point> = points.into_iter().collect();
+        if points.is_empty() {
+            return Err("field is empty");
+        }
+        if points.iter().any(|&point| !T::is_valid_point(point)) {
+            return Err("field contains an invalid point");
+        }
         let mut point_to_nodes = HashMap::new();
         let mut node_to_point = HashMap::new();
         for point in points {
             let id = ids.next_id();
             point_to_nodes.insert(point, vec![id]);
             node_to_point.insert(id, point);
-        }
-        if point_to_nodes.is_empty() {
-            return Err("field is empty");
         }
         Ok(Self {
             point_to_nodes,
@@ -297,21 +311,26 @@ impl<T: Tessellation> Field<T> {
     /// therefore `apply_split_points`) can rely on nodes flowing back through this constructor to
     /// preserve which node was the original.
     ///
-    /// Does not itself guard against an empty `entries` — caller's responsibility, since this is
-    /// only reachable from `run_compute_analytics` with a caller-controlled snapshot, not
-    /// user-facing tessellation setup like `new`.
+    /// Empty `entries` remains valid, since this is only reachable from
+    /// `run_compute_analytics` with a caller-controlled snapshot, not user-facing tessellation
+    /// setup like `new`. Invalid points are rejected before they can become phantom field cells.
     ///
-    /// Debug-asserts against a duplicate `NodeId` across two different points — such an entry
-    /// would silently let the later one win in `node_to_point` while both survive in
-    /// `point_to_nodes`, leaving `point_of`/`nodes_at` disagreeing about where that id lives. Only
-    /// a `debug_assert!` (not a returned `Result`) since this is an internal-consistency bug in the
-    /// caller-supplied snapshot, not a recoverable runtime condition a caller could reasonably
-    /// handle — mirrors `Graph::add_edge`'s existing `debug_assert!` convention for the same kind
-    /// of "this should be structurally impossible" invariant.
-    pub fn from_id_points(entries: impl IntoIterator<Item = (NodeId, T::Point)>) -> Self {
+    /// Invalid points return an error. A duplicate `NodeId` across two different points is still
+    /// debug-asserted — such an entry would silently let the later one win in `node_to_point`
+    /// while both survive in `point_to_nodes`, leaving `point_of`/`nodes_at` disagreeing about
+    /// where that id lives. That remains a `debug_assert!` rather than a returned error because it
+    /// is an internal-consistency bug in the caller-supplied snapshot, not a recoverable runtime
+    /// condition a caller could reasonably handle — mirroring `Graph::add_edge`'s existing
+    /// convention for the same kind of "this should be structurally impossible" invariant.
+    pub fn from_id_points(
+        entries: impl IntoIterator<Item = (NodeId, T::Point)>,
+    ) -> Result<Self, &'static str> {
         let mut point_to_nodes: HashMap<T::Point, Vec<NodeId>> = HashMap::new();
         let mut node_to_point = HashMap::new();
         for (id, point) in entries {
+            if !T::is_valid_point(point) {
+                return Err("field contains an invalid point");
+            }
             debug_assert!(
                 node_to_point
                     .get(&id)
@@ -321,10 +340,10 @@ impl<T: Tessellation> Field<T> {
             point_to_nodes.entry(point).or_default().push(id);
             node_to_point.insert(id, point);
         }
-        Self {
+        Ok(Self {
             point_to_nodes,
             node_to_point,
-        }
+        })
     }
 
     /// Adds another `NodeId` to an already-existing point — see GitHub issue #219. The point
@@ -453,6 +472,10 @@ impl<T: Tessellation> Field<T> {
         }
     }
 
+    /// Returns whether the two geometric directions through `via` are equal.
+    ///
+    /// This is intentionally a geometric check and does not verify that either direction is a
+    /// traversable `step`; graph callers are expected to pass actual field neighbors.
     pub fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool {
         let Some(fp) = self.node_to_point.get(&from) else {
             return false;

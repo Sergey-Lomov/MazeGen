@@ -12,6 +12,7 @@ pub trait Tessellation {
     type Face: Copy + PartialEq + 'static;
 
     fn step(point: Self::Point, face: Self::Face) -> Option<Self::Point>;
+    fn is_valid_point(point: Self::Point) -> bool;
     fn faces() -> &'static [Self::Face];
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
     fn face_index(face: Self::Face) -> Option<usize>;   // default: linear scan over faces()
@@ -26,6 +27,8 @@ pub trait Tessellation {
 Three implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation` (`space::square`/`hex`/`triangle`), each with its own `Point`/`Face` type.
 
 - **`step`** moves from a point through a face to the neighboring point, returning `None` when that face has no coordinate in the tessellation (for example, a gap in a non-rectangular coordinate space). For a fixed point, distinct faces must not produce the same `Some` point — `Field::neighbors` relies on this to never visit the same neighbor twice. Total coordinate spaces return `Some` for every face, as the built-in square, hex, and triangle tessellations do.
+- **`face_between`** reports the geometric face direction between two coordinates. It does not imply that `step(from, face)` reaches `to`; code that needs a traversable transition must check `step` and, for a concrete `Field`, membership of the resulting point.
+- **`is_valid_point`** identifies whether a coordinate represents an actual tile. `Field::new` and `Field::from_id_points` reject invalid points before storing them; `step` remains separate because a valid tile may still have no neighbor through a particular face.
 - **`rotation_symmetries`/`mirror_symmetries`** — each tessellation states its own rotation/mirror symmetry as an explicit permutation table over `faces()`, never a shared arithmetic formula (GitHub issue #275: a hex-shaped `(index + rotation) % degree` silently breaks for square/tri, whose `faces()` order isn't angular). `transform_face_index<T>(face_index, rotation, mirror)` is the one shared function built on top of these tables — used by split-pattern adaptation search, repair's split strategies, and QC's split-pattern matching.
 - **`cartesian`/`edge_position`** — pure geometry, no rendering-specific orientation. `geometric_distance<T>`/`geometric_edge_distance<T>` (free functions in `space::mod`) build on these for node-to-node/edge-to-edge Euclidean distance, unrelated to graph/nav distance (tile-hop count along real edges).
 
@@ -40,7 +43,7 @@ pub struct Field<T: Tessellation> {
 
 The single-tessellation building block: a fixed set of points, each resolving to one or more `NodeId`s (a point splits into several routing passages via `add_node_at` — GitHub issue #219/epic #218). `Field` has no notion of "groups" or which geometric face belongs to which of a point's several nodes — deciding that is entirely the caller's job (generation algorithms, QC/repair strategies).
 
-Key methods: `new(points, &mut IdGenerator)`, `from_id_points(entries)` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236), `add_node_at`/`remove_node_at`/`replace_nodes_at` (point-based, panic on an unknown point), `nodes_at(point)`/`node_at(point)` (creation-order slice / first node), `neighbors(node)` (skips faces whose `step` returns `None`), `is_straight(from, via, to)`, `point_of(node)`, `all_points()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `point_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `point_count()`, GitHub issue #267), `contains(point)`, `build_nodes(&mut Graph)`.
+Key methods: `new(points, &mut IdGenerator) -> Result<_, _>`, `from_id_points(entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid points), `add_node_at`/`remove_node_at`/`replace_nodes_at` (point-based, panic on an unknown point), `nodes_at(point)`/`node_at(point)` (creation-order slice / first node), `neighbors(node)` (skips faces whose `step` returns `None`), `is_straight(from, via, to)`, `point_of(node)`, `all_points()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `point_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `point_count()`, GitHub issue #267), `contains(point)`, `build_nodes(&mut Graph)`.
 
 `Field`'s point set is fixed at construction — `add_node_at`/`remove_node_at` only add/remove nodes *within* an existing point, never grow or shrink the point set itself. `Clone` is a manual impl (not derived) since only `T::Point` needs `Clone`, not `T` itself (typically a zero-sized marker).
 

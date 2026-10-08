@@ -6,7 +6,8 @@ use crate::generation::split_pattern::{
 use crate::generation::test_utils::make_field_graph_ids;
 use crate::graph::EdgeKind;
 use crate::ids::NodeId;
-use crate::space::SquarePoint;
+use crate::space::test_support::GappedSquareTessellation;
+use crate::space::{MultiLevelField, SquareFace, SquarePoint};
 
 fn empty_presets() -> PresetState {
     PresetState::empty()
@@ -128,6 +129,46 @@ fn enumerate_adaptations_boundary_excludes_off_field_non_wall_faces() {
         adaptations.len() < 8,
         "at least one rotation must be excluded (off-field neighbor)"
     );
+}
+
+#[test]
+fn resolve_face_rejects_a_required_connection_when_step_has_no_coordinate() {
+    let origin = SquarePoint { x: 0, y: 0 };
+    let east = SquarePoint { x: 1, y: 0 };
+    let mut ids = crate::IdGenerator::new();
+    let field: MultiLevelField<GappedSquareTessellation> =
+        MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+    let level = field.single_level_id();
+    let face = SplitPatternFace {
+        face_index: GappedSquareTessellation::face_index(SquareFace::E).unwrap(),
+        requirement: SplitFaceRequirement::Passage,
+        sibling_target: None,
+    };
+    let mut builder = super::AdaptationBuilder {
+        faces: Vec::new(),
+        used_neighbors: std::collections::HashSet::new(),
+        visited_face_used: false,
+        bridge_targeted: false,
+        parent_targeted: false,
+    };
+
+    assert!(!super::resolve_face(
+        &field,
+        level,
+        origin,
+        &std::collections::HashSet::new(),
+        None,
+        None,
+        false,
+        false,
+        false,
+        0,
+        &face,
+        0,
+        None,
+        &mut builder,
+    ));
+    assert!(builder.faces.is_empty());
 }
 
 #[test]

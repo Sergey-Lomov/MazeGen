@@ -140,6 +140,7 @@ pub fn split_tile_matches_any<T: Tessellation>(
 mod tests {
     use super::*;
     use crate::generation::SplitPatternFace;
+    use crate::space::test_support::GappedSquareTessellation;
     use crate::space::{SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
 
@@ -225,6 +226,26 @@ mod tests {
         let node = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let patterns = vec![two_node_pattern(SplitFaceRequirement::Passage)];
         assert!(!split_tile_matches_any(&g, &field, &[node], &patterns));
+    }
+
+    #[test]
+    fn reconstructs_a_missing_step_as_a_wall() {
+        let origin = SquarePoint { x: 0, y: 0 };
+        let east = SquarePoint { x: 1, y: 0 };
+        let mut ids = IdGenerator::new();
+        let field: MultiLevelField<GappedSquareTessellation> =
+            MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+        let level = field.single_level_id();
+        let origin_node = field.node_at(level, origin).unwrap();
+        let graph = Graph::new();
+
+        let actual = reconstruct_tile_faces(&graph, &field, &[origin_node]);
+
+        assert_eq!(actual.len(), 1);
+        assert_eq!(
+            actual[0][GappedSquareTessellation::face_index(crate::space::SquareFace::E,).unwrap()],
+            SplitFaceRequirement::Wall
+        );
     }
 
     /// `TriTessellation` has `mirror_symmetries()` empty (GitHub issue #275) — this pins down

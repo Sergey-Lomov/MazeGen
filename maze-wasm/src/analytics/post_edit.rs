@@ -313,9 +313,12 @@ where
         .map(|n| (([n.x, n.y], n.i, n.level), n.id as u64))
         .collect();
     let index_by_node: HashMap<u64, u32> = nodes.iter().map(|n| (n.id as u64, n.i)).collect();
-    let mut level_fields = entries_by_level
+    let level_fields: Vec<Field<T>> = entries_by_level
         .into_iter()
-        .map(|entries| Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p))));
+        .map(|entries| Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p))))
+        .collect::<Result<_, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut level_fields = level_fields.into_iter();
     let first = level_fields
         .next()
         .ok_or_else(|| "level_fields must not be empty".to_string())?;
