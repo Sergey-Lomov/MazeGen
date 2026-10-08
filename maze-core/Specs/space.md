@@ -14,7 +14,8 @@ Pure stateless geometry. Knows nothing about nodes or fields. Defines:
 - `Size` — bounds descriptor (e.g. `SquareSize { width, height }`)
 
 Methods:
-- `step(point, face) -> Point` — move from a point through a face to the adjacent point
+- `step(point, face) -> Option<Point>` — move from a valid point through a face to the adjacent point, or return `None` when that transition does not exist
+- `is_valid_point(point) -> bool` — whether a coordinate represents an actual tile in this tessellation
 - `contains(size, point) -> bool` — whether a point is within the given bounds
 - `faces() -> &'static [Face]` — all possible faces for this tessellation
 - `all_points(size) -> Vec<Point>` — every point within the given size
@@ -30,6 +31,9 @@ Methods:
 - `point_of(node) -> Option<Point>` — `None` if node not registered in this field
 - `build_nodes(graph: &mut Graph)` — calls `graph.add_node` for every node in the field (no edges)
 
+`Field::new` and `Field::from_id_points` reject points for which
+`Tessellation::is_valid_point` returns `false`.
+
 ### StandardField\<T: Tessellation\>
 
 Default Field implementation for bounded rectangular-like fields. Constructor:
@@ -43,13 +47,34 @@ Generates NodeIds, populates `point_to_node` and `node_to_point` HashMaps. Inter
 - `point_to_node: HashMap<T::Point, NodeId>`
 - `node_to_point: HashMap<NodeId, T::Point>`
 
-`neighbors` implementation: iterate `T::faces()`, apply `T::step`, filter by `T::contains`, look up NodeId.
+`neighbors` implementation: iterate `T::faces()`, apply `T::step`, discard `None` results, filter by `T::contains`, and look up NodeId.
 
 `build_nodes` implementation: iterate `node_to_point.keys()`, call `graph.add_node(id)` for each.
 
 For non-standard topologies (torus, irregular shapes) — implement `Field` directly instead of using `StandardField`.
 
 ## Concrete Implementations (MVP)
+
+### CairoTessellation
+
+The Cairo (4-fold pentille) tessellation uses `CairoPoint { x: i32, y: i32 }`.
+The occupied points are the two tile centres in each 4-by-4 fundamental square;
+the square orientation alternates by checkerboard parity.  `div_euclid` and
+`rem_euclid` define the classification, so the same rules apply on both sides
+of the origin.  The four occupied orientation classes are `L`, `R`, `U`, and
+`D`; each point has exactly five direct neighbours, represented by the
+`CairoFace` table.
+
+`CairoTessellation::step` and `face_between` use the explicit integer offset
+tables, not a geometric search.  Both reject unused coordinate pairs, and the
+tables are reverse-consistent, so a neighbour relationship is bidirectional.
+`cairo_rect(cols, rows)` provides the two cells from each fundamental square;
+arbitrary fields can supply any subset of valid Cairo points directly to
+`Field::new`.
+
+The pentagon has two 90-degree and three 120-degree corners.  Its explicit
+symmetry contract therefore contains the identity rotation and one reflection
+that fixes the long side and exchanges the two pairs of short sides.
 
 ### SquareTessellation
 

@@ -59,6 +59,7 @@ pub enum TessellationType {
     Square,
     Hex,
     Tri,
+    Cairo,
 }
 
 #[derive(Deserialize)]

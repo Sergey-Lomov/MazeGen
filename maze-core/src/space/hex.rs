@@ -22,8 +22,8 @@ impl Tessellation for HexTessellation {
     type Point = HexPoint;
     type Face = HexFace;
 
-    fn step(point: HexPoint, face: HexFace) -> HexPoint {
-        match face {
+    fn step(point: HexPoint, face: HexFace) -> Option<HexPoint> {
+        Some(match face {
             HexFace::E => HexPoint {
                 q: point.q + 1,
                 r: point.r,
@@ -48,7 +48,11 @@ impl Tessellation for HexTessellation {
                 q: point.q,
                 r: point.r + 1,
             },
-        }
+        })
+    }
+
+    fn is_valid_point(_point: HexPoint) -> bool {
+        true
     }
 
     fn faces() -> &'static [HexFace] {

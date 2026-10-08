@@ -7,7 +7,8 @@ use crate::random::MazeRng;
 use crate::repair::params::build_params;
 use crate::repair::strategies::split_core;
 use crate::repair::strategies::test_utils::apply_and_commit;
-use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use crate::space::test_support::GappedSquareTessellation;
+use crate::space::{MultiLevelField, SquareFace, SquarePoint, SquareTessellation, square_rect};
 use rand::SeedableRng;
 
 fn two_node_passage_pattern() -> SplitPattern {
@@ -179,6 +180,47 @@ fn pattern_mode_never_produces_a_truncated_tile_when_a_required_face_points_off_
         maze.field.node_count(),
         1,
         "no split tile must be minted when the pattern can't structurally fit anywhere"
+    );
+}
+
+#[test]
+fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
+    let origin = SquarePoint { x: 0, y: 0 };
+    let east = SquarePoint { x: 1, y: 0 };
+    let mut ids = IdGenerator::new();
+    let field: MultiLevelField<GappedSquareTessellation> =
+        MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+    let level = field.single_level_id();
+    let at = field.node_at(level, origin).unwrap();
+    let mut graph = Graph::new();
+    for node in field.all_node_ids() {
+        graph.add_node(node);
+    }
+    let maze = Maze::new(field, graph);
+    let pattern = SplitPattern {
+        node_count: 1,
+        faces: vec![vec![SplitPatternFace {
+            face_index: GappedSquareTessellation::face_index(SquareFace::E).unwrap(),
+            requirement: SplitFaceRequirement::Passage,
+            sibling_target: None,
+        }]],
+        weight: 1.0,
+    };
+
+    assert!(
+        split_core::try_pattern_adaptation(
+            &maze,
+            at,
+            origin,
+            &pattern,
+            0,
+            None,
+            true,
+            true,
+            None,
+            &std::collections::HashSet::new(),
+        )
+        .is_none()
     );
 }
 

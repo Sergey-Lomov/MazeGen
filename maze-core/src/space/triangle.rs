@@ -19,9 +19,9 @@ impl Tessellation for TriTessellation {
     type Point = TriPoint;
     type Face = TriFace;
 
-    fn step(point: TriPoint, face: TriFace) -> TriPoint {
+    fn step(point: TriPoint, face: TriFace) -> Option<TriPoint> {
         let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
-        match face {
+        Some(match face {
             TriFace::Left => TriPoint {
                 col: point.col - 1,
                 row: point.row,
@@ -43,7 +43,11 @@ impl Tessellation for TriTessellation {
                     }
                 }
             }
-        }
+        })
+    }
+
+    fn is_valid_point(_point: TriPoint) -> bool {
+        true
     }
 
     fn faces() -> &'static [TriFace] {

@@ -298,6 +298,33 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
                 TriPoint { col, row }
             })
         }
+        TessellationType::Cairo => {
+            use maze_core::space::{CairoPoint, CairoTessellation};
+            let to_pts = |raw: &[[i32; 2]]| -> Vec<CairoPoint> {
+                raw.iter().map(|&[x, y]| CairoPoint { x, y }).collect()
+            };
+            let first_pts = to_pts(&config.level_fields[0]);
+            if first_pts.is_empty() {
+                return Err("level_fields[0] must not be empty".to_string());
+            }
+            let start = resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| {
+                (p.x, p.y)
+            });
+            let mut field = MultiLevelField::<CairoTessellation>::single_level(first_pts, &mut ids)
+                .map_err(|e| e.to_string())?;
+            for raw in &config.level_fields[1..] {
+                let pts = to_pts(raw);
+                if pts.is_empty() {
+                    return Err("level_fields entry must not be empty".to_string());
+                }
+                let level = maze_core::space::Field::<CairoTessellation>::new(pts, &mut ids)
+                    .map_err(|e| e.to_string())?;
+                field.add_level(level);
+            }
+            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| {
+                CairoPoint { x, y }
+            })
+        }
     }
 }
 

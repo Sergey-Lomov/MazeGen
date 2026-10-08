@@ -10,7 +10,7 @@ use maze_core::{
     Maze,
     graph::Graph,
     space::Tessellation,
-    space::{HexPoint, SquarePoint, TriPoint},
+    space::{CairoPoint, HexPoint, SquarePoint, TriPoint},
 };
 use post_edit::{
     apply_split_points, build_field_from_nodes, build_graph_from_post_edit_edges,
@@ -44,6 +44,11 @@ fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, Js
             cfg,
             |p: TriPoint| (p.col, p.row),
             |[col, row]| Some(TriPoint { col, row }),
+        ),
+        TessellationType::Cairo => run_compute_analytics::<maze_core::space::CairoTessellation>(
+            cfg,
+            |p: CairoPoint| (p.x, p.y),
+            |[x, y]| Some(CairoPoint { x, y }),
         ),
     }
 }
@@ -295,7 +300,7 @@ mod tests {
     mod run_compute_analytics_core_tests {
         use super::*;
         use crate::dto::NodeDto;
-        use maze_core::space::{SquarePoint, SquareTessellation};
+        use maze_core::space::{CairoPoint, CairoTessellation, SquarePoint, SquareTessellation};
 
         fn xy_to_point(p: [i32; 2]) -> Option<SquarePoint> {
             Some(SquarePoint { x: p[0], y: p[1] })
@@ -339,6 +344,72 @@ mod tests {
 
         fn run(cfg: ComputeAnalyticsConfig) -> Result<MazeSnapshot, String> {
             run_compute_analytics_core::<SquareTessellation>(cfg, point_to_xy, xy_to_point)
+        }
+
+        #[test]
+        fn cairo_post_edit_analytics_rebuilds_nodes_from_integer_wire_coordinates() {
+            let cfg = ComputeAnalyticsConfig {
+                tessellation: generation_config::TessellationConfig {
+                    tessellation_type: generation_config::TessellationType::Cairo,
+                },
+                level_fields: vec![vec![[2, 1], [2, 3]]],
+                nodes: vec![
+                    NodeDto {
+                        id: 1,
+                        x: 2,
+                        y: 1,
+                        i: 0,
+                        level: 0,
+                    },
+                    NodeDto {
+                        id: 2,
+                        x: 2,
+                        y: 3,
+                        i: 0,
+                        level: 0,
+                    },
+                ],
+                edges: vec![],
+                vertical_edges: vec![],
+                split_points: vec![],
+                start: None,
+                finish: None,
+                rule_groups: vec![],
+                preset_connections: vec![],
+                preset_split_points: vec![],
+                preset_start: None,
+                preset_finish: None,
+            };
+
+            let snapshot = run_compute_analytics_core::<CairoTessellation>(
+                cfg,
+                |p: CairoPoint| (p.x, p.y),
+                |[x, y]| Some(CairoPoint { x, y }),
+            )
+            .expect("Cairo post-edit analytics must rebuild the field");
+
+            assert_eq!(snapshot.nodes.len(), 2);
+            assert_eq!(snapshot.nodes[0].x, 2);
+            assert_eq!(snapshot.nodes[1].y, 3);
+        }
+
+        #[test]
+        fn cairo_post_edit_analytics_rejects_invalid_wire_points() {
+            let mut cfg = base_cfg();
+            cfg.tessellation.tessellation_type = generation_config::TessellationType::Cairo;
+            cfg.nodes[0].x = 0;
+            cfg.nodes[0].y = 0;
+
+            let error = match run_compute_analytics_core::<CairoTessellation>(
+                cfg,
+                |p: CairoPoint| (p.x, p.y),
+                |[x, y]| Some(CairoPoint { x, y }),
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("invalid Cairo points must be rejected by post-edit analytics"),
+            };
+
+            assert!(error.contains("field contains an invalid point"));
         }
 
         // GitHub issue #626 regression: re-adding a split slot at a point whose only prior slot was

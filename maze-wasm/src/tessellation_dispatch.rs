@@ -5,8 +5,8 @@ use maze_core::{
     generation::resolve_generation_start,
     ids::IdGenerator,
     space::{
-        Field, HexPoint, HexTessellation, MultiLevelField, SquarePoint, SquareTessellation,
-        Tessellation, TriPoint, TriTessellation,
+        CairoPoint, CairoTessellation, Field, HexPoint, HexTessellation, MultiLevelField,
+        SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation,
     },
 };
 use wasm_bindgen::prelude::*;
@@ -125,6 +125,29 @@ pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateR
                 config,
                 |p: TriPoint| (p.col, p.row),
                 |col, row| TriPoint { col, row },
+            )
+        }
+        TessellationType::Cairo => {
+            let level_points: Vec<Vec<CairoPoint>> = config
+                .level_fields
+                .iter()
+                .map(|raw| raw.iter().map(|&[x, y]| CairoPoint { x, y }).collect())
+                .collect();
+            if level_points.iter().any(|pts| pts.is_empty()) {
+                return Err(JsValue::from_str("level_fields entry must not be empty"));
+            }
+            let start = resolve_start(&level_points[0], gen_source_xy, gen_source_mode, seed, |p| {
+                (p.x, p.y)
+            });
+            let field = build_multi_level_field::<CairoTessellation>(level_points, &mut ids)?;
+            run_generate(
+                seed,
+                field,
+                ids,
+                start,
+                config,
+                |p: CairoPoint| (p.x, p.y),
+                |x, y| CairoPoint { x, y },
             )
         }
     }
