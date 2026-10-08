@@ -35,6 +35,7 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
   const t = cfg.type;
   const tessellation_type = t.startsWith("hex") ? "hex" as const
     : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
+    : t.startsWith("cairo") ? "cairo" as const
     : "square" as const;
   return { tessellation_type };
 }

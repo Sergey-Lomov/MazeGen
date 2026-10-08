@@ -49,6 +49,7 @@ function applyTessellationConfigsForFloors(state: MazeState, configs: Record<str
       squareShape: derived.squareShape,
       hexShape: derived.hexShape,
       triangleShape: derived.triangleShape,
+      cairoShape: derived.cairoShape,
       savedConfigs: derived.savedConfigs,
       tessellationConfig: cfg,
       freeFieldPoints: derived.freeFieldPoints,
@@ -83,6 +84,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
   setSquareShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSquareShape", shape }, () => makeShapeSetter("squareShape", "square")(shape)(state))),
   setHexShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setHexShape", shape }, () => makeShapeSetter("hexShape", "hex")(shape)(state))),
   setTriangleShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setTriangleShape", shape }, () => makeShapeSetter("triangleShape", "triangle")(shape)(state))),
+  setCairoShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setCairoShape", shape }, () => makeShapeSetter("cairoShape", "cairo")(shape)(state))),
 
   setTessellationConfig: (cfg: TessellationConfig) => {
     get().setTessellationConfigForFloors(cfg, false);
@@ -128,7 +130,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const field = activeFloorField(state);
     if (mode === "custom") {
       const cfg = field.tessellationConfig;
-      const isAlreadyCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom";
+      const isAlreadyCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom" || cfg.type === "cairo_custom";
       let fieldPoints: Set<number>;
       if (isAlreadyCustom) {
         fieldPoints = field.freeFieldPoints[state.tessellationKind];
@@ -319,6 +321,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "setSquareShape": get().setSquareShape(pending.shape); break;
       case "setHexShape": get().setHexShape(pending.shape); break;
       case "setTriangleShape": get().setTriangleShape(pending.shape); break;
+      case "setCairoShape": get().setCairoShape(pending.shape); break;
       case "setTessellationConfig": get().setTessellationConfig(pending.config); break;
       case "setTessellationConfigForFloors": get().setTessellationConfigForFloors(pending.config, pending.applyToAllStandardFloors); break;
       case "setTessellationConfigsForFloors": get().setTessellationConfigsForFloors(pending.configs, pending.applyToAllStandardFloors); break;

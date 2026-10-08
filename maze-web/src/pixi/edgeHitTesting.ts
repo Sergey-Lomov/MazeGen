@@ -43,6 +43,7 @@ function geometryConfig(cfg: TessellationConfig): FieldConfig {
     case "square": return { type: "square", width: 0, height: 0 };
     case "hex": return { type: "hex_parallelogram", cols: 0, rows: 0, orientation: cfg.orientation };
     case "triangle": return { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation };
+    case "cairo": return { type: "cairo", cols: 0, rows: 0 };
   }
 }
 

@@ -34,6 +34,8 @@ export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: n
     case "square_custom":
     case "hex_custom":
     case "tri_custom": return { ox: 0, oy: 0 };
+    case "cairo":
+    case "cairo_custom": return { ox: 0, oy: 0 };
   }
 }
 
@@ -125,6 +127,10 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
         constrainSquare: true,
       });
     }
+    case "cairo":
+      return cairoRectangleCells(cfg.cols, cfg.rows);
+    case "cairo_custom":
+      return cfg.points.map(([x, y]) => [x, y]);
     case "square_custom":
     case "hex_custom":
     case "tri_custom":
@@ -142,7 +148,26 @@ export function resolveFieldConfig(cfg: TessellationConfig): ResolvedField {
   if (cfg.type.startsWith("hex")) {
     return { type: "hex_parallelogram", cols: 0, rows: 0, kind: "hex", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "flat_top") as "flat_top" | "pointy_top", cells };
   }
+  if (cfg.type.startsWith("cairo")) return { type: "cairo", cols: 0, rows: 0, kind: "cairo", cells };
   return { type: "triangle_rect", cols: 0, rows: 0, kind: "triangle", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "r0") as "r0" | "r90" | "r180" | "r270", cells };
+}
+
+/** Cairo's standard field is a rectangle of fundamental 4×4 coordinate squares; each square
+ * contributes the two valid pentagon centres used by maze-core's `CairoTessellation::rect`. */
+function cairoRectangleCells(cols: number, rows: number): [number, number][] {
+  const cells: [number, number][] = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const ox = x * 4;
+      const oy = y * 4;
+      if ((x + y) % 2 === 1) {
+        cells.push([ox + 1, oy + 2], [ox + 3, oy + 2]);
+      } else {
+        cells.push([ox + 2, oy + 1], [ox + 2, oy + 3]);
+      }
+    }
+  }
+  return cells;
 }
 
 /** A rectangular triangle-tessellation field is made from complete horizontal pairs of opposite

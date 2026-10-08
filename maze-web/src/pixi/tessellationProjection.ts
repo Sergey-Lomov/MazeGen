@@ -170,5 +170,9 @@ export function makeProjection(cfg: TessellationConfig): TessellationProjection 
       return new HexProjection(("orientation" in cfg ? cfg.orientation : undefined) as "flat_top" | "pointy_top" ?? "flat_top");
     case "triangle":
       return new TriProjection(("orientation" in cfg ? cfg.orientation : undefined) as "r0" | "r90" | "r180" | "r270" ?? "r0");
+    case "cairo":
+      // Cairo-specific projection is supplied by issue #712; keep the configuration pipeline
+      // total while that geometry layer is developed independently.
+      return new SquareProjection();
   }
 }

@@ -44,6 +44,9 @@ export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
     case "triangle_hexagon":
     case "tri_custom":
       return 60;
+    case "cairo":
+    case "cairo_custom":
+      return 36;
     default:
       cfg satisfies never;
       return 0;
@@ -290,6 +293,9 @@ function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationCo
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return nearestTriCoord(worldX, worldY, ori);
     }
+    case "cairo":
+    case "cairo_custom":
+      return nearestSquareCoord(worldX, worldY);
     default:
       cfg satisfies never;
       return [0, 0];

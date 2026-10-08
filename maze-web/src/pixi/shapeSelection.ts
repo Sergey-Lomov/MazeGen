@@ -307,6 +307,9 @@ function cellVertices(cfg: TessellationConfig, projection: ReturnType<typeof mak
     case "tri_custom":
       return triVertices(x, y, cfg.orientation ?? "r0").map(asPositiveY)
         .map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
+    case "cairo":
+    case "cairo_custom":
+      return [];
   }
 }
 

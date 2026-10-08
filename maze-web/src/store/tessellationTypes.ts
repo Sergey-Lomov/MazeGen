@@ -1,9 +1,10 @@
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
-export type TessellationKind = "square" | "hex" | "triangle";
+export type TessellationKind = "square" | "hex" | "triangle" | "cairo";
 export type SquareShape = "rect" | "circle" | "triangle" | "free";
 export type HexShape = "rectangle" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
 export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
+export type CairoShape = "rect" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
@@ -36,6 +37,7 @@ export type PendingFieldEdit =
   | { kind: "setSquareShape"; shape: SquareShape }
   | { kind: "setHexShape"; shape: HexShape }
   | { kind: "setTriangleShape"; shape: TriangleShape }
+  | { kind: "setCairoShape"; shape: CairoShape }
   | { kind: "setTessellationConfig"; config: TessellationConfig }
   | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
   | { kind: "setTessellationConfigsForFloors"; configs: Record<string, TessellationConfig>; applyToAllStandardFloors: boolean }
@@ -135,6 +137,7 @@ export interface FloorFieldConfig {
   squareShape: SquareShape;
   hexShape: HexShape;
   triangleShape: TriangleShape;
+  cairoShape: CairoShape;
   /** Saved params per predefined config type, preserved across shape/mode switches. */
   savedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>;
   tessellationConfig: TessellationConfig;
@@ -172,6 +175,7 @@ export interface FloorFieldsActions {
   setSquareShape: (shape: SquareShape) => void;
   setHexShape: (shape: HexShape) => void;
   setTriangleShape: (shape: TriangleShape) => void;
+  setCairoShape: (shape: CairoShape) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
   setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
   setTessellationConfigsForFloors: (configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean) => void;

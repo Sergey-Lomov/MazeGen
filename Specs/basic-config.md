@@ -1,6 +1,6 @@
 # Basic Configuration
 
-Selects the tessellation kind (square / hex / triangle) and its orientation before any field editing or generation. Implemented as the "Basic configuration" card in `FeaturesPanel`.
+Selects the tessellation kind (square / hex / triangle / Cairo) and its orientation before any field editing or generation. Implemented as the "Basic configuration" card in `FeaturesPanel`.
 
 ## Concepts
 
@@ -23,6 +23,7 @@ Selects the tessellation kind (square / hex / triangle) and its orientation befo
 | Square | — | no orientation |
 | Hex | `HexOrientation` | `flat_top`, `pointy_top` |
 | Triangle | `TriOrientation` | `r0` (base bottom), `r90` (base left), `r180` (base top), `r270` (base right) |
+| Cairo | — | no orientation |
 
 Orientation dropdowns appear only when the relevant kind is selected in preview.
 

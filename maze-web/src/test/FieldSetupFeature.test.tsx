@@ -357,6 +357,13 @@ describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", (
     expect(fieldSetupSubtitle("square", floors)).toContain("Rect");
   });
 
+  it("labels a Cairo rectangle with its fundamental-square dimensions", () => {
+    const floors = [
+      baseFloorFieldConfig({ cairoShape: "rect", tessellationConfig: { type: "cairo", cols: 2, rows: 3 } }),
+    ];
+    expect(fieldSetupSubtitle("cairo", floors)).toContain("2×3");
+  });
+
   it("shows 'Different floor shapes' when floors' shapes/sizes differ", () => {
     const floors = [
       baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),

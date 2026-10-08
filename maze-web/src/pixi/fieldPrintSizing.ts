@@ -18,6 +18,7 @@ export type PredefinedFieldConfig = Exclude<FieldConfig,
   { type: "square_custom"; points: [number, number][] }
   | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
   | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" }
+  | { type: "cairo_custom"; points: [number, number][] }
 >;
 
 export interface PrintFieldSizingResult {
@@ -106,6 +107,11 @@ function calculateConfig(
     case "triangle_circle":
     case "triangle_hexagon": {
       return calculateBestRadialConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
+    }
+    case "cairo": {
+      const cols = Math.floor(usableWidthMm / (4 * cellSizeMm));
+      const rows = Math.floor(usableHeightMm / (4 * cellSizeMm));
+      return cols >= 1 && rows >= 1 ? { ...current, cols, rows } : null;
     }
     default:
       current satisfies never;
@@ -427,7 +433,17 @@ function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
     case "square_custom":
     case "hex_custom":
     case "tri_custom":
+    case "cairo_custom":
       return [];
+    case "cairo": {
+      const center = { x: x * 4, y: -y * 4 };
+      return [
+        { x: center.x - 1, y: center.y - 1 },
+        { x: center.x + 1, y: center.y - 1 },
+        { x: center.x + 1, y: center.y + 1 },
+        { x: center.x - 1, y: center.y + 1 },
+      ];
+    }
   }
 }
 

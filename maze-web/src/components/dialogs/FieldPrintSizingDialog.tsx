@@ -231,9 +231,11 @@ export function configSizeDescription(config: FieldConfig): string {
       return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
     case "triangle_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
     case "square_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
+    case "cairo": return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
     case "square_custom":
     case "hex_custom":
     case "tri_custom": return "";
+    case "cairo_custom": return "";
   }
 }
 
@@ -292,9 +294,11 @@ function printFieldShapeLabel(config: FieldConfig): string {
     case "hex_parallelogram": return m["field.shape.parallelogram"]();
     case "hex_hexagon":
     case "triangle_hexagon": return m["field.shape.hexagon"]();
+    case "cairo": return m["field.shape.rectangle"]();
     case "square_custom":
     case "hex_custom":
     case "tri_custom": return m["field.print_sizing.floor_non_standard"]();
+    case "cairo_custom": return m["field.print_sizing.floor_non_standard"]();
   }
 }
 
@@ -312,6 +316,7 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
     case "square_triangle":
     case "hex_triangle":
     case "triangle_triangle": return `${m["field.side"]()} ${config.side}`;
+    case "cairo": return `${config.cols} × ${config.rows}`;
   }
 }
 

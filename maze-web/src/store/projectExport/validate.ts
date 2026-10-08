@@ -66,7 +66,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // tessellation (kind/orientation only — per-floor field shape is `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "triangle"] as const, "square");
+  const kind = optEnum(tessObj, "kind", ["square", "hex", "triangle", "cairo"] as const, "square");
   const hexOrientation = optEnum(tessObj, "hexOrientation", ["flat_top", "pointy_top"] as const, "flat_top");
   const triOrientation = optEnum(tessObj, "triOrientation", ["r0", "r90", "r180", "r270"] as const, "r0");
 
@@ -271,7 +271,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
       ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`)
-      : { config: defaultConfig, savedConfigs: [defaultConfig], freeFieldPoints: { square: [], hex: [], triangle: [] }, fieldEditMode: "default" };
+      : { config: defaultConfig, savedConfigs: [defaultConfig], freeFieldPoints: { square: [], hex: [], triangle: [], cairo: [] }, fieldEditMode: "default" };
   }
 
   return {

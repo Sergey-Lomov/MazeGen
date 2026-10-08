@@ -53,6 +53,9 @@ export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
     case "triangle_hexagon":
     case "tri_custom":
       return AXES_0_60_120;
+    case "cairo":
+    case "cairo_custom":
+      return SQUARE_AXES;
     default:
       cfg satisfies never;
       return SQUARE_AXES;

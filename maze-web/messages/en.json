@@ -99,6 +99,7 @@
   "tessellation.square": "Square",
   "tessellation.hex": "Hex",
   "tessellation.triangle": "Triangle",
+  "tessellation.cairo": "Cairo",
   "tessellation.orientation": "Orientation",
   "tessellation.flat_top": "Flat top",
   "tessellation.pointy_top": "Pointy top",

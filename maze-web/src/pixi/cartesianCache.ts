@@ -10,9 +10,9 @@ import { getCartesianCoords } from "../wasm/mazeService";
 /// call per cell, since render loops call `getCellCenter` synchronously and per-call wasm
 /// round-trips would be far too slow for a hot path.
 const cache = new Map<string, [number, number]>();
-let cachedKind: "square" | "hex" | "tri" | null = null;
+let cachedKind: "square" | "hex" | "tri" | "cairo" | null = null;
 
-function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" {
+function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" | "cairo" {
   const family = tessellationFamily(cfg);
   return family === "triangle" ? "tri" : family;
 }

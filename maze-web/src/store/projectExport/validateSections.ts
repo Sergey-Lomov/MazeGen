@@ -83,6 +83,13 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       assertArray(obj.points, `${path}.points`);
       assertTriOrientation(obj.orientation, `${path}.orientation`);
       return obj as unknown as TessellationConfig;
+    case "cairo":
+      assertNumber(obj.cols, `${path}.cols`);
+      assertNumber(obj.rows, `${path}.rows`);
+      return obj as unknown as TessellationConfig;
+    case "cairo_custom":
+      assertArray(obj.points, `${path}.points`);
+      return obj as unknown as TessellationConfig;
     default:
       throw new Error(`Unknown tessellation config type: ${type}`);
   }
@@ -91,7 +98,7 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
 /** Validates one floor's own field-shape state (GitHub issue #338) — `config`/`savedConfigs` reuse
  * `validateTessellationConfig`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
  * itself is re-derived on load, same as the pre-#338 shape always did). */
-export function validateFloorFieldConfig(v: unknown, path: string): { config: TessellationConfig; savedConfigs: TessellationConfig[]; freeFieldPoints: Record<"square" | "hex" | "triangle", [number, number][]>; fieldEditMode: "default" | "custom" } {
+export function validateFloorFieldConfig(v: unknown, path: string): { config: TessellationConfig; savedConfigs: TessellationConfig[]; freeFieldPoints: Record<"square" | "hex" | "triangle" | "cairo", [number, number][]>; fieldEditMode: "default" | "custom" } {
   const obj = assertObject(v, path);
   const config = validateTessellationConfig(obj.config, `${path}.config`);
   const savedConfigs: TessellationConfig[] = obj.savedConfigs != null
@@ -109,6 +116,7 @@ export function validateFloorFieldConfig(v: unknown, path: string): { config: Te
     square: validatePoints(freeObj.square, `${path}.freeFieldPoints.square`),
     hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
     triangle: validatePoints(freeObj.triangle, `${path}.freeFieldPoints.triangle`),
+    cairo: validatePoints(freeObj.cairo, `${path}.freeFieldPoints.cairo`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
   return { config, savedConfigs, freeFieldPoints, fieldEditMode };

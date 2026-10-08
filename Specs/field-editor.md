@@ -34,6 +34,7 @@ The field-shape selector exposes these additional shapes:
 | Hexagonal | Circle | `hex_circle` | radius |
 | Hexagonal | Triangle | `hex_triangle` | side |
 | Triangular | Circle | `triangle_circle` | radius |
+| Cairo | Rectangle | `cairo` | fundamental-square columns, rows |
 
 The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Each
 predefined config type owns its size parameters, so switching shapes does not overwrite another
@@ -165,6 +166,7 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 | `square` | `rect` | `square` |
 | `hex` | `hexagon` | `hex_hexagon` |
 | `triangle` | `triangle` | `triangle_triangle` |
+| `cairo` | `rect` | `cairo` |
 
 When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
 including teleports, vertical passages, and elevators.
@@ -191,7 +193,8 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"rectangle"` \| `"circle"` \| `"triangle"` \| `"equilateral_triangle"` \| `"hexagon"` \| `"parallelogram"` \| `"polygon"` \| `"symmetry"` \| `"magic_wand"`, per floor |
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
-| `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
+| `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
+| `floorFields[floorId].cairoShape` | Cairo's rect standard shape or free custom mode |
 | `floorFields[floorId].tessellationConfig` | That floor's current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
 | `floorFields[floorId].savedConfigs` | That floor's saved size params per predefined config type, restored on shape/mode switch |
 
