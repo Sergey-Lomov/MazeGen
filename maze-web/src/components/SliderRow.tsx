@@ -13,12 +13,16 @@ interface Props {
   /** Value display formatter. Defaults to `toFixed(2)`, matching the default 0..1/0.01 range. */
   format?: (v: number) => string;
   disabled?: boolean;
+  onPointerDown?: React.PointerEventHandler<HTMLInputElement>;
+  onPointerUp?: React.PointerEventHandler<HTMLInputElement>;
+  onPointerCancel?: React.PointerEventHandler<HTMLInputElement>;
+  onBlur?: React.FocusEventHandler<HTMLInputElement>;
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — shrinks
    *  the slider's own `flex: 1` track, never the label, per that issue's own spec. */
   resetButton?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -34,6 +38,10 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value))}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onBlur={onBlur}
         />
         <span style={sharedStyles.sliderRowValue}>{format ? format(value) : value.toFixed(2)}</span>
         {resetButton}
