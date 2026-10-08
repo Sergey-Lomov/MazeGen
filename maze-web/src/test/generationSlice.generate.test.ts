@@ -57,10 +57,10 @@ describe("mazeStore.generate", () => {
     const config = { type: "cairo", cols: 2, rows: 2 } as const;
     expect(fieldConfigToWasm(config)).toEqual({ tessellation_type: "cairo" });
     expect(configAllCells(config)).toEqual([
-      [2, 1], [2, 3],
-      [5, 2], [7, 2],
-      [1, 6], [3, 6],
-      [6, 5], [6, 7],
+      [-2, -1], [2, 1],
+      [-1, 2], [1, -2],
+      [-3, 2], [3, -2],
+      [-2, -3], [2, 3],
     ]);
   });
 

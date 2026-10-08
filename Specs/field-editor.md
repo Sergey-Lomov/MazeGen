@@ -35,8 +35,13 @@ The field-shape selector exposes these additional shapes:
 | Hexagonal | Triangle | `hex_triangle` | side |
 | Triangular | Circle | `triangle_circle` | radius |
 | Cairo | Rectangle | `cairo` | fundamental-square columns, rows |
+| Cairo | Circle | `cairo_circle` | radius |
+| Cairo | Triangle | `cairo_triangle` | side |
+| Cairo | Hexagon | `cairo_hexagon` | radius |
 
-The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Each
+The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Cairo
+standard forms are rasterized from valid Cairo points around the grid origin, just like the other
+predefined forms. Each
 predefined config type owns its size parameters, so switching shapes does not overwrite another
 shape's saved dimensions.
 
@@ -172,9 +177,10 @@ When either action changes the tessellation kind, it also clears all tessellatio
 including teleports, vertical passages, and elevators.
 
 Predefined circle and hexagon configurations use a default radius of `10` cells when no saved
-radius exists, except `hex_circle` and `hex_hexagon` on hexagonal tessellations, which default
-to `8` cells. The default side of the predefined triangular field is `12` cells. Existing saved
-size values are preserved.
+radius exists, except Cairo circle and hexagon configurations, which default to `12` cells, and
+`hex_circle` and `hex_hexagon` on hexagonal tessellations, which default to `8` cells. The
+default side of the predefined triangular field is `12` cells, while the Cairo triangle defaults
+to `20` cells. Existing saved size values are preserved.
 
 ## State fields (mazeStore)
 
@@ -194,7 +200,7 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
-| `floorFields[floorId].cairoShape` | Cairo's rect standard shape or free custom mode |
+| `floorFields[floorId].cairoShape` | Cairo's rect/circle/triangle/hexagon standard shape or free custom mode |
 | `floorFields[floorId].tessellationConfig` | That floor's current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
 | `floorFields[floorId].savedConfigs` | That floor's saved size params per predefined config type, restored on shape/mode switch |
 
@@ -303,8 +309,9 @@ the field is not changed and the selection remains visible until another gesture
 card change. A pending move is confirmed by Space, clicking outside the selection, or switching
 the primitive or operation mode.
 The mode shortcuts are `+` for Add, `-` for Remove, and `0` for Select.
-The tool works with square, hexagonal, and triangular tessellations and does not apply primitive
-smoothing or isolated-cell cleanup.
+The tool works with square, hexagonal, triangular, and Cairo tessellations and does not apply
+primitive smoothing or isolated-cell cleanup. Cairo primitive inclusion considers only the valid
+four orientation classes in its periodic 4×4 coordinate model.
 
 In Select mode, the polygon is drawn using the normal dashed polygon outline while it is being
 edited. Once the gesture is released, that outline is replaced by dashed exposed edges of the

@@ -192,6 +192,19 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(activeField().cairoShape).toBe("rect");
   });
 
+  it("uses the standard Cairo sizes when selecting each predefined form", () => {
+    useMazeStore.getState().setTessellationKind("cairo");
+
+    useMazeStore.getState().setCairoShape("circle");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_circle", radius: 12 });
+
+    useMazeStore.getState().setCairoShape("triangle");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_triangle", side: 20 });
+
+    useMazeStore.getState().setCairoShape("hexagon");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_hexagon", radius: 12 });
+  });
+
   it("switches Cairo between standard and free fields without losing custom points", () => {
     useMazeStore.getState().setTessellationKind("cairo");
     const points = new Set([encodePoint(-3, 2), encodePoint(2, 1)]);

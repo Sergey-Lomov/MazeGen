@@ -41,6 +41,9 @@ describe("FieldSetupFeature — Copy floor button", () => {
     [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
     [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
     [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
+    [{ type: "cairo_circle", radius: 12 }, "Field radius: 12 cells"],
+    [{ type: "cairo_triangle", side: 20 }, "Field side: 20 cells"],
+    [{ type: "cairo_hexagon", radius: 12 }, "Field radius: 12 cells"],
   ];
 
   it.each(descriptionCases)("describes calculated field dimensions clearly", (config, expected) => {

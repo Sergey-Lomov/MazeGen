@@ -1,6 +1,7 @@
 import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
+import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TessellationKind } from "./primitiveGeometry";
 import type { WorldPoint } from "./primitiveGeometry";
@@ -46,6 +47,7 @@ function cellVertices(x: number, y: number, kind: TessellationKind, cfg: Tessell
     const center = hexCenter(x, y, orientation, cfg);
     return hexVertices(center.x, center.y, orientation).map((point) => ({ x: point.x, y: -point.y }));
   }
+  if (kind === "cairo") return geometryCellVertices(x, y, cfg)?.map((point) => ({ x: point.x, y: -point.y })) ?? [];
   const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
   return triVertices(x, y, orientation).map((point) => ({ x: point.x, y: -point.y }));
 }

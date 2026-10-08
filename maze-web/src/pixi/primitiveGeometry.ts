@@ -2,6 +2,7 @@ import { cellsInsideShape, polygonForShape, shapeForPrimitive, type PrimitiveSha
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { triCenterOffset, triHexagonRaw, triTriangleRaw } from "./triShapeHelpers";
+import { cairoNeighborOffsets } from "./cairoGeometry";
 import type { FieldConfig } from "../fieldConfig";
 import type { TessellationKind } from "../store/mazeStore";
 
@@ -57,7 +58,9 @@ function contextConfig(ctx: PrimitiveContext): FieldConfig {
     ? { type: "square", width: 0, height: 0 }
     : ctx.kind === "hex"
       ? { type: "hex_hexagon", radius: 0 }
-      : { type: "triangle_rect", cols: 0, rows: 0 };
+      : ctx.kind === "triangle"
+        ? { type: "triangle_rect", cols: 0, rows: 0 }
+        : { type: "cairo", cols: 0, rows: 0 };
 }
 
 function worldPoint(config: FieldConfig, point: { x: number; y: number }): WorldPoint {
@@ -261,14 +264,16 @@ export function smoothPrimitiveCells(
   const selected = new Set(cells.map(([x, y]) => `${x},${y}`));
   const offsets = kind === "square"
     ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    : kind === "hex"
-      ? [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
+      : kind === "hex"
+        ? [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
       : undefined;
 
   return cells.filter(([x, y]) => {
-    const neighbors = offsets ?? ((x + y) % 2 === 0
-      ? [[-1, 0], [1, 0], [0, -1]]
-      : [[-1, 0], [1, 0], [0, 1]]);
+    const neighbors = kind === "cairo"
+      ? cairoNeighborOffsets(x, y)
+      : offsets ?? ((x + y) % 2 === 0
+        ? [[-1, 0], [1, 0], [0, -1]]
+        : [[-1, 0], [1, 0], [0, 1]]);
     let count = 0;
     for (const [dx, dy] of neighbors) if (selected.has(`${x + dx},${y + dy}`)) count++;
     return count !== 1;
@@ -297,6 +302,7 @@ function removeIsolatedPrimitiveCells(cells: [number, number][], kind: Tessellat
 function primitiveNeighborOffsets(kind: TessellationKind, x: number, y: number): number[][] {
   if (kind === "square") return [[1, 0], [-1, 0], [0, 1], [0, -1]];
   if (kind === "hex") return [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+  if (kind === "cairo") return cairoNeighborOffsets(x, y);
   return (x + y) % 2 === 0
     ? [[-1, 0], [1, 0], [0, -1]]
     : [[-1, 0], [1, 0], [0, 1]];
@@ -418,5 +424,6 @@ function rectanglePoints(origin: WorldPoint, halfWidth: number, halfHeight: numb
 export function cfgKind(cfgType: string): TessellationKind {
   if (cfgType.startsWith("hex")) return "hex";
   if (cfgType.startsWith("tri")) return "triangle";
+  if (cfgType.startsWith("cairo")) return "cairo";
   return "square";
 }

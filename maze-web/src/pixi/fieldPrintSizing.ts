@@ -4,6 +4,8 @@ import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
 import { triCenterOffset } from "./triShapeHelpers";
 import { configAllCells } from "./tessellationCells";
+import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
+import { TILE_SIZE } from "./constants";
 
 const MAX_RECT_DIMENSION = 1000;
 const MAX_RADIUS = 500;
@@ -49,7 +51,7 @@ export function resolvePrintPaperSizeMm(input: Pick<PrintFieldSizingInput, "pape
 }
 
 export function isPredefinedFieldConfig(config: FieldConfig): config is PredefinedFieldConfig {
-  return config.type !== "square_custom" && config.type !== "hex_custom" && config.type !== "tri_custom";
+  return config.type !== "square_custom" && config.type !== "hex_custom" && config.type !== "tri_custom" && config.type !== "cairo_custom";
 }
 
 /** Calculates a predefined field shape that fits the requested printed cell size and paper area.
@@ -105,7 +107,10 @@ function calculateConfig(
     case "triangle_triangle":
     case "hex_hexagon":
     case "triangle_circle":
-    case "triangle_hexagon": {
+    case "triangle_hexagon":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon": {
       return calculateBestRadialConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
     }
     case "cairo": {
@@ -165,7 +170,7 @@ function calculateBestRectConfig(
 }
 
 function calculateBestRadialConfig(
-  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" }>,
+  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" | "cairo_circle" | "cairo_triangle" | "cairo_hexagon" }>,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -202,10 +207,10 @@ function calculateBestRadialConfig(
 }
 
 function radialCandidate(
-  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" }>,
+  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" | "cairo_circle" | "cairo_triangle" | "cairo_hexagon" }>,
   radius: number,
 ): FieldConfig {
-  if (current.type === "triangle_triangle" || current.type === "square_triangle" || current.type === "hex_triangle") return { ...current, side: radius };
+  if (current.type === "triangle_triangle" || current.type === "square_triangle" || current.type === "hex_triangle" || current.type === "cairo_triangle") return { ...current, side: radius };
   return { ...current, radius };
 }
 
@@ -291,6 +296,9 @@ function boundaryCells(config: FieldConfig): [number, number][] {
   }
   if (config.type === "triangle_hexagon") {
     return triangleHexagonBoundaryCells(config.radius);
+  }
+  if (config.type === "cairo_circle" || config.type === "cairo_triangle" || config.type === "cairo_hexagon") {
+    return configAllCells(config);
   }
   if (config.type !== "square" && config.type !== "triangle_rect" && config.type !== "hex_parallelogram") {
     return configAllCells(config);
@@ -435,14 +443,14 @@ function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
     case "tri_custom":
     case "cairo_custom":
       return [];
-    case "cairo": {
-      const center = { x: x * 4, y: -y * 4 };
-      return [
-        { x: center.x - 1, y: center.y - 1 },
-        { x: center.x + 1, y: center.y - 1 },
-        { x: center.x + 1, y: center.y + 1 },
-        { x: center.x - 1, y: center.y + 1 },
-      ];
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon": {
+      return (geometryCellVertices(x, y, config) ?? []).map((point) => ({
+        x: point.x / TILE_SIZE,
+        y: -point.y / TILE_SIZE,
+      }));
     }
   }
 }

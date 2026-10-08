@@ -1,6 +1,7 @@
 import { TILE_SIZE } from "./constants";
 import { INRADIUS } from "./hexGeometry";
 import { TRI_TILE_SIZE } from "./triGeometry";
+import { cairoCenter, CAIRO_CENTER_SCALE, isCairoPoint } from "./cairoGeometry";
 import { tessellationFamily, type Tessellation as TessellationConfig } from "../fieldConfig";
 
 export interface TessellationProjection {
@@ -161,6 +162,56 @@ class TriProjection implements TessellationProjection {
   }
 }
 
+class CairoProjection implements TessellationProjection {
+  screenToGrid(vx: number, vy: number) {
+    const x = vx / (CAIRO_CENTER_SCALE * TILE_SIZE);
+    const y = -vy / (CAIRO_CENTER_SCALE * TILE_SIZE);
+    const baseX = Math.floor(x);
+    const baseY = Math.floor(y);
+    let best: { x: number; y: number; distance: number } | null = null;
+
+    // Cairo occupies four points in each 4×4 period. Searching the nearby integer cells is both
+    // exact for the nearest-cell hit test and avoids a geometric search over the whole field.
+    for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
+      for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
+        if (!isCairoPoint(candidateX, candidateY)) continue;
+        const dx = candidateX - x;
+        const dy = candidateY - y;
+        const distance = dx * dx + dy * dy;
+        if (!best || distance < best.distance
+          || (distance === best.distance && (candidateX < best.x
+            || (candidateX === best.x && candidateY < best.y)))) {
+          best = { x: candidateX, y: candidateY, distance };
+        }
+      }
+    }
+    if (best) return { x: best.x, y: best.y };
+    // The search always finds a valid point for finite input. Keep the projection total for an
+    // invalid/non-finite pointer event without inventing a new Cairo coordinate class.
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  gridToScreen(x: number, y: number) {
+    return cairoCenter(x, y);
+  }
+
+  gridBounds(vpX: number, vpY: number, vpW: number, vpH: number, scale: number) {
+    const pad = 3;
+    const corners = [
+      this.screenToGrid(-vpX / scale, -vpY / scale),
+      this.screenToGrid((-vpX + vpW) / scale, -vpY / scale),
+      this.screenToGrid(-vpX / scale, (-vpY + vpH) / scale),
+      this.screenToGrid((-vpX + vpW) / scale, (-vpY + vpH) / scale),
+    ];
+    return {
+      minX: Math.min(...corners.map((c) => c.x)) - pad,
+      maxX: Math.max(...corners.map((c) => c.x)) + pad,
+      minY: Math.min(...corners.map((c) => c.y)) - pad,
+      maxY: Math.max(...corners.map((c) => c.y)) + pad,
+    };
+  }
+}
+
 export function makeProjection(cfg: TessellationConfig): TessellationProjection {
   const kind = tessellationFamily(cfg);
   switch (kind) {
@@ -171,8 +222,6 @@ export function makeProjection(cfg: TessellationConfig): TessellationProjection 
     case "triangle":
       return new TriProjection(("orientation" in cfg ? cfg.orientation : undefined) as "r0" | "r90" | "r180" | "r270" ?? "r0");
     case "cairo":
-      // Cairo-specific projection is supplied by issue #712; keep the configuration pipeline
-      // total while that geometry layer is developed independently.
-      return new SquareProjection();
+      return new CairoProjection();
   }
 }

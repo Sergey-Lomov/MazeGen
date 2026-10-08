@@ -147,7 +147,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         debugStale: debugStaleOf(state),
       };
     }
-    const cfg = buildPredefinedConfig(state.tessellationKind, field.hexShape, field.triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs, field.squareShape);
+    const cfg = buildPredefinedConfig(state.tessellationKind, field.hexShape, field.triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs, field.squareShape, field.cairoShape);
     return {
       ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       ...buildResetDownstreamState(),

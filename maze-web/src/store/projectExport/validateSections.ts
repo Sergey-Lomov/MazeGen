@@ -87,6 +87,13 @@ export function validateTessellationConfig(v: unknown, path = "tessellation.conf
       assertNumber(obj.cols, `${path}.cols`);
       assertNumber(obj.rows, `${path}.rows`);
       return obj as unknown as TessellationConfig;
+    case "cairo_circle":
+    case "cairo_hexagon":
+      assertNumber(obj.radius, `${path}.radius`);
+      return obj as unknown as TessellationConfig;
+    case "cairo_triangle":
+      assertNumber(obj.side, `${path}.side`);
+      return obj as unknown as TessellationConfig;
     case "cairo_custom":
       assertArray(obj.points, `${path}.points`);
       return obj as unknown as TessellationConfig;

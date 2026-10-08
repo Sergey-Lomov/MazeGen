@@ -179,6 +179,9 @@ export function FieldSetupFeature() {
             disabled={fieldEditLocked}
             onChange={(e) => setCairoShape(e.target.value as CairoShape)}>
             <option value="rect">{m["field.shape.rect"]()}</option>
+            <option value="circle">{m["field.shape.circle"]()}</option>
+            <option value="triangle">{m["field.shape.triangle"]()}</option>
+            <option value="hexagon">{m["field.shape.hexagon"]()}</option>
           </select>
         </label>
       );
@@ -249,6 +252,12 @@ export function FieldSetupFeature() {
           <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
         </>
       );
+    }
+    if (tessellationConfig.type === "cairo_circle" || tessellationConfig.type === "cairo_hexagon") {
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
+    }
+    if (tessellationConfig.type === "cairo_triangle") {
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
     }
     return null;
   }

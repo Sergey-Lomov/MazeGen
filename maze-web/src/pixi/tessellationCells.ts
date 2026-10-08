@@ -3,6 +3,7 @@ import { cellsInsideShape, shapeForPrimitive, type ShapeOrigin } from "./shapeSe
 import { primitiveCells } from "./primitiveGeometry";
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
+import { CAIRO_CENTER_SCALE } from "./cairoGeometry";
 import type { FieldConfig as TessellationConfig, ResolvedField } from "../fieldConfig";
 
 export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
@@ -35,6 +36,9 @@ export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: n
     case "hex_custom":
     case "tri_custom": return { ox: 0, oy: 0 };
     case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
     case "cairo_custom": return { ox: 0, oy: 0 };
   }
 }
@@ -127,8 +131,21 @@ export function configAllCells(cfg: TessellationConfig): [number, number][] {
         constrainSquare: true,
       });
     }
-    case "cairo":
+    case "cairo": {
       return cairoRectangleCells(cfg.cols, cfg.rows);
+    }
+    case "cairo_circle": {
+      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
+    }
+    case "cairo_triangle": {
+      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
+    }
+    case "cairo_hexagon": {
+      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
+      return cellsInsideShape(base, shapeForPrimitive("hexagon", base, { width: 0, height: 0, radius: cfg.radius }));
+    }
     case "cairo_custom":
       return cfg.points.map(([x, y]) => [x, y]);
     case "square_custom":
@@ -152,24 +169,29 @@ export function resolveFieldConfig(cfg: TessellationConfig): ResolvedField {
   return { type: "triangle_rect", cols: 0, rows: 0, kind: "triangle", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "r0") as "r0" | "r90" | "r180" | "r270", cells };
 }
 
-/** Cairo's standard field is a rectangle of fundamental 4×4 coordinate squares; each square
- * contributes the two valid pentagon centres used by maze-core's `CairoTessellation::rect`. */
+/** A centered Cairo rectangle with the core rectangle's exact 2*cols*rows cardinality. The Cairo
+ * lattice has no occupied point at the coordinate origin, so select symmetric `p`/`-p` pairs from
+ * the requested rectangular envelope to keep both the cell count and the visual centre exact. */
 function cairoRectangleCells(cols: number, rows: number): [number, number][] {
-  const cells: [number, number][] = [];
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const ox = x * 4;
-      const oy = y * 4;
-      if ((x + y) % 2 === 1) {
-        cells.push([ox + 1, oy + 2], [ox + 3, oy + 2]);
-      } else {
-        cells.push([ox + 2, oy + 1], [ox + 2, oy + 3]);
-      }
-    }
+  const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
+  const candidates = cellsInsideShape(base, shapeForPrimitive("rectangle", base, {
+    width: cols * 4 * CAIRO_CENTER_SCALE,
+    height: rows * 4 * CAIRO_CENTER_SCALE,
+  }));
+  const candidateSet = new Set(candidates.map(([x, y]) => `${x},${y}`));
+  const pairs: { distance: number; points: [[number, number], [number, number]] }[] = [];
+  for (const [x, y] of candidates) {
+    if (x > 0 || (x === 0 && y > 0)) continue;
+    const twin: [number, number] = [-x, -y];
+    if (!candidateSet.has(`${twin[0]},${twin[1]}`)) continue;
+    pairs.push({ distance: x * x + y * y, points: [[x, y], twin] });
   }
-  return cells;
+  pairs.sort((a, b) => a.distance - b.distance || a.points[0][0] - b.points[0][0] || a.points[0][1] - b.points[0][1]);
+  return pairs.slice(0, cols * rows).flatMap(({ points }) => points);
 }
 
+/** Cairo's standard field is a rectangle of fundamental 4×4 coordinate squares; each square
+ * contributes the two valid pentagon centres used by maze-core's `CairoTessellation::rect`. */
 /** A rectangular triangle-tessellation field is made from complete horizontal pairs of opposite
  * triangles. Each configured column spans two triangle cells, while rows remain visual rows. */
 function triangularRectangleCells(cols: number, rows: number): [number, number][] {

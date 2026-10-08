@@ -1,9 +1,11 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { tessellationFamily, type FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import { squareVertices } from "./squareGeometry";
 import { hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
+import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
+import { isCairoPoint } from "./cairoGeometry";
 import type { TriOrientation } from "./triGeometry";
 
 export type ShapeKind = "rectangle" | "circle" | "triangle" | "hexagon" | "parallelogram";
@@ -308,8 +310,14 @@ function cellVertices(cfg: TessellationConfig, projection: ReturnType<typeof mak
       return triVertices(x, y, cfg.orientation ?? "r0").map(asPositiveY)
         .map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
     case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
     case "cairo_custom":
-      return [];
+      return geometryCellVertices(x, y, cfg)?.map((point) => ({
+        x: point.x - origin.x,
+        y: -point.y - origin.y,
+      })) ?? [];
   }
 }
 
@@ -337,6 +345,7 @@ export function cellsInsideShape(
   const result: [number, number][] = [];
   for (let x = bounds.minX; x <= bounds.maxX; x++) {
     for (let y = bounds.minY; y <= bounds.maxY; y++) {
+      if (tessellationFamily(cfg) === "cairo" && !isCairoPoint(x, y)) continue;
       const normalized = cellCenter(projection, shapeOrigin, x, y);
       if (inclusion === "contained") {
         if (!containsCell(pixelShape, cellVertices(cfg, projection, shapeOrigin, x, y))) continue;

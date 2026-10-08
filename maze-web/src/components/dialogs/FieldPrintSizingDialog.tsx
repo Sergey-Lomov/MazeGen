@@ -223,14 +223,17 @@ export function configSizeDescription(config: FieldConfig): string {
     case "hex_circle":
     case "triangle_circle":
     case "hex_hexagon":
-    case "triangle_hexagon": return m["field.print_sizing.result_radius"]({ size: String(config.radius) });
+    case "triangle_hexagon":
+    case "cairo_circle":
+    case "cairo_hexagon": return m["field.print_sizing.result_radius"]({ size: String(config.radius) });
     case "hex_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
     case "hex_rectangle":
     case "triangle_rect":
     case "hex_parallelogram":
       return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
     case "triangle_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
-    case "square_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
+    case "square_triangle":
+    case "cairo_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
     case "cairo": return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
     case "square_custom":
     case "hex_custom":
@@ -295,6 +298,9 @@ function printFieldShapeLabel(config: FieldConfig): string {
     case "hex_hexagon":
     case "triangle_hexagon": return m["field.shape.hexagon"]();
     case "cairo": return m["field.shape.rectangle"]();
+    case "cairo_circle": return m["field.shape.circle"]();
+    case "cairo_triangle": return m["field.shape.triangle"]();
+    case "cairo_hexagon": return m["field.shape.hexagon"]();
     case "square_custom":
     case "hex_custom":
     case "tri_custom": return m["field.print_sizing.floor_non_standard"]();
@@ -317,11 +323,14 @@ function printFieldSizeLabel(config: PredefinedFieldConfig): string {
     case "hex_triangle":
     case "triangle_triangle": return `${m["field.side"]()} ${config.side}`;
     case "cairo": return `${config.cols} × ${config.rows}`;
+    case "cairo_circle":
+    case "cairo_hexagon": return `${m["field.radius"]()} ${config.radius}`;
+    case "cairo_triangle": return `${m["field.side"]()} ${config.side}`;
   }
 }
 
 function printFieldCellCount(config: FieldConfig): number {
-  if (config.type === "square_custom" || config.type === "hex_custom" || config.type === "tri_custom") return config.points.length;
+  if (config.type === "square_custom" || config.type === "hex_custom" || config.type === "tri_custom" || config.type === "cairo_custom") return config.points.length;
   return configAllCells(config as PredefinedFieldConfig).length;
 }
 

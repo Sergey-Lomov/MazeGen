@@ -5,6 +5,7 @@ import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitPattern } from "../wasm/types";
+import { cairoCenter, CAIRO_CENTER_SCALE, cairoEdgeVerts, cairoNeighborOffsets, cairoVertices, isCairoPoint } from "./cairoGeometry";
 
 export type Pos = { x: number; y: number };
 
@@ -45,6 +46,9 @@ export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
     case "tri_custom":
       return 60;
     case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
     case "cairo_custom":
       return 36;
     default:
@@ -88,6 +92,12 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return triVertices(x, y, ori);
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return cairoVertices(x, y);
     default:
       return null;
   }
@@ -158,6 +168,12 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return triCenter(x, y, ori, cfg);
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return cairoCenter(x, y);
     default:
       return { x: 0, y: 0 };
   }
@@ -269,6 +285,28 @@ export function nearestCellCoord(worldX: number, worldY: number, cfg: Tessellati
   return [x === 0 ? 0 : x, y === 0 ? 0 : y];
 }
 
+function nearestCairoCoord(worldX: number, worldY: number): [number, number] {
+  const x = worldX / (CAIRO_CENTER_SCALE * TILE_SIZE);
+  const y = -worldY / (CAIRO_CENTER_SCALE * TILE_SIZE);
+  const baseX = Math.floor(x);
+  const baseY = Math.floor(y);
+  let best: { x: number; y: number; distance: number } | null = null;
+  for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
+    for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
+      if (!isCairoPoint(candidateX, candidateY)) continue;
+      const dx = candidateX - x;
+      const dy = candidateY - y;
+      const distance = dx * dx + dy * dy;
+      if (!best || distance < best.distance
+        || (distance === best.distance && (candidateX < best.x
+          || (candidateX === best.x && candidateY < best.y)))) {
+        best = { x: candidateX, y: candidateY, distance };
+      }
+    }
+  }
+  return best ? [best.x, best.y] : [Math.round(x), Math.round(y)];
+}
+
 function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
   switch (cfg.type) {
     case "square":
@@ -294,8 +332,11 @@ function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationCo
       return nearestTriCoord(worldX, worldY, ori);
     }
     case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
     case "cairo_custom":
-      return nearestSquareCoord(worldX, worldY);
+      return nearestCairoCoord(worldX, worldY);
     default:
       cfg satisfies never;
       return [0, 0];
@@ -336,6 +377,12 @@ export function getNeighborData(
         edgeVerts: up ? TRI_EDGE_VERTS_UP : TRI_EDGE_VERTS_DOWN,
       };
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return { offsets: cairoNeighborOffsets(x, y), edgeVerts: cairoEdgeVerts(x, y) };
     default:
       return { offsets: [], edgeVerts: [] };
   }
