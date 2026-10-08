@@ -570,7 +570,7 @@ The shared geometric algorithm (face division among connected nodes, hub-point f
 
 ### Split-target prompt (GitHub issue #474)
 
-The split-node panel's connection sections contain only basic connections and hide empty sections. One-way connections remain basic connections. Each node card also has an Elements section for start/finish points, teleports, vertical passages, elevators, and locks, using the deletion-dialog row format without IDs in preset mode.
+The split-node panel's connection sections contain only basic connections and hide empty sections. One-way connections remain basic connections. Each node card also has an Elements section for start/finish points, the generation source, teleports, vertical passages, elevators, and locks, using the deletion-dialog row format without IDs in preset mode.
 
 Element rows omit the current node's own address: a directed element is rendered as its localized name, direction arrow, and target coordinate bubble. Target bubbles include `L{n}:` on another floor and hover the standard inward-inset cell highlight with an opaque border; elevator rows list every other floor bubble.
 Vertical-passage target bubbles contain only `L{n}`; any target-floor bubble is clickable and switches the active floor.

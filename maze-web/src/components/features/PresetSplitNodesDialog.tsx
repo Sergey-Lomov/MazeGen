@@ -87,9 +87,9 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     lockedNodes, autoLockedNodes, splitCtx: presetSplitLabelContext,
   });
   const elementsFor = (ep: PresetEndpoint): ElementInfo<PresetEndpoint>[] => pointElements
-    .filter((e) => ["start", "finish", "teleport", "vertical_passage", "elevator", "lock"].includes(e.kind) && presetEndpointsEqual(e.endpoint, ep))
+    .filter((e) => ["start", "finish", "gen_source", "teleport", "vertical_passage", "elevator", "lock"].includes(e.kind) && presetEndpointsEqual(e.endpoint, ep))
     .map((e) => {
-      if (e.kind === "start" || e.kind === "finish") return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
+      if (e.kind === "start" || e.kind === "finish" || e.kind === "gen_source") return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
       if (e.kind === "teleport") {
         const t = presetTeleports.find((entry) => String(entry.id) === e.id);
         if (!t) return { title: e.title, bubbles: [], showArrow: false, arrow: "->" as const };
