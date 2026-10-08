@@ -263,7 +263,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
       const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_size"]())[2]
         .parentElement!.querySelector('input[type="range"]')!;
       fireEvent.change(slider, { target: { value: "20" } });
-      expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(20);
+      expect(useMazeStore.getState().vectorByCorridorsSettings.teleportMarker.size).toBe(20);
     });
 
     it("stays visible when the only teleport is on another floor (GitHub issue #484)", () => {

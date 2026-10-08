@@ -124,10 +124,7 @@ export function VectorByWallsSettingsPanel() {
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
   const setSplitNodeColor = useMazeStore((s) => s.setVectorByWallsSplitNodeColor);
   const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByWallsSplitSpecialShapes);
-  const setSharedCornerStyle = useMazeStore((s) => s.setVectorByWallsSharedCornerStyle);
-  const setSharedMarkerSize = useMazeStore((s) => s.setVectorByWallsSharedMarkerSize);
-  const setSharedMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsSharedMarkerBorderWidth);
-  const setSharedGapWidth = useMazeStore((s) => s.setVectorByWallsSharedGapWidth);
+  const patchSharedStyle = useMazeStore((s) => s.patchVectorByWallsSharedStyle);
   const resetAllSettings = useMazeStore((s) => s.resetVectorByWallsSettings);
   const setLinkEnabled = useMazeStore((s) => s.setVectorByWallsLinkEnabled);
   const addLink = useMazeStore((s) => s.addVectorByWallsLink);
@@ -291,6 +288,7 @@ export function VectorByWallsSettingsPanel() {
   // Elevator floor-badge fill / text prioritize each other first (they sit one on the other), then
   // every elevator color, then the floor and the background.
   const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
+  const badgeBorderPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
 
   return (
@@ -331,14 +329,9 @@ export function VectorByWallsSettingsPanel() {
       />
       {isExpanded("shared_style") && (
         <SharedStyleSection
-          cornerStyle={settings.cornerStyle}
-          markerSize={settings.markerSize}
-          markerBorderWidth={settings.markerBorderWidth}
-          gapWidth={settings.gapWidth}
-          onCornerStyleChange={setSharedCornerStyle}
-          onMarkerSizeChange={setSharedMarkerSize}
-          onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
-          onGapWidthChange={setSharedGapWidth}
+          settings={settings}
+          onChange={patchSharedStyle}
+          priorityColors={{ fillColor: [PC.sharedMarkerBorder.at(settings.markerBorderColor), floor, background], borderColor: [PC.sharedMarkerFill.at(settings.markerFillColor), floor, background] }}
         />
       )}
 
@@ -644,13 +637,13 @@ export function VectorByWallsSettingsPanel() {
               teleportCollisionKeys={teleportCollisionKeys}
               hasCrossFloorTeleports={hasCrossFloorTeleports}
               linkTargets={{
-                lineCornerStyle: "teleportLineCornerStyle",
-                lineShape: "teleportLineShape",
-                lineSize: "teleportLineSize",
-                edgeColor: "teleportEdgeColor",
-                edgeBorderColor: "teleportEdgeBorderColor",
-                edgeBorderWidth: "teleportEdgeBorderWidth",
-                edgeGapWidth: "teleportEdgeGapWidth",
+                lineCornerStyle: "teleportMarker.cornerStyle",
+                lineShape: "teleportMarker.shape",
+                lineSize: "teleportMarker.size",
+                edgeColor: "teleportMarker.fillColor",
+                edgeBorderColor: "teleportMarker.borderColor",
+                edgeBorderWidth: "teleportMarker.borderWidth",
+                edgeGapWidth: "teleportMarker.gapWidth",
                 connectorStyle: null,
                 avoidFieldExit: "teleportAvoidFieldExit",
                 connectorColor: "teleportConnectorColor",
@@ -661,22 +654,25 @@ export function VectorByWallsSettingsPanel() {
                 arrowSize: null,
                 floorBadgeShape: "teleportFloorBadge.shape",
                 floorBadgeLabelType: "teleportFloorBadge.labelType",
-                floorBadgeSize: null,
+                floorBadgeSize: "teleportFloorBadge.size",
                 floorBadgeFillColor: "teleportFloorBadge.fillColor",
                 floorBadgeBorderColor: "teleportFloorBadge.borderColor",
                 floorBadgeTextColor: "teleportFloorBadge.textColor",
-                floorBadgeBorderWidth: null,
-                floorBadgeTextPadding: null,
+                floorBadgeBorderWidth: "teleportFloorBadge.borderWidth",
+                floorBadgeCornerStyle: "teleportFloorBadge.cornerStyle",
+                floorBadgeGapWidth: "teleportFloorBadge.gapWidth",
+                floorBadgeTextSize: "teleportFloorBadge.textSize",
+                floorBadgeTextFontWeight: "teleportFloorBadge.textFontWeight",
                 groupCustomization: "teleportGroupCustomization",
               }}
-              edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
-              edgeBorderColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
-              connectorColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), ...tpBadges, floor]}
-              floorBadgeFillColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
-              floorBadgeBorderColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
-              floorBadgeTextColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
-              edgeColorDefault={D.teleportEdgeColor}
-              edgeBorderColorDefault={D.teleportEdgeBorderColor}
+              edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
+              edgeBorderColorPriority={[PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
+              connectorColorPriority={[PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), ...tpBadges, floor]}
+              floorBadgeFillColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              floorBadgeBorderColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              floorBadgeTextColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportMarker.fillColor), PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              edgeColorDefault={D.teleportMarker.fillColor}
+              edgeBorderColorDefault={D.teleportMarker.borderColor}
               connectorColorDefault={D.teleportConnectorColor}
               floorBadgeFillColorDefault={D.teleportFloorBadge.fillColor}
               floorBadgeBorderColorDefault={D.teleportFloorBadge.borderColor}
@@ -769,24 +765,24 @@ export function VectorByWallsSettingsPanel() {
                     <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
                     <div style={styles.subGroup}>
                       <LinkedSelectRow
-                        label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
-                        value={settings.verticalCornerStyle}
-                        options={[
-                          { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
-                          { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
-                        ]}
-                        onChange={(verticalCornerStyle) => patchVerticalSharedStyle({ verticalCornerStyle })}
-                        linkTarget="verticalCornerStyle"
-                      />
-                      <LinkedSelectRow
                         label={m["image_export.vector_by_walls.marker_shape"]()}
                         value={settings.verticalShape}
                         options={markerShapeSelectOptions()}
                         onChange={(verticalShape) => patchVerticalSharedStyle({ verticalShape })}
                         linkTarget="verticalShape"
                       />
+                      <LinkedSelectRow
+                        label={m["image_export.vector_by_walls.marker_corner_style"]()}
+                        value={settings.verticalCornerStyle}
+                        options={[
+                                                    { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+{ value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
+                        ]}
+                        onChange={(verticalCornerStyle) => patchVerticalSharedStyle({ verticalCornerStyle })}
+                        linkTarget="verticalCornerStyle"
+                      />
                       <LinkedSliderRow
-                        label={m["image_export.vector_by_walls.vertical_shared_style_size"]()}
+                        label={m["image_export.vector_by_walls.marker_size"]()}
                         value={settings.verticalSize}
                         onChange={(verticalSize) => patchVerticalSharedStyle({ verticalSize })}
                         min={0.1 * TILE_SIZE}
@@ -795,8 +791,17 @@ export function VectorByWallsSettingsPanel() {
                         format={(v) => String(Math.round(v))}
                         linkTarget="verticalSize"
                       />
+                      <LinkedColorRow
+                        label={m["image_export.vector_by_walls.marker_fill_color"]()}
+                        color={settings.verticalFillColor}
+                        onChange={(verticalFillColor) => patchVerticalSharedStyle({ verticalFillColor })}
+                        priorityColors={[PC.verticalArrow.at(settings.verticalArrowColor), floor]}
+                        defaultColor={D.verticalFillColor}
+                        fieldName={PC.verticalFill.name()}
+                        linkTarget="verticalFillColor"
+                      />
                       <LinkedSliderRow
-                        label={m["image_export.vector_by_walls.vertical_shared_style_border_width"]()}
+                        label={m["image_export.vector_by_walls.marker_border_width"]()}
                         value={settings.verticalBorderWidth}
                         onChange={(verticalBorderWidth) => patchVerticalSharedStyle({ verticalBorderWidth })}
                         min={0}
@@ -806,7 +811,7 @@ export function VectorByWallsSettingsPanel() {
                         linkTarget="verticalBorderWidth"
                       />
                       <LinkedSliderRow
-                        label={m["image_export.vector_by_walls.shared_style_gap_width"]()}
+                        label={m["image_export.vector_by_walls.marker_gap_width"]()}
                         value={settings.verticalGapWidth}
                         onChange={(verticalGapWidth) => patchVerticalSharedStyle({ verticalGapWidth })}
                         min={0}
@@ -814,15 +819,6 @@ export function VectorByWallsSettingsPanel() {
                         step={1}
                         format={(v) => String(v)}
                         linkTarget="verticalGapWidth"
-                      />
-                      <LinkedColorRow
-                        label={m["image_export.vector_by_walls.vertical_shared_style_fill_color"]()}
-                        color={settings.verticalFillColor}
-                        onChange={(verticalFillColor) => patchVerticalSharedStyle({ verticalFillColor })}
-                        priorityColors={[PC.verticalArrow.at(settings.verticalArrowColor), floor]}
-                        defaultColor={D.verticalFillColor}
-                        fieldName={PC.verticalFill.name()}
-                        linkTarget="verticalFillColor"
                       />
                     </div>
                   </div>
@@ -987,7 +983,7 @@ export function VectorByWallsSettingsPanel() {
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
-                        fontWeight: "elevatorBadges.fontWeight",
+                        textFontWeight: "elevatorBadges.textFontWeight",
                         placement: null,
                         shape: "elevatorBadges.shape",
                         cornerStyle: "elevatorBadges.cornerStyle",
@@ -998,12 +994,18 @@ export function VectorByWallsSettingsPanel() {
                         gapWidth: "elevatorBadges.gapWidth",
                         fillColor: "elevatorBadges.fillColor",
                         textColor: "elevatorBadges.textColor",
+                        borderColor: "elevatorBadges.borderColor",
+                        borderWidth: "elevatorBadges.borderWidth",
+                        textSize: "elevatorBadges.textSize",
                       }}
                       fillColorPriority={badgeFillPriority}
+                      borderColorPriority={badgeBorderPriority}
                       textColorPriority={badgeTextPriority}
                       fillColorDefault={D.elevatorBadges.fillColor}
+                      borderColorDefault={D.elevatorBadges.borderColor}
                       textColorDefault={D.elevatorBadges.textColor}
                       fillColorFieldName={PC.elevatorBadgeFill.name()}
+                      borderColorFieldName={PC.elevatorBadgeBorder.name()}
                       textColorFieldName={PC.elevatorBadgeText.name()}
                     />
                   </div>
@@ -1314,7 +1316,7 @@ export function VectorByWallsSettingsPanel() {
                       linkTargets={{
                         enabled: "elevatorBadges.enabled",
                         labelType: "elevatorBadges.labelType",
-                        fontWeight: "elevatorBadges.fontWeight",
+                        textFontWeight: "elevatorBadges.textFontWeight",
                         placement: null,
                         shape: "elevatorBadges.shape",
                         cornerStyle: "elevatorBadges.cornerStyle",
@@ -1325,12 +1327,18 @@ export function VectorByWallsSettingsPanel() {
                         gapWidth: "elevatorBadges.gapWidth",
                         fillColor: "elevatorBadges.fillColor",
                         textColor: "elevatorBadges.textColor",
+                        borderColor: "elevatorBadges.borderColor",
+                        borderWidth: "elevatorBadges.borderWidth",
+                        textSize: "elevatorBadges.textSize",
                       }}
                       fillColorPriority={badgeFillPriority}
+                      borderColorPriority={badgeBorderPriority}
                       textColorPriority={badgeTextPriority}
                       fillColorDefault={D.elevatorBadges.fillColor}
+                      borderColorDefault={D.elevatorBadges.borderColor}
                       textColorDefault={D.elevatorBadges.textColor}
                       fillColorFieldName={PC.elevatorBadgeFill.name()}
+                      borderColorFieldName={PC.elevatorBadgeBorder.name()}
                       textColorFieldName={PC.elevatorBadgeText.name()}
                     />
                   </div>

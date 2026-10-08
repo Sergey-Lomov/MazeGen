@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, CornerStyle, TeleportConnectorStyle, TeleportArrowMode, RandomWallColorMode } from "../pixi/renderers/types";
 import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 import type { FieldConfig } from "../fieldConfig";
 import type { ParamLink, ParamModifier, ColorModifier } from "./parameterLinks";
@@ -90,7 +90,7 @@ export interface PngExportSettings {
  *  standalone `"line"`/`"grouped"` pattern switch; GitHub issue #313 extracted this interface out
  *  of `VectorByWallsSettings` so `VectorByCorridorsSettings` can `extends` the exact same field set
  *  instead of duplicating it — teleports aren't tied to the corridor-vs-wall visual model, so the
- *  settings transfer as-is). `teleportLine*`/`teleportConnector*`/`teleportEdge*` ("Edges"/
+ *  settings transfer as-is). `teleportMarker`/`teleportConnector*` ("Edges"/
  *  "Connector" subsections) are always the base look; `teleportConnectorStyle: "none"` draws no
  *  connector line at all. `teleportGroupCustomization` (its own subsection, off by default) layers
  *  a per-group shape/fill-color/border-color override on top wherever an endpoint coordinate
@@ -98,6 +98,18 @@ export interface PngExportSettings {
  *  the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those overrides,
  *  keyed by `TeleportGroup.key` (stable across renders, not across a maze regenerate/reload —
  *  entries for groups no longer present are simply never looked up again, not pruned). */
+/** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
+ *  captions, elevator badges and teleport floor badges all configure their text the same way:
+ *  color, font weight and an **absolute** font size in px (not a fraction of the badge/marker
+ *  diameter). `MarkerSettings` carries these optionally (only start/finish expose them in the UI);
+ *  the badge settings require them. `MarkerIndexSettings` is intentionally not part of this yet. */
+export interface TextStyleFields {
+  textColor: number;
+  textFontWeight: LabelFontWeight;
+  /** Font size in px. */
+  textSize: number;
+}
+
 /** One decorative-style vertical-connection pictogram's line appearance (GitHub issue #428) — a
  *  stroke-only icon (stairs zigzag or elevator shaft box), no fill/border/gap concept the way
  *  `MarkerSettings` has. `size` is in px (GitHub issue #681), same convention as
@@ -131,9 +143,8 @@ export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left"
  *  badge per floor the elevator's fan actually reaches (`VerticalConnectionMarker.
  *  targetFloorIndices`), each showing that floor's 1-based display number. Applies to every
  *  `Elevator` marker uniformly — there is no per-elevator override, mirroring `elevatorMarker`
- *  itself. `size` is a fraction of the elevator marker's own radius (0-1), not the tile size —
- *  badges are always small relative to the marker they surround; font size scales proportionally
- *  with it (no fixed floor under the font size). `distance` is the badge center's own offset from
+ *  itself. `size` is the badge fill's diameter in px (GitHub issue #701; the outer edge adds
+ *  `borderWidth`); the font size is the independent absolute `textSize`. `distance` is the badge center's own offset from
  *  the marker center, in px, on top of the marker's own radius (so `distance: 0` sits the badge's
  *  inner edge right at the marker's outer edge, not overlapping it). `gap` is the px space left
  *  between two adjacent badges' own edges (default `1`, never `0` — badges never touch by default)
@@ -164,20 +175,12 @@ export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left"
  *  centered on the 12-o'clock mark — an odd count centers its middle badge there, an even count
  *  centers the gap between its two middle badges there — unless that contiguous arc would wrap past
  *  a full circle, in which case it too falls back to the even ring. */
-export interface ElevatorBadgeSettings {
+export interface ElevatorBadgeSettings extends BadgeSettings {
   enabled: boolean;
-  labelType: ElevatorBadgeLabelType;
-  size: number;
   placement: ElevatorBadgePlacement;
   distance: number;
   gap: number;
-  gapWidth: number;
-  cornerStyle: CornerStyle;
   evenDistribution: boolean;
-  shape: MarkerShape;
-  fillColor: number;
-  textColor: number;
-  fontWeight: ElevatorBadgeFontWeight;
 }
 
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
@@ -291,47 +294,19 @@ export interface VerticalDecorativeFields {
 /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
  *  a teleport endpoint that lands on another floor (`drawFloorBadge`, see `Specs/floors.md`'s
  *  "Cross-floor teleport badges"). `shape`, `labelType`, `size`, `fillColor`, `borderColor`,
- *  `textColor` and `textPadding` are all configurable (GitHub issue #503 follow-up made the
- *  fill/border independent — they previously always followed the connector color). */
-export interface TeleportFloorBadgeSettings {
-  shape: MarkerShape;
-  labelType: IndexLabelStyle;
-  /** Badge radius, in px (GitHub issue #681) — same convention as
-   *  `teleportLineSize`/`MarkerSettings.size`. */
-  size: number;
-  /** Badge body fill (GitHub issue #503 follow-up) — independent of the connector color. */
-  fillColor: number;
-  /** Badge border ring (GitHub issue #503 follow-up), with an independent width setting. */
-  borderColor: number;
-  /** Badge border width in pixels, independent from the teleport edge marker border. */
-  borderWidth?: number;
-  /** Label color — independent of the floor color (GitHub issue #485 follow-up; before it, the
-   *  label always drew in `floorColor` as a knockout digit). */
-  textColor: number;
-  /** Inset (px, 0-5, quarter-px steps) between the label and the badge's *outer* edge (border
-   *  ring included), used only to fit the shared label font size (GitHub issue #485 follow-up +
-   *  item-3 follow-up). `0` sizes the widest label flush to the whole badge including its border;
-   *  larger values shrink it further in. Never enlarges — the font never exceeds the natural
-   *  `2 * (r + borderWidth)` baseline. The default is `3.4`, chosen so a single-digit label at the
-   *  default badge radius fits at `2 * (r + borderWidth) - 2 * 3.4 = 12` px — the exact size the
-   *  pre-#485 hardcoded badge used (`Math.max(r * 1.6, 12)`). */
-  textPadding: number;
-}
+ *  `textColor`, `textFontWeight` and `textSize` (px) are all configurable (GitHub issue #503
+ *  follow-up made the fill/border independent — they previously always followed the connector
+ *  color; GitHub issue #701 unified the text style with the other badges). */
+export type TeleportFloorBadgeSettings = BadgeSettings;
 
 export interface TeleportSettingsFields {
-  teleportLineCornerStyle: CornerStyle;
-  teleportLineShape: MarkerShape;
-  /** Marker radius, in px (GitHub issue #681 — previously a fraction of the tile size). */
-  teleportLineSize: number;
-  teleportEdgeColor: number;
-  teleportEdgeBorderColor: number;
-  teleportEdgeBorderWidth: number;
-  /** Floor-colored gap ring drawn around the edge marker's border (GitHub issue #302), same
-   *  convention as the waypoint marker's own `MarkerSettings.gapWidth` — `0` (the default) draws no
-   *  gap. Color always mirrors `floorColor`, not independently settable. See
-   *  `TeleportLineStyle.edgeGapWidth`'s own doc comment (`pixi/renderers/types.ts`) for the per-group
-   *  draw-order rule this relies on. */
-  teleportEdgeGapWidth: number;
+  /** Teleport edge marker appearance (GitHub issue #701) — the same shape as the start/finish
+   *  markers instead of the former flat `teleportLine*`/`teleportEdge*` fields. `gapWidth` is the
+   *  floor-colored gap ring around the border (GitHub issue #302), same convention as the waypoint
+   *  marker's gap — `0` draws no gap. See `TeleportLineStyle.edgeGapWidth`'s own doc comment
+   *  (`pixi/renderers/types.ts`) for the per-group draw-order rule this relies on. Text fields are
+   *  never set here yet (no caption UI for the teleport edge marker). */
+  teleportMarker: MarkerSettings;
   /** The connector line's own color/width — GitHub issue #293 follow-up renamed from
    *  `teleportConnection*` ("connector" is the settings panel's own term for it). */
   teleportConnectorColor: number;
@@ -365,12 +340,14 @@ export interface TeleportSettingsFields {
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;
 }
 
-/** One start/finish marker's appearance (GitHub issue #296) — `borderWidth: 0` (the default) draws
- *  no border, so there is no separate show-border toggle. */
-export interface MarkerSettings {
+/** The shared marker look (GitHub issue #701) — shape, corner style, fill/border colors, border and
+ *  gap widths and size. Reused by every marker-like consumer: start/finish markers
+ *  (`MarkerSettings`), the vertical-connection markers, the teleport edge marker and — through
+ *  `BadgeSettings` — the elevator and teleport floor-number badges. */
+export interface MarkerAppearance {
   shape: MarkerShape;
   /** Sharp vs. round corners (GitHub issue #302 follow-up) — only affects the four
-   *  regular-polygon `MarkerShape`s, same convention as `teleportLineCornerStyle`. */
+   *  regular-polygon `MarkerShape`s. */
   cornerStyle: CornerStyle;
   fillColor: number;
   borderColor: number;
@@ -379,34 +356,36 @@ export interface MarkerSettings {
    *  draws no gap, same convention as `teleportConnectorGapWidth`. Color always mirrors
    *  `VectorByWallsSettings.floorColor`, not independently settable. */
   gapWidth: number;
-  /** Marker radius, in px (GitHub issue #681 — previously a fraction of the tile size) — same
-   *  convention as `VectorByWallsSettings.teleportLineSize`. */
+  /** Marker diameter in px (GitHub issue #681 — previously a fraction of the tile size). */
   size: number;
+}
+
+/** One start/finish marker's appearance (GitHub issue #296) — the shared `MarkerAppearance` plus an
+ *  optional free-text caption. `borderWidth: 0` (the default) draws no border, so there is no
+ *  separate show-border toggle. */
+export interface MarkerSettings extends MarkerAppearance, Partial<TextStyleFields> {
   /** Custom badge label (GitHub issue #697), e.g. a start/finish marker's "S"/"F". Empty/omitted
-   *  draws no label. Currently restricted to a single text — UI input truncates to the first
+   *  draws no label. Currently restricted to a single glyph — UI input truncates to the first
    *  one and restricts to the baked MSDF charset (`tools/msdf/generate.mjs`), uppercased — but the
-   *  field itself is not conceptually limited to one glyph, hence `text` rather than `text`.
-   *  Optional since only `VectorByWallsSettings`/`VectorByCorridorsSettings`'s own `startMarker`/
-   *  `finishMarker` offer this in the UI so far — the three vertical-connection markers
-   *  (`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`, which reuse this same interface)
-   *  simply never set it. */
+   *  field itself is not conceptually limited to one glyph. Optional since only
+   *  `VectorByWallsSettings`/`VectorByCorridorsSettings`'s own `startMarker`/`finishMarker` offer
+   *  this in the UI so far — the other `MarkerSettings` users simply never set it. */
   text?: string;
   /** "Show text" toggle (GitHub issue #697 follow-up) — lets `text` survive being hidden instead of
    *  clearing it, so re-enabling restores the same text. `undefined`/`true` draws the badge
-   *  (matches pre-toggle behavior); `false` suppresses it. Optional for the same reason as `text`. */
+   *  (matches pre-toggle behavior); `false` suppresses it. */
   textEnabled?: boolean;
-  /** Text badge font weight (GitHub issue #697 follow-up) — resolved to a baked MSDF atlas family,
-   *  same convention as every other label in this codebase. Defaults to `"bold"` when unset.
-   *  Optional for the same reason as `text`. */
-  textFontWeight?: LabelFontWeight;
-  /** Text badge font size as a fraction of `size` (diameter). Defaults to `0.55` when unset.
-   *  Optional for the same reason as `text`. */
-  textSize?: number;
-  /** Text badge color (GitHub issue #697 second follow-up) — independently configurable, same
-   *  convention as `ElevatorBadgeSettings.textColor`/`TeleportFloorBadgeSettings.textColor`.
-   *  Defaults to `gapColor` (the floor-colored knockout look the badge had before this field
-   *  existed) when unset. Optional for the same reason as `text`. */
-  textColor?: number;
+  // `textColor`/`textFontWeight`/`textSize` come from `TextStyleFields` (all optional here).
+  // Unset: `textColor` falls back to `gapColor`, weight to `"bold"`, size to
+  // `DEFAULT_MARKER_TEXT_SIZE`.
+}
+
+/** A marker with a computed index label instead of a free-text caption (GitHub issue #701) — the
+ *  shared base of the elevator floor-number badges and the cross-floor teleport floor badges: the
+ *  `MarkerAppearance` look plus the required `TextStyleFields` and a `labelType` numbering style
+ *  (the badge displays the target floor's 1-based number, formatted per `labelType`). */
+export interface BadgeSettings extends MarkerAppearance, TextStyleFields {
+  labelType: IndexLabelStyle;
 }
 
 /** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
@@ -415,8 +394,14 @@ export interface MarkerSettings {
  *  it. Nothing structurally marks these four as "sources" — see `parameterLinks.ts`'s own doc
  *  comment. */
 export interface SharedStyleSourceFields {
+  /** GitHub issue #701: the "Markers" sub-section of "Shared style" carries every property all
+   *  markers share — shape, corner style, size, fill/border color, border width, gap width. The
+   *  shape and color sources only drive their (disabled-by-default) links. */
+  markerShape: MarkerShape;
   cornerStyle: CornerStyle;
   markerSize: number;
+  markerFillColor: number;
+  markerBorderColor: number;
   markerBorderWidth: number;
   gapWidth: number;
 }
@@ -605,7 +590,7 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
  *  chevrons in a row, each `thickness` (stroke width) and `width` (extent across the corridor, as
  *  a fraction of `VectorByCorridorsSettings.thickness` — `1` spans the full corridor width;
  *  deliberately kept relative to the corridor's own thickness rather than converted to px, unlike
- *  `MarkerSettings.size`/`TeleportSettingsFields.teleportLineSize` — GitHub issue #681), separated
+ *  `MarkerSettings.size`/`TeleportSettingsFields.teleportMarker.size` — GitHub issue #681), separated
  *  by `gap` (visible pixel gap between two adjacent chevrons' own stroked edges, along the
  *  corridor). `color` defaults to the canvas background (GitHub issue #312's own spec —
  *  reads as a gap cut into the corridor stroke, not an indicator drawn on top of it, unlike
@@ -902,11 +887,10 @@ export interface ImageExportActions {
   setVectorByCorridorsElevatorMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsElevatorMarkerSize: (v: number) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
-   *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`). */
-  setVectorByCorridorsSharedCornerStyle: (style: CornerStyle) => void;
-  setVectorByCorridorsSharedMarkerSize: (v: number) => void;
-  setVectorByCorridorsSharedMarkerBorderWidth: (v: number) => void;
-  setVectorByCorridorsSharedGapWidth: (v: number) => void;
+   *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportMarker.cornerStyle`). */
+  /** Patches the "Shared style" > "Markers" source fields (`SharedStyleSourceFields`) and
+   *  re-applies each changed field to its enabled dependents via the link graph. */
+  patchVectorByCorridorsSharedStyle: (patch: Partial<SharedStyleSourceFields>) => void;
   /** Patches the "Vertical connections" section's own "Shared style" source fields
    *  (`VerticalSharedStyleFields`, GitHub issue #668) and re-applies each changed field to its
    *  non-overridden dependents (`twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` plus
@@ -1046,11 +1030,9 @@ export interface ImageExportActions {
   setVectorByWallsSplitNodeColor: (index: number, color: number) => void;
   setVectorByWallsSplitSpecialShapes: (v: boolean) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
-   *  (`wallJoin`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`). */
-  setVectorByWallsSharedCornerStyle: (style: CornerStyle) => void;
-  setVectorByWallsSharedMarkerSize: (v: number) => void;
-  setVectorByWallsSharedMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsSharedGapWidth: (v: number) => void;
+   *  (`wallJoin`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportMarker.cornerStyle`). */
+  /** Same role as `patchVectorByCorridorsSharedStyle`, over `VectorByWallsSettings`. */
+  patchVectorByWallsSharedStyle: (patch: Partial<SharedStyleSourceFields>) => void;
   /** Same role as `patchVectorByCorridorsVerticalSharedStyle`, over `VectorByWallsSettings` — also
    *  covers `verticalDecorativeLineColor` (Walls-only, GitHub issue #668). */
   patchVectorByWallsVerticalSharedStyle: (patch: Partial<VerticalSharedStyleFields & Pick<VectorByWallsSettings, "verticalDecorativeLineColor" | "verticalDecorativeLineWidth" | "verticalDecorativeSize" | "verticalDecorativeArrowSize">>) => void;

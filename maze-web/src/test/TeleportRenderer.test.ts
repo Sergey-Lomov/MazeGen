@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOrder } from "../pixi/renderers/TeleportRenderer";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
@@ -42,8 +42,10 @@ vi.mock("pixi.js", () => {
     eventMode = "auto";
     cursor = "";
     mask: unknown = null;
-    listeners: Record<string, (() => void)[]> = {};
-    on(event: string, cb: () => void) { (this.listeners[event] ??= []).push(cb); return this; }
+    listeners: Record<string, ((e?: unknown) => void)[]> = {};
+    on(event: string, cb: (e?: unknown) => void) { (this.listeners[event] ??= []).push(cb); return this; }
+    off(event: string) { delete this.listeners[event]; return this; }
+    toLocal(p: { x: number; y: number }) { return p; }
   }
   class FakeContainer {
     children: unknown[] = [];
@@ -77,6 +79,7 @@ vi.mock("pixi.js", () => {
 const { TeleportRenderer } = await import("../pixi/renderers/TeleportRenderer");
 const { TeleportConnectorRouter } = await import("../pixi/renderers/teleportConnectorRouter");
 const { Container, Graphics } = await import("pixi.js");
+const { useMazeStore } = await import("../store/mazeStore");
 
 function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLineStyle {
   return {
@@ -95,7 +98,7 @@ function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLine
     arrowSize: 10,
     connectorGapWidth: 0,
     floorColor: 0x444,
-    floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+    floorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
     ...overrides,
   };
 }
@@ -488,7 +491,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge label follows floorBadge.labelType (roman)", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 3 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", cornerStyle: "round", gapWidth: 3, size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 } }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { text: string }[] } }).overlayLayer;
     // toFloor 3 -> display 4 -> "IV"
     expect(overlay.children[0].text).toBe("IV");
@@ -497,7 +500,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge radius follows floorBadge.size, independent of the edge marker's own style.size", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 8, floorBadge: { shape: "circle", labelType: "arabic", size: 20, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 8, floorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 20, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 } }) });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // The badge's own fill circle at the badge point — radius is floorBadge.size (px), not size.
     const badgePolygon = g.calls.find((c) => c.fn === "poly" && Array.isArray(c.args[0]) &&
@@ -511,71 +514,27 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({
       edges,
       waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorColor: 0x444444, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0xabcdef, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorColor: 0x444444, floorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0xabcdef, textFontWeight: "bold", textSize: 12 } }),
     });
     const overlay = (renderer as unknown as { overlayLayer: { children: { style: { fill?: number } }[] } }).overlayLayer;
     expect(overlay.children[0].style.fill).toBe(0xabcdef);
   });
 
-  // GitHub issue #485 follow-up item 5: every badge in the maze uses one shared font size, fitted
-  // to the widest label present — so a "I" badge and a "VIII" badge render at the same size.
-  it("all badges share one font size, fitted to the widest label", () => {
+  // GitHub issue #701: badge text size is an absolute px value (`floorBadge.textSize`) — no shared
+  // per-maze fit, so labels of different widths render at the same size.
+  it("badge font size follows floorBadge.textSize regardless of label width", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [
       { from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }, // display "1"
-      { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 }, // display "8"
+      { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 11 }, // display "12"
     ];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }) });
+    const floorBadge = { shape: "circle" as const, labelType: "arabic" as const, cornerStyle: "round" as const, gapWidth: 3, borderWidth: 3, size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textFontWeight: "bold" as const, textSize: 21 };
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer;
-    const labels = overlay.children.filter((c) => c.text === "1" || c.text === "8");
+    const labels = overlay.children.filter((c) => c.text === "1" || c.text === "12");
     expect(labels).toHaveLength(2);
-    expect(labels[0].style.fontSize).toBe(labels[1].style.fontSize);
-    expect(labels[0].style.fontSize).toBeGreaterThan(0);
-  });
-
-  it("floorCount fits the shared font to the widest label any floor could carry, not just visible badges", () => {
-    // Only one visible badge ("1"), but 12 floors — the font must be sized for "12" (arabic),
-    // so it stays constant when the user switches to a floor whose badge reads "12".
-    const many = new TeleportRenderer(new Container());
-    many.render({
-      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
-      floorCount: 12,
-    });
-    const few = new TeleportRenderer(new Container());
-    few.render({
-      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
-      floorCount: 3,
-    });
-    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
-      (r as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
-    // "12" is two chars vs. "3" one, so the 12-floor project's shared font is smaller.
-    expect(fontOf(many)).toBeLessThan(fontOf(few));
-  });
-
-  it("a wider label present shrinks the shared font below the single-badge baseline", () => {
-    const wide = new TeleportRenderer(new Container());
-    // Roman "VIII" (toFloor 7 -> display 8) is wide; textPadding 0 so the fit is flush.
-    wide.render({
-      edges: [
-        { from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 },
-        { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 },
-      ],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
-    });
-    const narrow = new TeleportRenderer(new Container());
-    narrow.render({
-      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
-    });
-    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
-      (r as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
-    expect(fontOf(wide)).toBeLessThan(fontOf(narrow));
+    expect(labels[0].style.fontSize).toBe(21);
+    expect(labels[1].style.fontSize).toBe(21);
   });
 
   // GitHub issue #485 follow-up item 2: the badge border follows the edge marker's own
@@ -595,26 +554,6 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     expect(strokeWidthsOf(thick, 8)).toHaveLength(0);
   });
 
-  // GitHub issue #485 follow-up item 3: textPadding 0 fits the label to the whole badge including
-  // its border ring, so a wider border → larger shared font (bigger fit target).
-  it("textPadding 0 fits the label across the badge including its border", () => {
-    const thinBorder = new TeleportRenderer(new Container());
-    thinBorder.render({
-      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 1, textColor: 0x123456, textPadding: 0 } }),
-    });
-    const thickBorder = new TeleportRenderer(new Container());
-    thickBorder.render({
-      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
-      waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 10, textColor: 0x123456, textPadding: 0 } }),
-    });
-    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
-      (r as unknown as { overlayLayer: { children: { style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
-    expect(fontOf(thickBorder)).toBeGreaterThan(fontOf(thinBorder));
-  });
-
   // GitHub issue #485: a non-circle `floorBadge.shape` must reach both the badge body
   // (`drawGroupPoints` -> `drawFloorBadge`) and the gap ring (`drawGroupGaps`) via
   // `drawMarkerShape(g, style.floorBadge.shape, ..., rounded=true)` — a rounded polygon draws
@@ -625,7 +564,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({
       edges,
       waypoints: [],
-      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 4, floorBadge: { shape: "square", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 4, floorBadge: { shape: "square", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.2, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 } }),
     });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // No round badge/ring at the badge point — it's a square now.
@@ -651,5 +590,67 @@ describe("TeleportRenderer.destroy", () => {
 
     expect(view.destroy).toHaveBeenCalledWith({ children: true });
     expect(overlayLayer.destroy).toHaveBeenCalledWith({ children: true });
+  });
+});
+
+// Group customization + interactive: the one-shared-`Graphics` click-to-select wiring
+// (`wireGroupInteractivity`) and the store -> canvas selection mirror (`subscribeSelectionHighlight`).
+describe("TeleportRenderer interactive group selection", () => {
+  const edges: TeleportEdge[] = [
+    { from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 },
+    { from: [50, 50], to: [60, 60], oneWay: false, fromNode: 3, toNode: 4 },
+  ];
+  type TestView = InstanceType<typeof Graphics> & { calls: unknown[]; listeners: Record<string, ((e?: unknown) => void)[]> };
+  const viewOf = (r: unknown) => (r as { view: TestView }).view;
+  const tap = (r: unknown, x: number, y: number) => viewOf(r).listeners["pointertap"][0]({ global: { x, y } });
+  const keys = () => buildTeleportGroups(edges).map((g) => g.key);
+
+  beforeEach(() => {
+    useMazeStore.setState({ selectedTeleportGroupKey: null });
+  });
+
+  function interactiveRenderer() {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), groupCustomization: true, interactive: true });
+    return renderer;
+  }
+
+  it("makes the view clickable and selects the nearest group on tap, toggling it off on a repeat tap", () => {
+    const renderer = interactiveRenderer();
+    expect(viewOf(renderer).eventMode).toBe("static");
+    expect(viewOf(renderer).cursor).toBe("pointer");
+
+    tap(renderer, 50, 50);
+    expect(useMazeStore.getState().selectedTeleportGroupKey).toBe(keys()[1]);
+    tap(renderer, 50, 50);
+    expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+  });
+
+  it("ignores a tap outside every hit radius", () => {
+    const renderer = interactiveRenderer();
+    tap(renderer, 1000, 1000);
+    expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+  });
+
+  it("replaces the previous pointertap handler on re-render instead of stacking them", () => {
+    const renderer = interactiveRenderer();
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), groupCustomization: true, interactive: true });
+    expect(viewOf(renderer).listeners["pointertap"]).toHaveLength(1);
+  });
+
+  it("redraws on a store selection change and stops once re-rendered non-interactive", () => {
+    const renderer = interactiveRenderer();
+    const view = viewOf(renderer);
+    const baseline = view.calls.length;
+
+    useMazeStore.setState({ selectedTeleportGroupKey: keys()[0] });
+    // Only the selected group is drawn now, so fewer draw calls than the all-groups baseline.
+    expect(view.calls.length).toBeGreaterThan(0);
+    expect(view.calls.length).toBeLessThan(baseline);
+
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const afterNonInteractive = view.calls.length;
+    useMazeStore.setState({ selectedTeleportGroupKey: keys()[1] });
+    expect(view.calls.length).toBe(afterNonInteractive);
   });
 });

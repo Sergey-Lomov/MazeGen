@@ -2,11 +2,10 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
-import type { TeleportSettingsFields } from "../../store/storeTypes";
+import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
-import { TILE_SIZE } from "../../pixi/constants";
 import { ColorSwatch } from "../ColorSwatch";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import {
@@ -17,7 +16,7 @@ import {
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerSettingsGroup";
+import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -85,7 +84,7 @@ export function useTeleportGroupsAndCollisions(
     if (settings.teleportConnectorStyle !== "none") return new Set<string>();
     const resolved = teleportGroups.map((g) => {
       const o = settings.teleportGroupOverrides[g.key];
-      return `${o?.fillColor ?? settings.teleportEdgeColor}:${o?.borderColor ?? settings.teleportEdgeBorderColor}:${o?.shape ?? settings.teleportLineShape}`;
+      return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
     });
     const counts = new Map<string, number>();
     for (const r of resolved) counts.set(r, (counts.get(r) ?? 0) + 1);
@@ -94,7 +93,7 @@ export function useTeleportGroupsAndCollisions(
       if ((counts.get(resolved[i]) ?? 0) > 1) collisions.add(g.key);
     });
     return collisions;
-  }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.teleportEdgeColor, settings.teleportEdgeBorderColor, settings.teleportLineShape]);
+  }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.teleportMarker.fillColor, settings.teleportMarker.borderColor, settings.teleportMarker.shape]);
 
   return { teleportGroups, teleportCollisionKeys };
 }
@@ -282,7 +281,10 @@ export function TeleportSettingsSection<P extends string>({
     floorBadgeBorderColor: P | null;
     floorBadgeTextColor: P | null;
     floorBadgeBorderWidth: P | null;
-    floorBadgeTextPadding: P | null;
+    floorBadgeCornerStyle: P | null;
+    floorBadgeGapWidth: P | null;
+    floorBadgeTextSize: P | null;
+    floorBadgeTextFontWeight: P | null;
     groupCustomization: P | null;
   };
   /** "Priority" project colors (GitHub issue #503) for the Teleports section's color rows. */
@@ -310,13 +312,14 @@ export function TeleportSettingsSection<P extends string>({
   floorBadgeTextColorFieldName?: string;
 }) {
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+  const patchMarker = (patch: Partial<MarkerSettings>) => onChange({ teleportMarker: { ...settings.teleportMarker, ...patch } });
 
   // The common teleport colors every group-override swatch lists below its own group's colors
   // (GitHub issue #503 follow-up) — edge/border, connector (when drawn), and the floor badges
   // (when the maze has a cross-floor teleport to badge).
   const commonTeleportColors: ProjectColorEntry[] = [
-    PC.teleportEdge.at(settings.teleportEdgeColor),
-    PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor),
+    PC.teleportEdge.at(settings.teleportMarker.fillColor),
+    PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor),
     ...(settings.teleportConnectorStyle !== "none" ? [PC.teleportConnector.at(settings.teleportConnectorColor)] : []),
     ...(hasCrossFloorTeleports
       ? [
@@ -331,54 +334,21 @@ export function TeleportSettingsSection<P extends string>({
     <div style={styles.block}>
       <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_edges"]()}</div>
       <div style={styles.subsection}>
-        <LinkedSelectRow
-          label={m["image_export.vector_by_walls.teleport_corner_style"]()}
-          value={settings.teleportLineCornerStyle}
-          options={[
-            { value: "miter", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
-            { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
-          ]}
-          onChange={(v) => onChange({ teleportLineCornerStyle: v })}
-          linkTarget={linkTargets.lineCornerStyle}
-        />
-        <LinkedSelectRow
-          label={m["image_export.vector_by_walls.teleport_shape"]()}
-          value={settings.teleportLineShape}
-          options={markerShapeSelectOptions()}
-          onChange={(v) => onChange({ teleportLineShape: v })}
-          linkTarget={linkTargets.lineShape}
-        />
-        <LinkedSliderRow
-          label={m["image_export.vector_by_walls.teleport_size"]()}
-          value={settings.teleportLineSize}
-          onChange={(v) => onChange({ teleportLineSize: v })}
-          min={0.1 * TILE_SIZE}
-          max={TILE_SIZE}
-          step={1}
-          format={(v) => String(Math.round(v))}
-          linkTarget={linkTargets.lineSize}
-        />
-        <LinkedColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} priorityColors={edgeColorPriority} defaultColor={edgeColorDefault} fieldName={edgeColorFieldName} linkTarget={linkTargets.edgeColor} />
-        <LinkedColorRow label={m["image_export.vector_by_walls.teleport_edge_border_color"]()} color={settings.teleportEdgeBorderColor} onChange={(v) => onChange({ teleportEdgeBorderColor: v })} priorityColors={edgeBorderColorPriority} defaultColor={edgeBorderColorDefault} fieldName={edgeBorderColorFieldName} linkTarget={linkTargets.edgeBorderColor} />
-        <LinkedSliderRow
-          label={m["image_export.vector_by_walls.teleport_border_width"]()}
-          value={settings.teleportEdgeBorderWidth}
-          onChange={(v) => onChange({ teleportEdgeBorderWidth: v })}
-          min={0}
-          max={10}
-          step={1}
-          format={(v) => String(v)}
-          linkTarget={linkTargets.edgeBorderWidth}
-        />
-        <LinkedSliderRow
-          label={m["image_export.vector_by_walls.teleport_edge_gap_width"]()}
-          value={settings.teleportEdgeGapWidth}
-          onChange={(v) => onChange({ teleportEdgeGapWidth: v })}
-          min={0}
-          max={10}
-          step={1}
-          format={(v) => String(v)}
-          linkTarget={linkTargets.edgeGapWidth}
+        <MarkerAppearanceRows
+          settings={settings.teleportMarker}
+          onChange={patchMarker}
+          linkTargets={{
+            shape: linkTargets.lineShape,
+            cornerStyle: linkTargets.lineCornerStyle,
+            size: linkTargets.lineSize,
+            fillColor: linkTargets.edgeColor,
+            borderColor: linkTargets.edgeBorderColor,
+            borderWidth: linkTargets.edgeBorderWidth,
+            gapWidth: linkTargets.edgeGapWidth,
+          }}
+          priorityColors={{ fillColor: edgeColorPriority, borderColor: edgeBorderColorPriority }}
+          defaultColors={{ fillColor: edgeColorDefault, borderColor: edgeBorderColorDefault }}
+          fieldNames={{ fillColor: edgeColorFieldName, borderColor: edgeBorderColorFieldName }}
         />
       </div>
 
@@ -475,13 +445,6 @@ export function TeleportSettingsSection<P extends string>({
           <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()}</div>
           <div style={styles.subsection}>
             <LinkedSelectRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_shape"]()}
-              value={settings.teleportFloorBadge.shape}
-              options={markerShapeSelectOptions()}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, shape: v } })}
-              linkTarget={linkTargets.floorBadgeShape}
-            />
-            <LinkedSelectRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_label_type"]()}
               value={settings.teleportFloorBadge.labelType}
               options={[
@@ -492,62 +455,33 @@ export function TeleportSettingsSection<P extends string>({
               onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, labelType: v } })}
               linkTarget={linkTargets.floorBadgeLabelType}
             />
-            <LinkedSliderRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_size"]()}
-              value={settings.teleportFloorBadge.size}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, size: v } })}
-              min={0.1 * TILE_SIZE}
-              max={TILE_SIZE}
-              step={1}
-              format={(v) => String(Math.round(v))}
-              linkTarget={linkTargets.floorBadgeSize}
+            <MarkerAppearanceRows
+              settings={settings.teleportFloorBadge}
+              onChange={(patch) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, ...patch } })}
+              linkTargets={{
+                shape: linkTargets.floorBadgeShape,
+                cornerStyle: linkTargets.floorBadgeCornerStyle,
+                size: linkTargets.floorBadgeSize,
+                fillColor: linkTargets.floorBadgeFillColor,
+                borderColor: linkTargets.floorBadgeBorderColor,
+                borderWidth: linkTargets.floorBadgeBorderWidth,
+                gapWidth: linkTargets.floorBadgeGapWidth,
+              }}
+              priorityColors={{ fillColor: floorBadgeFillColorPriority, borderColor: floorBadgeBorderColorPriority }}
+              defaultColors={{ fillColor: floorBadgeFillColorDefault, borderColor: floorBadgeBorderColorDefault }}
+              fieldNames={{ fillColor: floorBadgeFillColorFieldName, borderColor: floorBadgeBorderColorFieldName }}
             />
-            <LinkedColorRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_fill_color"]()}
-              color={settings.teleportFloorBadge.fillColor}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, fillColor: v } })}
-              priorityColors={floorBadgeFillColorPriority}
-              defaultColor={floorBadgeFillColorDefault}
-              fieldName={floorBadgeFillColorFieldName}
-              linkTarget={linkTargets.floorBadgeFillColor}
-            />
-            <LinkedColorRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_border_color"]()}
-              color={settings.teleportFloorBadge.borderColor}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, borderColor: v } })}
-              priorityColors={floorBadgeBorderColorPriority}
-              defaultColor={floorBadgeBorderColorDefault}
-              fieldName={floorBadgeBorderColorFieldName}
-              linkTarget={linkTargets.floorBadgeBorderColor}
-            />
-            <LinkedColorRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_text_color"]()}
-              color={settings.teleportFloorBadge.textColor}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textColor: v } })}
+            <TextStyleRows
+              settings={settings.teleportFloorBadge}
+              onChange={(patch) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, ...patch } })}
+              linkTargets={{
+                textFontWeight: linkTargets.floorBadgeTextFontWeight,
+                textColor: linkTargets.floorBadgeTextColor,
+                textSize: linkTargets.floorBadgeTextSize,
+              }}
               priorityColors={floorBadgeTextColorPriority}
               defaultColor={floorBadgeTextColorDefault}
               fieldName={floorBadgeTextColorFieldName}
-              linkTarget={linkTargets.floorBadgeTextColor}
-            />
-            <LinkedSliderRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_border_width"]()}
-              value={settings.teleportFloorBadge.borderWidth ?? 3}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, borderWidth: v } })}
-              min={0}
-              max={10}
-              step={1}
-              format={(v) => String(v)}
-              linkTarget={linkTargets.floorBadgeBorderWidth}
-            />
-            <LinkedSliderRow
-              label={m["image_export.vector_by_walls.teleport_floor_badge_text_padding"]()}
-              value={settings.teleportFloorBadge.textPadding}
-              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textPadding: v } })}
-              min={0}
-              max={5}
-              step={0.25}
-              format={(v) => v.toFixed(2)}
-              linkTarget={linkTargets.floorBadgeTextPadding}
             />
           </div>
         </>
@@ -569,8 +503,8 @@ export function TeleportSettingsSection<P extends string>({
         const allGroupColors: ProjectColorEntry[][] = teleportGroups.map((g, gi) => {
           const o = groupOverrides[g.key];
           return [
-            PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportEdgeColor),
-            PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportEdgeBorderColor),
+            PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportMarker.fillColor),
+            PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportMarker.borderColor),
           ];
         });
         return (
@@ -581,8 +515,8 @@ export function TeleportSettingsSection<P extends string>({
                 group={group}
                 index={i}
                 override={groupOverrides[group.key]}
-                defaultFillColor={settings.teleportEdgeColor}
-                defaultBorderColor={settings.teleportEdgeBorderColor}
+                defaultFillColor={settings.teleportMarker.fillColor}
+                defaultBorderColor={settings.teleportMarker.borderColor}
                 hasCollision={teleportCollisionKeys.has(group.key)}
                 onChange={(patch) => onGroupOverrideChange(group.key, patch)}
                 otherGroupColors={allGroupColors.filter((_, gi) => gi !== i).flat()}

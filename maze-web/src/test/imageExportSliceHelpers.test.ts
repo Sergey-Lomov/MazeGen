@@ -376,7 +376,7 @@ describe("registry format functions", () => {
     // between the two key sets in every current locale, so the assertion can't be "renders
     // differently" here — instead it pins that the two descriptors reference distinct functions, so
     // a future wording change to one key set can't accidentally also change the other's text.
-    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.fontWeight"].format;
+    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.textFontWeight"].format;
     const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.fontWeight"].format;
     expect(badgeFormat).not.toBe(indexFormat);
   });

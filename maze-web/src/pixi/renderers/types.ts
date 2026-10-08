@@ -1,4 +1,5 @@
-import type { IndexLabelStyle, LabelFontWeight } from "./indexLabel";
+import type { LabelFontWeight } from "./indexLabel";
+import type { TeleportFloorBadgeSettings } from "../../store/imageExportTypes";
 
 export type Viewport = {
   x: number;
@@ -255,8 +256,8 @@ export type MarkerData = {
    *  as every other label in this codebase (floor badges, elevator badges, marker index). Defaults
    *  to `"bold"` when unset. */
   textFontWeight?: LabelFontWeight;
-  /** Label font size as a fraction of the marker's diameter (`radius * 2`). Defaults to `0.55`
-   *  when unset. */
+  /** Label font size in px (unified with elevator/teleport floor badges). Defaults to
+   *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
 };
 
@@ -400,10 +401,11 @@ export type TeleportLineStyle = {
    *  (`TeleportEdge.toFloor`/`fromFloor`) draws with this `shape`/`labelType`/`size` instead of the
    *  hardcoded circle + Arabic digit it used before. `fillColor`/`borderColor` are the badge body's
    *  own colours (GitHub issue #503 follow-up — previously locked to the connector colour); a group
-   *  override does not affect them. `textColor` colours the label independently of `floorColor`;
-   *  `textPadding` (px) only feeds the shared label-font fit — see `TeleportFloorBadgeSettings`.
-   *  The badge has its own independent border width, defaulting to the edge marker width. */
-  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; fillColor: number; borderColor: number; borderWidth?: number; textColor: number; textPadding: number };
+   *  override does not affect them. `textColor`/`textFontWeight`/`textSize` (px) style the label
+   *  independently of `floorColor` — see `TeleportFloorBadgeSettings`.
+   *  The badge is a `BadgeSettings` (GitHub issue #701): it carries its own `cornerStyle`, `borderWidth`
+   *  and `gapWidth` like any other marker, independent of the edge marker's. */
+  floorBadge: TeleportFloorBadgeSettings;
 };
 
 /** "Group customization" (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`

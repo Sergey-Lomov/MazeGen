@@ -382,3 +382,24 @@ describe("overrideActiveProfileColor", () => {
     expect(overridden?.splitNodeColors[1]).toBe(0x123456);
   });
 });
+
+// GitHub issue #701 — the shared-style marker fill / border sources are project colors.
+describe("shared-style marker colors (GitHub issue #701)", () => {
+  it("lists them for both render modes", () => {
+    for (const mode of ["vector_by_walls", "vector_by_corridors"] as const) {
+      const names = selectActiveProfileColors(makeState({ openRenderModeSettings: mode })).map((c) => c.name);
+      expect(names, mode).toContain(PC.sharedMarkerFill.name());
+      expect(names, mode).toContain(PC.sharedMarkerBorder.name());
+    }
+  });
+
+  it("overrideActiveProfileColor rewrites only the targeted source", () => {
+    const state = makeState({ openRenderModeSettings: "vector_by_walls" });
+    const fill = overrideActiveProfileColor(state, PC.sharedMarkerFill.name(), 0x123456);
+    expect(fill?.markerFillColor).toBe(0x123456);
+    expect(fill?.markerBorderColor).toBe(state.vectorByWallsSettings.markerBorderColor);
+    const border = overrideActiveProfileColor(state, PC.sharedMarkerBorder.name(), 0x654321);
+    expect(border?.markerBorderColor).toBe(0x654321);
+    expect(border?.markerFillColor).toBe(state.vectorByWallsSettings.markerFillColor);
+  });
+});

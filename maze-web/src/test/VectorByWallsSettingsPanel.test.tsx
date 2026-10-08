@@ -62,13 +62,7 @@ beforeEach(() => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
       finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-      teleportLineCornerStyle: "miter",
-      teleportLineShape: "square",
-      teleportLineSize: 0.3,
-      teleportEdgeColor: 0,
-      teleportEdgeBorderColor: 0,
-      teleportEdgeBorderWidth: 3,
-      teleportEdgeGapWidth: 0,
+      teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -77,7 +71,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -171,12 +165,10 @@ describe("VectorByWallsSettingsPanel", () => {
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
         finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
-        teleportLineCornerStyle: "miter",
-        teleportLineShape: "square", teleportLineSize: 0.3,
-        teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
+        teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
-        teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
+        teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -449,7 +441,7 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       const select = screen.getByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
       fireEvent.change(select, { target: { value: "round" } });
-      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineCornerStyle).toBe("round");
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportMarker.cornerStyle).toBe("round");
     });
 
     it("changing the marker size updates the store", () => {
@@ -461,7 +453,7 @@ describe("VectorByWallsSettingsPanel", () => {
       const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_size"]())[0]
         .parentElement!.querySelector('input[type="range"]')!;
       fireEvent.change(slider, { target: { value: "24" } });
-      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineSize).toBe(24);
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportMarker.size).toBe(24);
     });
 
     it("changing the edge gap width updates the store (GitHub issue #302)", () => {
@@ -469,7 +461,7 @@ describe("VectorByWallsSettingsPanel", () => {
       const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_edge_gap_width"]())[0]
         .parentElement!.querySelector('input[type="range"]')!;
       fireEvent.change(slider, { target: { value: "7" } });
-      expect(useMazeStore.getState().vectorByWallsSettings.teleportEdgeGapWidth).toBe(7);
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportMarker.gapWidth).toBe(7);
     });
 
     it("toggling group customization on shows the group list once groups exist", () => {
@@ -834,7 +826,7 @@ describe("VectorByWallsSettingsPanel", () => {
         const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
         const select = selects[selects.length - 1];
         fireEvent.change(select, { target: { value: "regular" } });
-        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fontWeight).toBe("regular");
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.textFontWeight).toBe("regular");
       });
 
       it("changing the corner style updates the store and disables its shared-style link (GitHub issue #322 follow-up)", () => {
@@ -998,8 +990,7 @@ describe("VectorByWallsSettingsPanel", () => {
         edges: [{ from: 0, to: 1, kind: "teleport" as const }],
         vectorByWallsSettings: {
           ...useMazeStore.getState().vectorByWallsSettings,
-          teleportEdgeBorderWidth: 0,
-          teleportEdgeColor: 0xffffff,
+          teleportMarker: { ...useMazeStore.getState().vectorByWallsSettings.teleportMarker, borderWidth: 0, fillColor: 0xffffff },
           teleportConnectorColor: 0xffffff,
         },
       });

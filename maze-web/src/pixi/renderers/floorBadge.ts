@@ -7,6 +7,7 @@ import { drawMarkerWithBorder } from "./markerShapes";
 import type { MarkerShape } from "./types";
 import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
+import type { LabelFontWeight } from "./indexLabel";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
 export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
@@ -83,8 +84,8 @@ export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: Tessellati
  *  `g` in z-order (a sibling layer, or the same container `g` was itself added to).
  *
  *  `opts` (GitHub issue #485) lets the cross-floor teleport badge draw a configured marker shape,
- *  a Roman/letter label, an independent `textColor`, a `fontSize` shared across every teleport
- *  badge in the maze (so all badges read at one size, fitted to the widest label present), and a
+ *  a Roman/letter label, an independent `textColor`, an explicit `fontWeight`/`fontSize` (px, the
+ *  badge's own `textSize` setting), and a
  *  `borderWidth` taken from the teleport edge marker's own border rather than the fixed
  *  `FLOOR_BADGE_STROKE_WIDTH`. The teleport call site also passes the badge's own `color`/
  *  `borderColor` (GitHub issue #503 follow-up — independent of the connector color).
@@ -101,13 +102,13 @@ export function drawFloorBadge(
   borderColor: number,
   floorColor: number,
   floorNumber: number,
-  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontSize?: number; borderWidth?: number },
+  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontWeight?: LabelFontWeight; fontSize?: number; borderWidth?: number; rounded?: boolean },
 ): void {
   const borderWidth = opts?.borderWidth ?? FLOOR_BADGE_STROKE_WIDTH;
-  drawMarkerWithBorder(g, opts?.shape ?? "circle", cx, cy, r, true, color, borderColor, borderWidth);
+  drawMarkerWithBorder(g, opts?.shape ?? "circle", cx, cy, r, opts?.rounded ?? true, color, borderColor, borderWidth);
   const label = makeCenteredLabel(
     opts?.labelText ?? `${floorNumber}`,
-    msdfFontFamily("bold"),
+    msdfFontFamily(opts?.fontWeight ?? "bold"),
     opts?.fontSize ?? r * 1.6,
     opts?.textColor ?? floorColor,
   );

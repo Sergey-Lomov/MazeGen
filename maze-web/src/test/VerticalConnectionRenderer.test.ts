@@ -142,7 +142,7 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     decorativeStairsArrowSize: 0.6,
     decorativeStairsOneWayArrowColor: 0x2a2a2a,
     decorativeStairsOneWayArrowSize: 0.6,
-    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, textColor: 0x666666, fontWeight: "bold" },
+    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, borderColor: 0x555555, borderWidth: 0, textColor: 0x666666, textFontWeight: "bold", textSize: 16.66 },
     ...overrides,
   };
 }
@@ -1001,5 +1001,25 @@ describe("VerticalConnectionRenderer", () => {
       expect(badgeLayer.destroy).toHaveBeenCalledWith({ children: true });
       expect(hitLayer.destroy).toHaveBeenCalledWith({ children: true });
     });
+  });
+});
+
+// Kept (currently unused by rendering — GitHub issues #701/#707) shared-fit helper.
+describe("fitElevatorBadgeFontSize", () => {
+  it("returns the baseline (radius * 1.4) when every label already fits", async () => {
+    const { fitElevatorBadgeFontSize } = await import("../pixi/renderers/VerticalConnectionRenderer");
+    expect(fitElevatorBadgeFontSize(["1", "2"], 10, "bold")).toBeCloseTo(14);
+    expect(fitElevatorBadgeFontSize([], 10, "bold")).toBeCloseTo(14);
+  });
+
+  it("scales down so the widest label spans 1.6 * radius", async () => {
+    const { fitElevatorBadgeFontSize } = await import("../pixi/renderers/VerticalConnectionRenderer");
+    // Mock width = chars * fontSize * 0.6 -> "VIII" at 14px is 33.6px; target 16px.
+    expect(fitElevatorBadgeFontSize(["I", "VIII"], 10, "regular")).toBeCloseTo(14 * (16 / 33.6));
+  });
+
+  it("is driven by the widest label only, not the label count", async () => {
+    const { fitElevatorBadgeFontSize } = await import("../pixi/renderers/VerticalConnectionRenderer");
+    expect(fitElevatorBadgeFontSize(["VIII"], 10, "bold")).toBeCloseTo(fitElevatorBadgeFontSize(["I", "II", "VIII"], 10, "bold"));
   });
 });

@@ -134,9 +134,9 @@ describe("WaypointsRenderer.render", () => {
     expect(labels(renderer).children).toHaveLength(0);
   });
 
-  it("a marker with a text draws one centered label, radius-relative size, textColor over color", () => {
+  it("a marker with a text draws one centered label, absolute px size, textColor over color", () => {
     const renderer = new WaypointsRenderer(new Container());
-    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "S", textColor: 0x999 };
+    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "S", textColor: 0x999, textSize: 11 };
     renderer.render({ markers: [marker] });
     expect(labels(renderer).children).toHaveLength(1);
     const calls = labelCalls();
@@ -146,7 +146,7 @@ describe("WaypointsRenderer.render", () => {
 
   it("falls back to the marker's own color when textColor is unset, and honors textFontWeight/textSize", () => {
     const renderer = new WaypointsRenderer(new Container());
-    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "F", textFontWeight: "regular", textSize: 0.5 };
+    const marker: MarkerData = { pos: [5, 5], color: 0x111, radius: 10, text: "F", textFontWeight: "regular", textSize: 10 };
     renderer.render({ markers: [marker] });
     expect(labelCalls()[0]).toMatchObject({ fontFamily: "fake-regular", fontSize: 10, fill: 0x111 });
   });

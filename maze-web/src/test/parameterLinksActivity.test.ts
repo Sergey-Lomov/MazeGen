@@ -3,7 +3,7 @@ import { isPathActive, computeActivePaths, type ParamActivityContext, type Param
 import type { ParamDescriptor } from "../store/parameterLinks";
 
 type P =
-  | "teleportLineColor"
+  | "teleportMarker.fillColor"
   | "teleportFloorBadge.enabled"
   | "oneWayColor"
   | "replaceTwoFloorElevatorsWithStairs"
@@ -29,7 +29,7 @@ type P =
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
-    "teleportLineColor", "teleportFloorBadge.enabled", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
+    "teleportMarker.fillColor", "teleportFloorBadge.enabled", "oneWayColor", "replaceTwoFloorElevatorsWithStairs",
     "gridColor", "innerGridColor", "verticalCornerStyle", "verticalSize", "verticalArrowSize",
     "verticalDecorativeSize", "verticalDecorativeArrowSize",
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
@@ -55,11 +55,11 @@ function active(path: P, ctx: Partial<ParamActivityContext> = {}, settings: Para
 
 describe("isPathActive", () => {
   it("hides teleport fields when the maze has no teleports", () => {
-    expect(active("teleportLineColor", { hasTeleports: false })).toBe(false);
+    expect(active("teleportMarker.fillColor", { hasTeleports: false })).toBe(false);
   });
 
   it("shows teleport fields when the maze has teleports", () => {
-    expect(active("teleportLineColor", { hasTeleports: true })).toBe(true);
+    expect(active("teleportMarker.fillColor", { hasTeleports: true })).toBe(true);
   });
 
   it("hides cross-floor teleport badge fields even with teleports, unless cross-floor ones exist", () => {
@@ -158,7 +158,7 @@ describe("computeActivePaths", () => {
     const ctx: ParamActivityContext = { ...baseCtx, hasTeleports: true, hasOneWays: true };
     const settings: ParamActivitySettings = { showGrid: false };
     const result = computeActivePaths(registry, ctx, settings);
-    expect(result.has("teleportLineColor")).toBe(true);
+    expect(result.has("teleportMarker.fillColor")).toBe(true);
     expect(result.has("oneWayColor")).toBe(true);
     expect(result.has("gridColor")).toBe(false);
     expect(result.has("backgroundColor")).toBe(true);

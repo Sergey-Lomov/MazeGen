@@ -38,8 +38,8 @@ export interface MarkerStyle {
   /** Text badge font weight (GitHub issue #697 follow-up) — optional for the same reason as
    *  `text`. Defaults to `"bold"` when unset. */
   textFontWeight?: LabelFontWeight;
-  /** Text badge font size as a fraction of `size` (diameter) — optional for the same reason
-   *  as `text`. Defaults to `0.55` when unset. */
+  /** Text badge font size in px — optional for the same reason as `text`. Defaults to
+   *  `DEFAULT_MARKER_TEXT_SIZE` when unset. */
   textSize?: number;
   /** Text badge color (GitHub issue #697 second follow-up) — optional for the same
    *  reason as `text`. Defaults to `gapColor` (the floor-colored knockout look) when unset. */
