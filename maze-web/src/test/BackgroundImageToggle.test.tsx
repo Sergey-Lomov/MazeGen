@@ -404,6 +404,7 @@ describe("BackgroundImageToggle", () => {
     fireEvent.change(screen.getAllByRole("slider")[1], { target: { value: "0.6" } });
 
     expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00010001]));
+    await waitFor(() => expect(autoFillStub.resolve).toEqual(expect.any(Function)));
     autoFillStub.resolve?.();
     await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toEqual(new Set([0x00020002])));
   });

@@ -124,11 +124,22 @@ cell. When the selected-color mode is entered, its default color is read from th
 top-left pixel. This inferred color is refreshed only when the detection mode changes; changing
 the threshold or manually editing the color does not replace it. The calculation uses the current
 grid geometry and the underlay's current crop, scale, and position, classifying the pixels covered
-by each grid-cell polygon.
+by each grid-cell polygon. While the preview is active, setting changes schedule a recalculation
+after a short debounce so rapid slider movement does not start one calculation per input event.
+
+Large cells use deterministic adaptive pixel sampling. Small cells retain the full-resolution
+path; larger cells start with the cell center and a regular source-pixel lattice sized for a
+bounded sample count. Cells whose estimated foreground share is close to the selected threshold
+are sampled again at a finer step, with a full-resolution fallback when they remain ambiguous.
+The target count starts at 128 samples per cell and increases smoothly up to 1024 as the
+threshold approaches 0% or 100%; large edge-threshold cells use this denser single pass instead
+of being forced through full resolution. This reduces pixel reads for large uniform areas while
+preserving more reliable classification for ordinary contours; very thin features may still be
+missed by the bounded sampling path.
 
 **Preview** is a toggle. Enabling it keeps the current field in memory but hides it on the canvas
 and draws the calculated field instead. Changing the mode, color, threshold, grid, or underlay
-transform recalculates the preview immediately. Pressing Preview again or Escape cancels the
+transform schedules a debounced preview recalculation. Pressing Preview again or Escape cancels the
 preview and restores the original field. **Confirm** can be pressed directly without preview; in
 preview mode it also accepts Enter. Either path opens a warning that the new shape will completely
 replace the existing field. Only after the user confirms does the preview become the active custom

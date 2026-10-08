@@ -12,6 +12,8 @@ import { hasOpenModal } from "./Modal";
 import { indent, spacing } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
+const BACKGROUND_AUTOFILL_DEBOUNCE_MS = 150;
+
 interface Props {
   enabled: boolean;
 }
@@ -28,6 +30,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
   const [autoFillThreshold, setAutoFillThreshold] = useState(0.5);
   const [autoFillPreviewActive, setAutoFillPreviewActive] = useState(false);
   const [autoFillCalculating, setAutoFillCalculating] = useState(false);
+  const [autoFillThresholdAdjusting, setAutoFillThresholdAdjusting] = useState(false);
   const [autoFillError, setAutoFillError] = useState(false);
   const [autoFillConfirmOpen, setAutoFillConfirmOpen] = useState(false);
   const [pendingAutoFill, setPendingAutoFill] = useState<Set<number> | null>(null);
@@ -51,6 +54,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
     autoFillRequest.current++;
     setAutoFillPreviewActive(false);
     setAutoFillCalculating(false);
+    setAutoFillThresholdAdjusting(false);
     setAutoFillError(false);
     setPendingAutoFill(null);
     setAutoFillConfirmOpen(false);
@@ -108,22 +112,27 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
     const request = ++autoFillRequest.current;
     setAutoFillCalculating(true);
     setAutoFillError(false);
-    void buildBackgroundFieldPreviewFromImage(
-      backgroundImage,
-      autoFillTessellationConfig,
-      autoFillMode,
-      autoFillColor,
-      autoFillThreshold,
-    ).then((points) => {
-      if (request !== autoFillRequest.current) return;
-      setBackgroundAutoFillPreview(points);
-      setAutoFillCalculating(false);
-    }).catch(() => {
-      if (request !== autoFillRequest.current) return;
-      setAutoFillError(true);
-      setAutoFillCalculating(false);
-    });
-    return () => { autoFillRequest.current++; };
+    const timeout = window.setTimeout(() => {
+      void buildBackgroundFieldPreviewFromImage(
+        backgroundImage,
+        autoFillTessellationConfig,
+        autoFillMode,
+        autoFillColor,
+        autoFillThreshold,
+      ).then((points) => {
+        if (request !== autoFillRequest.current) return;
+        setBackgroundAutoFillPreview(points);
+        setAutoFillCalculating(false);
+      }).catch(() => {
+        if (request !== autoFillRequest.current) return;
+        setAutoFillError(true);
+        setAutoFillCalculating(false);
+      });
+    }, BACKGROUND_AUTOFILL_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timeout);
+      autoFillRequest.current++;
+    };
   }, [enabled, autoFillPreviewActive, backgroundImage, autoFillTessellationConfig, autoFillMode, autoFillColor, autoFillThreshold, setBackgroundAutoFillPreview]);
 
   useEffect(() => {
@@ -189,6 +198,10 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
               step={0.01}
               format={(value) => `${Math.round(value * 100)}%`}
               onChange={setAutoFillThreshold}
+              onPointerDown={() => setAutoFillThresholdAdjusting(true)}
+              onPointerUp={() => setAutoFillThresholdAdjusting(false)}
+              onPointerCancel={() => setAutoFillThresholdAdjusting(false)}
+              onBlur={() => setAutoFillThresholdAdjusting(false)}
             />
             <div style={styles.autoFillButtons}>
               <Button
@@ -203,7 +216,7 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
               <Button
                 variant="primary"
                 layoutStyle={{ flex: 1 }}
-                disabled={autoFillCalculating || autoFillError}
+                disabled={autoFillCalculating || autoFillThresholdAdjusting || autoFillError}
                 onClick={() => void requestAutoFillConfirmation()}
               >
                 {m["background.autofill.confirm"]()}

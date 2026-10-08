@@ -6,14 +6,16 @@ import { baseStoreState } from "./storeTestHelpers";
 
 const autoFillStub = vi.hoisted(() => ({
   nextPoints: new Set([0x00010001]),
+  buildPreview: vi.fn(() => Promise.resolve(new Set<number>(autoFillStub.nextPoints))),
 }));
 
 vi.mock("../pixi/backgroundFieldAutofill", () => ({
   getBackgroundImageTopLeftColor: vi.fn(() => Promise.resolve(0x123456)),
-  buildBackgroundFieldPreviewFromImage: vi.fn(() => Promise.resolve(new Set(autoFillStub.nextPoints))),
+  buildBackgroundFieldPreviewFromImage: autoFillStub.buildPreview,
 }));
 
 beforeEach(() => {
+  autoFillStub.buildPreview.mockClear();
   useMazeStore.setState(baseStoreState());
   const fieldId = useMazeStore.getState().activeFloorId;
   const field = useMazeStore.getState().floorFields[fieldId];
@@ -51,5 +53,46 @@ describe("BackgroundImageAutoFillControls", () => {
     rerender(<BackgroundImageAutoFillControls enabled={false} />);
     await waitFor(() => expect(useMazeStore.getState().backgroundAutoFillPreview).toBeNull());
     expect(screen.queryByText("Auto-fill field")).not.toBeInTheDocument();
+  });
+
+  it("debounces recalculation while the threshold slider is moving", async () => {
+    render(<BackgroundImageAutoFillControls enabled />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1));
+
+    const slider = screen.getByRole("slider");
+    fireEvent.change(slider, { target: { value: "0.4" } });
+    fireEvent.change(slider, { target: { value: "0.3" } });
+    fireEvent.change(slider, { target: { value: "0.2" } });
+
+    expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps confirm disabled during an active threshold drag", async () => {
+    render(<BackgroundImageAutoFillControls enabled />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(autoFillStub.buildPreview).toHaveBeenCalledTimes(1));
+
+    const slider = screen.getByRole("slider");
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: "0.4" } });
+
+    expect(confirm).toBeDisabled();
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+
+    fireEvent.pointerDown(slider);
+    expect(confirm).toBeDisabled();
+    fireEvent.pointerCancel(slider);
+    expect(confirm).not.toBeDisabled();
+
+    fireEvent.pointerDown(slider);
+    expect(confirm).toBeDisabled();
+    fireEvent.blur(slider);
+    expect(confirm).not.toBeDisabled();
   });
 });
