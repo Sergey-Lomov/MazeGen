@@ -17,7 +17,7 @@ import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defa
 import { propagate } from "./parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
 
-function markerSettings(style: MazeRenderStyle["startMarker"]): MarkerSettings {
+function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): MarkerSettings {
   return {
     shape: style.shape,
     cornerStyle: style.cornerStyle,
@@ -26,6 +26,15 @@ function markerSettings(style: MazeRenderStyle["startMarker"]): MarkerSettings {
     borderWidth: style.borderWidth,
     gapWidth: style.gapWidth,
     size: style.size,
+    ...(text !== undefined
+      ? {
+          text,
+          textEnabled: true,
+          textFontWeight: "bold" as const,
+          textSize: 0.55,
+          textColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
+        }
+      : {}),
   };
 }
 
@@ -232,8 +241,8 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     oneWaySize: DEFAULT_MAZE_RENDER_STYLE.oneWay.size,
     oneWayThickness: DEFAULT_MAZE_RENDER_STYLE.oneWay.thickness,
     oneWayJoin: DEFAULT_MAZE_RENDER_STYLE.oneWay.join,
-    startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker),
-    finishMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.finishMarker),
+    startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker, "S"),
+    finishMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.finishMarker, "F"),
     ...DEFAULT_TELEPORT_SETTINGS,
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -289,8 +298,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     thickness: TILE_SIZE / 2,
     join: "round",
     renderStyle: "contour",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0 },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0 },
+    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: true, textFontWeight: "bold", textSize: 0.55, textColor: 0x2d2d2d },
+    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: true, textFontWeight: "bold", textSize: 0.55, textColor: 0x2d2d2d },
     markerWidenPadding: 4,
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,

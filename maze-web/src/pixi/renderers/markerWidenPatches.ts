@@ -58,6 +58,6 @@ export function drawMarkerWidenPatches(
     // `padding > 0` (checked above) guarantees `footprint > markerOuterRadius`, so `extra > 0` and
     // therefore `outset > 0` here always — there's always something to draw once this loop runs.
     const outset = borderWidth + extra;
-    drawMarkerUnderlay(g, shape, marker.pos[0], marker.pos[1], marker.radius, rounded, outset, lineColor);
+    drawMarkerUnderlay(g, shape, marker.pos[0], marker.pos[1], marker.radius, rounded, outset, lineColor, borderWidth);
   }
 }

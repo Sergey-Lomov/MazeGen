@@ -755,6 +755,12 @@ function addCommonContrastWarnings(
   if (settings.elevatorBadges.enabled && elevator.length > 0) {
     labelEntries.push({ foreground: settings.elevatorBadges.textColor, background: settings.elevatorBadges.fillColor, nodes: elevator.flatMap((edge) => [edge.from, edge.to]) });
   }
+  if (start !== null && nodeById.has(start) && settings.startMarker.textEnabled !== false && settings.startMarker.textColor !== undefined) {
+    labelEntries.push({ foreground: settings.startMarker.textColor, background: settings.startMarker.fillColor, nodes: [start] });
+  }
+  if (finish !== null && nodeById.has(finish) && settings.finishMarker.textEnabled !== false && settings.finishMarker.textColor !== undefined) {
+    labelEntries.push({ foreground: settings.finishMarker.textColor, background: settings.finishMarker.fillColor, nodes: [finish] });
+  }
   const indexedEdges = edges.filter((edge) => {
     if (edge.kind === "elevator") return settings.markerIndex.coverage.elevator;
     if (edge.kind === "vertical_passage") return settings.markerIndex.coverage.verticalPassage;

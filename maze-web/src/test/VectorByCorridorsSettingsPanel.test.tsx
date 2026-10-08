@@ -33,7 +33,14 @@ beforeEach(() => {
     // "Cells"/"Background" start collapsed by default (mirrors VectorByWallsSettingsPanel's
     // sections) — expanded here so the field-interaction tests below don't each need their own
     // expand step.
-    vectorByCorridorsSectionsExpanded: { background: true, cells: true, waypoints: true },
+    // Start/Finish became their own collapsible sections, each split into "Marker"/"Symbol"
+    // sub-sections (GitHub issue #697 follow-up) — expanded here too so marker-field interaction
+    // tests below don't each need their own expand steps.
+    vectorByCorridorsSectionsExpanded: {
+      background: true, cells: true, waypoints: true,
+      markers_start: true, markers_finish: true,
+      markers_start_marker: true, markers_finish_marker: true,
+    },
   });
 });
 
@@ -240,7 +247,13 @@ describe("VectorByCorridorsSettingsPanel", () => {
     });
 
     it("changing the teleport size slider patches vectorByCorridorsSettings, same reuse convention as MarkerSettingsGroup", () => {
-      useMazeStore.setState({ vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true } });
+      useMazeStore.setState({
+        vectorByCorridorsSectionsExpanded: {
+          cells: true, waypoints: true, teleports: true,
+          markers_start: true, markers_finish: true,
+          markers_start_marker: true, markers_finish_marker: true,
+        },
+      });
       render(<VectorByCorridorsSettingsPanel />);
       // The Teleports section's own "Size" label — the last of the matching labels in document
       // order, same disambiguation convention as `VectorByWallsSettingsPanel`'s own teleport-size test.

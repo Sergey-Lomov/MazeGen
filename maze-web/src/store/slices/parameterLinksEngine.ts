@@ -1,6 +1,21 @@
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../parameterLinks";
 import { applyModifiers, applyColorModifiers } from "../parameterLinks";
 
+declare const linkedBrand: unique symbol;
+
+/** Settings whose latest write went through the link-aware write path (GitHub issue #704). The
+ *  image-export slice's `set` only accepts this type for `vector*Settings`, so a hand-rolled
+ *  `{ ...settings, field: v }` write does not compile. Only `writeLinkedParam`, `applyLinkedPatch`,
+ *  the plain-field helpers and explicit `markLinked` calls produce it. */
+export type Linked<S> = S & { readonly [linkedBrand]: true };
+
+/** Escape hatch for writes that are link-aware by construction but not field writes — link
+ *  management (`addLink`/`removeLink`/`forceLinks`/`setLinkEnabledByTarget`) and wholesale
+ *  replacement (reset to defaults). Never use it to write a registry field's value. */
+export function markLinked<S>(settings: S): Linked<S> {
+  return settings as Linked<S>;
+}
+
 /** Applies whichever chain `link` actually carries — `modifiers` (number) or `colorModifiers`
  *  (color, GitHub issue #647) — to `value` copied from its `source`. The two are mutually exclusive
  *  (a link's `source`/`target` share one `ParamType`), so at most one chain is ever set; neither set
@@ -207,6 +222,45 @@ export function linksMatchDefaults<P extends string>(current: ParamLink<P>[], de
     const def = byTarget.get(l.target);
     return def !== undefined && linksEqual(l, def);
   });
+}
+
+/** The one write path for a registry field set by hand (GitHub issue #704): detaches the link
+ *  targeting `path` (no-op if none — a source or unlinked field), writes `value`, then propagates
+ *  from `path` so every link sourced from it keeps following. Store setters for registry fields
+ *  must go through this instead of hand-writing the detach/write/propagate sequence, so a field
+ *  cannot be registered as linkable yet have a setter that never propagates. */
+export function writeLinkedParam<P extends string, S extends { links: ParamLink<P>[] }>(settings: S, path: P, value: unknown): Linked<S> {
+  const { links } = setLinkEnabledByTarget(settings, settings.links, path, false);
+  return markLinked(propagate({ ...setParamValue(settings, path, value), links }, links, [path]));
+}
+
+/** Multi-field counterpart of `writeLinkedParam` for `patch*` actions (GitHub issue #704). `next` is
+ *  `settings` with the patch already merged in by the caller (merge shape differs per action);
+ *  `rootPatch` is the same patch expressed in root-relative shape (e.g. `{ elevatorBadges: patch }`)
+ *  so every `overridable` path present in it can be found with `getParamValue`. Each present path
+ *  has its own incoming link detached, then propagation runs from all of them. */
+export function applyLinkedPatch<P extends string, S extends { links: ParamLink<P>[] }>(
+  settings: S,
+  next: S,
+  rootPatch: object,
+  overridable: readonly P[],
+): Linked<S> {
+  let links = next.links;
+  const detached: P[] = [];
+  for (const target of overridable) {
+    if (getParamValue(rootPatch, target) !== undefined) {
+      links = setLinkEnabledByTarget(settings, links, target, false).links;
+      detached.push(target);
+    }
+  }
+  return markLinked(propagate({ ...next, links }, links, detached));
+}
+
+/** Propagates an already-written patch from `changed` without detaching any link — for source-style
+ *  edits (e.g. the vertical "Shared style" fields) where the edited field keeps following its own
+ *  incoming link, if it has one, and only its dependents are refreshed (GitHub issue #704). */
+export function propagateLinkedSources<P extends string, S extends { links: ParamLink<P>[] }>(next: S, changed: readonly P[]): Linked<S> {
+  return markLinked(propagate(next, next.links, [...changed]));
 }
 
 /** Addresses a link by its `target` (not `id` — a field's own setter always knows its own field

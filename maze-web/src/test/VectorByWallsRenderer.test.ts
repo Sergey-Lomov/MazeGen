@@ -179,8 +179,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWaySize: 0.3,
     oneWayThickness: 4,
     oneWayJoin: "round",
-    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
-    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "S" },
+    finishMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225, text: "F" },
     teleportLineCornerStyle: "miter",
     teleportLineShape: "square",
     teleportLineSize: 0.3,
@@ -200,9 +200,9 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     verticalStyle: "abstract",
-    twoWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2 },
-    oneWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2 },
-    elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2 },
+    twoWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    oneWayPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
+    elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2, text: "" },
     twoWayArrowColor: 0x111111,
     twoWayArrowSize: 0.6,
     twoWayArrowStyle: "triangle",
@@ -348,13 +348,13 @@ describe("buildTeleportLineStyle", () => {
 
 describe("buildMarkerStyle", () => {
   it("spreads MarkerSettings straight through and sets gapColor to the given floorColor", () => {
-    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5 };
+    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5, text: "S" };
     const style = buildMarkerStyle(settings, 0xdead00);
     expect(style).toEqual({ ...settings, gapColor: 0xdead00 });
   });
 
   it("gapColor tracks floorColor independently of the marker's own fillColor/borderColor", () => {
-    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225 };
+    const settings = { shape: "circle" as const, cornerStyle: "miter" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225, text: "" };
     expect(buildMarkerStyle(settings, 0x111).gapColor).toBe(0x111);
     expect(buildMarkerStyle(settings, 0x222).gapColor).toBe(0x222);
   });

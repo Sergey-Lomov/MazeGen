@@ -130,8 +130,8 @@ vi.mock("pixi.js", () => ({
   }),
 }));
 
-const startMarker: VectorByCorridorsSettings["startMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1 };
-const finishMarker: VectorByCorridorsSettings["finishMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1 };
+const startMarker: VectorByCorridorsSettings["startMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1, text: "S" };
+const finishMarker: VectorByCorridorsSettings["finishMarker"] = { shape: "circle", cornerStyle: "miter", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1, text: "F" };
 const teleportDefaults: Pick<VectorByCorridorsSettings,
   "teleportLineCornerStyle" | "teleportLineShape" | "teleportLineSize" | "teleportEdgeColor" | "teleportEdgeBorderColor" |
   "teleportEdgeBorderWidth" | "teleportEdgeGapWidth" | "teleportConnectorColor" | "teleportConnectorWidth" | "teleportConnectorStyle" |

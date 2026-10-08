@@ -1,4 +1,4 @@
-import type { IndexLabelStyle } from "./indexLabel";
+import type { IndexLabelStyle, LabelFontWeight } from "./indexLabel";
 
 export type Viewport = {
   x: number;
@@ -246,6 +246,18 @@ export type MarkerData = {
   cornerStyle?: CornerStyle;
   gapWidth?: number;
   gapColor?: number;
+  /** One-text badge label drawn centered on the marker (GitHub issue #697) — e.g. a start/
+   *  finish marker's custom "S"/"F". Omitted or empty draws no label, same as before this field
+   *  existed. `textColor` defaults to `color` (the marker's own fill) when unset. */
+  text?: string;
+  textColor?: number;
+  /** Label font weight — resolved to a baked MSDF atlas family by `msdfFontFamily`, same convention
+   *  as every other label in this codebase (floor badges, elevator badges, marker index). Defaults
+   *  to `"bold"` when unset. */
+  textFontWeight?: LabelFontWeight;
+  /** Label font size as a fraction of the marker's diameter (`radius * 2`). Defaults to `0.55`
+   *  when unset. */
+  textSize?: number;
 };
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled

@@ -105,7 +105,6 @@ interface Props {
  *  original color back before closing, Apply leaves the last preview in place. */
 export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel, priorityColors, defaultColor, fieldName }: Props) {
   const [working, setWorking] = useState(color);
-  const [hexInput, setHexInput] = useState(() => colorToHex(color));
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
   const [showAllProjectColors, setShowAllProjectColors] = useState(false);
@@ -179,8 +178,6 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   // session shows up immediately without reopening the picker.
   const recentColors = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  const hexValid = HEX_COLOR_RE.test(hexInput);
-
   // The live preview (#513) can fire once per pointer-move tick while a model slider / 2D area is
   // dragged — far more often than once a frame, and a call site's `onPreview` may re-render a full
   // preview canvas per call. Throttle to one `onPreview` call per animation frame, always with the
@@ -238,18 +235,17 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
     onApply(working);
   }
 
-  /** Update the working color from a model editor and re-sync the shared hex field. */
+  /** Update the working color from a model editor; the hex field re-syncs on its own since it's
+   *  driven directly off `working` while unfocused. */
   function setWorkingColor(next: number) {
     setWorking(next);
-    setHexInput(colorToHex(next));
     preview(next);
   }
 
   /** Click on a "Project colors" row (GitHub issue #503) — set the working color, same path as the
-   *  hex field (updates working + hex + live preview; does not commit — Apply still commits). */
+   *  hex field (updates working + live preview; does not commit — Apply still commits). */
   function pickProjectColor(next: number) {
     setWorking(next);
-    setHexInput(colorToHex(next));
     preview(next);
   }
 
@@ -258,17 +254,13 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   function pickSampledColor(next: number) {
     setSampling(false);
     setWorking(next);
-    setHexInput(colorToHex(next));
     preview(next);
   }
 
   function handleHexChange(next: string) {
-    setHexInput(next);
-    if (HEX_COLOR_RE.test(next)) {
-      const packed = hexToColor(next);
-      setWorking(packed);
-      preview(packed);
-    }
+    const packed = hexToColor(next);
+    setWorking(packed);
+    preview(packed);
   }
 
   return (
@@ -284,8 +276,8 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
           <div style={{ ...styles.preview, background: colorToHex(working) }} data-testid="color-picker-preview" />
           <TextFieldRow
             label={m["color_picker.hex_label"]()}
-            value={hexInput}
-            invalid={!hexValid}
+            value={colorToHex(working)}
+            isValid={(raw) => HEX_COLOR_RE.test(raw)}
             onChange={handleHexChange}
             resetButton={
               <button
@@ -302,7 +294,6 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
               </button>
             }
           />
-          {!hexValid && <span style={styles.hexError}>{m["color_picker.hex_invalid"]()}</span>}
           <div style={styles.modelSwitcher}>
             {MODELS.map(({ key, label }) => (
               <Button
@@ -391,7 +382,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={cancel}>
             {m["common.cancel"]()}
           </Button>
-          <Button variant="primary" layoutStyle={styles.footerBtn} disabled={!hexValid} onClick={apply}>
+          <Button variant="primary" layoutStyle={styles.footerBtn} onClick={apply}>
             {m["common.apply"]()}
           </Button>
         </div>
@@ -446,7 +437,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: radius.md,
     boxSizing: "border-box",
   },
-  hexError: { ...typography.caption, color: ui.text.error },
   eyedropperBtn: {
     ...typography.icon,
     display: "flex",

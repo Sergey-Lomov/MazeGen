@@ -1371,7 +1371,7 @@ describe("buildMazeMarkers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 1, 1)]]);
     const startStyle: MarkerStyle = {
       shape: "star", fillColor: 0x111, borderColor: 0x222, borderWidth: 4,
-      size: 20, cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
+      size: 20, cornerStyle: "round", gapWidth: 3, gapColor: 0x333, text: "",
     };
     const markers = buildMazeMarkers(nodeById, 0, 1, squareCfg, startStyle);
     expect(markers[0]).toMatchObject({
@@ -1383,6 +1383,17 @@ describe("buildMazeMarkers", () => {
     // matches "Vector by walls"' own Shared style default), unaffected by startStyle's own
     // custom fields.
     expect(markers[1]).toMatchObject({ shape: "circle", cornerStyle: "round", gapWidth: 3 });
+  });
+
+  it("textColor falls back to gapColor when textColor is unset, and uses textColor when set (GitHub issue #697 second follow-up)", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
+    const noColorStyle: MarkerStyle = {
+      shape: "circle", fillColor: 0x111, borderColor: 0x222, borderWidth: 0,
+      size: 20, cornerStyle: "round", gapWidth: 0, gapColor: 0x333, text: "S",
+    };
+    const withColorStyle: MarkerStyle = { ...noColorStyle, textColor: 0x444 };
+    expect(buildMazeMarkers(nodeById, 0, null, squareCfg, noColorStyle)[0].textColor).toBe(0x333);
+    expect(buildMazeMarkers(nodeById, 0, null, squareCfg, withColorStyle)[0].textColor).toBe(0x444);
   });
 });
 

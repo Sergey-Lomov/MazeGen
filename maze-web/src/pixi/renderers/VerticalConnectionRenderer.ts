@@ -466,7 +466,7 @@ function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: n
 function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, gapWidth: number, gapColor: number): void {
   if (gapWidth <= 0) return;
   const gapGraphics = new Graphics();
-  drawMarkerUnderlay(gapGraphics, shape, pos.x, pos.y, radius, rounded, gapWidth, gapColor);
+  drawMarkerUnderlay(gapGraphics, shape, pos.x, pos.y, radius, rounded, gapWidth, gapColor, 0);
   container.addChild(gapGraphics);
 }
 
@@ -686,7 +686,7 @@ export class VerticalConnectionRenderer {
       // border below covers the ring's inner `borderWidth`-wide band, leaving only the outer
       // `gapWidth`-wide band visible.
       if (gapWidth > 0) {
-        drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor);
+        drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor, borderWidth);
       }
       drawMarkerWithBorder(this.g, settings.shape, cx, cy, radius, rounded, fillColor, borderColor, borderWidth);
 

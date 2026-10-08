@@ -46,7 +46,7 @@ export function drawTeleportPreview(
   // Single true outward offset of the fill path (`r`) by `borderWidth + edgeGapWidth` (GitHub issue
   // #552 ninth follow-up) — see `WaypointsRenderer`'s own gap ring for the full rationale.
   if (style.edgeGapWidth > 0) {
-    drawMarkerUnderlay(g, style.shape, originX, originY, r, rounded, style.borderWidth + style.edgeGapWidth, { color: style.floorColor, alpha: 0.5 });
+    drawMarkerUnderlay(g, style.shape, originX, originY, r, rounded, style.borderWidth + style.edgeGapWidth, { color: style.floorColor, alpha: 0.5 }, style.borderWidth);
   }
   drawMarkerWithBorder(
     g,

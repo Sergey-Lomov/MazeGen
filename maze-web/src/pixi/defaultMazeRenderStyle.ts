@@ -36,8 +36,8 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     pattern: "triangle", color: 0xffaa00, gapColor: canvas.floor.default, gapWidth: 3,
     size: TILE_SIZE * 0.3, thickness: 4, join: "round", cap: "round",
   },
-  startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
-  finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default },
+  startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default, text: "" },
+  finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: MARKER_BORDER_WIDTH, size: MARKER_SIZE, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default, text: "" },
   teleport: {
     shape: "diamond", cornerStyle: "round", size: MARKER_SIZE,
     edgeColor: canvas.teleport.default, edgeBorderColor: canvas.teleport.default,

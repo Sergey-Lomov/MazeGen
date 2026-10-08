@@ -1,6 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
+import type { LabelFontWeight } from "../../renderers/indexLabel";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
 
@@ -25,6 +26,24 @@ export interface MarkerStyle {
    *  `gapWidth` at `0`, so `gapColor`'s value never actually shows. */
   gapWidth: number;
   gapColor: number;
+  /** Custom one-text badge label (GitHub issue #697) — omitted/empty draws no label.
+   *  Optional since only `startMarker`/`finishMarker` offer this in the UI so far — every other
+   *  `MarkerStyle` caller (vertical connection markers) simply never sets it. */
+  text?: string;
+  /** Whether the text badge actually draws (GitHub issue #697 follow-up "Show text"
+   *  toggle) — lets the stored `text` survive being hidden rather than being cleared.
+   *  Optional for the same reason as `text`; `undefined`/`true` draws the badge (matches
+   *  pre-toggle behavior), `false` suppresses it. */
+  textEnabled?: boolean;
+  /** Text badge font weight (GitHub issue #697 follow-up) — optional for the same reason as
+   *  `text`. Defaults to `"bold"` when unset. */
+  textFontWeight?: LabelFontWeight;
+  /** Text badge font size as a fraction of `size` (diameter) — optional for the same reason
+   *  as `text`. Defaults to `0.55` when unset. */
+  textSize?: number;
+  /** Text badge color (GitHub issue #697 second follow-up) — optional for the same
+   *  reason as `text`. Defaults to `gapColor` (the floor-colored knockout look) when unset. */
+  textColor?: number;
 }
 
 /** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
@@ -33,6 +52,8 @@ export function buildMarkerData(pos: [number, number], style: MarkerStyle): Mark
     pos, radius: style.size / 2,
     shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
     cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
+    text: style.textEnabled === false ? undefined : style.text, textColor: style.textColor ?? style.gapColor,
+    textFontWeight: style.textFontWeight, textSize: style.textSize,
   };
 }
 
