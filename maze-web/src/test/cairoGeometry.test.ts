@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
 import { CAIRO_VERTEX_SCALE, cairoCenter, cairoTileKind, isCairoPoint } from "../pixi/cairoGeometry";
-import { getCellVertices, getNeighborData, getSharedEdgeSegment, exactCellBounds } from "../pixi/tessellationGeometry";
+import { getCellVertices, getNeighborData, getSharedEdgeSegment, exactCellBounds, getTileDiagram, splitFaceIndexToCore, splitFaceIndexToWeb } from "../pixi/tessellationGeometry";
 import { configAllCells } from "../pixi/tessellationCells";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { cellsInsideShape, type ShapeDefinition } from "../pixi/shapeSelection";
@@ -31,6 +31,18 @@ describe("Cairo coordinate classes", () => {
 });
 
 describe("Cairo geometry", () => {
+  it("uses a valid five-face tile for split diagrams", () => {
+    expect(getTileDiagram(2, 1, cfg)?.sides).toHaveLength(5);
+    expect(getNeighborData(cfg, 2, 1).offsets).toHaveLength(5);
+  });
+
+  it("keeps Cairo split-pattern face indices aligned with core", () => {
+    for (let face = 0; face < 5; face++) {
+      expect(splitFaceIndexToCore(cfg, face)).toBe(face);
+      expect(splitFaceIndexToWeb(cfg, face)).toBe(face);
+    }
+  });
+
   it("builds every standard form around the grid origin", () => {
     const configs = [
       { type: "cairo", cols: 5, rows: 5 },

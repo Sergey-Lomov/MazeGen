@@ -11,7 +11,7 @@ import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { typography, spacing } from "../../styles/theme";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
-import { degreeFor, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
+import { degreeFor, patternAnchorPoint, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
 import type { SplitPattern, SplitPatternFace, SplitFaceRequirement } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -26,8 +26,6 @@ interface Props {
  *  `SplitGenerationConfig`'s doc comment), but `getTileDiagram` only ever uses its `(x,y)` argument
  *  to compute the tile's own shape/faces, centering the result around the origin regardless — any
  *  fixed point works identically. */
-const ANCHOR_POINT: [number, number] = [0, 0];
-
 // "undefined" (`SplitFaceRequirement::Unspecified`) deliberately excluded from this editor's
 // switcher — it queues an unvisited neighbor into `reserve` for the ordinary corridor/junction
 // logic to maybe connect later, but does nothing at all once that neighbor is already visited by
@@ -62,6 +60,7 @@ type NodeRef = number;
 export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(tessellationConfig);
+  const anchorPoint = patternAnchorPoint(tessellationConfig);
   const [activeNode, setActiveNode] = useState(0);
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -156,7 +155,7 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
             ))}
           </Inline>
           <TileFaceEditor
-            point={ANCHOR_POINT} cfg={tessellationConfig} nodes={tileNodes} activeIndex={activeNode}
+            point={anchorPoint} cfg={tessellationConfig} nodes={tileNodes} activeIndex={activeNode}
             onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={() => {}}
             showRotateControls={false}
           />

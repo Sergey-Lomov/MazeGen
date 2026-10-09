@@ -482,7 +482,13 @@ Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionE
 
 ### Rotating a split point (`rotatePresetSplitPoint`, GitHub issue #580)
 
-Mirrors post-edit's own `rotateSplitPointNodes` (see `Specs/post-edit.md`'s "Rotating a split point" section for the full algorithm) over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`: each of the point's own declared nodes independently shifts its decided faces by one offset index; a new neighbor's owning node is resolved by the same existing-connection → geometry-evidence (`canCompleteOppositePair`) → active/original-fallback tiering (`resolvePresetFaceOwner`/`selectExistingPresetFaceOwner`).
+Cairo uses its five stable face slots directly. Rotation orders those slots by the actual
+neighbor-vector angles and moves each face to the adjacent physical offset, rather than treating
+the stable core slot order as a perimeter. Its odd degree never participates in the opposite-face
+bridge heuristic; owner resolution otherwise follows the existing-owner and safe-fallback tiers
+used by the other tessellations.
+
+Mirrors post-edit's own `rotateSplitPointNodes` (see `Specs/post-edit.md`'s "Rotating a split point" section for the full algorithm) over `PresetConnectionEntry`/`PresetConnectionState` instead of `PostEditEdge`: each of the point's own declared nodes independently shifts its decided faces by one adjacent physical face; a new neighbor's owning node is resolved by the same existing-connection → geometry-evidence (`canCompleteOppositePair`) → active/original-fallback tiering (`resolvePresetFaceOwner`/`selectExistingPresetFaceOwner`).
 
 **A missing `PresetConnectionEntry` reads as `"undefined"` (optional/undecided)** — this is the load-bearing difference from post-edit, where an absent edge always reads as `wall`. Because of this, an old neighbor node that loses its partner during rotation and isn't picked up as anyone's new owner **must** get an explicit `wall` entry written (not just have its stale entry deleted) whenever that old neighbor is itself split: leaving the map entry merely absent doesn't just "vanish" a wall the way it does in post-edit — it reads as a genuinely undecided face in the UI, and can silently turn one of the neighbor's *other*, unrelated decided faces into part of a broken bridge/diagonal shape. A plain (non-split) old neighbor keeps the simpler "just delete the entry" behavior, since it has no other face to protect. The wall rewrite is keyed by the exact `(ep, oldNeighborNode)` pair, not merely "is this neighbor node claimed by *some* move" — the same physical neighbor node can simultaneously lose one of the point's nodes as an old partner and gain a *different* one of the point's nodes as a new partner within a single rotation.
 

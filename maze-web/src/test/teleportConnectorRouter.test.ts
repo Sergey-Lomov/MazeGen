@@ -352,4 +352,30 @@ describe("getConnectorAxes", () => {
     expect(r0).toEqual(r180);
     expect(r0).toEqual(r270);
   });
+
+  it("Cairo uses only oblique axes so routes do not sit on horizontal/vertical edges", async () => {
+    const { getCellVertices } = await import("../pixi/tessellationGeometry");
+    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const axes = getConnectorAxes(cairoCfg);
+    expect(axes).toHaveLength(4);
+    expect(axes.every(({ ux, uy }) => Math.abs(ux) > 1e-10 && Math.abs(uy) > 1e-10)).toBe(true);
+
+    // One representative of each Cairo tile orientation: D, U, L, R. Every oblique polygon edge
+    // still has a candidate routing axis with a zero dot product (axes are undirected); only the
+    // horizontal/vertical edge normal is intentionally absent.
+    for (const [x, y] of [[2, 1], [2, 3], [-3, 2], [-1, 2]] as const) {
+      const vertices = getCellVertices(x, y, cairoCfg);
+      expect(vertices).not.toBeNull();
+      for (let i = 0; i < vertices!.length; i++) {
+        const a = vertices![i];
+        const b = vertices![(i + 1) % vertices!.length];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = Math.hypot(dx, dy);
+        if (Math.abs(dx) > 1e-10 && Math.abs(dy) > 1e-10) {
+          expect(Math.min(...axes.map(({ ux, uy }) => Math.abs((dx * ux + dy * uy) / length)))).toBeLessThan(1e-10);
+        }
+      }
+    }
+  });
 });

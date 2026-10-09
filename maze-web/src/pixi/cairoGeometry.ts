@@ -7,6 +7,9 @@ export interface CairoPos {
 
 export type CairoTileKind = "L" | "R" | "U" | "D";
 
+/** Valid synthetic tile for face-only editors. `[0, 0]` is not occupied in the Cairo lattice. */
+export const CAIRO_ANCHOR_POINT: [number, number] = [2, 1];
+
 /** The Cairo coordinate model uses a 4-by-4 fundamental period.  JavaScript's `%` is
  * truncating, so both the quotient and remainder must be Euclidean for negative points to agree
  * with `CairoTessellation::tile_kind` in maze-core. */

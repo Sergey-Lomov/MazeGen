@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
-import { getTileDiagram } from "../../pixi/tessellationGeometry";
+import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { ui, radius, spacing, typography } from "../../styles/theme";
@@ -127,7 +127,8 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
 
   const centerX = 0, centerY = 0;
   const hubRadius = Math.max(w, h) * 0.12;
-  const rotationRad = (cfg.type === "square" || cfg.type === "square_custom" ? 45 : 0) * Math.PI / 180;
+  // Match the canvas split-node anchor layout, including Cairo's five-face 36° offset.
+  const rotationRad = getSplitCircleRotationDeg(cfg) * Math.PI / 180;
   const connectors = computeSplitConnectors(
     faceLayouts, nodes.length, activeIndex, { x: centerX, y: centerY }, hubRadius, rotationRad,
   );

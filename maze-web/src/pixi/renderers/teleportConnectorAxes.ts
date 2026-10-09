@@ -24,11 +24,25 @@ export const SQUARE_AXES: Axis[] = [axisFromDeg(0), axisFromDeg(90)];
 const AXES_0_60_120: Axis[] = [axisFromDeg(0), axisFromDeg(60), axisFromDeg(120)];
 const AXES_30_90_150: Axis[] = [axisFromDeg(30), axisFromDeg(90), axisFromDeg(150)];
 
+// Cairo's base pentagon has edge slopes 0 and +/-atan(1/3). Its four tile orientations produce
+// four useful oblique axes. The horizontal/vertical normals are deliberately excluded: on the
+// Cairo lattice those directions can land exactly on another orientation's shared edge. Keep the
+// angles derived from the actual 3:1 edge slope rather than treating Cairo as a regular pentagon
+// (whose sides would be 72 degrees apart).
+const CAIRO_SLOPE_DEG = (Math.atan(1 / 3) * 180) / Math.PI;
+const CAIRO_AXES: Axis[] = [
+  axisFromDeg(CAIRO_SLOPE_DEG),
+  axisFromDeg(90 - CAIRO_SLOPE_DEG),
+  axisFromDeg(90 + CAIRO_SLOPE_DEG),
+  axisFromDeg(180 - CAIRO_SLOPE_DEG),
+];
+
 /** The set of candidate bend axes (unit directions, see `Axis`) an orthogonal teleport connector
  *  may bend along for a given tessellation — perpendicular to that tessellation's own cell faces,
  *  not a fixed 90° (GitHub issue #297). Square keeps the original 2-axis (horizontal/vertical)
- *  behavior; hex and triangle each get 3 axes 60° apart, matching the *normals* of their own cell
- *  faces (see this module's own top comment for the per-orientation derivation). This is a
+ *  behavior; hex and triangle each get 3 axes 60° apart, while Cairo gets four oblique axes from
+ *  its quarter-turned pentagon orientations; horizontal/vertical axes are intentionally omitted
+ *  because they can coincide with Cairo cell edges. This is a
  *  display-only routing concern (not a tessellation concept core cares about — some tessellations
  *  have no meaningful "face axis" at all), so it lives entirely on the web side. */
 export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
@@ -58,7 +72,7 @@ export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
     case "cairo_triangle":
     case "cairo_hexagon":
     case "cairo_custom":
-      return SQUARE_AXES;
+      return CAIRO_AXES;
     default:
       cfg satisfies never;
       return SQUARE_AXES;

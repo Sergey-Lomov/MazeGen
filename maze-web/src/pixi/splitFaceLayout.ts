@@ -35,7 +35,8 @@ export function circularDist(a: number, b: number, degree: number): number {
  * undecided opposite face does not count — only a real decided connection forms a bridge pair.
  * Bridge/diagonal shapes are only defined for even degree (square=4, hex=6) —
  * `detectSplitSpecialShapeKind`'s own guard — so this is unconditionally `false` for odd degree
- * (triangle=3). The candidate's total decided-face count elsewhere is irrelevant to this check. */
+ * (triangle=3, Cairo=5). The candidate's total decided-face count elsewhere is irrelevant to this
+ * check. */
 export function canCompleteOppositePair(decidedFaces: ReadonlySet<number>, targetFace: number, degree: number): boolean {
   if (degree % 2 !== 0) return false;
   if (decidedFaces.has(targetFace)) return false;

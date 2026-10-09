@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { degreeFor, resizePatternNodes, removePatternNode, tileNodesForTopology } from "../pixi/splitPatternTile";
+import { degreeFor, patternAnchorPoint, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../pixi/splitPatternTitles";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 
@@ -14,6 +14,17 @@ describe("degreeFor", () => {
 
   it("returns 3 for triangle", () => {
     expect(degreeFor({ type: "triangle_rect", width: 3, height: 3 } as never)).toBe(3);
+  });
+
+  it("returns 5 for Cairo even though the coordinate origin is not a tile", () => {
+    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    expect(patternAnchorPoint(cfg)).toEqual([2, 1]);
+    expect(degreeFor(cfg)).toBe(5);
+  });
+
+  it("builds five-face pattern tiles for Cairo", () => {
+    const nodes = tileNodesForPattern({ node_count: 1, faces: [[]], weight: 1 }, 5);
+    expect(nodes[0].faces).toHaveLength(5);
   });
 });
 

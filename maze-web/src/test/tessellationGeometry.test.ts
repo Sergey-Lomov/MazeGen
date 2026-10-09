@@ -21,7 +21,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -117,6 +117,27 @@ describe("getSplitCircleRotationDeg", () => {
     expect(getSplitCircleRotationDeg({ type: "triangle_rect", cols: 3, rows: 3 })).toBe(60);
     expect(getSplitCircleRotationDeg({ type: "triangle_triangle", side: 3 })).toBe(60);
     expect(getSplitCircleRotationDeg({ type: "tri_custom", points: [] })).toBe(60);
+  });
+
+  it("returns 36 for Cairo's five evenly distributed split-node slots", () => {
+    expect(getSplitCircleRotationDeg({ type: "cairo", cols: 3, rows: 3 })).toBe(36);
+  });
+});
+
+describe("rotateFaceIndex", () => {
+  it("follows Cairo's physical perimeter instead of its stable core slot order", () => {
+    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+
+    // At the D tile [2, 1], the stable slots 1 and 4 are adjacent in space while
+    // slot 2 is the next numeric slot. This is the skipped-edge regression.
+    expect(rotateFaceIndex(cfg, 2, 1, 1, 1)).toBe(4);
+    expect(rotateFaceIndex(cfg, 2, 1, 1, -1)).toBe(0);
+  });
+
+  it("keeps the established cyclic index behavior for square", () => {
+    const cfg = { type: "square", width: 3, height: 3 } as const;
+    expect(rotateFaceIndex(cfg, 0, 0, 0, 1)).toBe(1);
+    expect(rotateFaceIndex(cfg, 0, 0, 0, -1)).toBe(3);
   });
 });
 

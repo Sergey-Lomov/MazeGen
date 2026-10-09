@@ -24,7 +24,8 @@ export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
  *  (GitHub issue #223) before evenly distributing them — a per-tessellation constant so the first
  *  node's point doesn't land exactly on a tile vertex/edge-midpoint by coincidence. Square: 45°
  *  (halfway between its 4 edge directions). Hex: 30° (halfway between its 6 edge directions).
- *  Triangle: 60° (halfway between its 3 edge directions). */
+ *  Triangle: 60° (halfway between its 3 edge directions). Cairo: 36° (half of the 72° spacing
+ *  between its 5 evenly distributed split-node slots). */
 export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
   switch (cfg.type) {
     case "square":
@@ -392,6 +393,31 @@ export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: nu
   return getNeighborData(cfg, x, y).offsets;
 }
 
+/** Returns the face index reached by one geometric rotation step. Most tessellations already
+ * expose their neighbors in perimeter order, but Cairo's core-stable face slots are
+ * `[Twin, NorthWest, NorthEast, SouthEast, SouthWest]`, not a cyclic perimeter order. Keep the
+ * generic index shift for the established tessellations and derive Cairo's order from the actual
+ * neighbor-vector angles so rotation advances to the physically adjacent edge. */
+export function rotateFaceIndex(
+  cfg: TessellationConfig,
+  x: number,
+  y: number,
+  faceIndex: number,
+  direction: 1 | -1,
+): number {
+  const offsets = getNeighborData(cfg, x, y).offsets;
+  const n = offsets.length;
+  if (n === 0) return faceIndex;
+  if (!cfg.type.startsWith("cairo")) return (faceIndex + direction + n) % n;
+
+  const order = offsets
+    .map(([dx, dy], index) => ({ index, angle: Math.atan2(dy, dx) }))
+    .sort((a, b) => a.angle - b.angle);
+  const position = order.findIndex(({ index }) => index === faceIndex);
+  if (position === -1) return faceIndex;
+  return order[(position + direction + n) % n].index;
+}
+
 /** Web-authored `face_index` values (GitHub issue #222's `SplitPattern`, authored/edited via
  *  `TileFaceEditor` against `getNeighborData`'s offset ordering) use a different per-tessellation
  *  face ordering than `maze-core`'s `Tessellation::faces()` (`SquareFace::faces() = [N, S, E, W]`,
@@ -403,6 +429,9 @@ const SPLIT_FACE_INDEX_WEB_TO_CORE: Record<string, number[]> = {
   square: [2, 0, 3, 1],
   hex_flat_top: [0, 5, 4, 3, 2, 1],
   hex_pointy_top: [4, 3, 2, 1, 0, 5],
+  // Cairo's web face slots intentionally use core's stable
+  // [Twin, NorthWest, NorthEast, SouthEast, SouthWest] order.
+  cairo: [0, 1, 2, 3, 4],
 };
 
 /** Converts a `SplitPattern.faces[].face_index` value from web ordering (`TileFaceEditor`'s
@@ -418,6 +447,7 @@ export function splitFaceIndexToCore(cfg: TessellationConfig, faceIndex: number)
   if (t === "square" || t === "square_custom") {
     return SPLIT_FACE_INDEX_WEB_TO_CORE.square[faceIndex];
   }
+  if (t.startsWith("cairo")) return SPLIT_FACE_INDEX_WEB_TO_CORE.cairo[faceIndex];
   return faceIndex;
 }
 
@@ -447,6 +477,8 @@ export function splitFaceIndexToWeb(cfg: TessellationConfig, faceIndex: number):
     table = SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`];
   } else if (t === "square" || t === "square_custom") {
     table = SPLIT_FACE_INDEX_WEB_TO_CORE.square;
+  } else if (t.startsWith("cairo")) {
+    table = SPLIT_FACE_INDEX_WEB_TO_CORE.cairo;
   }
   if (!table) return faceIndex;
   const webIndex = table.indexOf(faceIndex);

@@ -1,6 +1,7 @@
 import { splitSlotColor } from "./colorUtils";
 import { canvas } from "./colorTokens";
 import { getNeighborData, splitFaceIndexToCore } from "./tessellationGeometry";
+import { CAIRO_ANCHOR_POINT } from "./cairoGeometry";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -11,11 +12,18 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
  *  `face_index` is only ever authored/consumed against the currently active tessellation
  *  (patterns are per-tessellation, see `SplitGenerationConfig`'s doc comment). Anchored at the
  *  origin — every square/hex cell has the same degree regardless of position, and a pattern's
- *  synthetic anchor point is always the origin anyway (see `ANCHOR_POINT` in the pattern editor).
+ *  synthetic anchor point is the origin except for Cairo, whose origin is not an occupied tile.
  *  Triangle cells alternate up/down parity by `(x+y) % 2`, but both parities have the same degree
  *  (3), so the origin's value is representative here too. */
 export function degreeFor(cfg: TessellationConfig): number {
-  return getNeighborData(cfg, 0, 0).offsets.length;
+  const [x, y] = patternAnchorPoint(cfg);
+  return getNeighborData(cfg, x, y).offsets.length;
+}
+
+/** Stable point for split-pattern previews. Keep the origin for the existing tessellations so
+ * triangle parity stays unchanged; Cairo needs one of its four occupied residue classes. */
+export function patternAnchorPoint(cfg: TessellationConfig): [number, number] {
+  return cfg.type.startsWith("cairo") ? [...CAIRO_ANCHOR_POINT] : [0, 0];
 }
 
 export function colorToCss(color: number): string {

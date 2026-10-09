@@ -116,7 +116,7 @@
   "tessellation.square": "Квадрат",
   "tessellation.hex": "Шестиугольник",
   "tessellation.triangle": "Треугольник",
-  "tessellation.cairo": "Кайро",
+  "tessellation.cairo": "Кайро (пятиугольник)",
   "tessellation.orientation": "Ориентация",
   "tessellation.flat_top": "Плоская верхушка",
   "tessellation.pointy_top": "Остроконечная верхушка",
