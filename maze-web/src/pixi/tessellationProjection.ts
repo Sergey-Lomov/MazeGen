@@ -175,8 +175,9 @@ class CairoProjection implements TessellationProjection {
     for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
       for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
         if (!isCairoPoint(candidateX, candidateY)) continue;
-        const dx = candidateX - x;
-        const dy = candidateY - y;
+        const candidate = cairoCenter(candidateX, candidateY);
+        const dx = candidate.x - vx;
+        const dy = candidate.y - vy;
         const distance = dx * dx + dy * dy;
         if (!best || distance < best.distance
           || (distance === best.distance && (candidateX < best.x

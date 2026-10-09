@@ -16,6 +16,7 @@ import { BackgroundImageHost, backgroundImageChanged } from "./BackgroundImageLa
 import { computeSymmetryPreview, symmetryCandidateCells, type SymmetryAxisPoints, type SymmetryPoint } from "./symmetry";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { buildPresetWallGroups } from "./selectors/presetSelectors";
+import { cellBounds } from "./tessellationGeometry";
 
 const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
@@ -439,16 +440,7 @@ export function configScreenCenter(cfg: TessellationConfig): { x: number; y: num
 function fieldBounds(cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const cells = configAllCells(cfg);
   if (cells.length === 0) return null;
-  const proj = makeProjection(cfg);
-  const centers = cells.map(([col, row]) => proj.gridToScreen(col, row));
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const c of centers) {
-    if (c.x < minX) minX = c.x;
-    if (c.y < minY) minY = c.y;
-    if (c.x > maxX) maxX = c.x;
-    if (c.y > maxY) maxY = c.y;
-  }
-  return { minX: minX - TILE_SIZE, minY: minY - TILE_SIZE, maxX: maxX + TILE_SIZE, maxY: maxY + TILE_SIZE };
+  return cellBounds(cells, cfg);
 }
 
 /** Computes the viewport transform that fits `activeCfg`'s field onto the screen (GitHub issue

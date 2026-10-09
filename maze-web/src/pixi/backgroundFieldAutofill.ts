@@ -2,7 +2,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { BackgroundImage } from "../store/tessellationTypes";
 import { colorToRgb } from "../store/colorMath";
 import { backgroundImageCrop } from "./BackgroundImageLayer";
-import { getCellVertices } from "./tessellationGeometry";
+import { getCellVertices, pointInPolygon } from "./tessellationGeometry";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 
 export type BackgroundAutoFillMode = "transparent" | "color";
@@ -207,7 +207,7 @@ function sampleCell(
   const centerSourceY = Math.floor(crop.y + (center.y - imageMinY) / scale);
 
   const samplePixel = (sourceX: number, sourceY: number, worldX: number, worldY: number): void => {
-    if (!pointInPolygon(worldX, worldY, vertices)) return;
+    if (!pointInPolygon({ x: worldX, y: worldY }, vertices)) return;
     coveredPixels++;
     const hasImagePixel = sourceX >= crop.x
       && sourceX < crop.x + crop.width
@@ -301,16 +301,4 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("Failed to load underlay"));
     image.src = dataUrl;
   });
-}
-
-function pointInPolygon(x: number, y: number, vertices: { x: number; y: number }[]): boolean {
-  let inside = false;
-  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
-    const current = vertices[i];
-    const previous = vertices[j];
-    const intersects = (current.y > y) !== (previous.y > y)
-      && x < (previous.x - current.x) * (y - current.y) / (previous.y - current.y) + current.x;
-    if (intersects) inside = !inside;
-  }
-  return inside;
 }

@@ -3,7 +3,7 @@ import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
 import { triCenterOffset } from "./triShapeHelpers";
-import { configAllCells } from "./tessellationCells";
+import { cairoRectangleBoundaryCells, configAllCells } from "./tessellationCells";
 import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 import { TILE_SIZE } from "./constants";
 
@@ -99,6 +99,7 @@ function calculateConfig(
     case "hex_rectangle":
     case "triangle_rect":
     case "hex_parallelogram":
+    case "cairo":
       return calculateBestRectConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
     case "square_circle":
     case "square_triangle":
@@ -113,11 +114,6 @@ function calculateConfig(
     case "cairo_hexagon": {
       return calculateBestRadialConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
     }
-    case "cairo": {
-      const cols = Math.floor(usableWidthMm / (4 * cellSizeMm));
-      const rows = Math.floor(usableHeightMm / (4 * cellSizeMm));
-      return cols >= 1 && rows >= 1 ? { ...current, cols, rows } : null;
-    }
     default:
       current satisfies never;
       return null;
@@ -125,7 +121,7 @@ function calculateConfig(
 }
 
 function calculateBestRectConfig(
-  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" }>,
+  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" | "cairo" }>,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -215,7 +211,7 @@ function radialCandidate(
 }
 
 function maxFittingRectDimension(
-  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" }>,
+  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" | "cairo" }>,
   dimension: "cols" | "rows",
   usableWidthMm: number,
   usableHeightMm: number,
@@ -273,6 +269,9 @@ function boundsInCellSides(config: FieldConfig): Bounds {
 }
 
 function boundaryCells(config: FieldConfig): [number, number][] {
+  if (config.type === "cairo") {
+    return cairoRectangleBoundaryCells(config.cols, config.rows);
+  }
   if (config.type === "hex_rectangle") {
     return hexRectangleBoundaryCells(config.cols, config.rows, config.orientation ?? "flat_top");
   }

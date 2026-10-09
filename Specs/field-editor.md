@@ -40,8 +40,10 @@ The field-shape selector exposes these additional shapes:
 | Cairo | Hexagon | `cairo_hexagon` | radius |
 
 The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Cairo
-standard forms are rasterized from valid Cairo points around the grid origin, just like the other
-predefined forms. Each
+rectangles use the canonical `maze-core` layout: every fundamental 4-by-4 coordinate square
+contributes two valid pentagon centres, with the complete block rectangle translated around the
+grid origin. Other standard forms are rasterized from valid Cairo points around the origin, just
+like the other predefined forms. Each
 predefined config type owns its size parameters, so switching shapes does not overwrite another
 shape's saved dimensions.
 
@@ -66,7 +68,10 @@ then applies the resulting ordinary `tessellationConfig`. With multiple floors a
 all” switch enabled, each standard floor is recalculated from its own shape and receives its own
 resulting configuration; custom-mode floors are left unchanged. No
 physical-size settings are added to the generation or WASM config, and the dialog's inputs are not
-persisted separately. Square/rectangular forms calculate independent column/row counts. Radial
+persisted separately. Square/rectangular forms calculate independent column/row counts. This
+includes Cairo's fundamental-square columns and rows; the fit is evaluated from the actual
+pentagon bounds of the complete block rectangle, so every cell whose polygon fits inside the
+printable area is retained. Radial
 forms (`square_circle`, `hex_circle`, `triangle_circle`, `hexagon`, `triangle`, `triangle_hexagon`)
 calculate the largest fitting radius; because a
 single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
