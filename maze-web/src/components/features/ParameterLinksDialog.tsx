@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronRight, EyeOff, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, EyeOff, Repeat, X } from "lucide-react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
 import { ToggleRow } from "../ToggleRow";
@@ -11,10 +11,10 @@ import { AddIconButton } from "../AddIconButton";
 import { SelectRow } from "../SelectRow";
 import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
-import { ui, radius, typography, muted, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
+import { ui, radius, typography, muted, disabled as disabledText, spacing, indent, dialogSpacing, controlRowHeight } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier, ColorModel, ColorChannel } from "../../store/parameterLinks";
-import { getParamValue } from "../../store/slices/parameterLinksEngine";
+import { getParamValue, reachableFrom, wouldCreateCycle } from "../../store/slices/parameterLinksEngine";
 import { colorToHex } from "../../store/colorMath";
 import * as m from "~/paraglide/messages";
 
@@ -173,6 +173,16 @@ export function allLeavesInactive<P extends string>(node: PickerNode<P>, activeP
   if (node.kind === "leaf") return !activePaths.has(node.path);
   if (node.children.length === 0) return false;
   return node.children.every((child) => allLeavesInactive(child, activePaths));
+}
+
+/** Whether every leaf under `node` is in `disabledPaths` (GitHub issue #721) — a group row gets the
+ *  same disabled dimming as its leaves, so a collapsed all-unavailable section doesn't look
+ *  selectable. An empty group counts as not-disabled. */
+export function allLeavesDisabled<P extends string>(node: PickerNode<P>, disabledPaths: Set<P> | undefined): boolean {
+  if (!disabledPaths) return false;
+  if (node.kind === "leaf") return disabledPaths.has(node.path);
+  if (node.children.length === 0) return false;
+  return node.children.every((child) => allLeavesDisabled(child, disabledPaths));
 }
 
 /** Resolves `buildPickerTree`'s nodes down to the group addressed by `path` (empty = root) —
@@ -352,6 +362,7 @@ function ParamPicker<P extends string>({
   selected,
   onPick,
   activePaths,
+  disabledPaths,
 }: {
   paths: P[];
   registry: Record<P, ParamDescriptor>;
@@ -361,6 +372,9 @@ function ParamPicker<P extends string>({
    *  a closed-eye badge after its label, regardless of whether it was already filtered out of
    *  `paths` by the caller's own "Show inactive" toggle. */
   activePaths: Set<P>;
+  /** Leaves shown but not pickable (GitHub issue #721) — dimmed, with a cycle icon and a tooltip
+   *  on the whole row explaining that picking them would create a cyclic dependency. */
+  disabledPaths?: Set<P>;
 }) {
   const tree = buildPickerTree(paths, registry);
   const [expanded, setExpanded] = useState<Set<string>>(() => expandedGroupKeysFor(selected, registry));
@@ -383,19 +397,28 @@ function ParamPicker<P extends string>({
     return nodes.map((node) => {
       if (node.kind === "leaf") {
         const inactive = !activePaths.has(node.path);
+        const disabled = disabledPaths?.has(node.path) ?? false;
         return (
           <div
             key={node.path}
-            className="hoverable"
+            className={disabled ? undefined : "hoverable"}
+            title={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}
+            aria-disabled={disabled || undefined}
             style={{
               ...styles.pickerRow,
               paddingLeft: depth * indent.tree + 4,
               ...(inactive ? styles.pickerRowInactive : {}),
+              ...(disabled ? styles.pickerRowDisabled : {}),
               ...(node.path === selected ? styles.pickerRowSelected : {}),
             }}
-            onClick={() => onPick(node.path)}
+            onClick={disabled ? undefined : () => onPick(node.path)}
           >
             {node.label}
+            {disabled && (
+              <span style={styles.inactiveBadge}>
+                <Repeat size={13} strokeWidth={2.5} />
+              </span>
+            )}
             {inactive && (
               <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
@@ -406,6 +429,7 @@ function ParamPicker<P extends string>({
       }
       const isExpanded = expanded.has(node.groupKey);
       const groupInactive = allLeavesInactive(node, activePaths);
+      const groupDisabled = allLeavesDisabled(node, disabledPaths);
       return (
         <div key={node.groupKey}>
           <div
@@ -414,11 +438,17 @@ function ParamPicker<P extends string>({
               ...styles.pickerGroupRow,
               paddingLeft: depth * indent.tree + 4,
               ...(groupInactive ? styles.pickerRowInactive : {}),
+              ...(groupDisabled ? { color: styles.pickerRowDisabled.color } : {}),
             }}
             onClick={() => toggle(node.groupKey)}
           >
             {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
             {node.label}
+            {groupDisabled && (
+              <span style={styles.inactiveBadge}>
+                <Repeat size={13} strokeWidth={2.5} />
+              </span>
+            )}
             {groupInactive && (
               <span title={m["image_export.param_links.inactive_hint"]()} style={styles.inactiveBadge}>
                 <EyeOff size={13} strokeWidth={2.5} />
@@ -659,9 +689,11 @@ function ColorModifierStepDialog({
  *  link's endpoints (and whichever chain it carries) for `Edit`, left `null`/empty for `Add link`.
  *  The dependent parameter is picked first (any path in the registry not already fixed); Source is
  *  then restricted to same-`ParamType` paths excluding the chosen dependent parameter — same
- *  constraint the engine itself enforces (`validateLinkGraph`). Switching to a pair whose type
- *  doesn't support the chain currently being built drops it. Each step is only ever added/edited
- *  through `ModifierStepDialog`/`ColorModifierStepDialog`, never inline here. Saving is blocked while
+ *  constraint the engine itself enforces (`validateLinkGraph`). Paths that would close a cycle
+ *  (`wouldCreateCycle`, also enforced by `addLink`) stay listed but disabled, with a cycle icon and
+ *  an explanatory tooltip (GitHub issue #721), so they don't look like they vanished. Switching to
+ *  a pair whose type doesn't support the chain currently being built drops it. Each step is only
+ *  ever added/edited through `ModifierStepDialog`/`ColorModifierStepDialog`, never inline here. Saving is blocked while
  *  any numeric step divides by 0 (would make `target` NaN/Infinity on every propagation), via the
  *  save button's own `disabled`. */
 export function LinkEditor<P extends string>({
@@ -705,6 +737,8 @@ export function LinkEditor<P extends string>({
   const allPaths = Object.keys(registry) as P[];
   const visiblePaths = showInactive ? allPaths : allPaths.filter((p) => activePaths.has(p) || p === target || p === source);
   const sourceCandidates = target === null ? [] : visiblePaths.filter((p) => p !== target && registry[p].type === registry[target].type);
+  const reachableFromTarget = target === null ? new Set<P>() : reachableFrom(existingLinks, target);
+  const cyclicSources = new Set<P>(sourceCandidates.filter((p) => reachableFromTarget.has(p)));
   const modifiersAllowed = target !== null && source !== null && registry[target].type === "number";
   const colorModifiersAllowed = target !== null && source !== null && registry[target].type === "color";
   const hint = modifiersHint(target, source, registry);
@@ -726,7 +760,7 @@ export function LinkEditor<P extends string>({
 
   function handleTargetPick(p: P) {
     setTarget(p);
-    if (source !== null && (source === p || registry[source].type !== registry[p].type)) setSource(null);
+    if (source !== null && (registry[source].type !== registry[p].type || wouldCreateCycle(existingLinks, source, p))) setSource(null);
   }
 
   function save() {
@@ -768,7 +802,7 @@ export function LinkEditor<P extends string>({
                 {target === null ? (
                   <div style={styles.pickerHint}>{m["image_export.param_links.pick_target_first"]()}</div>
                 ) : (
-                  <ParamPicker paths={sourceCandidates} registry={registry} selected={source} onPick={setSource} activePaths={activePaths} />
+                  <ParamPicker paths={sourceCandidates} registry={registry} selected={source} onPick={setSource} activePaths={activePaths} disabledPaths={cyclicSources} />
                 )}
               </div>
               <div style={{ ...styles.editorColumn, ...styles.modifiersColumn }}>
@@ -1149,6 +1183,7 @@ const styles: Record<string, React.CSSProperties> = {
   // the closed-eye badge; applied before `pickerRowSelected` so a selected-but-inactive row still
   // shows its selection highlight.
   pickerRowInactive: { ...muted(typography.body) },
+  pickerRowDisabled: { ...disabledText(typography.body), cursor: "not-allowed" },
   pickerRowSelected: { background: ui.state.selected },
   pickerGroupRow: {
     ...typography.body,

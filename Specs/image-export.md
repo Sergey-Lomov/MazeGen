@@ -743,6 +743,16 @@ the link's current `source`/`target`/chain; saving (Add or Edit) always calls `o
 (`addVectorByWallsLink`/`addVectorByCorridorsLink`, engine's `addLink`), which replaces any prior link
 already targeting that target and propagates the source's current value in immediately — so editing a
 link's source re-syncs the target's value as part of the save.
+Cycles are prevented at creation time (GitHub issue #721): the engine's `reachableFrom(links, start)` is
+a DFS along all existing links (disabled ones included, since `validateLinkGraph` counts them), and
+`wouldCreateCycle(links, source, target)` is true when `source` is in `reachableFrom(links, target)` or
+`source === target`.
+`addLink` refuses such a link (returns `settings`/`links` unchanged). `LinkEditor` keeps those Source
+candidates listed but disabled (`ParamPicker`'s `disabledPaths`): dimmed, not-allowed cursor, a cycle
+icon after the label, not clickable, and a tooltip on the whole row (a group row whose leaves are all
+disabled, `allLeavesDisabled`, is dimmed and gets the icon too) ("Source unavailable: it would create
+a cyclic dependency between links."). An already-picked source that a newly chosen Target makes cyclic
+is cleared.
 Because that replacement is otherwise silent, `LinkEditor` takes `existingLinks` (all current links) and,
 when the chosen target already has one that differs from what is being saved (GitHub issue #720), the
 first Save click opens a small confirm modal ("Replace link?" — "This parameter already depends on

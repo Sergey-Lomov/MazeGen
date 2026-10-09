@@ -2157,6 +2157,7 @@
   "image_export.param_links.boolean_off": "Off",
   "image_export.param_links.show_inactive_toggle": "Show inactive",
   "image_export.param_links.inactive_hint": "This parameter is currently inactive, the renderer's settings hide it (e.g. the related elements aren't present in the maze).",
+  "image_export.param_links.cycle_hint": "Source unavailable: it would create a cyclic dependency between links.",
   "link_status.header_active": "Driving link active",
   "link_status.header_disabled": "Driving link disabled",
   "link_status.header_no_links": "No links",

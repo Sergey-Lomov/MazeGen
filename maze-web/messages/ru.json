@@ -2159,6 +2159,7 @@
   "image_export.param_links.boolean_off": "Выкл",
   "image_export.param_links.show_inactive_toggle": "Показывать неактивные",
   "image_export.param_links.inactive_hint": "Этот параметр сейчас неактивен, панель настроек его скрывает (например, связанные элементы отсутствуют в лабиринте).",
+  "image_export.param_links.cycle_hint": "Источник недоступен, так как приведёт к возникновению циклической зависимости в связях.",
   "link_status.header_active": "Управляющая связь активна",
   "link_status.header_disabled": "Управляющая связь отключена",
   "link_status.header_no_links": "Нет связей",

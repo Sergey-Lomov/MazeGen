@@ -30,6 +30,28 @@ function renderEditor(initialSource: P | null, initialTarget: P | null, links: P
   return onSave;
 }
 
+// GitHub issue #721 — Source candidates that would close a cycle stay listed but disabled.
+describe("LinkEditor cycle filtering", () => {
+  it("lists a cyclic source as disabled with an explanatory tooltip, and ignores clicks on it", () => {
+    // a -> b exists; target "a" with source b would give b -> a (cycle), c is fine.
+    const onSave = renderEditor(null, "a", existing);
+    const disabledRow = document.querySelector('[aria-disabled="true"]') as HTMLElement;
+    expect(disabledRow.textContent).toBe("Beta");
+    expect(disabledRow.title).toMatch(/cyclic/i);
+    fireEvent.click(disabledRow);
+    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('[aria-disabled="true"]')).toHaveLength(1);
+  });
+
+  it("drops an already-picked source when a new target makes it cyclic", () => {
+    const onSave = renderEditor("b", "c", existing);
+    fireEvent.click(screen.getAllByText("Alpha")[0]);
+    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
 // GitHub issue #720 — saving onto a target that already has a control link asks for confirmation
 // (naming the source it currently depends on) before the engine's `addLink` silently replaces it.
 describe("LinkEditor replace confirmation", () => {
