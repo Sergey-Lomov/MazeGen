@@ -3,7 +3,7 @@ import type { BackgroundImage, BackgroundImageLayerMode } from "../store/tessell
 import type { PrintExportSettings } from "../store/storeTypes";
 import type { MazeState } from "../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { getCellVertices } from "./tessellationGeometry";
+import { cellBounds } from "./tessellationGeometry";
 import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
 import { backgroundImageEditMode } from "./sceneTypes";
 
@@ -41,17 +41,7 @@ export interface FieldBounds {
 
 /** Tight world-space bounds of the field cells used by the three visual editors. */
 export function fieldBounds(cells: readonly [number, number][], cfg: TessellationConfig): FieldBounds | null {
-  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  for (const [x, y] of cells) {
-    const vertices = getCellVertices(x, y, cfg);
-    if (!vertices) continue;
-    for (const vertex of vertices) {
-      bounds.minX = Math.min(bounds.minX, vertex.x);
-      bounds.minY = Math.min(bounds.minY, vertex.y);
-      bounds.maxX = Math.max(bounds.maxX, vertex.x);
-      bounds.maxY = Math.max(bounds.maxY, vertex.y);
-    }
-  }
+  const bounds = cellBounds(cells, cfg);
   return Object.values(bounds).every(Number.isFinite) ? bounds : null;
 }
 

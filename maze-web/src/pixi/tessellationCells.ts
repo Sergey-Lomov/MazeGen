@@ -3,7 +3,6 @@ import { cellsInsideShape, shapeForPrimitive, type ShapeOrigin } from "./shapeSe
 import { primitiveCells } from "./primitiveGeometry";
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
-import { CAIRO_CENTER_SCALE } from "./cairoGeometry";
 import type { FieldConfig as TessellationConfig, ResolvedField } from "../fieldConfig";
 
 export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
@@ -169,25 +168,56 @@ export function resolveFieldConfig(cfg: TessellationConfig): ResolvedField {
   return { type: "triangle_rect", cols: 0, rows: 0, kind: "triangle", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "r0") as "r0" | "r90" | "r180" | "r270", cells };
 }
 
-/** A centered Cairo rectangle with the core rectangle's exact 2*cols*rows cardinality. The Cairo
- * lattice has no occupied point at the coordinate origin, so select symmetric `p`/`-p` pairs from
- * the requested rectangular envelope to keep both the cell count and the visual centre exact. */
+/** A centered Cairo rectangle with the same fundamental-square layout as maze-core's
+ * `CairoTessellation::rect`. Each 4×4 block contributes the two valid pentagons selected by its
+ * checkerboard parity; translating the complete block rectangle by its midpoint keeps the field
+ * around the editor origin without changing the lattice topology. */
 function cairoRectangleCells(cols: number, rows: number): [number, number][] {
-  const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
-  const candidates = cellsInsideShape(base, shapeForPrimitive("rectangle", base, {
-    width: cols * 4 * CAIRO_CENTER_SCALE,
-    height: rows * 4 * CAIRO_CENTER_SCALE,
-  }));
-  const candidateSet = new Set(candidates.map(([x, y]) => `${x},${y}`));
-  const pairs: { distance: number; points: [[number, number], [number, number]] }[] = [];
-  for (const [x, y] of candidates) {
-    if (x > 0 || (x === 0 && y > 0)) continue;
-    const twin: [number, number] = [-x, -y];
-    if (!candidateSet.has(`${twin[0]},${twin[1]}`)) continue;
-    pairs.push({ distance: x * x + y * y, points: [[x, y], twin] });
+  if (cols <= 0 || rows <= 0) return [];
+  const [originX, originY] = cairoRectangleOrigin(cols, rows);
+  const cells: [number, number][] = [];
+  for (let cellY = 0; cellY < rows; cellY++) {
+    for (let cellX = 0; cellX < cols; cellX++) {
+      cells.push(...cairoFundamentalSquareCells(cellX, cellY, originX, originY));
+    }
   }
-  pairs.sort((a, b) => a.distance - b.distance || a.points[0][0] - b.points[0][0] || a.points[0][1] - b.points[0][1]);
-  return pairs.slice(0, cols * rows).flatMap(({ points }) => points);
+  return cells;
+}
+
+/** Returns the cells in the outer two fundamental-square layers of a Cairo rectangle. Cell
+ * polygons are affine in this block layout, so this bounded set contains every possible x/y
+ * extremum and is sufficient for exact print-fit bounds without materializing the full field. */
+export function cairoRectangleBoundaryCells(cols: number, rows: number): [number, number][] {
+  if (cols <= 0 || rows <= 0) return [];
+  const [originX, originY] = cairoRectangleOrigin(cols, rows);
+  const colCandidates = new Set([0, 1, cols - 2, cols - 1].filter((col) => col >= 0 && col < cols));
+  const rowCandidates = new Set([0, 1, rows - 2, rows - 1].filter((row) => row >= 0 && row < rows));
+  const cells: [number, number][] = [];
+  for (const cellY of rowCandidates) {
+    for (const cellX of colCandidates) {
+      cells.push(...cairoFundamentalSquareCells(cellX, cellY, originX, originY));
+    }
+  }
+  return cells;
+}
+
+function cairoRectangleOrigin(cols: number, rows: number): [number, number] {
+  // Cairo's checkerboard repeats after two fundamental blocks. Translate by complete blocks only
+  // and keep the combined block offset even; otherwise a valid core point lands in an empty
+  // position when the rectangle is centred for an odd width/height combination.
+  let blockX = Math.floor(cols / 2);
+  const blockY = Math.floor(rows / 2);
+  if ((blockX + blockY) % 2 !== 0) blockX++;
+  return [4 * blockX, 4 * blockY];
+}
+
+function cairoFundamentalSquareCells(cellX: number, cellY: number, originX: number, originY: number): [number, number][] {
+  const x = cellX * 4;
+  const y = cellY * 4;
+  const points: [number, number][] = (cellX + cellY) % 2 === 1
+    ? [[x + 1, y + 2], [x + 3, y + 2]]
+    : [[x + 2, y + 1], [x + 2, y + 3]];
+  return points.map(([pointX, pointY]) => [pointX - originX, pointY - originY]);
 }
 
 /** Cairo's standard field is a rectangle of fundamental 4×4 coordinate squares; each square

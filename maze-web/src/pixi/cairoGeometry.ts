@@ -73,6 +73,8 @@ export function cairoEdgeVerts(x: number, y: number): [number, number][] {
 const BASE_VERTICES: [number, number][] = [[-2, 0], [-3, 3], [0, 4], [3, 3], [2, 0]];
 export const CAIRO_VERTEX_SCALE = 1 / 4;
 export const CAIRO_CENTER_SCALE = 3 / 8;
+/** Offset from the affine Cairo grid anchor to the area centroid of its pentagon. */
+export const CAIRO_CENTROID_OFFSET_SCALE = 7 / 72;
 const ROTATION: Record<CairoTileKind, number> = { U: 0, D: 2, L: 1, R: 3 };
 const ANCHOR_OFFSET: Record<CairoTileKind, [number, number]> = {
   U: [0, -CAIRO_CENTER_SCALE],
@@ -87,21 +89,34 @@ function rotateQuarterTurn([x, y]: [number, number], turns: number): [number, nu
   return result;
 }
 
-/** Returns the screen-space anchor used by projection and node renderers. */
-export function cairoCenter(x: number, y: number): CairoPos {
+/** Returns the affine screen-space anchor for a Cairo grid point. */
+function cairoAnchor(x: number, y: number): CairoPos {
   return { x: x * CAIRO_CENTER_SCALE * TILE_SIZE, y: -y * CAIRO_CENTER_SCALE * TILE_SIZE };
+}
+
+/** Returns the geometric centre of the Cairo pentagon at a grid point. */
+export function cairoCenter(x: number, y: number): CairoPos {
+  const anchor = cairoAnchor(x, y);
+  const offset = CAIRO_CENTROID_OFFSET_SCALE * TILE_SIZE;
+  switch (cairoTileKind(x, y)) {
+    case "U": return { x: anchor.x, y: anchor.y - offset };
+    case "D": return { x: anchor.x, y: anchor.y + offset };
+    case "L": return { x: anchor.x - offset, y: anchor.y };
+    case "R": return { x: anchor.x + offset, y: anchor.y };
+    default: return anchor;
+  }
 }
 
 export function cairoVertices(x: number, y: number): CairoPos[] | null {
   const kind = cairoTileKind(x, y);
   if (!kind) return null;
   const [offsetX, offsetY] = ANCHOR_OFFSET[kind];
-  const center = cairoCenter(x, y);
+  const anchor = cairoAnchor(x, y);
   return BASE_VERTICES.map((vertex) => {
     const [rx, ry] = rotateQuarterTurn(vertex, ROTATION[kind]);
     return {
-      x: center.x + (rx * CAIRO_VERTEX_SCALE + offsetX) * TILE_SIZE,
-      y: center.y - (ry * CAIRO_VERTEX_SCALE + offsetY) * TILE_SIZE,
+      x: anchor.x + (rx * CAIRO_VERTEX_SCALE + offsetX) * TILE_SIZE,
+      y: anchor.y - (ry * CAIRO_VERTEX_SCALE + offsetY) * TILE_SIZE,
     };
   });
 }

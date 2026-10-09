@@ -7,6 +7,12 @@ vi.mock("../pixi/tessellationGeometry", () => ({
     { x: (x + 1) * 40, y: -y * 40 },
     { x: x * 40, y: -y * 40 },
   ],
+  pointInPolygon: (point: { x: number; y: number }, vertices: { x: number; y: number }[]) => {
+    return point.x >= Math.min(...vertices.map((v) => v.x))
+      && point.x <= Math.max(...vertices.map((v) => v.x))
+      && point.y >= Math.min(...vertices.map((v) => v.y))
+      && point.y <= Math.max(...vertices.map((v) => v.y));
+  },
 }));
 
 import { buildBackgroundFieldPreview, buildBackgroundFieldPreviewFromImage, getBackgroundImageTopLeftColor, topLeftPixelColor } from "../pixi/backgroundFieldAutofill";

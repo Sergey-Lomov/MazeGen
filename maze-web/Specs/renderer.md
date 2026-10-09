@@ -11,7 +11,10 @@ for negative coordinates. `pixi/cairoGeometry.ts` is the single browser-side sou
 tile orientations, five neighbor offsets, pentagon vertices, and shared-edge indices. Projection,
 grid bounds, selection, primitive inclusion, and edge hit-testing all consume that geometry through
 `tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
-coordinate positions are never rendered or selected.
+coordinate positions are never rendered or selected. The standard rectangular field follows the
+core `cairo_rect(cols, rows)` layout: each fundamental 4-by-4 block contributes two points, then
+the whole block rectangle is translated around the editor origin. Print sizing uses the same
+polygon geometry and a bounded outer block layer to evaluate exact field bounds.
 
 ## Shared pointer interaction primitives
 

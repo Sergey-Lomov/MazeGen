@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
 import { CAIRO_VERTEX_SCALE, cairoCenter, cairoTileKind, isCairoPoint } from "../pixi/cairoGeometry";
-import { getCellVertices, getNeighborData, getSharedEdgeSegment, exactCellBounds, getTileDiagram, splitFaceIndexToCore, splitFaceIndexToWeb } from "../pixi/tessellationGeometry";
-import { configAllCells } from "../pixi/tessellationCells";
+import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, exactCellBounds, cellBounds, getTileDiagram, splitFaceIndexToCore, splitFaceIndexToWeb, pointInPolygon } from "../pixi/tessellationGeometry";
+import { cairoRectangleBoundaryCells, configAllCells } from "../pixi/tessellationCells";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { cellsInsideShape, type ShapeDefinition } from "../pixi/shapeSelection";
 import { pickEdgeAtPosition } from "../pixi/edgeHitTesting";
@@ -17,6 +17,21 @@ const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
 function expectSameSegment(a: { x: number; y: number }, b: { x: number; y: number }): void {
   expect(a.x).toBeCloseTo(b.x);
   expect(a.y).toBeCloseTo(b.y);
+}
+
+function polygonCentroid(vertices: { x: number; y: number }[]): { x: number; y: number } {
+  let twiceArea = 0;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    const cross = a.x * b.y - b.x * a.y;
+    twiceArea += cross;
+    x += (a.x + b.x) * cross;
+    y += (a.y + b.y) * cross;
+  }
+  return { x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
 }
 
 describe("Cairo coordinate classes", () => {
@@ -70,9 +85,19 @@ describe("Cairo geometry", () => {
     }
   });
 
+  it("uses the pentagon's geometric centroid for cell-centered markers", () => {
+    for (const [x, y] of [[2, 1], [2, 3], [5, 2], [7, 2]] as [number, number][]) {
+      const vertices = getCellVertices(x, y, cfg)!;
+      const center = getCellCenter(x, y, cfg);
+      const centroid = polygonCentroid(vertices);
+      expect(center.x).toBeCloseTo(centroid.x);
+      expect(center.y).toBeCloseTo(centroid.y);
+    }
+  });
+
   it("round-trips every valid tile centre through projection and inverse projection", () => {
     const projection = makeProjection(cfg);
-    for (const [x, y] of [[-6, -7], [-3, 2], [-1, 2], [2, 1], [2, 3]] as [number, number][]) {
+    for (const [x, y] of [[-6, -7], [-3, 2], [-1, 2], [2, 1], [2, 3], [5, 2], [7, 2]] as [number, number][]) {
       const screen = projection.gridToScreen(x, y);
       expect(projection.screenToGrid(screen.x, screen.y)).toEqual({ x, y });
     }
@@ -117,6 +142,29 @@ describe("Cairo geometry", () => {
     expect(bounds.minY).toBeCloseTo(-TILE_SIZE * 7 / 4);
     expect(bounds.maxX).toBeCloseTo(TILE_SIZE * 3 / 2);
     expect(bounds.maxY).toBeCloseTo(TILE_SIZE / 4);
+  });
+
+  it("keeps the bounded Cairo rectangle boundary exact", () => {
+    for (const [cols, rows] of [[1, 1], [2, 3], [6, 5]] as const) {
+      const config = { type: "cairo", cols, rows } as const;
+      const allBounds = cellBounds(configAllCells(config), config);
+      const boundaryBounds = cellBounds(cairoRectangleBoundaryCells(cols, rows), config);
+      expect(boundaryBounds).toEqual(allBounds);
+    }
+  });
+
+  it("uses the same polygon bounds for a raw cell set and node content", () => {
+    const cells: [number, number][] = [[2, 1], [2, 3], [-1, 2]];
+    expect(cellBounds(cells, cfg)).toEqual(exactCellBounds(cells.map(([x, y], id) => ({ x, y, id })), cfg));
+  });
+
+  it("treats points on a pentagon edge as inside", () => {
+    const vertices = getCellVertices(2, 1, cfg)!;
+    const edgePoint = {
+      x: (vertices[0].x + vertices[1].x) / 2,
+      y: (vertices[0].y + vertices[1].y) / 2,
+    };
+    expect(pointInPolygon(edgePoint, vertices)).toBe(true);
   });
 
   it("keeps the long pentagon edge at one tile size", () => {

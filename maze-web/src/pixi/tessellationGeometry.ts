@@ -110,9 +110,17 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
  * (e.g. a flat-top hex's vertical half-extent is `TILE_SIZE * sin(60°)`, not `TILE_SIZE`) — needed
  * wherever a tight, gap-free fit around the maze matters (PNG export's "edge to edge" canvas). */
 export function exactCellBounds(nodes: { x: number; y: number; id: number }[], cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } {
+  return cellBounds(nodes.map(({ x, y }) => [x, y]), cfg);
+}
+
+/** Exact world-space bounds of a cell-coordinate set. */
+export function cellBounds(
+  cells: readonly [number, number][],
+  cfg: TessellationConfig,
+): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of nodes) {
-    const vertices = getCellVertices(n.x, n.y, cfg);
+  for (const [x, y] of cells) {
+    const vertices = getCellVertices(x, y, cfg);
     if (!vertices) continue;
     for (const v of vertices) {
       if (v.x < minX) minX = v.x;
@@ -122,6 +130,30 @@ export function exactCellBounds(nodes: { x: number; y: number; id: number }[], c
     }
   }
   return { minX, minY, maxX, maxY };
+}
+
+/** Inclusive point-in-polygon test shared by background classification and field containment. */
+export function pointInPolygon(point: Pos, vertices: Pos[]): boolean {
+  if (vertices.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const a = vertices[j];
+    const b = vertices[i];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const apx = point.x - a.x;
+    const apy = point.y - a.y;
+    const cross = abx * apy - aby * apx;
+    const scale = Math.max(1, Math.abs(abx) + Math.abs(aby));
+    if (Math.abs(cross) <= 1e-9 * scale
+      && point.x >= Math.min(a.x, b.x) - 1e-9
+      && point.x <= Math.max(a.x, b.x) + 1e-9
+      && point.y >= Math.min(a.y, b.y) - 1e-9
+      && point.y <= Math.max(a.y, b.y) + 1e-9) return true;
+    if ((a.y > point.y) !== (b.y > point.y)
+      && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 /** Bounding box of every node's own cell **center** (`getCellCenter`), not its full polygon
@@ -295,8 +327,9 @@ function nearestCairoCoord(worldX: number, worldY: number): [number, number] {
   for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
     for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
       if (!isCairoPoint(candidateX, candidateY)) continue;
-      const dx = candidateX - x;
-      const dy = candidateY - y;
+      const candidate = cairoCenter(candidateX, candidateY);
+      const dx = candidate.x - worldX;
+      const dy = candidate.y - worldY;
       const distance = dx * dx + dy * dy;
       if (!best || distance < best.distance
         || (distance === best.distance && (candidateX < best.x

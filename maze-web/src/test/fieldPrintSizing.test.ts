@@ -45,6 +45,23 @@ describe("field print sizing", () => {
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });
 
+  it("fits a Cairo rectangle from its pentagon bounds", () => {
+    const result = calculatePrintFieldConfig({ type: "cairo", cols: 1, rows: 1 }, printInput);
+    expect(result?.config.type).toBe("cairo");
+    expect(result?.config).toEqual({ type: "cairo", cols: 13, rows: 18 });
+    expect(result?.fieldWidthMm).toBe(200);
+    expect(result?.fieldHeightMm).toBe(275);
+    expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  });
+
+  it("keeps small Cairo print cells responsive while fitting the paper", () => {
+    const result = calculatePrintFieldConfig({ type: "cairo", cols: 1, rows: 1 }, { ...printInput, cellSizeMm: 1 });
+    expect(result?.config.type).toBe("cairo");
+    expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
+    expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
+  });
+
   it.each([
     [{ type: "square_circle", radius: 5 }, "square_circle"],
     [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "hex_circle"],

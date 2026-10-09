@@ -109,6 +109,13 @@ vi.mock("../pixi/tessellationCells", () => ({
   resolveFieldConfig: (cfg: unknown) => cfg,
 }));
 
+vi.mock("../pixi/tessellationGeometry", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../pixi/tessellationGeometry")>(),
+  cellBounds: (cells: [number, number][]) => cells.length === 0
+    ? { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+    : { minX: -10, minY: 20, maxX: 30, maxY: 60 },
+}));
+
 vi.mock("../pixi/symmetry", () => ({
   computeSymmetryPreview: vi.fn(() => ({ sourceCells: [[0, 0]], mirroredCells: [[2, 0]] })),
   symmetryCandidateCells: vi.fn(() => [[0, 0]]),

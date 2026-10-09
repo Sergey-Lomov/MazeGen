@@ -57,10 +57,21 @@ describe("mazeStore.generate", () => {
     const config = { type: "cairo", cols: 2, rows: 2 } as const;
     expect(fieldConfigToWasm(config)).toEqual({ tessellation_type: "cairo" });
     expect(configAllCells(config)).toEqual([
-      [-2, -1], [2, 1],
-      [-1, 2], [1, -2],
-      [-3, 2], [3, -2],
-      [-2, -3], [2, 3],
+      [-2, -3], [-2, -1],
+      [1, -2], [3, -2],
+      [-3, 2], [-1, 2],
+      [2, 1], [2, 3],
+    ]);
+  });
+
+  it("keeps Cairo rectangle cells in their canonical fundamental-square blocks", () => {
+    expect(configAllCells({ type: "cairo", cols: 3, rows: 2 })).toEqual([
+      [-2, -3], [-2, -1],
+      [1, -2], [3, -2],
+      [6, -3], [6, -1],
+      [-3, 2], [-1, 2],
+      [2, 1], [2, 3],
+      [5, 2], [7, 2],
     ]);
   });
 

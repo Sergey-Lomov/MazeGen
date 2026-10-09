@@ -1,4 +1,5 @@
 import type { Axis } from "./teleportConnectorAxes";
+import { pointInPolygon as containsPointInPolygon } from "../tessellationGeometry";
 import type { Pos } from "../tessellationGeometry";
 
 export const AXIS_EPSILON = 1e-6;
@@ -47,17 +48,6 @@ export function pointToSegmentDistance(p: [number, number], a: [number, number],
  *  point exactly on a shared cell edge (the common case here — every field-boundary sample lands
  *  exactly on some cell's own edge) still reads as "inside" that cell rather than falling through
  *  the gap between float-imprecise edge tests of two adjacent cells. */
-function pointInPolygon(p: Pos, polygon: Pos[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i];
-    const b = polygon[j];
-    const intersects = a.y > p.y !== b.y > p.y && p.x <= ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
 /** Whether `p` lies within the maze field — inside (or on the border of) at least one of the
  *  field's own cell polygons (GitHub issue #300: "avoid field exit" priority option). Built from
  *  the actual maze cells rather than a bounding box so a non-rectangular field (a hex/triangle
@@ -65,7 +55,7 @@ function pointInPolygon(p: Pos, polygon: Pos[]): boolean {
  *  rectangle. */
 export function pointInField(p: Pos, cellPolygons: Pos[][]): boolean {
   for (const polygon of cellPolygons) {
-    if (pointInPolygon(p, polygon)) return true;
+    if (containsPointInPolygon(p, polygon)) return true;
   }
   return false;
 }
