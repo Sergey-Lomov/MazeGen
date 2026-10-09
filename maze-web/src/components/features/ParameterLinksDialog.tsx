@@ -28,6 +28,11 @@ function hierarchicalLabel<P extends string>(path: P, registry: Record<P, ParamD
   return group.length === 0 ? label : `${group.join(" / ")} / ${label}`;
 }
 
+/** Structural equality of two modifier chains, treating an empty chain as no chain. */
+function sameChain<T>(a: T[] | undefined, b: T[] | undefined): boolean {
+  return JSON.stringify(a?.length ? a : undefined) === JSON.stringify(b?.length ? b : undefined);
+}
+
 const MODIFIER_SYMBOL: Record<ParamModifier["op"], string> = { add: "+", sub: "−", mul: "×", div: "÷" };
 
 /** Short operator-chain suffix appended after a link row's "= Source" line (e.g. " +3 ×1.5") —
@@ -666,10 +671,14 @@ export function LinkEditor<P extends string>({
   initialTarget,
   initialModifiers,
   initialColorModifiers,
+  existingLinks,
   onSave,
   onClose,
 }: {
   registry: Record<P, ParamDescriptor>;
+  /** All current links (GitHub issue #720) — saving onto a target that already has one asks for
+   *  confirmation first, naming the source it currently depends on, since the save replaces it. */
+  existingLinks: ParamLink<P>[];
   /** Paths currently shown in the settings panel (GitHub issue #670) — governs the Target/Source
    *  pickers below together with `showInactive`: listed with a closed-eye badge (and dimmed, GitHub
    *  issue #688) once on (default), hidden entirely once turned off. The currently selected
@@ -692,6 +701,7 @@ export function LinkEditor<P extends string>({
   const [editingColorStepIndex, setEditingColorStepIndex] = useState<number | null>(null);
   const [addingColorStep, setAddingColorStep] = useState(false);
   const [showInactive, setShowInactive] = useState(true);
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
   const allPaths = Object.keys(registry) as P[];
   const visiblePaths = showInactive ? allPaths : allPaths.filter((p) => activePaths.has(p) || p === target || p === source);
   const sourceCandidates = target === null ? [] : visiblePaths.filter((p) => p !== target && registry[p].type === registry[target].type);
@@ -701,6 +711,18 @@ export function LinkEditor<P extends string>({
   const colorHint = colorModifiersHint(target, source, registry);
   const hasDivideByZero = modifiers.some((mod) => mod.op === "div" && mod.value === 0) || colorModifiers.some((mod) => mod.op === "div" && mod.value === 0);
   const canSave = target !== null && source !== null && !hasDivideByZero;
+  const existingLink = target === null ? null : existingLinks.find((l) => l.target === target) ?? null;
+  const savedModifiers = modifiersAllowed && modifiers.length > 0 ? modifiers : undefined;
+  const savedColorModifiers = colorModifiersAllowed && colorModifiers.length > 0 ? colorModifiers : undefined;
+  // Only a link that actually differs from the one being replaced needs confirming — re-saving the
+  // same source with the same chain changes nothing.
+  const replacesDifferentLink =
+    existingLink !== null &&
+    !(
+      existingLink.source === source &&
+      sameChain(existingLink.modifiers, savedModifiers) &&
+      sameChain(existingLink.colorModifiers, savedColorModifiers)
+    );
 
   function handleTargetPick(p: P) {
     setTarget(p);
@@ -709,11 +731,15 @@ export function LinkEditor<P extends string>({
 
   function save() {
     if (!canSave || target === null || source === null) return;
+    if (replacesDifferentLink && !confirmingReplace) {
+      setConfirmingReplace(true);
+      return;
+    }
     onSave(
       source,
       target,
-      modifiersAllowed && modifiers.length > 0 ? modifiers : undefined,
-      colorModifiersAllowed && colorModifiers.length > 0 ? colorModifiers : undefined,
+      savedModifiers,
+      savedColorModifiers,
     );
   }
 
@@ -729,7 +755,7 @@ export function LinkEditor<P extends string>({
         title={initialTarget === null ? m["image_export.param_links.add_link_title"]() : m["image_export.param_links.edit_link_title"]()}
         size="threeColumn"
         onClose={onClose}
-        onConfirm={canSave ? save : undefined}
+        onConfirm={canSave && !confirmingReplace ? save : undefined}
         rawBody={
           <div style={styles.editorBody}>
             <div style={styles.editorColumns}>
@@ -803,6 +829,21 @@ export function LinkEditor<P extends string>({
           </div>
         }
       />
+      {confirmingReplace && replacesDifferentLink && existingLink !== null && (
+        <Modal
+          title={m["image_export.param_links.replace_title"]()}
+          onClose={() => setConfirmingReplace(false)}
+          onConfirm={save}
+        >
+          <div style={typography.body}>
+            {m["image_export.param_links.replace_message"]({ source: hierarchicalLabel(existingLink.source, registry), modifiers: `${modifierSuffix(existingLink.modifiers)}${colorModifierSuffix(existingLink.colorModifiers)}` })}
+          </div>
+          <div style={styles.editorFooter}>
+            <Button variant="secondary" onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
+            <Button variant="primary" onClick={save}>{m["image_export.param_links.replace_confirm"]()}</Button>
+          </div>
+        </Modal>
+      )}
       {addingStep && (
         <ModifierStepDialog
           initial={null}
@@ -979,12 +1020,13 @@ export function ParameterLinksDialog<P extends string>({
       }
     />
       {adding && (
-        <LinkEditor registry={registry} activePaths={activePaths} initialSource={null} initialTarget={null} onSave={handleSave} onClose={() => setAdding(false)} />
+        <LinkEditor registry={registry} activePaths={activePaths} existingLinks={links} initialSource={null} initialTarget={null} onSave={handleSave} onClose={() => setAdding(false)} />
       )}
       {editing && (
         <LinkEditor
           registry={registry}
           activePaths={activePaths}
+          existingLinks={links}
           initialSource={editing.source}
           initialTarget={editing.target}
           initialModifiers={editing.modifiers}

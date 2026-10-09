@@ -190,6 +190,7 @@ export function LinkStatusIcon<P extends string>({
         <LinkEditor
           registry={registry}
           activePaths={activePaths}
+          existingLinks={links}
           initialSource={incoming?.source ?? null}
           initialTarget={linkTarget}
           initialModifiers={incoming?.modifiers}
