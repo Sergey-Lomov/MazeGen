@@ -223,7 +223,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     cornerStyle: "round",
     markerSize: 0.16,
     markerBorderWidth: 3, markerShape: "circle", markerFillColor: 0, markerBorderColor: 0,
-    gapWidth: 3,
+    gapWidth: 3, markerTextSize: 17, markerTextFontWeight: "bold",
     verticalCornerStyle: "round",
     verticalShape: "circle",
     verticalSize: 0.2,

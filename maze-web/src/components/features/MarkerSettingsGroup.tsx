@@ -30,7 +30,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fieldNames, isExpanded, onToggle, showTextSection }: {
+export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fieldNames, isExpanded, onToggle, showTextSection, textFitKind }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -66,6 +66,8 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
    *  targets are only meaningful (non-`null`) for callers that also pass `showTextSection`; every
    *  other `MarkerSettingsGroup` caller passes `null` for them, same as it already must for every
    *  other field its registry doesn't model. */
+  /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
+  textFitKind?: "start" | "finish";
   linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
@@ -113,6 +115,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                     priorityColors={priorityColors?.textColor}
                     defaultColor={defaultColors?.textColor}
                     fieldName={fieldNames?.textColor}
+                    autoFitKind={textFitKind}
                   />
                 </div>
               )}

@@ -404,6 +404,10 @@ export interface SharedStyleSourceFields {
   markerBorderColor: number;
   markerBorderWidth: number;
   gapWidth: number;
+  /** Shared label font size (px) and weight (GitHub issue #707) — drive every caption/badge text
+   *  style through disabled-by-default links; the "Auto-fit" button picks the size. */
+  markerTextSize: number;
+  markerTextFontWeight: LabelFontWeight;
 }
 
 /** "Shared style" source values for the "Vertical connections" section (GitHub issue #668) — same

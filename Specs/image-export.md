@@ -509,8 +509,8 @@ follow-up sub-issue's concern.
 ### "Shared style" — centralized marker/corner-style settings (GitHub issue #322, generalized to a generic parameter-link engine by #643)
 
 Both render mode settings panels have a "Shared style" section, always the first section (before
-"Background"). It centralizes seven ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
-`markerFillColor`, `markerBorderColor`, `markerBorderWidth`, `gapWidth` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
+"Background"). It centralizes nine ordinary top-level settings fields (`markerShape`, `cornerStyle`, `markerSize`,
+`markerFillColor`, `markerBorderColor`, `markerBorderWidth`, `gapWidth`, `markerTextSize`, `markerTextFontWeight` — part of `SharedStyleSourceFields`, `imageExportTypes.ts`, mixed
 into both `VectorByWallsSettings` and `VectorByCorridorsSettings`) that would otherwise need editing
 separately on every marker-like field that conceptually shares them:
 
@@ -521,6 +521,9 @@ separately on every marker-like field that conceptually shares them:
 | `markerSize` | 17 (px diameter) | `startMarker`/`finishMarker.size`, `teleportMarker.size`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.size` |
 | `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportMarker.borderWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
 | `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportMarker.gapWidth`, `teleportConnectorGapWidth`, `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
+| `markerTextSize` / `markerTextFontWeight` (GitHub issue #707) | 17 px / bold | `startMarker`/`finishMarker`, `teleportFloorBadge` and `elevatorBadges` `.textSize` / `.textFontWeight` — **all links disabled by default** (each kind keeps its own default size) |
+
+GitHub issue #707: the section's "Text" sub-section holds the shared font weight and size. Every font-size slider (start/finish caption, elevator badge, teleport floor badge) has an "Auto-fit" icon button (`AutoFitButton`, `TextFitContext.tsx`) that sets the largest size, snapped to `TEXT_SIZE_RANGE.step`, at which every label governed by that control fits inside its plate's shape (`maxFittingFontSize`, `pixi/textFit.ts`; labels collected across all floors by `computeTextFitItemsAcrossFloors`). It writes through the field's normal setter, so it counts as a manual edit and disables the field's incoming link. The shared size has the same button, applying the smallest fit over all four controls (start, finish, elevator, teleport). Overflowing labels raise the `*_text_overflow` warnings (`export-warnings.md`).
 
 GitHub issue #701: `markerFillColor`/`markerBorderColor` are also project colors (section "Shared style", `PC.sharedMarkerFill`/`sharedMarkerBorder`). The section is a single "Markers" sub-section rendered with the shared `MarkerAppearanceRows` (`MarkerFieldRows.tsx`) — same rows, labels and order as every marker (shape, corner style, size, fill color, border color, border width, gap width). `teleportFloorBadge` and `elevatorBadges` also get disabled links for corner style, size, border width and gap width. Edits go through `patchVectorBy{Walls,Corridors}SharedStyle` (propagate-on-change).
 

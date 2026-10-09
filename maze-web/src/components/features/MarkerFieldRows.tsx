@@ -5,6 +5,8 @@ import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelect
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
 import { TILE_SIZE } from "../../pixi/constants";
 import { TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
+import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
+import { AutoFitButton } from "./TextFitContext";
 import * as m from "~/paraglide/messages";
 
 /** Shared shape option list (GitHub issue #293 follow-up unified `MarkerShape` for both start/
@@ -102,13 +104,15 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
 /** Shared text-style rows (GitHub issue #701) — font weight, text color and absolute font size
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Bare rows, like `MarkerAppearanceRows`. */
-export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, fieldName }: {
+export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, fieldName, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
   linkTargets: { [K in keyof TextStyleFields]: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
   fieldName?: string;
+  /** Which label set the size row's "Auto-fit" button fits (GitHub issue #707); omitted = no button. */
+  autoFitKind?: TextFitKind;
 }): React.ReactElement {
   return (
     <>
@@ -140,6 +144,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         step={TEXT_SIZE_RANGE.step}
         format={(v) => String(Math.round(v * 10) / 10)}
         linkTarget={linkTargets.textSize}
+        trailingAction={autoFitKind && <AutoFitButton resolve={(ctx) => ctx.fitFor(autoFitKind)} onApply={(textSize) => onChange({ textSize })} />}
       />
     </>
   );

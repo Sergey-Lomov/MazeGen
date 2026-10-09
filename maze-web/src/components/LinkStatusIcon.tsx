@@ -215,6 +215,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: controlRowHeight,
     flexShrink: 0,
     cursor: "default",
+    borderRadius: 3,
   },
   badge: {
     position: "absolute",

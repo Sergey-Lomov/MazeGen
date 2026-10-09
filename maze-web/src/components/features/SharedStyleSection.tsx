@@ -6,6 +6,9 @@ import { SelectRow } from "../SelectRow";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
+import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { AutoFitButton } from "./TextFitContext";
+import { TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
@@ -160,6 +163,30 @@ export function SharedStyleSection<P extends string>({
           }}
           priorityColors={priorityColors}
           fieldNames={{ fillColor: PC.sharedMarkerFill.name(), borderColor: PC.sharedMarkerBorder.name() }}
+        />
+      </div>
+      <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>
+      <div style={styles.group}>
+        <LinkedSelectRow
+          label={m["image_export.vector_by_walls.marker_text_font_weight"]()}
+          value={settings.markerTextFontWeight}
+          options={[
+            { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
+            { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
+          ]}
+          onChange={(markerTextFontWeight) => onChange({ markerTextFontWeight })}
+          linkTarget={"markerTextFontWeight" as P}
+        />
+        <LinkedSliderRow
+          label={m["image_export.vector_by_walls.marker_text_size"]()}
+          value={settings.markerTextSize}
+          onChange={(markerTextSize) => onChange({ markerTextSize })}
+          min={TEXT_SIZE_RANGE.min}
+          max={TEXT_SIZE_RANGE.max}
+          step={TEXT_SIZE_RANGE.step}
+          format={(v) => String(Math.round(v * 10) / 10)}
+          linkTarget={"markerTextSize" as P}
+          trailingAction={<AutoFitButton all resolve={(ctx) => ctx.fitAll()} onApply={(markerTextSize) => onChange({ markerTextSize })} />}
         />
       </div>
     </div>

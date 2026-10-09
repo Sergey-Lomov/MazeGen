@@ -21,6 +21,9 @@ import { TILE_SIZE } from "../constants";
 import { hasLowContrast } from "../colorContrast";
 import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilders";
 import { nearestCellCoord } from "../tessellationGeometry";
+import { textOverflows, type TextFitItem } from "../textFit";
+import { formatIndexLabel } from "../renderers/indexLabel";
+import { DEFAULT_MARKER_TEXT_SIZE } from "../renderConstants";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
  *  render mode still can't depict some case correctly (GitHub issue #298), e.g. a teleport whose
@@ -35,6 +38,11 @@ export type ExportWarningId =
   | "teleport_waypoint_overlap"
   | "waypoint_on_split"
   | "teleport_on_special_split"
+  /** Start/finish marker caption, elevator floor badge or teleport floor badge text exceeds its plate
+   *  in width or height (GitHub issue #707). One id per element kind so the message can name it. */
+  | "marker_text_overflow"
+  | "elevator_badge_text_overflow"
+  | "teleport_badge_text_overflow"
   /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
    *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
    *  `waypoint_on_split`/`teleport_on_special_split`. */
@@ -611,6 +619,128 @@ function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cf
   return cells;
 }
 
+/** Which size control a text label belongs to — one per independent font-size field (GitHub issue
+ *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
+export type TextFitKind = "start" | "finish" | "elevator" | "teleport";
+
+type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle">;
+
+type TextFitEntry = TextFitItem & {
+  kind: TextFitKind;
+  /** Font size currently configured for the owning field (px). */
+  fontSize: number;
+  nodes: number[];
+  cells?: { x: number; y: number; floorIndex: number }[];
+  crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
+};
+
+/** Every label drawn on one floor, with the plate it must fit and the elements to highlight when it
+ *  does not. Mirrors the renderers' own draw rules: start/finish text honors `textEnabled`, elevator
+ *  badges `enabled`, teleport floor badges need a visible connector (`teleportConnectorStyle`). */
+function collectTextFitEntries(
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  teleportEdges: TeleportEdge[],
+  settings: TextFitSettings,
+  start: number | null,
+  finish: number | null,
+  resolveNodeLevel: ReturnType<typeof selectNodeLevelResolver>,
+  displayFloorIndex: number,
+): TextFitEntry[] {
+  const entries: TextFitEntry[] = [];
+  const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
+    if (id === null || !marker.text || marker.textEnabled === false) return;
+    entries.push({
+      kind, text: marker.text, fontWeight: marker.textFontWeight ?? "bold", shape: marker.shape, plateSize: marker.size,
+      fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, nodes: [id],
+    });
+  };
+  addMarker("start", start, settings.startMarker);
+  addMarker("finish", finish, settings.finishMarker);
+
+  const badges = settings.elevatorBadges;
+  if (badges.enabled) {
+    const verticalPairs = selectVerticalPassagePairSet(edges);
+    const markers = buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, 0, verticalPairs, edges);
+    for (const marker of markers) {
+      if (marker.kind !== "elevator" || !marker.targetFloorIndices) continue;
+      for (const [i, floorIndex] of marker.targetFloorIndices.entries()) {
+        entries.push({
+          kind: "elevator", text: formatIndexLabel(floorIndex, badges.labelType), fontWeight: badges.textFontWeight,
+          shape: badges.shape, plateSize: badges.size, fontSize: badges.textSize, nodes: [marker.fromNode],
+          crossFloorTargets: [{ nodeId: marker.fromNode, targetFloorIndex: marker.targetFloorIndices[i] }],
+        });
+      }
+    }
+  }
+
+  if (settings.teleportConnectorStyle !== "none") {
+    const badge = settings.teleportFloorBadge;
+    const addTeleport = (point: [number, number], floorIndex: number) => {
+      const [x, y] = nearestCellCoord(point[0], point[1], cfg);
+      entries.push({
+        kind: "teleport", text: formatIndexLabel(floorIndex, badge.labelType), fontWeight: badge.textFontWeight,
+        shape: badge.shape, plateSize: badge.size, fontSize: badge.textSize, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
+      });
+    };
+    for (const edge of teleportEdges) {
+      if (edge.toFloor !== undefined) addTeleport(edge.to, edge.toFloor);
+      if (edge.fromFloor !== undefined) addTeleport(edge.from, edge.fromFloor);
+    }
+  }
+  return entries;
+}
+
+const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
+  start: "marker_text_overflow",
+  finish: "marker_text_overflow",
+  elevator: "elevator_badge_text_overflow",
+  teleport: "teleport_badge_text_overflow",
+};
+
+function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly TextFitEntry[]): void {
+  const byId = new Map<ExportWarningId, ExportWarning>();
+  for (const entry of entries) {
+    if (!textOverflows(entry, entry.fontSize)) continue;
+    const id = TEXT_OVERFLOW_WARNING_ID[entry.kind];
+    let warning = byId.get(id);
+    if (!warning) {
+      warning = { id, key: id, nodes: [], edges: [] };
+      byId.set(id, warning);
+      warnings.push(warning);
+    }
+    warning.nodes.push(...entry.nodes);
+    if (entry.cells) warning.cells = [...(warning.cells ?? []), ...entry.cells];
+    if (entry.crossFloorTargets) warning.crossFloorTargets = [...(warning.crossFloorTargets ?? []), ...entry.crossFloorTargets];
+  }
+}
+
+/** Every label across all floors, grouped by size control — the input of the "Auto-fit" buttons
+ *  (GitHub issue #707). Empty array for a kind with nothing to fit. */
+export function computeTextFitItemsAcrossFloors(
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  settings: TextFitSettings, start: number | null, finish: number | null,
+): Record<TextFitKind, TextFitItem[]> {
+  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [] };
+  const resolveNodeLevel = selectNodeLevelResolver(nodes);
+  for (const [index, floor] of floors.entries()) {
+    const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
+    const floorContext: TeleportFloorContext = {
+      resolveNodeLevel,
+      unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
+      unscopedEdges: edges,
+      activeFloorIndex: index,
+    };
+    const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
+    const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
+    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index)) {
+      result[entry.kind].push({ text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize });
+    }
+  }
+  return result;
+}
+
 function verticalPassageEdges(edges: EdgeDto[]): EdgeDto[] {
   return edges.filter((edge) => edge.kind === "vertical_passage");
 }
@@ -1001,6 +1131,11 @@ export function computeVectorByWallsWarnings(
     }
   }
 
+  pushTextOverflowWarnings(warnings, collectTextFitEntries(
+    nodeById, edges, cfg, teleportEdges, settings, start, finish, resolveNodeLevel,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+  ));
+
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
   );
@@ -1155,6 +1290,11 @@ export function computeVectorByCorridorsWarnings(
       });
     }
   }
+
+  pushTextOverflowWarnings(warnings, collectTextFitEntries(
+    nodeById, edges, cfg, teleportEdges, settings, start, finish, selectNodeLevelResolver(allNodesForWarnings),
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+  ));
 
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,

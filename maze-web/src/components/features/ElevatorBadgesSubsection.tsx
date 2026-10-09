@@ -137,6 +137,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               priorityColors={textColorPriority}
               defaultColor={textColorDefault}
               fieldName={textColorFieldName}
+              autoFitKind="elevator"
             />
           </>
         )}

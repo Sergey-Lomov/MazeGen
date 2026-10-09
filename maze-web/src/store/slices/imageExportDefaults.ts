@@ -58,6 +58,8 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerBorderColor: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderColor,
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
+  markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
+  markerTextFontWeight: "bold",
 };
 
 /** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub
@@ -268,7 +270,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextFontWeight",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
@@ -325,7 +327,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextFontWeight",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

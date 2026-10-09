@@ -5,10 +5,12 @@ import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
+import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
+import { maxFittingFontSize } from "../../pixi/textFit";
 import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { computeVectorByWallsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
@@ -168,6 +170,16 @@ export function VectorByWallsSettingsPanel() {
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
+  // Auto-fit data for every font-size row (GitHub issue #707) — all labels of the whole project,
+  // grouped by size control; `fitAll` is the smallest size that fits every label.
+  const textFit = useMemo<TextFitContextValue>(() => {
+    const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
+    return {
+      fitFor: (kind) => maxFittingFontSize(items[kind]),
+      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport]),
+    };
+  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
+
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
   // pairs included (GitHub issue #484) — not just the active floor's — so switching floors never
   // changes the set of customizable groups. Built per floor exactly the way each floor's own
@@ -289,10 +301,11 @@ export function VectorByWallsSettingsPanel() {
   // every elevator color, then the floor and the background.
   const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
   const badgeBorderPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
-  const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
+  const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
 
   return (
     <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_WALLS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
+    <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
       <ExportWarningsSection
         warnings={exportWarnings}
@@ -460,16 +473,19 @@ export function VectorByWallsSettingsPanel() {
         const startBorder = PC.startBorder.at(settings.startMarker.borderColor);
         const finishFill = PC.finishFill.at(settings.finishMarker.fillColor);
         const finishBorder = PC.finishBorder.at(settings.finishMarker.borderColor);
+        const startText = PC.startText.at(settings.startMarker.textColor ?? D.startMarker.textColor ?? floor.color);
+        const finishText = PC.finishText.at(settings.finishMarker.textColor ?? D.finishMarker.textColor ?? floor.color);
         return (
         <div style={styles.block}>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_start"]()}
             sectionId="markers_start"
+            textFitKind="start"
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, finishFill, finishBorder, floor], borderColor: [startFill, finishBorder, finishFill, floor], textColor: [startFill, startBorder, floor] }}
+            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, floor], borderColor: [startFill, startText, finishBorder, finishFill, floor], textColor: [startFill, startBorder, finishText, floor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name, textColor: PC.startText.name() }}
             onChange={(patch) => {
@@ -503,11 +519,12 @@ export function VectorByWallsSettingsPanel() {
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
             sectionId="markers_finish"
+            textFitKind="finish"
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, startFill, startBorder, floor], borderColor: [finishFill, startBorder, startFill, floor], textColor: [finishFill, finishBorder, floor] }}
+            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, floor], borderColor: [finishFill, finishText, startBorder, startFill, floor], textColor: [finishFill, finishBorder, startText, floor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name, textColor: PC.finishText.name() }}
             onChange={(patch) => {
@@ -1437,6 +1454,7 @@ export function VectorByWallsSettingsPanel() {
       )}
 
     </div>
+    </TextFitContextProvider>
     </LinkContextProvider>
   );
 }
