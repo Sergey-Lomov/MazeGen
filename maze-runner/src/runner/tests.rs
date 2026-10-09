@@ -1062,7 +1062,7 @@ mod level_fields_tests {
 mod cairo_dispatch_tests {
     use crate::config::{GenerateConfig, TessellationConfig, TessellationType};
     use crate::runner::run_from_config;
-    use maze_core::space::CairoTessellation;
+    use maze_core::space::{CairoPoint, CairoTessellation};
 
     fn cairo_config(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
         GenerateConfig {
@@ -1117,6 +1117,48 @@ mod cairo_dispatch_tests {
             .expect("multi-level Cairo generation must succeed");
 
         assert_eq!(result.graph.nodes().count(), 8);
+    }
+
+    /// GitHub issue #715: the final Cairo regression fixture deliberately uses a translated,
+    /// non-rectangular point set on two floors.  This is the closest native equivalent of the
+    /// browser's custom-field flow: the same wire coordinates go through dispatch, generation,
+    /// and the post-generation pipeline, twice with the same seed.
+    #[test]
+    fn generation_is_deterministic_for_negative_custom_cairo_points_on_multiple_floors() {
+        let mut points: Vec<[i32; 2]> = CairoTessellation::rect(3, 2)
+            .into_iter()
+            .map(|p| [p.x - 12, p.y - 12])
+            .collect();
+        // Make the field genuinely custom rather than a complete cairo_rect: remove one cell
+        // while keeping the remaining shape connected.
+        points.remove(2);
+        assert!(points.iter().all(|[x, y]| *x < 0 && *y < 0));
+        assert!(points
+            .iter()
+            .all(|[x, y]| CairoTessellation::is_valid_point(CairoPoint::new(*x, *y))));
+
+        let config = cairo_config(vec![points.clone(), points]);
+        let first = run_from_config(715, &config).expect("custom multi-floor Cairo must run");
+        let second = run_from_config(715, &config).expect("the same Cairo seed must run again");
+
+        assert_eq!(first.graph.nodes().count(), 2 * 11);
+        assert!(first.graph.edges().count() > 0);
+        assert_eq!(first.start, second.start);
+        assert_eq!(first.finish, second.finish);
+
+        let mut first_edges: Vec<_> = first
+            .graph
+            .edges()
+            .map(|edge| (edge.from, edge.to, edge.kind))
+            .collect();
+        let mut second_edges: Vec<_> = second
+            .graph
+            .edges()
+            .map(|edge| (edge.from, edge.to, edge.kind))
+            .collect();
+        first_edges.sort_unstable();
+        second_edges.sort_unstable();
+        assert_eq!(first_edges, second_edges);
     }
 
     #[test]
