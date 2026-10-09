@@ -53,6 +53,8 @@ Default mode's **Calculate for print** button opens a one-shot dialog. It accept
 (A0-A5, Letter, Legal, Tabloid, or custom dimensions), portrait/landscape orientation, desired
 cell measure in millimeters, and horizontal/vertical print margins. For squares the measure is the
 side length; for regular hexagons and triangles it is the diameter of the circumscribed circle.
+The cell-measure input is a compact control sized for approximately four digits, including its
+native number-input affordances, rather than expanding to the dialog's full row width.
 Standard paper sizes reuse
 the print export catalog. Margins are per side and default to 5 mm, matching PNG Print settings.
 

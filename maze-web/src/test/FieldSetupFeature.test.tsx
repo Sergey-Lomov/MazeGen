@@ -77,6 +77,16 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / 40);
   });
 
+  it("keeps the print cell-size input compact", () => {
+    render(<FieldSetupFeature />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Calculate for print" }));
+    const dialog = screen.getByText("Calculate field for print").parentElement?.parentElement;
+    const cellInput = within(dialog!).getAllByRole("spinbutton")[4] as HTMLInputElement;
+
+    expect(cellInput).toHaveStyle({ width: "56px", boxSizing: "border-box" });
+  });
+
   it("shows only the field size in the single-floor result", () => {
     render(<FieldSetupFeature />);
 
