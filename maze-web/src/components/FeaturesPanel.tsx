@@ -81,6 +81,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
     square: m["tessellation.square"],
     hex: m["tessellation.hex"],
     triangle: m["tessellation.triangle"],
+    cairo: m["tessellation.cairo"],
   };
   return labels[kind]();
 }

@@ -21,6 +21,7 @@ export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}):
     squareShape: "rect",
     hexShape: "parallelogram",
     triangleShape: "rect",
+    cairoShape: "rect",
     savedConfigs: {},
     tessellationConfig: { type: "square", width: 10, height: 10 },
     freeFieldPoints: emptyFreePoints(),
@@ -209,10 +210,11 @@ export function baseStoreState() {
 /** Free-field-editing state for a given kind, used by free field point mutation tests. Field-shape
  *  fields land in `floorFields[TEST_FLOOR_ID]` (GitHub issue #338) — merge on top of `extra` when
  *  a test also needs to override other floorFields entries. */
-export function freeFieldEditState(kind: "square" | "hex" | "triangle", pts: Set<number>) {
+export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo", pts: Set<number>) {
   const squareShape: "free" | "rect" = kind === "square" ? "free" : "rect";
   const hexShape: "free" | "parallelogram" = kind === "hex" ? "free" : "parallelogram";
   const triangleShape: "free" | "rect" = kind === "triangle" ? "free" : "rect";
+  const cairoShape: "free" | "rect" = kind === "cairo" ? "free" : "rect";
   return {
     tessellationKind: kind,
     hexOrientation: "flat_top" as const,
@@ -223,6 +225,7 @@ export function freeFieldEditState(kind: "square" | "hex" | "triangle", pts: Set
         squareShape,
         hexShape,
         triangleShape,
+        cairoShape,
         isEditingField: true,
         fieldPoints: pts,
         freeFieldPoints: { ...emptyFreePoints(), [kind]: pts },

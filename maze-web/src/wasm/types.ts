@@ -184,8 +184,7 @@ export interface StageConfig {
   rules: QcRuleConfig[];
 }
 
-/** Wire tessellation kind. Cairo is available to direct WASM callers; the editor currently
- * exposes only the square/hex/triangle field configurations. */
+/** Wire tessellation kind. */
 export type TessellationKindWasm = "square" | "hex" | "tri" | "cairo";
 
 export interface WasmTessellationConfig {

@@ -6,7 +6,7 @@ import { TileFaceEditor } from "../features/TileFaceEditor";
 import { sharedStyles } from "../../styles/shared";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
-import { degreeFor, tileNodesForPattern } from "../../pixi/splitPatternTile";
+import { degreeFor, patternAnchorPoint, tileNodesForPattern } from "../../pixi/splitPatternTile";
 import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -25,7 +25,6 @@ interface Props {
   locked?: boolean;
 }
 
-const ANCHOR_POINT: [number, number] = [0, 0];
 const NOOP = () => {};
 
 /** Compact, non-interactive tile preview for one pattern's card in the list — reuses
@@ -33,10 +32,11 @@ const NOOP = () => {};
  *  with a fixed small size and no-op click handlers; `TileFaceEditor`'s own cursor is already
  *  `default` (not a pointer), so it doesn't visually suggest interactivity. */
 function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
+  const anchorPoint = patternAnchorPoint(cfg);
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
-        point={ANCHOR_POINT} cfg={cfg} nodes={tileNodesForPattern(pattern, degree)} activeIndex={null}
+        point={anchorPoint} cfg={cfg} nodes={tileNodesForPattern(pattern, degree)} activeIndex={null}
         onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
       />
     </div>
@@ -55,6 +55,7 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
 export function SplitPatternListEditor({ patterns, onChange, withWeights, locked = false }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(tessellationConfig);
+  const anchorPoint = patternAnchorPoint(tessellationConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   function addPattern(pattern: SplitPattern) {
@@ -172,7 +173,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                   onClick={() => handleAddBlueprint(blueprint)}
                 >
                   <TileFaceEditor
-                    point={ANCHOR_POINT} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint)}
+                    point={anchorPoint} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

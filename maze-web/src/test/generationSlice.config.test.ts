@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import { encodePoint } from "../pixi/tessellationProjection";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
@@ -330,6 +331,33 @@ describe("mazeStore generation misc actions", () => {
 
     useMazeStore.getState().loadProject(file);
     expect(useMazeStore.getState().activeFloorId).toBe(secondFloorId);
+  });
+
+  it("loadProject restores Cairo custom field points on the floor state", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    const points = new Set([encodePoint(1, 2), encodePoint(2, 1)]);
+    useMazeStore.setState({
+      tessellationKind: "cairo",
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({
+          cairoShape: "free",
+          tessellationConfig: { type: "cairo_custom", points: [[1, 2], [2, 1]] },
+          freeFieldPoints: { ...baseStoreState().floorFields[TEST_FLOOR_ID].freeFieldPoints, cairo: points },
+          isEditingField: true,
+          fieldPoints: points,
+          fieldEditMode: "custom",
+        }),
+      },
+    });
+    const file = serializeProject(useMazeStore.getState());
+
+    useMazeStore.getState().loadProject(file);
+
+    const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
+    expect(field.tessellationConfig).toEqual({ type: "cairo_custom", points: [[1, 2], [2, 1]] });
+    expect(field.cairoShape).toBe("free");
+    expect(field.fieldPoints).toEqual(points);
+    expect(field.freeFieldPoints.cairo).toEqual(points);
   });
 
   it("loadProject normalizes a stale/too-low saved id counter up to the replayed log's own high-water mark (GitHub issue #564 second follow-up)", () => {

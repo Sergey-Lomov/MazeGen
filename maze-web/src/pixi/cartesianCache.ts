@@ -10,9 +10,9 @@ import { getCartesianCoords } from "../wasm/mazeService";
 /// call per cell, since render loops call `getCellCenter` synchronously and per-call wasm
 /// round-trips would be far too slow for a hot path.
 const cache = new Map<string, [number, number]>();
-let cachedKind: "square" | "hex" | "tri" | null = null;
+let cachedKind: "square" | "hex" | "tri" | "cairo" | null = null;
 
-function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" {
+function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" | "cairo" {
   const family = tessellationFamily(cfg);
   return family === "triangle" ? "tri" : family;
 }
@@ -33,6 +33,13 @@ export function warmCartesianCache(cfg: TessellationConfig): void {
   const field = "kind" in cfg ? cfg : resolveFieldConfig(cfg);
   const points = field.cells;
   if (points.length === 0) return;
+  // Cairo's canonical projection is the identity by contract. Keep this tiny projection local:
+  // older web WASM artifacts predate the Cairo enum and reject the otherwise valid request before
+  // the current artifact can be rebuilt.
+  if (kind === "cairo") {
+    for (const [x, y] of points) cache.set(cellKey(x, y), [x, y]);
+    return;
+  }
   const coords = getCartesianCoords({ tessellation_type: kind, points });
   for (let i = 0; i < points.length; i++) {
     const [x, y] = points[i];
@@ -49,6 +56,18 @@ export function warmCartesianCache(cfg: TessellationConfig): void {
 /// the same invalid preset edge every frame) only ever pays the wasm round-trip once.
 export function getCartesian(x: number, y: number, cfg: TessellationConfig): [number, number] {
   const kind = toWasmKind(cfg);
+  if (kind === "cairo") {
+    if (cachedKind !== kind) {
+      cache.clear();
+      cachedKind = kind;
+    }
+    const key = cellKey(x, y);
+    const cached = cache.get(key);
+    if (cached) return cached;
+    const coord: [number, number] = [x, y];
+    cache.set(key, coord);
+    return coord;
+  }
   if (kind !== cachedKind) {
     // Defensive: a caller queried before the cache was warmed for this kind (or the kind
     // changed without going through warmCartesianCache) -- warm it now rather than silently

@@ -5,6 +5,7 @@ import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitPattern } from "../wasm/types";
+import { cairoCenter, CAIRO_CENTER_SCALE, cairoEdgeVerts, cairoNeighborOffsets, cairoVertices, isCairoPoint } from "./cairoGeometry";
 
 export type Pos = { x: number; y: number };
 
@@ -23,7 +24,8 @@ export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
  *  (GitHub issue #223) before evenly distributing them — a per-tessellation constant so the first
  *  node's point doesn't land exactly on a tile vertex/edge-midpoint by coincidence. Square: 45°
  *  (halfway between its 4 edge directions). Hex: 30° (halfway between its 6 edge directions).
- *  Triangle: 60° (halfway between its 3 edge directions). */
+ *  Triangle: 60° (halfway between its 3 edge directions). Cairo: 36° (half of the 72° spacing
+ *  between its 5 evenly distributed split-node slots). */
 export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
   switch (cfg.type) {
     case "square":
@@ -44,6 +46,12 @@ export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
     case "triangle_hexagon":
     case "tri_custom":
       return 60;
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return 36;
     default:
       cfg satisfies never;
       return 0;
@@ -85,6 +93,12 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return triVertices(x, y, ori);
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return cairoVertices(x, y);
     default:
       return null;
   }
@@ -155,6 +169,12 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return triCenter(x, y, ori, cfg);
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return cairoCenter(x, y);
     default:
       return { x: 0, y: 0 };
   }
@@ -266,6 +286,28 @@ export function nearestCellCoord(worldX: number, worldY: number, cfg: Tessellati
   return [x === 0 ? 0 : x, y === 0 ? 0 : y];
 }
 
+function nearestCairoCoord(worldX: number, worldY: number): [number, number] {
+  const x = worldX / (CAIRO_CENTER_SCALE * TILE_SIZE);
+  const y = -worldY / (CAIRO_CENTER_SCALE * TILE_SIZE);
+  const baseX = Math.floor(x);
+  const baseY = Math.floor(y);
+  let best: { x: number; y: number; distance: number } | null = null;
+  for (let candidateX = baseX - 2; candidateX <= baseX + 2; candidateX++) {
+    for (let candidateY = baseY - 2; candidateY <= baseY + 2; candidateY++) {
+      if (!isCairoPoint(candidateX, candidateY)) continue;
+      const dx = candidateX - x;
+      const dy = candidateY - y;
+      const distance = dx * dx + dy * dy;
+      if (!best || distance < best.distance
+        || (distance === best.distance && (candidateX < best.x
+          || (candidateX === best.x && candidateY < best.y)))) {
+        best = { x: candidateX, y: candidateY, distance };
+      }
+    }
+  }
+  return best ? [best.x, best.y] : [Math.round(x), Math.round(y)];
+}
+
 function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
   switch (cfg.type) {
     case "square":
@@ -290,6 +332,12 @@ function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationCo
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
       return nearestTriCoord(worldX, worldY, ori);
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return nearestCairoCoord(worldX, worldY);
     default:
       cfg satisfies never;
       return [0, 0];
@@ -330,6 +378,12 @@ export function getNeighborData(
         edgeVerts: up ? TRI_EDGE_VERTS_UP : TRI_EDGE_VERTS_DOWN,
       };
     }
+    case "cairo":
+    case "cairo_circle":
+    case "cairo_triangle":
+    case "cairo_hexagon":
+    case "cairo_custom":
+      return { offsets: cairoNeighborOffsets(x, y), edgeVerts: cairoEdgeVerts(x, y) };
     default:
       return { offsets: [], edgeVerts: [] };
   }
@@ -337,6 +391,31 @@ export function getNeighborData(
 
 export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: number): [number, number][] {
   return getNeighborData(cfg, x, y).offsets;
+}
+
+/** Returns the face index reached by one geometric rotation step. Most tessellations already
+ * expose their neighbors in perimeter order, but Cairo's core-stable face slots are
+ * `[Twin, NorthWest, NorthEast, SouthEast, SouthWest]`, not a cyclic perimeter order. Keep the
+ * generic index shift for the established tessellations and derive Cairo's order from the actual
+ * neighbor-vector angles so rotation advances to the physically adjacent edge. */
+export function rotateFaceIndex(
+  cfg: TessellationConfig,
+  x: number,
+  y: number,
+  faceIndex: number,
+  direction: 1 | -1,
+): number {
+  const offsets = getNeighborData(cfg, x, y).offsets;
+  const n = offsets.length;
+  if (n === 0) return faceIndex;
+  if (!cfg.type.startsWith("cairo")) return (faceIndex + direction + n) % n;
+
+  const order = offsets
+    .map(([dx, dy], index) => ({ index, angle: Math.atan2(dy, dx) }))
+    .sort((a, b) => a.angle - b.angle);
+  const position = order.findIndex(({ index }) => index === faceIndex);
+  if (position === -1) return faceIndex;
+  return order[(position + direction + n) % n].index;
 }
 
 /** Web-authored `face_index` values (GitHub issue #222's `SplitPattern`, authored/edited via
@@ -350,6 +429,9 @@ const SPLIT_FACE_INDEX_WEB_TO_CORE: Record<string, number[]> = {
   square: [2, 0, 3, 1],
   hex_flat_top: [0, 5, 4, 3, 2, 1],
   hex_pointy_top: [4, 3, 2, 1, 0, 5],
+  // Cairo's web face slots intentionally use core's stable
+  // [Twin, NorthWest, NorthEast, SouthEast, SouthWest] order.
+  cairo: [0, 1, 2, 3, 4],
 };
 
 /** Converts a `SplitPattern.faces[].face_index` value from web ordering (`TileFaceEditor`'s
@@ -365,6 +447,7 @@ export function splitFaceIndexToCore(cfg: TessellationConfig, faceIndex: number)
   if (t === "square" || t === "square_custom") {
     return SPLIT_FACE_INDEX_WEB_TO_CORE.square[faceIndex];
   }
+  if (t.startsWith("cairo")) return SPLIT_FACE_INDEX_WEB_TO_CORE.cairo[faceIndex];
   return faceIndex;
 }
 
@@ -394,6 +477,8 @@ export function splitFaceIndexToWeb(cfg: TessellationConfig, faceIndex: number):
     table = SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`];
   } else if (t === "square" || t === "square_custom") {
     table = SPLIT_FACE_INDEX_WEB_TO_CORE.square;
+  } else if (t.startsWith("cairo")) {
+    table = SPLIT_FACE_INDEX_WEB_TO_CORE.cairo;
   }
   if (!table) return faceIndex;
   const webIndex = table.indexOf(faceIndex);

@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
+import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PrimitiveWorldGeometry, TessellationKind } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
@@ -214,5 +215,7 @@ function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: Tess
       const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
       return triVertices(x, y, orientation);
     }
+    case "cairo":
+      return geometryCellVertices(x, y, cfg) ?? [];
   }
 }

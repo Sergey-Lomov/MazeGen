@@ -24,6 +24,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       square: Array.from(f.freeFieldPoints.square).map((k) => decodePoint(k) as [number, number]),
       hex: Array.from(f.freeFieldPoints.hex).map((k) => decodePoint(k) as [number, number]),
       triangle: Array.from(f.freeFieldPoints.triangle).map((k) => decodePoint(k) as [number, number]),
+      cairo: Array.from(f.freeFieldPoints.cairo ?? []).map((k) => decodePoint(k) as [number, number]),
     };
     floorFields[floorId] = {
       config: f.tessellationConfig,

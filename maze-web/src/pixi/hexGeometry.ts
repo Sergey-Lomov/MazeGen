@@ -3,6 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { squareCenter } from "./squareGeometry";
 import { triCenter } from "./triGeometry";
 import { getCartesian } from "./cartesianCache";
+import { cairoCenter } from "./cairoGeometry";
 
 export const INRADIUS = TILE_SIZE * Math.sqrt(3) / 2;
 
@@ -35,6 +36,8 @@ export function cellCenter(node: { x: number; y: number }, cfg: TessellationConf
     return hexCenter(node.x, node.y, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top", cfg);
   } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
     return triCenter(node.x, node.y, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0", cfg);
+  } else if (cfg.type === "cairo" || cfg.type === "cairo_circle" || cfg.type === "cairo_triangle" || cfg.type === "cairo_hexagon" || cfg.type === "cairo_custom") {
+    return cairoCenter(node.x, node.y);
   } else {
     cfg satisfies never;
     throw new Error(`unknown tessellation type: ${(cfg as { type: string }).type}`);

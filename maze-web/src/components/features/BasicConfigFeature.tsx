@@ -58,6 +58,7 @@ export function BasicConfigFeature() {
           <option value="square">{m["tessellation.square"]()}</option>
           <option value="hex">{m["tessellation.hex"]()}</option>
           <option value="triangle">{m["tessellation.triangle"]()}</option>
+          <option value="cairo">{m["tessellation.cairo"]()}</option>
         </select>
       </label>
       {isHex && (

@@ -126,6 +126,36 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed).toEqual(serialized);
   });
 
+  it("round-trips Cairo kind and floor-specific custom coordinates", () => {
+    const state = makeState();
+    state.tessellationKind = "cairo";
+    state.floorFields.floor_1 = {
+      ...state.floorFields.floor_1,
+      cairoShape: "free",
+      tessellationConfig: { type: "cairo_custom", points: [[-3, 2], [2, 1]] },
+      freeFieldPoints: {
+        square: new Set(),
+        hex: new Set(),
+        triangle: new Set(),
+        cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
+      },
+      isEditingField: true,
+      fieldPoints: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
+      fieldEditMode: "custom",
+    };
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.tessellation.kind).toBe("cairo");
+    expect(reparsed.floorFields.floor_1).toEqual(serialized.floorFields.floor_1);
+  });
+
+  it("loads legacy floor fields that do not have Cairo free points", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.floorFields.floor_1.freeFieldPoints.cairo;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.floorFields.floor_1.freeFieldPoints.cairo).toEqual([]);
+  });
+
   it("round-trips the synchronized editor underlay", () => {
     const serialized = serializeProject(makeState({
       showBackgroundImage: true,

@@ -53,6 +53,17 @@ describe("resolveAlgorithmKind", () => {
 });
 
 describe("mazeStore.generate", () => {
+  it("maps Cairo generation config and standard cells to the WASM contract", () => {
+    const config = { type: "cairo", cols: 2, rows: 2 } as const;
+    expect(fieldConfigToWasm(config)).toEqual({ tessellation_type: "cairo" });
+    expect(configAllCells(config)).toEqual([
+      [-2, -1], [2, 1],
+      [-1, 2], [1, -2],
+      [-3, 2], [3, -2],
+      [-2, -3], [2, 3],
+    ]);
+  });
+
   it("stores snapshot on success", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.getState().generate();

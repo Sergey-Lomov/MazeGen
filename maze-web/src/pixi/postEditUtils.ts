@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import { getNeighborData } from "./tessellationGeometry";
+import { getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import {
   type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointKey, endpointsEqual,
@@ -165,7 +165,7 @@ function collectRotateMoves(
       const i = offsets.findIndex(([dx, dy]) => point[0] + dx === otherCoords[0] && point[1] + dy === otherCoords[1]);
       if (i === -1) continue; // not a geometric neighbor of `point` (shouldn't happen for a face edge)
 
-      const j = (i + direction + n) % n;
+      const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
       // Refuse entirely — not just for a neighbor outside the field, but also for one inside it
       // with no node at all yet (a sparse/partially-populated field can have an empty cell in

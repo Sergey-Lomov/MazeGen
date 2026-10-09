@@ -4,6 +4,15 @@
 
 Pixi.js-based rendering system. `MazeScene` owns a Pixi `Application` and orchestrates all renderers. Created by `App` once on mount, destroyed on unmount.
 
+## Cairo geometry
+
+Cairo uses the same integer point coordinates as `maze-core`, including Euclidean residue classes
+for negative coordinates. `pixi/cairoGeometry.ts` is the single browser-side source for its four
+tile orientations, five neighbor offsets, pentagon vertices, and shared-edge indices. Projection,
+grid bounds, selection, primitive inclusion, and edge hit-testing all consume that geometry through
+`tessellationProjection.ts` and `tessellationGeometry.ts`; invalid points in the unused 4×4
+coordinate positions are never rendered or selected.
+
 ## Shared pointer interaction primitives
 
 `pixi/pointerInteraction.ts` contains the domain-neutral mechanics shared by the preset and post-edit controllers:

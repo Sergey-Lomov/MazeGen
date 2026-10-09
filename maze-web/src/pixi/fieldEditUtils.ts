@@ -1,6 +1,6 @@
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
-import { getCellNeighborOffsets, getNeighborData } from "./tessellationGeometry";
+import { getCellNeighborOffsets, getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
@@ -720,7 +720,7 @@ export function rotatePresetSplitPoint(
       const key = presetEdgeKey(ep, oldNeighborNode);
       const entry = presetConnections.get(key)!;
 
-      const j = (i + direction + n) % n;
+      const j = rotateFaceIndex(cfg, point[0], point[1], i, direction);
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
       if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return presetConnections; // boundary — refuse entirely
 

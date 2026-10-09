@@ -184,6 +184,45 @@ describe("mazeStore tessellation kind/shape actions", () => {
     expect(activeField().tessellationConfig.type).toBe("triangle_triangle");
   });
 
+  it("setTessellationKind to Cairo uses the standard rectangular field", () => {
+    useMazeStore.getState().setTessellationKind("cairo");
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("cairo");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo", cols: 10, rows: 10 });
+    expect(activeField().cairoShape).toBe("rect");
+  });
+
+  it("uses the standard Cairo sizes when selecting each predefined form", () => {
+    useMazeStore.getState().setTessellationKind("cairo");
+
+    useMazeStore.getState().setCairoShape("circle");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_circle", radius: 12 });
+
+    useMazeStore.getState().setCairoShape("triangle");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_triangle", side: 20 });
+
+    useMazeStore.getState().setCairoShape("hexagon");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_hexagon", radius: 12 });
+  });
+
+  it("switches Cairo between standard and free fields without losing custom points", () => {
+    useMazeStore.getState().setTessellationKind("cairo");
+    const points = new Set([encodePoint(-3, 2), encodePoint(2, 1)]);
+    setActiveField({ freeFieldPoints: { ...emptyFreePoints(), cairo: points } });
+    useMazeStore.getState().setCairoShape("free");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_custom", points: [[-3, 2], [2, 1]] });
+    useMazeStore.getState().setCairoShape("rect");
+    useMazeStore.getState().setCairoShape("free");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo_custom", points: [[-3, 2], [2, 1]] });
+  });
+
+  it("returns from a loaded Cairo custom field to the standard field in default mode", () => {
+    useMazeStore.getState().setTessellationConfig({ type: "cairo_custom", points: [[1, 2], [2, 1]] });
+    useMazeStore.getState().setFieldEditMode("default");
+    expect(activeField().tessellationConfig).toEqual({ type: "cairo", cols: 10, rows: 10 });
+    expect(activeField().isEditingField).toBe(false);
+  });
+
   it("setTessellationKind to square sets tessellationKind and square config type", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
     useMazeStore.getState().setTessellationKind("square");
@@ -208,7 +247,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
 
   it("setTessellationKind resets freeFieldPoints for target kind", () => {
     useMazeStore.setState({ tessellationKind: "hex" });
-    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), triangle: new Set() } });
+    setActiveField({ freeFieldPoints: { square: new Set([1, 2]), hex: new Set([3]), triangle: new Set(), cairo: new Set() } });
     useMazeStore.getState().setTessellationKind("square");
     const field = activeField();
     // setTessellationKind resets every floor's FloorFieldConfig to a fresh default (GitHub issue

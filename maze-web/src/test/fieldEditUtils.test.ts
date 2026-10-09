@@ -790,6 +790,22 @@ describe("presetTeleportEntryToState", () => {
 const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1", "1,-1", "-1,-1"]);
 
 describe("rotatePresetSplitPoint", () => {
+  it("rotates Cairo's five face slots without assuming four or six faces", () => {
+    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const from = presetEndpoint([2, 1]);
+    const oldNeighbor = presetEndpoint([-1, 2]);
+    const newNeighbor = presetEndpoint([1, -2]);
+    const connections = new Map([
+      [presetEdgeKey(from, oldNeighbor), { from, to: oldNeighbor, state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(
+      connections, [2, 1], [], 1, cairoCfg,
+      new Set(["2,1", "-1,2", "1,-2"]), {}, {},
+    );
+    expect(result.has(presetEdgeKey(from, oldNeighbor))).toBe(false);
+    expect(result.get(presetEdgeKey(from, newNeighbor))?.state).toBe("passage");
+  });
+
   it("no split slots — plain point's passage moves from E to N (direction 1)", () => {
     const connections = new Map([
       [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],

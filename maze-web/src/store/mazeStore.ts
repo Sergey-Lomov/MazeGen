@@ -21,7 +21,7 @@ export type {
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
-  TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
+  TessellationKind, SquareShape, HexShape, TriangleShape, CairoShape, HexOrientation, TriOrientation,
   BackgroundImageLayerMode,
   BackgroundAutoFillMode,
   FieldPrimitive, FieldOperation, FeatureId, RenderModeId, LinkIconVisibility, ExportFormatId, MazeState,
@@ -51,15 +51,16 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const floor of file.floors.floors) {
       const ff = file.floorFields[floor.id];
-      const { squareShape, hexShape, triangleShape } = kindAndShapeFromConfig(ff.config);
+      const { squareShape, hexShape, triangleShape, cairoShape } = kindAndShapeFromConfig(ff.config);
       const freeFieldPoints = {
         square: new Set(ff.freeFieldPoints.square.map(([x, y]) => encodePoint(x, y))),
         hex: new Set(ff.freeFieldPoints.hex.map(([x, y]) => encodePoint(x, y))),
         triangle: new Set(ff.freeFieldPoints.triangle.map(([x, y]) => encodePoint(x, y))),
+        cairo: new Set(ff.freeFieldPoints.cairo.map(([x, y]) => encodePoint(x, y))),
       };
-      const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
+      const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, cairoShape, freeFieldPoints);
       floorFields[floor.id] = {
-        squareShape, hexShape, triangleShape,
+        squareShape, hexShape, triangleShape, cairoShape,
         savedConfigs: Object.fromEntries(ff.savedConfigs.map((c) => [c.type, c])),
         tessellationConfig: ff.config,
         freeFieldPoints,
