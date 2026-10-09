@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { splitNodeSemanticNames } from "../pixi/splitNodeNames";
-import type { SplitFaceKind } from "../pixi/splitFaceLayout";
+import { detectSplitSpecialShapeKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 
 // GitHub issue #487 — a split point whose face configuration matches a recognized special-split
 // topology gets semantic per-node names instead of "Node N". Named: degree-4 "bridge"/"diagonal",
@@ -24,6 +25,38 @@ describe("splitNodeSemanticNames", () => {
     ]);
     expect(names?.map((n) => n.full)).toEqual(["Corridor 1", "Corridor 2"]);
     expect(names?.map((n) => n.short)).toEqual(["Cor1", "Cor2"]);
+  });
+
+  it("names the Cairo divider by canonical face ownership, not raw row order", () => {
+    const order = cairoCanonicalFaceOrder(2, 1);
+    expect(order).toEqual([0, 3, 2, 4, 1]);
+    const raw = (faces: number[]): SplitFaceKind[] => Array.from({ length: 5 }, (_, i) => faces.includes(i) ? "passage" : "wall");
+    const rawKinds = [raw([order[1], order[4]]), raw([order[2], order[3]])];
+    expect(detectSplitSpecialShapeKind(rawKinds, order)).toBe("cairo_diagonal_divider");
+    const names = splitNodeSemanticNames([
+      N(raw([order[1], order[4]])),
+      N(raw([order[2], order[3]])),
+    ], order);
+    expect(names?.map((n) => n.full)).toEqual(["Corridor 2", "Corridor 1"]);
+    expect(names?.map((n) => n.short)).toEqual(["Cor2", "Cor1"]);
+  });
+
+  it("names the Cairo adjacent divider by its canonical face ownership", () => {
+    const names = splitNodeSemanticNames([
+      N(["wall", "passage", "passage", "wall", "wall"]),
+      N(["wall", "wall", "wall", "passage", "passage"]),
+    ]);
+    expect(names?.map((n) => n.full)).toEqual(["Corridor 1", "Corridor 2"]);
+    expect(names?.map((n) => n.short)).toEqual(["Cor1", "Cor2"]);
+  });
+
+  it("names the Cairo 2x3 bridge by its canonical face ownership", () => {
+    const names = splitNodeSemanticNames([
+      N(["passage", "wall", "passage", "passage", "wall"]),
+      N(["wall", "passage", "wall", "wall", "passage"]),
+    ]);
+    expect(names?.map((n) => n.full)).toEqual(["Fork", "Bridge"]);
+    expect(names?.map((n) => n.short)).toEqual(["Frk", "Brg"]);
   });
 
   it("names a hex bridge: node 0 Corridor, node 1 Bridge", () => {

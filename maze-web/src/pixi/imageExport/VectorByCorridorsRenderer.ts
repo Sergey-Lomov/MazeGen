@@ -843,7 +843,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         // reads as passing *underneath*, so nothing needs to cut a gap into it. Drawn once per
         // point (see `throughDrawnForPoint` above) — a `"hex_triple_bridge"` point's second entry
         // shares the exact same through corridor as its first.
-        if (!throughDrawnForPoint.has(shape.pointKey)) {
+        if (shape.throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
           throughDrawnForPoint.add(shape.pointKey);
           const [throughFrom, throughTo] = shape.throughLine;
           const { clipView: throughClipView } = clipViewAt();
@@ -1096,7 +1096,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
         const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
 
-        if (!throughDrawnForPoint.has(shape.pointKey)) {
+        if (shape.throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
           throughDrawnForPoint.add(shape.pointKey);
           const [throughFrom, throughTo] = shape.throughLine;
           const { clipView: throughClipView } = clipViewAt();

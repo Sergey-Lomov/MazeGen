@@ -13,6 +13,7 @@ import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
+import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -76,7 +77,10 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
       presetEndpoint(point, slotId), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, undefined,
     ));
-    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+    const semanticNames = splitNodeSemanticNamesFromKinds(
+      faceKindsByNode,
+      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+    );
 
     return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };
   }, [point, floors, floorFields, tessellationKind, hexOrientation, triOrientation, rawSplitPoints, rawConnections, level, prompt]);

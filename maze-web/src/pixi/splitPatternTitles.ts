@@ -137,6 +137,9 @@ const TITLE_MESSAGES: Record<string, () => string> = {
   "split_pattern_title.diagonal_divider": () => m["split_pattern_title.diagonal_divider"](),
   "split_pattern_title.double_bridge": () => m["split_pattern_title.double_bridge"](),
   "split_pattern_title.triple_corridor": () => m["split_pattern_title.triple_corridor"](),
+  "split_pattern_title.parallel_divider": () => m["split_pattern_title.parallel_divider"](),
+  "split_pattern_title.adjacent_divider": () => m["split_pattern_title.adjacent_divider"](),
+  "split_pattern_title.bridge_2x3": () => m["split_pattern_title.bridge_2x3"](),
 };
 
 /** Resolves a `titleKey` (from `titleKeyForTopology` or a `SplitNodeBlueprint`'s own field) to its

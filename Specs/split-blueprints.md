@@ -93,11 +93,13 @@ this only matters for a direct/programmatic call).
 `SplitSettingsDialog`'s pattern list offers the same built-in blueprints as a one-click "add a
 standard pattern" shortcut, converting a blueprint into a fresh `SplitPattern` and appending it —
 no editor opens, matching `handleAddPattern`'s own instant-add behavior for a blank pattern. No
-boundary/rotation concept applies here: a pattern isn't tied to any specific field point,
-`face_index` stays abstract until the generator applies it during actual generation, so this is a
-direct, unrotated conversion. Every declared face becomes a `Passage` requirement; every other face
-is simply absent from `faces[i]` (core already treats "no entry" as `Wall`). `weight` is always
-`1.0`, matching a freshly added blank pattern's default.
+boundary/rotation concept applies here: a pattern isn't tied to any specific field point. For a
+blueprint authored in native face order, conversion is direct and unrotated. A blueprint tagged
+`faceIndexMode: "cairo_canonical"` is translated to the native face slots of the stable Cairo
+anchor point before being stored; the resulting `SplitPattern` remains a normal native-slot
+pattern for the generator's tessellation-specific symmetry handling. Every declared face becomes a
+`Passage` requirement; every other face is simply absent from `faces[i]` (core already treats "no
+entry" as `Wall`). `weight` is always `1.0`, matching a freshly added blank pattern's default.
 
 ## UI
 
@@ -139,7 +141,7 @@ Named topologies (node order matches `buildSplitPassagesCore`'s own per-kind bra
 | `hex_triple_bridge` (three opposite pairs) | 3 | node 0 **"Corridor"**, node 1 **"Lower bridge"**, node 2 **"Upper bridge"** (row order) |
 | `hex_triple_corridor` (one opposite + two adjacent pairs) | 3 | the opposite-pair node (`facesByNode.findIndex(isOpposite)`) is **"Middle corridor"**; the two adjacent-pair nodes are **"Side corridor 1"** / **"Side corridor 2"**, ordered by their lowest owned face index. Returns `null` (not a partial result) if no opposite-pair node is found — a case `detectSplitSpecialShapeKind` already rules out, so this is a defensive guard only. |
 
-i18n keys: `split_node_name_corridor` / `_bridge` / `_corridor_n` / `_fork_n` / `_lower_bridge` /
+i18n keys: `split_node_name_corridor` / `_bridge` / `_corridor_n` / `_fork` / `_fork_n` / `_lower_bridge` /
 `_upper_bridge` / `_middle_corridor` / `_side_corridor_n` (each with a `_short` variant; `{n}` where
 numbered).
 
@@ -182,3 +184,27 @@ and `presetConnectionsSlice.test.ts` cover `applySplitBlueprint`/`applyPresetSpl
 store-level behavior: full replace of stale slots/edges, occupied-element migration, the
 out-of-degree face skip, and (preset only) the boundary-face skip and the explicit-wall-on-unused-face
 behavior.
+
+## Cairo template (issue #718)
+
+The degree-5 Cairo registry contains the first template, **Параллельный разделитель**. Cairo face index
+`0` is canonicalized to the unique edge whose endpoint corners have equal angles; indices `1..4`
+then follow the pentagon perimeter. Cor1 owns canonical faces `2-3`, while Cor2 owns `1-4`.
+
+The dedicated divider wall is the polyline corner `1-2` -> tile centre -> corner `3-4`. Marker
+anchors use the line from corner `2-3` to the midpoint of canonical edge `0`: Cor1 is at `1/4`
+and Cor2 at `3/4`. The blueprint is tagged `faceIndexMode: "cairo_canonical"`; concrete Cairo
+previews and point application translate these indices to the target tile's native face slots.
+
+The second degree-5 template is **Смежный разделитель**: Cor1 owns canonical faces `1-2`, Cor2
+owns `3-4`. Its walls are the complete canonical side `0` and the straight segment from corner
+`2-3` to the midpoint of side `0`. Let the centre of that separating segment be `D`; Cor1's
+marker anchor is halfway from `D` to the centre of edge `1`, and Cor2's is halfway from `D` to
+the centre of edge `4`.
+
+The third degree-5 template is **Мост 2 на 3**: the bridge node owns canonical faces `1-4`, and
+the fork node owns `0-2-3`. The bridge uses the existing tapered bridge silhouette, narrowing from
+face `1` to its centre deck and widening to face `4`. With special rendering enabled, the fork's
+ordinary passages are suppressed, so only the dedicated bridge geometry is drawn. The bridge marker
+is at the midpoint of the line joining the centres of faces `1` and `4`; the fork marker is at `1/3`
+of the line from corner `2-3` toward the centre of side `0`.

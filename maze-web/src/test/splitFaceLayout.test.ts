@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
@@ -257,6 +258,15 @@ describe("detectSplitSpecialShapeKind", () => {
   it("degree 4, 2 nodes: unchanged bridge/diagonal behavior", () => {
     expect(detectSplitSpecialShapeKind([passage([0, 2], 4), passage([1, 3], 4)])).toBe("bridge");
     expect(detectSplitSpecialShapeKind([passage([0, 1], 4), passage([2, 3], 4)])).toBe("diagonal");
+  });
+
+  it("recognizes the Cairo divider in canonical perimeter order", () => {
+    const order = cairoCanonicalFaceOrder(2, 1);
+    const raw = [passage([order[2], order[3]], 5), passage([order[1], order[4]], 5)];
+    expect(detectSplitSpecialShapeKind(raw, order)).toBe("cairo_diagonal_divider");
+    expect(detectSplitSpecialShapeKind([passage([2, 3], 5), passage([1, 4], 5)])).toBe("cairo_diagonal_divider");
+    expect(detectSplitSpecialShapeKind([passage([1, 2], 5), passage([3, 4], 5)])).toBe("cairo_adjacent_divider");
+    expect(detectSplitSpecialShapeKind([passage([0, 2, 3], 5), passage([1, 4], 5)])).toBe("cairo_bridge_2x3");
   });
 
   it("degree 4, 2 nodes: both opposite pairs on the SAME axis -> null, not bridge (GitHub issue #591)", () => {

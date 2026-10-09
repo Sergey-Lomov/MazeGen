@@ -21,7 +21,7 @@
  *  - `"hex_triple_corridor"` — the single opposite-face pair is the "Middle corridor"; the two
  *    adjacent-face nodes are "Side corridor 1" / "Side corridor 2" by ascending lowest face index. */
 
-import { detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
+import { canonicalizeFaceKinds, detectSplitSpecialShapeKind, connectedFaceIndices, circularDist, type SplitFaceKind } from "./splitFaceLayout";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import * as m from "~/paraglide/messages";
 
@@ -53,6 +53,10 @@ const forkN = (n: number): SemanticName => ({
   full: m["post_edit.split_node_name_fork_n"]({ n }),
   short: m["post_edit.split_node_name_fork_n_short"]({ n }),
 });
+const fork = (): SemanticName => ({
+  full: m["post_edit.split_node_name_fork"](),
+  short: m["post_edit.split_node_name_fork_short"](),
+});
 const lowerBridge = (): SemanticName => ({
   full: m["post_edit.split_node_name_lower_bridge"](),
   short: m["post_edit.split_node_name_lower_bridge_short"](),
@@ -73,7 +77,11 @@ const sideCorridorN = (n: number): SemanticName => ({
 /** Per-node semantic names for `faceKindsByNode` (each node's kind on every one of the point's
  *  faces, in `offsets`/row order — original node first, then each slot), or `null` if this point's
  *  topology has no registered names. A non-`null` result always has exactly one entry per node. */
-export function splitNodeSemanticNamesFromKinds(faceKindsByNode: SplitFaceKind[][]): SemanticName[] | null {
+export function splitNodeSemanticNamesFromKinds(
+  rawFaceKindsByNode: SplitFaceKind[][],
+  canonicalFaceOrder?: readonly number[],
+): SemanticName[] | null {
+  const faceKindsByNode = canonicalizeFaceKinds(rawFaceKindsByNode, canonicalFaceOrder);
   const kind = detectSplitSpecialShapeKind(faceKindsByNode);
   if (kind === null) return null;
 
@@ -91,6 +99,37 @@ export function splitNodeSemanticNamesFromKinds(faceKindsByNode: SplitFaceKind[]
     case "diagonal":
     case "hex_diagonal":
       return [corridorN(1), corridorN(2)];
+
+    case "cairo_diagonal_divider": {
+      const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
+      const names: SemanticName[] = new Array(faceKindsByNode.length);
+      facesByNode.forEach((faces, index) => {
+        if (isPair(faces, 2, 3)) names[index] = corridorN(1);
+        else if (isPair(faces, 1, 4)) names[index] = corridorN(2);
+      });
+      return names.every(Boolean) ? names : null;
+    }
+
+    case "cairo_adjacent_divider": {
+      const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
+      const names: SemanticName[] = new Array(faceKindsByNode.length);
+      facesByNode.forEach((faces, index) => {
+        if (isPair(faces, 1, 2)) names[index] = corridorN(1);
+        else if (isPair(faces, 3, 4)) names[index] = corridorN(2);
+      });
+      return names.every(Boolean) ? names : null;
+    }
+
+    case "cairo_bridge_2x3": {
+      const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
+      const isFork = (faces: number[]) => faces.length === 3 && [0, 2, 3].every((face) => faces.includes(face));
+      const names: SemanticName[] = new Array(faceKindsByNode.length);
+      facesByNode.forEach((faces, index) => {
+        if (isPair(faces, 1, 4)) names[index] = bridge();
+        else if (isFork(faces)) names[index] = fork();
+      });
+      return names.every(Boolean) ? names : null;
+    }
 
     case "hex_diagonal_divider":
       return [forkN(1), forkN(2)];
@@ -129,8 +168,8 @@ export function splitNodeSemanticNamesFromKinds(faceKindsByNode: SplitFaceKind[]
 
 /** Per-node semantic names for `nodes` (in row order: original node first, then each slot), or
  *  `null` if this point's topology has no registered names. */
-export function splitNodeSemanticNames(nodes: SplitNodeFaces[]): SemanticName[] | null {
-  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)));
+export function splitNodeSemanticNames(nodes: SplitNodeFaces[], canonicalFaceOrder?: readonly number[]): SemanticName[] | null {
+  return splitNodeSemanticNamesFromKinds(nodes.map((n) => n.faces.map((f) => f.kind)), canonicalFaceOrder);
 }
 
 /** One name for the whole split point's recognized shape (not per-node) — e.g. for
@@ -146,6 +185,12 @@ export function splitPointShapeName(kind: SplitSpecialShapeKind): string {
       return m["post_edit.split_shape_name_diagonal"]();
     case "hex_diagonal_divider":
       return m["post_edit.split_shape_name_diagonal_divider"]();
+    case "cairo_diagonal_divider":
+      return m["post_edit.split_shape_name_cairo_divider_2x2"]();
+    case "cairo_adjacent_divider":
+      return m["post_edit.split_shape_name_cairo_adjacent_divider"]();
+    case "cairo_bridge_2x3":
+      return m["post_edit.split_shape_name_cairo_bridge_2x3"]();
     case "hex_triple_bridge":
       return m["post_edit.split_shape_name_triple_bridge"]();
     case "hex_triple_corridor":

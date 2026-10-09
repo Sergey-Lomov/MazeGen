@@ -6,6 +6,7 @@ import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnecto
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
+import { cairoCanonicalFaceOrder } from "../../cairoGeometry";
 
 const BRIDGE_DECK_WIDTH_FRAC = 0.6;
 
@@ -170,13 +171,15 @@ function buildDiagonalShape(
  *  crossing point without needing the caller to say where that is. */
 function buildBridgeShape(
   pointKey: string,
-  throughFaces: [Seg, Seg],
+  throughFaces: [Seg, Seg] | null,
   crossFaces: [Seg, Seg],
   taperFrac: number = SQUARE_BRIDGE_TAPER_FRAC,
   deckWidthFrac: number = BRIDGE_DECK_WIDTH_FRAC,
 ): SplitSpecialShape {
-  const throughMid0 = { x: (throughFaces[0].v0.x + throughFaces[0].v1.x) / 2, y: (throughFaces[0].v0.y + throughFaces[0].v1.y) / 2 };
-  const throughMid1 = { x: (throughFaces[1].v0.x + throughFaces[1].v1.x) / 2, y: (throughFaces[1].v0.y + throughFaces[1].v1.y) / 2 };
+  const throughLine = throughFaces ? [
+    { x: (throughFaces[0].v0.x + throughFaces[0].v1.x) / 2, y: (throughFaces[0].v0.y + throughFaces[0].v1.y) / 2 },
+    { x: (throughFaces[1].v0.x + throughFaces[1].v1.x) / 2, y: (throughFaces[1].v0.y + throughFaces[1].v1.y) / 2 },
+  ] as [Point, Point] : undefined;
   const [pairB0, pairB1] = nearestEndpointPairing(crossFaces[0], crossFaces[1]);
   const endsAt = (face: Seg, slot: 0 | 1) => (slot === 0 ? face.v0 : face.v1);
   const end0 = { v0: endsAt(crossFaces[0], 0), v1: endsAt(crossFaces[0], 1) };
@@ -200,7 +203,7 @@ function buildBridgeShape(
     crossFaces: [end0, end1],
     edge0: buildEdge(end0.v0, end1.v0),
     edge1: buildEdge(end0.v1, end1.v1),
-    throughLine: [throughMid0, throughMid1],
+    throughLine,
   };
 }
 
@@ -381,8 +384,61 @@ export function buildSplitPassagesCore<Id>(
     const faceKindsByNode: SplitFaceKind[][] = pointNodes.map((_, nodeIndex) =>
       kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
     );
-    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode);
-    if (specialShapeKind === "diagonal") {
+    const canonicalFaceOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(px, py) : undefined;
+    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalFaceOrder);
+    if (specialShapeKind === "cairo_diagonal_divider") {
+      // Cairo's canonical template separates canonical faces 1-2 from 3-4. Its divider is a
+      // deliberately bent wall: from the corner shared by 1/2 to the tile centre, then to the
+      // corner shared by 3/4. The node assignments themselves are independent of row order.
+      const verts = getCellVertices(px, py, cfg);
+      if (verts && canonicalFaceOrder && canonicalFaceOrder.length === 5) {
+        const cornerFor = (canonicalA: number, canonicalB: number): Point | null => {
+          const index = sharedCornerIndex(edgeVerts, canonicalFaceOrder[canonicalA], canonicalFaceOrder[canonicalB]);
+          return index === null ? null : verts[index];
+        };
+        const corner12 = cornerFor(1, 2);
+        const corner34 = cornerFor(3, 4);
+        if (corner12 && corner34) {
+          specialShapes.push(buildDiagonalShape(pointKey, corner12, corner34, undefined, [corner12, center, corner34]));
+        }
+      }
+    } else if (specialShapeKind === "cairo_adjacent_divider") {
+      // The adjacent Cairo template has two wall pieces: the complete canonical side 0 and a
+      // straight segment from the corner shared by faces 2/3 to the midpoint of side 0.
+      const verts = getCellVertices(px, py, cfg);
+      if (verts && canonicalFaceOrder && canonicalFaceOrder.length === 5) {
+        const edge0 = edgeVerts[canonicalFaceOrder[0]];
+        const corner23Index = sharedCornerIndex(edgeVerts, canonicalFaceOrder[2], canonicalFaceOrder[3]);
+        if (edge0 && corner23Index !== null) {
+          const side0Start = verts[edge0[0]], side0End = verts[edge0[1]];
+          const side0Mid = { x: (side0Start.x + side0End.x) / 2, y: (side0Start.y + side0End.y) / 2 };
+          const corner23 = verts[corner23Index];
+          specialShapes.push(buildDiagonalShape(pointKey, side0Start, side0End, undefined, [side0Start, side0End]));
+          specialShapes.push(buildDiagonalShape(pointKey, corner23, side0Mid, undefined, [corner23, side0Mid]));
+        }
+      }
+    } else if (specialShapeKind === "cairo_bridge_2x3") {
+      // The Cairo 2x3 bridge is a tapered bridge from canonical face 1 to face 4. The other node
+      // owns three faces, but special-shape renderers suppress all ordinary passages at this point,
+      // so only the bridge deck is emitted here.
+      const perNodeFaces = faceKindsByNode.map(connectedFaces);
+      const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
+      const bridgeNodeIndex = perNodeFaces.findIndex((faces) => {
+        if (!canonicalFaceOrder) return false;
+        const canonicalFaces = canonicalFaceOrder.map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1).filter((face) => face >= 0);
+        return isPair(canonicalFaces, 1, 4);
+      });
+      if (canonicalFaceOrder && bridgeNodeIndex >= 0) {
+        const bridgeFaces = [faceInputs[canonicalFaceOrder[1]], faceInputs[canonicalFaceOrder[4]]] as [Seg, Seg];
+        specialShapes.push(buildBridgeShape(
+          pointKey,
+          null,
+          bridgeFaces,
+          SQUARE_BRIDGE_TAPER_FRAC,
+          BRIDGE_DECK_WIDTH_FRAC,
+        ));
+      }
+    } else if (specialShapeKind === "diagonal") {
       // The diagonal must run through the two corners where a face of node 0 meets a face of
       // node 1 (so every one of node 0's faces ends up strictly on one side, node 1's on the
       // other) — NOT the corner shared between node 0's own two faces (that corner is where both

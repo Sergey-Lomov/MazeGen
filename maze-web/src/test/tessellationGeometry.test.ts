@@ -22,6 +22,7 @@ vi.mock("../pixi/cartesianCache", () => ({
 }));
 
 const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
+const { cairoCanonicalFaceOrder } = await import("../pixi/cairoGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -138,6 +139,89 @@ describe("rotateFaceIndex", () => {
     const cfg = { type: "square", width: 3, height: 3 } as const;
     expect(rotateFaceIndex(cfg, 0, 0, 0, 1)).toBe(1);
     expect(rotateFaceIndex(cfg, 0, 0, 0, -1)).toBe(3);
+  });
+});
+
+describe("Cairo special split node anchors", () => {
+  it("places Cor1 at 1/4 and Cor2 at 3/4 from corner 2/3 toward face-0 midpoint", () => {
+    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const vertices = getCellVertices(...point, cfg)!;
+    const { edgeVerts } = getNeighborData(cfg, ...point);
+    const shared = (a: number, b: number) => {
+      const [a0, a1] = edgeVerts[a], [b0, b1] = edgeVerts[b];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : -1;
+      return vertices[index];
+    };
+    const from = shared(order[2], order[3]);
+    const edge0 = edgeVerts[order[0]];
+    const to = { x: (vertices[edge0[0]].x + vertices[edge0[1]].x) / 2, y: (vertices[edge0[0]].y + vertices[edge0[1]].y) / 2 };
+    const pointAt = (t: number) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+    const center = getCellCenter(...point, cfg);
+    expect(specialSplitNodePoint(cfg, center, "cairo_diagonal_divider", [order[2], order[3]], 0, [], point)).toEqual(pointAt(1 / 4));
+    expect(specialSplitNodePoint(cfg, center, "cairo_diagonal_divider", [order[1], order[4]], 1, [], point)).toEqual(pointAt(3 / 4));
+  });
+
+  it("places adjacent-divider markers between the divider center and edge 1/4 centers", () => {
+    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const vertices = getCellVertices(...point, cfg)!;
+    const { edgeVerts } = getNeighborData(cfg, ...point);
+    const shared = (a: number, b: number) => {
+      const [a0, a1] = edgeVerts[a], [b0, b1] = edgeVerts[b];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : -1;
+      return vertices[index];
+    };
+    const corner23 = shared(order[2], order[3]);
+    const edge0 = edgeVerts[order[0]];
+    const dividerCenter = {
+      x: (corner23.x + (vertices[edge0[0]].x + vertices[edge0[1]].x) / 2) / 2,
+      y: (corner23.y + (vertices[edge0[0]].y + vertices[edge0[1]].y) / 2) / 2,
+    };
+    const edgeCenter = (face: number) => {
+      const [a, b] = edgeVerts[face];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    };
+    const midpoint = (from: typeof dividerCenter, to: ReturnType<typeof edgeCenter>) => ({
+      x: (from.x + to.x) / 2, y: (from.y + to.y) / 2,
+    });
+    const center = getCellCenter(...point, cfg);
+    expect(specialSplitNodePoint(cfg, center, "cairo_adjacent_divider", [order[1], order[2]], 0, [], point))
+      .toEqual(midpoint(dividerCenter, edgeCenter(order[1])));
+    expect(specialSplitNodePoint(cfg, center, "cairo_adjacent_divider", [order[3], order[4]], 1, [], point))
+      .toEqual(midpoint(dividerCenter, edgeCenter(order[4])));
+  });
+
+  it("places Cairo 2x3 bridge at the edge-1/edge-4 midpoint and fork at 1/3", () => {
+    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const vertices = getCellVertices(...point, cfg)!;
+    const { edgeVerts } = getNeighborData(cfg, ...point);
+    const shared = (a: number, b: number) => {
+      const [a0, a1] = edgeVerts[a], [b0, b1] = edgeVerts[b];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : -1;
+      return vertices[index];
+    };
+    const corner23 = shared(order[2], order[3]);
+    const edgeCenter = (face: number) => {
+      const [a, b] = edgeVerts[face];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    };
+    const edge0Center = edgeCenter(order[0]);
+    const forkAnchor = {
+      x: corner23.x + (edge0Center.x - corner23.x) / 3,
+      y: corner23.y + (edge0Center.y - corner23.y) / 3,
+    };
+    const bridgeAnchor = {
+      x: (edgeCenter(order[1]).x + edgeCenter(order[4]).x) / 2,
+      y: (edgeCenter(order[1]).y + edgeCenter(order[4]).y) / 2,
+    };
+    const center = getCellCenter(...point, cfg);
+    expect(specialSplitNodePoint(cfg, center, "cairo_bridge_2x3", [order[0], order[2], order[3]], 0, [], point)).toEqual(forkAnchor);
+    expect(specialSplitNodePoint(cfg, center, "cairo_bridge_2x3", [order[1], order[4]], 1, [], point)).toEqual(bridgeAnchor);
   });
 });
 

@@ -5,6 +5,7 @@ describe("blueprintsForDegree", () => {
   it("returns the built-in set for a known degree", () => {
     expect(blueprintsForDegree(3)).toHaveLength(1);
     expect(blueprintsForDegree(4)).toHaveLength(2);
+    expect(blueprintsForDegree(5)).toHaveLength(3);
     expect(blueprintsForDegree(6)).toHaveLength(7);
   });
 
@@ -17,8 +18,34 @@ describe("blueprintsForDegree", () => {
     });
   });
 
-  it("returns an empty array for an unknown degree", () => {
-    expect(blueprintsForDegree(5)).toEqual([]);
+  it("includes the Cairo 2x2 divider in canonical face order", () => {
+    expect(blueprintsForDegree(5)).toContainEqual({
+      id: 0,
+      degree: 5,
+      nodeFaces: [[2, 3], [1, 4]],
+      titleKey: "split_pattern_title.parallel_divider",
+      faceIndexMode: "cairo_canonical",
+    });
+  });
+
+  it("includes the Cairo adjacent divider in canonical face order", () => {
+    expect(blueprintsForDegree(5)).toContainEqual({
+      id: 1,
+      degree: 5,
+      nodeFaces: [[1, 2], [3, 4]],
+      titleKey: "split_pattern_title.adjacent_divider",
+      faceIndexMode: "cairo_canonical",
+    });
+  });
+
+  it("includes the Cairo 2x3 bridge in canonical face order", () => {
+    expect(blueprintsForDegree(5)).toContainEqual({
+      id: 2,
+      degree: 5,
+      nodeFaces: [[0, 2, 3], [1, 4]],
+      titleKey: "split_pattern_title.bridge_2x3",
+      faceIndexMode: "cairo_canonical",
+    });
   });
 });
 
@@ -90,6 +117,13 @@ describe("blueprintToSplitPattern", () => {
     expect(pattern.node_count).toBe(2);
     expect(pattern.faces[1]).toEqual([]);
   });
+
+  it("stores Cairo canonical blueprint faces in the anchor tile's native slots", () => {
+    const blueprint = blueprintsForDegree(5)[0];
+    const pattern = blueprintToSplitPattern(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
+    expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 4]);
+    expect(pattern.faces[1].map((face) => face.face_index)).toEqual([3, 1]);
+  });
 });
 
 describe("tileNodesForBlueprint", () => {
@@ -99,5 +133,12 @@ describe("tileNodesForBlueprint", () => {
     expect(nodes).toHaveLength(2);
     expect(nodes[0].faces.map((f) => f.kind)).toEqual(["passage", "wall", "passage", "wall"]);
     expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage"]);
+  });
+
+  it("resolves Cairo canonical faces for a concrete tile preview", () => {
+    const blueprint = blueprintsForDegree(5)[0];
+    const nodes = tileNodesForBlueprint(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "wall", "passage"]);
+    expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage", "wall"]);
   });
 });

@@ -5,7 +5,7 @@ import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitPattern } from "../wasm/types";
-import { cairoCenter, CAIRO_CENTER_SCALE, cairoEdgeVerts, cairoNeighborOffsets, cairoVertices, isCairoPoint } from "./cairoGeometry";
+import { cairoCenter, CAIRO_CENTER_SCALE, cairoCanonicalFaceOrder, cairoEdgeVerts, cairoNeighborOffsets, cairoVertices, isCairoPoint } from "./cairoGeometry";
 
 export type Pos = { x: number; y: number };
 
@@ -443,12 +443,11 @@ export function rotateFaceIndex(
   if (n === 0) return faceIndex;
   if (!cfg.type.startsWith("cairo")) return (faceIndex + direction + n) % n;
 
-  const order = offsets
-    .map(([dx, dy], index) => ({ index, angle: Math.atan2(dy, dx) }))
-    .sort((a, b) => a.angle - b.angle);
-  const position = order.findIndex(({ index }) => index === faceIndex);
+  const order = cairoCanonicalFaceOrder(x, y);
+  const position = order.indexOf(faceIndex);
   if (position === -1) return faceIndex;
-  return order[(position + direction + n) % n].index;
+  // The established clockwise UI convention is opposite to this polygon traversal direction.
+  return order[(position - direction + n) % n];
 }
 
 /** Web-authored `face_index` values (GitHub issue #222's `SplitPattern`, authored/edited via

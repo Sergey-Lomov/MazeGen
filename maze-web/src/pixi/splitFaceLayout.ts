@@ -11,6 +11,16 @@
 
 import type { SplitSpecialShapeKind } from "./renderers/types";
 
+/** Reorders a dense face-kind matrix from the tessellation's native face slots into a supplied
+ * canonical perimeter order. Non-Cairo callers omit the order and keep their existing indices. */
+export function canonicalizeFaceKinds(
+  faceKindsByNode: SplitFaceKind[][],
+  canonicalFaceOrder?: readonly number[],
+): SplitFaceKind[][] {
+  if (!canonicalFaceOrder) return faceKindsByNode;
+  return faceKindsByNode.map((kinds) => canonicalFaceOrder.map((rawIndex) => kinds[rawIndex] ?? "wall"));
+}
+
 /** `"none"` deliberately doesn't exist here — every face always has a real decided-or-default
  *  kind (`wall` for post-edit, `undefined`/optional for presets); "no decision yet" is represented
  *  by `undefined`/`wall` themselves, not a separate absence state. */
@@ -87,10 +97,31 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
  *  (GitHub issue #477): every special shape draws a symmetric two-way silhouette with no arrowhead,
  *  so a recognized shape would hide the directionality. Falling back to `null` makes the caller
  *  render the ordinary per-node hub connectors, which draw the one-way arrow. */
-export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
+export function detectSplitSpecialShapeKind(
+  rawFaceKindsByNode: SplitFaceKind[][],
+  canonicalFaceOrder?: readonly number[],
+): SplitSpecialShapeKind | null {
+  const faceKindsByNode = canonicalizeFaceKinds(rawFaceKindsByNode, canonicalFaceOrder);
   const degree = faceKindsByNode[0]?.length ?? 0;
   const nodeCount = faceKindsByNode.length;
   if (faceKindsByNode.some((kinds) => kinds.some((k) => k === "one_way_out" || k === "one_way_in"))) return null;
+  if (degree === 5) {
+    if (nodeCount !== 2) return null;
+    const connectedIndices = faceKindsByNode.map((kinds) => connectedIndicesOf(kinds));
+    const hasPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
+    const hasTriple = (faces: number[], expected: number[]) => faces.length === expected.length && expected.every((face) => faces.includes(face));
+    if ((hasTriple(connectedIndices[0], [0, 2, 3]) && hasPair(connectedIndices[1], 1, 4)) ||
+      (hasTriple(connectedIndices[1], [0, 2, 3]) && hasPair(connectedIndices[0], 1, 4))) {
+      return "cairo_bridge_2x3";
+    }
+    if ((hasPair(connectedIndices[0], 2, 3) && hasPair(connectedIndices[1], 1, 4)) ||
+      (hasPair(connectedIndices[0], 1, 4) && hasPair(connectedIndices[1], 2, 3))) {
+      return "cairo_diagonal_divider";
+    }
+    return (hasPair(connectedIndices[0], 1, 2) && hasPair(connectedIndices[1], 3, 4)) ||
+      (hasPair(connectedIndices[0], 3, 4) && hasPair(connectedIndices[1], 1, 2))
+      ? "cairo_adjacent_divider" : null;
+  }
   if (degree !== 4 && degree !== 6) return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;

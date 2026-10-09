@@ -1417,7 +1417,11 @@ describe("VectorByCorridorsRenderer", () => {
 
     it("bridge special shape: draws no background gap stroke when splitGapWidth is 0", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
-        passages: [{ color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 }, wallSegments: [], connectors: [] }],
+        passages: [{
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
+          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
+          connectors: [],
+        }],
         wallFaces: [],
         specialShapes: [{
           kind: "bridge", pointKey: "0,0",
@@ -1430,10 +1434,31 @@ describe("VectorByCorridorsRenderer", () => {
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
       const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.stroke.mock.calls.some(([style]) => (style as { color: number }).color === 0xaaaaaa)).toBe(false);
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
       const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number }));
       expect(allStrokeCalls.some((s) => s.color === settingsA.background)).toBe(false);
+    });
+
+    it("bridge special shape without a through line draws only the cross bridge", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{ color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 }, wallSegments: [], connectors: [] }],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "bridge", pointKey: "0,0",
+          crossFaces: [{ v0: { x: 20, y: 0 }, v1: { x: 20, y: 0 } }, { v0: { x: 20, y: 40 }, v1: { x: 20, y: 40 } }],
+          edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
+          edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number }));
+      expect(allStrokeCalls.filter((s) => s.color === settingsA.color && s.width === settingsA.thickness)).toHaveLength(1);
     });
 
     it("diagonal special shape: draws each node's connector as a bowed ribbon (bezierCurveTo), not a straight line, when splitDiagonalBowAmount > 0, in the plain corridor color", () => {

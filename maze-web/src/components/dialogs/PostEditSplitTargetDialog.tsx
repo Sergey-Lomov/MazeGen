@@ -10,6 +10,7 @@ import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
+import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -64,8 +65,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     const geometry = buildSplitFloorGeometry(point, level ?? 0, allNodes, draftEdges, draftTeleports, splitPoints, cfg);
     if (!geometry) return null;
     const { pointNodes, floorNodes, edges, faceKindsByNode } = geometry;
-    const special = detectSplitSpecialShapeKind(faceKindsByNode) !== null;
-    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined;
+    const special = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder) !== null;
+    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode, canonicalOrder);
 
     return { pointNodes, floorNodes, edges, special, semanticNames };
   }, [point, allNodes, level, cfg, draftEdges, draftTeleports, splitPoints]);
