@@ -276,7 +276,7 @@ export const PC = {
 function markerColors(fill: ColorField, border: ColorField | null, marker: MarkerSettings, text?: ColorField | null): ProjectColorEntry[] {
   const rows = [fill.at(marker.fillColor)];
   if (border) rows.push(border.at(marker.borderColor));
-  if (text && marker.textColor !== undefined) rows.push(text.at(marker.textColor));
+  if (text && marker.textColor !== undefined && marker.textEnabled !== false) rows.push(text.at(marker.textColor));
   return rows;
 }
 

@@ -312,6 +312,23 @@ describe("selectActiveProfileColors", () => {
     expect(names).toContain(PC.markerIndexBorder.name());
   });
 
+  it("lists start/finish caption colors only while the caption is drawn (textEnabled)", () => {
+    const withText = (textEnabled: boolean) => makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+        startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, textColor: 0x112233, textEnabled },
+        finishMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.finishMarker, textColor: 0x112233, textEnabled },
+      },
+    });
+    const on = selectActiveProfileColors(withText(true)).map((c) => c.name);
+    expect(on).toContain(PC.startText.name());
+    expect(on).toContain(PC.finishText.name());
+    const off = selectActiveProfileColors(withText(false)).map((c) => c.name);
+    expect(off).not.toContain(PC.startText.name());
+    expect(off).not.toContain(PC.finishText.name());
+  });
+
   it("hides markerIndex border color when it follows the marker color", () => {
     const state = makeState({
       openRenderModeSettings: "vector_by_walls",

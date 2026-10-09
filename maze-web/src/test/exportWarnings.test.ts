@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings } from "../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
@@ -721,5 +721,63 @@ describe("computeVectorByCorridorsWarnings", () => {
       );
       expect(warnings.filter((w) => w.id === "vertical_arrow_low_contrast")).toHaveLength(1);
     });
+  });
+});
+
+describe("text overflow warnings (GitHub issue #707)", () => {
+  const nodes = [n(0, 0, 0, 0), n(1, 1, 0, 0)];
+  const edges = [e(0, 1), e(1, 0)];
+  const marker = (overrides: Partial<MarkerSettings>): MarkerSettings => ({ ...defaultMarker, size: 20, text: "S", ...overrides });
+  const overflow = (settings: VectorByWallsSettings, start: number | null = 0, finish: number | null = 1) =>
+    computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, start, finish).filter((w) => w.id === "marker_text_overflow");
+
+  it("flags a start/finish caption larger than its marker and highlights that node", () => {
+    const settings = baseSettings({ startMarker: marker({ textSize: 32 }), finishMarker: marker({ textSize: 6 }) });
+    const w = overflow(settings);
+    expect(w).toHaveLength(1);
+    expect(w[0].nodes).toEqual([0]);
+  });
+
+  it("does not flag a small caption, a hidden caption or an off-floor endpoint", () => {
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 6 }), finishMarker: marker({ textSize: 6 }) }))).toHaveLength(0);
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textEnabled: false }), finishMarker: marker({ text: "" }) }))).toHaveLength(0);
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32 }) }), null, null)).toHaveLength(0);
+  });
+
+  it("reports the same caveat in corridors mode", () => {
+    const settings = baseCorridorsSettings({ startMarker: marker({ textSize: 32 }) });
+    const w = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null).filter((x) => x.id === "marker_text_overflow");
+    expect(w).toHaveLength(1);
+  });
+
+  it("flags oversized elevator floor badges once per target and highlights the elevator", () => {
+    const elevatorNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1), n(2, 2, 0, 2), n(3, 3, 0, 3)];
+    const elevatorEdges: EdgeDto[] = [
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 0, to: 2, kind: "elevator" },
+      { from: 0, to: 3, kind: "elevator" },
+    ];
+    const badges = baseSettings().elevatorBadges;
+    const run = (textSize: number) => computeVectorByWallsWarnings(
+      elevatorNodes, elevatorEdges, squareCfg, baseSettings({ elevatorBadges: { ...badges, enabled: true, size: 10, textSize } }), null, null, elevatorNodes,
+    ).filter((w) => w.id === "elevator_badge_text_overflow");
+    expect(run(6)).toHaveLength(0);
+    const w = run(40);
+    expect(w).toHaveLength(1);
+    expect(w[0].nodes.every((id) => id === 0)).toBe(true);
+    expect(w[0].crossFloorTargets).toEqual([
+      { nodeId: 0, targetFloorIndex: 1 },
+      { nodeId: 0, targetFloorIndex: 2 },
+      { nodeId: 0, targetFloorIndex: 3 },
+    ]);
+  });
+
+  it("collects labels across floors per size control for auto-fit", () => {
+    const settings = baseSettings({ startMarker: marker({}), finishMarker: marker({ text: "" }) });
+    const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
+    expect(items.start).toEqual([{ text: "S", fontWeight: "bold", shape: "circle", plateSize: 20 }]);
+    expect(items.finish).toEqual([]);
+    expect(items.elevator).toEqual([]);
+    expect(items.teleport).toEqual([]);
   });
 });

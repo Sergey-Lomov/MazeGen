@@ -317,7 +317,8 @@ the edited field's current working color. The active export renderer (`Vector by
 by corridors`) is evaluated with the working value applied to a cloned settings object, so changing
 either color updates the warning immediately without changing the store before Apply. Warnings use
 the renderer's existing applicable rules and only retains a warning when the warning's semantic color
-role is the field currently being edited. The entries reuse the export settings panel's warning
+role is one of the roles of the field currently being edited. A field may carry several roles: start/finish/elevator-badge fill are also `label_background` and the matching text colors `label_text` (the combined `label_low_contrast` warning, GitHub issue #707 follow-up), so the picker of those fields shows it.
+Start/finish caption colors (`PC.startText`/`PC.finishText`) are listed in "Project colors" only while the caption is drawn (`textEnabled !== false`); they are priority colors of the marker's own fill/border and of each other, and the elevator badge text lists the badge fill and border. The entries reuse the export settings panel's warning
 bubble appearance, but omit the info button and are not clickable (there is no details modal). This
 block is separate from the export settings panel's Problems section; its visibility follows
 `showColorWarnings` and it supports both vector renderers.

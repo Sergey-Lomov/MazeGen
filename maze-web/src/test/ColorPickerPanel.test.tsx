@@ -167,6 +167,35 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
   });
 });
 
+describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      ...baseStoreState(),
+      showColorWarnings: true,
+      openRenderModeSettings: "vector_by_walls",
+      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [{ from: 0, to: 1, kind: "basic" as const }],
+      start: 0,
+      finish: null,
+      // Start caption color equals the start marker fill -> label_low_contrast.
+      vectorByWallsSettings: baseWallsSettings({
+        gridColor: 0x808080, background: 0xffffff,
+        startMarker: { shape: "circle", cornerStyle: "miter", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 20, text: "S", textColor: 0x00ff00 },
+      }),
+    });
+  });
+
+  it.each([
+    ["start caption color", () => PC.startText.name()],
+    ["start marker fill (the caption's background)", () => PC.startFill.name()],
+  ])("shows the label contrast warning in the picker of the %s", (_label, fieldName) => {
+    render(<ColorPickerPanel color={0x00ff00} onApply={noop} onClose={noop} fieldName={fieldName()} />);
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+    expect(screen.getByText(m["image_export.warning.label_low_contrast"]())).toBeInTheDocument();
+  });
+});
+
 describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
   beforeEach(() => {
     useMazeStore.setState({

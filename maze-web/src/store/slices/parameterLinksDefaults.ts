@@ -69,6 +69,14 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("markerBorderWidth", "elevatorBadges.borderWidth", false),
   link("gapWidth", "teleportFloorBadge.gapWidth", false),
   link("gapWidth", "elevatorBadges.gapWidth", false),
+  link("markerTextSize", "startMarker.textSize", false),
+  link("markerTextSize", "finishMarker.textSize", false),
+  link("markerTextSize", "teleportFloorBadge.textSize", false),
+  link("markerTextSize", "elevatorBadges.textSize", false),
+  link("markerTextFontWeight", "startMarker.textFontWeight", false),
+  link("markerTextFontWeight", "finishMarker.textFontWeight", false),
+  link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
+  link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — the panel-level group
   // above chains into this one (cornerStyle -> verticalCornerStyle, etc.), which in turn drives the
@@ -177,6 +185,14 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("markerBorderWidth", "elevatorBadges.borderWidth", false),
   link("gapWidth", "teleportFloorBadge.gapWidth", false),
   link("gapWidth", "elevatorBadges.gapWidth", false),
+  link("markerTextSize", "startMarker.textSize", false),
+  link("markerTextSize", "finishMarker.textSize", false),
+  link("markerTextSize", "teleportFloorBadge.textSize", false),
+  link("markerTextSize", "elevatorBadges.textSize", false),
+  link("markerTextFontWeight", "startMarker.textFontWeight", false),
+  link("markerTextFontWeight", "finishMarker.textFontWeight", false),
+  link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
+  link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — see
   // `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment. "Vector by corridors" has no decorative

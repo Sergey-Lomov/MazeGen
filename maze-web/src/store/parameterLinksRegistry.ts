@@ -199,6 +199,8 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   markerSize: descriptor("number", m["image_export.param_links.shared_marker_size"](), G.sharedStyle()),
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
+  markerTextSize: descriptor("number", m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle()),
+  markerTextFontWeight: descriptor("labelFontWeight", m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle(), formatElevatorBadgesFontWeight),
   // `verticalSize`/`verticalArrowSize` are abstract-only (GitHub issue #677 follow-up) — the
   // decorative style has its own dedicated `verticalDecorativeSize`/`verticalDecorativeArrowSize`
   // pair below, since a decorative "size" (the stairs line's length) and "arrow size" (the arrow
@@ -378,6 +380,8 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   markerSize: descriptor("number", m["image_export.param_links.shared_marker_size"](), G.sharedStyle()),
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
+  markerTextSize: descriptor("number", m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle()),
+  markerTextFontWeight: descriptor("labelFontWeight", m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle(), formatElevatorBadgesFontWeight),
   verticalCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_corner_style"](), G.verticalSharedStyle()),
   verticalShape: descriptor("markerShape", m["image_export.param_links.vertical_shared_shape"](), G.verticalSharedStyle()),
   verticalSize: descriptor("number", m["image_export.param_links.vertical_shared_size"](), G.verticalSharedStyle()),

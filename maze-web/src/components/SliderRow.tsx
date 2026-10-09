@@ -20,9 +20,12 @@ interface Props {
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — shrinks
    *  the slider's own `flex: 1` track, never the label, per that issue's own spec. */
   resetButton?: React.ReactNode;
+  /** Extra action button rendered between the value and `resetButton` (GitHub issue #707's
+   *  per-size "Auto-fit" button). */
+  trailingAction?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton, trailingAction, onPointerDown, onPointerUp, onPointerCancel, onBlur }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -44,6 +47,7 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           onBlur={onBlur}
         />
         <span style={sharedStyles.sliderRowValue}>{format ? format(value) : value.toFixed(2)}</span>
+        {trailingAction}
         {resetButton}
       </div>
       {description && <div style={{ ...typography.caption, lineHeight: 1.4 }}>{description}</div>}

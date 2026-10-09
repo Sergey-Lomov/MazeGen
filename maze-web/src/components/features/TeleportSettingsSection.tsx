@@ -482,6 +482,7 @@ export function TeleportSettingsSection<P extends string>({
               priorityColors={floorBadgeTextColorPriority}
               defaultColor={floorBadgeTextColorDefault}
               fieldName={floorBadgeTextColorFieldName}
+              autoFitKind="teleport"
             />
           </div>
         </>

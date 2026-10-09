@@ -133,6 +133,17 @@ drawn over the floor and the floor remains the relevant base surface even when a
 - `elevator_badges_overlap` — elevator floor-number badges overlap one another under the current
   placement and size settings.
 - `elevator_badges_too_many` — a badge row exceeds its available per-side capacity.
+- `marker_text_overflow` / `elevator_badge_text_overflow` / `teleport_badge_text_overflow` (GitHub
+  issue #707) — a start/finish caption, elevator floor-number badge or cross-floor teleport badge
+  label does not fit its plate. Shared by both renderers. "Fits" means every point of the label's glyph-ink outline (boundary pixels of the baked MSDF
+  atlas, `pixi/textFit.ts`; the glyph bounding rectangle when the atlas pixels can't be read),
+  centred as the label is drawn, lies inside the plate's **actual shape** (circle, star, cross, ...;
+  the allowed size therefore depends on `shape`) of a plate 1 px smaller than `size` (safety margin).
+  Only labels that are actually drawn count:
+  captions honor `textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
+  badges need `elevatorBadges.enabled`, teleport badges need a visible connector. One warning per
+  id; hover highlights the offending nodes (captions, elevator markers, with cross-floor targets)
+  or cells (teleport badges).
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
 

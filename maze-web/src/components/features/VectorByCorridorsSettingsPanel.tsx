@@ -6,6 +6,8 @@ import { indent, inset, spacing, typography, ui } from "../../styles/theme";
 import { SelectRow } from "../SelectRow";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
+import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
+import { maxFittingFontSize } from "../../pixi/textFit";
 import { CategoryInfoModal } from "../CategoryInfoModal";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
@@ -16,7 +18,7 @@ import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeActivePaths } from "../../store/parameterLinksActivity";
-import { computeVectorByCorridorsWarningsAcrossFloors } from "../../pixi/selectors/exportWarnings";
+import { computeVectorByCorridorsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
@@ -184,7 +186,7 @@ export function VectorByCorridorsSettingsPanel() {
   const vTailBg = [...vShared, corridor, bg];
   const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
   const badgeBorderPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
-  const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
+  const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
 
   // `Escape` clears a click-selected teleport group — same global convention
   // `VectorByWallsSettingsPanel` uses (see its own doc comment on this).
@@ -217,6 +219,16 @@ export function VectorByCorridorsSettingsPanel() {
     () => computeVectorByCorridorsWarningsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
+
+  // Auto-fit data for every font-size row (GitHub issue #707) — all labels of the whole project,
+  // grouped by size control; `fitAll` is the smallest size that fits every label.
+  const textFit = useMemo<TextFitContextValue>(() => {
+    const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
+    return {
+      fitFor: (kind) => maxFittingFontSize(items[kind]),
+      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport]),
+    };
+  }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
   // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
   // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
@@ -269,6 +281,7 @@ export function VectorByCorridorsSettingsPanel() {
 
   return (
     <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
+    <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
       <ExportWarningsSection
         warnings={exportWarnings}
@@ -419,16 +432,19 @@ export function VectorByCorridorsSettingsPanel() {
         const startBorder = PC.startBorder.at(settings.startMarker.borderColor);
         const finishFill = PC.finishFill.at(settings.finishMarker.fillColor);
         const finishBorder = PC.finishBorder.at(settings.finishMarker.borderColor);
+        const startText = PC.startText.at(settings.startMarker.textColor ?? D.startMarker.textColor ?? corridor.color);
+        const finishText = PC.finishText.at(settings.finishMarker.textColor ?? D.finishMarker.textColor ?? corridor.color);
         return (
         <div style={styles.block}>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_start"]()}
             sectionId="markers_start"
+            textFitKind="start"
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
             settings={settings.startMarker}
-            priorityColors={{ fillColor: [startBorder, finishFill, finishBorder, corridor], borderColor: [startFill, finishBorder, finishFill, corridor], textColor: [startFill, startBorder, corridor] }}
+            priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, corridor], borderColor: [startFill, startText, finishBorder, finishFill, corridor], textColor: [startFill, startBorder, finishText, corridor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
             fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name, textColor: PC.startText.name() }}
             onChange={(patch) => {
@@ -462,11 +478,12 @@ export function VectorByCorridorsSettingsPanel() {
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
             sectionId="markers_finish"
+            textFitKind="finish"
             isExpanded={isExpanded}
             onToggle={toggleSection}
             showTextSection
             settings={settings.finishMarker}
-            priorityColors={{ fillColor: [finishBorder, startFill, startBorder, corridor], borderColor: [finishFill, startBorder, startFill, corridor], textColor: [finishFill, finishBorder, corridor] }}
+            priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, corridor], borderColor: [finishFill, finishText, startBorder, startFill, corridor], textColor: [finishFill, finishBorder, startText, corridor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
             fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name, textColor: PC.finishText.name() }}
             onChange={(patch) => {
@@ -1236,6 +1253,7 @@ export function VectorByCorridorsSettingsPanel() {
         />
       )}
     </div>
+    </TextFitContextProvider>
     </LinkContextProvider>
   );
 }

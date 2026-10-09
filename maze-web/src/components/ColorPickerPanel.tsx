@@ -26,6 +26,20 @@ import type React from "react";
  *  sub-issues add more. */
 type ColorModel = "rgb" | "hsl" | "oklch";
 
+/** Roles a picker field plays in contrast warnings. A start/finish marker fill and the elevator
+ *  badge fill are also the background of the label drawn on them (`label_low_contrast`, GitHub
+ *  issue #707 follow-up), and the start/finish/elevator-badge text colors are its foreground — so
+ *  those fields carry two roles. */
+function colorRolesForField(fieldName: string): ExportWarningColorRole[] {
+  const labelRoles: [ExportWarningColorRole, string][] = [
+    ["label_text", PC.startText.name()], ["label_text", PC.finishText.name()], ["label_text", PC.elevatorBadgeText.name()],
+    ["label_background", PC.startFill.name()], ["label_background", PC.finishFill.name()], ["label_background", PC.elevatorBadgeFill.name()],
+  ];
+  const roles = labelRoles.filter(([, name]) => name === fieldName).map(([role]) => role);
+  const base = colorRoleForField(fieldName);
+  return base ? [base, ...roles] : roles;
+}
+
 function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
   const roles: [ExportWarningColorRole, string][] = [
     ["background", PC.bgFill.name()], ["grid", PC.bgGrid.name()], ["inner_grid", PC.innerGrid.name()], ["corridor", PC.corridorFill.name()],
@@ -162,10 +176,10 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
     const warnings = openMode === "vector_by_walls"
       ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish)
       : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish);
-    const role = colorRoleForField(fieldName);
+    const fieldRoles = colorRolesForField(fieldName);
     return warnings.filter((warning) => {
-      if (!role || !warning.colorRoles || !warning.colorValues) return false;
-      return warning.colorRoles.some((candidate, index) => candidate === role && warning.colorValues?.[index] === working);
+      if (fieldRoles.length === 0 || !warning.colorRoles || !warning.colorValues) return false;
+      return warning.colorRoles.some((candidate, index) => fieldRoles.includes(candidate) && warning.colorValues?.[index] === working);
     });
   }, [showColorWarnings, fieldName, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
 
