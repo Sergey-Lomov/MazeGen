@@ -7,6 +7,7 @@ import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
 import { splitPointShapeName } from "../../pixi/splitNodeNames";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import * as m from "~/paraglide/messages";
+import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
 interface Props {
   onClose: () => void;
@@ -53,7 +54,10 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
       const rowCfg = floorFields[floors[index].id].tessellationConfig;
       const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, rowCfg);
       if (!geometry) continue;
-      const kind = detectSplitSpecialShapeKind(geometry.faceKindsByNode);
+      const kind = detectSplitSpecialShapeKind(
+        geometry.faceKindsByNode,
+        rowCfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+      );
       result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
     }
     return result;

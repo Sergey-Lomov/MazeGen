@@ -18,6 +18,8 @@
 import { splitPatternNodeColor } from "./splitPatternTile";
 import type { TileFace, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 export interface SplitNodeBlueprint {
   /** Unique within its own degree's list — used as a stable React `key`, nothing else (no label
@@ -40,6 +42,8 @@ export interface SplitNodeBlueprint {
    *  blueprint with no recognizable/named counterpart — the panel falls back to a generic
    *  "split-tile" label. */
   titleKey?: string;
+  /** `nodeFaces` uses Cairo's canonical perimeter indices instead of the native core face slots. */
+  faceIndexMode?: "cairo_canonical";
 }
 
 const TRIANGLE_BLUEPRINTS: SplitNodeBlueprint[] = [
@@ -61,9 +65,34 @@ const HEX_BLUEPRINTS: SplitNodeBlueprint[] = [
   { id: 6, degree: 6, nodeFaces: [[0, 1, 2], [3, 4, 5]], titleKey: "split_pattern_title.diagonal_divider" },
 ];
 
+const CAIRO_BLUEPRINTS: SplitNodeBlueprint[] = [
+  {
+    id: 0,
+    degree: 5,
+    nodeFaces: [[2, 3], [1, 4]],
+    titleKey: "split_pattern_title.parallel_divider",
+    faceIndexMode: "cairo_canonical",
+  },
+  {
+    id: 1,
+    degree: 5,
+    nodeFaces: [[1, 2], [3, 4]],
+    titleKey: "split_pattern_title.adjacent_divider",
+    faceIndexMode: "cairo_canonical",
+  },
+  {
+    id: 2,
+    degree: 5,
+    nodeFaces: [[0, 2, 3], [1, 4]],
+    titleKey: "split_pattern_title.bridge_2x3",
+    faceIndexMode: "cairo_canonical",
+  },
+];
+
 const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {
   3: TRIANGLE_BLUEPRINTS,
   4: SQUARE_BLUEPRINTS,
+  5: CAIRO_BLUEPRINTS,
   6: HEX_BLUEPRINTS,
 };
 
@@ -75,14 +104,31 @@ export function blueprintsForDegree(degree: number): SplitNodeBlueprint[] {
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for `blueprint`'s preview thumbnail — same
  *  role as `splitPatternTile.ts`'s `tileNodesForPattern`, simpler here since a blueprint only ever
  *  declares `passage` faces (everything else defaults to `wall`), no `one_way`/`undefined`. */
-export function tileNodesForBlueprint(blueprint: SplitNodeBlueprint): TileFaceNode[] {
-  return blueprint.nodeFaces.map((faces, nodeIndex): TileFaceNode => ({
-    color: splitPatternNodeColor(nodeIndex),
-    faces: Array.from({ length: blueprint.degree }, (_, faceIndex): TileFace => ({
-      kind: faces.includes(faceIndex) ? "passage" : "wall",
-      boundary: false,
-    })),
-  }));
+export function resolveBlueprintFaceIndex(
+  blueprint: SplitNodeBlueprint,
+  cfg: TessellationConfig | undefined,
+  point: [number, number] | undefined,
+  faceIndex: number,
+): number {
+  if (blueprint.faceIndexMode !== "cairo_canonical" || !cfg?.type.startsWith("cairo") || !point) return faceIndex;
+  return cairoCanonicalFaceOrder(point[0], point[1])[faceIndex] ?? faceIndex;
+}
+
+export function tileNodesForBlueprint(
+  blueprint: SplitNodeBlueprint,
+  cfg?: TessellationConfig,
+  point?: [number, number],
+): TileFaceNode[] {
+  return blueprint.nodeFaces.map((faces, nodeIndex): TileFaceNode => {
+    const resolvedFaces = faces.map((face) => resolveBlueprintFaceIndex(blueprint, cfg, point, face));
+    return {
+      color: splitPatternNodeColor(nodeIndex),
+      faces: Array.from({ length: blueprint.degree }, (_, faceIndex): TileFace => ({
+        kind: resolvedFaces.includes(faceIndex) ? "passage" : "wall",
+        boundary: false,
+      })),
+    };
+  });
 }
 
 /** Rotates every face index in `blueprint` by `offset` steps around the tile's faces (mod
@@ -125,14 +171,23 @@ export function fittingRotation(
  *  as a one-click starting point for a generation-time pattern instead of building one by hand in
  *  `AbstractPatternEditorDialog`. No boundary concept applies here (a pattern isn't tied to any
  *  specific field point — `face_index` stays abstract until the generator applies it), so this is
- *  a direct, unrotated conversion; every declared face becomes a `passage` requirement, every
+ *  a direct, unrotated conversion for native-face blueprints. Cairo canonical blueprints are
+ *  resolved through the supplied anchor point before storage. Every declared face becomes a
+ *  `passage` requirement, every
  *  other face is simply absent (core already treats "no entry" as `Wall`, see
  *  `splitPatternTile.ts`'s `tileFaceKindOf`). `weight: 1.0` matches `SplitSettingsDialog`'s own
  *  `handleAddPattern` default for a freshly added pattern. */
-export function blueprintToSplitPattern(blueprint: SplitNodeBlueprint): SplitPattern {
+export function blueprintToSplitPattern(
+  blueprint: SplitNodeBlueprint,
+  cfg?: TessellationConfig,
+  point?: [number, number],
+): SplitPattern {
   return {
     node_count: blueprint.nodeFaces.length,
-    faces: blueprint.nodeFaces.map((faces) => faces.map((face_index) => ({ face_index, requirement: { kind: "passage" as const } }))),
+    faces: blueprint.nodeFaces.map((faces) => faces.map((face) => {
+      const face_index = resolveBlueprintFaceIndex(blueprint, cfg, point, face);
+      return { face_index, requirement: { kind: "passage" as const } };
+    })),
     weight: 1.0,
   };
 }

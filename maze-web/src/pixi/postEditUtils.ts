@@ -10,6 +10,7 @@ import { canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialSha
 import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
+import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 export {
   extractPostEditTeleports,
@@ -784,11 +785,12 @@ export function rotateSplitPointBreaksNeighborShape(
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
 
     const before = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, edges, splitPoints, activeSplitNode, nodes, level));
-    const beforeKind = detectSplitSpecialShapeKind(before);
+    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
+    const beforeKind = detectSplitSpecialShapeKind(before, canonicalOrder);
     if (beforeKind === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, after, splitPoints, activeSplitNode, nodes, level));
-    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, canonicalOrder) === null) return true;
   }
   return false;
 }

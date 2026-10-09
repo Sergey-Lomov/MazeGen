@@ -4,7 +4,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { fittingRotation, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
+import { fittingRotation, resolveBlueprintFaceIndex, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { ui, typography, radius, spacing, indent, muted } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -216,8 +216,13 @@ export function SplitNodesDialogView<E>({
   // faces (see `fittingRotation`) — a point at the field's edge has some faces with no neighbor
   // at all, so a blueprint requiring a passage there can never be applied as authored. `null`
   // means no rotation fits; the button stays disabled.
-  const isBoundary = (faceIndex: number) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false;
-  const fittedBlueprints = (blueprints ?? []).map((bp) => ({ original: bp, fitted: fittingRotation(bp, isBoundary) }));
+  const fittedBlueprints = (blueprints ?? []).map((bp) => ({
+    original: bp,
+    fitted: fittingRotation(bp, (faceIndex) => {
+      const rawFaceIndex = resolveBlueprintFaceIndex(bp, cfg, point, faceIndex);
+      return tileNodes[0]?.faces[rawFaceIndex]?.boundary ?? false;
+    }),
+  }));
   const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
 
   const markEdited = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
@@ -266,7 +271,7 @@ export function SplitNodesDialogView<E>({
                     // triangle tile's shape (up vs down) depends on `(x+y) % 2` (see
                     // `getNeighborData`), so a fixed `[0,0]` anchor could show the blueprint
                     // preview in the opposite orientation from the point it'll actually apply to.
-                    point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original)}
+                    point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original, cfg, point)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

@@ -7,6 +7,7 @@ import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
+import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 import { presetTargetLabel, type PresetSplitLabelContext } from "../../pixi/presetSplitLabels";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, type LinkInfo, type SplitEdgeKind, type ElementInfo } from "./SplitNodesDialogView";
@@ -140,7 +141,10 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   // Semantic per-node names when this point's current face configuration matches a recognized
   // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
   const semanticNames = useMemo(
-    () => splitNodeSemanticNames(nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) }))),
+    () => splitNodeSemanticNames(
+      nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })),
+      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [slots, cfg, point, inFieldCells, presetConnections],
   );

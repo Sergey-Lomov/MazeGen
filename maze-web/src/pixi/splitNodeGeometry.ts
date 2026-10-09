@@ -3,6 +3,7 @@ import { TILE_SIZE } from "./constants";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
 import { getSplitCircleRotationDeg, getCellCenter, getCellVertices, getNeighborData, type Pos } from "./tessellationGeometry";
+import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 /** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
 export const SPLIT_HUB_RADIUS = TILE_SIZE / 4;
@@ -72,7 +73,118 @@ export function specialSplitNodePoint(
   faces: number[],
   slotIndex: number,
   allFaces?: number[][],
+  point?: [number, number],
 ): Pos | null {
+  if (kind === "cairo_diagonal_divider") {
+    if (!point || !cfg.type.startsWith("cairo")) return null;
+    const vertices = getCellVertices(point[0], point[1], cfg);
+    const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
+    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    if (!vertices || order.length !== 5) return null;
+    const sharedCorner = (a: number, b: number): Pos | null => {
+      const [a0, a1] = edgeVerts[a] ?? [];
+      const [b0, b1] = edgeVerts[b] ?? [];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
+      return index === null || index === undefined ? null : vertices[index];
+    };
+    const corner23 = sharedCorner(order[2], order[3]);
+    const edge0 = edgeVerts[order[0]];
+    if (!corner23 || !edge0) return null;
+    const face0Center = {
+      x: (vertices[edge0[0]].x + vertices[edge0[1]].x) / 2,
+      y: (vertices[edge0[0]].y + vertices[edge0[1]].y) / 2,
+    };
+    const canonicalFaces = order
+      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
+      .filter((face) => face >= 0);
+    const t = canonicalFaces.length === 2 && canonicalFaces.includes(2) && canonicalFaces.includes(3)
+      ? 1 / 4
+      : canonicalFaces.length === 2 && canonicalFaces.includes(1) && canonicalFaces.includes(4)
+        ? 3 / 4 : null;
+    if (t === null) return null;
+    return {
+      x: corner23.x + (face0Center.x - corner23.x) * t,
+      y: corner23.y + (face0Center.y - corner23.y) * t,
+    };
+  }
+
+  if (kind === "cairo_adjacent_divider") {
+    if (!point || !cfg.type.startsWith("cairo")) return null;
+    const vertices = getCellVertices(point[0], point[1], cfg);
+    const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
+    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    if (!vertices || order.length !== 5) return null;
+    const sharedCorner = (a: number, b: number): Pos | null => {
+      const [a0, a1] = edgeVerts[a] ?? [];
+      const [b0, b1] = edgeVerts[b] ?? [];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
+      return index === null || index === undefined ? null : vertices[index];
+    };
+    const corner23 = sharedCorner(order[2], order[3]);
+    const edge0 = edgeVerts[order[0]];
+    if (!corner23 || !edge0) return null;
+    const side0Mid = {
+      x: (vertices[edge0[0]].x + vertices[edge0[1]].x) / 2,
+      y: (vertices[edge0[0]].y + vertices[edge0[1]].y) / 2,
+    };
+    const dividerCenter = {
+      x: (corner23.x + side0Mid.x) / 2,
+      y: (corner23.y + side0Mid.y) / 2,
+    };
+    const faceCenter = (face: number): Pos => {
+      const [a, b] = edgeVerts[face];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    };
+    const canonicalFaces = order
+      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
+      .filter((face) => face >= 0);
+    const from = canonicalFaces.includes(1) ? faceCenter(order[1]) : faceCenter(order[4]);
+    const t = 1 / 2;
+    return {
+      x: dividerCenter.x + (from.x - dividerCenter.x) * t,
+      y: dividerCenter.y + (from.y - dividerCenter.y) * t,
+    };
+  }
+
+  if (kind === "cairo_bridge_2x3") {
+    if (!point || !cfg.type.startsWith("cairo")) return null;
+    const vertices = getCellVertices(point[0], point[1], cfg);
+    const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
+    const order = cairoCanonicalFaceOrder(point[0], point[1]);
+    if (!vertices || order.length !== 5) return null;
+    const sharedCorner = (a: number, b: number): Pos | null => {
+      const [a0, a1] = edgeVerts[a] ?? [];
+      const [b0, b1] = edgeVerts[b] ?? [];
+      const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
+      return index === null || index === undefined ? null : vertices[index];
+    };
+    const faceCenter = (canonicalFace: number): Pos => {
+      const [a, b] = edgeVerts[order[canonicalFace]];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    };
+    const canonicalFaces = order
+      .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
+      .filter((face) => face >= 0);
+    if (canonicalFaces.length === 2 && canonicalFaces.includes(1) && canonicalFaces.includes(4)) {
+      const face1 = faceCenter(1), face4 = faceCenter(4);
+      return { x: (face1.x + face4.x) / 2, y: (face1.y + face4.y) / 2 };
+    }
+    if (canonicalFaces.length === 3 && [0, 2, 3].every((face) => canonicalFaces.includes(face))) {
+      const corner23 = sharedCorner(order[2], order[3]);
+      const [edgeStart, edgeEnd] = edgeVerts[order[0]] ?? [];
+      if (!corner23 || edgeStart === undefined || edgeEnd === undefined) return null;
+      const edge0Center = {
+        x: (vertices[edgeStart].x + vertices[edgeEnd].x) / 2,
+        y: (vertices[edgeStart].y + vertices[edgeEnd].y) / 2,
+      };
+      return {
+        x: corner23.x + (edge0Center.x - corner23.x) / 3,
+        y: corner23.y + (edge0Center.y - corner23.y) / 3,
+      };
+    }
+    return null;
+  }
+
   if (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
     const vertices = getCellVertices(0, 0, cfg);
     const { edgeVerts } = getNeighborData(cfg, 0, 0);
@@ -270,16 +382,22 @@ export function buildNodePositions<Id extends string | number>(
     let kind: SplitSpecialShapeKind | null = null;
     if ((group.length === 2 || group.length === 3) && directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
-      kind = detectSplitSpecialShapeKind(faceKindsByNode);
+      const canonicalOrder = cfg.type.startsWith("cairo")
+        ? cairoCanonicalFaceOrder(group[0].x, group[0].y) : undefined;
+      kind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder);
     }
 
     const connectedFacesByNode = kind && faceKindsByNode
-      ? faceKindsByNode.map(connectedFaceIndices)
+      ? faceKindsByNode.map((kinds) => {
+        if (!cfg.type.startsWith("cairo")) return connectedFaceIndices(kinds);
+        const order = cairoCanonicalFaceOrder(group[0].x, group[0].y);
+        return order.filter((rawFace) => kinds[rawFace] !== "wall");
+      })
       : null;
 
     for (let i = 0; i < group.length; i++) {
       if (kind && connectedFacesByNode) {
-        const p = specialSplitNodePoint(cfg, center, kind, connectedFacesByNode[i], i, connectedFacesByNode);
+        const p = specialSplitNodePoint(cfg, center, kind, connectedFacesByNode[i], i, connectedFacesByNode, [group[0].x, group[0].y]);
         if (p) { nodePos.set(group[i].id, p); continue; }
       }
       nodePos.set(group[i].id, splitHubPoint(center, i, group.length, cfg));

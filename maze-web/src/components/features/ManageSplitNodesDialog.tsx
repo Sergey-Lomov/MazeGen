@@ -9,6 +9,7 @@ import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
+import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 import { postEditTargetLabel, type SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { formatTargetLabel } from "../../pixi/targetLabel";
 import { activeFloorLevel } from "../../store/storeHelpers";
@@ -237,7 +238,10 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   ];
   // Semantic per-node names when this point's current face configuration matches a recognized
   // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
-  const semanticNames = splitNodeSemanticNames(nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })));
+  const semanticNames = splitNodeSemanticNames(
+    nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })),
+    cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+  );
   // Formats one side of a link bubble — used for both the card's own endpoint and its partner, so
   // every node always gets an "(N{N})" suffix on whichever side it appears on, not just the
   // partner's. A `split` endpoint or this point's original node gets its compact node label

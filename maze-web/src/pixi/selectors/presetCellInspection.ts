@@ -9,6 +9,7 @@ import type { PresetSplitLabelContext } from "../presetSplitLabels";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
+import { cairoCanonicalFaceOrder } from "../cairoGeometry";
 
 function formatLockKind(kind: NodeLockKind): string {
   switch (kind) {
@@ -99,7 +100,10 @@ export function buildPresetCellInspection(
     const faceKindsByNode = nodesHere.map((endpoint) => presetSplitNodeFaceKinds(
       endpoint, point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
     ));
-    semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+    semanticNames = splitNodeSemanticNamesFromKinds(
+      faceKindsByNode,
+      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(x, y) : undefined,
+    );
   }
 
   const blocks = nodesHere.map((endpoint, i) => {

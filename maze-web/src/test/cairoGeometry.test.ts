@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
-import { CAIRO_VERTEX_SCALE, cairoCenter, cairoTileKind, isCairoPoint } from "../pixi/cairoGeometry";
+import { CAIRO_VERTEX_SCALE, cairoCanonicalFaceOrder, cairoCenter, cairoEdgeVerts, cairoTileKind, isCairoPoint } from "../pixi/cairoGeometry";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, exactCellBounds, cellBounds, getTileDiagram, splitFaceIndexToCore, splitFaceIndexToWeb, pointInPolygon } from "../pixi/tessellationGeometry";
 import { cairoRectangleBoundaryCells, configAllCells } from "../pixi/tessellationCells";
 import { makeProjection } from "../pixi/tessellationProjection";
@@ -46,6 +46,20 @@ describe("Cairo coordinate classes", () => {
 });
 
 describe("Cairo geometry", () => {
+  it("returns a complete cyclic canonical face order for every Cairo tile orientation", () => {
+    for (const point of [[2, 1], [2, 3], [5, 2], [7, 2], [-3, 2], [-1, 2]] as [number, number][]) {
+      const order = cairoCanonicalFaceOrder(...point);
+      const edgeVerts = cairoEdgeVerts(...point);
+      expect(order).toHaveLength(5);
+      expect(new Set(order).size).toBe(5);
+      for (let i = 0; i < order.length; i++) {
+        const current = edgeVerts[order[i]];
+        const next = edgeVerts[order[(i + 1) % order.length]];
+        expect(current[0] === next[0] || current[0] === next[1] || current[1] === next[0] || current[1] === next[1]).toBe(true);
+      }
+    }
+  });
+
   it("uses a valid five-face tile for split diagrams", () => {
     expect(getTileDiagram(2, 1, cfg)?.sides).toHaveLength(5);
     expect(getNeighborData(cfg, 2, 1).offsets).toHaveLength(5);

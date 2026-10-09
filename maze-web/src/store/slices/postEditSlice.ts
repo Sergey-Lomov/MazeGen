@@ -21,6 +21,7 @@ import { cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
+import { resolveBlueprintFaceIndex } from "../../pixi/splitBlueprints";
 import type {
   MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
@@ -1094,7 +1095,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
       const endpoint = nodeEndpoints[nodeIndex];
       if (!endpoint) continue;
-      for (const faceIndex of blueprint.nodeFaces[nodeIndex]) {
+      for (const authoredFaceIndex of blueprint.nodeFaces[nodeIndex]) {
+        const faceIndex = resolveBlueprintFaceIndex(blueprint, state.activeTessellationConfig, point, authoredFaceIndex);
         // Guards against a caller passing a blueprint authored for a different tile degree
         // (normal UI flow always picks one via `blueprintsForDegree`, so this only matters for
         // a direct/programmatic `applySplitBlueprint` call) — `offsets[faceIndex]` would

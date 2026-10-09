@@ -79,7 +79,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
 
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
-    addPattern(blueprintToSplitPattern(blueprint));
+    addPattern(blueprintToSplitPattern(blueprint, tessellationConfig, anchorPoint));
   }
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
@@ -173,7 +173,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                   onClick={() => handleAddBlueprint(blueprint)}
                 >
                   <TileFaceEditor
-                    point={anchorPoint} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint)}
+                    point={anchorPoint} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint, tessellationConfig, anchorPoint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

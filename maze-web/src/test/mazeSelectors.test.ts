@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
-import { getCellCenter, getCellVertices, nearestCellCoord } from "../pixi/tessellationGeometry";
+import { getCellCenter, getCellVertices, getNeighborData, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
+import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -657,6 +658,69 @@ describe("buildSplitPassages", () => {
     expect(corners).toContainEqual({ x: 40, y: 0 }); // BR
   });
 
+  it("renders the Cairo 2x2 divider as corner12 -> centre -> corner34", () => {
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const neighbors = offsets.map(([dx, dy], i) => n(200 + i, point[0] + dx, point[1] + dy));
+    const nodes = [n(100, ...point), n(101, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 200 + face), e(200 + face, node)]);
+    const { specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(100, [order[2], order[3]]), ...connect(101, [order[1], order[4]])],
+      cairoCfg,
+    );
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("diagonal");
+    if (shape.kind !== "diagonal") throw new Error("unreachable");
+    expect(shape.wallPath).toHaveLength(3);
+    expect(shape.wallPath?.[1]).toEqual(getCellCenter(...point, cairoCfg));
+    expect(shape.wallPath?.[0]).not.toEqual(shape.wallPath?.[2]);
+  });
+
+  it("renders the Cairo adjacent divider as side 0 plus corner23 -> side-0 midpoint", () => {
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const neighbors = offsets.map(([dx, dy], i) => n(300 + i, point[0] + dx, point[1] + dy));
+    const nodes = [n(110, ...point), n(111, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 300 + face), e(300 + face, node)]);
+    const { specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(110, [order[1], order[2]]), ...connect(111, [order[3], order[4]])],
+      cairoCfg,
+    );
+    expect(specialShapes).toHaveLength(2);
+    expect(specialShapes.every((shape) => shape.kind === "diagonal" && shape.wallPath?.length === 2)).toBe(true);
+    const vertices = getCellVertices(...point, cairoCfg)!;
+    const edge0 = getNeighborData(cairoCfg, ...point).edgeVerts[order[0]];
+    expect(specialShapes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ wallPath: [vertices[edge0[0]], vertices[edge0[1]]] }),
+    ]));
+  });
+
+  it("renders the Cairo 2x3 bridge and preserves the fork's ordinary passages", () => {
+    const point: [number, number] = [2, 1];
+    const order = cairoCanonicalFaceOrder(...point);
+    const offsets = [[0, 2], [-3, 1], [1, -3], [3, 1], [-1, -3]] as const;
+    const neighbors = offsets.map(([dx, dy], i) => n(400 + i, point[0] + dx, point[1] + dy));
+    const nodes = [n(120, ...point), n(121, ...point), ...neighbors];
+    const connect = (node: number, faces: number[]) => faces.flatMap((face) => [e(node, 400 + face), e(400 + face, node)]);
+    const { passages, specialShapes } = buildSplitPassages(
+      nodes,
+      [...connect(120, [order[0], order[2], order[3]]), ...connect(121, [order[1], order[4]])],
+      cairoCfg,
+    );
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("bridge");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    expect(shape.throughLine).toBeUndefined();
+    expect(shape.crossFaces[0]).toEqual(expect.objectContaining({ v0: expect.any(Object), v1: expect.any(Object) }));
+    expect(passages.find((passage) => passage.nodeIndex === 0)?.wallSegments).toHaveLength(3);
+  });
+
   it("a degree-4 point with 3+ nodes, or a mismatched opposite/adjacent pairing, is not recognized as a special shape", () => {
     // 3-node split point -- `detectSplitSpecialShapeKind` only ever matches exactly 2 nodes.
     const threeNodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 1), n(3, 0, 0), n(4, -1, 0), n(5, 0, 0), n(6, 0, -1)];
@@ -886,6 +950,7 @@ describe("hasCrossFloorTeleport (GitHub issue #485)", () => {
 // --- buildTeleportEdges ---
 
 const squareCfg: TessellationConfig = { type: "square", width: 4, height: 4 };
+const cairoCfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 
 describe("buildTeleportEdges", () => {

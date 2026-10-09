@@ -7,6 +7,7 @@ import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEnd
 import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
+import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -822,12 +823,13 @@ export function rotatePresetSplitPointBreaksNeighborShape(
     const before = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    if (detectSplitSpecialShapeKind(before) === null) continue; // wasn't recognized before — nothing to break
+    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
+    if (detectSplitSpecialShapeKind(before, canonicalOrder) === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, after, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    if (detectSplitSpecialShapeKind(afterKinds) === null) return true;
+    if (detectSplitSpecialShapeKind(afterKinds, canonicalOrder) === null) return true;
   }
   return false;
 }

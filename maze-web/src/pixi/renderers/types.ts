@@ -145,7 +145,7 @@ export type SplitPassage = {
  *  (`splitPatternTitles.ts`'s `"triple_corridor"`). `"hex_diagonal_divider"` — two nodes owning
  *  opposite groups of three adjacent faces; it keeps the generic junction drawing but supplies
  *  dedicated graph/marker anchors for the two halves. */
-export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider";
+export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
  *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`
@@ -201,7 +201,9 @@ export type SplitSpecialShape =
        *  render mode's own plain corridor color (`VectorByCorridorsSettings.color`), never a node's
        *  own identity color — neither line reads as "belonging" to one node over the other, same
        *  convention `SplitJunctionRenderer`'s wall-mode special shapes already use. */
-      throughLine: [{ x: number; y: number }, { x: number; y: number }];
+      /** Omitted by Cairo's 2x3 bridge: its three-face fork keeps its ordinary passages, so the
+       * bridge shape has no separate straight-through corridor to draw. */
+      throughLine?: [{ x: number; y: number }, { x: number; y: number }];
     };
 
 /** Optional per-call override for `SplitJunctionRenderer` (GitHub issue #294) — `nodeColors`

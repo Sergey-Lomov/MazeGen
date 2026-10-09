@@ -160,4 +160,16 @@ Every canvas text label is drawn as a **multi-channel signed distance field** `B
 
 ## Lifecycle
 
+### Cairo split special shape (issue #718)
+
+The Cairo degree-5 `cairo_diagonal_divider`, `cairo_adjacent_divider`, and `cairo_bridge_2x3` use the same
+`specialShapes` geometry channel as the existing square/hex split shapes. The parallel form's
+wall-mode path is a broken line from the corner shared by canonical faces `1-2`, through the tile
+centre, to the corner shared by `3-4`; Cor1 owns `2-3` and Cor2 owns `1-4`. The adjacent form
+draws canonical side `0` and a straight segment from corner `2-3` to side-0's midpoint; Cor1 owns
+`1-2` and Cor2 owns `3-4`. The 2x3 bridge draws a tapered bridge from canonical face `1` to face
+`4`; its `0-2-3` fork node is suppressed together with the other ordinary passages whenever
+special-shape rendering is enabled. Its bridge marker is centered between face-1 and face-4
+centres, while the fork marker is one third of the way from corner `2-3` to side-0's midpoint.
+
 `destroy()` on all renderers: unsubscribes from store, destroys Pixi objects, removes event listeners.

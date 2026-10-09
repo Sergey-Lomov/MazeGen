@@ -65,6 +65,28 @@ export function cairoEdgeVerts(x: number, y: number): [number, number][] {
   return kind ? EDGE_VERTS[kind] : [];
 }
 
+/** Face indices in cyclic perimeter order, anchored at Cairo's canonical face 0.
+ * Face 0 is the unique edge whose two endpoint corners have the same angle; the remaining
+ * indices follow the polygon boundary from that edge. This is deliberately derived from the
+ * actual edge table rather than from the raw core face-slot order. */
+export function cairoCanonicalFaceOrder(x: number, y: number): number[] {
+  const edgeVerts = cairoEdgeVerts(x, y);
+  if (edgeVerts.length !== 5) return [];
+
+  const order = [0];
+  const used = new Set(order);
+  let vertex = edgeVerts[0][1];
+  while (order.length < edgeVerts.length) {
+    const next = edgeVerts.findIndex(([a, b], face) => !used.has(face) && (a === vertex || b === vertex));
+    if (next < 0) return [];
+    order.push(next);
+    used.add(next);
+    const [a, b] = edgeVerts[next];
+    vertex = a === vertex ? b : a;
+  }
+  return order;
+}
+
 /** The collinear Cairo form uses the classic pentagon vertices
  * `(-2,0), (-3,3), (0,4), (3,3), (2,0)`. A long edge is one `TILE_SIZE` wide at 100% zoom. The
  * centre spacing and orientation offsets use the same affine scale, so every shared edge

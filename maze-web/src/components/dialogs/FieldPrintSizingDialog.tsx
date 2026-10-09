@@ -7,6 +7,7 @@ import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { Switch } from "../Switch";
+import { sharedStyles } from "../../styles/shared";
 import { dialogSpacing, indent, inset, radius, spacing, typography, ui } from "../../styles/theme";
 import { calculatePrintFieldConfig, isPredefinedFieldConfig, DEFAULT_PRINT_CELL_SIZE_MM, type PredefinedFieldConfig, type PrintFieldSizingInput } from "../../pixi/fieldPrintSizing";
 import { DPI_BY_DENSITY, printCellMeasureMm } from "../../pixi/imageExport/printFit";
@@ -336,6 +337,7 @@ function printFieldCellCount(config: FieldConfig): number {
 
 const styles: Record<string, React.CSSProperties> = {
   label: { flex: 1, ...typography.body },
+  input: { ...sharedStyles.input, width: 56, boxSizing: "border-box" },
   result: { padding: 0 },
   error: { ...typography.body, color: ui.text.error },
   sectionLabel: typography.body,
