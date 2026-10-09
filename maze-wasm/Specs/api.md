@@ -159,3 +159,22 @@ generate(seed, config);
 ```
 
 The `default` export (`init`) loads and instantiates the `.wasm` binary. Must be awaited once before use.
+
+## Cairo end-to-end validation
+
+The Cairo pipeline regression coverage in GitHub issue #715 spans native dispatch and the web
+store's custom-field, post-edit, project-file, analytics, and export-fit paths. The native fixture
+uses negative coordinates and two floors; the web fixture preserves those coordinates through a
+JSON round-trip before calculating the PNG fit.
+
+Run the native check from the repository root, then run the web checks from `maze-web/`:
+
+```text
+cargo test -p maze-runner cairo_dispatch_tests
+cd maze-web
+npm.cmd test -- --run src/test/cairoPipeline.test.ts
+npm.cmd run build
+```
+
+After rebuilding the WASM package, the generated files must also be copied to
+`maze-web/src/wasm/pkg/` before running the web test suite, as described in the Build section.
