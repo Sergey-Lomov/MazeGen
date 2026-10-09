@@ -1034,3 +1034,35 @@ describe("VectorByWallsSettingsPanel", () => {
     });
   });
 });
+
+describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", () => {
+  const withCaption = (textEnabled: boolean) => {
+    const st = useMazeStore.getState();
+    const { startMarker, finishMarker } = st.vectorByWallsSettings;
+    useMazeStore.setState({
+      vectorByWallsSettings: {
+        ...st.vectorByWallsSettings,
+        startMarker: { ...startMarker, textEnabled, textColor: 0x112233 },
+        finishMarker: { ...finishMarker, textEnabled, textColor: 0x112233 },
+      },
+      vectorByWallsSectionsExpanded: { ...st.vectorByWallsSectionsExpanded, markers_start_text: true, markers_finish_text: true },
+    });
+  };
+
+  it("hides caption text and style rows when the caption is off, keeping the toggle", () => {
+    withCaption(false);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_show"]())).toHaveLength(2);
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_color"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_font_weight"]())).toBeNull();
+  });
+
+  it("shows caption text and style rows when the caption is on", () => {
+    withCaption(true);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())).toHaveLength(2);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_size"]())).toHaveLength(2);
+  });
+});

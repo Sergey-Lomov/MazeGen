@@ -21,9 +21,9 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  show-border/show-gap toggle for either. "Caption" (rendered only when the caller passes
  *  `showTextSection`, i.e. start/finish markers — every other `MarkerSettingsGroup` caller, the
  *  three vertical-connection markers, passes `false`) holds the "Show caption" toggle,
- *  text input, font weight and size — the last three stay visible even with the toggle off,
- *  same "value persists while the feature itself is disabled" convention as any other settings
- *  toggle in this codebase, so turning the caption back on restores exactly what was there before.
+ *  text input, font weight, color and size — all but the toggle are hidden while it is off (GitHub
+ *  issue #723; the stored values persist, so turning the caption back on restores exactly what was
+ *  there before).
  *  Shared by `VectorByWallsSettingsPanel` and `VectorByCorridorsSettingsPanel` (GitHub issue
  *  #311) — both modes' waypoint settings mirror each other exactly, only the underlying store
  *  setters differ. Expand state is owned by the caller's own generic `vectorByWalls`/
@@ -96,28 +96,32 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                     onChange={(textEnabled) => onChange({ textEnabled })}
                     linkTarget={linkTargets.textEnabled}
                   />
-                  <LinkedTextFieldRow
-                    label={m["image_export.vector_by_walls.marker_text"]()}
-                    value={settings.text ?? ""}
-                    onChange={(text) => onChange({ text })}
-                    normalize={normalizeMarkerGlyphInput}
-                    isValid={isValidMarkerGlyph}
-                    inputWidth={40}
-                    linkTarget={null}
-                  />
-                  <TextStyleRows
-                    settings={{
-                      textFontWeight: settings.textFontWeight ?? "bold",
-                      textColor: settings.textColor ?? 0x000000,
-                      textSize: settings.textSize ?? DEFAULT_MARKER_TEXT_SIZE,
-                    }}
-                    onChange={onChange}
-                    linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize }}
-                    priorityColors={priorityColors?.textColor}
-                    defaultColor={defaultColors?.textColor}
-                    field={fields.textColor}
-                    autoFitKind={textFitKind}
-                  />
+                  {(settings.textEnabled ?? true) && (
+                    <>
+                      <LinkedTextFieldRow
+                        label={m["image_export.vector_by_walls.marker_text"]()}
+                        value={settings.text ?? ""}
+                        onChange={(text) => onChange({ text })}
+                        normalize={normalizeMarkerGlyphInput}
+                        isValid={isValidMarkerGlyph}
+                        inputWidth={40}
+                        linkTarget={null}
+                      />
+                      <TextStyleRows
+                        settings={{
+                          textFontWeight: settings.textFontWeight ?? "bold",
+                          textColor: settings.textColor ?? 0x000000,
+                          textSize: settings.textSize ?? DEFAULT_MARKER_TEXT_SIZE,
+                        }}
+                        onChange={onChange}
+                        linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize }}
+                        priorityColors={priorityColors?.textColor}
+                        defaultColor={defaultColors?.textColor}
+                        field={fields.textColor}
+                        autoFitKind={textFitKind}
+                      />
+                    </>
+                  )}
                 </div>
               )}
             </>
