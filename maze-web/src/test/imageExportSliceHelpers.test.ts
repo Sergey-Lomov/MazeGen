@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget, addLink, removeLink, linksMatchDefaults } from "../store/slices/parameterLinksEngine";
+import { getParamValue, setParamValue, validateLinkGraph, propagate, forceLinks, reconcileLinks, setLinkEnabledByTarget, addLink, removeLink, linksMatchDefaults, wouldCreateCycle, reachableFrom } from "../store/slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
@@ -181,6 +181,45 @@ describe("addLink", () => {
     const { settings, links } = addLink({ a: 10, b: 0 }, [], "a", "b", [{ op: "mul", value: 2 }]);
     expect(settings.b).toBe(20);
     expect(links[0].modifiers).toEqual([{ op: "mul", value: 2 }]);
+  });
+});
+
+describe("wouldCreateCycle / addLink cycle protection", () => {
+  it("detects a direct cycle and a self link", () => {
+    expect(wouldCreateCycle([link("a", "b")], "b", "a")).toBe(true);
+    expect(wouldCreateCycle([], "a", "a")).toBe(true);
+  });
+
+  it("detects a transitive cycle", () => {
+    expect(wouldCreateCycle([link("a", "b"), link("b", "c")], "c", "a")).toBe(true);
+  });
+
+  it("counts disabled links as edges", () => {
+    expect(wouldCreateCycle([link("a", "b", false), link("b", "c", false)], "c", "a")).toBe(true);
+  });
+
+  it("allows acyclic additions", () => {
+    expect(wouldCreateCycle([link("a", "b"), link("b", "c")], "a", "c")).toBe(false);
+    expect(wouldCreateCycle([link("a", "b")], "c", "a")).toBe(false);
+  });
+
+  it("reachableFrom follows chains through disabled links and terminates on an existing cycle", () => {
+    expect([...reachableFrom([link("a", "b", false), link("b", "c")], "a")].sort()).toEqual(["b", "c"]);
+    expect([...reachableFrom([link("a", "b"), link("b", "a")], "a")].sort()).toEqual(["a", "b"]);
+  });
+
+  it("addLink refuses a cyclic link, leaving settings and links unchanged", () => {
+    const links = [link("a", "b"), link("b", "c")];
+    const settings = { a: 1, b: 1, c: 1 };
+    const result = addLink(settings, links, "c", "a");
+    expect(result.links).toBe(links);
+    expect(result.settings).toBe(settings);
+  });
+
+  it("addLink allows re-pointing a target when the replaced link was the only path to a cycle", () => {
+    const links = [link("a", "b"), link("b", "c")];
+    const { links: next } = addLink({ a: 1, b: 1, c: 1 }, links, "a", "c");
+    expect(next.filter((l) => l.target === "c").map((l) => l.source)).toEqual(["a"]);
   });
 });
 

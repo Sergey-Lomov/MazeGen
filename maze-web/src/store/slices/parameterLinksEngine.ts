@@ -156,11 +156,39 @@ export function reconcileLinks<P extends string>(settings: object, links: ParamL
   });
 }
 
+/** Every path reachable from `start` by following `links` (disabled ones included —
+ *  `validateLinkGraph` counts them too), `start` itself excluded unless a cycle leads back to it.
+ *  Pure DFS; lets callers testing many candidates against one `start` build the set once. */
+export function reachableFrom<P extends string>(links: ParamLink<P>[], start: P): Set<P> {
+  const adjacency = new Map<P, P[]>();
+  for (const link of links) adjacency.set(link.source, [...(adjacency.get(link.source) ?? []), link.target]);
+  const reached = new Set<P>();
+  const stack: P[] = [start];
+  while (stack.length > 0) {
+    const node = stack.pop() as P;
+    for (const next of adjacency.get(node) ?? []) {
+      if (reached.has(next)) continue;
+      reached.add(next);
+      stack.push(next);
+    }
+  }
+  return reached;
+}
+
+/** True if adding `source -> target` would close a cycle: `source` is reachable from `target` by
+ *  following existing links (`reachableFrom`), or `source === target`. The link currently targeting
+ *  `target` (which an `addLink` replaces) cannot lie on a path leaving `target`, so it never needs
+ *  excluding. */
+export function wouldCreateCycle<P extends string>(links: ParamLink<P>[], source: P, target: P): boolean {
+  return source === target || reachableFrom(links, target).has(source);
+}
+
 /** Adds a new enabled link `source -> target` (GitHub issue #644's parameter-links dialog) and
  *  propagates `source`'s current value into `target` immediately, same as re-enabling an existing
  *  link (`setLinkEnabledByTarget`). Any existing link already targeting `target` is replaced (the
  *  at-most-one-incoming-link invariant), not left dangling — callers should confirm with the user
- *  before calling this when a prior link exists and they need to preserve it. Does not validate
+ *  before calling this when a prior link exists and they need to preserve it. A link that would close
+ *  a cycle (`wouldCreateCycle`) is refused: `settings`/`links` come back unchanged. Does not validate
  *  `source`/`target` against a registry itself; the dialog only ever offers same-`ParamType` pairs
  *  from the registry, so this stays a pure graph edit like the rest of the engine. `modifiers`
  *  (GitHub issue #645) is only ever passed for a `"number"`-type pair, `colorModifiers` (GitHub issue
@@ -174,6 +202,7 @@ export function addLink<P extends string, S extends object>(
   modifiers?: ParamModifier[],
   colorModifiers?: ColorModifier[],
 ): { settings: S; links: ParamLink<P>[] } {
+  if (wouldCreateCycle(links, source, target)) return { settings, links };
   const withoutTarget = links.filter((l) => l.target !== target);
   const newLink: ParamLink<P> = { id: `user-${source}-${target}-${Date.now()}`, source, target, enabled: true, modifiers, colorModifiers };
   const nextLinks = [...withoutTarget, newLink];
