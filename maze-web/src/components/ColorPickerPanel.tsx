@@ -13,9 +13,8 @@ import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
 import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
-import { overrideActiveProfileColor, selectActiveProfileColors, PC, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
+import { overrideActiveProfileColor, selectActiveProfileColors, type ColorField, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import { computeVectorByCorridorsWarningsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
-import type { ExportWarningColorRole } from "../pixi/selectors/exportWarnings";
 import { ExportWarningBubble } from "./features/ExportWarningBubble";
 import { resolveExportWarningsSectionTitle } from "./features/exportWarningsI18n";
 import type { MazeState } from "../store/storeTypes";
@@ -26,44 +25,8 @@ import type React from "react";
  *  sub-issues add more. */
 type ColorModel = "rgb" | "hsl" | "oklch";
 
-/** Roles a picker field plays in contrast warnings. A start/finish marker fill and the elevator
- *  badge fill are also the background of the label drawn on them (`label_low_contrast`, GitHub
- *  issue #707 follow-up), and the start/finish/elevator-badge text colors are its foreground — so
- *  those fields carry two roles. */
-function colorRolesForField(fieldName: string): ExportWarningColorRole[] {
-  const labelRoles: [ExportWarningColorRole, string][] = [
-    ["label_text", PC.startText.name()], ["label_text", PC.finishText.name()], ["label_text", PC.elevatorBadgeText.name()],
-    ["label_background", PC.startFill.name()], ["label_background", PC.finishFill.name()], ["label_background", PC.elevatorBadgeFill.name()],
-  ];
-  const roles = labelRoles.filter(([, name]) => name === fieldName).map(([role]) => role);
-  const base = colorRoleForField(fieldName);
-  return base ? [base, ...roles] : roles;
-}
-
-function colorRoleForField(fieldName: string): ExportWarningColorRole | null {
-  const roles: [ExportWarningColorRole, string][] = [
-    ["background", PC.bgFill.name()], ["grid", PC.bgGrid.name()], ["inner_grid", PC.innerGrid.name()], ["corridor", PC.corridorFill.name()],
-    ["floor", PC.tilesFloor.name()], ["wall", PC.tilesWall.name()], ["one_way", PC.oneWaysMarker.name()],
-    ["marker_fill", PC.startFill.name()], ["marker_fill", PC.finishFill.name()],
-    ["marker_border", PC.startBorder.name()], ["marker_border", PC.finishBorder.name()],
-    ["teleport_connector", PC.teleportConnector.name()],
-    ["teleport_badge_fill", PC.teleportBadgeFill.name()], ["teleport_badge_border", PC.teleportBadgeBorder.name()],
-    ["teleport_badge_text", PC.teleportBadgeText.name()], ["vertical_two_way_fill", PC.twoWayFill.name()],
-    ["vertical_two_way_border", PC.twoWayBorder.name()], ["vertical_two_way_arrow", PC.twoWayArrow.name()],
-    ["vertical_one_way_fill", PC.oneWayFill.name()], ["vertical_one_way_border", PC.oneWayBorder.name()],
-    ["vertical_one_way_arrow", PC.oneWayArrow.name()], ["elevator_fill", PC.elevatorFill.name()],
-    ["elevator_border", PC.elevatorBorder.name()], ["elevator_arrow", PC.elevatorArrow.name()],
-    ["elevator_badge_fill", PC.elevatorBadgeFill.name()], ["label_text", PC.markerIndexText.name()],
-    ["label_background", PC.markerIndexFill.name()],
-    ["vertical_two_way_line", PC.decorLineTwoWay.name()], ["vertical_one_way_line", PC.decorLineOneWay.name()],
-    ["elevator_line", PC.decorLineElevator.name()], ["vertical_two_way_arrow", PC.decorArrowTwoWay.name()],
-    ["vertical_one_way_decorative_arrow", PC.decorArrowOneWay.name()],
-  ];
-  const direct = roles.find(([, name]) => name === fieldName);
-  if (direct) return direct[0];
-  if (fieldName.startsWith(`${m["image_export.vector_by_walls.section_splits"]()}:`)) return "split";
-  return null;
-}
+/** Key of the synthetic "Default" row — never matches a registry field. */
+const DEFAULT_ROW_KEY = "default";
 
 const MODELS: { key: ColorModel; label: () => string }[] = [
   { key: "rgb", label: () => m["color_picker.model.rgb"]() },
@@ -102,10 +65,12 @@ interface Props {
    *  first row of the "Project colors" priority group under a generic "Default" label — always
    *  unique, so it is never de-duplicated against the profile rows below. */
   defaultColor?: number;
-  /** The edited field's own name (GitHub issue #503) — shown in the panel header and used to drop
-   *  the field's own row (exact name, or a `Section: …: <fieldName>` suffix) from the "Project
-   *  colors" list. */
-  fieldName?: string;
+  /** The edited project-color field (GitHub issues #503, #717) — its name is the panel header, its
+   *  `key` drops the field's own row from the "Project colors" list, picks the export warnings that
+   *  concern it, and routes the live warning preview. Omit for a color that is not a registry field. */
+  field?: ColorField;
+  /** Header text for a color that has no registry `field`. */
+  fallbackName?: string;
 }
 
 /** Shell of the custom color picker (GitHub issue #499, sub-issue of #498). Opens as a `SidePanel`
@@ -117,7 +82,7 @@ interface Props {
  *  Live canvas preview (GitHub issue #513): while open, every working-color change is pushed through
  *  `onPreview` so the canvas renders the color in context; Cancel / header close / Escape push the
  *  original color back before closing, Apply leaves the last preview in place. */
-export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel, priorityColors, defaultColor, fieldName }: Props) {
+export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel, priorityColors, defaultColor, field, fallbackName }: Props) {
   const [working, setWorking] = useState(color);
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
@@ -150,38 +115,31 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
       edges,
       floors,
     } as MazeState);
-    // Drop the edited field's own row — matched by exact name or a `…: <fieldName>` suffix, since
-    // list names are composite (`Section: Field`) while a bare `fieldName` is just the row label.
-    // Call sites whose row label is generic ("Fill color", shared by every marker group) pass an
-    // already-composite `fieldName` so the suffix rule still isolates the one row.
-    const isSelf = (name: string) =>
-      fieldName !== undefined && (name === fieldName || name.endsWith(`: ${fieldName}`));
+    // Drop the edited field's own row.
+    const isSelf = (key: string) => field !== undefined && key === field.key;
     // A priority color naming a field whose settings section is currently hidden (e.g. one-way
     // passage colors when the maze has no one-way passages) must not appear in the picker either
     // (GitHub issue #503 follow-up) — `all` is the active-field set, so drop any priority entry
-    // whose name isn't in it.
-    const activeNames = new Set(all.map((e) => e.name));
-    const priority = (priorityColors ?? []).filter((e) => !isSelf(e.name) && activeNames.has(e.name));
+    // whose field isn't in it.
+    const activeKeys = new Set(all.map((e) => e.key));
+    const priority = (priorityColors ?? []).filter((e) => !isSelf(e.key) && activeKeys.has(e.key));
     const withDefault = defaultColor !== undefined
-      ? [{ name: m["color_picker.project_colors_default"](), color: defaultColor }, ...priority]
+      ? [{ key: DEFAULT_ROW_KEY, name: m["color_picker.project_colors_default"](), color: defaultColor }, ...priority]
       : priority;
-    return buildProjectColorGroups(withDefault, all.filter((e) => !isSelf(e.name)));
-  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, priorityColors, defaultColor, fieldName]);
+    return buildProjectColorGroups(withDefault, all.filter((e) => !isSelf(e.key)));
+  }, [openMode, wallsSettings, corridorsSettings, nodes, edges, floors, priorityColors, defaultColor, field]);
 
   const colorWarnings = useMemo(() => {
-    if (!showColorWarnings || !fieldName || !openMode) return [];
+    if (!showColorWarnings || !field || !openMode) return [];
     const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeTessellationConfig: cfg, start, finish } as MazeState;
-    const overridden = overrideActiveProfileColor(snapshot, fieldName, working);
+    const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
     const warnings = openMode === "vector_by_walls"
       ? computeVectorByWallsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByWallsSettings"], start, finish)
       : computeVectorByCorridorsWarningsAcrossFloors(nodes, edges, floors, cfg, overridden as MazeState["vectorByCorridorsSettings"], start, finish);
-    const fieldRoles = colorRolesForField(fieldName);
-    return warnings.filter((warning) => {
-      if (fieldRoles.length === 0 || !warning.colorRoles || !warning.colorValues) return false;
-      return warning.colorRoles.some((candidate, index) => fieldRoles.includes(candidate) && warning.colorValues?.[index] === working);
-    });
-  }, [showColorWarnings, fieldName, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
+    // The preview ran with the working color, so any warning attached to this field is about it.
+    return warnings.filter((warning) => warning.fields?.includes(field.key));
+  }, [showColorWarnings, field, openMode, wallsSettings, corridorsSettings, nodes, edges, floors, cfg, start, finish, working]);
 
   /** The color in effect when the picker opened. Captured once — with live preview (#513) the
    *  `color` prop tracks each previewed change (the call site's `onChange` also writes the store),
@@ -278,7 +236,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   }
 
   return (
-    <SidePanel title={fieldName ?? m["color_picker.title"]()} onClose={cancel} overlay>
+    <SidePanel title={field?.name() ?? fallbackName ?? m["color_picker.title"]()} onClose={cancel} overlay>
       {/* `tabIndex` so the container itself can hold focus and receive Escape even when the click
        *  that opened the picker landed on a non-focusable element. */}
       <div
@@ -407,11 +365,11 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
 }
 
 /** De-duplicate the "Project colors" bottom group against the top group (GitHub issue #503):
- *  drop a bottom row whose exact `name` + `color` pair already appears in the top group. Rows are
+ *  drop a bottom row whose exact field `key` + `color` pair already appears in the top group. Rows are
  *  never de-duplicated by color value alone — several fields sharing a hex all stay. */
 function buildProjectColorGroups(priority: ProjectColorEntry[], all: ProjectColorEntry[]) {
-  const topKeys = new Set(priority.map((e) => `${e.name} ${e.color}`));
-  const bottom = all.filter((e) => !topKeys.has(`${e.name} ${e.color}`));
+  const topKeys = new Set(priority.map((e) => `${e.key} ${e.color}`));
+  const bottom = all.filter((e) => !topKeys.has(`${e.key} ${e.color}`));
   return { top: priority, bottom, total: priority.length + bottom.length };
 }
 

@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
@@ -30,7 +31,7 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
  *  as every other collapsible section/subsection in these two panels — `sectionId` is this group's
  *  own key prefix (e.g. `"markers_start"`), `${sectionId}_marker`/`${sectionId}_text` the two
  *  subsections'. */
-export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fieldNames, isExpanded, onToggle, showTextSection, textFitKind }: {
+export function MarkerSettingsGroup<P extends string>({ title, sectionId, settings, onChange, linkTargets, priorityColors, defaultColors, fields, isExpanded, onToggle, showTextSection, textFitKind }: {
   title: string;
   /** Required when `title` is set (own collapsible `SectionHeader`/"Marker" subsection need an id
    *  to track). Omitted by the three vertical-connection-marker callers, which pass `title=""` and
@@ -55,7 +56,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
   /** Composite field names (GitHub issue #503) for the fill/border/text color rows — shown in
    *  the picker header and used to drop the row itself from the "Project colors" list. Needed here
    *  because two marker groups (start / finish) share the generic "Fill color" row label. */
-  fieldNames?: { fillColor?: string; borderColor?: string; textColor?: string };
+  fields: { fillColor: ColorField; borderColor: ColorField; textColor?: ColorField };
   /** Per-field link path for this group's `Linked*Row`s (GitHub issue #652 follow-up) — a concrete
    *  path for every field the caller's registry models (the seven "Marker" fields: `shape`/
    *  `cornerStyle`/`size`/`fillColor`/`borderColor`/`borderWidth`/`gapWidth`, plus the four
@@ -84,7 +85,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
       {title && sectionId && <SectionHeader label={title} expanded={sectionExpanded} onToggle={() => toggle(sectionId)} />}
       {sectionExpanded && (
         <div style={title ? styles.markerGroup : styles.markerGroupNoIndent}>
-          {showTextSection && (
+          {showTextSection && fields.textColor && (
             <>
               <SubsectionHeader label={m["image_export.vector_by_walls.markers_text_subsection"]()} expanded={subExpanded(textId)} onToggle={() => toggle(textId)} />
               {subExpanded(textId) && (
@@ -114,7 +115,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                     linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize }}
                     priorityColors={priorityColors?.textColor}
                     defaultColor={defaultColors?.textColor}
-                    fieldName={fieldNames?.textColor}
+                    field={fields.textColor}
                     autoFitKind={textFitKind}
                   />
                 </div>
@@ -130,7 +131,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                 linkTargets={linkTargets}
                 priorityColors={priorityColors}
                 defaultColors={defaultColors}
-                fieldNames={fieldNames}
+                fields={fields}
               />
             </div>
           )}

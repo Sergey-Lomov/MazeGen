@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ui, controlRowHeight } from "../styles/theme";
 import { ColorPickerPanel } from "./ColorPickerPanel";
-import type { ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
+import type { ColorField, ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import { colorToHex } from "./colorFormat";
 
 interface Props {
@@ -14,9 +14,11 @@ interface Props {
   /** This field's factory default (GitHub issue #503) — forwarded to `ColorPickerPanel`, which
    *  pins it as the first, always-unique row of the "Project colors" priority group. */
   defaultColor?: number;
-  /** This field's own name (GitHub issue #503) — forwarded to `ColorPickerPanel` for its header
-   *  and to drop the field's own row from the "Project colors" list. */
-  fieldName?: string;
+  /** This field's registry entry (GitHub issues #503, #717) — forwarded to `ColorPickerPanel` for
+   *  its header, self-row exclusion and export warnings. */
+  field?: ColorField;
+  /** Picker header for a color that has no registry `field`. */
+  fallbackName?: string;
   /** Live-preview handler for the open picker (GitHub issue #513) — called with the working color
    *  on every change, and once with the original color on Cancel / Escape / close. Defaults to
    *  `onChange`, which is right when `onChange` only updates a render; a call site whose `onChange`
@@ -48,7 +50,7 @@ interface Props {
  *  (GitHub issue #322). Commit timing depends on `onPreview`: with a distinct `onPreview` channel
  *  the single `onChange` commit fires on Apply; with the default (`onPreview` = `onChange`) the
  *  live stream is the commit and Apply just closes. Cancel / Escape restore the open-time color. */
-export function ColorSwatch({ color, onChange, disabled, onPreview, onOpen, onCancel, priorityColors, defaultColor, fieldName }: Props) {
+export function ColorSwatch({ color, onChange, disabled, onPreview, onOpen, onCancel, priorityColors, defaultColor, field, fallbackName }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   function open() {
@@ -79,7 +81,8 @@ export function ColorSwatch({ color, onChange, disabled, onPreview, onOpen, onCa
           onCancel={onCancel}
           priorityColors={priorityColors}
           defaultColor={defaultColor}
-          fieldName={fieldName}
+          field={field}
+          fallbackName={fallbackName}
         />
       )}
     </>

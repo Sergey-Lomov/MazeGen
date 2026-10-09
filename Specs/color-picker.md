@@ -15,7 +15,7 @@ land (more color models, practicality checks, presets).
 |---|---|
 | `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`) + optional `onOpen?: () => void` / `onCancel?: () => void` (#666, see "Cancel and parameter links" below). Clicking / activating opens `ColorPickerPanel`. |
 | `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. #503 adds an optional `priorityColors?: ProjectColorEntry[]` threaded straight through to `ColorSwatch` → `ColorPickerPanel` (the call site's own "these sibling colors matter for this decision" list). `onOpen?` / `onCancel?` (#666) forward straight through to `ColorSwatch`. |
-| `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { name: string; color: number }`. `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `fieldName` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
+| `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { key: string; name: string; color: number }` (`key` = the stable `ColorField.key`, GitHub issue #717). `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `field` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
 | `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape, then calls `onCancel?.()` (#666) before `onClose()`. |
 | `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. |
 | `RgbModelEditor.tsx` (`components/RgbModelEditor.tsx`) | The RGB editing model (#500): three channel sliders (0-255) with per-channel gradient tracks + paired numeric inputs. Reads the working color, calls `onChange` with the new packed color on every edit. |
@@ -229,20 +229,57 @@ Rows come from two sources, shown as two groups split by a divider:
 - **Bottom group** — the color fields of the currently active export profile
   (`selectActiveProfileColors`), i.e. the profile the picker was opened from.
 
-**Inactive fields are absent, not greyed.** `selectActiveProfileColors` computes a
-`SectionVisibility` (`sectionVisibility(state, settings)` in `projectColorsSelector.ts`) that
-mirrors the settings panels' `has*` predicates from the *unscoped* `state.nodes/edges/floors`
-(so a floor switch never changes the set). A field whose section is hidden in the settings panel
-is dropped entirely: grid color when `showGrid` off; `Ячейки: Стена` when
+**Inactive fields are absent, not greyed.** The field registry is the single source of truth for
+what a color field *is* (GitHub issue #717): `pixi/selectors/colorFieldRegistry.ts` (i18n-free)
+holds `STATIC_FIELD_DEFS: Record<StaticColorFieldKey, ColorFieldDef>` — for every field its
+`visible(ctx)` predicate, `get(settings)` value reader and `set(settings, color)` writer. Because it
+is a `Record` over the key union, a field without a predicate, getter or setter does not compile.
+`PC.*` (`projectColorsSelector.ts`) adds only the localized names and `ColorField.isVisible(ctx)`
+(delegating to the registry). `ctx` is a `ColorVisibilityContext` from
+`buildColorVisibility({ nodes, edges, floors }, settings)`, built from the *unscoped* project graph
+(a floor switch never changes the answer) plus the settings that gate rows. Predicates cover: mode
+(`tilesFloor`/`tilesWall`/`innerGrid`/decorative fields exist only in Vector by walls, `corridorFill`
+only in Vector by corridors); grid color when `showGrid` off; `Ячейки: Стена` when
 `randomWallColorMode !== "off"`; one-way indicator color with no directional edge; every teleport
-color when no `teleport` edge; connector color when `teleportConnectorStyle === "none"`; the
-floor-badge fill/border/text colors when no cross-floor teleport; per-group teleport
-fill/border overrides when `teleportGroupCustomization` off; vertical-section colors per
-two-way/one-way/elevator presence; the whole marker-index section when the layer is off;
-`Индексы маркеров: рамка` when `borderColorFromMarker` is on.
+color when no `teleport` edge; connector color when `teleportConnectorStyle === "none"`; floor-badge
+colors without a cross-floor teleport; split slot `i` when `i >= slotCount`; per-group teleport
+overrides unless `teleportGroupCustomization`; vertical colors per two-way/one-way/elevator presence
+and `verticalStyle`; start/finish text when `textEnabled === false`; elevator floor-badge colors
+unless `elevatorBadges.enabled`; the marker-index section when the layer is off, its border when
+`borderColorFromMarker` is on.
+
+**Every consumer goes through the registry, and bypassing it does not compile:**
+
+- **Export warnings** read colors only as `VisibleColor` — a branded `{ value, field }` that
+  `visibleColor(ctx, key)` mints, returning `null` for a hidden field or one with no value. The
+  contrast `ContrastEntry`/`ContrastPair` accept nothing but `VisibleColor | null`, and an entry with a
+  `null` side is dropped, so a warning about a hidden color cannot be written (raw `settings.xColor`
+  numbers do not type-check). The brand also carries the field key, so a warning's fields are always
+  the fields of the colors it compared. `unownedColor(value)` is the single explicit escape for a color
+  no field edits (a split passage without a slot); it has no field and is never hidden. Warnings use a
+  context built from the *unscoped* graph (`warningVisibility`) — a floor-scoped edge list cannot tell
+  a two-way passage from a one-way one.
+- **Settings panels** wrap their content in `ColorVisibilityProvider`; `ColorRow`/`LinkedColorRow`
+  take a required `field` and render disabled when `!field.isVisible(ctx)`, so a call site cannot
+  decide a color's state itself. A color that is not a project field uses `UnregisteredColorRow`
+  (background-image auto-fill color). Section gates (`hasOneWays`, `hasTeleports`,
+  `hasCrossFloorTeleports`, `hasTwoWayPassages`, `hasOneWayPassages`, `hasElevators`) are read from the
+  one `colorVisibility` memo; the wall-color/palette switch and the teleport connector block ask the
+  field predicate directly. Layout blocks that hold color rows next to other controls (the decorative /
+  abstract vertical-style sections) are wrapped in `LayoutGate gate="…"`; `LAYOUT_GATES` in the registry
+  defines each gate once and the color predicates build on the same entries, so a block and its colors
+  cannot disagree. Panels never test `settings.verticalStyle` themselves. The own enable toggles of
+  marker indices / elevator badges stay as the controls' state; the renderers read settings directly
+  to draw (not forbiddable by type), but visibility questions go through the registry.
+  Dynamic keys (`splitNode:<i>`, `teleportGroup:<i>:<role>`) are decoded in one place,
+  `parseColorFieldKey` (`pixi/colorFieldKeys.ts`).
+- **The list and the live preview**: `selectActiveProfileColors` walks `STATIC_FIELD_ORDER`
+  (three key tables around the two dynamic groups: per-group teleport overrides and split-node
+  slots; a test checks every static key appears exactly once) and keeps `visibleColor !== null`.
+  `overrideActiveProfileColor` writes through the same registry (`writeColorField`).
 
 **Priority list is filtered to the active set too.** `ColorPickerPanel` drops any `priorityColors`
-entry whose `name` is not in the bottom group's active-name set — one filter covers all call
+entry whose field `key` is not in the bottom group's active-key set — one filter covers all call
 sites, so a call site may pass a sibling color that turns out inactive without leaking it.
 
 **Progressive disclosure.** Initially only the top group shows, plus a `Показать все` /
@@ -257,9 +294,17 @@ button at the end that collapses it again. Button absent when the bottom group i
 ```ts
 export const PC = { bgFill, bgGrid, corridorFill, tilesFloor, tilesWall, startFill, startBorder,
   teleportEdge, elevatorBadgeText, markerIndexFill, /* … ~40 keys … */ splitNode(i) };
-// each field:  PC.<key>.name(): string            -> localized "Section: Role"
-//              PC.<key>.at(color): ProjectColorEntry
+// each field:  PC.<key>.key: ColorFieldKey         -> stable, never translated (the property name;
+//                                                     `splitNode:<i>`, `teleportGroup:<i>:<fill|border>`)
+//              PC.<key>.name(): string            -> localized "Section: Role"
+//              PC.<key>.at(color): ProjectColorEntry  ({ key, name, color })
+// resolveColorField(key): ColorField | null        -> registry lookup by key
 ```
+
+Field **identity is the `key`** (GitHub issue #717): self-row exclusion, between-group de-dup,
+priority-list filtering, the live warning preview and the warnings' field references all use it —
+never the translated name, which exists only for display. The keys live in `pixi/colorFieldKeys.ts`
+(no i18n dependency) so the renderer-agnostic `exportWarnings.ts` can name fields by key too.
 
 Section/role labels are `color_picker.entry.section.*` / `color_picker.entry.role.*` messages
 (e.g. `Фон` / `Заливка`). The one section label that is *not* an `entry.section.*` key is
@@ -267,8 +312,8 @@ Section/role labels are `color_picker.entry.section.*` / `color_picker.entry.rol
 ("Разделения" / "Splits") so the color name can't drift from the panel heading.
 `selectActiveProfileColors` builds every
 bottom-group row via `PC`; each call site builds its `priorityColors` entries (`PC.<key>.at(v)`)
-and its `fieldName` (`PC.<key>.name()`) from the same registry, so a call site never hand-assembles
-a `Section: Role` string and the names always match — between-group de-dup works. The dynamic
+and its `field` (the `PC.<key>` object) from the same registry, so a call site never hand-assembles
+a `Section: Role` string and the names always match. The dynamic
 split-node slots are `PC.splitNode(i)` (0-based). A per-teleport-group override color is
 `PC.teleportGroup(index, role)` — the group's internal `key` (an unstable coordinate-pair string)
 isn't a human-facing name, so the row is named by the group's 1-based *display* order instead
@@ -286,7 +331,7 @@ arrow pair shows only for `"abstract"`, the line color only for `"decorative"`, 
 own per-field visibility inside that subsection rather than listing every member whenever the section
 itself is on.
 
-De-duplication is **only between groups**: a bottom row whose exact `name` + `color` pair already
+De-duplication is **only between groups**: a bottom row whose exact field `key` + `color` pair already
 appears in the top group is dropped. Never dedup by color value alone. Divider shown only when
 both groups are non-empty and the bottom group is expanded.
 
@@ -300,24 +345,43 @@ The panel's preview block is `flex-shrink: 0`, so expanding the list scrolls the
 (the `content` div is `overflow-y: auto`) rather than compressing the preview.
 
 **Edited field awareness.** The panel knows the name of the field it was opened for
-(`fieldName?: string`, threaded `ColorRow` → `ColorSwatch` → `ColorPickerPanel`, defaulting to the
-row's `label`). It is used two ways:
+(`field?: ColorField`, threaded `ColorRow` → `ColorSwatch` → `ColorPickerPanel`; a color outside the
+registry passes none and the header falls back to the row's `label` via `fallbackName`). It is used
+three ways:
 
-- **Header** — the picker title is the `fieldName` verbatim (e.g. "Фон: Заливка") when set, else
-  the plain `color_picker.title`.
-- **Self-row exclusion** — a project-color row that *is* the edited field is dropped from both
-  groups, so the field can't list its own current value. Match is exact `name === fieldName` **or**
-  a `` `: ${fieldName}` `` suffix. Every call site passes a `fieldName` built from `PC.<key>.name()`
-  (the same `Section: Role` string the selector produces), so the match is normally exact; the
-  suffix arm covers the rows whose `ColorRow` `label` differs from the list name. Self-exclusion
-  runs before the "Default" row is prepended and before between-group de-dup.
+- **Header** — the picker title is `field.name()` (e.g. "Фон: Заливка") when set, else `fallbackName`,
+  else the plain `color_picker.title`.
+- **Self-row exclusion** — a project-color row that *is* the edited field (`entry.key === field.key`)
+  is dropped from both groups, so the field can't list its own current value. Runs before the
+  "Default" row is prepended and before between-group de-dup.
+- **Export warnings** — see below.
 
 **Export color warnings.** When `showColorWarnings` is enabled, the picker also shows warnings for
 the edited field's current working color. The active export renderer (`Vector by walls` or `Vector
 by corridors`) is evaluated with the working value applied to a cloned settings object, so changing
 either color updates the warning immediately without changing the store before Apply. Warnings use
-the renderer's existing applicable rules and only retains a warning when the warning's semantic color
-role is one of the roles of the field currently being edited. A field may carry several roles: start/finish/elevator-badge fill are also `label_background` and the matching text colors `label_text` (the combined `label_low_contrast` warning, GitHub issue #707 follow-up), so the picker of those fields shows it.
+the renderer's existing applicable rules. Each `ExportWarning` carries `fields: ColorFieldKey[]` —
+the keys of every color field it concerns — and the picker keeps a warning iff `fields` contains the
+edited field's key (GitHub issue #717; no role tables, no name matching, no color-value matching).
+The live preview is `overrideActiveProfileColor(state, field.key, working)`, which matches the field
+by key too. A field can appear in several warnings: start/finish/elevator-badge fill is both a marker
+fill (against the surface) and the background of its caption (`label_low_contrast`), so its picker
+shows both.
+
+**Which field a warning attaches to** (GitHub issue #717): always the field whose value is
+*effectively drawn*. A colour reached through a parameter link is attributed to the receiving field
+(the one the renderer reads), not to the link source. A per-group teleport override colour is
+attributed to that group's override field (`teleportGroup:<i>:<role>`) while the group overrides
+that role, and to the shared teleport field otherwise. A split colour is attributed to its slot
+(`splitNode:<i>`). Warnings are grouped per (kind, foreground field, background field) — never per
+colour value alone — so two fields sharing a hex stay separate warnings, and the same pair on several
+floors merges into one. The one exception is `split_colors_low_contrast_each_other`, a single warning
+for the whole split palette that lists every offending slot field. A colour with no owning field
+(a split passage without a slot) yields a warning with no `fields`, shown in the export panel only.
+
+The warnings panel's explanation ("The colour X is too close to Y") builds X and Y from
+`ColorField.name()` of `colorFields` (the compared foreground/background), so it names fields exactly
+as the picker does.
 Start/finish caption colors (`PC.startText`/`PC.finishText`) are listed in "Project colors" only while the caption is drawn (`textEnabled !== false`); they are priority colors of the marker's own fill/border and of each other, and the elevator badge text lists the badge fill and border. The entries reuse the export settings panel's warning
 bubble appearance, but omit the info button and are not clickable (there is no details modal). This
 block is separate from the export settings panel's Problems section; its visibility follows
@@ -341,7 +405,7 @@ loop).
 `VectorByCorridorsSettingsPanel`, and the shared subsection components
 (`TeleportSettingsSection`, `MarkerSettingsGroup`, `MarkerIndexSection`,
 `ElevatorBadgesSubsection`, `DecorativeLineStyleGroup`) — each takes typed priority props, factory
-defaults, and per-row `*FieldName` strings for its `ColorRow`s. The compact per-teleport-group
+defaults, and per-row `*Field` registry fields (`PC.<key>`) for its `ColorRow`s. The compact per-teleport-group
 override swatches (`ColorSwatch` in `TeleportGroupRow`) are not wired. Guiding rule for the lists: `floorColor` (walls mode) / `color` (corridors mode) is
 the near-universal neighbor; `background` only where geometry actually touches it (outer walls in
 walls mode; corridor stroke + one-ways in corridors mode); `wallColor` where a marker abuts a wall.

@@ -10,10 +10,9 @@ import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import * as m from "~/paraglide/messages";
 
-// GitHub issue #584: ColorPickerPanel had no test file at all. Covers colorRoleForField's
-// field-name-to-warning-role mapping (a name collision here silently breaks warning propagation,
-// see #583), the colorWarnings memo's full pipeline (fieldName -> overrideActiveProfileColor ->
-// filtered warnings), and buildProjectColorGroups' de-dup/priority logic.
+// GitHub issue #584: ColorPickerPanel had no test file at all. Covers the colorWarnings memo's full
+// pipeline (field key -> overrideActiveProfileColor -> warnings attached to that field, GitHub issue
+// #717) and buildProjectColorGroups' de-dup/priority logic.
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
@@ -65,25 +64,25 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" as const }],
       // Grid color equal to background -> zero contrast distance -> grid_low_contrast_background
-      // fires (colorRoles ["grid", "background"], see exportWarnings.ts's pushContrastWarningEntries).
+      // fires (fields ["bgGrid", "bgFill"], see exportWarnings.ts's pushContrastWarningEntries).
       vectorByWallsSettings: baseWallsSettings({ background: 0x000000, gridColor: 0x000000 }),
     });
   });
 
-  it("renders an ExportWarningBubble when the edited field's working color triggers a warning for its mapped role (colorRoleForField -> PC.bgGrid)", () => {
+  it("renders an ExportWarningBubble when a warning is attached to the edited field (warning attached to PC.bgGrid)", () => {
     render(
       <ColorPickerPanel
         color={0x000000}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgGrid.name()}
+        field={PC.bgGrid}
       />,
     );
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
     expect(screen.getByText(m["image_export.warning.grid_low_contrast_background"]())).toBeInTheDocument();
   });
 
-  it("maps the inner-grid field to its floor-contrast warning role", () => {
+  it("attaches the inner-grid floor-contrast warning to the inner-grid field", () => {
     useMazeStore.setState({
       vectorByWallsSettings: baseWallsSettings({ showGrid: false, showInnerGrid: true, innerGridColor: 0x000000, floorColor: 0x000000, wallColor: 0xffffff }),
     });
@@ -92,21 +91,21 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
         color={0x000000}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.innerGrid.name()}
+        field={PC.innerGrid}
       />,
     );
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
     expect(screen.getByText(m["image_export.warning.inner_grid_low_contrast_floor"]())).toBeInTheDocument();
   });
 
-  it("shows no warning for a field whose name does not map to the fired warning's color role (colorRoleForField mismatch)", () => {
-    // Editing the floor color: the fired warning's role is "grid", not "floor" -- must not surface.
+  it("shows no warning for a field the fired warning is not attached to", () => {
+    // Editing the floor color: the fired warning is attached to the grid/background fields, not the floor -- must not surface.
     render(
       <ColorPickerPanel
         color={0x2a2a2a}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.tilesFloor.name()}
+        field={PC.tilesFloor}
       />,
     );
     expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "0" }))).toBeInTheDocument();
@@ -118,7 +117,7 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
         color={0x000000}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgGrid.name()}
+        field={PC.bgGrid}
       />,
     );
     expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" }))).toBeInTheDocument();
@@ -133,16 +132,15 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
         color={0x000000}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgGrid.name()}
+        field={PC.bgGrid}
       />,
     );
     expect(screen.queryByTestId("color-picker-export-warnings")).toBeNull();
   });
 
-  it("maps a split-section field name (colorRoleForField's prefix rule) to the split warning role", () => {
+  it("attaches a split warning to its slot's split-node field", () => {
     // A split point whose slot-0 color equals the floor color -> split_low_contrast_floor fires
-    // (role ["split", "floor"]); colorRoleForField must resolve "Splits: ...: <fieldName>" via the
-    // `${section_splits}:` prefix rule, not the direct PC-name lookup table.
+    // (fields [splitNode:0, tilesFloor]); the slot's own field must carry it.
     // Bridge topology is required -- a plain pair of co-located nodes with no edges produces no
     // split passages/colors at all (see splitTopologyFixtures.ts).
     useMazeStore.setState({
@@ -153,13 +151,13 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
         floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff],
       }),
     });
-    const splitFieldName = PC.splitNode(0).name();
+    const splitField = PC.splitNode(0);
     render(
       <ColorPickerPanel
         color={0x123456}
         onApply={noop}
         onClose={noop}
-        fieldName={splitFieldName}
+        field={splitField}
       />,
     );
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
@@ -187,10 +185,10 @@ describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)
   });
 
   it.each([
-    ["start caption color", () => PC.startText.name()],
-    ["start marker fill (the caption's background)", () => PC.startFill.name()],
-  ])("shows the label contrast warning in the picker of the %s", (_label, fieldName) => {
-    render(<ColorPickerPanel color={0x00ff00} onApply={noop} onClose={noop} fieldName={fieldName()} />);
+    ["start caption color", () => PC.startText],
+    ["start marker fill (the caption's background)", () => PC.startFill],
+  ])("shows the label contrast warning in the picker of the %s", (_label, field) => {
+    render(<ColorPickerPanel color={0x00ff00} onApply={noop} onClose={noop} field={field()} />);
     fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
     expect(screen.getByText(m["image_export.warning.label_low_contrast"]())).toBeInTheDocument();
   });
@@ -214,7 +212,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0xffffff}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgFill.name()}
+        field={PC.bgFill}
       />,
     );
     fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: String(10) })));
@@ -229,7 +227,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0xffffff}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgFill.name()}
+        field={PC.bgFill}
         priorityColors={[PC.tilesFloor.at(0x2a2a2a)]}
       />,
     );
@@ -247,7 +245,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0xffffff}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgFill.name()}
+        field={PC.bgFill}
         priorityColors={[PC.tilesFloor.at(0xabcdef)]}
       />,
     );
@@ -266,7 +264,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0xffffff}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgFill.name()}
+        field={PC.bgFill}
         priorityColors={[PC.oneWaysMarker.at(0xff0000)]}
       />,
     );
@@ -280,7 +278,7 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0xffffff}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.bgFill.name()}
+        field={PC.bgFill}
         defaultColor={0x2a2a2a}
       />,
     );
@@ -297,11 +295,11 @@ describe("ColorPickerPanel Project colors list (GitHub issue #584)", () => {
         color={0x2a2a2a}
         onApply={noop}
         onClose={noop}
-        fieldName={PC.tilesFloor.name()}
+        field={PC.tilesFloor}
       />,
     );
     fireEvent.click(screen.getByText(m["color_picker.project_colors"]({ count: "10" })));
-    // The SidePanel header also shows fieldName verbatim as its title -- only that one occurrence
+    // The SidePanel header also shows field name as its title -- only that one occurrence
     // may exist; the list itself must contain none.
     expect(screen.getAllByText(PC.tilesFloor.name())).toHaveLength(1);
     expect(document.querySelector(".project-color-row")).toBeNull();

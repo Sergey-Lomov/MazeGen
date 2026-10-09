@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { MazeState } from "../store/mazeStore";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import { overrideActiveProfileColor, selectActiveProfileColors, PC } from "../pixi/selectors/projectColorsSelector";
+import { overrideActiveProfileColor, selectActiveProfileColors, resolveColorField, buildColorVisibility, PC } from "../pixi/selectors/projectColorsSelector";
+import { STATIC_COLOR_FIELD_KEYS } from "../pixi/colorFieldKeys";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -345,7 +346,7 @@ describe("overrideActiveProfileColor", () => {
   it("clones the active profile and changes only the requested field", () => {
     const state = makeState({ openRenderModeSettings: "vector_by_walls" });
     const original = state.vectorByWallsSettings;
-    const overridden = overrideActiveProfileColor(state, PC.bgFill.name(), 0x123456);
+    const overridden = overrideActiveProfileColor(state, PC.bgFill.key, 0x123456);
     expect(overridden).not.toBeNull();
     expect(overridden?.background).toBe(0x123456);
     expect(overridden?.gridColor).toBe(original.gridColor);
@@ -356,7 +357,7 @@ describe("overrideActiveProfileColor", () => {
   it("overrides only the inner-grid color", () => {
     const state = makeState({ openRenderModeSettings: "vector_by_walls" });
     const original = state.vectorByWallsSettings;
-    const overridden = overrideActiveProfileColor(state, PC.innerGrid.name(), 0x123456);
+    const overridden = overrideActiveProfileColor(state, PC.innerGrid.key, 0x123456);
     if (!overridden || !("innerGridColor" in overridden)) throw new Error("Expected vector-by-walls settings");
     expect(overridden.innerGridColor).toBe(0x123456);
     expect(overridden?.gridColor).toBe(original.gridColor);
@@ -368,7 +369,7 @@ describe("overrideActiveProfileColor", () => {
       vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, verticalStyle: "decorative" },
     });
     const original = state.vectorByWallsSettings;
-    const overridden = overrideActiveProfileColor(state, PC.decorArrowTwoWay.name(), 0x123456);
+    const overridden = overrideActiveProfileColor(state, PC.decorArrowTwoWay.key, 0x123456);
     expect(overridden).not.toBeNull();
     if (!overridden || !("decorativeStairsArrowColor" in overridden)) throw new Error("Expected vector-by-walls settings");
     expect(overridden?.decorativeStairsArrowColor).toBe(0x123456);
@@ -381,7 +382,7 @@ describe("overrideActiveProfileColor", () => {
       vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, verticalStyle: "decorative" },
     });
     const original = state.vectorByWallsSettings;
-    const overridden = overrideActiveProfileColor(state, PC.decorArrowOneWay.name(), 0x123456);
+    const overridden = overrideActiveProfileColor(state, PC.decorArrowOneWay.key, 0x123456);
     expect(overridden).not.toBeNull();
     if (!overridden || !("decorativeStairsOneWayArrowColor" in overridden)) throw new Error("Expected vector-by-walls settings");
     expect(overridden?.decorativeStairsOneWayArrowColor).toBe(0x123456);
@@ -393,7 +394,7 @@ describe("overrideActiveProfileColor", () => {
       openRenderModeSettings: "vector_by_corridors",
       nodes: [node(1, 0, 0), node(2, 0, 0)],
     });
-    const overridden = overrideActiveProfileColor(state, PC.splitNode(1).name(), 0x123456);
+    const overridden = overrideActiveProfileColor(state, PC.splitNode(1).key, 0x123456);
 
     expect(overridden).not.toBeNull();
     expect(overridden?.splitNodeColors[1]).toBe(0x123456);
@@ -412,11 +413,107 @@ describe("shared-style marker colors (GitHub issue #701)", () => {
 
   it("overrideActiveProfileColor rewrites only the targeted source", () => {
     const state = makeState({ openRenderModeSettings: "vector_by_walls" });
-    const fill = overrideActiveProfileColor(state, PC.sharedMarkerFill.name(), 0x123456);
+    const fill = overrideActiveProfileColor(state, PC.sharedMarkerFill.key, 0x123456);
     expect(fill?.markerFillColor).toBe(0x123456);
     expect(fill?.markerBorderColor).toBe(state.vectorByWallsSettings.markerBorderColor);
-    const border = overrideActiveProfileColor(state, PC.sharedMarkerBorder.name(), 0x654321);
+    const border = overrideActiveProfileColor(state, PC.sharedMarkerBorder.key, 0x654321);
     expect(border?.markerBorderColor).toBe(0x654321);
     expect(border?.markerFillColor).toBe(state.vectorByWallsSettings.markerFillColor);
+  });
+});
+
+describe("color field keys (GitHub issue #717)", () => {
+  it("every static field's key is its PC property name and resolves back to itself", () => {
+    for (const key of STATIC_COLOR_FIELD_KEYS) {
+      expect(PC[key].key).toBe(key);
+      expect(resolveColorField(key)).toBe(PC[key]);
+    }
+  });
+
+  it("static field names are unique, so a name collision can never hide a field", () => {
+    const names = STATIC_COLOR_FIELD_KEYS.map((key) => PC[key].name());
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("resolves dynamic split-node and teleport-group keys", () => {
+    expect(resolveColorField(PC.splitNode(2).key)?.name()).toBe(PC.splitNode(2).name());
+    expect(resolveColorField(PC.teleportGroup(1, "border").key)?.name()).toBe(PC.teleportGroup(1, "border").name());
+    expect(resolveColorField("nonsense")).toBeNull();
+  });
+
+  it("entries carry their field's key", () => {
+    expect(PC.bgGrid.at(0x123456)).toMatchObject({ key: "bgGrid", color: 0x123456 });
+  });
+});
+
+describe("field visibility predicate (GitHub issue #717)", () => {
+  const maze = { nodes: [] as NodeDto[], edges: [] as EdgeDto[], floors: [{ id: "floor_1", title: "Floor 1" }] } as never;
+
+  it("hides start/finish text fields when textEnabled is false, everywhere", () => {
+    const settings = {
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, textEnabled: false, textColor: 0xffffff },
+    };
+    const ctx = buildColorVisibility(maze, settings);
+    expect(PC.startText.isVisible(ctx)).toBe(false);
+    const state = makeState({ openRenderModeSettings: "vector_by_walls", vectorByWallsSettings: settings });
+    expect(selectActiveProfileColors(state).map((c) => c.key)).not.toContain("startText");
+  });
+
+  it("is mode-aware: floor/wall fields exist only in walls mode, corridor fill only in corridors", () => {
+    const walls = buildColorVisibility(maze, DEFAULT_VECTOR_BY_WALLS_SETTINGS);
+    const corridors = buildColorVisibility(maze, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
+    expect(PC.tilesFloor.isVisible(walls)).toBe(true);
+    expect(PC.tilesFloor.isVisible(corridors)).toBe(false);
+    expect(PC.corridorFill.isVisible(walls)).toBe(false);
+    expect(PC.corridorFill.isVisible(corridors)).toBe(true);
+  });
+
+  it("gates teleport, split and group-override fields on the maze and settings", () => {
+    const ctx = buildColorVisibility(maze, { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, teleportGroupCustomization: true });
+    expect(PC.teleportEdge.isVisible(ctx)).toBe(false);
+    expect(PC.splitNode(0).isVisible(ctx)).toBe(false);
+    expect(PC.teleportGroup(0, "fill").isVisible(ctx)).toBe(false);
+  });
+
+  it("gates vertical, decorative and elevator-badge fields by kind, style and badge toggle", () => {
+    const elevatorMaze = {
+      nodes: [node(0, 0, 0, 0), node(1, 0, 0, 1)],
+      edges: [edge(0, 1, "elevator"), edge(1, 0, "elevator")],
+      floors: [{ id: "f1", title: "1" }, { id: "f2", title: "2" }],
+    } as never;
+    const base = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, replaceTwoFloorElevatorsWithStairs: false };
+    const abstract = buildColorVisibility(elevatorMaze, base);
+    expect(PC.elevatorFill.isVisible(abstract)).toBe(true);
+    expect(PC.twoWayFill.isVisible(abstract)).toBe(false);
+    expect(PC.decorLineElevator.isVisible(abstract)).toBe(false);
+
+    const decorative = buildColorVisibility(elevatorMaze, { ...base, verticalStyle: "decorative" });
+    expect(PC.elevatorFill.isVisible(decorative)).toBe(false);
+    expect(PC.decorLineElevator.isVisible(decorative)).toBe(true);
+    expect(PC.verticalDecorLine.isVisible(decorative)).toBe(true);
+
+    const badgesOff = buildColorVisibility(elevatorMaze, {
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      elevatorBadges: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.elevatorBadges, enabled: false },
+    });
+    expect(PC.elevatorBadgeFill.isVisible(badgesOff)).toBe(false);
+    expect(PC.elevatorBadgeFill.isVisible(abstract)).toBe(
+      DEFAULT_VECTOR_BY_WALLS_SETTINGS.elevatorBadges.enabled,
+    );
+  });
+
+  it("the listing contains exactly the visible static fields", () => {
+    for (const mode of ["vector_by_walls", "vector_by_corridors"] as const) {
+      const state = makeState({ openRenderModeSettings: mode });
+      const settings = mode === "vector_by_walls" ? state.vectorByWallsSettings : state.vectorByCorridorsSettings;
+      const ctx = buildColorVisibility(state, settings);
+      const listed = new Set(selectActiveProfileColors(state).map((c) => c.key));
+      for (const key of STATIC_COLOR_FIELD_KEYS) {
+        // A visible field with no value (e.g. unset text color) is legitimately absent.
+        if (listed.has(key)) expect(PC[key].isVisible(ctx)).toBe(true);
+        else if (PC[key].isVisible(ctx)) expect(["startText", "finishText"]).toContain(key);
+      }
+    }
   });
 });
