@@ -1,5 +1,7 @@
 import * as m from "~/paraglide/messages";
-import type { ExportWarningColorRole, ExportWarningId } from "../../pixi/selectors/exportWarnings";
+import type { ExportWarningId } from "../../pixi/selectors/exportWarnings";
+import type { ColorFieldKey } from "../../pixi/colorFieldKeys";
+import { resolveColorField } from "../../pixi/selectors/projectColorsSelector";
 
 /** Localized message/description per `ExportWarningId` (GitHub issue #298) — kept separate from
  *  `exportWarnings.ts` since that selector must stay renderer/i18n-agnostic (a future feature-card
@@ -121,35 +123,23 @@ export function resolveExportWarningMessage(id: ExportWarningId): string {
   return WARNING_MESSAGES[id]?.() ?? "";
 }
 
-const COLOR_ROLE_LABELS: Record<ExportWarningColorRole, () => string> = {
-  background: m["image_export.color_role.background"], grid: m["image_export.color_role.grid"], inner_grid: m["image_export.color_role.inner_grid"], corridor: m["image_export.color_role.corridor"],
-  floor: m["image_export.color_role.floor"], wall: m["image_export.color_role.wall"], one_way: m["image_export.color_role.one_way"],
-  split: m["image_export.color_role.split"], marker_fill: m["image_export.color_role.marker_fill"], marker_border: m["image_export.color_role.marker_border"],
-  label_text: m["image_export.color_role.label_text"], label_background: m["image_export.color_role.label_background"],
-  teleport_connector: m["image_export.color_role.teleport_connector"], teleport_badge_border: m["image_export.color_role.teleport_badge_border"],
-  teleport_badge_fill: m["image_export.color_role.teleport_badge_fill"], teleport_badge_text: m["image_export.color_role.teleport_badge_text"],
-  vertical_two_way_fill: m["image_export.color_role.vertical_two_way_fill"], vertical_two_way_border: m["image_export.color_role.vertical_two_way_border"],
-  vertical_two_way_arrow: m["image_export.color_role.vertical_two_way_arrow"], vertical_one_way_fill: m["image_export.color_role.vertical_one_way_fill"],
-  vertical_two_way_line: m["image_export.color_role.vertical_two_way_line"], vertical_one_way_line: m["image_export.color_role.vertical_one_way_line"],
-  vertical_one_way_border: m["image_export.color_role.vertical_one_way_border"], vertical_one_way_arrow: m["image_export.color_role.vertical_one_way_arrow"],
-  vertical_one_way_decorative_arrow: m["image_export.color_role.vertical_one_way_decorative_arrow"],
-  elevator_fill: m["image_export.color_role.elevator_fill"], elevator_border: m["image_export.color_role.elevator_border"],
-  elevator_arrow: m["image_export.color_role.elevator_arrow"], elevator_line: m["image_export.color_role.elevator_line"], elevator_badge_fill: m["image_export.color_role.elevator_badge_fill"],
-};
-
 function formatHex(color: number): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, "0").toUpperCase()}`;
 }
 
 export function resolveExportWarningDescription(
   id: ExportWarningId,
-  colorRoles?: [ExportWarningColorRole, ExportWarningColorRole],
+  colorFields?: [ColorFieldKey, ColorFieldKey],
   colorValues?: [number, number],
 ): string {
-  if (colorRoles && colorValues) {
+  // Color names come from the project-color field registry, so a warning always names the same
+  // "Section: Role" label the color picker and settings panels use.
+  const foreground = colorFields && resolveColorField(colorFields[0]);
+  const background = colorFields && resolveColorField(colorFields[1]);
+  if (foreground && background && colorValues) {
     return m["image_export.warning.color_contrast_description"]({
-      foreground: COLOR_ROLE_LABELS[colorRoles[0]](),
-      background: COLOR_ROLE_LABELS[colorRoles[1]](),
+      foreground: foreground.name(),
+      background: background.name(),
       foregroundHex: formatHex(colorValues[0]),
       backgroundHex: formatHex(colorValues[1]),
     });

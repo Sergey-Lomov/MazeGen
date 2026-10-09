@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { ElevatorBadgeSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
@@ -17,7 +18,7 @@ import * as m from "~/paraglide/messages";
  *  `links`/`registry`/`onSetLinkEnabled`/`onAddLink` from the nearest `LinkContextProvider` via the
  *  `Linked*Row` wrappers (GitHub issue #652 follow-up) rather than taking them as props. Shared by
  *  both render modes, so `P` is generic over each mode's own `ParamPath` union. */
-export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorFieldName, fillColorFieldName, textColorFieldName }: {
+export function ElevatorBadgesSubsection<P extends string>({ settings, onChange, onCornerStyleChange, linkTargets, fillColorPriority, borderColorPriority, textColorPriority, fillColorDefault, borderColorDefault, textColorDefault, borderColorField, fillColorField, textColorField }: {
   settings: ElevatorBadgeSettings;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
@@ -50,9 +51,9 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
   textColorDefault?: number;
   /** Composite field names (GitHub issue #503) — the rows carry the generic "Fill color" /
    *  "Text color" labels, so an explicit name isolates the row in the "Project colors" list. */
-  fillColorFieldName?: string;
-  borderColorFieldName?: string;
-  textColorFieldName?: string;
+  fillColorField: ColorField;
+  borderColorField: ColorField;
+  textColorField: ColorField;
 }) {
   return (
     <div style={styles.wrap}>
@@ -128,7 +129,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               linkTargets={linkTargets}
               priorityColors={{ fillColor: fillColorPriority, borderColor: borderColorPriority }}
               defaultColors={{ fillColor: fillColorDefault, borderColor: borderColorDefault }}
-              fieldNames={{ fillColor: fillColorFieldName, borderColor: borderColorFieldName }}
+              fields={{ fillColor: fillColorField, borderColor: borderColorField }}
             />
             <TextStyleRows
               settings={settings}
@@ -136,7 +137,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
               linkTargets={linkTargets}
               priorityColors={textColorPriority}
               defaultColor={textColorDefault}
-              fieldName={textColorFieldName}
+              field={textColorField}
               autoFitKind="elevator"
             />
           </>

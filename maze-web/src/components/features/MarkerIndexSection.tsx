@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, typography } from "../../styles/theme";
@@ -15,7 +16,7 @@ import * as m from "~/paraglide/messages";
  *  is nested one indent deep: a "Coverage" sub-group of per-connection-kind toggles, then a
  *  "Settings" sub-group with the plate's appearance. All geometric fields are in px (GitHub issue
  *  #681 — `height`/`offset`/`cornerRadius`/`paddingX` were previously fractions of `TILE_SIZE`). */
-export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorFieldName, textColorFieldName, borderColorFieldName }: {
+export function MarkerIndexSection<P extends string>({ settings, onChange, linkTargets, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorField, textColorField, borderColorField }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
   /** Per-field link paths (GitHub issue #652 follow-up) for every `Linked*Row` in this section — a
@@ -52,9 +53,9 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
   /** "Project colors" list names (GitHub issue #503) for the plate fill / text / border color rows —
    *  shown in the picker header and used to drop the row itself from the list. Built by the caller
    *  from the shared `PC` registry so they match `selectActiveProfileColors`. */
-  fillColorFieldName?: string;
-  textColorFieldName?: string;
-  borderColorFieldName?: string;
+  fillColorField: ColorField;
+  textColorField: ColorField;
+  borderColorField: ColorField;
 }) {
   const cov = settings.coverage;
   const setCoverage = (patch: Partial<MarkerIndexSettings["coverage"]>) =>
@@ -185,7 +186,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(fillColor) => onChange({ fillColor })}
                 priorityColors={fillColorPriority}
                 defaultColor={fillColorDefault}
-                fieldName={fillColorFieldName}
+                field={fillColorField}
                 linkTarget={linkTargets.fillColor}
               />
               <LinkedColorRow
@@ -194,7 +195,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(textColor) => onChange({ textColor })}
                 priorityColors={textColorPriority}
                 defaultColor={textColorDefault}
-                fieldName={textColorFieldName}
+                field={textColorField}
                 linkTarget={linkTargets.textColor}
               />
               <LinkedToggleRow
@@ -210,7 +211,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 disabled={settings.borderColorFromMarker}
                 priorityColors={borderColorPriority}
                 defaultColor={borderColorDefault}
-                fieldName={borderColorFieldName}
+                field={borderColorField}
                 linkTarget={linkTargets.borderColor}
               />
             </div>

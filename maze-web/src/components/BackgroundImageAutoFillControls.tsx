@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import type { BackgroundAutoFillMode } from "../store/tessellationTypes";
 import { buildBackgroundFieldPreviewFromImage, getBackgroundImageTopLeftColor } from "../pixi/backgroundFieldAutofill";
-import { ColorRow } from "./ColorRow";
+import { UnregisteredColorRow } from "./ColorRow";
 import { ConfirmModal } from "./ConfirmModal";
 import { SectionHeader } from "./SectionHeader";
 import { SelectRow } from "./SelectRow";
@@ -183,11 +183,10 @@ export function BackgroundImageAutoFillControls({ enabled }: Props) {
               onChange={(value) => setAutoFillMode(value as BackgroundAutoFillMode)}
             />
             {autoFillMode === "color" && (
-              <ColorRow
+              <UnregisteredColorRow
                 label={m["background.autofill.color"]()}
                 color={autoFillColor}
                 onChange={setAutoFillColor}
-                fieldName={m["background.autofill.color"]()}
               />
             )}
             <SliderRow

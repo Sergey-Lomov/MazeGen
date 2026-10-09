@@ -21,11 +21,12 @@ import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { computeVectorByCorridorsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { maxSplitNodeCount, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
-import { PC } from "../../pixi/selectors/projectColorsSelector";
+import { ColorVisibilityProvider } from "../ColorVisibilityContext";
+import { PC, buildColorVisibility } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 const MAX_SPLIT_GAP_WIDTH = 10;
@@ -150,7 +151,7 @@ export function VectorByCorridorsSettingsPanel() {
 
   // Vertical-connection cross-references (GitHub issue #503) — see `VectorByWallsSettingsPanel`'s
   // note. `[fill, border/accent, arrow]` per vertical kind; each vertical color row prioritizes the
-  // other two kinds' full triples. Self is dropped from a row's own list by `ColorRow`'s `fieldName`.
+  // other two kinds' full triples. Self is dropped from a row's own list by the picker's field-key match.
   const vTwoWay = [
     PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor),
     PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor),
@@ -171,7 +172,7 @@ export function VectorByCorridorsSettingsPanel() {
     PC.elevatorBadgeText.at(settings.elevatorBadges.textColor),
   ];
   // Every teleport color row also prioritizes the floor-badge colors (GitHub issue #503) — a row's
-  // own entry is dropped by `ColorRow`'s `fieldName`.
+  // own entry is dropped by the picker's field-key match.
   const tpBadges = [
     PC.teleportBadgeFill.at(settings.teleportFloorBadge.fillColor),
     PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
@@ -234,29 +235,20 @@ export function VectorByCorridorsSettingsPanel() {
   // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
   // `nodes`/`edges` — so switching floors never makes a section appear or disappear. Mirrors
   // `VectorByWallsSettingsPanel`'s own rule.
-  const hasOneWays = useMemo(() => {
-    const basicEdges = rawEdges.filter((e) => e.kind === "basic");
-    const forward = new Set(basicEdges.map((e) => `${e.from}->${e.to}`));
-    return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-  }, [rawEdges]);
-  const hasTeleports = useMemo(() => rawEdges.some((e) => e.kind === "teleport"), [rawEdges]);
-  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport
-  // to badge — shared helper, same check both export panels run.
-  const hasCrossFloorTeleports = useMemo(() => hasCrossFloorTeleport(rawNodes, rawEdges), [rawNodes, rawEdges]);
-  // "Vertical connections" splits into three independent panel sections, each hidden when the maze
-  // has none of that kind on any floor — same rule as `VectorByWallsSettingsPanel`'s own (GitHub
-  // issue #348, parity follow-up to #347's three-section split). Reads `rawEdges` (unscoped by
-  // floor), not the floor-scoped `edges` — see that panel's own doc comment on why a bidirectional
-  // passage's two directed halves never survive floor-scoping together.
-  const { hasTwoWayPassages, hasOneWayPassages, hasElevators } = useMemo(() => {
-    const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
-    const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
-    const hasOneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-    const hasElevators = rawEdges.some((e) => e.kind === "elevator");
-    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
-      (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
-    return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
-  }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
+  // One visibility context for the whole panel (GitHub issue #717): the section gates below, the
+  // priority color lists and the "Project colors" list all derive from it, so they cannot drift.
+  // Built from the unscoped `rawNodes`/`rawEdges` so a floor switch never changes the answer.
+  const colorVisibility = useMemo(
+    () => buildColorVisibility({ nodes: rawNodes, edges: rawEdges, floors }, settings),
+    [rawNodes, rawEdges, floors, settings],
+  );
+  const hasOneWays = colorVisibility.oneWayIndicator;
+  const hasTeleports = colorVisibility.teleports;
+  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport.
+  const hasCrossFloorTeleports = colorVisibility.crossFloorTeleports;
+  const hasTwoWayPassages = colorVisibility.twoWayPassages;
+  const hasOneWayPassages = colorVisibility.oneWayPassages;
+  const hasElevators = colorVisibility.elevators;
   const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
 
   // Which registry paths the panel currently shows (GitHub issue #670) — see
@@ -281,6 +273,7 @@ export function VectorByCorridorsSettingsPanel() {
 
   return (
     <LinkContextProvider value={{ links: settings.links, registry: VECTOR_BY_CORRIDORS_PARAM_REGISTRY, onSetLinkEnabled: setLinkEnabled, onAddLink: addLink, activePaths } as unknown as LinkContextValue<string>}>
+    <ColorVisibilityProvider value={colorVisibility}>
     <TextFitContextProvider value={textFit}>
     <div style={styles.root}>
       <ExportWarningsSection
@@ -338,7 +331,7 @@ export function VectorByCorridorsSettingsPanel() {
             color={settings.background}
             onChange={setBackground}
             defaultColor={D.background}
-            fieldName={PC.bgFill.name()}
+            field={PC.bgFill}
             priorityColors={[PC.bgGrid.at(settings.gridColor), corridor]}
             linkTarget="background"
           />
@@ -347,9 +340,8 @@ export function VectorByCorridorsSettingsPanel() {
             label={m["image_export.vector_by_walls.grid_color"]()}
             color={settings.gridColor}
             onChange={setGridColor}
-            disabled={!settings.showGrid}
             defaultColor={D.gridColor}
-            fieldName={PC.bgGrid.name()}
+            field={PC.bgGrid}
             priorityColors={[bg, corridor]}
             linkTarget="gridColor"
           />
@@ -365,7 +357,7 @@ export function VectorByCorridorsSettingsPanel() {
       />
       {isExpanded("cells") && (
         <div style={styles.block}>
-          <LinkedColorRow label={m["image_export.vector_by_corridors.color"]()} color={settings.color} onChange={setColor} defaultColor={D.color} priorityColors={[PC.bgGrid.at(settings.gridColor), bg]} fieldName={PC.corridorFill.name()} linkTarget="color" />
+          <LinkedColorRow label={m["image_export.vector_by_corridors.color"]()} color={settings.color} onChange={setColor} defaultColor={D.color} priorityColors={[PC.bgGrid.at(settings.gridColor), bg]} field={PC.corridorFill} linkTarget="color" />
           <LinkedSelectRow
             label={m["image_export.vector_by_corridors.join"]()}
             value={settings.join}
@@ -446,7 +438,7 @@ export function VectorByCorridorsSettingsPanel() {
             settings={settings.startMarker}
             priorityColors={{ fillColor: [startBorder, startText, finishFill, finishBorder, corridor], borderColor: [startFill, startText, finishBorder, finishFill, corridor], textColor: [startFill, startBorder, finishText, corridor] }}
             defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor, textColor: D.startMarker.textColor }}
-            fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name, textColor: PC.startText.name() }}
+            fields={{ fillColor: PC.startFill, borderColor: PC.startBorder, textColor: PC.startText }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
               if (patch.text !== undefined) setStartMarkerText(patch.text);
@@ -485,7 +477,7 @@ export function VectorByCorridorsSettingsPanel() {
             settings={settings.finishMarker}
             priorityColors={{ fillColor: [finishBorder, finishText, startFill, startBorder, corridor], borderColor: [finishFill, finishText, startBorder, startFill, corridor], textColor: [finishFill, finishBorder, startText, corridor] }}
             defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor, textColor: D.finishMarker.textColor }}
-            fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name, textColor: PC.finishText.name() }}
+            fields={{ fillColor: PC.finishFill, borderColor: PC.finishBorder, textColor: PC.finishText }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
               if (patch.text !== undefined) setFinishMarkerText(patch.text);
@@ -534,7 +526,7 @@ export function VectorByCorridorsSettingsPanel() {
                 color={settings.oneWayColor}
                 onChange={(color) => patchOneWaySettings({ oneWayColor: color })}
                 defaultColor={D.oneWayColor}
-                fieldName={PC.oneWaysMarker.name()}
+                field={PC.oneWaysMarker}
                 priorityColors={[bg, corridor]}
                 linkTarget="oneWayColor"
               />
@@ -662,12 +654,12 @@ export function VectorByCorridorsSettingsPanel() {
               floorBadgeFillColorDefault={D.teleportFloorBadge.fillColor}
               floorBadgeBorderColorDefault={D.teleportFloorBadge.borderColor}
               floorBadgeTextColorDefault={D.teleportFloorBadge.textColor}
-              edgeColorFieldName={PC.teleportEdge.name()}
-              edgeBorderColorFieldName={PC.teleportEdgeBorder.name()}
-              connectorColorFieldName={PC.teleportConnector.name()}
-              floorBadgeFillColorFieldName={PC.teleportBadgeFill.name()}
-              floorBadgeBorderColorFieldName={PC.teleportBadgeBorder.name()}
-              floorBadgeTextColorFieldName={PC.teleportBadgeText.name()}
+              edgeColorField={PC.teleportEdge}
+              edgeBorderColorField={PC.teleportEdgeBorder}
+              connectorColorField={PC.teleportConnector}
+              floorBadgeFillColorField={PC.teleportBadgeFill}
+              floorBadgeBorderColorField={PC.teleportBadgeBorder}
+              floorBadgeTextColorField={PC.teleportBadgeText}
             />
           )}
         </>
@@ -735,7 +727,7 @@ export function VectorByCorridorsSettingsPanel() {
                         onChange={(verticalFillColor) => patchVerticalSharedStyle({ verticalFillColor })}
                         priorityColors={[PC.verticalArrow.at(settings.verticalArrowColor), corridor]}
                         defaultColor={D.verticalFillColor}
-                        fieldName={PC.verticalFill.name()}
+                        field={PC.verticalFill}
                         linkTarget="verticalFillColor"
                       />
                       <LinkedSliderRow
@@ -770,7 +762,7 @@ export function VectorByCorridorsSettingsPanel() {
                         onChange={(verticalArrowColor) => patchVerticalSharedStyle({ verticalArrowColor })}
                         priorityColors={[PC.verticalFill.at(settings.verticalFillColor), corridor, bg]}
                         defaultColor={D.verticalArrowColor}
-                        fieldName={PC.verticalArrow.name()}
+                        field={PC.verticalArrow}
                         linkTarget="verticalArrowColor"
                       />
                       <LinkedSliderRow
@@ -827,9 +819,9 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: [PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor), PC.twoWayArrow.at(settings.twoWayArrowColor), ...vOneWay, ...vElevator, ...vTail],
                           }}
                           defaultColors={{ fillColor: D.twoWayPassageMarker.fillColor, borderColor: D.twoWayPassageMarker.borderColor }}
-                          fieldNames={{
-                            fillColor: PC.twoWayFill.name(),
-                            borderColor: PC.twoWayBorder.name(),
+                          fields={{
+                            fillColor: PC.twoWayFill,
+                            borderColor: PC.twoWayBorder,
                           }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setTwoWayPassageMarkerShape(patch.shape);
@@ -865,7 +857,7 @@ export function VectorByCorridorsSettingsPanel() {
                           onChange={(twoWayArrowColor) => patchVerticalSettings({ twoWayArrowColor })}
                           priorityColors={[PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor), PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor), ...vOneWay, ...vElevator, ...vTailBg]}
                           defaultColor={D.twoWayArrowColor}
-                          fieldName={PC.twoWayArrow.name()}
+                          field={PC.twoWayArrow}
                           linkTarget="twoWayArrowColor"
                         />
                         <LinkedSliderRow
@@ -922,9 +914,9 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: [PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail],
                           }}
                           defaultColors={{ fillColor: D.oneWayPassageMarker.fillColor, borderColor: D.oneWayPassageMarker.borderColor }}
-                          fieldNames={{
-                            fillColor: PC.oneWayFill.name(),
-                            borderColor: PC.oneWayBorder.name(),
+                          fields={{
+                            fillColor: PC.oneWayFill,
+                            borderColor: PC.oneWayBorder,
                           }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setOneWayPassageMarkerShape(patch.shape);
@@ -960,7 +952,7 @@ export function VectorByCorridorsSettingsPanel() {
                           onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
                           priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayBorder.at(settings.oneWayPassageMarker.borderColor), ...vTwoWay, ...vElevator, ...vTailBg]}
                           defaultColor={D.oneWayArrowColor}
-                          fieldName={PC.oneWayArrow.name()}
+                          field={PC.oneWayArrow}
                           linkTarget="oneWayArrowColor"
                         />
                         <LinkedSliderRow
@@ -1017,9 +1009,9 @@ export function VectorByCorridorsSettingsPanel() {
                             borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
                           }}
                           defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
-                          fieldNames={{
-                            fillColor: PC.elevatorFill.name(),
-                            borderColor: PC.elevatorBorder.name(),
+                          fields={{
+                            fillColor: PC.elevatorFill,
+                            borderColor: PC.elevatorBorder,
                           }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setElevatorMarkerShape(patch.shape);
@@ -1056,7 +1048,7 @@ export function VectorByCorridorsSettingsPanel() {
                           onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
                           priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
                           defaultColor={D.elevatorArrowColor}
-                          fieldName={PC.elevatorArrow.name()}
+                          field={PC.elevatorArrow}
                           linkTarget="elevatorArrowColor"
                         />
                         <LinkedSliderRow
@@ -1122,9 +1114,9 @@ export function VectorByCorridorsSettingsPanel() {
                       fillColorDefault={D.elevatorBadges.fillColor}
                       borderColorDefault={D.elevatorBadges.borderColor}
                       textColorDefault={D.elevatorBadges.textColor}
-                      fillColorFieldName={PC.elevatorBadgeFill.name()}
-                      borderColorFieldName={PC.elevatorBadgeBorder.name()}
-                      textColorFieldName={PC.elevatorBadgeText.name()}
+                      fillColorField={PC.elevatorBadgeFill}
+                      borderColorField={PC.elevatorBadgeBorder}
+                      textColorField={PC.elevatorBadgeText}
                     />
                   </div>
                 )}
@@ -1153,7 +1145,7 @@ export function VectorByCorridorsSettingsPanel() {
                     label={m["image_export.vector_by_walls.split_node_color"]({ index: String(i + 1) })}
                     color={slotColor(i)}
                     onChange={(color) => setSplitNodeColor(i, color)}
-                    fieldName={PC.splitNode(i).name()}
+                    field={PC.splitNode(i)}
                     defaultColor={D.splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots)}
                     priorityColors={[
                       ...Array.from({ length: maxSplit }, (_, j) => j).filter((j) => j !== i).map((j) =>
@@ -1236,9 +1228,9 @@ export function VectorByCorridorsSettingsPanel() {
           fillColorDefault={D.markerIndex.fillColor}
           textColorDefault={D.markerIndex.textColor}
           borderColorDefault={D.markerIndex.borderColor}
-          fillColorFieldName={PC.markerIndexFill.name()}
-          textColorFieldName={PC.markerIndexText.name()}
-          borderColorFieldName={PC.markerIndexBorder.name()}
+          fillColorField={PC.markerIndexFill}
+          textColorField={PC.markerIndexText}
+          borderColorField={PC.markerIndexBorder}
         />
       )}
 
@@ -1254,6 +1246,7 @@ export function VectorByCorridorsSettingsPanel() {
       )}
     </div>
     </TextFitContextProvider>
+    </ColorVisibilityProvider>
     </LinkContextProvider>
   );
 }

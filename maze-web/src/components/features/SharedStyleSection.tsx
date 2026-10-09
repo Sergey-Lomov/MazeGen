@@ -162,7 +162,7 @@ export function SharedStyleSection<P extends string>({
             gapWidth: "gapWidth" as P,
           }}
           priorityColors={priorityColors}
-          fieldNames={{ fillColor: PC.sharedMarkerFill.name(), borderColor: PC.sharedMarkerBorder.name() }}
+          fields={{ fillColor: PC.sharedMarkerFill, borderColor: PC.sharedMarkerBorder }}
         />
       </div>
       <div style={typography.body}>{m["image_export.vector_by_walls.shared_style_subsection_text"]()}</div>

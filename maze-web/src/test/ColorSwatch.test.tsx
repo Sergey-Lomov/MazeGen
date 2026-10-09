@@ -91,7 +91,7 @@ describe("ColorSwatch", () => {
       ],
       vectorByCorridorsSettings: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, splitNodeColors: [0x101010, 0x111111] },
     });
-    render(<ColorSwatch color={0x101010} onChange={() => {}} fieldName={PC.splitNode(0).name()} />);
+    render(<ColorSwatch color={0x101010} onChange={() => {}} field={PC.splitNode(0)} />);
     openPicker();
     expect(screen.getByTestId("color-picker-export-warnings")).toBeInTheDocument();
     const title = m["image_export.vector_by_walls.section_warnings"]({ count: "2" });

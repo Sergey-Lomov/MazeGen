@@ -781,3 +781,74 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(items.teleport).toEqual([]);
   });
 });
+
+describe("warnings reference color fields by key (GitHub issue #717)", () => {
+  it("attaches a contrast warning to the keys of both compared fields", () => {
+    const settings = baseSettings({ background: 0x000000, gridColor: 0x000000 });
+    const warning = computeVectorByWallsWarnings([n(0, 0, 0), n(1, 1, 0)], [e(0, 1)], squareCfg, settings, null, null)
+      .find((w) => w.id === "grid_low_contrast_background");
+    expect(warning?.colorFields).toEqual(["bgGrid", "bgFill"]);
+    expect(warning?.fields).toEqual(["bgGrid", "bgFill"]);
+  });
+
+  it("keeps one warning per field pair even when two fields share a color value", () => {
+    // Start and finish markers have identical colors, but they are distinct fields.
+    const marker = { ...defaultMarker, fillColor: 0, borderColor: 0, borderWidth: 0 };
+    const settings = baseSettings({ startMarker: marker, finishMarker: marker });
+    const warnings = computeVectorByWallsWarnings([n(0, 0, 0), n(1, 1, 0)], [], squareCfg, settings, 0, 1)
+      .filter((w) => w.id === "marker_fill_low_contrast_floor");
+    expect(warnings.map((w) => w.colorFields).sort()).toEqual([["finishFill", "tilesFloor"], ["startFill", "tilesFloor"]]);
+    expect(new Set(warnings.map((w) => w.key)).size).toBe(2);
+  });
+
+  it("attaches the label warning to the caption color and the marker fill it sits on", () => {
+    const settings = baseSettings({
+      background: 0xffffff, gridColor: 0x808080, floorColor: 0xffffff,
+      startMarker: { ...defaultMarker, fillColor: 0x00ff00, borderColor: 0x00ff00, textColor: 0x00ff00, text: "S" },
+    });
+    const warning = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, settings, 0, null).find((w) => w.id === "label_low_contrast");
+    expect(warning?.fields).toEqual(["startText", "startFill"]);
+  });
+
+  it("attaches a split warning to the slot's own split-node field", () => {
+    const settings = baseSettings({ floorColor: 0x123456, splitNodeColors: [0x123456, 0xffffff], background: 0xffffff, gridColor: 0xaaaaaa });
+    const warning = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
+      .find((w) => w.id === "split_low_contrast_floor");
+    expect(warning?.colorFields).toEqual(["splitNode:0", "tilesFloor"]);
+  });
+
+  it("lists every offending slot on the single pairwise split warning", () => {
+    const settings = baseSettings({ floorColor: 0xffffff, splitNodeColors: [0x123456, 0x123457], background: 0xffffff, gridColor: 0xaaaaaa });
+    const warnings = computeVectorByWallsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, null, null)
+      .filter((w) => w.id === "split_colors_low_contrast_each_other");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].fields).toEqual(expect.arrayContaining(["splitNode:0", "splitNode:1"]));
+  });
+
+  it("attaches a teleport connector warning to a group's override field, else the shared field", () => {
+    const nodes = [n(0, 0, 0, 0), n(1, 2, 2, 0)];
+    const edges = [teleport(0, 1)];
+    const shared = baseSettings({ floorColor: 0xff0000, teleportConnectorColor: 0xff0000, teleportConnectorStyle: "straight" });
+    const sharedWarning = computeVectorByWallsWarnings(nodes, edges, squareCfg, shared, null, null)
+      .find((w) => w.id === "teleport_connector_low_contrast_floor");
+    expect(sharedWarning?.colorFields).toEqual(["teleportConnector", "tilesFloor"]);
+  });
+
+  it("never warns about a hidden field, even when its colors would clash", () => {
+    const clash = { floorColor: 0xffffff, background: 0xffffff, gridColor: 0xffffff };
+    const hidden = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({ ...clash, showGrid: false }), null, null);
+    expect(hidden.some((w) => w.id === "grid_low_contrast_background")).toBe(false);
+    const shown = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({ ...clash, showGrid: true }), null, null);
+    expect(shown.find((w) => w.id === "grid_low_contrast_background")?.colorFields).toEqual(["bgGrid", "bgFill"]);
+  });
+
+  it("skips the start caption warning when its text is disabled", () => {
+    const marker = (textEnabled: boolean) => ({
+      ...baseSettings().startMarker, fillColor: 0xffffff, textColor: 0xffffff, textEnabled,
+    });
+    const off = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({ startMarker: marker(false) }), 0, null);
+    expect(off.some((w) => w.id === "label_low_contrast")).toBe(false);
+    const on = computeVectorByWallsWarnings([n(0, 0, 0)], [], squareCfg, baseSettings({ startMarker: marker(true) }), 0, null);
+    expect(on.find((w) => w.id === "label_low_contrast")?.fields).toEqual(expect.arrayContaining(["startText", "startFill"]));
+  });
+});

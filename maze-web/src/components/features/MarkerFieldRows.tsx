@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerAppearance, TextStyleFields } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
@@ -35,7 +36,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  marker, and the elevator / teleport floor-number badges. Renders bare rows (no wrapper) so each
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
-export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fieldNames }: {
+export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields }: {
   settings: MarkerAppearance;
   onChange: (patch: Partial<MarkerAppearance>) => void;
   linkTargets: { [K in keyof MarkerAppearance]: P | null };
@@ -44,7 +45,7 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
   /** Factory defaults (GitHub issue #503) — pinned as each color row's first "Default" project color. */
   defaultColors?: { fillColor?: number; borderColor?: number };
   /** Composite field names (GitHub issue #503) — isolate the row in the "Project colors" list. */
-  fieldNames?: { fillColor?: string; borderColor?: string };
+  fields: { fillColor: ColorField; borderColor: ColorField };
 }): React.ReactElement {
   return (
     <>
@@ -75,8 +76,8 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
         format={(v) => String(Math.round(v))}
         linkTarget={linkTargets.size}
       />
-      <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} fieldName={fieldNames?.fillColor} linkTarget={linkTargets.fillColor} />
-      <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} fieldName={fieldNames?.borderColor} linkTarget={linkTargets.borderColor} />
+      <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} field={fields.fillColor} linkTarget={linkTargets.fillColor} />
+      <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} field={fields.borderColor} linkTarget={linkTargets.borderColor} />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_border_width"]()}
         value={settings.borderWidth}
@@ -104,13 +105,13 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
 /** Shared text-style rows (GitHub issue #701) — font weight, text color and absolute font size
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Bare rows, like `MarkerAppearanceRows`. */
-export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, fieldName, autoFitKind }: {
+export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
   settings: TextStyleFields;
   onChange: (patch: Partial<TextStyleFields>) => void;
   linkTargets: { [K in keyof TextStyleFields]: P | null };
   priorityColors?: ProjectColorEntry[];
   defaultColor?: number;
-  fieldName?: string;
+  field: ColorField;
   /** Which label set the size row's "Auto-fit" button fits (GitHub issue #707); omitted = no button. */
   autoFitKind?: TextFitKind;
 }): React.ReactElement {
@@ -132,7 +133,7 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         onChange={(textColor) => onChange({ textColor })}
         priorityColors={priorityColors}
         defaultColor={defaultColor}
-        fieldName={fieldName}
+        field={field}
         linkTarget={linkTargets.textColor}
       />
       <LinkedSliderRow

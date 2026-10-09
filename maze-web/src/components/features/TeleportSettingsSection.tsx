@@ -1,9 +1,10 @@
+import { useColorVisibility } from "../ColorVisibilityContext";
 import React, { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
-import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
+import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ColorSwatch } from "../ColorSwatch";
@@ -187,7 +188,7 @@ function TeleportGroupRow({
           color={override?.fillColor ?? defaultFillColor}
           onChange={(fillColor) => onChange({ ...override, fillColor })}
           priorityColors={[PC.teleportGroup(index, "border").at(override?.borderColor ?? defaultBorderColor), ...otherGroupColors, ...commonColors]}
-          fieldName={PC.teleportGroup(index, "fill").name()}
+          field={PC.teleportGroup(index, "fill")}
         />
       </span>
       <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()} onClick={(e) => e.stopPropagation()}>
@@ -195,7 +196,7 @@ function TeleportGroupRow({
           color={override?.borderColor ?? defaultBorderColor}
           onChange={(borderColor) => onChange({ ...override, borderColor })}
           priorityColors={[PC.teleportGroup(index, "fill").at(override?.fillColor ?? defaultFillColor), ...otherGroupColors, ...commonColors]}
-          fieldName={PC.teleportGroup(index, "border").name()}
+          field={PC.teleportGroup(index, "border")}
         />
       </span>
       <button
@@ -240,12 +241,12 @@ export function TeleportSettingsSection<P extends string>({
   floorBadgeFillColorDefault,
   floorBadgeBorderColorDefault,
   floorBadgeTextColorDefault,
-  edgeColorFieldName,
-  edgeBorderColorFieldName,
-  connectorColorFieldName,
-  floorBadgeFillColorFieldName,
-  floorBadgeBorderColorFieldName,
-  floorBadgeTextColorFieldName,
+  edgeColorField,
+  edgeBorderColorField,
+  connectorColorField,
+  floorBadgeFillColorField,
+  floorBadgeBorderColorField,
+  floorBadgeTextColorField,
 }: {
   settings: TeleportSettingsFields;
   onChange: (patch: Partial<TeleportSettingsFields>) => void;
@@ -304,12 +305,12 @@ export function TeleportSettingsSection<P extends string>({
   /** "Project colors" list names (GitHub issue #503) for the four color rows — shown in the picker
    *  header and used to drop the row itself from the list. Built by the caller from the shared
    *  `PC` registry so they match `selectActiveProfileColors`. */
-  edgeColorFieldName?: string;
-  edgeBorderColorFieldName?: string;
-  connectorColorFieldName?: string;
-  floorBadgeFillColorFieldName?: string;
-  floorBadgeBorderColorFieldName?: string;
-  floorBadgeTextColorFieldName?: string;
+  edgeColorField: ColorField;
+  edgeBorderColorField: ColorField;
+  connectorColorField: ColorField;
+  floorBadgeFillColorField: ColorField;
+  floorBadgeBorderColorField: ColorField;
+  floorBadgeTextColorField: ColorField;
 }) {
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
   const patchMarker = (patch: Partial<MarkerSettings>) => onChange({ teleportMarker: { ...settings.teleportMarker, ...patch } });
@@ -320,15 +321,15 @@ export function TeleportSettingsSection<P extends string>({
   const commonTeleportColors: ProjectColorEntry[] = [
     PC.teleportEdge.at(settings.teleportMarker.fillColor),
     PC.teleportEdgeBorder.at(settings.teleportMarker.borderColor),
-    ...(settings.teleportConnectorStyle !== "none" ? [PC.teleportConnector.at(settings.teleportConnectorColor)] : []),
-    ...(hasCrossFloorTeleports
-      ? [
-          PC.teleportBadgeFill.at(settings.teleportFloorBadge.fillColor),
-          PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
-          PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
-        ]
-      : []),
+    PC.teleportConnector.at(settings.teleportConnectorColor),
+    PC.teleportBadgeFill.at(settings.teleportFloorBadge.fillColor),
+    PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
+    PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
   ];
+  // Hidden fields (no connector line, no cross-floor teleport) are dropped by the picker's
+  // visibility-filtered "Project colors" list — no gating here (GitHub issue #717).
+  const colorVisibility = useColorVisibility();
+  const connectorShown = colorVisibility === null || connectorColorField.isVisible(colorVisibility);
 
   return (
     <div style={styles.block}>
@@ -348,7 +349,7 @@ export function TeleportSettingsSection<P extends string>({
           }}
           priorityColors={{ fillColor: edgeColorPriority, borderColor: edgeBorderColorPriority }}
           defaultColors={{ fillColor: edgeColorDefault, borderColor: edgeBorderColorDefault }}
-          fieldNames={{ fillColor: edgeColorFieldName, borderColor: edgeBorderColorFieldName }}
+          fields={{ fillColor: edgeColorField, borderColor: edgeBorderColorField }}
         />
       </div>
 
@@ -374,10 +375,10 @@ export function TeleportSettingsSection<P extends string>({
           />
         )}
 
-        {settings.teleportConnectorStyle !== "none" && (<>
+        {connectorShown && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
         <div style={styles.subsectionNested}>
-          <LinkedColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} priorityColors={connectorColorPriority} defaultColor={connectorColorDefault} fieldName={connectorColorFieldName} linkTarget={linkTargets.connectorColor} />
+          <LinkedColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} priorityColors={connectorColorPriority} defaultColor={connectorColorDefault} field={connectorColorField} linkTarget={linkTargets.connectorColor} />
           <LinkedSliderRow
             label={m["image_export.vector_by_walls.teleport_connector_width"]()}
             value={settings.teleportConnectorWidth}
@@ -469,7 +470,7 @@ export function TeleportSettingsSection<P extends string>({
               }}
               priorityColors={{ fillColor: floorBadgeFillColorPriority, borderColor: floorBadgeBorderColorPriority }}
               defaultColors={{ fillColor: floorBadgeFillColorDefault, borderColor: floorBadgeBorderColorDefault }}
-              fieldNames={{ fillColor: floorBadgeFillColorFieldName, borderColor: floorBadgeBorderColorFieldName }}
+              fields={{ fillColor: floorBadgeFillColorField, borderColor: floorBadgeBorderColorField }}
             />
             <TextStyleRows
               settings={settings.teleportFloorBadge}
@@ -481,7 +482,7 @@ export function TeleportSettingsSection<P extends string>({
               }}
               priorityColors={floorBadgeTextColorPriority}
               defaultColor={floorBadgeTextColorDefault}
-              fieldName={floorBadgeTextColorFieldName}
+              field={floorBadgeTextColorField}
               autoFitKind="teleport"
             />
           </div>
