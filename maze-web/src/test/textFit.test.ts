@@ -27,9 +27,37 @@ describe("textFit", () => {
   });
 
   it("circle: fits while the ink rectangle's corners stay inside the circle", () => {
-    // "1" ink 0.5S x 0.4S -> half diagonal 0.32S; plate 20 less the 1 px margin -> r 9.5 -> S <= ~29.7.
-    expect(textOverflows(item("1", "circle", 20), 29)).toBe(false);
-    expect(textOverflows(item("1", "circle", 20), 30)).toBe(true);
+    // "1" ink 0.5S x 0.4S -> half diagonal ~0.32S; plate 20 less the default 1 px margin -> r 9 -> S <= ~28.1.
+    expect(textOverflows(item("1", "circle", 20), 28)).toBe(false);
+    expect(textOverflows(item("1", "circle", 20), 29)).toBe(true);
+  });
+
+  it("the margin shrinks the allowed size; margin 0 touches the edge", () => {
+    const withMargin = (margin: number) => ({ ...item("1", "circle", 20), margin });
+    const m0 = maxFittingFontSize([withMargin(0)])!;
+    const m1 = maxFittingFontSize([withMargin(1)])!;
+    const m5 = maxFittingFontSize([withMargin(5)])!;
+    expect(m0).toBeGreaterThan(m1);
+    expect(m1).toBeGreaterThan(m5);
+    expect(textOverflows(withMargin(5), m1)).toBe(true);
+  });
+
+  it("a fractional margin is used as-is, not rounded to a neighbouring integer", () => {
+    const withMargin = (margin: number) => ({ ...item("1", "circle", 20), margin });
+    const m1 = maxFittingFontSize([withMargin(1)])!;
+    const m15 = maxFittingFontSize([withMargin(1.5)])!;
+    const m2 = maxFittingFontSize([withMargin(2)])!;
+    expect(m15).toBeLessThan(m1);
+    expect(m15).toBeGreaterThan(m2);
+  });
+
+  it("rectangular plate: the margin applies per side", () => {
+    // "1" ink 0.5S x 0.4S in a 20 x 10 plate: margin 1 -> half extents 9 x 4 -> S <= 20 (height-bound).
+    const rect = { text: "1", fontWeight: "bold" as const, shape: "circle" as const, plateSize: 0, plateWidth: 20, plateHeight: 10 };
+    expect(textOverflows(rect, 20)).toBe(false);
+    expect(textOverflows(rect, 21)).toBe(true);
+    expect(textOverflows({ ...rect, margin: 0 }, 25)).toBe(false);
+    expect(textOverflows({ ...rect, margin: 0 }, 26)).toBe(true);
   });
 
   it("allowed size depends on the shape", () => {

@@ -72,6 +72,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setStartMarkerTextEnabled = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextEnabled);
   const setStartMarkerTextFontWeight = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextFontWeight);
   const setStartMarkerTextSize = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextSize);
+  const setStartMarkerTextMargin = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextMargin);
   const setStartMarkerTextColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerTextColor);
   const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsStartMarkerCornerStyle);
   const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerFillColor);
@@ -84,6 +85,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setFinishMarkerTextEnabled = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextEnabled);
   const setFinishMarkerTextFontWeight = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextFontWeight);
   const setFinishMarkerTextSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextSize);
+  const setFinishMarkerTextMargin = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextMargin);
   const setFinishMarkerTextColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerTextColor);
   const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerCornerStyle);
   const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerFillColor);
@@ -227,7 +229,7 @@ export function VectorByCorridorsSettingsPanel() {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
       fitFor: (kind) => maxFittingFontSize(items[kind]),
-      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport]),
+      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
     };
   }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
@@ -445,6 +447,7 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.textEnabled !== undefined) setStartMarkerTextEnabled(patch.textEnabled);
               if (patch.textFontWeight !== undefined) setStartMarkerTextFontWeight(patch.textFontWeight);
               if (patch.textSize !== undefined) setStartMarkerTextSize(patch.textSize);
+              if (patch.textMargin !== undefined) setStartMarkerTextMargin(patch.textMargin);
               if (patch.textColor !== undefined) setStartMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
@@ -464,6 +467,7 @@ export function VectorByCorridorsSettingsPanel() {
               textEnabled: "startMarker.textEnabled",
               textFontWeight: "startMarker.textFontWeight",
               textSize: "startMarker.textSize",
+              textMargin: "startMarker.textMargin",
               textColor: "startMarker.textColor",
             }}
           />
@@ -484,6 +488,7 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.textEnabled !== undefined) setFinishMarkerTextEnabled(patch.textEnabled);
               if (patch.textFontWeight !== undefined) setFinishMarkerTextFontWeight(patch.textFontWeight);
               if (patch.textSize !== undefined) setFinishMarkerTextSize(patch.textSize);
+              if (patch.textMargin !== undefined) setFinishMarkerTextMargin(patch.textMargin);
               if (patch.textColor !== undefined) setFinishMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
@@ -503,6 +508,7 @@ export function VectorByCorridorsSettingsPanel() {
               textEnabled: "finishMarker.textEnabled",
               textFontWeight: "finishMarker.textFontWeight",
               textSize: "finishMarker.textSize",
+              textMargin: "finishMarker.textMargin",
               textColor: "finishMarker.textColor",
             }}
           />
@@ -639,6 +645,7 @@ export function VectorByCorridorsSettingsPanel() {
                 floorBadgeCornerStyle: "teleportFloorBadge.cornerStyle",
                 floorBadgeGapWidth: "teleportFloorBadge.gapWidth",
                 floorBadgeTextSize: "teleportFloorBadge.textSize",
+                floorBadgeTextMargin: "teleportFloorBadge.textMargin",
                 floorBadgeTextFontWeight: "teleportFloorBadge.textFontWeight",
                 groupCustomization: "teleportGroupCustomization",
               }}
@@ -843,6 +850,7 @@ export function VectorByCorridorsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -938,6 +946,7 @@ export function VectorByCorridorsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -1033,6 +1042,7 @@ export function VectorByCorridorsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -1107,6 +1117,7 @@ export function VectorByCorridorsSettingsPanel() {
                         borderColor: "elevatorBadges.borderColor",
                         borderWidth: "elevatorBadges.borderWidth",
                         textSize: "elevatorBadges.textSize",
+                        textMargin: "elevatorBadges.textMargin",
                       }}
                       fillColorPriority={badgeFillPriority}
                       borderColorPriority={badgeBorderPriority}
@@ -1209,8 +1220,10 @@ export function VectorByCorridorsSettingsPanel() {
             coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
             coverageElevator: "markerIndex.coverage.elevator",
             labelStyle: "markerIndex.labelStyle",
-            fontWeight: "markerIndex.fontWeight",
-            paddingX: "markerIndex.paddingX",
+            textFontWeight: "markerIndex.textFontWeight",
+            width: "markerIndex.width",
+            textSize: "markerIndex.textSize",
+            textMargin: "markerIndex.textMargin",
             height: "markerIndex.height",
             offset: "markerIndex.offset",
             cornerRadius: "markerIndex.cornerRadius",

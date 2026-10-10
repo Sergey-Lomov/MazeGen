@@ -5,7 +5,7 @@ import {
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -76,6 +76,14 @@ function readMarkerAppearance(obj: Record<string, unknown> | null, fallback: Mar
   };
 }
 
+function clampTextMargin(value: number): number {
+  return Math.min(TEXT_MARGIN_RANGE.max, Math.max(TEXT_MARGIN_RANGE.min, value));
+}
+
+function readTextMargin(obj: Record<string, unknown> | null, fallback: number): number {
+  return clampTextMargin(optNumber(obj, "textMargin", fallback));
+}
+
 /** `BadgeSettings` fields (GitHub issue #701): the shared marker look plus label type and the
  *  required text style — shared by the elevator and teleport floor badge validators. */
 function readBadgeSettings(obj: Record<string, unknown> | null, fallback: BadgeSettings): BadgeSettings {
@@ -85,6 +93,7 @@ function readBadgeSettings(obj: Record<string, unknown> | null, fallback: BadgeS
     textColor: optNumber(obj, "textColor", fallback.textColor),
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
     textSize: optNumber(obj, "textSize", fallback.textSize),
+    textMargin: readTextMargin(obj, fallback.textMargin),
   };
 }
 
@@ -104,6 +113,7 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
       ? fallback.textFontWeight
       : optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight ?? "bold"),
     textSize: obj?.textSize === undefined ? fallback.textSize : optNumber(obj, "textSize", fallback.textSize ?? DEFAULT_MARKER_TEXT_SIZE),
+    textMargin: obj?.textMargin === undefined ? fallback.textMargin : readTextMargin(obj, fallback.textMargin ?? DEFAULT_TEXT_MARGIN),
     textColor: obj?.textColor === undefined ? fallback.textColor : optNumber(obj, "textColor", fallback.textColor ?? fallback.fillColor),
   };
 }
@@ -221,10 +231,12 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
   return {
     enabled: optBool(obj, "enabled", fallback.enabled),
     labelStyle: optElevatorBadgeLabelType(obj, "labelStyle", fallback.labelStyle),
-    height: optNumber(obj, "height", fallback.height),
+    height: Math.max(MARKER_INDEX_MIN_HEIGHT, optNumber(obj, "height", fallback.height)),
     offset: optNumber(obj, "offset", fallback.offset),
     cornerRadius: optNumber(obj, "cornerRadius", fallback.cornerRadius),
-    paddingX: optNumber(obj, "paddingX", fallback.paddingX),
+    width: Math.min(MARKER_INDEX_WIDTH_RANGE.max, Math.max(MARKER_INDEX_WIDTH_RANGE.min, optNumber(obj, "width", fallback.width))),
+    textSize: optNumber(obj, "textSize", fallback.textSize),
+    textMargin: readTextMargin(obj, fallback.textMargin),
     gap: optNumber(obj, "gap", fallback.gap),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     textColor: optNumber(obj, "textColor", fallback.textColor),
@@ -232,7 +244,7 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
     borderColorFromMarker: optBool(obj, "borderColorFromMarker", fallback.borderColorFromMarker),
     borderWidthFromMarker: optBool(obj, "borderWidthFromMarker", fallback.borderWidthFromMarker),
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
-    fontWeight: optElevatorBadgeFontWeight(obj, "fontWeight", fallback.fontWeight),
+    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
     coverage: validateMarkerIndexCoverage(obj.coverage, `${path}.coverage`, fallback.coverage),
   };
 }
@@ -438,6 +450,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
+    markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
@@ -594,6 +607,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
     gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
+    markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),

@@ -76,7 +76,8 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
     height: 14,
     offset: 0,
     cornerRadius: 1.2,
-    paddingX: 1.6,
+    width: 16,
+    textSize: 10, textMargin: 1,
     gap: 3,
     fillColor: 0xf0c900,
     textColor: 0x333333,
@@ -84,7 +85,7 @@ function style(patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings {
     borderColorFromMarker: false,
     borderWidthFromMarker: false,
     borderWidth: 2,
-    fontWeight: "bold",
+    textFontWeight: "bold",
     coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true },
     ...patch,
   };
@@ -120,16 +121,16 @@ function pathBounds(points: number[]): { x: number; y: number; w: number; h: num
 describe("MarkerIndexRenderer.render", () => {
   it("draws nothing when disabled or when there are no labels", () => {
     const { renderer, gapLayer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label()], allLabelStrings: ["1"], style: style({ enabled: false }), floorColor: 0x000000 });
+    renderer.render({ labels: [label()], style: style({ enabled: false }), floorColor: 0x000000 });
     expect(bodyLayer()).toHaveLength(0);
-    renderer.render({ labels: [], allLabelStrings: [], style: style(), floorColor: 0x000000 });
+    renderer.render({ labels: [], style: style(), floorColor: 0x000000 });
     expect(bodyLayer()).toHaveLength(0);
     expect(gapLayer()).toHaveLength(0);
   });
 
   it("positions the plate so its center sits markerOuterRadius + offset below the cell center", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ pos: [100, 200], markerOuterRadius: 10 })], allLabelStrings: ["1"], style: style({ offset: 4, height: 14 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label({ pos: [100, 200], markerOuterRadius: 10 })], style: style({ offset: 4, height: 14 }), floorColor: 0x000000 });
     const plate = bodyLayer()[0] as FakeGraphics;
     const { y, h } = pathBounds(plate.fillPathPoints.at(-1)!);
     const plateCenterY = y + h / 2;
@@ -137,18 +138,17 @@ describe("MarkerIndexRenderer.render", () => {
     expect(h).toBeCloseTo(14);
   });
 
-  it("sizes the plate width to the widest label across the whole project", () => {
+  it("draws a fixed-width plate that does not depend on the label text", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ label: "1" })], allLabelStrings: ["1", "8888"], style: style({ paddingX: 1.6 }), floorColor: 0x000000 });
-    const plate = bodyLayer()[0] as FakeGraphics;
-    const fontSize = 14 * 0.72;
-    const widest = 4 * fontSize * 0.6; // "8888"
-    expect(pathBounds(plate.fillPathPoints.at(-1)!).w).toBeCloseTo(widest + 2 * 1.6);
+    renderer.render({ labels: [label({ label: "1" }), label({ label: "8888", pos: [300, 300] })], style: style({ width: 12 }), floorColor: 0x000000 });
+    const plates = bodyLayer().filter((c) => (c as FakeGraphics).fillPathPoints) as FakeGraphics[];
+    expect(plates).toHaveLength(2);
+    for (const plate of plates) expect(pathBounds(plate.fillPathPoints.at(-1)!).w).toBeCloseTo(12);
   });
 
   it("draws a floor-colored gap ring outset by gap + borderWidth, below the body", () => {
     const { renderer, gapLayer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label()], allLabelStrings: ["1"], style: style({ gap: 4, borderWidth: 2 }), floorColor: 0x123456 });
+    renderer.render({ labels: [label()], style: style({ gap: 4, borderWidth: 2 }), floorColor: 0x123456 });
     const ring = gapLayer()[0] as FakeGraphics;
     const body = bodyLayer()[0] as FakeGraphics;
     const outset = 4 + 2;
@@ -159,7 +159,7 @@ describe("MarkerIndexRenderer.render", () => {
 
   it("inherits the marker border width for the plate and its gap outset", () => {
     const { renderer, gapLayer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ markerBorderWidth: 6 })], allLabelStrings: ["1"], style: style({ borderWidthFromMarker: true, borderWidth: 1, gap: 4 }), floorColor: 0x123456 });
+    renderer.render({ labels: [label({ markerBorderWidth: 6 })], style: style({ borderWidthFromMarker: true, borderWidth: 1, gap: 4 }), floorColor: 0x123456 });
     const ring = pathBounds((gapLayer()[0] as FakeGraphics).fillPathPoints[0]);
     const plate = pathBounds((bodyLayer()[0] as FakeGraphics).fillPathPoints.at(-1)!);
     expect(ring.x).toBeCloseTo(plate.x - 10);
@@ -168,7 +168,7 @@ describe("MarkerIndexRenderer.render", () => {
 
   it("uses its own border width when marker-border inheritance is disabled", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ markerBorderWidth: 6 })], allLabelStrings: ["1"], style: style({ borderWidthFromMarker: false, borderWidth: 2, gap: 0 }), floorColor: 0x123456 });
+    renderer.render({ labels: [label({ markerBorderWidth: 6 })], style: style({ borderWidthFromMarker: false, borderWidth: 2, gap: 0 }), floorColor: 0x123456 });
     const body = bodyLayer()[0] as FakeGraphics;
     const plate = pathBounds(body.fillPathPoints.at(-1)!);
     expect(pathBounds(body.fillPathPoints[0]).x).toBeCloseTo(plate.x - 2);
@@ -176,30 +176,30 @@ describe("MarkerIndexRenderer.render", () => {
 
   it("omits the gap ring entirely when gap is 0", () => {
     const { renderer, gapLayer } = makeRenderer();
-    renderer.render({ labels: [label()], allLabelStrings: ["1"], style: style({ gap: 0 }), floorColor: 0x123456 });
+    renderer.render({ labels: [label()], style: style({ gap: 0 }), floorColor: 0x123456 });
     expect(gapLayer()).toHaveLength(0);
   });
 
   it("takes the plate border color from the marker when borderColorFromMarker is on", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label({ borderMatchColor: 0xfeed01 })], allLabelStrings: ["1"], style: style({ borderColorFromMarker: true, borderWidth: 2, borderColor: 0x444444 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label({ borderMatchColor: 0xfeed01 })], style: style({ borderColorFromMarker: true, borderWidth: 2, borderColor: 0x444444 }), floorColor: 0x000000 });
     const plate = bodyLayer()[0] as FakeGraphics;
     expect(plate.fillCalls[0]).toBe(0xfeed01);
   });
 
   it("uses the configured borderColor when borderColorFromMarker is off, and no stroke at borderWidth 0", () => {
     const { renderer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label()], allLabelStrings: ["1"], style: style({ borderColorFromMarker: false, borderColor: 0x010203, borderWidth: 2 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label()], style: style({ borderColorFromMarker: false, borderColor: 0x010203, borderWidth: 2 }), floorColor: 0x000000 });
     expect((bodyLayer()[0] as FakeGraphics).fillCalls[0]).toBe(0x010203);
 
     const { renderer: r2, bodyLayer: b2 } = makeRenderer();
-    r2.render({ labels: [label()], allLabelStrings: ["1"], style: style({ borderWidth: 0 }), floorColor: 0x000000 });
+    r2.render({ labels: [label()], style: style({ borderWidth: 0 }), floorColor: 0x000000 });
     expect((b2()[0] as FakeGraphics).strokeCalls).toHaveLength(0);
   });
 
   it("clear() removes every drawn plate from both layers", () => {
     const { renderer, gapLayer, bodyLayer } = makeRenderer();
-    renderer.render({ labels: [label(), label({ pos: [300, 300] })], allLabelStrings: ["1", "2"], style: style({ gap: 3 }), floorColor: 0x000000 });
+    renderer.render({ labels: [label(), label({ pos: [300, 300] })], style: style({ gap: 3 }), floorColor: 0x000000 });
     expect(bodyLayer().length).toBeGreaterThan(0);
     renderer.clear();
     expect(gapLayer()).toHaveLength(0);

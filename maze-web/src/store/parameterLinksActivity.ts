@@ -26,6 +26,8 @@ export interface ParamActivitySettings {
   showInnerGrid?: boolean;
   elevatorBadges?: { enabled: boolean };
   markerIndex?: { enabled: boolean };
+  startMarker?: { textEnabled?: boolean };
+  finishMarker?: { textEnabled?: boolean };
 }
 
 const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportGroupCustomization", "teleportFloorBadge."];
@@ -129,6 +131,12 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
 
   if (p.startsWith("markerIndex.") && p !== "markerIndex.enabled") {
     return settings.markerIndex?.enabled !== false;
+  }
+
+  for (const kind of ["startMarker", "finishMarker"] as const) {
+    if (p.startsWith(`${kind}.text`) && p !== `${kind}.textEnabled`) {
+      return settings[kind]?.textEnabled !== false;
+    }
   }
 
   return true;

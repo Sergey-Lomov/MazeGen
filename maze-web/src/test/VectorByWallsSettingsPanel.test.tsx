@@ -71,7 +71,7 @@ beforeEach(() => {
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
       teleportConnectorGapWidth: 0,
-      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
+      teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       ...DEFAULT_VERTICAL_SETTINGS,
@@ -168,7 +168,7 @@ describe("VectorByWallsSettingsPanel", () => {
         teleportMarker: { cornerStyle: "miter", shape: "square", size: 0.3, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 0 },
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
-        teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
+        teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         ...DEFAULT_VERTICAL_SETTINGS,
         ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
@@ -1032,5 +1032,37 @@ describe("VectorByWallsSettingsPanel", () => {
       fireEvent.mouseLeave(bubble);
       expect(useMazeStore.getState().hoveredExportWarningKey).toBeNull();
     });
+  });
+});
+
+describe("VectorByWallsSettingsPanel start/finish caption (GitHub issue #723)", () => {
+  const withCaption = (textEnabled: boolean) => {
+    const st = useMazeStore.getState();
+    const { startMarker, finishMarker } = st.vectorByWallsSettings;
+    useMazeStore.setState({
+      vectorByWallsSettings: {
+        ...st.vectorByWallsSettings,
+        startMarker: { ...startMarker, textEnabled, textColor: 0x112233 },
+        finishMarker: { ...finishMarker, textEnabled, textColor: 0x112233 },
+      },
+      vectorByWallsSectionsExpanded: { ...st.vectorByWallsSectionsExpanded, markers_start_text: true, markers_finish_text: true },
+    });
+  };
+
+  it("hides caption text and style rows when the caption is off, keeping the toggle", () => {
+    withCaption(false);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_show"]())).toHaveLength(2);
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_color"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_size"]())).toBeNull();
+    expect(screen.queryByText(m["image_export.vector_by_walls.marker_text_font_weight"]())).toBeNull();
+  });
+
+  it("shows caption text and style rows when the caption is on", () => {
+    withCaption(true);
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_color"]())).toHaveLength(2);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_text_size"]())).toHaveLength(2);
   });
 });

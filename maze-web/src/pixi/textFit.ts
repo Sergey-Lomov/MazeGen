@@ -2,7 +2,7 @@ import { Cache } from "pixi.js";
 import type { AbstractBitmapFont } from "pixi.js";
 import type { LabelFontWeight } from "./renderers/indexLabel";
 import { msdfFontFamily } from "./renderers/msdfFont";
-import { TEXT_SIZE_RANGE } from "./renderConstants";
+import { TEXT_SIZE_RANGE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 import type { MarkerShape } from "./renderers/types";
 import { markerPolygonPoints } from "./renderers/markerShapes";
 
@@ -37,8 +37,16 @@ export interface TextFitItem {
   fontWeight: LabelFontWeight;
   /** Plate shape (`MarkerAppearance.shape`). */
   shape: MarkerShape;
-  /** Plate fill diameter in px (`MarkerAppearance.size`). */
+  /** Plate fill diameter in px (`MarkerAppearance.size`). For a rectangular plate (`plateWidth` /
+   *  `plateHeight` set) it is ignored. */
   plateSize: number;
+  /** Rectangular plate (marker-index plates, GitHub issue #725): when both are set the label must
+   *  fit this rectangle (centred) instead of `shape` / `plateSize`. */
+  plateWidth?: number;
+  plateHeight?: number;
+  /** Distance (px) the glyph ink must keep from the plate edge (`TextStyleFields.textMargin`);
+   *  `DEFAULT_TEXT_MARGIN` when omitted. */
+  margin?: number;
 }
 
 /** Ink extent of `text` at `fontSize` px. Falls back to a rough per-glyph estimate when the font
@@ -242,31 +250,63 @@ function inkInShape(shape: MarkerShape, r: number, points: number[], scale: numb
   return true;
 }
 
-/** Safety margin (px) subtracted from the plate's diameter before fitting — text is judged against a
- *  plate 1 px smaller, so a label that only just touches the edge is still flagged. */
-const PLATE_MARGIN = 1;
+function itemMargin(item: TextFitItem): number {
+  return Math.max(item.margin ?? DEFAULT_TEXT_MARGIN, 0);
+}
 
+/** Radius of the shape the ink must stay inside: the plate's circle-equivalent radius less the
+ *  text margin. */
 function plateRadius(item: TextFitItem): number {
-  return Math.max(item.plateSize - PLATE_MARGIN, 0) / 2;
+  return Math.max(item.plateSize / 2 - itemMargin(item), 0);
+}
+
+/** Half extents of a rectangular plate (margin applied), or `null` for a shaped plate. */
+function plateHalfExtents(item: TextFitItem): { hw: number; hh: number } | null {
+  if (item.plateWidth === undefined || item.plateHeight === undefined) return null;
+  const margin = itemMargin(item);
+  return { hw: Math.max(item.plateWidth / 2 - margin, 0), hh: Math.max(item.plateHeight / 2 - margin, 0) };
 }
 
 /** Whether `item` drawn at `fontSize` px exceeds its plate shape. */
 export function textOverflows(item: TextFitItem, fontSize: number): boolean {
   if (item.text.length === 0) return false;
   const ink = textInk(item.text, item.fontWeight);
-  if (ink) return !inkInShape(item.shape, plateRadius(item), ink.points, fontSize / ink.base);
+  if (ink) return !inkFitsPlate(item, ink.points, fontSize / ink.base);
   const extent = measureText(item.text, item.fontWeight, fontSize);
-  return !rectInShape(item.shape, plateRadius(item), extent.width, extent.height);
+  return !extentFitsPlate(item, extent.width, extent.height);
+}
+
+/** Whether every ink point, scaled by `scale`, lies inside the item's plate. */
+function inkFitsPlate(item: TextFitItem, points: number[], scale: number): boolean {
+  const half = plateHalfExtents(item);
+  if (!half) return inkInShape(item.shape, plateRadius(item), points, scale);
+  for (let i = 0; i < points.length; i += 2) {
+    if (Math.abs(points[i] * scale) > half.hw + 1e-9 || Math.abs(points[i + 1] * scale) > half.hh + 1e-9) return false;
+  }
+  return true;
+}
+
+/** Whether a `width` x `height` centred rectangle lies inside the item's plate. */
+function extentFitsPlate(item: TextFitItem, width: number, height: number): boolean {
+  const half = plateHalfExtents(item);
+  if (!half) return rectInShape(item.shape, plateRadius(item), width, height);
+  return width / 2 <= half.hw + 1e-9 && height / 2 <= half.hh + 1e-9;
+}
+
+/** Upper bound of the bisection range: any scale beyond it overflows regardless of shape. */
+function plateReach(item: TextFitItem): number {
+  const half = plateHalfExtents(item);
+  return half ? Math.max(half.hw, half.hh) : plateRadius(item);
 }
 
 /** Largest scale `k` such that the probe rectangle scaled by `k` still fits (bisection — fitting is
  *  monotonic in `k` for a shape containing its own centre). */
-function maxFitScale(shape: MarkerShape, r: number, width: number, height: number): number {
+function maxFitScale(item: TextFitItem, width: number, height: number): number {
   let lo = 0;
-  let hi = (4 * r) / Math.max(width, height);
+  let hi = (4 * plateReach(item)) / Math.max(width, height);
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    if (rectInShape(shape, r, width * mid, height * mid)) lo = mid;
+    if (extentFitsPlate(item, width * mid, height * mid)) lo = mid;
     else hi = mid;
   }
   return lo;
@@ -281,20 +321,20 @@ export function maxFittingFontSize(items: readonly TextFitItem[]): number | null
   const seen = new Set<string>();
   for (const item of items) {
     if (item.text.length === 0) continue;
-    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}`;
+    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${itemMargin(item)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const r = plateRadius(item);
+    const reachLimit = plateReach(item);
     const ink = textInk(item.text, item.fontWeight);
     if (ink) {
       let reach = 0;
       for (const v of ink.points) reach = Math.max(reach, Math.abs(v));
       if (reach <= 0) continue;
       let lo = 0;
-      let hi = (4 * r) / reach;
+      let hi = (4 * reachLimit) / reach;
       for (let i = 0; i < 40; i++) {
         const mid = (lo + hi) / 2;
-        if (inkInShape(item.shape, r, ink.points, mid)) lo = mid;
+        if (inkFitsPlate(item, ink.points, mid)) lo = mid;
         else hi = mid;
       }
       best = Math.min(best, lo * ink.base);
@@ -303,7 +343,7 @@ export function maxFittingFontSize(items: readonly TextFitItem[]): number | null
     const probeSize = 100;
     const extent = measureText(item.text, item.fontWeight, probeSize);
     if (extent.width <= 0 || extent.height <= 0) continue;
-    best = Math.min(best, probeSize * maxFitScale(item.shape, r, extent.width, extent.height));
+    best = Math.min(best, probeSize * maxFitScale(item, extent.width, extent.height));
   }
   if (!Number.isFinite(best)) return null;
   const { min, max, step } = TEXT_SIZE_RANGE;

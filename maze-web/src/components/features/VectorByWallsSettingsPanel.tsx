@@ -76,6 +76,7 @@ export function VectorByWallsSettingsPanel() {
   const setStartMarkerTextEnabled = useMazeStore((s) => s.setVectorByWallsStartMarkerTextEnabled);
   const setStartMarkerTextFontWeight = useMazeStore((s) => s.setVectorByWallsStartMarkerTextFontWeight);
   const setStartMarkerTextSize = useMazeStore((s) => s.setVectorByWallsStartMarkerTextSize);
+  const setStartMarkerTextMargin = useMazeStore((s) => s.setVectorByWallsStartMarkerTextMargin);
   const setStartMarkerTextColor = useMazeStore((s) => s.setVectorByWallsStartMarkerTextColor);
   const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsStartMarkerCornerStyle);
   const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByWallsStartMarkerFillColor);
@@ -88,6 +89,7 @@ export function VectorByWallsSettingsPanel() {
   const setFinishMarkerTextEnabled = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextEnabled);
   const setFinishMarkerTextFontWeight = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextFontWeight);
   const setFinishMarkerTextSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextSize);
+  const setFinishMarkerTextMargin = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextMargin);
   const setFinishMarkerTextColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerTextColor);
   const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsFinishMarkerCornerStyle);
   const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerFillColor);
@@ -177,7 +179,7 @@ export function VectorByWallsSettingsPanel() {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
       fitFor: (kind) => maxFittingFontSize(items[kind]),
-      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport]),
+      fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
     };
   }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
@@ -481,6 +483,7 @@ export function VectorByWallsSettingsPanel() {
               if (patch.textEnabled !== undefined) setStartMarkerTextEnabled(patch.textEnabled);
               if (patch.textFontWeight !== undefined) setStartMarkerTextFontWeight(patch.textFontWeight);
               if (patch.textSize !== undefined) setStartMarkerTextSize(patch.textSize);
+              if (patch.textMargin !== undefined) setStartMarkerTextMargin(patch.textMargin);
               if (patch.textColor !== undefined) setStartMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
@@ -500,6 +503,7 @@ export function VectorByWallsSettingsPanel() {
               textEnabled: "startMarker.textEnabled",
               textFontWeight: "startMarker.textFontWeight",
               textSize: "startMarker.textSize",
+              textMargin: "startMarker.textMargin",
               textColor: "startMarker.textColor",
             }}
           />
@@ -520,6 +524,7 @@ export function VectorByWallsSettingsPanel() {
               if (patch.textEnabled !== undefined) setFinishMarkerTextEnabled(patch.textEnabled);
               if (patch.textFontWeight !== undefined) setFinishMarkerTextFontWeight(patch.textFontWeight);
               if (patch.textSize !== undefined) setFinishMarkerTextSize(patch.textSize);
+              if (patch.textMargin !== undefined) setFinishMarkerTextMargin(patch.textMargin);
               if (patch.textColor !== undefined) setFinishMarkerTextColor(patch.textColor);
               if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
@@ -539,6 +544,7 @@ export function VectorByWallsSettingsPanel() {
               textEnabled: "finishMarker.textEnabled",
               textFontWeight: "finishMarker.textFontWeight",
               textSize: "finishMarker.textSize",
+              textMargin: "finishMarker.textMargin",
               textColor: "finishMarker.textColor",
             }}
           />
@@ -666,6 +672,7 @@ export function VectorByWallsSettingsPanel() {
                 floorBadgeCornerStyle: "teleportFloorBadge.cornerStyle",
                 floorBadgeGapWidth: "teleportFloorBadge.gapWidth",
                 floorBadgeTextSize: "teleportFloorBadge.textSize",
+                floorBadgeTextMargin: "teleportFloorBadge.textMargin",
                 floorBadgeTextFontWeight: "teleportFloorBadge.textFontWeight",
                 groupCustomization: "teleportGroupCustomization",
               }}
@@ -1005,6 +1012,7 @@ export function VectorByWallsSettingsPanel() {
                         borderColor: "elevatorBadges.borderColor",
                         borderWidth: "elevatorBadges.borderWidth",
                         textSize: "elevatorBadges.textSize",
+                        textMargin: "elevatorBadges.textMargin",
                       }}
                       fillColorPriority={badgeFillPriority}
                       borderColorPriority={badgeBorderPriority}
@@ -1062,6 +1070,7 @@ export function VectorByWallsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -1160,6 +1169,7 @@ export function VectorByWallsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -1264,6 +1274,7 @@ export function VectorByWallsSettingsPanel() {
                             textEnabled: null,
                             textFontWeight: null,
                             textSize: null,
+                            textMargin: null,
                             textColor: null,
                           }}
                         />
@@ -1338,6 +1349,7 @@ export function VectorByWallsSettingsPanel() {
                         borderColor: "elevatorBadges.borderColor",
                         borderWidth: "elevatorBadges.borderWidth",
                         textSize: "elevatorBadges.textSize",
+                        textMargin: "elevatorBadges.textMargin",
                       }}
                       fillColorPriority={badgeFillPriority}
                       borderColorPriority={badgeBorderPriority}
@@ -1419,8 +1431,10 @@ export function VectorByWallsSettingsPanel() {
             coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
             coverageElevator: "markerIndex.coverage.elevator",
             labelStyle: "markerIndex.labelStyle",
-            fontWeight: "markerIndex.fontWeight",
-            paddingX: "markerIndex.paddingX",
+            textFontWeight: "markerIndex.textFontWeight",
+            width: "markerIndex.width",
+            textSize: "markerIndex.textSize",
+            textMargin: "markerIndex.textMargin",
             height: "markerIndex.height",
             offset: "markerIndex.offset",
             cornerRadius: "markerIndex.cornerRadius",

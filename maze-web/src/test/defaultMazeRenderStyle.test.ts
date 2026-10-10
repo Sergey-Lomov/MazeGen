@@ -31,7 +31,7 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
       text: "S",
       textEnabled: false,
       textFontWeight: "bold",
-      textSize: DEFAULT_MARKER_TEXT_SIZE,
+      textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: 1,
       textColor: settings.startMarker.textColor,
     });
     expect(buildMarkerStyle(settings.finishMarker, settings.floorColor)).toEqual({
@@ -39,7 +39,7 @@ describe("DEFAULT_MAZE_RENDER_STYLE", () => {
       text: "F",
       textEnabled: false,
       textFontWeight: "bold",
-      textSize: DEFAULT_MARKER_TEXT_SIZE,
+      textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: 1,
       textColor: settings.finishMarker.textColor,
     });
     expect(DEFAULT_VERTICAL_STYLE).toBe(DEFAULT_MAZE_RENDER_STYLE.verticalConnections);

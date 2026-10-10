@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
+import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
@@ -31,7 +32,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportMarker: { cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
@@ -57,7 +58,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     teleportMarker: { cornerStyle: "round", shape: "diamond", size: 6.4, fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 3, gapWidth: 3 },
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
-    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    teleportConnectorGapWidth: 3, teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 6.4, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 }, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
@@ -335,7 +336,7 @@ describe("computeVectorByWallsWarnings", () => {
       // clamped to the settings-panel slider's 0.1-1 UI range, so a large value here isolates the
       // geometry from the marker radius entirely.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       const matches = warnings.filter((w) => w.id === "elevator_badges_overlap");
@@ -350,7 +351,7 @@ describe("computeVectorByWallsWarnings", () => {
 
     it("does not flag when badges is disabled", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: false, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: false, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
@@ -358,7 +359,7 @@ describe("computeVectorByWallsWarnings", () => {
 
     it("does not flag when badges have enough room (large distance, small size)", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
@@ -369,7 +370,7 @@ describe("computeVectorByWallsWarnings", () => {
       // active floor) is present — the fan's targets on other floors are structurally absent, so
       // without a separate unscoped node list their floors can't resolve at all.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings([elevatorNodes[0]], elevatorEdges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
@@ -388,7 +389,7 @@ describe("computeVectorByWallsWarnings", () => {
       // Large size -> huge badgeRadius -> slotsPerRow capacity 1; 3 floors split 2/1 between
       // sides, so the 2-badge side overflows.
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       const matches = warnings.filter((w) => w.id === "elevator_badges_too_many");
@@ -403,7 +404,7 @@ describe("computeVectorByWallsWarnings", () => {
 
     it("never fires for full_circle", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 400, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
@@ -411,7 +412,7 @@ describe("computeVectorByWallsWarnings", () => {
 
     it("does not flag when badges fit within one row per side", () => {
       const settings = baseSettings({
-        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66 },
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, borderColor: 0x555555, borderWidth: 0, textColor: 0, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
       });
       const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
       expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
@@ -732,20 +733,20 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, start, finish).filter((w) => w.id === "marker_text_overflow");
 
   it("flags a start/finish caption larger than its marker and highlights that node", () => {
-    const settings = baseSettings({ startMarker: marker({ textSize: 32 }), finishMarker: marker({ textSize: 6 }) });
+    const settings = baseSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }), finishMarker: marker({ textSize: 6, textMargin: 1 }) });
     const w = overflow(settings);
     expect(w).toHaveLength(1);
     expect(w[0].nodes).toEqual([0]);
   });
 
   it("does not flag a small caption, a hidden caption or an off-floor endpoint", () => {
-    expect(overflow(baseSettings({ startMarker: marker({ textSize: 6 }), finishMarker: marker({ textSize: 6 }) }))).toHaveLength(0);
-    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textEnabled: false }), finishMarker: marker({ text: "" }) }))).toHaveLength(0);
-    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32 }) }), null, null)).toHaveLength(0);
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 6, textMargin: 1 }), finishMarker: marker({ textSize: 6, textMargin: 1 }) }))).toHaveLength(0);
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textMargin: 1, textEnabled: false }), finishMarker: marker({ text: "" }) }))).toHaveLength(0);
+    expect(overflow(baseSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) }), null, null)).toHaveLength(0);
   });
 
   it("reports the same caveat in corridors mode", () => {
-    const settings = baseCorridorsSettings({ startMarker: marker({ textSize: 32 }) });
+    const settings = baseCorridorsSettings({ startMarker: marker({ textSize: 32, textMargin: 1 }) });
     const w = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null).filter((x) => x.id === "marker_text_overflow");
     expect(w).toHaveLength(1);
   });
@@ -772,10 +773,26 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     ]);
   });
 
+  it("flags marker index labels that overflow their fixed plate and highlights the cell", () => {
+    const crossNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1)];
+    const crossEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const index = baseSettings().markerIndex;
+    const run = (patch: Partial<typeof index>) => computeVectorByWallsWarnings(
+      crossNodes.filter((x) => x.level === 0), [], squareCfg,
+      baseSettings({ markerIndex: { ...index, enabled: true, labelStyle: "arabic", ...patch } }), null, null, crossNodes,
+      { resolveNodeLevel: selectNodeLevelResolver(crossNodes), unscopedNodeById: new Map(crossNodes.map((x) => [x.id, x])), unscopedEdges: crossEdges, activeFloorIndex: 0 },
+    ).filter((w) => w.id === "marker_index_text_overflow");
+    expect(run({ width: 20, height: 20, textSize: 6, textMargin: 1 })).toHaveLength(0);
+    const w = run({ width: 8, height: 8, textSize: 32, textMargin: 1 });
+    expect(w).toHaveLength(1);
+    expect(w[0].cells).toHaveLength(1);
+    expect(run({ enabled: false, width: 8, height: 8, textSize: 32, textMargin: 1 })).toHaveLength(0);
+  });
+
   it("collects labels across floors per size control for auto-fit", () => {
     const settings = baseSettings({ startMarker: marker({}), finishMarker: marker({ text: "" }) });
     const items = computeTextFitItemsAcrossFloors(nodes, edges, [{ id: "f0" }], squareCfg, settings, 0, 1);
-    expect(items.start).toEqual([{ text: "S", fontWeight: "bold", shape: "circle", plateSize: 20 }]);
+    expect(items.start).toEqual([{ text: "S", fontWeight: "bold", shape: "circle", plateSize: 20, margin: 1 }]);
     expect(items.finish).toEqual([]);
     expect(items.elevator).toEqual([]);
     expect(items.teleport).toEqual([]);

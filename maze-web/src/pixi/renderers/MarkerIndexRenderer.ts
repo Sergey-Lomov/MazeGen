@@ -1,22 +1,11 @@
-import { BitmapText, Container, Graphics } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
 import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { drawRoundedRect } from "./markerShapes";
 
-/** Fraction of the plate's height the label text occupies (the rest is vertical padding). Chosen
- *  so the tallest glyphs ("VIII", "W") clear the plate edges with a small margin. */
-const TEXT_HEIGHT_FRACTION = 0.72;
-
-/** Font size for a marker-index label plate of `plateHeightPx`. Pure function of the plate height
- *  — width is handled separately (the plate is sized to the widest label). */
-export function fitMarkerIndexFontSize(plateHeightPx: number): number {
-  return Math.max(1, plateHeightPx * TEXT_HEIGHT_FRACTION);
-}
-
 export interface MarkerIndexRenderData {
   labels: MarkerIndexLabel[];
-  allLabelStrings: string[];
   style: MarkerIndexSettings;
   /** Floor color — the plate's gap ring (`style.gap`, whole pixels) is drawn in it, same
    *  convention as every other marker gap ring: it reads as a cut-out of the floor. */
@@ -43,8 +32,9 @@ interface PlateBox {
  *  ends up *under* the marker it hangs off and never occludes it, even when `offset` is small
  *  enough that the plate overlaps the marker.
  *
- *  The plate width is uniform across the whole project (sized to the widest label in
- *  `allLabelStrings`), so a given index looks identical on every floor. */
+ *  The plate is a fixed `style.width` x `style.height` rectangle (GitHub issue #725), so a given
+ *  index looks identical on every floor; the label uses `style.textSize` and may overflow the
+ *  plate (reported by the `marker_index_text_overflow` export warning). */
 export class MarkerIndexRenderer {
   private readonly gapLayer: Container;
   private readonly bodyLayer: Container;
@@ -66,27 +56,15 @@ export class MarkerIndexRenderer {
 
   render(data: MarkerIndexRenderData): void {
     this.clear();
-    const { labels, allLabelStrings, style, floorColor } = data;
+    const { labels, style, floorColor } = data;
     if (!style.enabled || labels.length === 0) return;
 
+    const plateW = style.width;
     const plateH = style.height;
-    const paddingX = style.paddingX;
     const cornerRadius = style.cornerRadius;
     const gap = Math.max(0, style.gap);
-    const fontSize = fitMarkerIndexFontSize(plateH);
-    const fontFamily = msdfFontFamily(style.fontWeight);
-
-    // Plate width is sized to the widest label as rendered — an MSDF `BitmapText` (GitHub issue
-    // #352), so it must be measured with one too, not `CanvasTextMetrics` (which measures the
-    // system font, a different set of advance widths). A throwaway instance per unique string,
-    // destroyed right after reading `.width`.
-    let widestText = 0;
-    for (const s of allLabelStrings) {
-      const probe = new BitmapText({ text: s, style: { fontFamily, fontSize } });
-      widestText = Math.max(widestText, probe.width);
-      probe.destroy();
-    }
-    const plateW = widestText + 2 * paddingX;
+    const fontSize = style.textSize;
+    const fontFamily = msdfFontFamily(style.textFontWeight);
 
     const boxes: PlateBox[] = labels.map((item) => {
       const [cx, cy] = item.pos;

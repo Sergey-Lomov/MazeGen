@@ -164,3 +164,24 @@ describe("computeActivePaths", () => {
     expect(result.has("backgroundColor")).toBe(true);
   });
 });
+
+describe("isPathActive: start/finish caption", () => {
+  const check = (path: string, settings: ParamActivitySettings) => isPathActive(path, {} as never, baseCtx, settings);
+
+  it("deactivates caption style fields when the caption is off, keeps the toggle active", () => {
+    const off = { startMarker: { textEnabled: false }, finishMarker: { textEnabled: false } };
+    for (const kind of ["startMarker", "finishMarker"]) {
+      expect(check(`${kind}.textColor`, off)).toBe(false);
+      expect(check(`${kind}.textSize`, off)).toBe(false);
+      expect(check(`${kind}.textFontWeight`, off)).toBe(false);
+      expect(check(`${kind}.textEnabled`, off)).toBe(true);
+      expect(check(`${kind}.fillColor`, off)).toBe(true);
+    }
+  });
+
+  it("keeps caption style fields active when the caption is on, and gates start/finish independently", () => {
+    expect(check("startMarker.textColor", { startMarker: { textEnabled: true } })).toBe(true);
+    expect(check("finishMarker.textColor", { startMarker: { textEnabled: false }, finishMarker: { textEnabled: true } })).toBe(true);
+    expect(check("startMarker.textColor", { startMarker: { textEnabled: false }, finishMarker: { textEnabled: true } })).toBe(false);
+  });
+});

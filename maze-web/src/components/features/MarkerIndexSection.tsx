@@ -5,6 +5,8 @@ import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelect
 import { indent, spacing, typography } from "../../styles/theme";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { TILE_SIZE } from "../../pixi/constants";
+import { MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { TextStyleRows } from "./MarkerFieldRows";
 import * as m from "~/paraglide/messages";
 
 /** "Marker indices" section body (GitHub issue #471) — a self-contained collapsible section,
@@ -29,8 +31,10 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
     coverageVerticalPassage: P | null;
     coverageElevator: P | null;
     labelStyle: P | null;
-    fontWeight: P | null;
-    paddingX: P | null;
+    textFontWeight: P | null;
+    width: P | null;
+    textSize: P | null;
+    textMargin: P | null;
     height: P | null;
     offset: P | null;
     cornerRadius: P | null;
@@ -102,7 +106,7 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
           </div>
 
           <div style={styles.subGroupWrap}>
-            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_settings"]()}</div>
+            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_caption"]()}</div>
             <div style={styles.subGroup}>
               <LinkedSelectRow
                 label={m["image_export.vector_by_walls.marker_index_label_style"]()}
@@ -115,29 +119,34 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 onChange={(labelStyle) => onChange({ labelStyle })}
                 linkTarget={linkTargets.labelStyle}
               />
-              <LinkedSelectRow
-                label={m["image_export.vector_by_walls.marker_index_font_weight"]()}
-                value={settings.fontWeight}
-                options={[
-                  { value: "regular", label: m["image_export.vector_by_walls.marker_index_font_weight_regular"]() },
-                  { value: "bold", label: m["image_export.vector_by_walls.marker_index_font_weight_bold"]() },
-                ]}
-                onChange={(fontWeight) => onChange({ fontWeight })}
-                linkTarget={linkTargets.fontWeight}
+              <TextStyleRows
+                settings={settings}
+                onChange={onChange}
+                linkTargets={{ textFontWeight: linkTargets.textFontWeight, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin, textColor: linkTargets.textColor }}
+                priorityColors={textColorPriority}
+                defaultColor={textColorDefault}
+                field={textColorField}
+                autoFitKind="markerIndex"
               />
+            </div>
+          </div>
+
+          <div style={styles.subGroupWrap}>
+            <div style={styles.subHeader}>{m["image_export.vector_by_walls.marker_index_subsection_backplate"]()}</div>
+            <div style={styles.subGroup}>
               <LinkedSliderRow
-                label={m["image_export.vector_by_walls.marker_index_padding_x"]()}
-                value={settings.paddingX}
-                onChange={(paddingX) => onChange({ paddingX })}
-                min={0} max={0.2 * TILE_SIZE} step={1}
+                label={m["image_export.vector_by_walls.marker_index_width"]()}
+                value={settings.width}
+                onChange={(width) => onChange({ width: Math.round(width) })}
+                min={MARKER_INDEX_WIDTH_RANGE.min} max={MARKER_INDEX_WIDTH_RANGE.max} step={1}
                 format={(v) => String(Math.round(v))}
-                linkTarget={linkTargets.paddingX}
+                linkTarget={linkTargets.width}
               />
               <LinkedSliderRow
                 label={m["image_export.vector_by_walls.marker_index_height"]()}
                 value={settings.height}
                 onChange={(height) => onChange({ height })}
-                min={0.05 * TILE_SIZE} max={0.5 * TILE_SIZE} step={1}
+                min={MARKER_INDEX_MIN_HEIGHT} max={0.5 * TILE_SIZE} step={1}
                 format={(v) => String(Math.round(v))}
                 linkTarget={linkTargets.height}
               />
@@ -188,15 +197,6 @@ export function MarkerIndexSection<P extends string>({ settings, onChange, linkT
                 defaultColor={fillColorDefault}
                 field={fillColorField}
                 linkTarget={linkTargets.fillColor}
-              />
-              <LinkedColorRow
-                label={m["image_export.vector_by_walls.marker_index_text_color"]()}
-                color={settings.textColor}
-                onChange={(textColor) => onChange({ textColor })}
-                priorityColors={textColorPriority}
-                defaultColor={textColorDefault}
-                field={textColorField}
-                linkTarget={linkTargets.textColor}
               />
               <LinkedToggleRow
                 label={m["image_export.vector_by_walls.marker_index_border_color_from_marker"]()}
