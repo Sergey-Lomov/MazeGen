@@ -6,6 +6,7 @@ import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { distributeOklchHues } from "../store/colorMath";
 import * as m from "~/paraglide/messages";
 
 // getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
@@ -523,6 +524,50 @@ describe("VectorByWallsSettingsPanel", () => {
       pickColor(fillWrap.querySelector('[role="button"]')!, "#abcdef");
       const groupKey = Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)[0];
       expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides[groupKey].fillColor).toBe(0xabcdef);
+    });
+
+    it("auto fills / auto borders distribute the base marker colors over the groups, each touching only its own role (GitHub issue #728)", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      const { fillColor, borderColor } = useMazeStore.getState().vectorByWallsSettings.teleportMarker;
+
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.teleport_group_auto_fill"]()));
+      let overrides = useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides;
+      const [key] = Object.keys(overrides);
+      expect(overrides[key].fillColor).toBe(distributeOklchHues(fillColor, 1)[0]);
+      expect(overrides[key].borderColor).toBeUndefined();
+
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.teleport_group_auto_border"]()));
+      overrides = useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides;
+      expect(overrides[key].borderColor).toBe(distributeOklchHues(borderColor, 1)[0]);
+      expect(overrides[key].fillColor).toBe(distributeOklchHues(fillColor, 1)[0]);
+    });
+
+    it("hides the auto buttons while group customization is off", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      expect(screen.queryByText(m["image_export.vector_by_walls.teleport_group_auto_fill"]())).toBeNull();
     });
 
     const twoWayTeleportState = () => useMazeStore.setState({

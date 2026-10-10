@@ -2280,6 +2280,8 @@
   "image_export.vector_by_walls.teleport_connector_gap_width": "Ширина зазора",
   "image_export.vector_by_walls.teleport_group_customization": "Кастомизация групп",
   "image_export.vector_by_walls.teleport_group_customization_enable": "Включено",
+  "image_export.vector_by_walls.teleport_group_auto_fill": "Авто-заливки",
+  "image_export.vector_by_walls.teleport_group_auto_border": "Авто-рамки",
   "image_export.vector_by_walls.teleport_group_title": "Группа {index}",
   "image_export.vector_by_walls.teleport_group_collision": "Совпадает по цвету и форме с другой группой",
   "image_export.vector_by_walls.teleport_group_reset": "Сбросить все значения",

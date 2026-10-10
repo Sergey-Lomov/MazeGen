@@ -837,6 +837,8 @@ export interface ImageExportActions {
   patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
   patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  /** Bulk form of `setVectorByCorridorsTeleportGroupOverride` — merges every group's patch in one store update (GitHub issue #728). */
+  patchVectorByCorridorsTeleportGroupOverrides: (patches: Record<string, TeleportGroupOverride>) => void;
   setVectorByCorridorsSplitNodeColor: (index: number, color: number) => void;
   setVectorByCorridorsSplitSpecialShapes: (v: boolean) => void;
   setVectorByCorridorsSplitGapWidth: (v: number) => void;
@@ -1031,6 +1033,8 @@ export interface ImageExportActions {
   setVectorByWallsElevatorMarkerSize: (v: number) => void;
   patchVectorByWallsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  /** Bulk form of `setVectorByWallsTeleportGroupOverride` — merges every group's patch in one store update (GitHub issue #728). */
+  patchVectorByWallsTeleportGroupOverrides: (patches: Record<string, TeleportGroupOverride>) => void;
   setHoveredTeleportNodeIds: (ids: number[] | null) => void;
   /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with
    *  `splitSlotColor`'s own default) if `index` is past the array's current end — see GitHub issue

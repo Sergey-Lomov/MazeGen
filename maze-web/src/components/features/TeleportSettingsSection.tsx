@@ -8,6 +8,7 @@ import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selector
 import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ColorSwatch } from "../ColorSwatch";
+import { Button } from "../Button";
 import { SubsectionHeader } from "../SectionHeader";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
@@ -20,6 +21,7 @@ import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
+import { distributeOklchHues } from "../../store/colorMath";
 import * as m from "~/paraglide/messages";
 
 /** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
@@ -213,6 +215,7 @@ export function TeleportSettingsSection<P extends string>({
   onChange,
   groupOverrides,
   onGroupOverrideChange,
+  onGroupOverridesPatch,
   teleportGroups,
   teleportCollisionKeys,
   hasCrossFloorTeleports,
@@ -240,6 +243,8 @@ export function TeleportSettingsSection<P extends string>({
   onChange: (patch: Partial<TeleportSettingsFields>) => void;
   groupOverrides: Record<string, TeleportGroupOverride>;
   onGroupOverrideChange: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  /** Merges one patch per group key in a single store update (the "Auto fills"/"Auto borders" buttons). */
+  onGroupOverridesPatch: (patches: Record<string, TeleportGroupOverride>) => void;
   teleportGroups: TeleportGroup[];
   teleportCollisionKeys: Set<string>;
   /** Whether the project has at least one cross-floor teleport (its two endpoints on different
@@ -490,6 +495,24 @@ export function TeleportSettingsSection<P extends string>({
             onChange={(checked) => onChange({ teleportGroupCustomization: checked })}
             linkTarget={linkTargets.groupCustomization}
           />
+          {settings.teleportGroupCustomization && teleportGroups.length > 0 && (
+            <div style={styles.autoFillRow}>
+              {(["fillColor", "borderColor"] as const).map((role) => (
+                <Button
+                  key={role}
+                  variant="secondary"
+                  layoutStyle={{ flex: 1 }}
+                  onClick={(e) => {
+                    const colors = distributeOklchHues(settings.teleportMarker[role], teleportGroups.length);
+                    onGroupOverridesPatch(Object.fromEntries(teleportGroups.map((g, i) => [g.key, { [role]: colors[i] }])));
+                    e.currentTarget.blur();
+                  }}
+                >
+                  {role === "fillColor" ? m["image_export.vector_by_walls.teleport_group_auto_fill"]() : m["image_export.vector_by_walls.teleport_group_auto_border"]()}
+                </Button>
+              ))}
+            </div>
+          )}
           {settings.teleportGroupCustomization && teleportGroups.length > 0 && (() => {
             // Every group's own fill+border colors, computed once (GitHub issue #503 follow-up) —
             // each cell's own "other groups" priority list below is a slice of this shared array
@@ -531,6 +554,7 @@ const styles: Record<string, React.CSSProperties> = {
   subsectionLabel: { ...typography.body },
   subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   subsectionNested: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  autoFillRow: { display: "flex", flexDirection: "row", gap: spacing.itemGap },
   groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap },
   groupCell: {
     display: "flex", flexDirection: "column", gap: spacing.itemGap,

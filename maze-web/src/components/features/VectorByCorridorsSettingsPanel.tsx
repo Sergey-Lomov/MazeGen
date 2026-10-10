@@ -124,6 +124,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
+  const patchTeleportGroupOverrides = useMazeStore((s) => s.patchVectorByCorridorsTeleportGroupOverrides);
   const setSplitNodeColor = useMazeStore((s) => s.setVectorByCorridorsSplitNodeColor);
   const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByCorridorsSplitSpecialShapes);
   const setSplitGapWidth = useMazeStore((s) => s.setVectorByCorridorsSplitGapWidth);
@@ -600,6 +601,7 @@ export function VectorByCorridorsSettingsPanel() {
               onChange={patchTeleportSettings}
               groupOverrides={settings.teleportGroupOverrides}
               onGroupOverrideChange={setTeleportGroupOverride}
+              onGroupOverridesPatch={patchTeleportGroupOverrides}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
               hasCrossFloorTeleports={hasCrossFloorTeleports}

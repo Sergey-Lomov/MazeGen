@@ -253,6 +253,12 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       else overrides[groupKey] = { ...overrides[groupKey], ...patch };
       return corridorsPlain("teleportGroupOverrides", overrides)(s);
     }),
+  patchVectorByCorridorsTeleportGroupOverrides: (patches) =>
+    set((s) => {
+      const overrides = { ...s.vectorByCorridorsSettings.teleportGroupOverrides };
+      for (const [key, patch] of Object.entries(patches)) overrides[key] = { ...overrides[key], ...patch };
+      return corridorsPlain("teleportGroupOverrides", overrides)(s);
+    }),
   setVectorByCorridorsSplitNodeColor: (index, color) =>
     set((s) => {
       const colors = [...s.vectorByCorridorsSettings.splitNodeColors];
@@ -407,6 +413,12 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
       if (patch === null) delete overrides[groupKey];
       else overrides[groupKey] = { ...overrides[groupKey], ...patch };
+      return wallsPlain("teleportGroupOverrides", overrides)(s);
+    }),
+  patchVectorByWallsTeleportGroupOverrides: (patches) =>
+    set((s) => {
+      const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
+      for (const [key, patch] of Object.entries(patches)) overrides[key] = { ...overrides[key], ...patch };
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
   setHoveredTeleportNodeIds: (ids) => set({ hoveredTeleportNodeIds: ids }),

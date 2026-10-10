@@ -217,6 +217,18 @@ export function colorToOklch(color: number): Oklch {
   return { l: L * 100, c, h };
 }
 
+/** `count` colors sharing `base`'s OKLCH lightness, with hue spread evenly over the full 360°
+ *  starting at `base`'s own hue (the first color is `base` itself). Chroma is `base`'s, lowered per
+ *  color to `oklchMaxChroma` when that hue can't reach it inside sRGB — this keeps lightness and hue
+ *  exact, where `oklchToColor`'s per-channel clamp would shift the hue. */
+export function distributeOklchHues(base: number, count: number): number[] {
+  const { l, c, h } = colorToOklch(base);
+  return Array.from({ length: count }, (_, i) => {
+    const hue = h + (360 * i) / count;
+    return oklchToColor({ l, c: Math.min(c, oklchMaxChroma(l, hue)), h: hue });
+  });
+}
+
 /** Pack an OKLCH triple into a 24-bit RGB number, gamut-clamped to sRGB. `l` clamps to 0-100, `c`
  *  to 0+, `h` wraps mod 360; the resulting sRGB channels are clamped to 0-255 by `rgbToColor`. */
 export function oklchToColor({ l, c, h }: Oklch): number {

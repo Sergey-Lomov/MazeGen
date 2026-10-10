@@ -2278,6 +2278,8 @@
   "image_export.vector_by_walls.teleport_connector_gap_width": "Gap width",
   "image_export.vector_by_walls.teleport_group_customization": "Group customization",
   "image_export.vector_by_walls.teleport_group_customization_enable": "Enabled",
+  "image_export.vector_by_walls.teleport_group_auto_fill": "Auto fills",
+  "image_export.vector_by_walls.teleport_group_auto_border": "Auto borders",
   "image_export.vector_by_walls.teleport_group_title": "Group {index}",
   "image_export.vector_by_walls.teleport_group_collision": "Same color and shape as another group",
   "image_export.vector_by_walls.teleport_group_reset": "Reset all values",
