@@ -34,7 +34,13 @@ export type TeleportGroup = {
   key: string;
   edgeKeys: string[];
   points: [number, number][];
+  /** The group's teleports as node-id pairs (only edges carrying both `fromNode` and `toNode`),
+   *  in the same order as `edgeKeys`. `from` -> `to` is the passage direction when `oneWay`; a
+   *  two-way teleport's order is arbitrary. Drives the settings panel's per-group teleport list. */
+  links: TeleportGroupLink[];
 };
+
+export type TeleportGroupLink = { from: number; to: number; oneWay: boolean };
 
 /** Merges `TeleportEdge`s into `TeleportGroup`s wherever an endpoint coordinate coincides across
  *  different teleport pairs (GitHub issue #293's "grouped" pattern) — implemented as union-find
@@ -73,26 +79,31 @@ export function buildTeleportGroups(edges: TeleportEdge[]): TeleportGroup[] {
     union(fromKey, toKey);
   }
 
-  const byRoot = new Map<string, { edgeKeys: Set<string>; points: Map<string, [number, number]> }>();
+  const byRoot = new Map<string, { edgeKeys: Set<string>; points: Map<string, [number, number]>; links: Map<string, TeleportGroupLink> }>();
   for (const e of edges) {
     const root = find(coordKey(e.from[0], e.from[1]));
     let entry = byRoot.get(root);
     if (!entry) {
-      entry = { edgeKeys: new Set(), points: new Map() };
+      entry = { edgeKeys: new Set(), points: new Map(), links: new Map() };
       byRoot.set(root, entry);
     }
-    entry.edgeKeys.add(teleportEdgeKey(e));
+    const edgeKey = teleportEdgeKey(e);
+    entry.edgeKeys.add(edgeKey);
+    if (e.fromNode !== undefined && e.toNode !== undefined && !entry.links.has(edgeKey)) {
+      entry.links.set(edgeKey, { from: e.fromNode, to: e.toNode, oneWay: e.oneWay });
+    }
     entry.points.set(coordKey(e.from[0], e.from[1]), e.from);
     entry.points.set(coordKey(e.to[0], e.to[1]), e.to);
   }
 
   const groups: TeleportGroup[] = [];
-  for (const { edgeKeys, points } of byRoot.values()) {
+  for (const { edgeKeys, points, links } of byRoot.values()) {
     const sortedEdgeKeys = Array.from(edgeKeys).sort();
     groups.push({
       key: sortedEdgeKeys.join("|"),
       edgeKeys: sortedEdgeKeys,
       points: Array.from(points.values()),
+      links: sortedEdgeKeys.flatMap((k) => links.get(k) ?? []),
     });
   }
   groups.sort((a, b) => a.key.localeCompare(b.key));

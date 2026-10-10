@@ -4,12 +4,11 @@ import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { Button } from "../Button";
-import { buildNodeByIdMap, entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
+import { EntityBubbleRow } from "./EntityBubbleRow";
+import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
+import { entityIdOf, postEditCommandLabel, type PostEditEntityBubble } from "../../pixi/postEditCommandLabels";
 import { isCreateCommand, affectedIndicesForReset, affectedIndicesForDelete } from "../../pixi/postEditReplay";
-import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
-import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
-import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { sharedStyles } from "../../styles/shared";
 import { typography, muted, spacing, ui, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -76,47 +75,13 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
   const resetPostEditCommand = useMazeStore((s) => s.resetPostEditCommand);
   const deletePostEditCommand = useMazeStore((s) => s.deletePostEditCommand);
   const compactPostEditLog = useMazeStore((s) => s.compactPostEditLog);
-  const nodes = useMazeStore((s) => s.nodes);
-  const floors = useMazeStore((s) => s.floors);
   const setPostEditHoveredEntity = useMazeStore((s) => s.setPostEditHoveredEntity);
   const entityFilter = useMazeStore((s) => s.postEditChangesEntityFilter);
   const setEntityFilter = useMazeStore((s) => s.setPostEditChangesEntityFilter);
-  const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const activeSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
-  const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
-  const floorFields = useMazeStore((s) => s.floorFields);
-  const nodeById = useMemo(() => buildNodeByIdMap(nodes), [nodes]);
-  const multiFloor = floors.length > 1;
   // One `SplitLabelContext` per render, shared by every row/bubble — resolves a split point's node
   // to its exact link-bubble label (semantic short name or `splitNodeLabelShort`), the same
   // resolution `ManageSplitNodesDialog`'s own link bubbles use (GitHub issue #546 eighth follow-up).
-  // Each floor's own `tessellationConfig` (GitHub issue #611's bug class) — a single row's bubbles
-  // can span several floors (an elevator/vertical passage), each potentially needing a different
-  // floor's own field shape, not one maze-wide snapshot.
-  const cfgByLevel = useMemo(() => {
-    return (level: number | undefined) => {
-      const index = level ?? 0;
-      const floor = floors[index];
-      return floor ? floorFields[floor.id].tessellationConfig : floorFields[floors[0].id].tessellationConfig;
-    };
-  }, [floors, floorFields]);
-  const inFieldCellsByLevel = useMemo(() => {
-    const cache = new Map<number, ReadonlySet<string>>();
-    return (level: number | undefined) => {
-      const index = level ?? 0;
-      const cached = cache.get(index);
-      if (cached) return cached;
-      const floor = floors[index];
-      const field = floor ? floorFields[floor.id] : undefined;
-      const cells = field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
-      cache.set(index, cells);
-      return cells;
-    };
-  }, [floors, floorFields]);
-  const splitCtx: SplitLabelContext = useMemo(
-    () => ({ allNodes: nodes, splitPoints, activeSplitNode, draftEdges, cfgAt: cfgByLevel, inFieldCellsAt: inFieldCellsByLevel }),
-    [nodes, splitPoints, activeSplitNode, draftEdges, cfgByLevel, inFieldCellsByLevel],
-  );
+  const { nodeById, multiFloor, splitCtx } = usePostEditSplitLabelContext();
   // Newest first — the log itself is append-only oldest-to-newest, reversed only for display.
   // The entity-id filter (GitHub issue #574) matches a command's own associated id (`entityIdOf`)
   // exactly, never a text search over the row's rendered label — a command kind with no id of its
@@ -214,21 +179,13 @@ export function PostEditChangesPanel({ onClose }: { onClose: () => void }) {
                 )}
                 <span style={styles.action}>{row.action}</span>
                 <div style={styles.bubblesRow}>
-                  <div style={styles.bubbles}>
-                    {row.bubbles.map((bubble, j) => (
-                      <span key={j} style={{ display: "inline-flex", alignItems: "center", gap: spacing.itemGap }}>
-                        {j > 0 && row.showArrow && <span style={styles.arrow}>{row.arrow}</span>}
-                        <span
-                          style={bubble.highlight?.kind === "point" ? { ...styles.bubble, cursor: "pointer" } : styles.bubble}
-                          onMouseEnter={bubble.highlight ? () => hoverBubble(bubble) : undefined}
-                          onMouseLeave={row.rowHighlight ? () => setPostEditHoveredEntity(row.rowHighlight!) : clearHover}
-                          onClick={() => clickBubble(bubble)}
-                        >
-                          {bubble.text}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
+                  <EntityBubbleRow
+                    bubbles={row.bubbles}
+                    arrow={row.showArrow ? row.arrow : undefined}
+                    onBubbleEnter={hoverBubble}
+                    onBubbleLeave={() => (row.rowHighlight ? setPostEditHoveredEntity(row.rowHighlight) : clearHover())}
+                    onBubbleClick={clickBubble}
+                  />
                   <div style={styles.rowActions}>
                     <button
                       type="button"
@@ -410,26 +367,6 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  bubbles: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap / 2,
-  },
-  bubble: {
-    ...typography.caption,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
-    whiteSpace: "nowrap",
-  },
-  arrow: muted(typography.caption),
   empty: {
     ...muted(typography.body),
     padding: spacing.groupGap,

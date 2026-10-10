@@ -8,31 +8,14 @@ import { drawDirectionArrow } from "./wallUtils";
 import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
-import { useMazeStore } from "../../store/mazeStore";
 import { attachFloorBadgeNavigation, drawFloorBadge } from "./floorBadge";
 import { formatIndexLabel } from "./indexLabel";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
 
-/** Extra radius (GitHub issue #293 follow-up) beyond the shape's own drawn radius for a group's
- *  click hit area (only drawn when group customization + `interactive` are both on) — a shape
- *  drawn with `borderWidth: 0` has nothing visually marking its true clickable extent, so the hit
- *  circle is deliberately a bit larger than the shape itself rather than matching it exactly. */
-const HIT_AREA_PADDING = 4;
-
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
- *  `render()` call. GitHub issue #293's group-customization selection highlight (hide every group
- *  but the *selected* one — click-driven, not hover, per the issue's own follow-up: hover-driven
- *  hiding flickered whenever the pointer crossed a gap between two groups' hit areas) simply skips
- *  drawing a non-selected group's own points/connectors at all, rather than dimming them via
- *  `Container.alpha` on a per-group sub-container or a per-draw `alpha` — `Container.alpha`
- *  composites each child's already-rasterized output independently, so overlapping translucent
- *  shapes (a marker sitting on its own connector's endpoint, which is *guaranteed* for every
- *  teleport point) show each other through at the seam; `cacheAsTexture`/`isRenderGroup` were both
- *  tried as fixes and abandoned — the former requires manually keeping a texture's resolution in
- *  sync with viewport zoom (fragile, went blurry on real use), the latter didn't fix the see-through
- *  seam in practice; per-draw `alpha: 0` (tried next) sidestepped the seam issue but still spent
- *  CPU/GPU work drawing fully-invisible geometry (masks included) on every selection change, for no
- *  visual benefit. Skipping the draw call entirely is both simpler and cheaper. */
+ *  `render()` call. Overlapping translucent shapes (a marker sitting on its own connector's
+ *  endpoint, which is *guaranteed* for every teleport point) would show each other through at the
+ *  seam under `Container.alpha`, so everything is drawn opaque into the one shared `Graphics`. */
 export class TeleportRenderer {
   // One shared `Graphics` for everything (connectors + markers, both modes) — not split into
   // separate line/marker layers, so draw order (which this class now interleaves per group: a
@@ -45,22 +28,18 @@ export class TeleportRenderer {
    *  on non-`Container` objects and disallows it in a future major version (GitHub issue #432). A
    *  sibling layer drawn above `this.view`, cleared/rebuilt alongside it every render. */
   private readonly overlayLayer: Container;
-  private unsubscribeSelection: (() => void) | null = null;
-  // Kept between `render()` calls so a selection change alone (no full re-render) can redraw
-  // `view` from scratch with the new selected key's visibility split, without recomputing
-  // groups/routing from the raw `edges` again.
+  // Kept between `render()` calls' phases so `renderGroups` can draw from the already-computed
+  // groups/routing without recomputing them from the raw `edges`.
   private selectionGroups: TeleportGroup[] = [];
   private selectionStyle: TeleportLineStyle = DEFAULT_MAZE_RENDER_STYLE.teleport;
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
   private selectionEdges: TeleportEdge[] = [];
-  private selectionInteractive = false;
   // Cross-floor points (GitHub issue #337) — a point present here draws a floor-number badge
   // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
   // `resolvePointFillState`, recomputed alongside it in `renderLine`.
   private selectionFloorBadges: Map<string, number> = new Map();
   // GitHub issue #337 follow-up: whether a badge point's hit-circle (added in `drawGroupPoints`)
-  // wires click-to-switch-floor — independent of `selectionInteractive` (the group-selection
-  // feature), see `render`'s own `floorNavigable` doc comment.
+  // wires click-to-switch-floor, see `render`'s own `floorNavigable` doc comment.
   private selectionFloorNavigable = false;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
@@ -81,16 +60,12 @@ export class TeleportRenderer {
    *  pattern) merges teleport pairs into groups wherever an endpoint coordinate coincides (see
    *  `buildTeleportGroups`) and applies each group's own `TeleportGroupOverride` on top of the base
    *  `lineStyle` for that group's points — the connector line and fill/outline/mixed point-state
-   *  logic are unaffected either way. `interactive` (only set by `VectorByWallsRenderer` while its
-   *  Teleports settings section is open, and only meaningful when `groupCustomization` is on) wires
-   *  click-to-select on each group's points to `selectedTeleportGroupKey` in the store, for the
-   *  settings panel's row<->canvas selection sync. */
+   *  logic are unaffected either way. */
   render(data: {
     edges: TeleportEdge[];
     lineStyle?: TeleportLineStyle;
     groupCustomization?: boolean;
     groupOverrides?: Record<string, TeleportGroupOverride>;
-    interactive?: boolean;
     /** The active tessellation, so `"orthogonal"` connectors bend along that tessellation's own
      *  face directions (GitHub issue #297) instead of always assuming a square grid. Omitted by
      *  callers without a config in hand, which falls back to the original square (h/v) behavior. */
@@ -109,10 +84,8 @@ export class TeleportRenderer {
      *  empty is the same as leaving `avoidFieldExit` off (nothing to be outside of). */
     fieldCells?: [number, number][];
     /** Wires click-to-switch-floor (GitHub issue #337 follow-up) on every cross-floor badge point
-     *  (`selectionFloorBadges`) — independent of `groupCustomization`/`interactive` above (those
-     *  gate the unrelated group-selection feature): a badge is clickable whenever this is on,
-     *  regardless of group customization state. Defaults to `false` — only `GenerationRenderer`
-     *  (a read-only, always-interactive canvas) opts in today. */
+     *  (`selectionFloorBadges`) — a badge is clickable whenever this is on, regardless of group
+     *  customization state. Defaults to `false`. */
     floorNavigable?: boolean;
   }): void {
     this.view.clear();
@@ -126,7 +99,6 @@ export class TeleportRenderer {
       data.lineStyle ?? DEFAULT_MAZE_RENDER_STYLE.teleport,
       data.groupCustomization ?? false,
       data.groupOverrides ?? {},
-      data.interactive ?? false,
       data.cfg,
       data.waypoints,
       data.avoidFieldExit ?? false,
@@ -140,7 +112,6 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
-    interactive: boolean,
     cfg: TessellationConfig | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,
@@ -149,32 +120,26 @@ export class TeleportRenderer {
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
-    // color overrides + click-to-select) is on — a group's own connectors are drawn immediately
-    // before its own points, then the next group's connectors, etc. (see `renderGroups`), so
-    // `groupCustomization` only gates whether `groupOverrides` are applied and whether selection
-    // highlighting/click-to-select is wired up, not the grouping/ordering itself.
+    // color overrides) is on — a group's own connectors are drawn immediately before its own
+    // points, then the next group's connectors, etc. (see `renderGroups`), so `groupCustomization`
+    // only gates whether `groupOverrides` are applied, not the grouping/ordering itself.
     const groups = buildTeleportGroups(edges);
     this.selectionGroups = groups;
     this.selectionStyle = style;
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionEdges = edges;
     this.selectionFloorBadges = computeFloorBadges(edges);
-    this.selectionInteractive = groupCustomization && interactive;
     this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
       style.connectorStyle !== "none"
         ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells)
         : [];
 
-    this.renderGroups(groupCustomization ? useMazeStore.getState().selectedTeleportGroupKey : null);
-    if (this.selectionInteractive) this.subscribeSelectionHighlight();
-    else this.unsubscribeSelection?.();
+    this.renderGroups();
   }
 
   /** Resolves every drawable (non-zero-length) connector in `edges` into its routed polyline +
-   *  final color — pure computation, no drawing, so `renderGroups` can redraw the result (or skip a
-   *  hidden group's own connectors) on every selection change without re-running collision routing
-   *  each time. */
+   *  final color — pure computation, no drawing. */
   private computeConnectors(
     edges: TeleportEdge[],
     style: TeleportLineStyle,
@@ -331,30 +296,21 @@ export class TeleportRenderer {
 
   /** Every group's gaps + connectors + points (which is every point/connector, once
    *  `buildTeleportGroups` has run: an edge with usable node ids always lands in some group, even a
-   *  group of one) are (re-)drawn into `view` here, one group at a time — a group's own gap rings,
+   *  group of one) are drawn into `view` here, one group at a time — a group's own gap rings,
    *  then its own connectors, then its own points, then the next group (GitHub issue #302: within
    *  one group this guarantees its own connectors/points are never visually cut by its own gap
    *  rings — a group's gap only ever needs to stay clear of *that same* group's own connector/marker
    *  geometry, so a 3-sub-pass block per group is enough, no global gap/connector/marker split is
    *  needed). A whole later group's block (gaps, connectors and points alike) draws on top of a
    *  whole earlier group's block, same "later group wins" rule the pre-#302 single interleaved pass
-   *  used. Drawn (visible) if its group is `selectedKey`, or every group when nothing is selected
-   *  (`selectedKey === null`), skipped entirely otherwise. Called once by `renderLine` (full rebuild,
-   *  which already cleared `view` itself) and again by `subscribeSelectionHighlight` on every
-   *  selection change alone (cheap re-run over already-computed groups/routing, no raw-`edges`
-   *  recomputation) — that second case needs its own clear, `renderLine`'s doesn't cover it.
-   *  `interactive` (captured in `selectionInteractive` by `renderLine`) additionally adds an
-   *  invisible padded hit-circle per point — for *every* group, regardless of which one is currently
-   *  visible, so a hidden group still has somewhere to click and re-select it — and wires
-   *  click-to-select for the canvas->row half of the selection sync. */
-  private renderGroups(selectedKey: string | null): void {
+   *  used. */
+  private renderGroups(): void {
     this.view.clear();
     this.view.removeChildren().forEach((c) => c.destroy());
     this.overlayLayer.removeChildren().forEach((c) => c.destroy());
     const style = this.selectionStyle;
-    const r = style.size / 2;
 
-    const plan = planGroupDrawOrder(this.selectionGroups, this.selectionConnectors, selectedKey);
+    const plan = planGroupDrawOrder(this.selectionGroups, this.selectionConnectors);
 
     for (const { group, connectors } of plan) {
       this.drawGroupGaps(this.view, group, style);
@@ -363,19 +319,6 @@ export class TeleportRenderer {
       }
       const override = this.selectionGroupOverrides[group.key];
       this.drawGroupPoints(this.view, this.overlayLayer, group, override, this.selectionEdges, style);
-    }
-
-    if (this.selectionInteractive) {
-      for (const group of this.selectionGroups) {
-        for (const [px, py] of group.points) {
-          // A shape drawn with `borderWidth: 0` has no visual footprint marking its clickable
-          // extent — the hit area is its own circle, deliberately padded a bit larger than the
-          // shape, not the shape's own (possibly non-circular) path. Drawn for every group,
-          // including hidden ones, so the pointer can still click and re-select them.
-          this.view.circle(px, py, r + HIT_AREA_PADDING).fill({ color: 0, alpha: 0 });
-        }
-      }
-      this.wireGroupInteractivity();
     }
   }
 
@@ -465,90 +408,7 @@ export class TeleportRenderer {
     drawMarkerWithBorder(g, shape, cx, cy, r, rounded, filled ? color : floorColor, borderColor, borderWidth);
   }
 
-  /** Wires click-to-select (`pointertap`) on `view` as a whole, resolving which group a click
-   *  landed in by finding the *nearest* point across every group to the event's local position
-   *  within a fixed hit radius — one shared listener on the single shared `Graphics`, rather than
-   *  one `Graphics`/listener pair per group (not possible when every group draws into the same
-   *  `Graphics` — see this class's own doc comment). Clicking the currently selected group's
-   *  own marker again clears the selection (toggle) — the settings panel offers the same toggle via
-   *  its own row click. Gaps between two nearby points' own hit circles don't matter here the way
-   *  they did for hover (an earlier, abandoned approach) — a click landing in such a gap simply
-   *  selects nothing, no flicker, since there's no continuous pointer-tracked state to desync. */
-  private wireGroupInteractivity(): void {
-    // `renderGroups` re-runs this on every selection change (not just the initial `render()`), and
-    // `view` itself is never recreated (`.clear()` only resets the drawn path) — without
-    // removing the previous listener first, each click on the canvas would pile another
-    // `pointertap` handler onto the same `Graphics`, so click *N* fires all *N* accumulated stale
-    // handlers (each doing its own O(points) nearest-point scan and its own store write, which
-    // synchronously re-enters this method again) — a freeze that gets worse with every click.
-    this.view.off("pointertap");
-    this.view.eventMode = "static";
-    this.view.cursor = "pointer";
-    const r = this.selectionStyle.size / 2;
-    const hitRadius = r + HIT_AREA_PADDING;
-
-    // Bucket every point into `hitRadius`-sized grid cells so a click only scans its own 3x3
-    // neighborhood instead of every point of every group — matters once a maze has hundreds of
-    // teleport points (a plain full scan is still cheap at typical sizes, but scales linearly with
-    // point count for no reason when a spatial bucket is this simple to build).
-    const cellOf = (v: number): number => Math.floor(v / hitRadius);
-    const cellKey = (cx: number, cy: number): string => `${cx},${cy}`;
-    const buckets = new Map<string, { key: string; x: number; y: number }[]>();
-    for (const group of this.selectionGroups) {
-      for (const [px, py] of group.points) {
-        const k = cellKey(cellOf(px), cellOf(py));
-        const bucket = buckets.get(k) ?? [];
-        bucket.push({ key: group.key, x: px, y: py });
-        buckets.set(k, bucket);
-      }
-    }
-    const groupKeyAt = (x: number, y: number): string | null => {
-      let best: { key: string; dist: number } | null = null;
-      const cx = cellOf(x);
-      const cy = cellOf(y);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (const p of buckets.get(cellKey(cx + dx, cy + dy)) ?? []) {
-            const dist = Math.hypot(p.x - x, p.y - y);
-            if (dist <= hitRadius && (best === null || dist < best.dist)) best = { key: p.key, dist };
-          }
-        }
-      }
-      return best?.key ?? null;
-    };
-    this.view.on("pointertap", (event) => {
-      const local = this.view.toLocal(event.global);
-      const key = groupKeyAt(local.x, local.y);
-      if (key === null) return;
-      const current = useMazeStore.getState().selectedTeleportGroupKey;
-      useMazeStore.getState().setSelectedTeleportGroupKey(current === key ? null : key);
-    });
-  }
-
-  /** Mirrors a panel-row selection (set via `setSelectedTeleportGroupKey` from
-   *  `VectorByWallsSettingsPanel`) back onto the matching group's canvas markers by fully re-running
-   *  `renderGroups` with the new selected key — cheap (already-computed groups/routing, no raw-
-   *  `edges` recomputation), and avoids the whole `Container.alpha`/`cacheAsTexture` class of bugs
-   *  this class's own doc comment describes. The canvas->row half is `pointertap` (see
-   *  `wireGroupInteractivity`) driving `selectedTeleportGroupKey`, read back by the panel for its
-   *  own row styling. */
-  private subscribeSelectionHighlight(): void {
-    this.unsubscribeSelection?.();
-    let prevKey: string | null = null;
-    const apply = (key: string | null) => {
-      this.renderGroups(key);
-    };
-    prevKey = useMazeStore.getState().selectedTeleportGroupKey;
-    this.unsubscribeSelection = useMazeStore.subscribe((state) => {
-      if (state.selectedTeleportGroupKey !== prevKey) {
-        prevKey = state.selectedTeleportGroupKey;
-        apply(prevKey);
-      }
-    });
-  }
-
   destroy(): void {
-    this.unsubscribeSelection?.();
     this.view.destroy({ children: true });
     this.overlayLayer.destroy({ children: true });
   }

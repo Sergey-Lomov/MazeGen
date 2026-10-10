@@ -9,6 +9,7 @@ import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRende
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
+import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -167,15 +168,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
-      // Teleports section's own expand/collapse flips canvas interactivity for group customization
-      // (GitHub issue #293/#313), same rationale as `VectorByWallsRenderer`'s own
-      // `teleportsSectionChanged` check.
-      const teleportsSectionChanged =
-        (state.vectorByCorridorsSectionsExpanded["teleports"] ?? false) !== (prev.vectorByCorridorsSectionsExpanded["teleports"] ?? false);
-
-      if ((dataChanged || settingsChanged || teleportsSectionChanged) && state.openCard === "image_export") {
+      if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
-      } else if (state.hoveredExportWarningKey !== prev.hoveredExportWarningKey && state.openCard === "image_export") {
+      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds) && state.openCard === "image_export") {
         this.renderWarningHighlight(state);
       }
 
@@ -463,9 +458,16 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // `buildTeleportGroups` again itself — `TeleportRenderer.render` below already recomputes the
     // same grouping internally for the same `teleportEdges`, so this avoids a third redundant pass.
     const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(this.geometryCache.teleportEdges) : [];
+    // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
+    const teleportGroupOverrides = settings.teleportGroupCustomization
+      ? resolveRendererGroupOverrides(teleportGroups, settings.teleportGroupOverrides, {
+        nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
+        avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+      })
+      : settings.teleportGroupOverrides;
     drawMarkerWidenPatches(
       this.markerWiden,
-      buildTeleportWidenMarkers(this.geometryCache.teleportEdges, settings, teleportGroups),
+      buildTeleportWidenMarkers(this.geometryCache.teleportEdges, { ...settings, teleportGroupOverrides }, teleportGroups),
       settings.color,
       settings.thickness,
       settings.markerWidenPadding,
@@ -508,8 +510,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       // floor tile the way "Vector by walls"' floor does.
       lineStyle: buildTeleportLineStyle(settings, settings.color),
       groupCustomization: settings.teleportGroupCustomization,
-      groupOverrides: settings.teleportGroupOverrides,
-      interactive: state.vectorByCorridorsSectionsExpanded["teleports"] ?? false,
+      groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
       // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
       // so no tool-driven gating applies.
@@ -536,7 +537,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         teleportEdges: this.geometryCache.teleportEdges,
         teleportStyle: buildTeleportLineStyle(settings, settings.color),
         groupCustomization: settings.teleportGroupCustomization,
-        groupOverrides: settings.teleportGroupOverrides,
+        groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, settings.markerIndex, resolveEndpointVisual);
@@ -1205,9 +1206,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
    *  `VectorByWallsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey } = state;
+    const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
     if (!hoveredExportWarningKey) {
-      this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByCorridorsSettings, null, null);
+      if (hoveredTeleportNodeIds) {
+        const { nodes } = selectFloorScopedMaze(
+          state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
+        );
+        this.warningHighlight.renderNodes(
+          hoveredTeleportNodeIds, nodes, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+          2 / (this.viewport.scale || 1),
+        );
+      } else {
+        this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByCorridorsSettings, null, null);
+      }
       return;
     }
     const rawEndpoints = resolveEffectiveEndpoints(state);

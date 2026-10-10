@@ -44,6 +44,20 @@ beforeEach(() => {
   });
 });
 
+/** Teleports subsections are collapsed by default (GitHub issue #727) — open every one that is rendered. */
+function expandTeleportSubsections() {
+  const labels = [
+    m["image_export.vector_by_walls.teleport_subsection_edges"](),
+    m["image_export.vector_by_walls.teleport_subsection_connector"](),
+    m["image_export.vector_by_walls.teleport_subsection_floor_badges"](),
+    m["image_export.vector_by_walls.teleport_group_customization"](),
+  ];
+  for (const label of labels) {
+    const header = screen.queryByText(label);
+    if (header) fireEvent.click(header);
+  }
+}
+
 describe("VectorByCorridorsSettingsPanel", () => {
   it("hides the vertical connections section when a multi-floor maze has no vertical edges", () => {
     useMazeStore.setState({
@@ -255,6 +269,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
         },
       });
       render(<VectorByCorridorsSettingsPanel />);
+      expandTeleportSubsections();
       // The Teleports section's own "Size" label — the last of the matching labels in document
       // order, same disambiguation convention as `VectorByWallsSettingsPanel`'s own teleport-size test.
       // `teleport_size` (marker size) renders the same "Size" text as `startMarker`/`finishMarker`'s
@@ -293,6 +308,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
         vectorByCorridorsSettings: { ...useMazeStore.getState().vectorByCorridorsSettings, teleportGroupCustomization: true },
       });
       render(<VectorByCorridorsSettingsPanel />);
+      expandTeleportSubsections();
       expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
     });
   });

@@ -1,5 +1,5 @@
 import { useColorVisibility } from "../ColorVisibilityContext";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
@@ -8,13 +8,15 @@ import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selector
 import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ColorSwatch } from "../ColorSwatch";
+import { SubsectionHeader } from "../SectionHeader";
+import { EntityBubbleRow } from "./EntityBubbleRow";
+import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
-import {
-  buildTeleportEdges,
-  buildTeleportFloorInputs,
-  selectFloorScopedMaze,
-} from "../../pixi/selectors/mazeSelectors";
-import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
+import type { TeleportGroup } from "../../pixi/selectors/teleportGroups";
+import { buildProjectTeleportGroups } from "../../pixi/selectors/projectTeleportGroups";
+import { endpointBubble } from "../../pixi/postEditCommandLabels";
+import { nodeEndpoint } from "../../pixi/postEditEndpoint";
+import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
@@ -31,14 +33,14 @@ import * as m from "~/paraglide/messages";
  *  Group list is **project-wide** (GitHub issue #484): built per floor exactly the way that floor's
  *  own `VectorByWallsRenderer`/`VectorByCorridorsRenderer` builds it (`selectFloorScopedMaze` +
  *  `buildTeleportEdges` with the same `floorContext`/badge-spread inputs the renderers pass), then
- *  merged by `TeleportGroup.key`. Building per floor — rather than once over the unscoped
- *  `nodes`/`edges` — is required for the keys to match the renderers': `buildNodePositions` groups
+ *  merged across floors (`buildProjectTeleportGroups`) — a cross-floor teleport shows up in each
+ *  touched floor's own group, and those groups are unioned into one. Building per floor — rather than
+ *  once over the unscoped `nodes`/`edges` — is required for the keys to match the renderers': `buildNodePositions` groups
  *  nodes by `(x, y)` alone with no floor component, and `buildTeleportGroups`' union-find merges by
  *  rounded coordinate, so two unrelated teleports at the same cell on different floors would
  *  otherwise collapse into one group whose `key` no per-floor renderer ever produces, and any
- *  override set against it would silently never apply. A cross-floor pair is built once, on its
- *  `from` node's floor (its far endpoint resolved via `floorContext`), so it appears exactly once
- *  in the merged list. */
+ *  override set against it would silently never apply. The renderers resolve overrides through the
+ *  same merge (`resolveFloorGroupOverrides`). */
 export function useTeleportGroupsAndCollisions(
   rawNodes: NodeDto[],
   rawEdges: EdgeDto[],
@@ -50,35 +52,9 @@ export function useTeleportGroupsAndCollisions(
 ): { teleportGroups: TeleportGroup[]; teleportCollisionKeys: Set<string> } {
   const teleportGroups = useMemo(() => {
     if (!settings.teleportGroupCustomization) return [];
-    const floorList = floors.length > 0 ? floors : [{ id: "" }];
-    // Same `{ floorContext, spread }` the vector renderers build (`buildTeleportFloorInputs`). Only
-    // `floorContext.activeFloorIndex` varies per floor below — `spread` (badge blocked-cells map,
-    // field cells) is floor-independent — so this is built once for the active floor and the index
-    // is swapped in the loop rather than re-deriving the whole thing per iteration.
-    const { floorContext, spread } = buildTeleportFloorInputs({
-      unscopedNodes: rawNodes,
-      unscopedEdges: rawEdges,
-      floors: floorList,
-      activeFloorId: floorList[0].id,
-      start,
-      finish,
-      allowOutOfField: !settings.teleportAvoidFieldExit,
-      fieldCells: rawNodes.map((n): [number, number] => [n.x, n.y]),
+    return buildProjectTeleportGroups({
+      nodes: rawNodes, edges: rawEdges, cfg, floors, avoidFieldExit: settings.teleportAvoidFieldExit, start, finish,
     });
-    const byKey = new Map<string, TeleportGroup>();
-    floorList.forEach((floor, activeFloorIndex) => {
-      const scoped = selectFloorScopedMaze(rawNodes, rawEdges, floors, floor.id, start, finish);
-      const nodeById = new Map(scoped.nodes.map((n) => [n.id, n]));
-      const teleportEdges = buildTeleportEdges(
-        nodeById, scoped.edges, cfg,
-        { ...floorContext, activeFloorIndex },
-        spread,
-      );
-      for (const group of buildTeleportGroups(teleportEdges)) {
-        if (!byKey.has(group.key)) byKey.set(group.key, group);
-      }
-    });
-    return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
   }, [settings.teleportGroupCustomization, settings.teleportAvoidFieldExit, rawNodes, rawEdges, cfg, floors, start, finish]);
 
   const teleportCollisionKeys = useMemo(() => {
@@ -99,22 +75,20 @@ export function useTeleportGroupsAndCollisions(
   return { teleportGroups, teleportCollisionKeys };
 }
 
-/** One row of the group customization list — clicking it selects the matching group (highlighting
- *  it, hiding every other group) on the canvas and vice versa (GitHub issue #293 follow-up:
- *  click-to-select, not hover — hover-driven selection flickered whenever the pointer crossed a gap
- *  between two groups' canvas hit areas). Clicking an already-selected row (or its matching canvas
- *  marker again, or `Escape`) clears the selection. Compact, unlabeled single-line layout (per the
- *  issue's own spec: index + warning slot on the left, shape dropdown + fill-color swatch +
- *  border-color swatch + reset icon flush right) — every control's meaning is a `title` tooltip
- *  instead of a visible label, since the row has no room for both. Shared by both render modes'
- *  Teleports sections (GitHub issue #313) — `selectedTeleportGroupKey` is a single, mode-agnostic
- *  store field since only one mode's renderer/panel is ever live at a time
- *  (`createModeRenderer`).
+/** One group of the group customization list — a three-row cell: (1) the group title + collision
+ *  warning on the left and the "Reset all values" button on the right, (2) every teleport of the
+ *  group as the shared post-edit bubble pair (`EntityBubbleRow`, labels from `endpointBubble` with
+ *  the post-edit split-label context), (3) the shape dropdown + fill/border color swatches.
+ *
+ *  Hovering the cell highlights every teleport cell of the group on the export canvas; hovering one
+ *  bubble highlights only that cell, hovering an arrow only its teleport's two cells
+ *  (`hoveredTeleportNodeIds`, drawn by the mode renderer's cell-highlight overlay). Clicking a
+ *  bubble switches to its floor.
  *
  *  **Priority colors (GitHub issue #503 follow-up)** — each swatch's own project-color list is
  *  ordered: this group's own *other* color first, then every other group's fill+border colors (in
  *  group order), then the section's common teleport colors (edge/border/connector/badges) last. */
-function TeleportGroupRow({
+function TeleportGroupCell({
   group,
   index,
   override,
@@ -139,76 +113,90 @@ function TeleportGroupRow({
   /** The section's common teleport colors (edge/border/connector/badges) — always last. */
   commonColors: ProjectColorEntry[];
 }) {
-  const selectedKey = useMazeStore((s) => s.selectedTeleportGroupKey);
-  const setSelected = useMazeStore((s) => s.setSelectedTeleportGroupKey);
-  const isSelected = selectedKey === group.key;
+  const setHovered = useMazeStore((s) => s.setHoveredTeleportNodeIds);
+  const { nodeById, multiFloor, splitCtx } = usePostEditSplitLabelContext();
   const hasOverride = override !== undefined && Object.keys(override).length > 0;
-  const rowRef = useRef<HTMLDivElement>(null);
 
-  // Canvas -> row selection sync (selecting the group's marker on the canvas scrolls to and
-  // highlights its row): a `data-selected` attribute + CSS selector, mirroring the hover-era
-  // decoupling of the row's own visual state from the interaction that triggered it — keeps this
-  // component correct regardless of which side (row click or canvas click) drove the change.
-  const wasSelected = useRef(false);
-  useEffect(() => {
-    if (isSelected && !wasSelected.current) {
-      rowRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-    }
-    wasSelected.current = isSelected;
-  }, [isSelected]);
+  // A cell that unmounts while hovered (section collapsed, customization switched off) would
+  // otherwise leave its canvas highlight stuck on.
+  useEffect(() => () => setHovered(null), [setHovered]);
+
+  const allNodeIds = Array.from(new Set(group.links.flatMap((link) => [link.from, link.to])));
 
   return (
-    <div
-      ref={rowRef}
-      className="teleport-group-row"
-      data-selected={isSelected ? "true" : undefined}
-      style={styles.groupRow}
-      onClick={() => setSelected(isSelected ? null : group.key)}
-    >
-      <span style={typography.body}>{index + 1}</span>
-      <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
-        {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
-      </span>
-      <span style={styles.groupRowSpacer} />
-      <select
-        name={`teleport-group-${index}-shape`}
-        title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
-        style={sharedStyles.selectSm}
-        value={override?.shape ?? "__default__"}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => onChange({ ...override, shape: e.target.value === "__default__" ? undefined : (e.target.value as MarkerShape) })}
-      >
-        <option value="__default__">{m["image_export.vector_by_walls.teleport_group_override_shape_default"]()}</option>
-        {MARKER_SHAPE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label()}</option>
+    <div style={styles.groupCell} onMouseEnter={() => setHovered(allNodeIds)} onMouseLeave={() => setHovered(null)}>
+      <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
+        <span style={typography.body}>{m["image_export.vector_by_walls.teleport_group_title"]({ index: index + 1 })}</span>
+        <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
+          {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
+        </span>
+        <span style={styles.groupRowSpacer} />
+        <button
+          type="button"
+          className="hoverable"
+          title={m["image_export.vector_by_walls.teleport_group_reset"]()}
+          aria-label={m["image_export.vector_by_walls.teleport_group_reset"]()}
+          style={styles.resetButton}
+          disabled={!hasOverride}
+          onClick={(e) => { onChange(null); e.currentTarget.blur(); }}
+        >
+          <RotateCcw size={14} color={ui.text.tertiary} opacity={hasOverride ? 1 : 0.4} />
+        </button>
+      </div>
+      <div style={styles.groupCellLinks}>
+        {group.links.map((link) => (
+          <div
+            key={`${link.from}-${link.to}`}
+            style={styles.groupCellLink}
+            onMouseOver={(e) => { if (e.target === e.currentTarget) setHovered(allNodeIds); }}
+          >
+            <div style={styles.groupCellLinkBody}>
+              <EntityBubbleRow
+                bubbles={[
+                  endpointBubble(nodeEndpoint(link.from), nodeById, multiFloor, splitCtx),
+                  endpointBubble(nodeEndpoint(link.to), nodeById, multiFloor, splitCtx),
+                ]}
+                arrow={link.oneWay ? "->" : "<->"}
+                onBubbleEnter={(_, j) => setHovered([j === 0 ? link.from : link.to])}
+                onArrowEnter={() => setHovered([link.from, link.to])}
+                onBubbleClick={(bubble) => {
+                  if (bubble.highlight?.kind === "point") navigateToFloor(bubble.highlight.level ?? 0);
+                }}
+              />
+            </div>
+          </div>
         ))}
-      </select>
-      <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()} onClick={(e) => e.stopPropagation()}>
-        <ColorSwatch
-          color={override?.fillColor ?? defaultFillColor}
-          onChange={(fillColor) => onChange({ ...override, fillColor })}
-          priorityColors={[PC.teleportGroup(index, "border").at(override?.borderColor ?? defaultBorderColor), ...otherGroupColors, ...commonColors]}
-          field={PC.teleportGroup(index, "fill")}
-        />
-      </span>
-      <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()} onClick={(e) => e.stopPropagation()}>
-        <ColorSwatch
-          color={override?.borderColor ?? defaultBorderColor}
-          onChange={(borderColor) => onChange({ ...override, borderColor })}
-          priorityColors={[PC.teleportGroup(index, "fill").at(override?.fillColor ?? defaultFillColor), ...otherGroupColors, ...commonColors]}
-          field={PC.teleportGroup(index, "border")}
-        />
-      </span>
-      <button
-        type="button"
-        className="hoverable"
-        title={m["image_export.vector_by_walls.teleport_group_reset"]()}
-        style={styles.resetButton}
-        disabled={!hasOverride}
-        onClick={(e) => { e.stopPropagation(); onChange(null); e.currentTarget.blur(); }}
-      >
-        <RotateCcw size={14} color={ui.text.tertiary} opacity={hasOverride ? 1 : 0.4} />
-      </button>
+      </div>
+      <div style={styles.groupCellControls} onMouseEnter={() => setHovered(allNodeIds)}>
+        <select
+          name={`teleport-group-${index}-shape`}
+          title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
+          style={sharedStyles.selectSm}
+          value={override?.shape ?? "__default__"}
+          onChange={(e) => onChange({ ...override, shape: e.target.value === "__default__" ? undefined : (e.target.value as MarkerShape) })}
+        >
+          <option value="__default__">{m["image_export.vector_by_walls.teleport_group_override_shape_default"]()}</option>
+          {MARKER_SHAPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label()}</option>
+          ))}
+        </select>
+        <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()}>
+          <ColorSwatch
+            color={override?.fillColor ?? defaultFillColor}
+            onChange={(fillColor) => onChange({ ...override, fillColor })}
+            priorityColors={[PC.teleportGroup(index, "border").at(override?.borderColor ?? defaultBorderColor), ...otherGroupColors, ...commonColors]}
+            field={PC.teleportGroup(index, "fill")}
+          />
+        </span>
+        <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}>
+          <ColorSwatch
+            color={override?.borderColor ?? defaultBorderColor}
+            onChange={(borderColor) => onChange({ ...override, borderColor })}
+            priorityColors={[PC.teleportGroup(index, "fill").at(override?.fillColor ?? defaultFillColor), ...otherGroupColors, ...commonColors]}
+            field={PC.teleportGroup(index, "border")}
+          />
+        </span>
+      </div>
     </div>
   );
 }
@@ -313,7 +301,9 @@ export function TeleportSettingsSection<P extends string>({
   floorBadgeBorderColorField: ColorField;
   floorBadgeTextColorField: ColorField;
 }) {
-  const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+  // Expand state of the Teleports section's subsections — local and per mount, all collapsed by default.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setExpanded((c) => ({ ...c, [id]: !c[id] }));
   const patchMarker = (patch: Partial<MarkerSettings>) => onChange({ teleportMarker: { ...settings.teleportMarker, ...patch } });
 
   // The common teleport colors every group-override swatch lists below its own group's colors
@@ -334,8 +324,8 @@ export function TeleportSettingsSection<P extends string>({
 
   return (
     <div style={styles.block}>
-      <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_edges"]()}</div>
-      <div style={styles.subsection}>
+      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_edges"]()} expanded={expanded.markers} onToggle={() => toggle("markers")} />
+      {expanded.markers && <div style={styles.subsection}>
         <MarkerAppearanceRows
           settings={settings.teleportMarker}
           onChange={patchMarker}
@@ -352,10 +342,10 @@ export function TeleportSettingsSection<P extends string>({
           defaultColors={{ fillColor: edgeColorDefault, borderColor: edgeBorderColorDefault }}
           fields={{ fillColor: edgeColorField, borderColor: edgeBorderColorField }}
         />
-      </div>
+      </div>}
 
-      <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector"]()}</div>
-      <div style={styles.subsection}>
+      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_connector"]()} expanded={expanded.connector} onToggle={() => toggle("connector")} />
+      {expanded.connector && <div style={styles.subsection}>
         <LinkedSelectRow
           label={m["image_export.vector_by_walls.teleport_connector_style"]()}
           value={settings.teleportConnectorStyle}
@@ -440,12 +430,12 @@ export function TeleportSettingsSection<P extends string>({
           />
         </div>
         </>)}
-      </div>
+      </div>}
 
       {hasCrossFloorTeleports && (
         <>
-          <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()}</div>
-          <div style={styles.subsection}>
+          <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()} expanded={expanded.floorBadges} onToggle={() => toggle("floorBadges")} />
+          {expanded.floorBadges && <div style={styles.subsection}>
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_label_type"]()}
               value={settings.teleportFloorBadge.labelType}
@@ -487,49 +477,51 @@ export function TeleportSettingsSection<P extends string>({
               field={floorBadgeTextColorField}
               autoFitKind="teleport"
             />
-          </div>
+          </div>}
         </>
       )}
 
-      <LinkedToggleRow
-        label={m["image_export.vector_by_walls.teleport_group_customization"]()}
-        checked={settings.teleportGroupCustomization}
-        onChange={(checked) => {
-          setSelectedTeleportGroupKey(null);
-          onChange({ teleportGroupCustomization: checked });
-        }}
-        linkTarget={linkTargets.groupCustomization}
-      />
-      {settings.teleportGroupCustomization && teleportGroups.length > 0 && (() => {
-        // Every group's own fill+border colors, computed once (GitHub issue #503 follow-up) — each
-        // row's own "other groups" priority list below is a slice of this shared array rather than
-        // a fresh `PC.teleportGroup(...).at(...)` pass per row.
-        const allGroupColors: ProjectColorEntry[][] = teleportGroups.map((g, gi) => {
-          const o = groupOverrides[g.key];
-          return [
-            PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportMarker.fillColor),
-            PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportMarker.borderColor),
-          ];
-        });
-        return (
-          <div style={styles.groupList}>
-            {teleportGroups.map((group, i) => (
-              <TeleportGroupRow
-                key={group.key}
-                group={group}
-                index={i}
-                override={groupOverrides[group.key]}
-                defaultFillColor={settings.teleportMarker.fillColor}
-                defaultBorderColor={settings.teleportMarker.borderColor}
-                hasCollision={teleportCollisionKeys.has(group.key)}
-                onChange={(patch) => onGroupOverrideChange(group.key, patch)}
-                otherGroupColors={allGroupColors.filter((_, gi) => gi !== i).flat()}
-                commonColors={commonTeleportColors}
-              />
-            ))}
-          </div>
-        );
-      })()}
+      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_group_customization"]()} expanded={expanded.groups} onToggle={() => toggle("groups")} />
+      {expanded.groups && (
+        <div style={styles.subsection}>
+          <LinkedToggleRow
+            label={m["image_export.vector_by_walls.teleport_group_customization_enable"]()}
+            checked={settings.teleportGroupCustomization}
+            onChange={(checked) => onChange({ teleportGroupCustomization: checked })}
+            linkTarget={linkTargets.groupCustomization}
+          />
+          {settings.teleportGroupCustomization && teleportGroups.length > 0 && (() => {
+            // Every group's own fill+border colors, computed once (GitHub issue #503 follow-up) —
+            // each cell's own "other groups" priority list below is a slice of this shared array
+            // rather than a fresh `PC.teleportGroup(...).at(...)` pass per cell.
+            const allGroupColors: ProjectColorEntry[][] = teleportGroups.map((g, gi) => {
+              const o = groupOverrides[g.key];
+              return [
+                PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportMarker.fillColor),
+                PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportMarker.borderColor),
+              ];
+            });
+            return (
+              <div style={styles.groupList}>
+                {teleportGroups.map((group, i) => (
+                  <TeleportGroupCell
+                    key={group.key}
+                    group={group}
+                    index={i}
+                    override={groupOverrides[group.key]}
+                    defaultFillColor={settings.teleportMarker.fillColor}
+                    defaultBorderColor={settings.teleportMarker.borderColor}
+                    hasCollision={teleportCollisionKeys.has(group.key)}
+                    onChange={(patch) => onGroupOverrideChange(group.key, patch)}
+                    otherGroupColors={allGroupColors.filter((_, gi) => gi !== i).flat()}
+                    commonColors={commonTeleportColors}
+                  />
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
@@ -539,11 +531,18 @@ const styles: Record<string, React.CSSProperties> = {
   subsectionLabel: { ...typography.body },
   subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   subsectionNested: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
-  groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: indent.tree },
-  groupRow: {
-    display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, outline: "none",
+  groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap },
+  groupCell: {
+    display: "flex", flexDirection: "column", gap: spacing.itemGap,
     padding: spacing.itemGap, borderRadius: 3, border: `1px solid ${ui.border.default}`,
   },
+  groupCellHeader: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap },
+  // No gap between link rows: each row carries its own vertical padding so hover zones touch.
+  groupCellLinks: { display: "flex", flexDirection: "column" },
+  groupCellLink: { display: "flex", paddingLeft: indent.tree },
+  // Padding lives on the content-sized body, so it keeps the bubble highlight; the empty space to its right is the row itself and counts as the whole card.
+  groupCellLinkBody: { padding: `${spacing.itemGap / 4}px 0` },
+  groupCellControls: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, paddingLeft: indent.tree },
   groupRowSpacer: { flex: 1 },
   warningIcon: { display: "inline-flex", alignItems: "center", cursor: "default", width: 13 },
   resetButton: {

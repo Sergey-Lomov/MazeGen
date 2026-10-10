@@ -13,10 +13,13 @@ import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, VerticalConnectionMarker, TeleportGroupOverride } from "../renderers/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { exactCellBounds } from "../tessellationGeometry";
+import { canvas } from "../colorTokens";
+import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
+import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
 import {
   buildEffectiveSplitNodeColors, viewportWorldRect, buildWallStyle, buildOneWayStyle,
@@ -159,6 +162,44 @@ export class ExportWarningHighlight<TSettings> {
         (settings as unknown as Record<string, unknown>).wallJoin) === "round" ? "round" : "sharp",
       boundaryEdges: isBoundaryWarning && !renderBoundaryAsRegion ? warning.edges : undefined,
       boundaryWidth,
+    });
+  }
+
+  /** Highlights the cells of `nodeIds` (teleport-group list hover) in the post-edit hover color
+   *  (`canvas.fieldEditor.hover`). Ids absent from `nodes` (other floors) are skipped; `null`/empty clears. */
+  renderNodes(
+    nodeIds: number[] | null,
+    nodes: NodeDto[],
+    cfg: TessellationConfig,
+    settings: TSettings,
+    inset = 2,
+  ): void {
+    const wanted = new Set(nodeIds ?? []);
+    const tileGroups = new Map<string, number[]>();
+    for (const node of nodes) {
+      if (!wanted.has(node.id)) continue;
+      const key = `${node.x},${node.y}`;
+      const group = tileGroups.get(key) ?? [];
+      group.push(node.id);
+      tileGroups.set(key, group);
+    }
+    if (tileGroups.size === 0) {
+      this.highlight.clear();
+      return;
+    }
+    this.highlight.render({
+      nodes,
+      regionGroups: Array.from(tileGroups.values()),
+      cells: [],
+      color: canvas.fieldEditor.hover,
+      width: 0,
+      alpha: 0,
+      cfg,
+      skipPerimeter: true,
+      inset,
+      insetMode: "inset",
+      cornerStyle: ((settings as unknown as Record<string, unknown>).join ??
+        (settings as unknown as Record<string, unknown>).wallJoin) === "round" ? "round" : "sharp",
     });
   }
 
@@ -360,15 +401,9 @@ export class VectorByWallsRenderer {
         state.floors !== prev.floors;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
-      // Teleports section's own expand/collapse flips `interactive` on group customization's
-      // canvas hover wiring (GitHub issue #293) — a plain `sectionsExpanded` change wouldn't
-      // otherwise trigger `renderAll` since it isn't part of `vectorByWallsSettings`.
-      const teleportsSectionChanged =
-        (state.vectorByWallsSectionsExpanded["teleports"] ?? false) !== (prev.vectorByWallsSectionsExpanded["teleports"] ?? false);
-
-      if ((dataChanged || settingsChanged || teleportsSectionChanged) && state.openCard === "image_export") {
+      if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
-      } else if (state.hoveredExportWarningKey !== prev.hoveredExportWarningKey && state.openCard === "image_export") {
+      } else if ((state.hoveredExportWarningKey !== prev.hoveredExportWarningKey || state.hoveredTeleportNodeIds !== prev.hoveredTeleportNodeIds) && state.openCard === "image_export") {
         this.renderWarningHighlight(state);
       }
 
@@ -450,6 +485,19 @@ export class VectorByWallsRenderer {
   getBackgroundColor(): number {
     const state = useMazeStore.getState();
     return resolveBackgroundColor("vector_by_walls", { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
+  }
+
+  private resolveTeleportGroupOverrides(
+    state: ReturnType<typeof useMazeStore.getState>,
+    rawEndpoints: { start: number | null; finish: number | null },
+    teleportEdges: TeleportEdge[],
+  ): Record<string, TeleportGroupOverride> {
+    const settings = state.vectorByWallsSettings;
+    if (!settings.teleportGroupCustomization) return settings.teleportGroupOverrides;
+    return resolveRendererGroupOverrides(buildTeleportGroups(teleportEdges), settings.teleportGroupOverrides, {
+      nodes: state.nodes, edges: state.edges, cfg: state.activeTessellationConfig, floors: state.floors,
+      avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
+    });
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -569,12 +617,13 @@ export class VectorByWallsRenderer {
       cfg,
       splitPassages: this.geometryCache.splitPassages,
     });
+    // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
+    const teleportGroupOverrides = this.resolveTeleportGroupOverrides(state, rawEndpoints, this.geometryCache.teleportEdges);
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
-      groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
-      interactive: state.vectorByWallsSectionsExpanded["teleports"] ?? false,
+      groupOverrides: teleportGroupOverrides,
       // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
       // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
       // so no tool-driven gating applies.
@@ -601,7 +650,7 @@ export class VectorByWallsRenderer {
         teleportEdges: this.geometryCache.teleportEdges,
         teleportStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
         groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
-        groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
+        groupOverrides: teleportGroupOverrides,
         verticalStyle,
       });
       const indexLabels = buildMarkerIndexLabels(state.nodes, state.edges, cfg, activeFloorIndex, state.vectorByWallsSettings.markerIndex, resolveEndpointVisual);
@@ -618,9 +667,19 @@ export class VectorByWallsRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey } = state;
+    const { hoveredExportWarningKey, hoveredTeleportNodeIds } = state;
     if (!hoveredExportWarningKey) {
-      this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByWallsSettings, null, null);
+      if (hoveredTeleportNodeIds) {
+        const { nodes } = selectFloorScopedMaze(
+          state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
+        );
+        this.warningHighlight.renderNodes(
+          hoveredTeleportNodeIds, nodes, state.activeTessellationConfig, state.vectorByWallsSettings,
+          getCellHighlightInset(state.vectorByWallsSettings.wallThickness),
+        );
+      } else {
+        this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByWallsSettings, null, null);
+      }
       return;
     }
     const rawEndpoints = resolveEffectiveEndpoints(state);

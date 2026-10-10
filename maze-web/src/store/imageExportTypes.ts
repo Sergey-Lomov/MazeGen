@@ -745,12 +745,10 @@ export interface ImageExportState {
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;
   vectorByCorridorsSettings: VectorByCorridorsSettings;
-  /** Currently *selected* (clicked, not hovered — GitHub issue #293 follow-up) teleport connection
-   *  group, by `TeleportGroup.key` — set either by clicking a row in the Teleports section's group
-   *  list or by clicking that group's own marker(s) on the canvas (two-way selection sync). `Escape`
-   *  or clicking empty canvas clears it. `null` when nothing is selected, meaning every group draws
-   *  normally. */
-  selectedTeleportGroupKey: string | null;
+  /** Node ids of the teleport-group cell(s) currently hovered in the Teleports section's group list
+   *  — drives the export canvas's cell highlight (same overlay as a hovered export warning). `null`
+   *  when nothing is hovered. */
+  hoveredTeleportNodeIds: number[] | null;
   /** Currently hovered export-warning list entry, by `ExportWarning.key` (GitHub issue #298) — set
    *  by hovering a warning row in the settings panel, drives `VectorByWallsRenderer`'s own warning
    *  highlight overlay. `null` when nothing is hovered. Mirrors `hoveredIssueLoopEdges`'s role for
@@ -1033,7 +1031,7 @@ export interface ImageExportActions {
   setVectorByWallsElevatorMarkerSize: (v: number) => void;
   patchVectorByWallsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
-  setSelectedTeleportGroupKey: (key: string | null) => void;
+  setHoveredTeleportNodeIds: (ids: number[] | null) => void;
   /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with
    *  `splitSlotColor`'s own default) if `index` is past the array's current end — see GitHub issue
    *  #294. */

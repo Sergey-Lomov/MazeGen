@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
@@ -126,7 +126,6 @@ export function VectorByWallsSettingsPanel() {
   const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByWallsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByWallsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByWallsTeleportGroupOverride);
-  const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
   const setSplitNodeColor = useMazeStore((s) => s.setVectorByWallsSplitNodeColor);
   const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByWallsSplitSpecialShapes);
   const patchSharedStyle = useMazeStore((s) => s.patchVectorByWallsSharedStyle);
@@ -134,17 +133,6 @@ export function VectorByWallsSettingsPanel() {
   const setLinkEnabled = useMazeStore((s) => s.setVectorByWallsLinkEnabled);
   const addLink = useMazeStore((s) => s.addVectorByWallsLink);
   const removeLink = useMazeStore((s) => s.removeVectorByWallsLink);
-
-  // `Escape` clears a click-selected teleport group (GitHub issue #293 follow-up) — global, not
-  // scoped to a focused row, so it works regardless of what has focus (including the canvas itself,
-  // which has no keyboard listener of its own for this).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedTeleportGroupKey(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setSelectedTeleportGroupKey]);
 
   const rawNodes = useMazeStore((s) => s.nodes);
   const rawEdges = useMazeStore((s) => s.edges);
@@ -229,17 +217,7 @@ export function VectorByWallsSettingsPanel() {
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
   const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
-  // Collapsing the Teleports section stops rendering the group list (and switches the canvas back
-  // to non-interactive), so a selection made while it was open would otherwise dangle: nothing on
-  // screen shows it's still set, but it'd still hide every other group on the canvas and pop back
-  // into view already-selected the next time the section reopens. Cleared synchronously in the
-  // toggle handler itself, not via a `useEffect` watching the expanded flag — an effect fires after
-  // the closed render has already committed, one frame late; a plain click here fires before any of
-  // that, same as toggling group customization off below.
-  const toggleSection = (id: string) => {
-    if (id === "teleports" && isExpanded(id)) setSelectedTeleportGroupKey(null);
-    setSectionExpanded(id, !isExpanded(id));
-  };
+  const toggleSection = (id: string) => setSectionExpanded(id, !isExpanded(id));
 
   // "Priority" project colors (GitHub issue #503) — sibling colors that matter for a given color
   // decision, pinned to the top of the picker's "Project colors" section. `floorColor` is the

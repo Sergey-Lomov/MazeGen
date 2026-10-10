@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOrder } from "../pixi/renderers/TeleportRenderer";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
@@ -79,7 +79,6 @@ vi.mock("pixi.js", () => {
 const { TeleportRenderer } = await import("../pixi/renderers/TeleportRenderer");
 const { TeleportConnectorRouter } = await import("../pixi/renderers/teleportConnectorRouter");
 const { Container, Graphics } = await import("pixi.js");
-const { useMazeStore } = await import("../store/mazeStore");
 
 function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLineStyle {
   return {
@@ -217,7 +216,7 @@ describe("clipDistance", () => {
   });
 });
 
-// `planGroupDrawOrder` resolves which groups are visible and buckets each visible group's own
+// `planGroupDrawOrder` buckets each group's own
 // connectors — `TeleportRenderer.renderGroups` walks this plan in three flat passes (every group's
 // gaps, then every group's connectors, then every group's points — GitHub issue #302) rather than
 // interleaving per group. Pure, so testable without a `Graphics` mock.
@@ -228,7 +227,7 @@ describe("planGroupDrawOrder", () => {
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 }];
     const groups = buildTeleportGroups(edges);
     const connectors = [{ edge: edges[0], routed: routed(), color: 0 }];
-    const plan = planGroupDrawOrder(groups, connectors, null);
+    const plan = planGroupDrawOrder(groups, connectors);
     expect(plan).toHaveLength(1);
     expect(plan[0].group.key).toBe(groups[0].key);
     expect(plan[0].connectors).toEqual(connectors);
@@ -241,7 +240,7 @@ describe("planGroupDrawOrder", () => {
     ];
     const groups = buildTeleportGroups(edges);
     const connectors = edges.map((edge) => ({ edge, routed: routed(), color: 0 }));
-    const plan = planGroupDrawOrder(groups, connectors, null);
+    const plan = planGroupDrawOrder(groups, connectors);
     expect(plan).toHaveLength(2);
     expect(plan.map((p) => p.group.key)).toEqual(groups.map((g) => g.key));
     // Each group's bucket contains only the connector whose endpoints land in that group — not
@@ -256,30 +255,18 @@ describe("planGroupDrawOrder", () => {
     }
   });
 
-  it("selectedKey filters to just the matching group, in visibility order", () => {
-    const edges: TeleportEdge[] = [
-      { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
-      { from: [9, 9], to: [3, 3], oneWay: false, fromNode: 10, toNode: 11 },
-    ];
-    const groups = buildTeleportGroups(edges);
-    const connectors = edges.map((edge) => ({ edge, routed: routed(), color: 0 }));
-    const plan = planGroupDrawOrder(groups, connectors, groups[0].key);
-    expect(plan).toHaveLength(1);
-    expect(plan[0].group.key).toBe(groups[0].key);
-  });
-
   it("a connector whose endpoints match no group is dropped from the plan, not thrown", () => {
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 }];
     const groups = buildTeleportGroups(edges);
     const strayEdge: TeleportEdge = { from: [50, 50], to: [60, 60], oneWay: false, fromNode: 99, toNode: 100 };
     const connectors = [{ edge: strayEdge, routed: routed(), color: 0 }];
-    const plan = planGroupDrawOrder(groups, connectors, null);
+    const plan = planGroupDrawOrder(groups, connectors);
     expect(plan).toHaveLength(1);
     expect(plan[0].connectors).toHaveLength(0);
   });
 
   it("no groups — empty plan", () => {
-    expect(planGroupDrawOrder([], [], null)).toEqual([]);
+    expect(planGroupDrawOrder([], [])).toEqual([]);
   });
 });
 
@@ -590,67 +577,5 @@ describe("TeleportRenderer.destroy", () => {
 
     expect(view.destroy).toHaveBeenCalledWith({ children: true });
     expect(overlayLayer.destroy).toHaveBeenCalledWith({ children: true });
-  });
-});
-
-// Group customization + interactive: the one-shared-`Graphics` click-to-select wiring
-// (`wireGroupInteractivity`) and the store -> canvas selection mirror (`subscribeSelectionHighlight`).
-describe("TeleportRenderer interactive group selection", () => {
-  const edges: TeleportEdge[] = [
-    { from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 },
-    { from: [50, 50], to: [60, 60], oneWay: false, fromNode: 3, toNode: 4 },
-  ];
-  type TestView = InstanceType<typeof Graphics> & { calls: unknown[]; listeners: Record<string, ((e?: unknown) => void)[]> };
-  const viewOf = (r: unknown) => (r as { view: TestView }).view;
-  const tap = (r: unknown, x: number, y: number) => viewOf(r).listeners["pointertap"][0]({ global: { x, y } });
-  const keys = () => buildTeleportGroups(edges).map((g) => g.key);
-
-  beforeEach(() => {
-    useMazeStore.setState({ selectedTeleportGroupKey: null });
-  });
-
-  function interactiveRenderer() {
-    const renderer = new TeleportRenderer(new Container());
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), groupCustomization: true, interactive: true });
-    return renderer;
-  }
-
-  it("makes the view clickable and selects the nearest group on tap, toggling it off on a repeat tap", () => {
-    const renderer = interactiveRenderer();
-    expect(viewOf(renderer).eventMode).toBe("static");
-    expect(viewOf(renderer).cursor).toBe("pointer");
-
-    tap(renderer, 50, 50);
-    expect(useMazeStore.getState().selectedTeleportGroupKey).toBe(keys()[1]);
-    tap(renderer, 50, 50);
-    expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
-  });
-
-  it("ignores a tap outside every hit radius", () => {
-    const renderer = interactiveRenderer();
-    tap(renderer, 1000, 1000);
-    expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
-  });
-
-  it("replaces the previous pointertap handler on re-render instead of stacking them", () => {
-    const renderer = interactiveRenderer();
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), groupCustomization: true, interactive: true });
-    expect(viewOf(renderer).listeners["pointertap"]).toHaveLength(1);
-  });
-
-  it("redraws on a store selection change and stops once re-rendered non-interactive", () => {
-    const renderer = interactiveRenderer();
-    const view = viewOf(renderer);
-    const baseline = view.calls.length;
-
-    useMazeStore.setState({ selectedTeleportGroupKey: keys()[0] });
-    // Only the selected group is drawn now, so fewer draw calls than the all-groups baseline.
-    expect(view.calls.length).toBeGreaterThan(0);
-    expect(view.calls.length).toBeLessThan(baseline);
-
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
-    const afterNonInteractive = view.calls.length;
-    useMazeStore.setState({ selectedTeleportGroupKey: keys()[1] });
-    expect(view.calls.length).toBe(afterNonInteractive);
   });
 });

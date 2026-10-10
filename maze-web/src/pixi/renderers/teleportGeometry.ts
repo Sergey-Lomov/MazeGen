@@ -94,9 +94,8 @@ export function computeFloorBadges(edges: TeleportEdge[]): Map<string, number> {
 
 type PlannedConnector = { edge: TeleportEdge; routed: RoutedConnector; color: number };
 
-/** Resolves the per-group draw order `renderGroups` walks: one entry per *visible* group (in
- *  `groups`' own order — `selectedKey === null` means every group is visible, otherwise only the
- *  matching one), each carrying just its own connectors (an edge's own two endpoints always land
+/** Resolves the per-group draw order `renderGroups` walks: one entry per group (in `groups`' own
+ *  order), each carrying just its own connectors (an edge's own two endpoints always land
  *  in the same group — the edge itself is what `buildTeleportGroups` merges on — so every connector
  *  belongs to exactly one group unambiguously). Pure/no drawing, so the interleave order itself
  *  (a group's connectors immediately before its own points, then the next group — GitHub issue #293
@@ -106,10 +105,7 @@ type PlannedConnector = { edge: TeleportEdge; routed: RoutedConnector; color: nu
 export function planGroupDrawOrder(
   groups: TeleportGroup[],
   connectors: PlannedConnector[],
-  selectedKey: string | null,
 ): { group: TeleportGroup; connectors: PlannedConnector[] }[] {
-  const visible = (key: string): boolean => selectedKey === null || selectedKey === key;
-
   const groupKeyByPoint = new Map<string, string>();
   for (const group of groups) {
     for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
@@ -124,5 +120,5 @@ export function planGroupDrawOrder(
     connectorsByGroup.set(groupKey, bucket);
   }
 
-  return groups.filter((g) => visible(g.key)).map((group) => ({ group, connectors: connectorsByGroup.get(group.key) ?? [] }));
+  return groups.map((group) => ({ group, connectors: connectorsByGroup.get(group.key) ?? [] }));
 }

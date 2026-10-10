@@ -1164,18 +1164,10 @@ describe("VectorByCorridorsRenderer", () => {
       lineStyle: expect.objectContaining({ shape: settingsA.teleportMarker.shape, floorColor: settingsA.color }),
       groupCustomization: settingsA.teleportGroupCustomization,
       groupOverrides: settingsA.teleportGroupOverrides,
-      interactive: false,
       cfg: stableCfg,
       waypoints: [[5, 5]],
       avoidFieldExit: settingsA.teleportAvoidFieldExit,
     }));
-  });
-
-  it("marks the Teleports section interactive only while vectorByCorridorsSectionsExpanded.teleports is true", () => {
-    currentState = baseState({ vectorByCorridorsSectionsExpanded: { teleports: true } });
-    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
-    expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({ interactive: true }));
   });
 
   it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {

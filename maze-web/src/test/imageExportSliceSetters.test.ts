@@ -264,13 +264,13 @@ describe("misc UI state setters", () => {
     st.setVectorByWallsSectionExpanded("a", true);
     st.setVectorByCorridorsSectionExpanded("b", true);
     st.setLinkIconVisibility("all");
-    st.setSelectedTeleportGroupKey("k");
+    st.setHoveredTeleportNodeIds([1, 2]);
     st.setHoveredExportWarningKey("w");
     st.setShowColorWarnings(false);
     const s = useMazeStore.getState();
     expect(s.vectorByWallsSectionsExpanded["a"]).toBe(true);
     expect(s.vectorByCorridorsSectionsExpanded["b"]).toBe(true);
-    expect(s.selectedTeleportGroupKey).toBe("k");
+    expect(s.hoveredTeleportNodeIds).toEqual([1, 2]);
     expect(s.hoveredExportWarningKey).toBeNull();
     expect(s.showColorWarnings).toBe(false);
   });

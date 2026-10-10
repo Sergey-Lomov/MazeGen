@@ -126,7 +126,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
-  selectedTeleportGroupKey: null,
+  hoveredTeleportNodeIds: null,
   hoveredExportWarningKey: null,
   openExportFormatSettings: null,
   exportFormatSettingsCovered: false,
@@ -409,7 +409,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       else overrides[groupKey] = { ...overrides[groupKey], ...patch };
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
-  setSelectedTeleportGroupKey: (key) => set({ selectedTeleportGroupKey: key }),
+  setHoveredTeleportNodeIds: (ids) => set({ hoveredTeleportNodeIds: ids }),
   setVectorByWallsSplitNodeColor: (index, color) =>
     set((s) => {
       const colors = [...s.vectorByWallsSettings.splitNodeColors];

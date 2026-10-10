@@ -61,6 +61,18 @@ describe("buildTeleportGroups", () => {
     expect(groups[0].points).toHaveLength(2);
   });
 
+  it("links carry node ids and direction flag, only for edges with both node ids", () => {
+    const edges: TeleportEdge[] = [
+      { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [5, 5], to: [9, 9], oneWay: true, fromNode: 2, toNode: 3 },
+      { from: [9, 9], to: [1, 1], oneWay: false },
+    ];
+    const [group] = buildTeleportGroups(edges);
+    expect(group.links).toHaveLength(2);
+    expect(group.links).toContainEqual({ from: 1, to: 2, oneWay: false });
+    expect(group.links).toContainEqual({ from: 2, to: 3, oneWay: true });
+  });
+
   it("group key is stable regardless of input edge order", () => {
     const edges: TeleportEdge[] = [
       { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },

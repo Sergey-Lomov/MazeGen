@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { VerticalArrowStyle } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
@@ -124,7 +124,6 @@ export function VectorByCorridorsSettingsPanel() {
   const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
-  const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
   const setSplitNodeColor = useMazeStore((s) => s.setVectorByCorridorsSplitNodeColor);
   const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByCorridorsSplitSpecialShapes);
   const setSplitGapWidth = useMazeStore((s) => s.setVectorByCorridorsSplitGapWidth);
@@ -138,12 +137,7 @@ export function VectorByCorridorsSettingsPanel() {
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
   const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
-  // Collapsing the Teleports section dangles a click-selection the same way
-  // `VectorByWallsSettingsPanel` guards against — see that component's own doc comment on this.
-  const toggleSection = (id: string) => {
-    if (id === "teleports" && isExpanded(id)) setSelectedTeleportGroupKey(null);
-    setSectionExpanded(id, !isExpanded(id));
-  };
+  const toggleSection = (id: string) => setSectionExpanded(id, !isExpanded(id));
 
   // "Priority" project colors (GitHub issue #503) — see `VectorByWallsSettingsPanel`'s own note.
   // Here the corridor stroke (`color`) is what sits on the background; every marker/badge sits on
@@ -190,16 +184,6 @@ export function VectorByCorridorsSettingsPanel() {
   const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
   const badgeBorderPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
   const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), PC.elevatorBadgeBorder.at(settings.elevatorBadges.borderColor), ...vElevator, ...vTailBg];
-
-  // `Escape` clears a click-selected teleport group — same global convention
-  // `VectorByWallsSettingsPanel` uses (see its own doc comment on this).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedTeleportGroupKey(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [setSelectedTeleportGroupKey]);
 
   const rawNodes = useMazeStore((s) => s.nodes);
   const rawEdges = useMazeStore((s) => s.edges);
