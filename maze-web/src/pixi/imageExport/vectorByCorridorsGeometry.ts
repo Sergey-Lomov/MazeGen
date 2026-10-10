@@ -138,6 +138,186 @@ function faceNormalAt(faceDir: { x: number; y: number }, p: { x: number; y: numb
   return { x: px, y: py };
 }
 
+type GeometryPoint = { x: number; y: number };
+
+function convexPolygonContains(point: GeometryPoint, vertices: GeometryPoint[]): boolean {
+  if (vertices.length < 3) return false;
+  let area = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  const orientation = area >= 0 ? 1 : -1;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+    const cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+    if (orientation * cross < -1e-7) return false;
+  }
+  return true;
+}
+
+/** Clips a wide bridge gap strip against the actual convex cell. Unlike a centered stroke clamp,
+ * this preserves the independently clipped ends, so an oblique cell can produce a trapezoid with
+ * a shorter end on one side and a longer end on the other. */
+export function clipStrokeToConvexPolygon(
+  from: GeometryPoint,
+  to: GeometryPoint,
+  width: number,
+  vertices: GeometryPoint[],
+  inset = 0,
+): GeometryPoint[] | null {
+  if (vertices.length < 3 || width <= 0) return null;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-9) return null;
+  const half = width / 2;
+  const nx = -dy / length, ny = dx / length;
+  let polygon: GeometryPoint[] = [
+    { x: from.x + nx * half, y: from.y + ny * half },
+    { x: to.x + nx * half, y: to.y + ny * half },
+    { x: to.x - nx * half, y: to.y - ny * half },
+    { x: from.x - nx * half, y: from.y - ny * half },
+  ];
+
+  let area = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  if (Math.abs(area) < 1e-9) return null;
+  const orientation = area >= 0 ? 1 : -1;
+  const clearance = Math.max(0, inset);
+
+  for (let i = 0; i < vertices.length && polygon.length > 0; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+    const ex = b.x - a.x, ey = b.y - a.y;
+    const edgeLength = Math.hypot(ex, ey) || 1;
+    const signedDistance = (point: GeometryPoint) => orientation * (ex * (point.y - a.y) - ey * (point.x - a.x)) - clearance * edgeLength;
+    const clipped: GeometryPoint[] = [];
+    for (let j = 0; j < polygon.length; j++) {
+      const current = polygon[j];
+      const next = polygon[(j + 1) % polygon.length];
+      const currentValue = signedDistance(current);
+      const nextValue = signedDistance(next);
+      const currentInside = currentValue >= -1e-7;
+      const nextInside = nextValue >= -1e-7;
+      if (currentInside !== nextInside) {
+        const denominator = currentValue - nextValue;
+        const t = Math.abs(denominator) < 1e-9 ? 0 : currentValue / denominator;
+        clipped.push({
+          x: current.x + (next.x - current.x) * t,
+          y: current.y + (next.y - current.y) * t,
+        });
+      }
+      if (nextInside) clipped.push(next);
+    }
+    polygon = clipped;
+  }
+  return polygon.length >= 3 ? polygon : null;
+}
+
+type DiagonalRibbonGeometry = {
+  fromA: GeometryPoint;
+  fromB: GeometryPoint;
+  toA: GeometryPoint;
+  toB: GeometryPoint;
+  ctrl1A?: GeometryPoint;
+  ctrl2A?: GeometryPoint;
+  ctrl1B?: GeometryPoint;
+  ctrl2B?: GeometryPoint;
+};
+
+function buildDiagonalRibbonGeometry(
+  from: GeometryPoint,
+  to: GeometryPoint,
+  fromFaceDir: GeometryPoint,
+  toFaceDir: GeometryPoint,
+  width: number,
+  bowFrac: number,
+): DiagonalRibbonGeometry {
+  const half = width / 2;
+  const ldx = to.x - from.x, ldy = to.y - from.y;
+  const llen = Math.hypot(ldx, ldy) || 1;
+  const lnx = -ldy / llen, lny = ldx / llen;
+  const alongEnd = (p: GeometryPoint, dir: GeometryPoint): [GeometryPoint, GeometryPoint] => {
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    let ux = dir.x / len, uy = dir.y / len;
+    if (ux * lnx + uy * lny < 0) { ux = -ux; uy = -uy; }
+    return [{ x: p.x + ux * half, y: p.y + uy * half }, { x: p.x - ux * half, y: p.y - uy * half }];
+  };
+  const [fromA, fromB] = alongEnd(from, fromFaceDir);
+  const [toA, toB] = alongEnd(to, toFaceDir);
+  if (bowFrac === 0) return { fromA, fromB, toA, toB };
+
+  const fromNormal = faceNormalAt(fromFaceDir, from, to);
+  const toNormal = faceNormalAt(toFaceDir, to, from);
+  const rayIntersectionDistances = (p1: GeometryPoint, n1: GeometryPoint, p2: GeometryPoint, n2: GeometryPoint): [number, number] => {
+    const det = n1.x * -n2.y - n1.y * -n2.x;
+    if (Math.abs(det) < 1e-9) {
+      const fallback = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      return [fallback, fallback];
+    }
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const t1 = (dx * -n2.y - dy * -n2.x) / det;
+    const t2 = (n1.x * dy - n1.y * dx) / det;
+    return [Math.max(0, t1), Math.max(0, t2)];
+  };
+  const [distFromA, distToA] = rayIntersectionDistances(fromA, fromNormal, toA, toNormal);
+  const [distToB, distFromB] = rayIntersectionDistances(toB, toNormal, fromB, fromNormal);
+  const ctrl1A = { x: fromA.x + fromNormal.x * distFromA * bowFrac, y: fromA.y + fromNormal.y * distFromA * bowFrac };
+  const ctrl2A = { x: toA.x + toNormal.x * distToA * bowFrac, y: toA.y + toNormal.y * distToA * bowFrac };
+  const ctrl1B = { x: toB.x + toNormal.x * distToB * bowFrac, y: toB.y + toNormal.y * distToB * bowFrac };
+  const ctrl2B = { x: fromB.x + fromNormal.x * distFromB * bowFrac, y: fromB.y + fromNormal.y * distFromB * bowFrac };
+  return { fromA, fromB, toA, toB, ctrl1A, ctrl2A, ctrl1B, ctrl2B };
+}
+
+function diagonalRibbonPoints(
+  from: GeometryPoint,
+  to: GeometryPoint,
+  fromFaceDir: GeometryPoint,
+  toFaceDir: GeometryPoint,
+  width: number,
+  bowFrac: number,
+): GeometryPoint[] {
+  const geometry = buildDiagonalRibbonGeometry(from, to, fromFaceDir, toFaceDir, width, bowFrac);
+  if (bowFrac === 0) return [geometry.fromA, geometry.toA, geometry.toB, geometry.fromB];
+  return [
+    geometry.fromA,
+    geometry.ctrl1A!,
+    geometry.ctrl2A!,
+    geometry.toA,
+    geometry.toB,
+    geometry.ctrl1B!,
+    geometry.ctrl2B!,
+    geometry.fromB,
+  ];
+}
+
+/** Reduces a bowed diagonal ribbon's width until its complete cubic control hull fits inside a
+ * convex cell. Since a cubic Bézier stays inside the convex hull of its endpoints and controls,
+ * checking those points is sufficient and avoids a renderer mask. */
+export function clampDiagonalRibbonWidthToConvexPolygon(
+  from: GeometryPoint,
+  to: GeometryPoint,
+  fromFaceDir: GeometryPoint,
+  toFaceDir: GeometryPoint,
+  width: number,
+  bowFrac: number,
+  vertices: GeometryPoint[],
+): number {
+  if (width <= 0 || vertices.length < 3) return 0;
+  const fits = (candidate: number) => diagonalRibbonPoints(from, to, fromFaceDir, toFaceDir, candidate, bowFrac).every((point) => convexPolygonContains(point, vertices));
+  if (fits(width)) return width;
+  if (!fits(0)) return 0;
+  let low = 0, high = width;
+  for (let i = 0; i < 40; i++) {
+    const middle = (low + high) / 2;
+    if (fits(middle)) low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
 /** Computes the diagonal split shape's own background gap patch geometry (GitHub issue #314
  *  follow-up) — pure function, extracted out of `drawSplitPassages`' own diagonal branch so this
  *  math is directly unit-testable rather than only reachable through mocked-`Graphics` draw-call
@@ -161,6 +341,8 @@ export function computeDiagonalGapPatchGeometry(
   toFaceDir: { x: number; y: number },
   gridInset: number,
   gapWidth: number,
+  cellVertices?: GeometryPoint[],
+  bowFrac = 0,
 ): { gapFrom: { x: number; y: number }; gapTo: { x: number; y: number }; clampedGapWidth: number } {
   const fromInward = faceNormalAt(fromFaceDir, from, to);
   const toInward = faceNormalAt(toFaceDir, to, from);
@@ -179,7 +361,13 @@ export function computeDiagonalGapPatchGeometry(
     const t2 = (d1x * dy - d1y * dx) / det;
     maxHalf = Math.min(Math.abs(t1), Math.abs(t2));
   }
-  const clampedGapWidth = Math.min(gapWidth, maxHalf * 2);
+  let clampedGapWidth = Math.min(gapWidth, maxHalf * 2);
+  if (cellVertices) {
+    clampedGapWidth = Math.min(
+      clampedGapWidth,
+      clampDiagonalRibbonWidthToConvexPolygon(gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, bowFrac, cellVertices),
+    );
+  }
 
   return { gapFrom, gapTo, clampedGapWidth };
 }
@@ -233,76 +421,22 @@ export function drawDiagonalConnectorRibbon(
    *  turns through (corridor axis to face axis). */
   sharp = false,
 ): void {
-  const half = width / 2;
-  const ldx = to.x - from.x, ldy = to.y - from.y;
-  // Normal to the from->to line — used only to pick a consistent sign for each end's own width
-  // offset below (the bow direction itself now comes from each face's own perpendicular instead).
-  const llen = Math.hypot(ldx, ldy) || 1;
-  const lnx = -ldy / llen, lny = ldx / llen;
-
   if (sharp) {
     drawSharpDiagonalConnectorRibbon(target, from, to, fromFaceDir, toFaceDir, width, color);
     return;
   }
 
-  const alongEnd = (p: { x: number; y: number }, dir: { x: number; y: number }): [{ x: number; y: number }, { x: number; y: number }] => {
-    const len = Math.hypot(dir.x, dir.y) || 1;
-    let ux = dir.x / len, uy = dir.y / len;
-    // Orient this face's own direction so "+" points to the same side of the from->to line as
-    // the line's own normal — makes the sign comparable between `from`'s and `to`'s independently
-    // stored face directions.
-    if (ux * lnx + uy * lny < 0) { ux = -ux; uy = -uy; }
-    return [{ x: p.x + ux * half, y: p.y + uy * half }, { x: p.x - ux * half, y: p.y - uy * half }];
-  };
-  const [fromA, fromB] = alongEnd(from, fromFaceDir);
-  const [toA, toB] = alongEnd(to, toFaceDir);
+  const geometry = buildDiagonalRibbonGeometry(from, to, fromFaceDir, toFaceDir, width, bowFrac);
+  const { fromA, fromB, toA, toB } = geometry;
 
   target.moveTo(fromA.x, fromA.y);
   if (bowFrac === 0) {
     target.lineTo(toA.x, toA.y).lineTo(toB.x, toB.y).lineTo(fromB.x, fromB.y);
   } else {
-    // A positive `bowFrac` always bows outward, away from the tile's own center, for both `from`
-    // and `to` — the control-point offset direction, distinct from `fromFaceDir`/`toFaceDir`
-    // themselves (which run *along* the face). Both nodes of a diagonal point independently call
-    // this with their own `bowFrac`, always positive, so their two ribbons both bow outward instead
-    // of one bowing in and the other out (GitHub issue #314 follow-up).
-    const fromNormal = faceNormalAt(fromFaceDir, from, to);
-    const toNormal = faceNormalAt(toFaceDir, to, from);
-
-    // Each long edge's own two control points ride along their own two rays — `p1 + t1*n1` from
-    // one endpoint, `p2 + t2*n2` from the other — toward the ray intersection, never past it
-    // (GitHub issue #314 follow-up: `bowFrac` is a 0..1 fraction of *that* distance, not a raw
-    // pixel offset, so it can never overshoot regardless of `n1`'s/`n2`'s own angle to each other).
-    // Solving `p1 + t1*n1 = p2 + t2*n2` for `t1`, `t2` via Cramer's rule; parallel rays (det ~ 0,
-    // e.g. a straight-through 2-face node) fall back to the edge's own full length as the cap, so
-    // `bowFrac` still behaves as a plain distance scale in that degenerate case.
-    const rayIntersectionDistances = (
-      p1: { x: number; y: number }, n1: { x: number; y: number },
-      p2: { x: number; y: number }, n2: { x: number; y: number },
-    ): [number, number] => {
-      const det = n1.x * -n2.y - n1.y * -n2.x;
-      if (Math.abs(det) < 1e-9) {
-        const fallback = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        return [fallback, fallback];
-      }
-      const dx = p2.x - p1.x, dy = p2.y - p1.y;
-      const t1 = (dx * -n2.y - dy * -n2.x) / det;
-      const t2 = (n1.x * dy - n1.y * dx) / det;
-      return [Math.max(0, t1), Math.max(0, t2)];
-    };
-
-    const [distFromA, distToA] = rayIntersectionDistances(fromA, fromNormal, toA, toNormal);
-    const [distToB, distFromB] = rayIntersectionDistances(toB, toNormal, fromB, fromNormal);
-
-    const ctrl1A = { x: fromA.x + fromNormal.x * distFromA * bowFrac, y: fromA.y + fromNormal.y * distFromA * bowFrac };
-    const ctrl2A = { x: toA.x + toNormal.x * distToA * bowFrac, y: toA.y + toNormal.y * distToA * bowFrac };
-    const ctrl1B = { x: toB.x + toNormal.x * distToB * bowFrac, y: toB.y + toNormal.y * distToB * bowFrac };
-    const ctrl2B = { x: fromB.x + fromNormal.x * distFromB * bowFrac, y: fromB.y + fromNormal.y * distFromB * bowFrac };
-
     target
-      .bezierCurveTo(ctrl1A.x, ctrl1A.y, ctrl2A.x, ctrl2A.y, toA.x, toA.y)
+      .bezierCurveTo(geometry.ctrl1A!.x, geometry.ctrl1A!.y, geometry.ctrl2A!.x, geometry.ctrl2A!.y, toA.x, toA.y)
       .lineTo(toB.x, toB.y)
-      .bezierCurveTo(ctrl1B.x, ctrl1B.y, ctrl2B.x, ctrl2B.y, fromB.x, fromB.y);
+      .bezierCurveTo(geometry.ctrl1B!.x, geometry.ctrl1B!.y, geometry.ctrl2B!.x, geometry.ctrl2B!.y, fromB.x, fromB.y);
   }
   target.closePath().fill(color);
 }

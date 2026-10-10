@@ -13,7 +13,7 @@ import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, bu
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
-import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
+import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, clipStrokeToConvexPolygon, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
 import { buildCorridorContour, traceCorridorContour } from "./vectorByCorridorsContour";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
@@ -21,7 +21,20 @@ import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
-import { cellCenterBounds } from "../tessellationGeometry";
+import { cellCenterBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
+
+type SplitPoint = { x: number; y: number };
+type SplitClipViews = { clipView: Graphics; gapView: Graphics };
+type SplitConnectorLine = (
+  from: SplitPoint,
+  to: SplitPoint,
+  color: number,
+  oneWayOut: boolean | undefined,
+  width?: number,
+  target?: Graphics,
+  capOverride?: "butt" | "round" | "square",
+) => void;
+type SplitOneWayStyle = { color: number; thickness: number; width: number; join: "round" | "miter"; cap: "square" | "round" };
 
 
 /** "Vector by corridors" render mode's own renderer (GitHub issue #310) — draws every basic
@@ -489,7 +502,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Split points (GitHub issue #314) — drawn after the plain corridor stroke and marker widen
     // patches (so a split hub sitting under a start/finish/teleport marker is already widened the
     // same way a plain corridor is), before the markers/teleports themselves land on top.
-    this.drawSplitPassages(settings, this.geometryCache.splitPassages, this.geometryCache.splitSpecialShapes);
+    this.drawSplitPassages(settings, this.geometryCache.splitPassages, this.geometryCache.splitSpecialShapes, cfg);
 
     // Same `TeleportRenderer` "Vector by walls" uses (GitHub issue #313) — teleports aren't tied to
     // the corridor-vs-wall visual model, so the settings and rendering transfer as-is.
@@ -574,6 +587,17 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
   }
 
+  /** Returns split passages in their normal order, except when a special divider explicitly marks
+   *  one node as the visual top layer. The marker is stored as a node index because Cairo's
+   *  canonical face numbers are not the same thing as the order in which split nodes happen to
+   *  be supplied. */
+  private orderSpecialDiagonalPassages(passages: SplitPassage[], topNodeIndex?: number): SplitPassage[] {
+    if (topNodeIndex === undefined) return passages;
+    const top = passages.find((passage) => passage.nodeIndex === topNodeIndex);
+    if (!top) return passages;
+    return [...passages.filter((passage) => passage !== top), top];
+  }
+
   /** Strokes every chained corridor path with a `butt` cap, then patches each of its own two
    *  non-split ends back in separately — a genuine free end gets a plain square cap, a T-junction
    *  where several chained paths' own ends meet gets one shared `computeMiterJunctionPatch` wedge
@@ -630,12 +654,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     }
   }
 
-  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[]): void {
+  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
     if (settings.renderStyle === "legacy_line") {
-      this.drawSplitPassagesLegacy(settings, passages, specialShapes);
+      this.drawSplitPassagesLegacy(settings, passages, specialShapes, cfg);
       return;
     }
-    this.drawSplitPassagesContour(settings, passages, specialShapes);
+    this.drawSplitPassagesContour(settings, passages, specialShapes, cfg);
   }
 
   /** Shared per-call setup for both split-passage renderers (GitHub issue #510): resets the clip
@@ -655,11 +679,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  it's meant to interrupt; the next `clipViewAt()` call's own pair then layers on top of that,
    *  never one global "all patches, then all lines" pass across every node. */
   private setupSplitPassageDraw(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[]): {
-    clipViewAt: () => { clipView: Graphics; gapView: Graphics };
-    drawConnectorLine: (from: { x: number; y: number }, to: { x: number; y: number }, color: number, oneWayOut: boolean | undefined, width?: number, target?: Graphics, capOverride?: "butt" | "round" | "square") => void;
-    oneWayStyle: { color: number; thickness: number; width: number; join: "round" | "miter"; cap: "square" | "round" };
+    clipViewAt: () => SplitClipViews;
+    drawConnectorLine: SplitConnectorLine;
+    oneWayStyle: SplitOneWayStyle;
     oneWayLengthPx: number;
     useSpecial: boolean;
+    bridgeUnderlayPassages: SplitPassage[];
   } {
     for (const g of this.splitClipScratch) g.destroy();
     this.splitClipScratch = [];
@@ -699,8 +724,43 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const useSpecial = settings.splitSpecialShapes;
 
     // Special-shape points draw their own dedicated geometry in the caller, bypassing this loop
-    // entirely for that point's own connectors.
+    // entirely for that point's own connectors. A Cairo 2x3 bridge keeps the other node's fork
+    // as a separate ordinary-corridor underlay, selected below and rendered by the mode-specific
+    // caller before the bridge deck is layered on top.
     const specialPointKeys = new Set(useSpecial ? specialShapes.map((s) => s.pointKey) : []);
+    const bridgeUnderlayPointKeys = new Set(
+      useSpecial
+        ? specialShapes.filter((shape) => shape.kind === "bridge" && !shape.throughLine).map((shape) => shape.pointKey)
+        : [],
+    );
+
+    const pointOnFace = (
+      point: { x: number; y: number },
+      face: { v0: { x: number; y: number }; v1: { x: number; y: number } },
+    ): boolean => {
+      const dx = face.v1.x - face.v0.x;
+      const dy = face.v1.y - face.v0.y;
+      const lengthSquared = dx * dx + dy * dy;
+      if (lengthSquared <= 1e-12) return Math.hypot(point.x - face.v0.x, point.y - face.v0.y) <= 1e-6;
+      const t = ((point.x - face.v0.x) * dx + (point.y - face.v0.y) * dy) / lengthSquared;
+      if (t < -1e-6 || t > 1 + 1e-6) return false;
+      return Math.abs((point.x - face.v0.x) * dy - (point.y - face.v0.y) * dx) <= 1e-6 * Math.sqrt(lengthSquared);
+    };
+
+    const isBridgePassage = (passage: SplitPassage, shapesAtPoint: SplitSpecialShape[]): boolean => {
+      if (passage.wallSegments.length === 0) return false;
+      const bridgeFaces = shapesAtPoint
+        .filter((shape): shape is Extract<SplitSpecialShape, { kind: "bridge" }> => shape.kind === "bridge")
+        .flatMap((shape) => shape.crossFaces);
+      return bridgeFaces.length > 0 && passage.wallSegments.every((segment) =>
+        bridgeFaces.some((face) => pointOnFace(segment.center, face)));
+    };
+
+    const bridgeUnderlayPassages = passages.filter((passage) => {
+      if (!bridgeUnderlayPointKeys.has(passage.pointKey)) return false;
+      const shapesAtPoint = specialShapes.filter((shape) => shape.pointKey === passage.pointKey);
+      return !isBridgePassage(passage, shapesAtPoint);
+    });
 
     // Plain (non-special) connectors draw at half the ordinary corridor's own thickness (GitHub
     // issue #314 follow-up) — a split connector reads as a thinner "sub-passage" sharing a tile
@@ -719,7 +779,106 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       }
     }
 
-    return { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial };
+    return { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages };
+  }
+
+  /** Converts the Cairo bridge's ordinary three-face split passage into the same per-cell
+   *  contour input used by a normal corridor junction. The resulting tile is drawn on the shared
+   *  corridor layer; the bridge's own dedicated layer is appended afterwards and therefore sits
+   *  above it. */
+  private bridgeUnderlaySegments(passage: SplitPassage, cfg: TessellationConfig): CorridorSegment[] {
+    const [x, y] = passage.pointKey.split(",").map(Number);
+    const cellVertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
+    return passage.wallSegments.map((segment) => {
+      const dx = segment.v1.x - segment.v0.x;
+      const dy = segment.v1.y - segment.v0.y;
+      const length = Math.hypot(dx, dy) || 1;
+      let faceNormal = { x: -dy / length, y: dx / length };
+      const fromCentre = { x: segment.center.x - passage.center.x, y: segment.center.y - passage.center.y };
+      if (faceNormal.x * fromCentre.x + faceNormal.y * fromCentre.y < 0) {
+        faceNormal = { x: -faceNormal.x, y: -faceNormal.y };
+      }
+      return {
+        v0: passage.center,
+        v1: segment.center,
+        faceMidpoint: segment.center,
+        faceNormal,
+        faceLength: length,
+        cellVertices0: cellVertices,
+        fromNode: passage.nodeIndex ?? -1,
+        toNode: passage.nodeIndex ?? -1,
+        v1TouchesSplit: true,
+      };
+    });
+  }
+
+  private drawBridgeUnderlayContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], cfg: TessellationConfig): void {
+    for (const passage of passages) {
+      const segments = this.bridgeUnderlaySegments(passage, cfg);
+      if (segments.length === 0) continue;
+      const contour = buildCorridorContour(segments, settings.thickness, true, "shallowThreeWay");
+      if (contour.length === 0) continue;
+      traceCorridorContour(this.corridors, contour);
+      this.corridors.fill(settings.color);
+    }
+  }
+
+  /** Draws one bridge's shared through/cross geometry. Both render styles use the same layer
+   *  order and the same cell-clipped gap; only the ordinary fork underlay differs by style. */
+  private drawBridgeSpecialShape(
+    settings: VectorByCorridorsSettings,
+    shape: Extract<SplitSpecialShape, { kind: "bridge" }>,
+    cfg: TessellationConfig,
+    clipViewAt: () => SplitClipViews,
+    drawConnectorLine: SplitConnectorLine,
+    throughDrawnForPoint: Set<string>,
+  ): void {
+    const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
+    const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
+    const bridgeCellVertices = this.splitCellVertices(shape.pointKey, cfg, [
+      crossMid0,
+      crossMid1,
+      { x: (crossMid0.x + crossMid1.x) / 2, y: (crossMid0.y + crossMid1.y) / 2 },
+      ...(shape.throughLine ?? []),
+    ]);
+
+    if (shape.throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
+      throughDrawnForPoint.add(shape.pointKey);
+      const [throughFrom, throughTo] = shape.throughLine;
+      const { clipView: throughClipView } = clipViewAt();
+      drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
+    }
+
+    const crossViews = clipViewAt();
+    if (settings.splitGapWidth > 0) {
+      const gridInset = 0.5 / (this.viewport.scale || 1);
+      const dx = crossMid1.x - crossMid0.x, dy = crossMid1.y - crossMid0.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      const half = Math.max(0, len / 2 - gridInset);
+      const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
+      const gapFrom = {
+        x: (crossMid0.x + crossMid1.x) / 2 - ux * half,
+        y: (crossMid0.y + crossMid1.y) / 2 - uy * half,
+      };
+      const gapTo = {
+        x: (crossMid0.x + crossMid1.x) / 2 + ux * half,
+        y: (crossMid0.y + crossMid1.y) / 2 + uy * half,
+      };
+      const clippedGap = bridgeCellVertices
+        ? clipStrokeToConvexPolygon(crossMid0, crossMid1, gapWidth, bridgeCellVertices, gridInset)
+        : null;
+      if (clippedGap) {
+        crossViews.gapView.poly(clippedGap.flatMap((point) => [point.x, point.y])).fill(settings.background);
+      } else if (!bridgeCellVertices) {
+        crossViews.gapView
+          .moveTo(gapFrom.x, gapFrom.y)
+          .lineTo(gapTo.x, gapTo.y)
+          .stroke({ width: gapWidth, color: settings.background, cap: "butt", join: settings.join });
+      }
+    }
+
+    drawConnectorLine(crossMid0, crossMid1, settings.color, undefined, settings.thickness, crossViews.clipView);
   }
 
   /** `"contour"` mode's own special-shape drawing (GitHub issue #493/#509) — draws recognized
@@ -728,10 +887,45 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  GitHub issue #510's own "no shared logic between render styles" requirement (the shared
    *  `setupSplitPassageDraw` above is boilerplate + the plain-connector pass, not special-shape
    *  geometry). */
-  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[]): void {
-    const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial } = this.setupSplitPassageDraw(settings, passages, specialShapes);
+  private splitCellVertices(pointKey: string, cfg: TessellationConfig, referencePoints: { x: number; y: number }[] = []): { x: number; y: number }[] | undefined {
+    const [x, y] = pointKey.split(",").map(Number);
+    const vertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
+    if (!vertices || referencePoints.length === 0) return vertices;
+    // A malformed/mismatched synthetic shape must not be clipped against an unrelated cell;
+    // returning undefined preserves the renderer's established fallback in that case.
+    const isStrictlyInside = (point: { x: number; y: number }) => pointInPolygon(point, vertices) && vertices.every((vertex, index) => {
+      const next = vertices[(index + 1) % vertices.length];
+      return Math.abs((next.x - vertex.x) * (point.y - vertex.y) - (next.y - vertex.y) * (point.x - vertex.x)) > 1e-6;
+    });
+    if (!referencePoints.some(isStrictlyInside)) return undefined;
+    return vertices;
+  }
+
+  /** Finds the face axis nearest a split connector endpoint. Both split render styles need the
+   *  same axis to cut the ribbon end flush with the ordinary corridor segment. */
+  private faceDirectionAt(passage: SplitPassage, point: SplitPoint): SplitPoint {
+    let best: (typeof passage.wallSegments)[number] | null = null;
+    let bestDistance = Infinity;
+    for (const segment of passage.wallSegments) {
+      const dx = segment.v1.x - segment.v0.x;
+      const dy = segment.v1.y - segment.v0.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const t = Math.max(0, Math.min(1, ((point.x - segment.v0.x) * dx + (point.y - segment.v0.y) * dy) / (length * length)));
+      const projected = { x: segment.v0.x + dx * t, y: segment.v0.y + dy * t };
+      const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = segment;
+      }
+    }
+    return best ? { x: best.v1.x - best.v0.x, y: best.v1.y - best.v0.y } : { x: 1, y: 0 };
+  }
+
+  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+    const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
+    this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
 
     // A point recognized as `"hex_triple_bridge"`/`"hex_triple_corridor"` (GitHub issue #319)
     // emits 2 special-shape entries sharing the same `pointKey` (the third node's own "through"
@@ -836,59 +1030,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           }
         });
       } else if (shape.kind === "bridge") {
-        const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
-        const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
-
-        // Through corridor (node 0) draws first, with no patch of its own — it's the corridor that
-        // reads as passing *underneath*, so nothing needs to cut a gap into it. Drawn once per
-        // point (see `throughDrawnForPoint` above) — a `"hex_triple_bridge"` point's second entry
-        // shares the exact same through corridor as its first.
-        if (shape.throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
-          throughDrawnForPoint.add(shape.pointKey);
-          const [throughFrom, throughTo] = shape.throughLine;
-          const { clipView: throughClipView } = clipViewAt();
-          drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
-        }
-
-        // Cross corridor (node 1) gets its own patch+line pair — patch first (drawn into `gapView`,
-        // below in z-order, cutting a gap into the through corridor it now sits on top of), then the
-        // cross line itself (drawn into `clipView`, above both the patch and the through corridor's
-        // own views) — the "this node's own patch, then this node's own line" ordering every other
-        // shape uses, applied to whichever corridor draws on top here.
-        const crossViews = clipViewAt();
-
-        // Background-colored gap patch cut into the through line, centered at the tile's own center
-        // (where the two corridors actually cross) — a stroke run along the *cross* line's own
-        // axis, almost its full length (see `half` below), with `gapWidth` as its perpendicular
-        // stroke width (`splitGapWidth` wider than the through corridor's own thickness on each
-        // side). Both the stroke's own length (along cross) and width (perpendicular, along
-        // through) are clamped to the tile's own size (GitHub issue #314 follow-up: no mask backs
-        // this — see `splitShapesLayer`'s own doc comment for why — so a large `splitGapWidth` must
-        // be clamped numerically instead of relying on one to bound an oversized stroke).
-        if (settings.splitGapWidth > 0) {
-          // Inset from the tile's own half-size (GitHub issue #314 follow-up) — half the grid
-          // line's own stroke width, read from the live viewport scale, so the patch's own edge
-          // never overdraws the grid line at the tile boundary regardless of zoom level.
-          const gridInset = 0.5 / (this.viewport.scale || 1);
-          const cx = (crossMid0.x + crossMid1.x) / 2, cy = (crossMid0.y + crossMid1.y) / 2;
-          const dx = crossMid1.x - crossMid0.x, dy = crossMid1.y - crossMid0.y;
-          const len = Math.hypot(dx, dy) || 1;
-          const ux = dx / len, uy = dy / len;
-          // Patch length runs 90% of the cross corridor's own length (not just a thin slice sized
-          // to the through line's thickness) — a short patch left a sliver of the through line
-          // poking out past the cross line's visible edge; running it almost the cross line's full
-          // length instead keeps it flush.
-          const half = Math.max(0, len / 2 - gridInset);
-          const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-          const gapFrom = { x: cx - ux * half, y: cy - uy * half };
-          const gapTo = { x: cx + ux * half, y: cy + uy * half };
-          crossViews.gapView
-            .moveTo(gapFrom.x, gapFrom.y)
-            .lineTo(gapTo.x, gapTo.y)
-            .stroke({ width: gapWidth, color: settings.background, cap: "butt", join: settings.join });
-        }
-
-        drawConnectorLine(crossMid0, crossMid1, settings.color, undefined, settings.thickness, crossViews.clipView);
+        this.drawBridgeSpecialShape(settings, shape, cfg, clipViewAt, drawConnectorLine, throughDrawnForPoint);
+        // Bridge geometry is shared by both render styles; this branch only selects the common
+        // layer-ordering method above.
       } else {
         // Every node's own connector (the same straight 2-share line the generic reading would
         // draw) drawn as a ribbon, bowed outward (away from the tile's own center) instead of
@@ -922,8 +1066,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           !!throughLine && p.connectors.length === 1 &&
           ((match(p.connectors[0].from, throughLine[0]) && match(p.connectors[0].to, throughLine[1])) ||
             (match(p.connectors[0].from, throughLine[1]) && match(p.connectors[0].to, throughLine[0])));
-        const nodePassages = passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p));
-        const bowFrac = settings.splitDiagonalBowAmount;
+        const nodePassages = this.orderSpecialDiagonalPassages(
+          passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p)),
+          shape.topNodeIndex,
+        );
         // Sharp/miter corridor style never draws this ribbon's bowed curve, regardless of
         // `bowFrac` — a curve reads as inconsistent next to a sharp-style corridor network. See
         // `drawDiagonalConnectorRibbon`'s own `sharp` param doc comment.
@@ -936,9 +1082,17 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         // `gapWidth` clamp (no mask backs this — see `splitShapesLayer`'s own doc comment for why).
         const gridInset = 0.5 / (this.viewport.scale || 1);
         const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
+        const cellVertices = this.splitCellVertices(shape.pointKey, cfg, nodePassages.flatMap((passage) => passage.connectors.flatMap((connector) => [
+          connector.from,
+          connector.to,
+          { x: (connector.from.x + connector.to.x) / 2, y: (connector.from.y + connector.to.y) / 2 },
+        ])));
 
         for (const passage of nodePassages) {
           const { clipView, gapView } = clipViewAt();
+          const bowFrac = shape.topNodeIndex !== undefined && passage.nodeIndex === shape.topNodeIndex
+            ? Math.min(1, settings.splitDiagonalBowAmount * 0.6)
+            : settings.splitDiagonalBowAmount;
 
           // A face's own direction at each connector endpoint (GitHub issue #314 follow-up) — the
           // endpoint's own `wallSegments[i].center` matches `connector.from`/`to` exactly (both
@@ -953,24 +1107,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           // coordinate match would silently miss every shifted segment and fall through to a wrong
           // fallback axis (GitHub issue #314 follow-up: the actual cause of the trapezoid degrading
           // into stray triangles).
-          const faceDirAt = (p: { x: number; y: number }): { x: number; y: number } => {
-            let best: (typeof passage.wallSegments)[number] | null = null;
-            let bestDist = Infinity;
-            for (const seg of passage.wallSegments) {
-              const dx = seg.v1.x - seg.v0.x, dy = seg.v1.y - seg.v0.y;
-              const len = Math.hypot(dx, dy) || 1;
-              const t = Math.max(0, Math.min(1, ((p.x - seg.v0.x) * dx + (p.y - seg.v0.y) * dy) / (len * len)));
-              const projX = seg.v0.x + dx * t, projY = seg.v0.y + dy * t;
-              const dist = Math.hypot(p.x - projX, p.y - projY);
-              if (dist < bestDist) { bestDist = dist; best = seg; }
-            }
-            return best ? { x: best.v1.x - best.v0.x, y: best.v1.y - best.v0.y } : { x: 1, y: 0 };
-          };
-
           for (const connector of passage.connectors) {
             const mx = (connector.from.x + connector.to.x) / 2, my = (connector.from.y + connector.to.y) / 2;
-            const fromFaceDir = faceDirAt(connector.from);
-            const toFaceDir = faceDirAt(connector.to);
+            const fromFaceDir = this.faceDirectionAt(passage, connector.from);
+            const toFaceDir = this.faceDirectionAt(passage, connector.to);
 
             // Filled ribbon instead of a stroked line (GitHub issue #314 follow-up) — a stroke's
             // own `cap`/`join` geometry couldn't be made to butt flush at `from`/`to` (a `square`
@@ -978,9 +1118,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             // filled shape has no such failure mode, and its own two short ends are cut exactly
             // along each face's own direction so they land flush against the plain corridor's own
             // segment there, unmoved by `bow`. See `drawDiagonalConnectorRibbon`'s own doc comment.
-            if (settings.splitGapWidth > 0 && !sharpRibbon) {
-              const { gapFrom, gapTo, clampedGapWidth } = computeDiagonalGapPatchGeometry(connector.from, connector.to, fromFaceDir, toFaceDir, gridInset, gapWidth);
-              drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac, sharpRibbon);
+            const drawGap = settings.splitGapWidth > 0 && !sharpRibbon &&
+              (shape.topNodeIndex === undefined || passage.nodeIndex === shape.topNodeIndex);
+            if (drawGap) {
+              const { gapFrom, gapTo, clampedGapWidth } = computeDiagonalGapPatchGeometry(connector.from, connector.to, fromFaceDir, toFaceDir, gridInset, gapWidth, cellVertices, bowFrac);
+              if (clampedGapWidth > 1e-7) {
+                drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac, sharpRibbon);
+              }
             }
 
             drawDiagonalConnectorRibbon(clipView, connector.from, connector.to, fromFaceDir, toFaceDir, settings.thickness, settings.color, bowFrac, sharpRibbon);
@@ -1038,10 +1182,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  contour fill, regardless of `join`. Independent of `drawSplitPassagesContour`'s special-shape
    *  block — no shared drawing logic beyond geometry helpers that already predate #493
    *  (`vectorByCorridorsGeometry.ts`) and the mode-agnostic `setupSplitPassageDraw` boilerplate. */
-  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[]): void {
-    const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial } = this.setupSplitPassageDraw(settings, passages, specialShapes);
+  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+    const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
+
+    // Legacy line mode has no filled contour pass, so keep the same ordinary-corridor width and
+    // line treatment for the fork while preserving the mode's existing split rendering below.
+    for (const passage of bridgeUnderlayPassages) {
+      for (const segment of passage.wallSegments) {
+        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
+        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
+      }
+    }
 
     const throughDrawnForPoint = new Set<string>();
     const diagonalRibbonDrawnForPoint = new Set<string>();
@@ -1093,35 +1246,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           }
         });
       } else if (shape.kind === "bridge") {
-        const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
-        const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
-
-        if (shape.throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
-          throughDrawnForPoint.add(shape.pointKey);
-          const [throughFrom, throughTo] = shape.throughLine;
-          const { clipView: throughClipView } = clipViewAt();
-          drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
-        }
-
-        const crossViews = clipViewAt();
-
-        if (settings.splitGapWidth > 0) {
-          const gridInset = 0.5 / (this.viewport.scale || 1);
-          const cx = (crossMid0.x + crossMid1.x) / 2, cy = (crossMid0.y + crossMid1.y) / 2;
-          const dx = crossMid1.x - crossMid0.x, dy = crossMid1.y - crossMid0.y;
-          const len = Math.hypot(dx, dy) || 1;
-          const ux = dx / len, uy = dy / len;
-          const half = Math.min((len / 2) * 0.9, TILE_SIZE / 2 - gridInset);
-          const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-          const gapFrom = { x: cx - ux * half, y: cy - uy * half };
-          const gapTo = { x: cx + ux * half, y: cy + uy * half };
-          crossViews.gapView
-            .moveTo(gapFrom.x, gapFrom.y)
-            .lineTo(gapTo.x, gapTo.y)
-            .stroke({ width: gapWidth, color: settings.background, cap: "butt", join: settings.join });
-        }
-
-        drawConnectorLine(crossMid0, crossMid1, settings.color, undefined, settings.thickness, crossViews.clipView);
+        this.drawBridgeSpecialShape(settings, shape, cfg, clipViewAt, drawConnectorLine, throughDrawnForPoint);
+        continue;
       } else {
         if (diagonalRibbonDrawnForPoint.has(shape.pointKey)) continue;
         diagonalRibbonDrawnForPoint.add(shape.pointKey);
@@ -1132,38 +1258,38 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           !!throughLine && p.connectors.length === 1 &&
           ((match(p.connectors[0].from, throughLine[0]) && match(p.connectors[0].to, throughLine[1])) ||
             (match(p.connectors[0].from, throughLine[1]) && match(p.connectors[0].to, throughLine[0])));
-        const nodePassages = passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p));
-        const bowFrac = settings.splitDiagonalBowAmount;
+        const nodePassages = this.orderSpecialDiagonalPassages(
+          passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p)),
+          shape.topNodeIndex,
+        );
         const sharpRibbon = settings.join === "miter";
 
         const gridInset = 0.5 / (this.viewport.scale || 1);
         const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
+        const cellVertices = this.splitCellVertices(shape.pointKey, cfg, nodePassages.flatMap((passage) => passage.connectors.flatMap((connector) => [
+          connector.from,
+          connector.to,
+          { x: (connector.from.x + connector.to.x) / 2, y: (connector.from.y + connector.to.y) / 2 },
+        ])));
 
         for (const passage of nodePassages) {
           const { clipView, gapView } = clipViewAt();
-
-          const faceDirAt = (p: { x: number; y: number }): { x: number; y: number } => {
-            let best: (typeof passage.wallSegments)[number] | null = null;
-            let bestDist = Infinity;
-            for (const seg of passage.wallSegments) {
-              const dx = seg.v1.x - seg.v0.x, dy = seg.v1.y - seg.v0.y;
-              const len = Math.hypot(dx, dy) || 1;
-              const t = Math.max(0, Math.min(1, ((p.x - seg.v0.x) * dx + (p.y - seg.v0.y) * dy) / (len * len)));
-              const projX = seg.v0.x + dx * t, projY = seg.v0.y + dy * t;
-              const dist = Math.hypot(p.x - projX, p.y - projY);
-              if (dist < bestDist) { bestDist = dist; best = seg; }
-            }
-            return best ? { x: best.v1.x - best.v0.x, y: best.v1.y - best.v0.y } : { x: 1, y: 0 };
-          };
+          const bowFrac = shape.topNodeIndex !== undefined && passage.nodeIndex === shape.topNodeIndex
+            ? Math.min(1, settings.splitDiagonalBowAmount * 0.6)
+            : settings.splitDiagonalBowAmount;
 
           for (const connector of passage.connectors) {
             const mx = (connector.from.x + connector.to.x) / 2, my = (connector.from.y + connector.to.y) / 2;
-            const fromFaceDir = faceDirAt(connector.from);
-            const toFaceDir = faceDirAt(connector.to);
+            const fromFaceDir = this.faceDirectionAt(passage, connector.from);
+            const toFaceDir = this.faceDirectionAt(passage, connector.to);
 
-            if (settings.splitGapWidth > 0 && !sharpRibbon) {
-              const { gapFrom, gapTo, clampedGapWidth } = computeDiagonalGapPatchGeometry(connector.from, connector.to, fromFaceDir, toFaceDir, gridInset, gapWidth);
-              drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac, sharpRibbon);
+            const drawGap = settings.splitGapWidth > 0 && !sharpRibbon &&
+              (shape.topNodeIndex === undefined || passage.nodeIndex === shape.topNodeIndex);
+            if (drawGap) {
+              const { gapFrom, gapTo, clampedGapWidth } = computeDiagonalGapPatchGeometry(connector.from, connector.to, fromFaceDir, toFaceDir, gridInset, gapWidth, cellVertices, bowFrac);
+              if (clampedGapWidth > 1e-7) {
+                drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac, sharpRibbon);
+              }
             }
 
             drawDiagonalConnectorRibbon(clipView, connector.from, connector.to, fromFaceDir, toFaceDir, settings.thickness, settings.color, bowFrac, sharpRibbon);

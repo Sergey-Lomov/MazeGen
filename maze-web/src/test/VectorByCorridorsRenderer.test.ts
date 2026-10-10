@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Graphics } from "pixi.js";
 import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
-import { computeMiterJunctionPatch, selectInwardJunctionWedge, corridorCellStep } from "../pixi/imageExport/vectorByCorridorsGeometry";
-import { buildCorridorContour, contourToPolyline, type ContourPath } from "../pixi/imageExport/vectorByCorridorsContour";
+import { clipStrokeToConvexPolygon, computeMiterJunctionPatch, selectInwardJunctionWedge, corridorCellStep } from "../pixi/imageExport/vectorByCorridorsGeometry";
+import { buildCorridorContour, contourToPolyline, type ContourPath, type PathCmd } from "../pixi/imageExport/vectorByCorridorsContour";
 import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
@@ -10,6 +10,7 @@ import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBui
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { getCellVertices, pointInPolygon } from "../pixi/tessellationGeometry";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
@@ -441,6 +442,17 @@ describe("computeDiagonalGapPatchGeometry", () => {
     expect(clampedGapWidth).toBeLessThan(1000);
     expect(clampedGapWidth).toBeGreaterThanOrEqual(0);
   });
+
+  it("keeps bridge gap ends independent when clipping a strip to a skewed cell", () => {
+    const cell = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 80, y: 100 }, { x: 10, y: 100 }];
+    const clipped = clipStrokeToConvexPolygon({ x: 0, y: 50 }, { x: 100, y: 50 }, 40, cell, 1);
+    expect(clipped).not.toBeNull();
+    const minX = Math.min(...clipped!.map((point) => point.x));
+    const maxX = Math.max(...clipped!.map((point) => point.x));
+    expect(minX).toBeGreaterThan(0);
+    expect(maxX).toBeLessThan(100);
+    expect(minX).not.toBeCloseTo(100 - maxX, 5);
+  });
 });
 
 describe("corridorCellStep", () => {
@@ -476,7 +488,7 @@ describe("buildCorridorContour", () => {
   // The contour is now built per tile: one closed, non-hole path for every cell that has a passage,
   // shapes meeting edge-to-edge on shared borders (the per-tile rework). No path is ever a hole.
   const arcsOf = (paths: ContourPath[]): { c: { x: number; y: number }; r: number }[] =>
-    paths.flatMap((p) => p.cmds).filter((c): c is Extract<typeof c, { kind: "arc" }> => c.kind === "arc");
+    paths.flatMap((p) => p.cmds).filter((c): c is Extract<PathCmd, { kind: "arc" }> => c.kind === "arc");
   const pointDistance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.hypot(a.x - b.x, a.y - b.y);
   const expectContinuousPath = (path: ContourPath) => {
@@ -485,6 +497,10 @@ describe("buildCorridorContour", () => {
       if (cmd.kind === "move") {
         current = cmd.to;
       } else if (cmd.kind === "line") {
+        current = cmd.to;
+      } else if (cmd.kind === "quadratic") {
+        current = cmd.to;
+      } else if (cmd.kind === "bezier") {
         current = cmd.to;
       } else {
         const start = { x: cmd.c.x + Math.cos(cmd.a0) * cmd.r, y: cmd.c.y + Math.sin(cmd.a0) * cmd.r };
@@ -1441,24 +1457,97 @@ describe("VectorByCorridorsRenderer", () => {
       expect(allStrokeCalls.some((s) => s.color === settingsA.background)).toBe(false);
     });
 
-    it("bridge special shape without a through line draws only the cross bridge", () => {
+    it("bridge special shape without a through line keeps the underlying fork below the bridge", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
-        passages: [{ color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 }, wallSegments: [], connectors: [] }],
+        passages: [
+          {
+            color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
+            wallSegments: [
+              { v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 20, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+              { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 }, center: { x: 20, y: 40 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            ],
+            connectors: [],
+          },
+          {
+            color: 0xbbbbbb, pointKey: "0,0", center: { x: 20, y: 20 },
+            wallSegments: [
+              { v0: { x: 0, y: 10 }, v1: { x: 0, y: 30 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+              { v0: { x: 40, y: 10 }, v1: { x: 40, y: 30 }, center: { x: 40, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+              { v0: { x: 5, y: 5 }, v1: { x: 15, y: 15 }, center: { x: 10, y: 10 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            ],
+            connectors: [],
+          },
+        ],
         wallFaces: [],
         specialShapes: [{
           kind: "bridge", pointKey: "0,0",
-          crossFaces: [{ v0: { x: 20, y: 0 }, v1: { x: 20, y: 0 } }, { v0: { x: 20, y: 40 }, v1: { x: 20, y: 40 } }],
+          crossFaces: [{ v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 } }, { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 } }],
           edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
           edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
         }],
       });
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
       const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
       const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
       const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number }));
       expect(allStrokeCalls.filter((s) => s.color === settingsA.color && s.width === settingsA.thickness)).toHaveLength(1);
+      expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
+      expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+      expect(corridorsGraphics.fill).not.toHaveBeenCalledWith(0xbbbbbb);
+    });
+
+    it("clips a Cairo bridge gap as a cell-bounded polygon with independently limited ends", () => {
+      const cfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+      const vertices = getCellVertices(2, 1, cfg)!;
+      const face = (index: number) => ({ v0: vertices[index], v1: vertices[(index + 1) % vertices.length] });
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "bridge", pointKey: "2,1",
+          crossFaces: [face(0), face(2)],
+          edge0: [vertices[0], vertices[1], vertices[2], vertices[3]],
+          edge1: [vertices[1], vertices[2], vertices[3], vertices[4]],
+        }],
+      });
+      currentState = baseState({
+        activeTessellationConfig: cfg,
+        vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 10 },
+      });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { poly: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const backgroundPolygons = groupGraphics.flatMap((g) => g.fill.mock.calls.some((call: unknown[]) => call[0] === settingsA.background)
+        ? g.poly.mock.calls
+        : []);
+      expect(backgroundPolygons.length).toBeGreaterThan(0);
+      const polygon = backgroundPolygons[0][0] as number[];
+      const polygonPoints = Array.from({ length: polygon.length / 2 }, (_, index) => ({ x: polygon[index * 2], y: polygon[index * 2 + 1] }));
+      expect(polygonPoints.length).toBeGreaterThan(4);
+      expect(polygonPoints.every((point) => pointInPolygon(point, vertices))).toBe(true);
+      expect(groupGraphics.flatMap((g) => g.stroke.mock.calls).some((call: unknown[]) => (call[0] as { color?: number }).color === settingsA.background)).toBe(false);
+    });
+
+    it("parallel Cairo divider leaves the lower 1-4 connection without a gap underlay", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { nodeIndex: 1, color: 0xaaaaaa, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 0, y: 20 }, to: { x: 20, y: 0 }, isUndefined: false }] },
+          { nodeIndex: 0, color: 0xbbbbbb, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 20, y: 40 }, to: { x: 40, y: 20 }, isUndefined: false }] },
+        ],
+        wallFaces: [],
+        specialShapes: [{ kind: "diagonal", pointKey: "1,1", corner0: { x: 0, y: 0 }, corner1: { x: 40, y: 40 }, topNodeIndex: 0 }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 3 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { fill: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const fills = groupGraphics.flatMap((g) => g.fill.mock.calls.map((call: unknown[]) => call[0] as number));
+      expect(fills.filter((color) => color === settingsA.background)).toHaveLength(1);
+      expect(fills.filter((color) => color === settingsA.color)).toHaveLength(2);
     });
 
     it("diagonal special shape: draws each node's connector as a bowed ribbon (bezierCurveTo), not a straight line, when splitDiagonalBowAmount > 0, in the plain corridor color", () => {

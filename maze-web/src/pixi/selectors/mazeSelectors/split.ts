@@ -157,8 +157,12 @@ function buildDiagonalShape(
   throughLine?: [Point, Point],
   wallPath?: Point[],
   dividerJunctions?: Point[],
+  topNodeIndex?: number,
 ): SplitSpecialShape {
-  return { kind: "diagonal", pointKey, corner0, corner1, throughLine, wallPath, dividerJunctions };
+  return {
+    kind: "diagonal", pointKey, corner0, corner1, throughLine, wallPath, dividerJunctions,
+    ...(topNodeIndex === undefined ? {} : { topNodeIndex }),
+  };
 }
 
 /** Builds the "bridge" `SplitSpecialShape` for a through corridor (`throughFaces`, drawn as nothing
@@ -399,7 +403,17 @@ export function buildSplitPassagesCore<Id>(
         const corner12 = cornerFor(1, 2);
         const corner34 = cornerFor(3, 4);
         if (corner12 && corner34) {
-          specialShapes.push(buildDiagonalShape(pointKey, corner12, corner34, undefined, [corner12, center, corner34]));
+          const topNodeIndex = faceKindsByNode.findIndex((kinds) => {
+            const faces = connectedFaces(kinds);
+            const canonicalFaces = canonicalFaceOrder
+              .map((rawFace, canonicalFace) => faces.includes(rawFace) ? canonicalFace : -1)
+              .filter((face) => face >= 0);
+            return canonicalFaces.length === 2 && canonicalFaces.includes(2) && canonicalFaces.includes(3);
+          });
+          specialShapes.push(buildDiagonalShape(
+            pointKey, corner12, corner34, undefined, [corner12, center, corner34], undefined,
+            topNodeIndex >= 0 ? topNodeIndex : undefined,
+          ));
         }
       }
     } else if (specialShapeKind === "cairo_adjacent_divider") {
@@ -419,8 +433,8 @@ export function buildSplitPassagesCore<Id>(
       }
     } else if (specialShapeKind === "cairo_bridge_2x3") {
       // The Cairo 2x3 bridge is a tapered bridge from canonical face 1 to face 4. The other node
-      // owns three faces, but special-shape renderers suppress all ordinary passages at this point,
-      // so only the bridge deck is emitted here.
+      // owns three faces. The corridor renderer keeps that three-face fork as an underlay and
+      // emits only the bridge node's deck as the dedicated special shape.
       const perNodeFaces = faceKindsByNode.map(connectedFaces);
       const isPair = (faces: number[], a: number, b: number) => faces.length === 2 && faces.includes(a) && faces.includes(b);
       const bridgeNodeIndex = perNodeFaces.findIndex((faces) => {

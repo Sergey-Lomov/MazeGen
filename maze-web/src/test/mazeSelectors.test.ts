@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
-import { getCellCenter, getCellVertices, getNeighborData, nearestCellCoord } from "../pixi/tessellationGeometry";
+import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
@@ -281,6 +281,30 @@ describe("buildCorridorSegments", () => {
     expect(segments).toHaveLength(1);
     expect(segments[0].v0).toEqual(getCellCenter(0, 0, squareCfg));
     expect(segments[0].v1).toEqual(getCellCenter(1, 0, squareCfg));
+  });
+
+  it("Cairo segments use the shared-face midpoint and its perpendicular outward normal", () => {
+    const cfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+    const a: [number, number] = [2, 1];
+    const b: [number, number] = [-1, 2];
+    const nodes = [n(0, ...a), n(1, ...b)];
+    const segments = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], cfg);
+    expect(segments).toHaveLength(1);
+    const face = getSharedEdgeSegment(a, b, cfg);
+    expect(face).not.toBeNull();
+    const faceMidpoint = {
+      x: (face!.v0.x + face!.v1.x) / 2,
+      y: (face!.v0.y + face!.v1.y) / 2,
+    };
+    expect(segments[0].faceMidpoint).toEqual(faceMidpoint);
+    expect(segments[0].faceNormal).toBeDefined();
+    const edgeDx = face!.v1.x - face!.v0.x;
+    const edgeDy = face!.v1.y - face!.v0.y;
+    const normal = segments[0].faceNormal!;
+    expect(normal.x * edgeDx + normal.y * edgeDy).toBeCloseTo(0);
+    const center = segments[0].v0;
+    expect(normal.x * (faceMidpoint.x - center.x) + normal.y * (faceMidpoint.y - center.y)).toBeGreaterThan(0);
+    expect(segments[0].faceLength).toBeCloseTo(Math.hypot(edgeDx, edgeDy));
   });
 
   it("a one-way passage draws the same v0/v1 as a bidirectional one, but carries its own oneWayDir (GitHub issue #312)", () => {
@@ -677,6 +701,18 @@ describe("buildSplitPassages", () => {
     expect(shape.wallPath).toHaveLength(3);
     expect(shape.wallPath?.[1]).toEqual(getCellCenter(...point, cairoCfg));
     expect(shape.wallPath?.[0]).not.toEqual(shape.wallPath?.[2]);
+    // The canonical 2-3 connection is the visual top layer; node order must not be used as a
+    // proxy because the same split can be supplied with its two nodes reversed.
+    expect(shape.topNodeIndex).toBe(0);
+
+    const reversed = buildSplitPassages(
+      [n(101, ...point), n(100, ...point), ...neighbors],
+      [...connect(101, [order[1], order[4]]), ...connect(100, [order[2], order[3]])],
+      cairoCfg,
+    ).specialShapes[0];
+    expect(reversed.kind).toBe("diagonal");
+    if (reversed.kind !== "diagonal") throw new Error("unreachable");
+    expect(reversed.topNodeIndex).toBe(1);
   });
 
   it("renders the Cairo adjacent divider as side 0 plus corner23 -> side-0 midpoint", () => {

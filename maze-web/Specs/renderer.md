@@ -168,8 +168,16 @@ wall-mode path is a broken line from the corner shared by canonical faces `1-2`,
 centre, to the corner shared by `3-4`; Cor1 owns `2-3` and Cor2 owns `1-4`. The adjacent form
 draws canonical side `0` and a straight segment from corner `2-3` to side-0's midpoint; Cor1 owns
 `1-2` and Cor2 owns `3-4`. The 2x3 bridge draws a tapered bridge from canonical face `1` to face
-`4`; its `0-2-3` fork node is suppressed together with the other ordinary passages whenever
-special-shape rendering is enabled. Its bridge marker is centered between face-1 and face-4
-centres, while the fork marker is one third of the way from corner `2-3` to side-0's midpoint.
+`4`. In wall mode its `0-2-3` fork node remains suppressed with the other ordinary passages; in
+Vector by corridors it is restored as a normal three-face corridor underlay, with the bridge deck
+drawn above it. The corridor mode clips the bridge's background gap to the actual convex cell, so
+the two ends may be different lengths without crossing the grid. Its bridge marker is centered
+between face-1 and face-4 centres, while the fork marker is one third of the way from corner `2-3`
+to side-0's midpoint.
+
+For the parallel Cairo divider in Vector by corridors, the canonical `2-3` connection is drawn
+above `1-4` regardless of node input order. Its bow amount is scaled so a configured `0.5` uses
+the same effective bend as the previous `0.3`; the lower `1-4` connection has no gap underlay.
+The upper gap is clipped to the cell polygon at large widths.
 
 `destroy()` on all renderers: unsubscribes from store, destroys Pixi objects, removes event listeners.
