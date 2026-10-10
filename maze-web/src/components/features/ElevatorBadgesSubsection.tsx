@@ -40,6 +40,7 @@ export function ElevatorBadgesSubsection<P extends string>({ settings, onChange,
     borderWidth: P | null;
     textColor: P | null;
     textSize: P | null;
+    textMargin: P | null;
   };
   /** "Priority" project colors (GitHub issue #503) for the badge fill / text color rows. */
   fillColorPriority?: ProjectColorEntry[];

@@ -11,7 +11,7 @@ import * as m from "~/paraglide/messages";
  *  `verticalArrowStyle` each get their own localized format function. `indexLabelStyle` and
  *  `labelFontWeight` need the caller to pick which of two label-key sets applies (see
  *  `formatElevatorBadgesLabelType`/`formatMarkerIndexLabelStyle` and
- *  `formatElevatorBadgesFontWeight`/`formatMarkerIndexFontWeight`), since the same values are
+ *  `formatElevatorBadgesFontWeight`), since the same values are
  *  labelled differently depending on which field they appear on; plain numbers/booleans fall back
  *  to `String(v)`; `color` formats as `#rrggbb` (`formatColor`). */
 /** Integers render bare ("5"), non-integers always to 2 decimal places ("5.10"), never the raw
@@ -104,7 +104,7 @@ function formatVerticalArrowStyle(value: unknown): string {
 
 /** `LabelFontWeight`/`IndexLabelStyle` are each reused by multiple fields, but the settings panel
  *  shows different label-text sets for the same underlying values depending on the field: elevator
- *  badges and teleport floor badges share one set, marker index uses its own. A single generic
+ *  badges, teleport floor badges and marker index share one set of font-weight wording. A single generic
  *  `format` can't pick the right set, so the default (elevator-badges wording) covers the more
  *  common case and `markerIndex.*` descriptors pass their own via `descriptor()`'s `format`
  *  override. */
@@ -114,11 +114,6 @@ function formatElevatorBadgesFontWeight(value: unknown): string {
   return String(value);
 }
 
-function formatMarkerIndexFontWeight(value: unknown): string {
-  if (value === "regular") return m["image_export.vector_by_walls.marker_index_font_weight_regular"]();
-  if (value === "bold") return m["image_export.vector_by_walls.marker_index_font_weight_bold"]();
-  return String(value);
-}
 function formatElevatorBadgesLabelType(value: unknown): string {
   if (value === "arabic") return m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]();
   if (value === "roman") return m["image_export.vector_by_walls.elevator_badges_label_type_roman"]();
@@ -175,7 +170,8 @@ const G = {
   teleportRoot: () => [m["image_export.vector_by_walls.section_teleports"]()],
   teleportFloorBadges: () => [m["image_export.vector_by_walls.section_teleports"](), m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()],
   markerIndexCoverage: () => [m["image_export.vector_by_walls.section_marker_index"](), m["image_export.vector_by_walls.marker_index_subsection_coverage"]()],
-  markerIndexSettings: () => [m["image_export.vector_by_walls.section_marker_index"](), m["image_export.vector_by_walls.marker_index_subsection_settings"]()],
+  markerIndexCaption: () => [m["image_export.vector_by_walls.section_marker_index"](), m["image_export.vector_by_walls.marker_index_subsection_caption"]()],
+  markerIndexBackplate: () => [m["image_export.vector_by_walls.section_marker_index"](), m["image_export.vector_by_walls.marker_index_subsection_backplate"]()],
   tiles: () => [m["image_export.vector_by_walls.section_tiles"]()],
   oneWays: () => [m["image_export.vector_by_walls.section_one_ways"]()],
   splits: () => [m["image_export.vector_by_walls.section_splits"]()],
@@ -200,6 +196,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
   markerTextSize: descriptor("number", m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle()),
+  markerTextMargin: descriptor("number", m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyle()),
   markerTextFontWeight: descriptor("labelFontWeight", m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle(), formatElevatorBadgesFontWeight),
   // `verticalSize`/`verticalArrowSize` are abstract-only (GitHub issue #677 follow-up) — the
   // decorative style has its own dedicated `verticalDecorativeSize`/`verticalDecorativeArrowSize`
@@ -235,6 +232,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "startMarker.textEnabled": descriptor("boolean", m["image_export.vector_by_walls.marker_text_show"](), G.markersStartSymbol(), formatBoolean),
   "startMarker.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markersStartSymbol(), formatElevatorBadgesFontWeight),
   "startMarker.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markersStartSymbol()),
+  "startMarker.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markersStartSymbol()),
   "startMarker.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markersStartSymbol()),
   "finishMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersFinish()),
   "finishMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersFinish()),
@@ -246,6 +244,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "finishMarker.textEnabled": descriptor("boolean", m["image_export.vector_by_walls.marker_text_show"](), G.markersFinishSymbol(), formatBoolean),
   "finishMarker.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markersFinishSymbol(), formatElevatorBadgesFontWeight),
   "finishMarker.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markersFinishSymbol()),
+  "finishMarker.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markersFinishSymbol()),
   "finishMarker.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markersFinishSymbol()),
   "teleportMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.teleport_corner_style"](), G.teleportMarkers()),
   "teleportMarker.size": descriptor("number", m["image_export.vector_by_walls.teleport_size"](), G.teleportMarkers()),
@@ -269,6 +268,7 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "teleportFloorBadge.textColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_text_color"](), G.teleportFloorBadges()),
   "teleportFloorBadge.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.teleportFloorBadges(), formatElevatorBadgesFontWeight),
   "teleportFloorBadge.textSize": descriptor("number", m["image_export.vector_by_walls.teleport_floor_badge_text_size"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.teleportFloorBadges()),
   "twoWayPassageMarker.cornerStyle": descriptor("cornerStyle", abstractLabel(m["image_export.vector_by_walls.marker_corner_style"]()), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.size": descriptor("number", abstractLabel(m["image_export.vector_by_walls.marker_size"]()), G.verticalTwoWayMarker()),
   "twoWayPassageMarker.borderWidth": descriptor("number", abstractLabel(m["image_export.vector_by_walls.marker_border_width"]()), G.verticalTwoWayMarker()),
@@ -305,20 +305,23 @@ export const VECTOR_BY_WALLS_PARAM_REGISTRY = {
   "elevatorBadges.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalElevatorBadges()),
   "elevatorBadges.textColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_text_color"](), G.verticalElevatorBadges()),
   "elevatorBadges.textSize": descriptor("number", m["image_export.vector_by_walls.elevator_badges_text_size"](), G.verticalElevatorBadges()),
-  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexSettings()),
+  "elevatorBadges.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.verticalElevatorBadges()),
+  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexBackplate()),
   "markerIndex.enabled": descriptor("boolean", m["image_export.vector_by_walls.marker_index_enabled"](), G.markerIndex(), formatBoolean),
-  "markerIndex.paddingX": descriptor("number", m["image_export.vector_by_walls.marker_index_padding_x"](), G.markerIndexSettings()),
-  "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexSettings()),
-  "markerIndex.offset": descriptor("number", m["image_export.vector_by_walls.marker_index_offset"](), G.markerIndexSettings()),
-  "markerIndex.cornerRadius": descriptor("number", m["image_export.vector_by_walls.marker_index_corner_radius"](), G.markerIndexSettings()),
-  "markerIndex.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_index_border_width"](), G.markerIndexSettings()),
-  "markerIndex.borderWidthFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_width_from_marker"](), G.markerIndexSettings(), formatBoolean),
-  "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexSettings(), formatBoolean),
-  "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexSettings(), formatMarkerIndexLabelStyle),
-  "markerIndex.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_index_font_weight"](), G.markerIndexSettings(), formatMarkerIndexFontWeight),
-  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexSettings()),
-  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_index_text_color"](), G.markerIndexSettings()),
-  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexSettings()),
+  "markerIndex.width": descriptor("number", m["image_export.vector_by_walls.marker_index_width"](), G.markerIndexBackplate()),
+  "markerIndex.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markerIndexCaption()),
+  "markerIndex.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markerIndexCaption()),
+  "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexBackplate()),
+  "markerIndex.offset": descriptor("number", m["image_export.vector_by_walls.marker_index_offset"](), G.markerIndexBackplate()),
+  "markerIndex.cornerRadius": descriptor("number", m["image_export.vector_by_walls.marker_index_corner_radius"](), G.markerIndexBackplate()),
+  "markerIndex.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_index_border_width"](), G.markerIndexBackplate()),
+  "markerIndex.borderWidthFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_width_from_marker"](), G.markerIndexBackplate(), formatBoolean),
+  "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexBackplate(), formatBoolean),
+  "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexCaption(), formatMarkerIndexLabelStyle),
+  "markerIndex.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markerIndexCaption(), formatElevatorBadgesFontWeight),
+  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexBackplate()),
+  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markerIndexCaption()),
+  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexBackplate()),
   "markerIndex.coverage.singleFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.crossFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_cross_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.verticalPassage": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_vertical_passage"](), G.markerIndexCoverage(), formatBoolean),
@@ -381,6 +384,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   markerBorderWidth: descriptor("number", m["image_export.param_links.shared_marker_border_width"](), G.sharedStyle()),
   gapWidth: descriptor("number", m["image_export.param_links.shared_gap_width"](), G.sharedStyle()),
   markerTextSize: descriptor("number", m["image_export.param_links.shared_marker_text_size"](), G.sharedStyle()),
+  markerTextMargin: descriptor("number", m["image_export.param_links.shared_marker_text_margin"](), G.sharedStyle()),
   markerTextFontWeight: descriptor("labelFontWeight", m["image_export.param_links.shared_marker_text_font_weight"](), G.sharedStyle(), formatElevatorBadgesFontWeight),
   verticalCornerStyle: descriptor("cornerStyle", m["image_export.param_links.vertical_shared_corner_style"](), G.verticalSharedStyle()),
   verticalShape: descriptor("markerShape", m["image_export.param_links.vertical_shared_shape"](), G.verticalSharedStyle()),
@@ -405,6 +409,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "startMarker.textEnabled": descriptor("boolean", m["image_export.vector_by_walls.marker_text_show"](), G.markersStartSymbol(), formatBoolean),
   "startMarker.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markersStartSymbol(), formatElevatorBadgesFontWeight),
   "startMarker.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markersStartSymbol()),
+  "startMarker.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markersStartSymbol()),
   "startMarker.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markersStartSymbol()),
   "finishMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.marker_corner_style"](), G.markersFinish()),
   "finishMarker.size": descriptor("number", m["image_export.vector_by_walls.marker_size"](), G.markersFinish()),
@@ -416,6 +421,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "finishMarker.textEnabled": descriptor("boolean", m["image_export.vector_by_walls.marker_text_show"](), G.markersFinishSymbol(), formatBoolean),
   "finishMarker.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markersFinishSymbol(), formatElevatorBadgesFontWeight),
   "finishMarker.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markersFinishSymbol()),
+  "finishMarker.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markersFinishSymbol()),
   "finishMarker.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markersFinishSymbol()),
   "teleportMarker.cornerStyle": descriptor("cornerStyle", m["image_export.vector_by_walls.teleport_corner_style"](), G.teleportMarkers()),
   "teleportMarker.size": descriptor("number", m["image_export.vector_by_walls.teleport_size"](), G.teleportMarkers()),
@@ -439,6 +445,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "teleportFloorBadge.textColor": descriptor("color", m["image_export.vector_by_walls.teleport_floor_badge_text_color"](), G.teleportFloorBadges()),
   "teleportFloorBadge.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.teleportFloorBadges(), formatElevatorBadgesFontWeight),
   "teleportFloorBadge.textSize": descriptor("number", m["image_export.vector_by_walls.teleport_floor_badge_text_size"](), G.teleportFloorBadges()),
+  "teleportFloorBadge.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.teleportFloorBadges()),
   splitGapWidth: descriptor("number", m["image_export.vector_by_corridors.split_gap_width"](), [m["image_export.vector_by_walls.section_splits"]()]),
   splitSpecialShapes: descriptor("boolean", m["image_export.vector_by_walls.split_special_shapes"](), G.splits(), formatBoolean),
   splitDiagonalBowAmount: descriptor("number", m["image_export.vector_by_corridors.split_diagonal_bow_amount"](), G.splits()),
@@ -478,20 +485,23 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   "elevatorBadges.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_border_width"](), G.verticalElevatorBadges()),
   "elevatorBadges.textColor": descriptor("color", m["image_export.vector_by_walls.elevator_badges_text_color"](), G.verticalElevatorBadges()),
   "elevatorBadges.textSize": descriptor("number", m["image_export.vector_by_walls.elevator_badges_text_size"](), G.verticalElevatorBadges()),
-  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexSettings()),
+  "elevatorBadges.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.verticalElevatorBadges()),
+  "markerIndex.gap": descriptor("number", m["image_export.vector_by_walls.marker_index_gap"](), G.markerIndexBackplate()),
   "markerIndex.enabled": descriptor("boolean", m["image_export.vector_by_walls.marker_index_enabled"](), G.markerIndex(), formatBoolean),
-  "markerIndex.paddingX": descriptor("number", m["image_export.vector_by_walls.marker_index_padding_x"](), G.markerIndexSettings()),
-  "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexSettings()),
-  "markerIndex.offset": descriptor("number", m["image_export.vector_by_walls.marker_index_offset"](), G.markerIndexSettings()),
-  "markerIndex.cornerRadius": descriptor("number", m["image_export.vector_by_walls.marker_index_corner_radius"](), G.markerIndexSettings()),
-  "markerIndex.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_index_border_width"](), G.markerIndexSettings()),
-  "markerIndex.borderWidthFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_width_from_marker"](), G.markerIndexSettings(), formatBoolean),
-  "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexSettings(), formatBoolean),
-  "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexSettings(), formatMarkerIndexLabelStyle),
-  "markerIndex.fontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_index_font_weight"](), G.markerIndexSettings(), formatMarkerIndexFontWeight),
-  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexSettings()),
-  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_index_text_color"](), G.markerIndexSettings()),
-  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexSettings()),
+  "markerIndex.width": descriptor("number", m["image_export.vector_by_walls.marker_index_width"](), G.markerIndexBackplate()),
+  "markerIndex.textSize": descriptor("number", m["image_export.vector_by_walls.marker_text_size"](), G.markerIndexCaption()),
+  "markerIndex.textMargin": descriptor("number", m["image_export.vector_by_walls.marker_text_margin"](), G.markerIndexCaption()),
+  "markerIndex.height": descriptor("number", m["image_export.vector_by_walls.marker_index_height"](), G.markerIndexBackplate()),
+  "markerIndex.offset": descriptor("number", m["image_export.vector_by_walls.marker_index_offset"](), G.markerIndexBackplate()),
+  "markerIndex.cornerRadius": descriptor("number", m["image_export.vector_by_walls.marker_index_corner_radius"](), G.markerIndexBackplate()),
+  "markerIndex.borderWidth": descriptor("number", m["image_export.vector_by_walls.marker_index_border_width"](), G.markerIndexBackplate()),
+  "markerIndex.borderWidthFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_width_from_marker"](), G.markerIndexBackplate(), formatBoolean),
+  "markerIndex.borderColorFromMarker": descriptor("boolean", m["image_export.vector_by_walls.marker_index_border_color_from_marker"](), G.markerIndexBackplate(), formatBoolean),
+  "markerIndex.labelStyle": descriptor("indexLabelStyle", m["image_export.vector_by_walls.marker_index_label_style"](), G.markerIndexCaption(), formatMarkerIndexLabelStyle),
+  "markerIndex.textFontWeight": descriptor("labelFontWeight", m["image_export.vector_by_walls.marker_text_font_weight"](), G.markerIndexCaption(), formatElevatorBadgesFontWeight),
+  "markerIndex.fillColor": descriptor("color", m["image_export.vector_by_walls.marker_index_fill_color"](), G.markerIndexBackplate()),
+  "markerIndex.textColor": descriptor("color", m["image_export.vector_by_walls.marker_text_color"](), G.markerIndexCaption()),
+  "markerIndex.borderColor": descriptor("color", m["image_export.vector_by_walls.marker_index_border_color"](), G.markerIndexBackplate()),
   "markerIndex.coverage.singleFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_single_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.crossFloorTeleport": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_cross_floor_teleport"](), G.markerIndexCoverage(), formatBoolean),
   "markerIndex.coverage.verticalPassage": descriptor("boolean", m["image_export.vector_by_walls.marker_index_coverage_vertical_passage"](), G.markerIndexCoverage(), formatBoolean),

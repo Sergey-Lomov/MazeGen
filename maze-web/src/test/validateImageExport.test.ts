@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings } from "../store/projectExport/validateImageExport";
-import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 
@@ -211,14 +211,19 @@ describe("validateTeleportFloorBadgeSettings", () => {
   const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
 
   it("reads a valid object's fields as-is", () => {
-    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20 }, "path", fallback))
-      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20 });
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3 }, "path", fallback))
+      .toEqual({ shape: "hexagon", cornerStyle: "round", gapWidth: 3, labelType: "roman", size: 0.3, fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, textColor: 0xabcdef, textFontWeight: "regular", textSize: 20, textMargin: 3 });
   });
 
   it("falls back to the default for a missing object or invalid field", () => {
     expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
     expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
-      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize });
+      .toEqual({ shape: fallback.shape, cornerStyle: fallback.cornerStyle, gapWidth: fallback.gapWidth, labelType: fallback.labelType, size: fallback.size, fillColor: fallback.fillColor, borderColor: fallback.borderColor, borderWidth: fallback.borderWidth, textColor: fallback.textColor, textFontWeight: fallback.textFontWeight, textSize: fallback.textSize, textMargin: fallback.textMargin });
+  });
+
+  it("clamps the text margin into its range", () => {
+    expect(validateTeleportFloorBadgeSettings({ textMargin: 99 }, "path", fallback).textMargin).toBe(10);
+    expect(validateTeleportFloorBadgeSettings({ textMargin: -4 }, "path", fallback).textMargin).toBe(0);
   });
 
   it("a project file predating the field recovers to the default badge", () => {
@@ -312,5 +317,14 @@ describe("validateVectorByWallsSettings shared marker sources (GitHub issue #701
     expect(result.markerShape).toBe("star");
     expect(result.markerFillColor).toBe(0x112233);
     expect(result.markerBorderColor).toBe(0x445566);
+  });
+});
+
+describe("validateMarkerIndexSettings", () => {
+  it("clamps the fixed plate width and height into their ranges and keeps a fractional margin", () => {
+    const fb = DEFAULT_MARKER_INDEX_SETTINGS;
+    expect(validateMarkerIndexSettings({ width: 99, height: 2 }, "path", fb)).toMatchObject({ width: 20, height: 8 });
+    expect(validateMarkerIndexSettings({ width: 1 }, "path", fb).width).toBe(8);
+    expect(validateMarkerIndexSettings({ textMargin: 1.5 }, "path", fb).textMargin).toBe(1.5);
   });
 });

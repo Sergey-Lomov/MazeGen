@@ -100,14 +100,17 @@ export interface PngExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
  *  captions, elevator badges and teleport floor badges all configure their text the same way:
- *  color, font weight and an **absolute** font size in px (not a fraction of the badge/marker
+ *  color, font weight, an **absolute** font size in px and a margin (not a fraction of the badge/marker
  *  diameter). `MarkerSettings` carries these optionally (only start/finish expose them in the UI);
- *  the badge settings require them. `MarkerIndexSettings` is intentionally not part of this yet. */
+ *  the badge settings require them. */
 export interface TextStyleFields {
   textColor: number;
   textFontWeight: LabelFontWeight;
   /** Font size in px. */
   textSize: number;
+  /** Margin in px (`TEXT_MARGIN_RANGE`, default `DEFAULT_TEXT_MARGIN`): how far the glyph ink must
+   *  stay from the plate edge. Used by the overflow warnings and auto-fit only. */
+  textMargin: number;
 }
 
 /** One decorative-style vertical-connection pictogram's line appearance (GitHub issue #428) — a
@@ -407,6 +410,7 @@ export interface SharedStyleSourceFields {
   /** Shared label font size (px) and weight (GitHub issue #707) — drive every caption/badge text
    *  style through disabled-by-default links; the "Auto-fit" button picks the size. */
   markerTextSize: number;
+  markerTextMargin: number;
   markerTextFontWeight: LabelFontWeight;
 }
 
@@ -447,17 +451,18 @@ export interface VerticalSharedStyleFields {
  *  numbering closes up over what remains. The surviving connections are numbered `1..N` by a
  *  canonical order (endpoint `node.level`, then `nodeId`), stable under any input reordering.
  *
- *  `height` / `offset` / `cornerRadius` / `paddingX` are all in px (GitHub issue #681 — previously
- *  a fraction of `TILE_SIZE`), same as `borderWidth` and `gap`. The plate width is uniform across
- *  the whole project: sized to the widest label in the project (so a given index looks identical
- *  on every floor), plus `2 * paddingX`. */
-export interface MarkerIndexSettings {
+ *  `width` / `height` / `offset` / `cornerRadius` / `textSize` are all in px (GitHub issue #681 —
+ *  previously a fraction of `TILE_SIZE`), same as `borderWidth` and `gap`. The plate is a fixed
+ *  `width` x `height` rectangle that does not depend on the text (GitHub issue #725); a label that
+ *  does not fit raises the `marker_index_text_overflow` export warning, and the font size has an
+ *  "Auto-fit" button like every other text. */
+export interface MarkerIndexSettings extends TextStyleFields {
   /** Off by default. */
   enabled: boolean;
   /** Arabic numerals / Roman numerals / letters — same three styles as `ElevatorBadgeLabelType`.
    *  Roman tends to stay legible at small font sizes. */
   labelStyle: IndexLabelStyle;
-  /** Plate height. */
+  /** Plate height in px, `MARKER_INDEX_MIN_HEIGHT` and up. */
   height: number;
   /** Distance the plate's *center* sits below the marker's own outer edge. `0` places the plate
    *  center exactly on the marker's bottom edge; the plate's own gap ring is drawn under the
@@ -465,15 +470,13 @@ export interface MarkerIndexSettings {
   offset: number;
   /** Plate corner rounding radius (`0` = sharp corners). */
   cornerRadius: number;
-  /** Horizontal padding between the label text and each plate edge — also drives the uniform
-   *  plate width (widest label + `2 * paddingX`). */
-  paddingX: number;
+  /** Fixed plate width in px (`MARKER_INDEX_WIDTH_RANGE`), independent of the label text. */
+  width: number;
   /** Floor-colored gap ring drawn around the plate, in whole pixels (`0` = none) — same convention
    *  and unit as every other marker's gap ring, and a member of "Shared style"'s `gapWidth` group.
    *  Drawn *below* the connection marker so the plate never eats into it. */
   gap: number;
   fillColor: number;
-  textColor: number;
   /** Plate border color. Ignored when `borderColorFromMarker` is on. */
   borderColor: number;
   /** When on (the default), the plate border takes its color from the connection marker it hangs
@@ -485,7 +488,6 @@ export interface MarkerIndexSettings {
   borderWidthFromMarker: boolean;
   /** Whole pixels. `0` draws no border when `borderWidthFromMarker` is off. */
   borderWidth: number;
-  fontWeight: LabelFontWeight;
   /** "Coverage" sub-section — which connection kinds get an index plate. A `teleport` link counts
    *  as `singleFloorTeleport` when both endpoints share a `node.level`, `crossFloorTeleport`
    *  otherwise. Defaults: `singleFloorTeleport` off, the other three on (an index is chiefly
@@ -811,6 +813,7 @@ export interface ImageExportActions {
   setVectorByCorridorsStartMarkerTextEnabled: (enabled: boolean) => void;
   setVectorByCorridorsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
   setVectorByCorridorsStartMarkerTextSize: (v: number) => void;
+  setVectorByCorridorsStartMarkerTextMargin: (v: number) => void;
   setVectorByCorridorsStartMarkerTextColor: (color: number) => void;
   setVectorByCorridorsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsStartMarkerFillColor: (color: number) => void;
@@ -823,6 +826,7 @@ export interface ImageExportActions {
   setVectorByCorridorsFinishMarkerTextEnabled: (enabled: boolean) => void;
   setVectorByCorridorsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
   setVectorByCorridorsFinishMarkerTextSize: (v: number) => void;
+  setVectorByCorridorsFinishMarkerTextMargin: (v: number) => void;
   setVectorByCorridorsFinishMarkerTextColor: (color: number) => void;
   setVectorByCorridorsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsFinishMarkerFillColor: (color: number) => void;
@@ -943,6 +947,7 @@ export interface ImageExportActions {
   setVectorByWallsStartMarkerTextEnabled: (enabled: boolean) => void;
   setVectorByWallsStartMarkerTextFontWeight: (weight: LabelFontWeight) => void;
   setVectorByWallsStartMarkerTextSize: (v: number) => void;
+  setVectorByWallsStartMarkerTextMargin: (v: number) => void;
   setVectorByWallsStartMarkerTextColor: (color: number) => void;
   setVectorByWallsStartMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsStartMarkerFillColor: (color: number) => void;
@@ -955,6 +960,7 @@ export interface ImageExportActions {
   setVectorByWallsFinishMarkerTextEnabled: (enabled: boolean) => void;
   setVectorByWallsFinishMarkerTextFontWeight: (weight: LabelFontWeight) => void;
   setVectorByWallsFinishMarkerTextSize: (v: number) => void;
+  setVectorByWallsFinishMarkerTextMargin: (v: number) => void;
   setVectorByWallsFinishMarkerTextColor: (color: number) => void;
   setVectorByWallsFinishMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsFinishMarkerFillColor: (color: number) => void;

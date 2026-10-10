@@ -140,7 +140,7 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
   teleportMarker: { cornerStyle: "miter", shape: "diamond", size: 0.16, fillColor: 0, borderColor: 0, borderWidth: 3, gapWidth: 3 },
   teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
-  teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12 },
+  teleportFloorBadge: { shape: "circle", labelType: "arabic", cornerStyle: "round", gapWidth: 3, size: 0.16, fillColor: 0x123456, borderColor: 0x123456, borderWidth: 3, textColor: 0x123456, textFontWeight: "bold", textSize: 12, textMargin: 1 },
   teleportGroupCustomization: false, teleportGroupOverrides: {},
 };
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
@@ -149,7 +149,7 @@ const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCou
 const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitSpecialShapes" | "splitGapWidth" | "splitDiagonalBowAmount"> = {
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
-const sharedStyleSource = { markerShape: "circle" as const, markerFillColor: 0, markerBorderColor: 0, cornerStyle: "round" as const, markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, markerTextSize: 17, markerTextFontWeight: "bold" as const };
+const sharedStyleSource = { markerShape: "circle" as const, markerFillColor: 0, markerBorderColor: 0, cornerStyle: "round" as const, markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold" as const };
 const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 

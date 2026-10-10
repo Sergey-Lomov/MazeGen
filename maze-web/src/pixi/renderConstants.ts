@@ -12,6 +12,15 @@ export const DEFAULT_MARKER_TEXT_SIZE = 17;
 export const DEFAULT_ELEVATOR_BADGE_TEXT_SIZE = 10;
 export const DEFAULT_TELEPORT_BADGE_TEXT_SIZE = 10;
 
-/** Settings-slider range for every label font size (px) — marker captions, elevator badges and
- *  teleport floor badges share it. */
+/** Marker-index plate limits in px (GitHub issue #725): fixed width range and minimum height. */
+export const MARKER_INDEX_WIDTH_RANGE = { min: 8, max: 20 } as const;
+export const MARKER_INDEX_MIN_HEIGHT = 8;
+
+/** Settings-slider range for every label font size (px) — marker captions, elevator badges,
+ *  teleport floor badges and marker indices share it. */
 export const TEXT_SIZE_RANGE = { min: 6, max: 32, step: 0.5 } as const;
+
+/** Text margin (px): how far a label's glyph ink must stay from its plate edge. Drives the overflow
+ *  warnings and auto-fit for every text; shared by all label-bearing consumers. */
+export const DEFAULT_TEXT_MARGIN = 1;
+export const TEXT_MARGIN_RANGE = { min: 0, max: 10, step: 0.5 } as const;

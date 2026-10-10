@@ -13,7 +13,7 @@ import type {
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
 import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
 import { propagate } from "./parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "./parameterLinksDefaults";
@@ -33,6 +33,7 @@ function markerSettings(style: MazeRenderStyle["startMarker"], text?: string): M
           textEnabled: false,
           textFontWeight: "bold" as const,
           textSize: DEFAULT_MARKER_TEXT_SIZE,
+          textMargin: DEFAULT_TEXT_MARGIN,
           textColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
         }
       : {}),
@@ -59,6 +60,7 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
   gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
   markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
+  markerTextMargin: DEFAULT_TEXT_MARGIN,
   markerTextFontWeight: "bold",
 };
 
@@ -168,25 +170,28 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
     textColor: canvas.floor.default,
     textFontWeight: "bold",
     textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
+    textMargin: DEFAULT_TEXT_MARGIN,
   },
 };
 
 /** "Marker indices" defaults (GitHub issue #471) — shared by both vector modes and
  * `projectExport/validateImageExport.ts`'s recovery defaults, same single-const convention as
  * `DEFAULT_TELEPORT_SETTINGS` etc. Disabled by default (opt-in decorative layer). Roman numerals
- * by default (stay legible at small font sizes). `height`/`offset`/`cornerRadius`/`paddingX` are
+ * by default (stay legible at small font sizes). `width`/`height`/`offset`/`cornerRadius`/`textSize` are
  * all in px (GitHub issue #681 — previously TILE_SIZE fractions); `borderWidth` and `gap` are also
- * whole pixels. A plate ~0.35 * TILE_SIZE tall whose center sits on the marker's bottom edge,
+ * whole pixels. A 16 x 14 px plate whose center sits on the marker's bottom edge,
  * lightly rounded corners, a 3px gap ring (follows "Shared style"'s `gapWidth` — not
  * pre-overridden), border color taken from the connection marker, a yellow accent plate with dark
  * text matching the elevator-badge palette. */
 export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
   enabled: false,
   labelStyle: "roman",
-  height: 0.35 * TILE_SIZE,
+  height: 14,
   offset: 0,
   cornerRadius: 0.03 * TILE_SIZE,
-  paddingX: 0.04 * TILE_SIZE,
+  width: 16,
+  textSize: 10,
+  textMargin: DEFAULT_TEXT_MARGIN,
   gap: 3,
   fillColor: 0xf0c900,
   textColor: canvas.floor.default,
@@ -194,7 +199,7 @@ export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
   borderColorFromMarker: true,
   borderWidthFromMarker: true,
   borderWidth: 2,
-  fontWeight: "bold",
+  textFontWeight: "bold",
   coverage: {
     singleFloorTeleport: false,
     crossFloorTeleport: true,
@@ -270,7 +275,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextFontWeight",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
@@ -309,8 +314,8 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     thickness: TILE_SIZE / 2,
     join: "round",
     renderStyle: "contour",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textColor: 0x2d2d2d },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textColor: 0x2d2d2d },
+    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
+    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0, text: "F", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },
     markerWidenPadding: 4,
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,
@@ -327,7 +332,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextFontWeight",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

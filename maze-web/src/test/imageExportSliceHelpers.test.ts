@@ -394,30 +394,10 @@ describe("registry format functions", () => {
     expect(new Set(rendered).size).toBe(styles.length);
   });
 
-  it("elevator badges and marker index use separate format functions for IndexLabelStyle, not one aliasing the other", () => {
-    // The rendered wording is intentionally identical across all three options in every current
-    // locale (GitHub issue #678: unified terminology) — what must hold is that each format function
-    // is backed by its own key set, so a future wording change to one doesn't silently affect the
-    // other. Pin that the two descriptors reference distinct functions.
-    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.labelType"].format;
-    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.labelStyle"].format;
-    expect(badgeFormat).not.toBe(indexFormat);
-  });
-
-  it("teleport floor badge reuses the elevator badges IndexLabelStyle wording, not marker index's", () => {
-    const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.labelType"].format;
-    const teleportFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["teleportFloorBadge.labelType"].format;
-    expect(teleportFormat("arabic")).toBe(badgeFormat("arabic"));
-  });
-
-  it("elevator badges and marker index use separate format functions for LabelFontWeight, not one aliasing the other", () => {
-    // Unlike IndexLabelStyle, LabelFontWeight's "regular"/"bold" wording happens to be identical
-    // between the two key sets in every current locale, so the assertion can't be "renders
-    // differently" here — instead it pins that the two descriptors reference distinct functions, so
-    // a future wording change to one key set can't accidentally also change the other's text.
+  it("elevator badges and marker index share the LabelFontWeight format function", () => {
     const badgeFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["elevatorBadges.textFontWeight"].format;
-    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.fontWeight"].format;
-    expect(badgeFormat).not.toBe(indexFormat);
+    const indexFormat = VECTOR_BY_WALLS_PARAM_REGISTRY["markerIndex.textFontWeight"].format;
+    expect(indexFormat("bold")).toBe(badgeFormat("bold"));
   });
 
   it("formatBoolean renders true/false distinctly", () => {

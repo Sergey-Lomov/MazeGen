@@ -6,7 +6,7 @@ import { indent, spacing } from "../../styles/theme";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
 import { normalizeMarkerGlyphInput, isValidMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import * as m from "~/paraglide/messages";
 
@@ -69,7 +69,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
    *  other field its registry doesn't model. */
   /** Which label set this group's text-size "Auto-fit" button fits (GitHub issue #707). */
   textFitKind?: "start" | "finish";
-  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textColor: P | null };
+  linkTargets: { shape: P | null; cornerStyle: P | null; size: P | null; fillColor: P | null; borderColor: P | null; borderWidth: P | null; gapWidth: P | null; textEnabled: P | null; textFontWeight: P | null; textSize: P | null; textMargin: P | null; textColor: P | null };
   /** Reads the caller's own generic sections-expanded record by id (GitHub issue #670 follow-up's
    *  `isExpanded`/`toggleSection` convention), scoped under this group's own `sectionId`. */
   isExpanded?: (id: string) => boolean;
@@ -112,9 +112,10 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
                           textFontWeight: settings.textFontWeight ?? "bold",
                           textColor: settings.textColor ?? 0x000000,
                           textSize: settings.textSize ?? DEFAULT_MARKER_TEXT_SIZE,
+                          textMargin: settings.textMargin ?? DEFAULT_TEXT_MARGIN,
                         }}
                         onChange={onChange}
-                        linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize }}
+                        linkTargets={{ textFontWeight: linkTargets.textFontWeight, textColor: linkTargets.textColor, textSize: linkTargets.textSize, textMargin: linkTargets.textMargin }}
                         priorityColors={priorityColors?.textColor}
                         defaultColor={defaultColors?.textColor}
                         field={fields.textColor}

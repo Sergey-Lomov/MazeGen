@@ -6,7 +6,6 @@ vi.mock("../wasm/mazeService", () => ({
 
 import { buildMarkerIndexLabels } from "../pixi/selectors/mazeSelectors";
 import type { ResolveMarkerEndpointVisual } from "../pixi/selectors/mazeSelectors/markerIndex";
-import { fitMarkerIndexFontSize } from "../pixi/renderers/MarkerIndexRenderer";
 import { formatIndexLabel } from "../pixi/renderers/indexLabel";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
@@ -220,17 +219,5 @@ describe("buildMarkerIndexLabels — coverage", () => {
       ...cover({ singleFloorTeleport: false, crossFloorTeleport: false }),
     }));
     expect(set.allLabelStrings).toEqual(["1", "2"]);
-  });
-});
-
-describe("fitMarkerIndexFontSize", () => {
-  it("scales with plate height and stays positive", () => {
-    expect(fitMarkerIndexFontSize(20)).toBeGreaterThan(0);
-    expect(fitMarkerIndexFontSize(40)).toBeGreaterThan(fitMarkerIndexFontSize(20));
-    expect(fitMarkerIndexFontSize(0)).toBeGreaterThanOrEqual(1);
-  });
-
-  it("keeps the text shorter than the plate height", () => {
-    expect(fitMarkerIndexFontSize(30)).toBeLessThan(30);
   });
 });

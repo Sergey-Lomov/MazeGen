@@ -5,7 +5,7 @@ import type { MarkerShape } from "../../pixi/renderers/types";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { LinkedSelectRow, LinkedSliderRow, LinkedColorRow } from "./LinkedRows";
 import { TILE_SIZE } from "../../pixi/constants";
-import { TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
+import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { TextFitKind } from "../../pixi/selectors/exportWarnings";
 import { AutoFitButton } from "./TextFitContext";
 import * as m from "~/paraglide/messages";
@@ -102,7 +102,7 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
   );
 }
 
-/** Shared text-style rows (GitHub issue #701) — font weight, text color and absolute font size
+/** Shared text-style rows (GitHub issue #701) — font weight, absolute font size, margin and text color
  *  (`TextStyleFields`, px within `TEXT_SIZE_RANGE`) for every label-bearing consumer: start/finish
  *  captions, elevator badges and teleport floor badges. Bare rows, like `MarkerAppearanceRows`. */
 export function TextStyleRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColor, field, autoFitKind }: {
@@ -127,15 +127,6 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         onChange={(textFontWeight) => onChange({ textFontWeight })}
         linkTarget={linkTargets.textFontWeight}
       />
-      <LinkedColorRow
-        label={m["image_export.vector_by_walls.marker_text_color"]()}
-        color={settings.textColor}
-        onChange={(textColor) => onChange({ textColor })}
-        priorityColors={priorityColors}
-        defaultColor={defaultColor}
-        field={field}
-        linkTarget={linkTargets.textColor}
-      />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_text_size"]()}
         value={settings.textSize}
@@ -146,6 +137,25 @@ export function TextStyleRows<P extends string>({ settings, onChange, linkTarget
         format={(v) => String(Math.round(v * 10) / 10)}
         linkTarget={linkTargets.textSize}
         trailingAction={autoFitKind && <AutoFitButton resolve={(ctx) => ctx.fitFor(autoFitKind)} onApply={(textSize) => onChange({ textSize })} />}
+      />
+      <LinkedSliderRow
+        label={m["image_export.vector_by_walls.marker_text_margin"]()}
+        value={settings.textMargin}
+        onChange={(textMargin) => onChange({ textMargin })}
+        min={TEXT_MARGIN_RANGE.min}
+        max={TEXT_MARGIN_RANGE.max}
+        step={TEXT_MARGIN_RANGE.step}
+        format={(v) => String(v)}
+        linkTarget={linkTargets.textMargin}
+      />
+      <LinkedColorRow
+        label={m["image_export.vector_by_walls.marker_text_color"]()}
+        color={settings.textColor}
+        onChange={(textColor) => onChange({ textColor })}
+        priorityColors={priorityColors}
+        defaultColor={defaultColor}
+        field={field}
+        linkTarget={linkTargets.textColor}
       />
     </>
   );

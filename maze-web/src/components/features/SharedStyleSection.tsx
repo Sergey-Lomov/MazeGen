@@ -8,7 +8,7 @@ import { Modal } from "../Modal";
 import { MarkerAppearanceRows } from "./MarkerFieldRows";
 import { LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { AutoFitButton } from "./TextFitContext";
-import { TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
+import { TEXT_SIZE_RANGE, TEXT_MARGIN_RANGE } from "../../pixi/renderConstants";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { PC } from "../../pixi/selectors/projectColorsSelector";
 import { ParameterLinksDialog } from "./ParameterLinksDialog";
@@ -187,6 +187,16 @@ export function SharedStyleSection<P extends string>({
           format={(v) => String(Math.round(v * 10) / 10)}
           linkTarget={"markerTextSize" as P}
           trailingAction={<AutoFitButton all resolve={(ctx) => ctx.fitAll()} onApply={(markerTextSize) => onChange({ markerTextSize })} />}
+        />
+        <LinkedSliderRow
+          label={m["image_export.vector_by_walls.marker_text_margin"]()}
+          value={settings.markerTextMargin}
+          onChange={(markerTextMargin) => onChange({ markerTextMargin })}
+          min={TEXT_MARGIN_RANGE.min}
+          max={TEXT_MARGIN_RANGE.max}
+          step={TEXT_MARGIN_RANGE.step}
+          format={(v) => String(v)}
+          linkTarget={"markerTextMargin" as P}
         />
       </div>
     </div>

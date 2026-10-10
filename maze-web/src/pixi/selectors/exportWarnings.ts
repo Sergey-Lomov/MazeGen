@@ -23,7 +23,8 @@ import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilder
 import { nearestCellCoord } from "../tessellationGeometry";
 import { textOverflows, type TextFitItem } from "../textFit";
 import { formatIndexLabel } from "../renderers/indexLabel";
-import { DEFAULT_MARKER_TEXT_SIZE } from "../renderConstants";
+import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
   buildColorVisibility, visibleColor, unownedColor,
   type ColorVisibilityContext, type VisibleColor,
@@ -47,6 +48,7 @@ export type ExportWarningId =
    *  in width or height (GitHub issue #707). One id per element kind so the message can name it. */
   | "marker_text_overflow"
   | "elevator_badge_text_overflow"
+  | "marker_index_text_overflow"
   | "teleport_badge_text_overflow"
   /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
    *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
@@ -632,7 +634,7 @@ function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cf
 
 /** Which size control a text label belongs to — one per independent font-size field (GitHub issue
  *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
-export type TextFitKind = "start" | "finish" | "elevator" | "teleport";
+export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex";
 
 /** Visibility context of a warning pass. Built from the *unscoped* graph (a floor-scoped edge list
  *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor); the
@@ -643,7 +645,7 @@ function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorB
   return buildColorVisibility({ nodes, edges, floors: [] }, settings);
 }
 
-type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle">;
+type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex">;
 
 type TextFitEntry = TextFitItem & {
   kind: TextFitKind;
@@ -667,13 +669,14 @@ function collectTextFitEntries(
   finish: number | null,
   resolveNodeLevel: ReturnType<typeof selectNodeLevelResolver>,
   displayFloorIndex: number,
+  unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
 ): TextFitEntry[] {
   const entries: TextFitEntry[] = [];
   const addMarker = (kind: "start" | "finish", id: number | null, marker: TextFitSettings["startMarker"]) => {
     if (id === null || !marker.text || marker.textEnabled === false) return;
     entries.push({
       kind, text: marker.text, fontWeight: marker.textFontWeight ?? "bold", shape: marker.shape, plateSize: marker.size,
-      fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, nodes: [id],
+      fontSize: marker.textSize ?? DEFAULT_MARKER_TEXT_SIZE, margin: marker.textMargin ?? DEFAULT_TEXT_MARGIN, nodes: [id],
     });
   };
   addMarker("start", start, settings.startMarker);
@@ -688,7 +691,7 @@ function collectTextFitEntries(
       for (const [i, floorIndex] of marker.targetFloorIndices.entries()) {
         entries.push({
           kind: "elevator", text: formatIndexLabel(floorIndex, badges.labelType), fontWeight: badges.textFontWeight,
-          shape: badges.shape, plateSize: badges.size, fontSize: badges.textSize, nodes: [marker.fromNode],
+          shape: badges.shape, plateSize: badges.size, fontSize: badges.textSize, margin: badges.textMargin, nodes: [marker.fromNode],
           crossFloorTargets: [{ nodeId: marker.fromNode, targetFloorIndex: marker.targetFloorIndices[i] }],
         });
       }
@@ -701,7 +704,7 @@ function collectTextFitEntries(
       const [x, y] = nearestCellCoord(point[0], point[1], cfg);
       entries.push({
         kind: "teleport", text: formatIndexLabel(floorIndex, badge.labelType), fontWeight: badge.textFontWeight,
-        shape: badge.shape, plateSize: badge.size, fontSize: badge.textSize, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
+        shape: badge.shape, plateSize: badge.size, fontSize: badge.textSize, margin: badge.textMargin, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
       });
     };
     for (const edge of teleportEdges) {
@@ -709,14 +712,31 @@ function collectTextFitEntries(
       if (edge.fromFloor !== undefined) addTeleport(edge.from, edge.fromFloor);
     }
   }
+
+  // Marker-index plates (GitHub issue #725): fixed-size rectangles, labels of the displayed floor.
+  const index = settings.markerIndex;
+  if (index.enabled) {
+    const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, NO_ENDPOINT_VISUAL);
+    for (const label of labels) {
+      const [x, y] = nearestCellCoord(label.pos[0], label.pos[1], cfg);
+      entries.push({
+        kind: "markerIndex", text: label.label, fontWeight: index.textFontWeight, shape: "circle", plateSize: 0,
+        plateWidth: index.width, plateHeight: index.height, fontSize: index.textSize, margin: index.textMargin, nodes: [], cells: [{ x, y, floorIndex: displayFloorIndex }],
+      });
+    }
+  }
   return entries;
 }
+
+/** Endpoint visual stand-in: the text-fit passes need the index strings and cells, not plate colors. */
+const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, borderWidth: 0, borderMatchColor: 0 });
 
 const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   start: "marker_text_overflow",
   finish: "marker_text_overflow",
   elevator: "elevator_badge_text_overflow",
   teleport: "teleport_badge_text_overflow",
+  markerIndex: "marker_index_text_overflow",
 };
 
 function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly TextFitEntry[]): void {
@@ -742,7 +762,7 @@ export function computeTextFitItemsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
 ): Record<TextFitKind, TextFitItem[]> {
-  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [] };
+  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [] };
   const resolveNodeLevel = selectNodeLevelResolver(nodes);
   for (const [index, floor] of floors.entries()) {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
@@ -754,8 +774,11 @@ export function computeTextFitItemsAcrossFloors(
     };
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
-    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index)) {
-      result[entry.kind].push({ text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize });
+    for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges })) {
+      result[entry.kind].push({
+        text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
+        plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, margin: entry.margin,
+      });
     }
   }
   return result;
@@ -1154,6 +1177,7 @@ export function computeVectorByWallsWarnings(
   pushTextOverflowWarnings(warnings, collectTextFitEntries(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, resolveNodeLevel,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
   ));
 
   const indistinguishable = computeElevatorIndistinguishableWarning(
@@ -1314,6 +1338,7 @@ export function computeVectorByCorridorsWarnings(
   pushTextOverflowWarnings(warnings, collectTextFitEntries(
     nodeById, edges, cfg, teleportEdges, settings, start, finish, selectNodeLevelResolver(allNodesForWarnings),
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
   ));
 
   const indistinguishable = computeElevatorIndistinguishableWarning(

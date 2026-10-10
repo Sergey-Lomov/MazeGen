@@ -142,7 +142,7 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     decorativeStairsArrowSize: 0.6,
     decorativeStairsOneWayArrowColor: 0x2a2a2a,
     decorativeStairsOneWayArrowSize: 0.6,
-    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, borderColor: 0x555555, borderWidth: 0, textColor: 0x666666, textFontWeight: "bold", textSize: 16.66 },
+    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, borderColor: 0x555555, borderWidth: 0, textColor: 0x666666, textFontWeight: "bold", textSize: 16.66, textMargin: 1 },
     ...overrides,
   };
 }

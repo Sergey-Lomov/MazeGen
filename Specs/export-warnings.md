@@ -138,12 +138,16 @@ drawn over the floor and the floor remains the relevant base surface even when a
   label does not fit its plate. Shared by both renderers. "Fits" means every point of the label's glyph-ink outline (boundary pixels of the baked MSDF
   atlas, `pixi/textFit.ts`; the glyph bounding rectangle when the atlas pixels can't be read),
   centred as the label is drawn, lies inside the plate's **actual shape** (circle, star, cross, ...;
-  the allowed size therefore depends on `shape`) of a plate 1 px smaller than `size` (safety margin).
+  the allowed size therefore depends on `shape`) shrunk by the label's text margin (`textMargin`, px per side,
+  0–10 in 0.5 steps, default 1; one field of `TextStyleFields` on every text, also in Shared style as `markerTextMargin`).
   Only labels that are actually drawn count:
   captions honor `textEnabled`/non-empty `text` and need their endpoint on the floor, elevator
   badges need `elevatorBadges.enabled`, teleport badges need a visible connector. One warning per
   id; hover highlights the offending nodes (captions, elevator markers, with cross-floor targets)
   or cells (teleport badges).
+- `marker_index_text_overflow` (GitHub issue #725) — a marker-index label does not fit its fixed
+  `width` x `height` plate (same ink-outline rule and `textMargin` as the other text overflow
+  warnings, against the rectangle). Only when `markerIndex.enabled`; hover highlights the plate cells.
 - `elevator_indistinguishable` — marker indices and elevator floor badges are both disabled and
   two distinct elevator shafts share one drawn cell.
 

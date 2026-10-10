@@ -285,6 +285,7 @@ export function TeleportSettingsSection<P extends string>({
     floorBadgeCornerStyle: P | null;
     floorBadgeGapWidth: P | null;
     floorBadgeTextSize: P | null;
+    floorBadgeTextMargin: P | null;
     floorBadgeTextFontWeight: P | null;
     groupCustomization: P | null;
   };
@@ -479,6 +480,7 @@ export function TeleportSettingsSection<P extends string>({
                 textFontWeight: linkTargets.floorBadgeTextFontWeight,
                 textColor: linkTargets.floorBadgeTextColor,
                 textSize: linkTargets.floorBadgeTextSize,
+                textMargin: linkTargets.floorBadgeTextMargin,
               }}
               priorityColors={floorBadgeTextColorPriority}
               defaultColor={floorBadgeTextColorDefault}

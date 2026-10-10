@@ -111,9 +111,10 @@ const TELEPORT_OVERRIDABLE = [
   "teleportFloorBadge.gapWidth",
   "teleportFloorBadge.textColor",
   "teleportFloorBadge.textSize",
+  "teleportFloorBadge.textMargin",
   "teleportFloorBadge.textFontWeight",
 ] as const;
-const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.shape", "elevatorBadges.fillColor", "elevatorBadges.borderColor", "elevatorBadges.borderWidth", "elevatorBadges.textColor", "elevatorBadges.textSize", "elevatorBadges.textFontWeight"] as const;
+const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.shape", "elevatorBadges.fillColor", "elevatorBadges.borderColor", "elevatorBadges.borderWidth", "elevatorBadges.textColor", "elevatorBadges.textSize", "elevatorBadges.textMargin", "elevatorBadges.textFontWeight"] as const;
 const MARKER_INDEX_OVERRIDABLE = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"] as const;
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
@@ -216,6 +217,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsStartMarkerTextEnabled: (textEnabled) => set(corridorsParam("startMarker.textEnabled", textEnabled)),
   setVectorByCorridorsStartMarkerTextFontWeight: (textFontWeight) => set(corridorsParam("startMarker.textFontWeight", textFontWeight)),
   setVectorByCorridorsStartMarkerTextSize: (textSize) => set(corridorsParam("startMarker.textSize", textSize)),
+  setVectorByCorridorsStartMarkerTextMargin: (textMargin) => set(corridorsParam("startMarker.textMargin", textMargin)),
   setVectorByCorridorsStartMarkerTextColor: (textColor) => set(corridorsParam("startMarker.textColor", textColor)),
   setVectorByCorridorsStartMarkerCornerStyle: (style) => set(corridorsParam("startMarker.cornerStyle", style)),
   setVectorByCorridorsStartMarkerFillColor: (color) => set(corridorsParam("startMarker.fillColor", color)),
@@ -229,6 +231,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsFinishMarkerTextEnabled: (textEnabled) => set(corridorsParam("finishMarker.textEnabled", textEnabled)),
   setVectorByCorridorsFinishMarkerTextFontWeight: (textFontWeight) => set(corridorsParam("finishMarker.textFontWeight", textFontWeight)),
   setVectorByCorridorsFinishMarkerTextSize: (textSize) => set(corridorsParam("finishMarker.textSize", textSize)),
+  setVectorByCorridorsFinishMarkerTextMargin: (textMargin) => set(corridorsParam("finishMarker.textMargin", textMargin)),
   setVectorByCorridorsFinishMarkerTextColor: (textColor) => set(corridorsParam("finishMarker.textColor", textColor)),
   setVectorByCorridorsFinishMarkerCornerStyle: (style) => set(corridorsParam("finishMarker.cornerStyle", style)),
   setVectorByCorridorsFinishMarkerFillColor: (color) => set(corridorsParam("finishMarker.fillColor", color)),
@@ -345,6 +348,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsStartMarkerTextEnabled: (textEnabled) => set(wallsParam("startMarker.textEnabled", textEnabled)),
   setVectorByWallsStartMarkerTextFontWeight: (textFontWeight) => set(wallsParam("startMarker.textFontWeight", textFontWeight)),
   setVectorByWallsStartMarkerTextSize: (textSize) => set(wallsParam("startMarker.textSize", textSize)),
+  setVectorByWallsStartMarkerTextMargin: (textMargin) => set(wallsParam("startMarker.textMargin", textMargin)),
   setVectorByWallsStartMarkerTextColor: (textColor) => set(wallsParam("startMarker.textColor", textColor)),
   setVectorByWallsStartMarkerCornerStyle: (style) => set(wallsParam("startMarker.cornerStyle", style)),
   setVectorByWallsStartMarkerFillColor: (color) => set(wallsParam("startMarker.fillColor", color)),
@@ -358,6 +362,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsFinishMarkerTextEnabled: (textEnabled) => set(wallsParam("finishMarker.textEnabled", textEnabled)),
   setVectorByWallsFinishMarkerTextFontWeight: (textFontWeight) => set(wallsParam("finishMarker.textFontWeight", textFontWeight)),
   setVectorByWallsFinishMarkerTextSize: (textSize) => set(wallsParam("finishMarker.textSize", textSize)),
+  setVectorByWallsFinishMarkerTextMargin: (textMargin) => set(wallsParam("finishMarker.textMargin", textMargin)),
   setVectorByWallsFinishMarkerTextColor: (textColor) => set(wallsParam("finishMarker.textColor", textColor)),
   setVectorByWallsFinishMarkerCornerStyle: (style) => set(wallsParam("finishMarker.cornerStyle", style)),
   setVectorByWallsFinishMarkerFillColor: (color) => set(wallsParam("finishMarker.fillColor", color)),

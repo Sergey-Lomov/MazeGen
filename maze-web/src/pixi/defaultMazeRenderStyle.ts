@@ -3,7 +3,7 @@ import type { VerticalConnectionStyle } from "./renderers/VerticalConnectionRend
 import type { MarkerStyle } from "./selectors/mazeSelectors";
 import { canvas } from "./colorTokens";
 import { TILE_SIZE } from "./constants";
-import { WALL_THICKNESS, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TELEPORT_BADGE_TEXT_SIZE } from "./renderConstants";
+import { WALL_THICKNESS, DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, DEFAULT_TELEPORT_BADGE_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "./renderConstants";
 
 export interface MazeRenderStyle {
   backgroundColor: number;
@@ -25,7 +25,7 @@ const DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK = 0x196c64;
 // read as one visual system regardless of type.
 const MARKER_SIZE = 17;
 const MARKER_BORDER_WIDTH = 3;
-const DEFAULT_TELEPORT_BADGE_SIZE = 10;
+const DEFAULT_TELEPORT_BADGE_SIZE = 12;
 const DEFAULT_ELEVATOR_BADGE_SIZE = 12;
 
 /** Canonical live-canvas style and source for matching image-export defaults. */
@@ -51,7 +51,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     // edge marker's own default `size` (now a diameter — GitHub issue #681 follow-up), an Arabic
     // digit in a floor-colored knockout, a 3px border (the shared `borderWidth` above).
     // `fillColor`/`borderColor` default to the connector color, matching the pre-#503 locked look.
-    floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: DEFAULT_TELEPORT_BADGE_SIZE, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: MARKER_BORDER_WIDTH, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_TELEPORT_BADGE_TEXT_SIZE },
+    floorBadge: { shape: "circle", cornerStyle: "round", gapWidth: 3, labelType: "arabic", size: DEFAULT_TELEPORT_BADGE_SIZE, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, borderWidth: MARKER_BORDER_WIDTH, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_TELEPORT_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
   },
   verticalConnections: {
     style: "abstract",
@@ -66,7 +66,7 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: TILE_SIZE * 0.44 },
     decorativeStairsArrowColor: canvas.floor.default, decorativeStairsArrowSize: 0.75,
     decorativeStairsOneWayArrowColor: DECORATIVE_STAIRS_ONE_WAY_ARROW_DARK, decorativeStairsOneWayArrowSize: 0.75,
-    elevatorBadges: { enabled: false, labelType: "arabic", size: DEFAULT_ELEVATOR_BADGE_SIZE, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, borderColor: 0xf0c900, borderWidth: 0, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE },
+    elevatorBadges: { enabled: false, labelType: "arabic", size: DEFAULT_ELEVATOR_BADGE_SIZE, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, borderColor: 0xf0c900, borderWidth: 0, textColor: canvas.floor.default, textFontWeight: "bold", textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN },
   },
   split: { nodeColors: [], specialShapes: true },
 };
