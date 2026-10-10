@@ -144,7 +144,9 @@ export type SplitPassage = {
  *  `"hex_triple_corridor"` — three nodes, one opposite-face pair plus two adjacent-face pairs
  *  (`splitPatternTitles.ts`'s `"triple_corridor"`). `"hex_diagonal_divider"` — two nodes owning
  *  opposite groups of three adjacent faces; it keeps the generic junction drawing but supplies
- *  dedicated graph/marker anchors for the two halves. */
+ *  dedicated graph/marker anchors for the two halves. Cairo's "cairo_bridge_2x3" keeps its
+ *  three-face fork as the underlay and replaces only the other node's two-face passage with the
+ *  dedicated bridge deck. */
 export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider" | "cairo_diagonal_divider" | "cairo_adjacent_divider" | "cairo_bridge_2x3";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
@@ -182,6 +184,8 @@ export type SplitSpecialShape =
        *  as a plain straight line so that node's own corridor isn't silently dropped just because
        *  this point's other two nodes are drawn as dedicated shapes instead of generic connectors. */
       throughLine?: [{ x: number; y: number }, { x: number; y: number }];
+      /** Node index drawn last when a tessellation-specific divider needs a stable overlay order. */
+      topNodeIndex?: number;
     }
   | {
       kind: "bridge";

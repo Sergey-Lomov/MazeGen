@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
+import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { buildSplitPointKeys } from "./split";
 
@@ -15,6 +15,15 @@ import { buildSplitPointKeys } from "./split";
 export type CorridorSegment = {
   v0: { x: number; y: number };
   v1: { x: number; y: number };
+  /** Centre of the actual shared face used as the corridor mouth for Cairo cells. */
+  faceMidpoint?: { x: number; y: number };
+  /** Unit normal to the shared face, pointing out of `v0`'s cell. */
+  faceNormal?: { x: number; y: number };
+  /** Real shared-face length, used by contour width clamping for Cairo's irregular pentagons. */
+  faceLength?: number;
+  /** Cairo cell polygons, used to keep a centre-anchored dead-end cap inside its own cell. */
+  cellVertices0?: { x: number; y: number }[];
+  cellVertices1?: { x: number; y: number }[];
   oneWayDir?: { dx: number; dy: number };
   fromNode: number;
   toNode: number;
@@ -98,9 +107,26 @@ export function buildCorridorSegments(
       // reaching all the way to the split cell's center — `buildSplitPassages`' own per-node share
       // (`SplitPassage.wallSegments[*].center`) picks up from there.
       let v1 = getCellCenter(nx, ny, cfg);
+      const needsFaceGeometry = neighborSplit || cfg.type.startsWith("cairo");
+      const sharedFace = needsFaceGeometry ? getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg) : undefined;
+      const faceMidpoint = sharedFace
+        ? { x: (sharedFace.v0.x + sharedFace.v1.x) / 2, y: (sharedFace.v0.y + sharedFace.v1.y) / 2 }
+        : undefined;
+      const faceLength = sharedFace
+        ? Math.hypot(sharedFace.v1.x - sharedFace.v0.x, sharedFace.v1.y - sharedFace.v0.y)
+        : undefined;
+      let faceNormal: { x: number; y: number } | undefined;
+      if (sharedFace && faceMidpoint && faceLength && faceLength > 0) {
+        let nx = -(sharedFace.v1.y - sharedFace.v0.y) / faceLength;
+        let ny = (sharedFace.v1.x - sharedFace.v0.x) / faceLength;
+        if (nx * (faceMidpoint.x - v0.x) + ny * (faceMidpoint.y - v0.y) < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        faceNormal = { x: nx, y: ny };
+      }
       if (neighborSplit) {
-        const seg = getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg);
-        if (seg) v1 = { x: (seg.v0.x + seg.v1.x) / 2, y: (seg.v0.y + seg.v1.y) / 2 };
+        if (faceMidpoint) v1 = faceMidpoint;
       }
 
       let oneWayDir: { dx: number; dy: number } | undefined;
@@ -111,7 +137,21 @@ export function buildCorridorSegments(
         if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
       }
 
-      result.push({ v0, v1, oneWayDir, fromNode: n.id, toNode: neighborNode.id, v1TouchesSplit: neighborSplit });
+      result.push({
+        v0,
+        v1,
+        ...(cfg.type.startsWith("cairo") && faceMidpoint && faceNormal ? {
+          faceMidpoint,
+          faceNormal,
+          faceLength,
+          cellVertices0: getCellVertices(n.x, n.y, cfg) ?? undefined,
+          cellVertices1: getCellVertices(nx, ny, cfg) ?? undefined,
+        } : {}),
+        oneWayDir,
+        fromNode: n.id,
+        toNode: neighborNode.id,
+        v1TouchesSplit: neighborSplit,
+      });
     }
   }
 
