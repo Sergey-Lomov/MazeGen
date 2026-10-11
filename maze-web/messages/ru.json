@@ -2086,6 +2086,7 @@
   "image_export.param_links.remove_link": "Удалить связь",
   "image_export.param_links.add_link": "Добавить связь",
   "image_export.param_links.breadcrumb_placeholder": "Поиск по параметрам...",
+  "image_export.param_links.picker_search_placeholder": "Поиск по параметрам...",
   "image_export.param_links.breadcrumb_back": "Назад",
   "image_export.param_links.breadcrumb_clear": "Очистить фильтр",
   "image_export.param_links.add_link_title": "Добавить связь",

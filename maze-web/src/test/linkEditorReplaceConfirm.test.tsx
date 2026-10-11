@@ -45,7 +45,7 @@ describe("LinkEditor cycle filtering", () => {
   });
 
   it("drops an already-picked source when a new target makes it cyclic", () => {
-    const onSave = renderEditor("b", "c", existing);
+    const onSave = renderEditor("b", null, existing);
     fireEvent.click(screen.getAllByText("Alpha")[0]);
     expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
     expect(onSave).not.toHaveBeenCalled();
@@ -137,5 +137,31 @@ describe("LinkEditor replace confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(different).not.toHaveBeenCalled();
     expect(screen.getByText(/already depends on "Alpha"/)).toBeTruthy();
+  });
+});
+
+// GitHub issue #732 — search field above each picker tree; target tree is locked while editing.
+describe("LinkEditor picker search and lock", () => {
+  it("filters the target tree by the typed query", () => {
+    renderEditor(null, null, []);
+    const [targetSearch] = screen.getAllByRole("textbox");
+    fireEvent.change(targetSearch, { target: { value: "gam" } });
+    expect(screen.queryByText("Alpha")).toBeNull();
+    expect(screen.getByText("Gamma")).toBeTruthy();
+  });
+
+  it("locks the target tree when editing: search disabled, clicks ignored, target stays selected", () => {
+    const onSave = renderEditor("a", "b", []);
+    const [targetSearch] = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(targetSearch.disabled).toBe(true);
+    fireEvent.click(screen.getAllByText("Gamma")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith("a", "b", undefined, undefined);
+  });
+
+  it("keeps the target tree interactive when adding a new link", () => {
+    renderEditor(null, null, []);
+    const [targetSearch] = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(targetSearch.disabled).toBe(false);
   });
 });

@@ -727,10 +727,11 @@ not on the dialog's main screen — three side-by-side columns: two wide hierarc
 pickers (`ParamPicker`, built by `buildPickerTree` from each path's `registry[path].group` segments,
 mirroring the settings panel's own section/subsection nesting rather than a flat alphabetical list)
 for **Target**/**Source**, and a narrower third column for whichever modifier chain the picked pair's
-`ParamType` actually supports. Column titles and group folder rows both use the same `typography.body`
+`ParamType` actually supports. Each picker has a search input above its tree (GitHub issue #732; `filterPickerTree`): a case-insensitive substring match on a leaf's own label or any ancestor group's label; surviving leaves keep their full parent group chain, and while a query is typed every remaining group is force-expanded (the manual expand state is kept and restored once the query is cleared). 
+Column titles and group folder rows both use the same `typography.body`
 header style `SectionHeader`/`SubsectionHeader` use for the render-mode settings panel's own section
 titles — no bold, no caption-level or title-level token. The left picker chooses **Target** from every
-path in the registry; picking one filters the right **Source** picker down to same-`ParamType` paths
+path in the registry (locked while editing an existing link — GitHub issue #732 follow-up: `ParamPicker`'s `locked` prop disables its search field and ignores clicks on rows/groups, the edited target stays highlighted with its groups expanded, other rows dimmed); picking one filters the right **Source** picker down to same-`ParamType` paths
 excluding that target — mirrors the engine's own `source`/`target`-must-match-type and
 at-most-one-incoming-link rules. The third column shows a status hint (`modifiersHint`/
 `colorModifiersHint`, e.g. "pick a dependent parameter first" / "not available for this parameter

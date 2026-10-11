@@ -191,6 +191,40 @@ export function allLeavesDisabled<P extends string>(node: PickerNode<P>, disable
   return node.children.every((child) => allLeavesDisabled(child, disabledPaths));
 }
 
+/** Filters a picker tree by a case-insensitive substring `query` (GitHub issue #732) — a leaf is
+ *  kept when its own label or any ancestor group's label matches, and groups are kept only while
+ *  they still hold a kept leaf, so every surviving leaf stays under its full parent chain. A blank
+ *  query returns the tree unchanged. */
+export function filterPickerTree<P extends string>(tree: PickerNode<P>[], query: string): PickerNode<P>[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return tree;
+  function walk(nodes: PickerNode<P>[], ancestorMatches: boolean): PickerNode<P>[] {
+    const result: PickerNode<P>[] = [];
+    for (const node of nodes) {
+      const selfMatches = ancestorMatches || node.label.toLowerCase().includes(needle);
+      if (node.kind === "leaf") {
+        if (selfMatches) result.push(node);
+        continue;
+      }
+      const children = walk(node.children, selfMatches);
+      if (children.length > 0) result.push({ ...node, children });
+    }
+    return result;
+  }
+  return walk(tree, false);
+}
+
+/** Every group's `groupKey` in `tree`, recursively — used to force-expand a filtered tree. */
+function allGroupKeys<P extends string>(tree: PickerNode<P>[]): Set<string> {
+  const keys = new Set<string>();
+  for (const node of tree) {
+    if (node.kind !== "group") continue;
+    keys.add(node.groupKey);
+    for (const key of allGroupKeys(node.children)) keys.add(key);
+  }
+  return keys;
+}
+
 /** Resolves `buildPickerTree`'s nodes down to the group addressed by `path` (empty = root) —
  *  returns that group's own children (sub-groups and leaves), or `null` if `path` no longer
  *  matches any group (e.g. it pointed at what's now a leaf, or links changed underneath it). */
@@ -369,6 +403,7 @@ function ParamPicker<P extends string>({
   onPick,
   activePaths,
   disabledPaths,
+  locked,
 }: {
   paths: P[];
   registry: Record<P, ParamDescriptor>;
@@ -381,8 +416,15 @@ function ParamPicker<P extends string>({
   /** Leaves shown but not pickable (GitHub issue #721) — dimmed, with a cycle icon and a tooltip
    *  on the whole row explaining that picking them would create a cyclic dependency. */
   disabledPaths?: Set<P>;
+  /** GitHub issue #732 follow-up — whole picker read-only: search input disabled, no row or group
+   *  can be clicked. The selected leaf stays highlighted (its groups pre-expanded). Used for the
+   *  dependent parameter while editing an existing link. */
+  locked?: boolean;
 }) {
-  const tree = buildPickerTree(paths, registry);
+  const [query, setQuery] = useState("");
+  const searching = query.trim() !== "";
+  const tree = filterPickerTree(buildPickerTree(paths, registry), query);
+  const forcedExpanded = searching ? allGroupKeys(tree) : null;
   const [expanded, setExpanded] = useState<Set<string>>(() => expandedGroupKeysFor(selected, registry));
 
   useEffect(() => {
@@ -407,7 +449,7 @@ function ParamPicker<P extends string>({
         return (
           <div
             key={node.path}
-            className={disabled ? undefined : "hoverable"}
+            className={disabled || locked ? undefined : "hoverable"}
             title={disabled ? m["image_export.param_links.cycle_hint"]() : undefined}
             aria-disabled={disabled || undefined}
             style={{
@@ -415,9 +457,10 @@ function ParamPicker<P extends string>({
               paddingLeft: depth * indent.tree + 4,
               ...(inactive ? styles.pickerRowInactive : {}),
               ...(disabled ? styles.pickerRowDisabled : {}),
+              ...(locked && node.path !== selected ? styles.pickerRowLocked : {}),
               ...(node.path === selected ? styles.pickerRowSelected : {}),
             }}
-            onClick={disabled ? undefined : () => onPick(node.path)}
+            onClick={disabled || locked ? undefined : () => onPick(node.path)}
           >
             {node.label}
             {disabled && (
@@ -433,20 +476,21 @@ function ParamPicker<P extends string>({
           </div>
         );
       }
-      const isExpanded = expanded.has(node.groupKey);
+      const isExpanded = forcedExpanded?.has(node.groupKey) ?? expanded.has(node.groupKey);
       const groupInactive = allLeavesInactive(node, activePaths);
       const groupDisabled = allLeavesDisabled(node, disabledPaths);
       return (
         <div key={node.groupKey}>
           <div
-            className="hoverable"
+            className={locked ? undefined : "hoverable"}
             style={{
               ...styles.pickerGroupRow,
+              ...(locked ? styles.pickerRowLocked : {}),
               paddingLeft: depth * indent.tree + 4,
               ...(groupInactive ? styles.pickerRowInactive : {}),
               ...(groupDisabled ? { color: styles.pickerRowDisabled.color } : {}),
             }}
-            onClick={() => toggle(node.groupKey)}
+            onClick={locked ? undefined : () => toggle(node.groupKey)}
           >
             {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
             {node.label}
@@ -467,7 +511,20 @@ function ParamPicker<P extends string>({
     });
   }
 
-  return <div style={styles.pickerList}>{renderNodes(tree, 0)}</div>;
+  return (
+    <>
+      <input
+        type="text"
+        value={query}
+        disabled={locked}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={m["image_export.param_links.picker_search_placeholder"]()}
+        aria-label={m["image_export.param_links.picker_search_placeholder"]()}
+        style={styles.pickerSearch}
+      />
+      <div style={styles.pickerList}>{renderNodes(tree, 0)}</div>
+    </>
+  );
 }
 
 /** Modifier operator options for one chain step's `SelectRow` — map 1:1 onto `ParamModifier["op"]`
@@ -801,7 +858,7 @@ export function LinkEditor<P extends string>({
             <div style={styles.editorColumns}>
               <div style={{ ...styles.editorColumn, ...styles.wideColumn }}>
                 <div style={styles.editorColumnTitle}>{m["image_export.param_links.target_label"]()}</div>
-                <ParamPicker paths={visiblePaths} registry={registry} selected={target} onPick={handleTargetPick} activePaths={activePaths} />
+                <ParamPicker paths={visiblePaths} registry={registry} selected={target} onPick={handleTargetPick} activePaths={activePaths} locked={initialTarget !== null} />
               </div>
               <div style={{ ...styles.editorColumn, ...styles.wideColumn }}>
                 <div style={styles.editorColumnTitle}>{m["image_export.param_links.source_label"]()}</div>
@@ -1183,6 +1240,7 @@ const styles: Record<string, React.CSSProperties> = {
   // own — an opaque background matching the dialog's (`Modal`'s `ui.bg.panel`) is what actually
   // clips them instead of letting them bleed through underneath (GitHub issue #645 follow-up).
   editorColumnTitle: { ...typography.body, position: "sticky" as const, top: 0, background: ui.bg.panel, paddingBottom: spacing.elementsGap, zIndex: 1 },
+  pickerSearch: { ...sharedStyles.inputSm, boxSizing: "border-box" as const, width: "100%", flexShrink: 0 },
   pickerList: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   pickerRow: { ...typography.body, cursor: "default", padding: "2px 4px", borderRadius: 3 },
   // GitHub issue #688 — dims a hidden leaf/group row so it reads as inactive at a glance, on top of
@@ -1190,6 +1248,7 @@ const styles: Record<string, React.CSSProperties> = {
   // shows its selection highlight.
   pickerRowInactive: { ...muted(typography.body) },
   pickerRowDisabled: { ...disabledText(typography.body), cursor: "not-allowed" },
+  pickerRowLocked: { opacity: 0.6 },
   pickerRowSelected: { background: ui.state.selected },
   pickerGroupRow: {
     ...typography.body,

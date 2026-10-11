@@ -2084,6 +2084,7 @@
   "image_export.param_links.remove_link": "Remove link",
   "image_export.param_links.add_link": "Add link",
   "image_export.param_links.breadcrumb_placeholder": "Search parameters...",
+  "image_export.param_links.picker_search_placeholder": "Search parameters...",
   "image_export.param_links.breadcrumb_back": "Back",
   "image_export.param_links.breadcrumb_clear": "Clear filter",
   "image_export.param_links.add_link_title": "Add link",

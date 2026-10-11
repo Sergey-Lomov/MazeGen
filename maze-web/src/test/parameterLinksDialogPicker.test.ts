@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allLeavesDisabled, allLeavesInactive, type PickerNode } from "../components/features/ParameterLinksDialog";
+import { allLeavesDisabled, allLeavesInactive, filterPickerTree, type PickerNode } from "../components/features/ParameterLinksDialog";
 
 type P = "a" | "b" | "c";
 
@@ -64,5 +64,26 @@ describe("allLeavesDisabled", () => {
 
   it("is false for an empty group", () => {
     expect(allLeavesDisabled(group("empty", []), new Set<P>(["a"]))).toBe(false);
+  });
+});
+
+describe("filterPickerTree", () => {
+  it("returns the tree unchanged for a blank query", () => {
+    const tree = [group("g", [leaf("a")])];
+    expect(filterPickerTree(tree, "  ")).toBe(tree);
+  });
+
+  it("keeps matching leaves under their parent groups and drops the rest", () => {
+    const tree = [group("g", [leaf("a"), leaf("b")]), group("h", [leaf("c")])];
+    expect(filterPickerTree(tree, "B")).toEqual([group("g", [leaf("b")])]);
+  });
+
+  it("keeps all leaves of a group whose own label matches", () => {
+    const tree = [group("g", [leaf("a"), leaf("b")])];
+    expect(filterPickerTree(tree, "g")).toEqual(tree);
+  });
+
+  it("returns empty when nothing matches", () => {
+    expect(filterPickerTree([group("g", [leaf("a")])], "zzz")).toEqual([]);
   });
 });
