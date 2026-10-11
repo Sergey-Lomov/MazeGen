@@ -60,6 +60,8 @@ export function LinkStatusIcon<P extends string>({
   onAddLink,
   unsupportedHint,
   activePaths,
+  onToggleLink,
+  alwaysVisible = false,
 }: {
   target: P | null;
   links: ParamLink<P>[];
@@ -72,8 +74,15 @@ export function LinkStatusIcon<P extends string>({
   unsupportedHint?: string;
   /** Paths currently shown in the settings panel (GitHub issue #670), passed through to `LinkEditor`. */
   activePaths: Set<P>;
+  /** Read-only "group mode" (GitHub issue #729): the links are derived, not editable — a click on a
+   *  field with a driving link calls this (break when active, restore when disabled) instead of
+   *  opening `LinkEditor`/`onSetLinkEnabled`; a field without one does nothing. */
+  onToggleLink?: () => void;
+  /** Ignores `linkIconVisibility` — the icon always renders (group mode, GitHub issue #729). */
+  alwaysVisible?: boolean;
 }) {
-  const visibility = useMazeStore((s) => s.linkIconVisibility);
+  const storeVisibility = useMazeStore((s) => s.linkIconVisibility);
+  const visibility = alwaysVisible ? "always" : storeVisibility;
   const [editing, setEditing] = useState(false);
   const [showUnsupportedInfo, setShowUnsupportedInfo] = useState(false);
 
@@ -125,7 +134,9 @@ export function LinkStatusIcon<P extends string>({
   }
 
   function handleClick() {
-    if (incoming === null) {
+    if (onToggleLink) {
+      if (incoming !== null) onToggleLink();
+    } else if (incoming === null) {
       setEditing(true);
     } else if (incoming.enabled) {
       setEditing(true);
@@ -154,7 +165,15 @@ export function LinkStatusIcon<P extends string>({
     const line = m["link_status.outgoing_line"]({ target: hierarchicalLabel(link.target) });
     tooltipLines.push(link.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`);
   }
-  if (incoming === null) tooltipLines.push(m["link_status.hint_click_to_link"]());
+  if (onToggleLink) {
+    tooltipLines.push(
+      incoming === null
+        ? m["link_status.hint_group_no_link"]()
+        : incoming.enabled
+          ? m["link_status.hint_group_break"]()
+          : m["link_status.hint_group_restore"](),
+    );
+  } else if (incoming === null) tooltipLines.push(m["link_status.hint_click_to_link"]());
   else if (incoming.enabled) tooltipLines.push(m["link_status.hint_click_to_edit"]());
   else tooltipLines.push(m["link_status.hint_click_to_enable"]());
   const tooltip = tooltipLines.join("\n");

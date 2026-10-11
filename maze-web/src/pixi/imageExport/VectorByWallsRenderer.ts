@@ -18,6 +18,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
 import { exactCellBounds } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
+import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
 import { getCellHighlightInset } from "../cellHighlightGeometry";
@@ -492,7 +493,7 @@ export class VectorByWallsRenderer {
     rawEndpoints: { start: number | null; finish: number | null },
     teleportEdges: TeleportEdge[],
   ): Record<string, TeleportGroupOverride> {
-    const settings = state.vectorByWallsSettings;
+    const settings = withResolvedGroupOverrides(state.vectorByWallsSettings);
     if (!settings.teleportGroupCustomization) return settings.teleportGroupOverrides;
     return resolveRendererGroupOverrides(buildTeleportGroups(teleportEdges), settings.teleportGroupOverrides, {
       nodes: state.nodes, edges: state.edges, cfg: state.activeTessellationConfig, floors: state.floors,

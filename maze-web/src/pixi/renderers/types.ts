@@ -426,8 +426,18 @@ export type TeleportLineStyle = {
  *  the #503 follow-up — this group's own cross-floor badge fill *and* border alike, in place of the
  *  base style's `floorBadge.fillColor`/`borderColor`. One swatch, not several, since a mismatched
  *  border/connector/badge color on the same group reads as a mistake rather than a deliberate
- *  choice. */
-export type TeleportGroupOverride = { fillColor?: number; borderColor?: number; shape?: MarkerShape };
+ *  choice.
+ *
+ *  `linkBroken` (GitHub issue #729) marks a role whose inherited parameter link (the common marker
+ *  parameter's incoming link, rebound to this group — see `teleportGroupLinks.ts`) is broken for this
+ *  group: the role then never derives its value from the link. Only `true` entries are stored. */
+export type TeleportGroupRole = "fillColor" | "borderColor" | "shape";
+export type TeleportGroupOverride = {
+  fillColor?: number;
+  borderColor?: number;
+  shape?: MarkerShape;
+  linkBroken?: Partial<Record<TeleportGroupRole, boolean>>;
+};
 
 export type LockEntry = {
   x: number;

@@ -20,7 +20,7 @@ export function markLinked<S>(settings: S): Linked<S> {
  *  (color, GitHub issue #647) — to `value` copied from its `source`. The two are mutually exclusive
  *  (a link's `source`/`target` share one `ParamType`), so at most one chain is ever set; neither set
  *  means a pure equality link. */
-function applyLinkChain<P extends string>(link: ParamLink<P>, value: unknown): unknown {
+export function applyLinkChain<P extends string>(link: ParamLink<P>, value: unknown): unknown {
   if (link.modifiers) return applyModifiers(value as number, link.modifiers);
   if (link.colorModifiers) return applyColorModifiers(value as number, link.colorModifiers);
   return value;

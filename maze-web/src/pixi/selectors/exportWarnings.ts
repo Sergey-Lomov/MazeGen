@@ -29,6 +29,7 @@ import {
   buildColorVisibility, visibleColor, unownedColor,
   type ColorVisibilityContext, type VisibleColor,
 } from "./colorFieldRegistry";
+import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
@@ -1012,12 +1013,13 @@ export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
   cfg: TessellationConfig,
-  settings: VectorByWallsSettings,
+  rawSettings: VectorByWallsSettings,
   start: number | null,
   finish: number | null,
   unscopedNodes: NodeDto[] = nodes,
   teleportFloorContext?: TeleportFloorContext,
 ): ExportWarning[] {
+  const settings = withResolvedGroupOverrides(rawSettings);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
   const allNodes = Array.from(nodeById.values());
@@ -1202,12 +1204,13 @@ export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
   cfg: TessellationConfig,
-  settings: VectorByCorridorsSettings,
+  rawSettings: VectorByCorridorsSettings,
   start: number | null,
   finish: number | null,
   unscopedNodesOrContext?: NodeDto[] | TeleportFloorContext,
   allNodesForWarnings: NodeDto[] = Array.isArray(unscopedNodesOrContext) ? unscopedNodesOrContext : nodes,
 ): ExportWarning[] {
+  const settings = withResolvedGroupOverrides(rawSettings);
   const teleportFloorContext = Array.isArray(unscopedNodesOrContext) ? undefined : unscopedNodesOrContext;
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);

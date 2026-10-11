@@ -1,4 +1,5 @@
 import type { MazeState } from "../../store/storeTypes";
+import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../../store/imageExportTypes";
 import type { EdgeDto } from "../../wasm/types";
 import { splitSlotColor } from "../colorUtils";
@@ -78,7 +79,8 @@ export interface ColorVisibilityMaze {
   floors: MazeState["floors"];
 }
 
-export function buildColorVisibility(maze: ColorVisibilityMaze, s: ExportSettings): ColorVisibilityContext {
+export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: ExportSettings): ColorVisibilityContext {
+  const s = withResolvedGroupOverrides(rawSettings);
   const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs);
   const walls = "verticalStyle" in s;
   return {
@@ -373,8 +375,9 @@ export function writeColorField(ctx: ColorVisibilityContext, settings: ExportSet
     case "teleportGroup": {
       const override = settings.teleportGroupOverrides[sortedGroupKeys(ctx)[parsed.index]];
       if (!override) return false;
-      if (parsed.role === "fill") override.fillColor = color;
-      else override.borderColor = color;
+      const role = parsed.role === "fill" ? "fillColor" : "borderColor";
+      override[role] = color;
+      override.linkBroken = { ...override.linkBroken, [role]: true };
       return true;
     }
     case "static": {

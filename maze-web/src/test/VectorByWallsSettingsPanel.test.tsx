@@ -554,6 +554,31 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(overrides[key].fillColor).toBe(distributeOklchHues(fillColor, 1)[0]);
     });
 
+    it("disables the common connector color row with an explanatory tooltip while group customization is on", () => {
+      const hint = m["image_export.vector_by_walls.teleport_group_secondary_color_hint"]();
+      const base = {
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" as const },
+          { from: 1, to: 0, kind: "teleport" as const },
+        ],
+      };
+      const settings = { ...useMazeStore.getState().vectorByWallsSettings, teleportConnectorStyle: "straight" as const };
+      useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: true } });
+      const { unmount } = render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      expect(document.querySelectorAll(`[title="${hint}"]`).length).toBeGreaterThan(0);
+      unmount();
+
+      useMazeStore.setState({ ...base, vectorByWallsSettings: { ...settings, teleportGroupCustomization: false } });
+      render(<VectorByWallsSettingsPanel />);
+      expandTeleportSubsections();
+      expect(document.querySelectorAll(`[title="${hint}"]`)).toHaveLength(0);
+    });
+
     it("hides the auto buttons while group customization is off", () => {
       useMazeStore.setState({
         nodes: [
@@ -586,7 +611,7 @@ describe("VectorByWallsSettingsPanel", () => {
       twoWayTeleportState();
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
-      expect(screen.getByText(m["image_export.vector_by_walls.teleport_group_title"]({ index: 1 }))).toBeTruthy();
+      expect(screen.getByText("#1")).toBeTruthy();
       expect(screen.getByText("0:0")).toBeTruthy();
       expect(screen.getByText("5:5")).toBeTruthy();
       expect(screen.getByText("<->")).toBeTruthy();
@@ -597,7 +622,7 @@ describe("VectorByWallsSettingsPanel", () => {
       render(<VectorByWallsSettingsPanel />);
       expandTeleportSubsections();
       const hovered = () => useMazeStore.getState().hoveredTeleportNodeIds;
-      fireEvent.mouseEnter(screen.getByText(m["image_export.vector_by_walls.teleport_group_title"]({ index: 1 })));
+      fireEvent.mouseEnter(screen.getByText("#1"));
       expect(hovered()).toEqual([0, 1]);
       fireEvent.mouseEnter(screen.getByText("0:0"));
       expect(hovered()).toEqual([0]);
@@ -605,7 +630,7 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(hovered()).toEqual([1]);
       fireEvent.mouseEnter(screen.getByText("<->"));
       expect(hovered()).toEqual([0, 1]);
-      fireEvent.mouseLeave(screen.getByText(m["image_export.vector_by_walls.teleport_group_title"]({ index: 1 })));
+      fireEvent.mouseLeave(screen.getByText("#1"));
       expect(hovered()).toBeNull();
     });
 
@@ -613,18 +638,7 @@ describe("VectorByWallsSettingsPanel", () => {
       twoWayTeleportState();
       render(<VectorByWallsSettingsPanel />);
       expect(screen.queryByText(m["image_export.vector_by_walls.teleport_arrow_mode"]())).toBeNull();
-      expect(screen.queryByText(m["image_export.vector_by_walls.teleport_group_title"]({ index: 1 }))).toBeNull();
-    });
-
-    it("the group's reset button clears its overrides", () => {
-      twoWayTeleportState();
-      render(<VectorByWallsSettingsPanel />);
-      expandTeleportSubsections();
-      const select = document.querySelector('select[name="teleport-group-0-shape"]')!;
-      fireEvent.change(select, { target: { value: "circle" } });
-      expect(Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)).toHaveLength(1);
-      fireEvent.click(screen.getByTitle(m["image_export.vector_by_walls.teleport_group_reset"]()));
-      expect(Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)).toHaveLength(0);
+      expect(screen.queryByText("#1")).toBeNull();
     });
 
     it("collapsing the Group customization subsection hides the group cells and clears the hover", () => {
@@ -634,7 +648,7 @@ describe("VectorByWallsSettingsPanel", () => {
       fireEvent.mouseEnter(screen.getByText("0:0"));
       expect(useMazeStore.getState().hoveredTeleportNodeIds).not.toBeNull();
       fireEvent.click(screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]()));
-      expect(screen.queryByText(m["image_export.vector_by_walls.teleport_group_title"]({ index: 1 }))).toBeNull();
+      expect(screen.queryByText("#1")).toBeNull();
       expect(useMazeStore.getState().hoveredTeleportNodeIds).toBeNull();
     });
 

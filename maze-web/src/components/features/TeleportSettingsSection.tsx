@@ -1,8 +1,8 @@
 import { useColorVisibility } from "../ColorVisibilityContext";
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
+import type { MarkerShape, TeleportGroupOverride, TeleportGroupRole, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { PC, type ProjectColorEntry, type ColorField } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing, ui, typography } from "../../styles/theme";
@@ -13,6 +13,10 @@ import { SubsectionHeader } from "../SectionHeader";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
+import { useLinkContext } from "./LinkContext";
+import { buildGroupLinks, groupRolePath, isGroupRoleLinked, resolveGroupOverrides } from "../../store/teleportGroupLinks";
+import { LinkStatusIcon } from "../LinkStatusIcon";
+import type { ParamDescriptor, ParamLink } from "../../store/parameterLinks";
 import type { TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import { buildProjectTeleportGroups } from "../../pixi/selectors/projectTeleportGroups";
 import { endpointBubble } from "../../pixi/postEditCommandLabels";
@@ -48,7 +52,7 @@ export function useTeleportGroupsAndCollisions(
   rawEdges: EdgeDto[],
   cfg: TessellationConfig,
   floors: { id: string }[],
-  settings: TeleportSettingsFields,
+  settings: TeleportSettingsFields & { links: ParamLink<string>[] },
   start: number | null,
   finish: number | null,
 ): { teleportGroups: TeleportGroup[]; teleportCollisionKeys: Set<string> } {
@@ -61,8 +65,9 @@ export function useTeleportGroupsAndCollisions(
 
   const teleportCollisionKeys = useMemo(() => {
     if (settings.teleportConnectorStyle !== "none") return new Set<string>();
+    const effective = resolveGroupOverrides(settings);
     const resolved = teleportGroups.map((g) => {
-      const o = settings.teleportGroupOverrides[g.key];
+      const o = effective[g.key];
       return `${o?.fillColor ?? settings.teleportMarker.fillColor}:${o?.borderColor ?? settings.teleportMarker.borderColor}:${o?.shape ?? settings.teleportMarker.shape}`;
     });
     const counts = new Map<string, number>();
@@ -72,7 +77,7 @@ export function useTeleportGroupsAndCollisions(
       if ((counts.get(resolved[i]) ?? 0) > 1) collisions.add(g.key);
     });
     return collisions;
-  }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.teleportMarker.fillColor, settings.teleportMarker.borderColor, settings.teleportMarker.shape]);
+  }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.links, settings.teleportMarker.fillColor, settings.teleportMarker.borderColor, settings.teleportMarker.shape]);
 
   return { teleportGroups, teleportCollisionKeys };
 }
@@ -94,6 +99,9 @@ function TeleportGroupCell({
   group,
   index,
   override,
+  effective,
+  links,
+  defaultShape,
   defaultFillColor,
   defaultBorderColor,
   hasCollision,
@@ -103,11 +111,17 @@ function TeleportGroupCell({
 }: {
   group: TeleportGroup;
   index: number;
+  /** Stored override (explicit values + `linkBroken` flags). */
   override: TeleportGroupOverride | undefined;
+  /** Resolved override (explicit, else link-derived, else unset = common) — what the group actually draws. */
+  effective: TeleportGroupOverride | undefined;
+  /** Links of the render mode — the common marker parameters' incoming links drive each role (GitHub issue #729). */
+  links: ParamLink<string>[];
+  defaultShape: MarkerShape;
   defaultFillColor: number;
   defaultBorderColor: number;
   hasCollision: boolean;
-  onChange: (patch: TeleportGroupOverride | null) => void;
+  onChange: (patch: TeleportGroupOverride) => void;
   /** Every *other* group's own override colors (fill + border alike), in group order (GitHub issue
    *  #503 follow-up) — listed after this group's own other-role color, before the common teleport
    *  colors. */
@@ -117,7 +131,41 @@ function TeleportGroupCell({
 }) {
   const setHovered = useMazeStore((s) => s.setHoveredTeleportNodeIds);
   const { nodeById, multiFloor, splitCtx } = usePostEditSplitLabelContext();
-  const hasOverride = override !== undefined && Object.keys(override).length > 0;
+  const fillColor = effective?.fillColor ?? defaultFillColor;
+  const borderColor = effective?.borderColor ?? defaultBorderColor;
+  const { registry } = useLinkContext<string>();
+  const groupLinks = useMemo(() => buildGroupLinks(links, override), [links, override]);
+  // Virtual registry: the group's own role parameters, labelled after the common marker's ones, so the
+  // icon's tooltip names "Group N / <parameter>" for a rebound source.
+  const groupRegistry = useMemo(() => {
+    const groupName = m["image_export.vector_by_walls.teleport_group_title"]({ index: index + 1 });
+    const roles = [["shape", "teleportMarker.shape"], ["fillColor", "teleportMarker.fillColor"], ["borderColor", "teleportMarker.borderColor"]] as const;
+    const reg: Record<string, ParamDescriptor> = { ...registry };
+    for (const [role, commonPath] of roles) {
+      const common = registry[commonPath];
+      if (!common) continue;
+      // The group's border is its "secondary" color (it also drives connectors and floor badges).
+      reg[groupRolePath(role)] = { ...common, group: [groupName], ...(role === "borderColor" ? { label: m["image_export.vector_by_walls.teleport_group_secondary_color_label"]() } : {}) };
+    }
+    return reg;
+  }, [registry, index]);
+  const noop = () => {};
+  const activePaths = useMemo(() => new Set<string>(), []);
+  const linkToggle = (role: TeleportGroupRole, currentValue: number | MarkerShape | undefined) => (
+    <LinkStatusIcon
+      target={groupRolePath(role)}
+      links={groupLinks}
+      registry={groupRegistry}
+      onSetLinkEnabled={noop}
+      onAddLink={noop}
+      activePaths={activePaths}
+      // Break keeps the current look as an explicit value; restore clears it so the link takes over again.
+      alwaysVisible
+      onToggleLink={() => {
+        onChange({ [role]: isGroupRoleLinked(override, role) ? currentValue : undefined } as TeleportGroupOverride);
+      }}
+    />
+  );
 
   // A cell that unmounts while hovered (section collapsed, customization switched off) would
   // otherwise leave its canvas highlight stuck on.
@@ -127,77 +175,69 @@ function TeleportGroupCell({
 
   return (
     <div style={styles.groupCell} onMouseEnter={() => setHovered(allNodeIds)} onMouseLeave={() => setHovered(null)}>
-      <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
-        <span style={typography.body}>{m["image_export.vector_by_walls.teleport_group_title"]({ index: index + 1 })}</span>
-        <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
-          {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
-        </span>
-        <span style={styles.groupRowSpacer} />
-        <button
-          type="button"
-          className="hoverable"
-          title={m["image_export.vector_by_walls.teleport_group_reset"]()}
-          aria-label={m["image_export.vector_by_walls.teleport_group_reset"]()}
-          style={styles.resetButton}
-          disabled={!hasOverride}
-          onClick={(e) => { onChange(null); e.currentTarget.blur(); }}
-        >
-          <RotateCcw size={14} color={ui.text.tertiary} opacity={hasOverride ? 1 : 0.4} />
-        </button>
-      </div>
-      <div style={styles.groupCellLinks}>
-        {group.links.map((link) => (
-          <div
-            key={`${link.from}-${link.to}`}
-            style={styles.groupCellLink}
-            onMouseOver={(e) => { if (e.target === e.currentTarget) setHovered(allNodeIds); }}
-          >
-            <div style={styles.groupCellLinkBody}>
-              <EntityBubbleRow
-                bubbles={[
-                  endpointBubble(nodeEndpoint(link.from), nodeById, multiFloor, splitCtx),
-                  endpointBubble(nodeEndpoint(link.to), nodeById, multiFloor, splitCtx),
-                ]}
-                arrow={link.oneWay ? "->" : "<->"}
-                onBubbleEnter={(_, j) => setHovered([j === 0 ? link.from : link.to])}
-                onArrowEnter={() => setHovered([link.from, link.to])}
-                onBubbleClick={(bubble) => {
-                  if (bubble.highlight?.kind === "point") navigateToFloor(bubble.highlight.level ?? 0);
-                }}
-              />
+      <div style={styles.groupCellTop}>
+        <div style={styles.groupCellLinks}>
+          {group.links.map((link) => (
+            <div
+              key={`${link.from}-${link.to}`}
+              style={styles.groupCellLink}
+              onMouseOver={(e) => { if (e.target === e.currentTarget) setHovered(allNodeIds); }}
+            >
+              <div style={styles.groupCellLinkBody}>
+                <EntityBubbleRow
+                  bubbles={[
+                    endpointBubble(nodeEndpoint(link.from), nodeById, multiFloor, splitCtx),
+                    endpointBubble(nodeEndpoint(link.to), nodeById, multiFloor, splitCtx),
+                  ]}
+                  arrow={link.oneWay ? "->" : "<->"}
+                  onBubbleEnter={(_, j) => setHovered([j === 0 ? link.from : link.to])}
+                  onArrowEnter={() => setHovered([link.from, link.to])}
+                  onBubbleClick={(bubble) => {
+                    if (bubble.highlight?.kind === "point") navigateToFloor(bubble.highlight.level ?? 0);
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div style={styles.groupCellHeader} onMouseEnter={() => setHovered(allNodeIds)}>
+          <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
+            {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
+          </span>
+          <span style={{ ...typography.body, color: ui.text.tertiary }}>{`#${index + 1}`}</span>
+        </div>
       </div>
       <div style={styles.groupCellControls} onMouseEnter={() => setHovered(allNodeIds)}>
         <select
           name={`teleport-group-${index}-shape`}
           title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
           style={sharedStyles.selectSm}
-          value={override?.shape ?? "__default__"}
-          onChange={(e) => onChange({ ...override, shape: e.target.value === "__default__" ? undefined : (e.target.value as MarkerShape) })}
+          value={effective?.shape ?? defaultShape}
+          onChange={(e) => onChange({ shape: e.target.value as MarkerShape })}
         >
-          <option value="__default__">{m["image_export.vector_by_walls.teleport_group_override_shape_default"]()}</option>
           {MARKER_SHAPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label()}</option>
           ))}
         </select>
+        {linkToggle("shape", effective?.shape ?? defaultShape)}
         <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()}>
           <ColorSwatch
-            color={override?.fillColor ?? defaultFillColor}
-            onChange={(fillColor) => onChange({ ...override, fillColor })}
-            priorityColors={[PC.teleportGroup(index, "border").at(override?.borderColor ?? defaultBorderColor), ...otherGroupColors, ...commonColors]}
+            color={fillColor}
+            onChange={(c) => onChange({ fillColor: c })}
+            priorityColors={[PC.teleportGroup(index, "border").at(borderColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "fill")}
           />
         </span>
+        {linkToggle("fillColor", fillColor)}
         <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()}>
           <ColorSwatch
-            color={override?.borderColor ?? defaultBorderColor}
-            onChange={(borderColor) => onChange({ ...override, borderColor })}
-            priorityColors={[PC.teleportGroup(index, "fill").at(override?.fillColor ?? defaultFillColor), ...otherGroupColors, ...commonColors]}
+            color={borderColor}
+            onChange={(c) => onChange({ borderColor: c })}
+            priorityColors={[PC.teleportGroup(index, "fill").at(fillColor), ...otherGroupColors, ...commonColors]}
             field={PC.teleportGroup(index, "border")}
           />
         </span>
+        {linkToggle("borderColor", borderColor)}
       </div>
     </div>
   );
@@ -309,6 +349,13 @@ export function TeleportSettingsSection<P extends string>({
   // Expand state of the Teleports section's subsections — local and per mount, all collapsed by default.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setExpanded((c) => ({ ...c, [id]: !c[id] }));
+  const { links } = useLinkContext<string>();
+  const effectiveOverrides = useMemo(
+    () => resolveGroupOverrides({ teleportMarker: settings.teleportMarker, links, teleportGroupOverrides: groupOverrides }),
+    [settings.teleportMarker, links, groupOverrides],
+  );
+  // With group customization on, connectors and floor badges take each group's secondary (border) color.
+  const groupSecondaryColorHint = m["image_export.vector_by_walls.teleport_group_secondary_color_hint"]();
   const patchMarker = (patch: Partial<MarkerSettings>) => onChange({ teleportMarker: { ...settings.teleportMarker, ...patch } });
 
   // The common teleport colors every group-override swatch lists below its own group's colors
@@ -374,7 +421,7 @@ export function TeleportSettingsSection<P extends string>({
         {connectorShown && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
         <div style={styles.subsectionNested}>
-          <LinkedColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} priorityColors={connectorColorPriority} defaultColor={connectorColorDefault} field={connectorColorField} linkTarget={linkTargets.connectorColor} />
+          <LinkedColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} priorityColors={connectorColorPriority} defaultColor={connectorColorDefault} field={connectorColorField} linkTarget={linkTargets.connectorColor} disabled={settings.teleportGroupCustomization} disabledHint={groupSecondaryColorHint} />
           <LinkedSliderRow
             label={m["image_export.vector_by_walls.teleport_connector_width"]()}
             value={settings.teleportConnectorWidth}
@@ -467,6 +514,7 @@ export function TeleportSettingsSection<P extends string>({
               priorityColors={{ fillColor: floorBadgeFillColorPriority, borderColor: floorBadgeBorderColorPriority }}
               defaultColors={{ fillColor: floorBadgeFillColorDefault, borderColor: floorBadgeBorderColorDefault }}
               fields={{ fillColor: floorBadgeFillColorField, borderColor: floorBadgeBorderColorField }}
+              colorsDisabledHint={settings.teleportGroupCustomization ? groupSecondaryColorHint : undefined}
             />
             <TextStyleRows
               settings={settings.teleportFloorBadge}
@@ -518,7 +566,7 @@ export function TeleportSettingsSection<P extends string>({
             // each cell's own "other groups" priority list below is a slice of this shared array
             // rather than a fresh `PC.teleportGroup(...).at(...)` pass per cell.
             const allGroupColors: ProjectColorEntry[][] = teleportGroups.map((g, gi) => {
-              const o = groupOverrides[g.key];
+              const o = effectiveOverrides[g.key];
               return [
                 PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportMarker.fillColor),
                 PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportMarker.borderColor),
@@ -532,6 +580,9 @@ export function TeleportSettingsSection<P extends string>({
                     group={group}
                     index={i}
                     override={groupOverrides[group.key]}
+                    effective={effectiveOverrides[group.key]}
+                    links={links}
+                    defaultShape={settings.teleportMarker.shape}
                     defaultFillColor={settings.teleportMarker.fillColor}
                     defaultBorderColor={settings.teleportMarker.borderColor}
                     hasCollision={teleportCollisionKeys.has(group.key)}
@@ -560,17 +611,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex", flexDirection: "column", gap: spacing.itemGap,
     padding: spacing.itemGap, borderRadius: 3, border: `1px solid ${ui.border.default}`,
   },
-  groupCellHeader: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap },
+  // Links (left) and the group index + collision warning (right) share the card's first line.
+  groupCellTop: { display: "flex", flexDirection: "row", alignItems: "flex-start", gap: spacing.itemGap },
+  groupCellHeader: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, alignSelf: "flex-start", flexShrink: 0, padding: `${spacing.itemGap / 4}px 0` },
   // No gap between link rows: each row carries its own vertical padding so hover zones touch.
-  groupCellLinks: { display: "flex", flexDirection: "column" },
-  groupCellLink: { display: "flex", paddingLeft: indent.tree },
+  groupCellLinks: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0 },
+  groupCellLink: { display: "flex" },
   // Padding lives on the content-sized body, so it keeps the bubble highlight; the empty space to its right is the row itself and counts as the whole card.
   groupCellLinkBody: { padding: `${spacing.itemGap / 4}px 0` },
-  groupCellControls: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, paddingLeft: indent.tree },
-  groupRowSpacer: { flex: 1 },
+  groupCellControls: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap },
   warningIcon: { display: "inline-flex", alignItems: "center", cursor: "default", width: 13 },
-  resetButton: {
-    ...typography.caption, color: ui.text.tertiary, display: "inline-flex", alignItems: "center",
-    background: "none", border: "none", outline: "none", cursor: "default", padding: 0,
-  },
 };

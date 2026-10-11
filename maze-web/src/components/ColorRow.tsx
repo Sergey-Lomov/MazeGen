@@ -27,6 +27,8 @@ export function UnregisteredColorRow(props: ColorRowViewProps) {
 
 interface ColorRowViewProps {
   label: string; color: number; onChange: (color: number) => void; disabled?: boolean;
+  /** Tooltip explaining why the row is disabled — shown over the whole row while `disabled`. */
+  disabledHint?: string;
   /** Trailing control (GitHub issue #652's per-field link-status icon, `LinkStatusIcon`) — the
    *  label stays `flex: 1`, so this never shrinks it. */
   resetButton?: React.ReactNode;
@@ -47,9 +49,9 @@ interface ColorRowViewProps {
   field?: ColorField;
 }
 
-function ColorRowView({ label, color, onChange, disabled, resetButton, onOpen, onCancel, priorityColors, defaultColor, field }: ColorRowViewProps) {
+function ColorRowView({ label, color, onChange, disabled, disabledHint, resetButton, onOpen, onCancel, priorityColors, defaultColor, field }: ColorRowViewProps) {
   return (
-    <Inline gap="groupGap">
+    <Inline gap="groupGap" title={disabled ? disabledHint : undefined}>
       <span style={{ ...styles.label, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
       <ColorSwatch color={color} onChange={onChange} disabled={disabled} onOpen={onOpen} onCancel={onCancel} priorityColors={priorityColors} defaultColor={defaultColor} field={field} fallbackName={label} />
       {resetButton}

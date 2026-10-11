@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import {
   STATIC_FIELD_DEFS, STATIC_FIELD_ORDER, buildColorVisibility, visibleColor, unownedColor, writeColorField, isLayoutGateOpen,
 } from "../pixi/selectors/colorFieldRegistry";
+import type { TeleportGroupOverride } from "../pixi/renderers/types";
 import { STATIC_COLOR_FIELD_KEYS, parseColorFieldKey } from "../pixi/colorFieldKeys";
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { ColorRow } from "../components/ColorRow";
@@ -130,6 +131,8 @@ describe("dynamic color field keys (GitHub issue #717)", () => {
     const ctx = buildColorVisibility(emptyMaze, s);
     expect(writeColorField(ctx, s, "teleportGroup:0:fill", 0xaaaaaa)).toBe(true); // "1,1" sorts first
     expect(s.teleportGroupOverrides["1,1"].fillColor).toBe(0xaaaaaa);
+    // A picked color is an explicit value: it breaks the group role's inherited link (GitHub issue #729).
+    expect((s.teleportGroupOverrides["1,1"] as TeleportGroupOverride).linkBroken).toMatchObject({ fillColor: true });
     expect(writeColorField(ctx, s, "teleportGroup:5:fill", 1)).toBe(false);
     expect(writeColorField(ctx, s, "splitNode:1", 0xbbbbbb)).toBe(true);
     expect(s.splitNodeColors[1]).toBe(0xbbbbbb);

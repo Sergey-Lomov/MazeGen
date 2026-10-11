@@ -15,11 +15,11 @@ export function Stack({ gap, align, children, style }: {
   return <div style={{ display: "flex", flexDirection: "column", gap: spacing[gap], alignItems: align, ...style }}>{children}</div>;
 }
 
-export function Inline({ gap, align = "center", justify, children, style }: {
+export function Inline({ gap, align = "center", justify, children, style, title }: {
   gap: Gap; align?: React.CSSProperties["alignItems"]; justify?: React.CSSProperties["justifyContent"];
-  children: React.ReactNode; style?: SafeStyle;
+  children: React.ReactNode; style?: SafeStyle; title?: string;
 }) {
-  return <div style={{ display: "flex", alignItems: align, justifyContent: justify, gap: spacing[gap], ...style }}>{children}</div>;
+  return <div title={title} style={{ display: "flex", alignItems: align, justifyContent: justify, gap: spacing[gap], ...style }}>{children}</div>;
 }
 
 export function Grid({ templateColumns, gap, children, style }: {

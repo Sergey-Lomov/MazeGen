@@ -9,6 +9,7 @@ import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRende
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
+import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { resolveRendererGroupOverrides } from "../selectors/projectTeleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings, computeVectorByCorridorsWarningsAcrossFloors } from "../selectors/exportWarnings";
@@ -473,7 +474,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const teleportGroups = settings.teleportGroupCustomization ? buildTeleportGroups(this.geometryCache.teleportEdges) : [];
     // Overrides are stored under project-wide (cross-floor merged) group keys; re-key them onto this floor's groups.
     const teleportGroupOverrides = settings.teleportGroupCustomization
-      ? resolveRendererGroupOverrides(teleportGroups, settings.teleportGroupOverrides, {
+      ? resolveRendererGroupOverrides(teleportGroups, withResolvedGroupOverrides(settings).teleportGroupOverrides, {
         nodes: state.nodes, edges: state.edges, cfg, floors: state.floors,
         avoidFieldExit: settings.teleportAvoidFieldExit, start: rawEndpoints.start, finish: rawEndpoints.finish,
       })

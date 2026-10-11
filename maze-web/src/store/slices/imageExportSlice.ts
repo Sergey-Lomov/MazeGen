@@ -9,6 +9,7 @@ import { cellMeasureWorldUnits, DPI_BY_DENSITY, mmToPx } from "../../pixi/imageE
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
+import { mergeGroupOverridePatch } from "../teleportGroupLinks";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -249,14 +250,19 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByCorridorsSettings.teleportGroupOverrides };
-      if (patch === null) delete overrides[groupKey];
-      else overrides[groupKey] = { ...overrides[groupKey], ...patch };
+      const merged = patch === null ? null : mergeGroupOverridePatch(overrides[groupKey], patch);
+      if (merged === null) delete overrides[groupKey];
+      else overrides[groupKey] = merged;
       return corridorsPlain("teleportGroupOverrides", overrides)(s);
     }),
   patchVectorByCorridorsTeleportGroupOverrides: (patches) =>
     set((s) => {
       const overrides = { ...s.vectorByCorridorsSettings.teleportGroupOverrides };
-      for (const [key, patch] of Object.entries(patches)) overrides[key] = { ...overrides[key], ...patch };
+      for (const [key, patch] of Object.entries(patches)) {
+        const merged = mergeGroupOverridePatch(overrides[key], patch);
+        if (merged === null) delete overrides[key];
+        else overrides[key] = merged;
+      }
       return corridorsPlain("teleportGroupOverrides", overrides)(s);
     }),
   setVectorByCorridorsSplitNodeColor: (index, color) =>
@@ -411,14 +417,19 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>
     set((s) => {
       const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
-      if (patch === null) delete overrides[groupKey];
-      else overrides[groupKey] = { ...overrides[groupKey], ...patch };
+      const merged = patch === null ? null : mergeGroupOverridePatch(overrides[groupKey], patch);
+      if (merged === null) delete overrides[groupKey];
+      else overrides[groupKey] = merged;
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
   patchVectorByWallsTeleportGroupOverrides: (patches) =>
     set((s) => {
       const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
-      for (const [key, patch] of Object.entries(patches)) overrides[key] = { ...overrides[key], ...patch };
+      for (const [key, patch] of Object.entries(patches)) {
+        const merged = mergeGroupOverridePatch(overrides[key], patch);
+        if (merged === null) delete overrides[key];
+        else overrides[key] = merged;
+      }
       return wallsPlain("teleportGroupOverrides", overrides)(s);
     }),
   setHoveredTeleportNodeIds: (ids) => set({ hoveredTeleportNodeIds: ids }),

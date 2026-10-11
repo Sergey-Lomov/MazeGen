@@ -3,7 +3,8 @@ import {
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
-import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle } from "../../pixi/renderers/types";
+import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
+import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
@@ -121,13 +122,19 @@ export function validateMarkerSettings(v: unknown, path: string, fallback: Marke
 /** Format-only validation of one group's override — an unresolvable `shape` just falls back to
  * the base style at render time (same "never throw" convention as `resolveRenderMode`), so a
  * malformed entry is dropped rather than failing the whole file. */
-export function tryValidateTeleportGroupOverride(v: unknown): { fillColor?: number; borderColor?: number; shape?: MarkerShape } | null {
+export function tryValidateTeleportGroupOverride(v: unknown): TeleportGroupOverride | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const obj = v as Record<string, unknown>;
-  const result: { fillColor?: number; borderColor?: number; shape?: MarkerShape } = {};
+  const result: TeleportGroupOverride = {};
   if (typeof obj.fillColor === "number") result.fillColor = obj.fillColor;
   if (typeof obj.borderColor === "number") result.borderColor = obj.borderColor;
   if (typeof obj.shape === "string" && (MARKER_SHAPES as readonly string[]).includes(obj.shape)) result.shape = obj.shape as MarkerShape;
+  if (typeof obj.linkBroken === "object" && obj.linkBroken !== null && !Array.isArray(obj.linkBroken)) {
+    const raw = obj.linkBroken as Record<string, unknown>;
+    const broken: NonNullable<TeleportGroupOverride["linkBroken"]> = {};
+    for (const role of TELEPORT_GROUP_ROLES) if (raw[role] === true) broken[role] = true;
+    if (Object.keys(broken).length > 0) result.linkBroken = broken;
+  }
   return result;
 }
 
@@ -324,7 +331,7 @@ export function validateVerticalDecorativeFields(obj: Record<string, unknown> | 
   };
 }
 
-export function validateTeleportGroupOverrides(v: unknown, path: string): Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> {
+export function validateTeleportGroupOverrides(v: unknown, path: string): Record<string, TeleportGroupOverride> {
   if (v == null) return {};
   let obj: Record<string, unknown>;
   try {
@@ -332,7 +339,7 @@ export function validateTeleportGroupOverrides(v: unknown, path: string): Record
   } catch {
     return {};
   }
-  const result: Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> = {};
+  const result: Record<string, TeleportGroupOverride> = {};
   for (const [key, raw] of Object.entries(obj)) {
     const override = tryValidateTeleportGroupOverride(raw);
     if (override) result[key] = override;

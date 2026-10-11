@@ -36,7 +36,7 @@ export function markerShapeSelectOptions(): { value: MarkerShape; label: string 
  *  marker, and the elevator / teleport floor-number badges. Renders bare rows (no wrapper) so each
  *  caller places them inside its own group. `linkTargets` is a concrete path per field the caller's
  *  registry models, `null` otherwise. */
-export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields }: {
+export function MarkerAppearanceRows<P extends string>({ settings, onChange, linkTargets, priorityColors, defaultColors, fields, colorsDisabledHint }: {
   settings: MarkerAppearance;
   onChange: (patch: Partial<MarkerAppearance>) => void;
   linkTargets: { [K in keyof MarkerAppearance]: P | null };
@@ -46,6 +46,9 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
   defaultColors?: { fillColor?: number; borderColor?: number };
   /** Composite field names (GitHub issue #503) — isolate the row in the "Project colors" list. */
   fields: { fillColor: ColorField; borderColor: ColorField };
+  /** When set, the fill and border color rows are disabled and show this tooltip (their values are
+   *  overridden elsewhere, e.g. by the teleport group customization). */
+  colorsDisabledHint?: string;
 }): React.ReactElement {
   return (
     <>
@@ -76,8 +79,8 @@ export function MarkerAppearanceRows<P extends string>({ settings, onChange, lin
         format={(v) => String(Math.round(v))}
         linkTarget={linkTargets.size}
       />
-      <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} field={fields.fillColor} linkTarget={linkTargets.fillColor} />
-      <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} field={fields.borderColor} linkTarget={linkTargets.borderColor} />
+      <LinkedColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} field={fields.fillColor} linkTarget={linkTargets.fillColor} disabled={colorsDisabledHint !== undefined} disabledHint={colorsDisabledHint} />
+      <LinkedColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} field={fields.borderColor} linkTarget={linkTargets.borderColor} disabled={colorsDisabledHint !== undefined} disabledHint={colorsDisabledHint} />
       <LinkedSliderRow
         label={m["image_export.vector_by_walls.marker_border_width"]()}
         value={settings.borderWidth}

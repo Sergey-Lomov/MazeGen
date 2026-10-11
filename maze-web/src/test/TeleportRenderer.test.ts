@@ -579,3 +579,44 @@ describe("TeleportRenderer.destroy", () => {
     expect(overlayLayer.destroy).toHaveBeenCalledWith({ children: true });
   });
 });
+
+describe("TeleportRenderer.render connector / badge color under group customization", () => {
+  const colorsDrawn = (renderer: unknown): number[] => {
+    const g = (renderer as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
+    return g.calls.flatMap((call) => call.args.map((a) => (a as { color?: number } | undefined)?.color)).filter((v): v is number => typeof v === "number");
+  };
+  const twoWay: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false }];
+  const style = (): TeleportLineStyle => baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 });
+
+  it("customization off — connectors use the common connector color", () => {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({ edges: twoWay, waypoints: [], lineStyle: style() });
+    expect(colorsDrawn(renderer)).toContain(0x333);
+  });
+
+  it("customization on, group without override — connectors use the marker border, never the common connector color", () => {
+    const renderer = new TeleportRenderer(new Container());
+    renderer.render({ edges: twoWay, waypoints: [], lineStyle: style(), groupCustomization: true, groupOverrides: {} });
+    const colors = colorsDrawn(renderer);
+    expect(colors).not.toContain(0x333);
+    expect(colors).toContain(0x222);
+  });
+
+  it("customization on, group with a border override — connectors and floor badges follow it", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    const [group] = buildTeleportGroups(edges);
+    renderer.render({ edges, waypoints: [], lineStyle: style(), groupCustomization: true, groupOverrides: { [group.key]: { borderColor: 0xabcdef } } });
+    const colors = colorsDrawn(renderer);
+    expect(colors).toContain(0xabcdef);
+    expect(colors).not.toContain(0x333);
+    expect(colors).not.toContain(0x123456); // common floorBadge fill/border
+  });
+
+  it("customization on, badge in a group without override — badge uses the marker border, not the common badge colors", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, waypoints: [], lineStyle: style(), groupCustomization: true, groupOverrides: {} });
+    expect(colorsDrawn(renderer)).not.toContain(0x123456);
+  });
+});

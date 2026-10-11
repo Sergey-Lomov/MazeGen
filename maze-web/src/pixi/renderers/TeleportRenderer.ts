@@ -33,6 +33,7 @@ export class TeleportRenderer {
   private selectionGroups: TeleportGroup[] = [];
   private selectionStyle: TeleportLineStyle = DEFAULT_MAZE_RENDER_STYLE.teleport;
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
+  private selectionGroupCustomization = false;
   private selectionEdges: TeleportEdge[] = [];
   // Cross-floor points (GitHub issue #337) — a point present here draws a floor-number badge
   // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
@@ -127,6 +128,7 @@ export class TeleportRenderer {
     this.selectionGroups = groups;
     this.selectionStyle = style;
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
+    this.selectionGroupCustomization = groupCustomization;
     this.selectionEdges = edges;
     this.selectionFloorBadges = computeFloorBadges(edges);
     this.selectionFloorNavigable = floorNavigable;
@@ -191,7 +193,10 @@ export class TeleportRenderer {
       // has an override) — same "one color drives border + connector" rule as the marker itself
       // (see `TeleportGroupOverride`'s own doc comment).
       const override = overrideAt(fx, fy) ?? overrideAt(tx, ty);
-      const connectorColor = override?.borderColor ?? style.connectorColor;
+      // With group customization on, every group's connectors follow its border (an uncustomized
+      // group's border is the common marker border), never the common connector color — otherwise a
+      // group would flip between the two as its border link/override toggles.
+      const connectorColor = groupCustomization ? (override?.borderColor ?? style.edgeBorderColor) : style.connectorColor;
       result.push({ edge: e, routed: routed[i], color: connectorColor });
     });
     return result;
@@ -269,8 +274,8 @@ export class TeleportRenderer {
         // marker border and every connector touching the group, see above) — when group
         // customization is on, the badge's fill and border both follow it instead of the ordinary
         // `style.floorBadge.fillColor`/`borderColor` (GitHub issue #503 follow-up).
-        const badgeFill = override?.borderColor ?? style.floorBadge.fillColor;
-        const badgeBorder = override?.borderColor ?? style.floorBadge.borderColor;
+        const badgeFill = this.selectionGroupCustomization ? borderColor : style.floorBadge.fillColor;
+        const badgeBorder = this.selectionGroupCustomization ? borderColor : style.floorBadge.borderColor;
         drawFloorBadge(g, overlay, badgeR, px, py, badgeFill, badgeBorder, style.floorColor, floorNumber, {
           shape: style.floorBadge.shape,
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),

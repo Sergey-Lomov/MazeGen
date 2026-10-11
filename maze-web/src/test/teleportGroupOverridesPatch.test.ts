@@ -19,8 +19,8 @@ describe.each([
 
     expect(updates).toBe(1);
     expect(useMazeStore.getState()[settingsKey].teleportGroupOverrides).toEqual({
-      a: { shape: "circle", fillColor: 2 },
-      b: { fillColor: 3 },
+      a: { shape: "circle", fillColor: 2, linkBroken: { fillColor: true } },
+      b: { fillColor: 3, linkBroken: { fillColor: true } },
     });
   });
 });
