@@ -620,7 +620,8 @@ or disabled as an override); the blue **dependents indicator** (bottom-right) wh
 dependent link exists; and, only for an unsupported (`linkTarget: null`) field, a red **unsupported
 indicator** (bottom-right `X`) over a disabled-gray chain. A field with no link of any kind (but
 linkable) renders the chain alone, broken and disabled-gray, with no badge — the glyph itself says
-enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each suffixed
+enough. Hovering shows a tooltip (header + the field's own driving/dependent lines, each followed by the link's
+modifier chain — `linkModifiersSuffix`, e.g. `A × 2` / `− 15L (OKLCH)` — and suffixed
 "(disabled)" when inactive, plus a click hint); clicking opens `LinkEditor` (add/edit) or, for a
 disabled driving link, re-enables it directly (`onSetLinkEnabled`, equivalent to the old
 `OverrideResetButton`'s reset action) without a dialog. An unsupported field's click opens a small

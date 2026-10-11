@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link, Unlink, ArrowDown, X } from "lucide-react";
 import { ui, typography, controlRowHeight } from "../styles/theme";
 import { Modal } from "./Modal";
-import { LinkEditor } from "./features/ParameterLinksDialog";
+import { LinkEditor, linkModifiersSuffix } from "./features/ParameterLinksDialog";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../store/parameterLinks";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
@@ -156,13 +156,13 @@ export function LinkStatusIcon<P extends string>({
         : m["link_status.header_no_links"](),
   );
   if (incoming !== null) {
-    const line = m["link_status.incoming_line"]({ source: hierarchicalLabel(incoming.source) });
+    const line = m["link_status.incoming_line"]({ source: hierarchicalLabel(incoming.source) }) + linkModifiersSuffix(incoming);
     tooltipLines.push(incoming.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`);
   }
   // Rule 5: list every dependent link, active or not — the badge/indicator only reflects
   // *active* dependents, but the tooltip's detail list is a complete inventory of all links.
   for (const link of links.filter((l) => l.source === linkTarget)) {
-    const line = m["link_status.outgoing_line"]({ target: hierarchicalLabel(link.target) });
+    const line = m["link_status.outgoing_line"]({ target: hierarchicalLabel(link.target) }) + linkModifiersSuffix(link);
     tooltipLines.push(link.enabled ? line : `${line} ${m["link_status.disabled_suffix"]()}`);
   }
   if (onToggleLink) {

@@ -71,6 +71,12 @@ function colorModifierSuffix(modifiers: ColorModifier[] | undefined): string {
   return " " + modifiers.map(colorModifierStepText).join(" ");
 }
 
+/** Combined numeric + color modifier suffix of a link (one of the two is always empty — a link's
+ *  `ParamType` is either numeric or color). */
+export function linkModifiersSuffix(link: Pick<ParamLink<string>, "modifiers" | "colorModifiers">): string {
+  return `${modifierSuffix(link.modifiers)}${colorModifierSuffix(link.colorModifiers)}`;
+}
+
 /** Renders a path's `hierarchicalLabel` as one clickable "bubble" per segment (each `group` entry
  *  plus the field's own `label`, "/"-separated) instead of one plain string — each bubble has a
  *  faint background so it reads as its own distinct token without shouting, and a stronger hover
@@ -870,7 +876,7 @@ export function LinkEditor<P extends string>({
           onConfirm={save}
         >
           <div style={typography.body}>
-            {m["image_export.param_links.replace_message"]({ source: hierarchicalLabel(existingLink.source, registry), modifiers: `${modifierSuffix(existingLink.modifiers)}${colorModifierSuffix(existingLink.colorModifiers)}` })}
+            {m["image_export.param_links.replace_message"]({ source: hierarchicalLabel(existingLink.source, registry), modifiers: linkModifiersSuffix(existingLink) })}
           </div>
           <div style={styles.editorFooter}>
             <Button variant="secondary" onClick={() => setConfirmingReplace(false)}>{m["image_export.param_links.cancel"]()}</Button>
@@ -1042,7 +1048,7 @@ export function ParameterLinksDialog<P extends string>({
                         {registry[link.target].type === "color" && (
                           <span style={{ ...styles.valueColorSwatch, backgroundColor: colorToHex(getParamValue(settings, link.target) as number) }} />
                         )}
-                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{modifierSuffix(link.modifiers)}{colorModifierSuffix(link.colorModifiers)}
+                        {" = "}<HierarchicalLabelSegments path={link.source} registry={registry} onSegmentClick={setFilterPath} inactive={!activePaths.has(link.source)} />{linkModifiersSuffix(link)}
                       </span>
                     </div>
                   </div>

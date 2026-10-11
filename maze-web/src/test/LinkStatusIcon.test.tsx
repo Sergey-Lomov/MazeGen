@@ -38,6 +38,37 @@ describe("LinkStatusIcon", () => {
     useMazeStore.setState({ linkIconVisibility: "always" });
   });
 
+  it("lists numeric modifiers of the driving and dependent links in the tooltip", () => {
+    renderIcon("b", [
+      link({ modifiers: [{ op: "mul", value: 2 }] }),
+      link({ id: "l2", source: "b", target: "c", modifiers: [{ op: "add", value: 3 }] }),
+    ]);
+    const title = screen.getByTitle(/Driving link/).getAttribute("title") ?? "";
+    expect(title).toContain("A × 2");
+    expect(title).toContain("C + 3");
+  });
+
+  it("lists color modifiers of the driving link in the tooltip", () => {
+    renderIcon("b", [link({ colorModifiers: [{ model: "oklch", channel: "oklch-l", op: "sub", value: 15 }] })]);
+    expect(screen.getByTitle(/Driving link/).getAttribute("title")).toContain("− 15");
+  });
+
+  it("lists modifiers of a derived link in group mode", () => {
+    render(
+      <LinkStatusIcon<P>
+        target="b"
+        links={[link({ modifiers: [{ op: "mul", value: 2 }] })]}
+        registry={registry}
+        onSetLinkEnabled={vi.fn()}
+        onAddLink={vi.fn()}
+        activePaths={new Set<P>(["a", "b", "c"])}
+        onToggleLink={vi.fn()}
+        alwaysVisible
+      />,
+    );
+    expect(screen.getByTitle(/Driving link/).getAttribute("title")).toContain("A × 2");
+  });
+
   it("renders the unsupported state with a red X badge when target is null", () => {
     renderIcon(null, []);
     const icon = screen.getByTitle(/Links not supported/);
