@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -787,6 +787,17 @@ describe("text overflow warnings (GitHub issue #707)", () => {
     expect(w).toHaveLength(1);
     expect(w[0].cells).toHaveLength(1);
     expect(run({ enabled: false, width: 8, height: 8, textSize: 32, textMargin: 1 })).toHaveLength(0);
+  });
+
+  it("keeps the cells of every floor when merging marker index overflow warnings across floors", () => {
+    const crossNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1)];
+    const crossEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const index = baseSettings().markerIndex;
+    const settings = baseSettings({ markerIndex: { ...index, enabled: true, labelStyle: "arabic", width: 8, height: 8, textSize: 32, textMargin: 1 } });
+    const merged = computeVectorByWallsWarningsAcrossFloors(crossNodes, crossEdges, [{ id: "f0" }, { id: "f1" }], squareCfg, settings, null, null)
+      .filter((w) => w.id === "marker_index_text_overflow");
+    expect(merged).toHaveLength(1);
+    expect(new Set(merged[0].cells?.map((c) => c.floorIndex))).toEqual(new Set([0, 1]));
   });
 
   it("collects labels across floors per size control for auto-fit", () => {

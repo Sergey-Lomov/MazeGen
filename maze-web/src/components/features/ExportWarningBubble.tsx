@@ -9,6 +9,16 @@ import { spacing, typography, muted } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { FloorBadgeRow } from "../FloorBadgeRow";
 
+/** Distinct, ascending floor indices a warning touches: cross-floor targets (flagged nodes are
+ *  folded in by the cross-floor merge) plus highlighted cells, which carry no node ids (e.g. marker
+ *  index text overflow). */
+export function resolveWarningFloorLevels(warning: Pick<ExportWarning, "crossFloorTargets" | "cells">): number[] {
+  const levels = new Set<number>();
+  for (const target of warning.crossFloorTargets ?? []) levels.add(target.targetFloorIndex);
+  for (const cell of warning.cells ?? []) levels.add(cell.floorIndex);
+  return Array.from(levels).sort((a, b) => a - b);
+}
+
 /** One export-warning list entry (GitHub issue #298 follow-up) — same bubble look/interaction as
  *  `IssuesBlock`'s `IssueBubble` (Analytics feature's QC issue list): a top row of label + info icon
  *  (opens a modal with the warning's full description), a `FloorBadgeRow` below it (round-4 GitHub
@@ -25,7 +35,7 @@ export function ExportWarningBubble({ warning, interactive = true }: { warning: 
   const message = resolveExportWarningMessage(warning.id);
   const description = resolveExportWarningDescription(warning.id, warning.colorFields, warning.colorValues);
   const palette = notificationPalette("warning");
-  const levels = Array.from(new Set((warning.crossFloorTargets ?? []).map((t) => t.targetFloorIndex))).sort((a, b) => a - b);
+  const levels = resolveWarningFloorLevels(warning);
 
   return (
     <>
