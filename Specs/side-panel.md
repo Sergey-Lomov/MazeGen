@@ -68,8 +68,8 @@ settings, overlay for nested config), `PostEditChangesPanel`, `SplitNodesDialogV
 
 ### Top-edge hit testing (issue #679)
 
-`SectionHeader` and `SubsectionHeader` keep their small negative vertical margin so their spacing
-inside ordinary sections does not change. They must also remain `position: relative`: without that
+`SectionHeader` (used at every nesting level, optionally `disabled`) keeps its small negative vertical margin so its spacing
+inside ordinary sections does not change. It must also remain `position: relative`: without that
 positioning, Chromium-based browsers (notably Opera) can drop pointer events for the first
 negative-margin flex item near the top edge of the panel's `overflow-y: auto` body. Do not fix this
 by adding global top padding to `SidePanel`, since that shifts unrelated panel content.

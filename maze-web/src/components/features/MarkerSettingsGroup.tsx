@@ -3,7 +3,7 @@ import type { ColorField } from "../../pixi/selectors/projectColorsSelector";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { indent, spacing } from "../../styles/theme";
-import { SectionHeader, SubsectionHeader } from "../SectionHeader";
+import { SectionHeader } from "../SectionHeader";
 import { LinkedTextFieldRow, LinkedToggleRow } from "./LinkedRows";
 import { MarkerAppearanceRows, TextStyleRows } from "./MarkerFieldRows";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../../pixi/renderConstants";
@@ -14,8 +14,8 @@ export { MARKER_SHAPE_OPTIONS, markerShapeSelectOptions } from "./MarkerFieldRow
 
 /** One "Start"/"Finish" collapsible sub-section of a "Waypoints" section (GitHub issue #296,
  *  upgraded from a plain always-visible sub-group to its own collapsible `SectionHeader` plus two
- *  `SubsectionHeader`s — "Marker" and "Caption" — by GitHub issue #697 follow-up, since the caption
- *  controls would otherwise clutter the marker's own shape/color/border settings). "Marker" holds
+ *  nested `SectionHeader`s — "Marker" and "Caption" — by GitHub issue #697 follow-up, since the
+ *  caption controls would otherwise clutter the marker's own shape/color/border settings). "Marker" holds
  *  shape, corner style, size, fill color, border color, border width and gap width —
  *  `borderWidth: 0` draws no border and `gapWidth: 0` draws no gap, so there is no separate
  *  show-border/show-gap toggle for either. "Caption" (rendered only when the caller passes
@@ -87,7 +87,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
         <div style={title ? styles.markerGroup : styles.markerGroupNoIndent}>
           {showTextSection && fields.textColor && (
             <>
-              <SubsectionHeader label={m["image_export.vector_by_walls.markers_text_subsection"]()} expanded={subExpanded(textId)} onToggle={() => toggle(textId)} />
+              <SectionHeader label={m["image_export.vector_by_walls.markers_text_subsection"]()} expanded={subExpanded(textId)} onToggle={() => toggle(textId)} />
               {subExpanded(textId) && (
                 <div style={styles.subsectionGroup}>
                   <LinkedToggleRow
@@ -127,7 +127,7 @@ export function MarkerSettingsGroup<P extends string>({ title, sectionId, settin
               )}
             </>
           )}
-          {sectionId && <SubsectionHeader label={m["image_export.vector_by_walls.markers_marker_subsection"]()} expanded={subExpanded(markerId)} onToggle={() => toggle(markerId)} />}
+          {sectionId && <SectionHeader label={m["image_export.vector_by_walls.markers_marker_subsection"]()} expanded={subExpanded(markerId)} onToggle={() => toggle(markerId)} />}
           {subExpanded(markerId) && (
             <div style={sectionId ? styles.subsectionGroup : styles.markerGroupNoIndent}>
               <MarkerAppearanceRows

@@ -1,36 +1,33 @@
 import React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { ui, spacing, typography } from "../styles/theme";
+import { ui, spacing } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 
-/** Collapsible section header — chevron + label, click-to-toggle. Shared by every feature with
- *  collapsible settings sections (Analytics, image-export render mode settings panels) so the
- *  expand/collapse row reads identically everywhere. */
-export function SectionHeader({ label, expanded, onToggle }: { label: React.ReactNode; expanded: boolean; onToggle: () => void }) {
-  return (
-    <div className="hoverable" data-side-panel-clickable="true" style={styles.sectionHeaderRow} onClick={onToggle}>
-      {expanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
-      <div style={sharedStyles.sectionHeader}>{label}</div>
-    </div>
-  );
-}
+// One chevron size for every nesting level — a smaller nested icon drew a thinner, dimmer line
+// than its parent's (GitHub issue #734).
+const CHEVRON_SIZE = 14;
 
-export function SubsectionHeader({ label, expanded, disabled, onToggle }: {
-  label: string;
+/** Collapsible section header — chevron + label, click-to-toggle. Shared by every feature with
+ *  collapsible settings sections (Analytics, image-export render mode settings panels) at every
+ *  nesting level, so the expand/collapse row reads identically everywhere. `disabled` renders it
+ *  greyed out and non-interactive (e.g. a vertical-passage sub-group with nothing to configure). */
+export function SectionHeader({ label, expanded, disabled, onToggle }: {
+  label: React.ReactNode;
   expanded: boolean;
   disabled?: boolean;
   onToggle: () => void;
 }) {
+  const chevronColor = disabled ? ui.text.disabled : ui.text.tertiary;
   return (
     <div
       className={disabled ? undefined : "hoverable"}
       data-side-panel-clickable={disabled ? undefined : "true"}
-      style={{ ...styles.subsectionHeaderRow, ...(disabled ? styles.disabled : {}) }}
+      style={styles.sectionHeaderRow}
       onClick={disabled ? undefined : onToggle}
       aria-disabled={disabled || undefined}
     >
-      {expanded ? <ChevronDown size={12} color={disabled ? ui.text.disabled : ui.text.tertiary} /> : <ChevronRight size={12} color={disabled ? ui.text.disabled : ui.text.tertiary} />}
-      <div style={disabled ? { ...styles.subsectionHeader, color: ui.text.disabled } : styles.subsectionHeader}>{label}</div>
+      {expanded ? <ChevronDown size={CHEVRON_SIZE} color={chevronColor} /> : <ChevronRight size={CHEVRON_SIZE} color={chevronColor} />}
+      <div style={disabled ? { ...sharedStyles.sectionHeader, color: ui.text.disabled } : sharedStyles.sectionHeader}>{label}</div>
     </div>
   );
 }
@@ -45,11 +42,4 @@ const styles: Record<string, React.CSSProperties> = {
     position: "relative",
     padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
   },
-  subsectionHeaderRow: {
-    display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
-    position: "relative",
-    padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
-  },
-  subsectionHeader: { ...typography.body },
-  disabled: { cursor: "default" },
 };

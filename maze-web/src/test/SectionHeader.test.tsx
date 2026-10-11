@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { SectionHeader, SubsectionHeader } from "../components/SectionHeader";
+import { SectionHeader } from "../components/SectionHeader";
 
 describe("SectionHeader hit testing", () => {
   it("keeps its negative-margin spacing while positioning the row for reliable pointer events", () => {
@@ -14,9 +14,16 @@ describe("SectionHeader hit testing", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("applies the same hit-testing workaround to subsection headers", () => {
-    render(<SubsectionHeader label="Details" expanded={false} onToggle={vi.fn()} />);
+  it("ignores clicks and drops hover/clickable markers while disabled", () => {
+    const onToggle = vi.fn();
+    render(<SectionHeader label="Details" expanded={false} disabled onToggle={onToggle} />);
 
-    expect(screen.getByText("Details").parentElement).toHaveStyle({ position: "relative" });
+    const row = screen.getByText("Details").parentElement!;
+    expect(row).toHaveStyle({ position: "relative" });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).not.toHaveClass("hoverable");
+
+    fireEvent.click(row);
+    expect(onToggle).not.toHaveBeenCalled();
   });
 });

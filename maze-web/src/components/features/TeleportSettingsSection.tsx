@@ -9,7 +9,7 @@ import { indent, spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ColorSwatch } from "../ColorSwatch";
 import { Button } from "../Button";
-import { SubsectionHeader } from "../SectionHeader";
+import { SectionHeader } from "../SectionHeader";
 import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
@@ -376,7 +376,7 @@ export function TeleportSettingsSection<P extends string>({
 
   return (
     <div style={styles.block}>
-      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_edges"]()} expanded={expanded.markers} onToggle={() => toggle("markers")} />
+      <SectionHeader label={m["image_export.vector_by_walls.teleport_subsection_edges"]()} expanded={expanded.markers} onToggle={() => toggle("markers")} />
       {expanded.markers && <div style={styles.subsection}>
         <MarkerAppearanceRows
           settings={settings.teleportMarker}
@@ -396,7 +396,7 @@ export function TeleportSettingsSection<P extends string>({
         />
       </div>}
 
-      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_connector"]()} expanded={expanded.connector} onToggle={() => toggle("connector")} />
+      <SectionHeader label={m["image_export.vector_by_walls.teleport_subsection_connector"]()} expanded={expanded.connector} onToggle={() => toggle("connector")} />
       {expanded.connector && <div style={styles.subsection}>
         <LinkedSelectRow
           label={m["image_export.vector_by_walls.teleport_connector_style"]()}
@@ -486,7 +486,7 @@ export function TeleportSettingsSection<P extends string>({
 
       {hasCrossFloorTeleports && (
         <>
-          <SubsectionHeader label={m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()} expanded={expanded.floorBadges} onToggle={() => toggle("floorBadges")} />
+          <SectionHeader label={m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()} expanded={expanded.floorBadges} onToggle={() => toggle("floorBadges")} />
           {expanded.floorBadges && <div style={styles.subsection}>
             <LinkedSelectRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_label_type"]()}
@@ -534,7 +534,7 @@ export function TeleportSettingsSection<P extends string>({
         </>
       )}
 
-      <SubsectionHeader label={m["image_export.vector_by_walls.teleport_group_customization"]()} expanded={expanded.groups} onToggle={() => toggle("groups")} />
+      <SectionHeader label={m["image_export.vector_by_walls.teleport_group_customization"]()} expanded={expanded.groups} onToggle={() => toggle("groups")} />
       {expanded.groups && (
         <div style={styles.subsection}>
           <LinkedToggleRow
