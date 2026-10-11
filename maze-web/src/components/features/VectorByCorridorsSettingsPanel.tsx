@@ -237,15 +237,17 @@ export function VectorByCorridorsSettingsPanel() {
   const hasOneWayPassages = colorVisibility.oneWayPassages;
   const hasElevators = colorVisibility.elevators;
   const hasVerticalSection = hasTwoWayPassages || hasOneWayPassages || hasElevators;
+  // "Marker indices" is shown only when some marker could ever carry an index (GitHub issue #730).
+  const hasMarkerIndexSource = colorVisibility.markerIndexAvailable;
 
   // Which registry paths the panel currently shows (GitHub issue #670) — see
   // `VectorByWallsSettingsPanel`'s own doc comment on this.
   const activePaths = useMemo(
     () => computeActivePaths(VECTOR_BY_CORRIDORS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
-      hasVerticalSection,
+      hasVerticalSection, hasMarkerIndexSource,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, settings],
   );
 
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
@@ -1188,49 +1190,53 @@ export function VectorByCorridorsSettingsPanel() {
         </>
       )}
 
-      <div style={styles.divider} />
+      {hasMarkerIndexSource && (
+        <>
+          <div style={styles.divider} />
 
-      <SectionHeader
-        label={m["image_export.vector_by_walls.section_marker_index"]()}
-        expanded={isExpanded("marker_index")}
-        onToggle={() => toggleSection("marker_index")}
-      />
-      {isExpanded("marker_index") && (
-        <MarkerIndexSection
-          settings={settings.markerIndex}
-          onChange={patchMarkerIndex}
-          linkTargets={{
-            enabled: "markerIndex.enabled",
-            coverageSingleFloorTeleport: "markerIndex.coverage.singleFloorTeleport",
-            coverageCrossFloorTeleport: "markerIndex.coverage.crossFloorTeleport",
-            coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
-            coverageElevator: "markerIndex.coverage.elevator",
-            labelStyle: "markerIndex.labelStyle",
-            textFontWeight: "markerIndex.textFontWeight",
-            width: "markerIndex.width",
-            textSize: "markerIndex.textSize",
-            textMargin: "markerIndex.textMargin",
-            height: "markerIndex.height",
-            offset: "markerIndex.offset",
-            cornerRadius: "markerIndex.cornerRadius",
-            gap: "markerIndex.gap",
-            borderWidthFromMarker: "markerIndex.borderWidthFromMarker",
-            borderWidth: "markerIndex.borderWidth",
-            fillColor: "markerIndex.fillColor",
-            textColor: "markerIndex.textColor",
-            borderColorFromMarker: "markerIndex.borderColorFromMarker",
-            borderColor: "markerIndex.borderColor",
-          }}
-          fillColorPriority={[PC.markerIndexText.at(settings.markerIndex.textColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
-          textColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
-          borderColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexText.at(settings.markerIndex.textColor), corridor]}
-          fillColorDefault={D.markerIndex.fillColor}
-          textColorDefault={D.markerIndex.textColor}
-          borderColorDefault={D.markerIndex.borderColor}
-          fillColorField={PC.markerIndexFill}
-          textColorField={PC.markerIndexText}
-          borderColorField={PC.markerIndexBorder}
-        />
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_marker_index"]()}
+            expanded={isExpanded("marker_index")}
+            onToggle={() => toggleSection("marker_index")}
+          />
+          {isExpanded("marker_index") && (
+            <MarkerIndexSection
+              settings={settings.markerIndex}
+              onChange={patchMarkerIndex}
+              linkTargets={{
+                enabled: "markerIndex.enabled",
+                coverageSingleFloorTeleport: "markerIndex.coverage.singleFloorTeleport",
+                coverageCrossFloorTeleport: "markerIndex.coverage.crossFloorTeleport",
+                coverageVerticalPassage: "markerIndex.coverage.verticalPassage",
+                coverageElevator: "markerIndex.coverage.elevator",
+                labelStyle: "markerIndex.labelStyle",
+                textFontWeight: "markerIndex.textFontWeight",
+                width: "markerIndex.width",
+                textSize: "markerIndex.textSize",
+                textMargin: "markerIndex.textMargin",
+                height: "markerIndex.height",
+                offset: "markerIndex.offset",
+                cornerRadius: "markerIndex.cornerRadius",
+                gap: "markerIndex.gap",
+                borderWidthFromMarker: "markerIndex.borderWidthFromMarker",
+                borderWidth: "markerIndex.borderWidth",
+                fillColor: "markerIndex.fillColor",
+                textColor: "markerIndex.textColor",
+                borderColorFromMarker: "markerIndex.borderColorFromMarker",
+                borderColor: "markerIndex.borderColor",
+              }}
+              fillColorPriority={[PC.markerIndexText.at(settings.markerIndex.textColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
+              textColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), corridor, bg]}
+              borderColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexText.at(settings.markerIndex.textColor), corridor]}
+              fillColorDefault={D.markerIndex.fillColor}
+              textColorDefault={D.markerIndex.textColor}
+              borderColorDefault={D.markerIndex.borderColor}
+              fillColorField={PC.markerIndexFill}
+              textColorField={PC.markerIndexText}
+              borderColorField={PC.markerIndexBorder}
+            />
+          )}
+        </>
       )}
 
       {renderStyleInfoOpen && (

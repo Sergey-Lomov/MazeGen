@@ -245,7 +245,7 @@ color when no `teleport` edge; connector color when `teleportConnectorStyle === 
 colors without a cross-floor teleport; split slot `i` when `i >= slotCount`; per-group teleport
 overrides unless `teleportGroupCustomization`; vertical colors per two-way/one-way/elevator presence
 and `verticalStyle`; start/finish text when `textEnabled === false`; elevator floor-badge colors
-unless `elevatorBadges.enabled`; the marker-index section when the layer is off, its border when
+unless `elevatorBadges.enabled`; the marker-index section when the maze has no teleport / vertical passage / elevator edge (`markerIndexAvailable`, GitHub issue #730 — independent of coverage) or the layer is off, its border when
 `borderColorFromMarker` is on.
 
 **Every consumer goes through the registry, and bypassing it does not compile:**

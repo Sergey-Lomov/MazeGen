@@ -60,6 +60,34 @@ describe("color field registry (GitHub issue #717)", () => {
   });
 });
 
+describe("marker index availability (GitHub issue #730)", () => {
+  const withEdge = (kind: string) => buildColorVisibility(
+    { nodes: [], floors: [{ id: "f", title: "F" }], edges: [{ from: 1, to: 2, kind }] as never },
+    {
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      markerIndex: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex,
+        enabled: true,
+        coverage: { singleFloorTeleport: false, crossFloorTeleport: false, verticalPassage: false, elevator: false },
+      },
+    },
+  );
+
+  it("is available for any teleport / vertical passage / elevator edge, whatever the coverage", () => {
+    for (const kind of ["teleport", "vertical_passage", "elevator"]) {
+      const ctx = withEdge(kind);
+      expect(ctx.markerIndexAvailable).toBe(true);
+      expect(PC.markerIndexFill.isVisible(ctx)).toBe(true);
+    }
+  });
+
+  it("is unavailable without such edges, hiding the layer's colors even when enabled", () => {
+    const ctx = withEdge("basic");
+    expect(ctx.markerIndexAvailable).toBe(false);
+    expect(PC.markerIndexFill.isVisible(ctx)).toBe(false);
+  });
+});
+
 describe("ColorRow visibility gating (GitHub issue #717)", () => {
   const hiddenGridCtx = buildColorVisibility(emptyMaze, { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, showGrid: false });
   const shownGridCtx = buildColorVisibility(emptyMaze, { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, showGrid: true });

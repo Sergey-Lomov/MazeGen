@@ -772,9 +772,9 @@ every `teleportMarker.*`/`teleportFloorBadge.*` path while the maze has no telep
 `VectorByCorridorsSettingsPanel` computes a `Set<P>` of currently-active paths
 (`computeActivePaths`, memoized on the same maze-derived flags — `hasOneWays`/`hasTeleports`/
 `hasCrossFloorTeleports`/`hasTwoWayPassages`/`hasOneWayPassages`/`hasElevators`/
-`hasVerticalSection` — that already gate those sections' own rendering, plus the handful of
+`hasVerticalSection`/`hasMarkerIndexSource` — that already gate those sections' own rendering, plus the handful of
 settings fields — `verticalStyle`, `showGrid`, `showInnerGrid`, `elevatorBadges.enabled`,
-`markerIndex.enabled`, `startMarker.textEnabled`/`finishMarker.textEnabled` (every caption field of that
+`markerIndex.enabled` (every `markerIndex.*` path, the toggle included, is inactive while the maze has no teleport / vertical passage / elevator — the whole "Marker indices" section is then hidden, GitHub issue #730, regardless of coverage), `startMarker.textEnabled`/`finishMarker.textEnabled` (every caption field of that
 marker except the toggle itself) — that hide a subsection regardless of the maze) and threads it through
 `LinkContext`'s `activePaths` field alongside `links`/`registry`/`onSetLinkEnabled`/`onAddLink`, so
 both `LinkStatusIcon` (opened from a single field row) and `SharedStyleSection`'s own

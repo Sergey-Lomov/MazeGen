@@ -15,6 +15,9 @@ export interface ParamActivityContext {
   /** `true` once the "Vertical connections" section itself is shown — mirrors both panels' own
    *  `hasTwoWayPassages || hasOneWayPassages || hasElevators` gate. */
   hasVerticalSection: boolean;
+  /** Maze has a teleport / vertical passage / elevator — the "Marker indices" section is shown
+   *  only then, regardless of its coverage settings. */
+  hasMarkerIndexSource: boolean;
 }
 
 /** Settings fields this activity check needs to read across both render modes' settings objects —
@@ -129,8 +132,9 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
     return settings.elevatorBadges?.enabled !== false;
   }
 
-  if (p.startsWith("markerIndex.") && p !== "markerIndex.enabled") {
-    return settings.markerIndex?.enabled !== false;
+  if (p.startsWith("markerIndex.")) {
+    if (!ctx.hasMarkerIndexSource) return false;
+    return p === "markerIndex.enabled" || settings.markerIndex?.enabled !== false;
   }
 
   for (const kind of ["startMarker", "finishMarker"] as const) {

@@ -47,6 +47,7 @@ const baseCtx: ParamActivityContext = {
   hasOneWayPassages: false,
   hasElevators: false,
   hasVerticalSection: false,
+  hasMarkerIndexSource: true,
 };
 
 function active(path: P, ctx: Partial<ParamActivityContext> = {}, settings: ParamActivitySettings = {}): boolean {
@@ -146,6 +147,8 @@ describe("isPathActive", () => {
     expect(active("markerIndex.fillColor", {}, { markerIndex: { enabled: true } })).toBe(true);
     expect(active("markerIndex.fillColor", {}, { markerIndex: { enabled: false } })).toBe(false);
     expect(active("markerIndex.fillColor", {}, {})).toBe(true);
+    expect(active("markerIndex.enabled", { hasMarkerIndexSource: false }, { markerIndex: { enabled: true } })).toBe(false);
+    expect(active("markerIndex.fillColor", { hasMarkerIndexSource: false }, { markerIndex: { enabled: true } })).toBe(false);
   });
 
   it("defaults unrecognized paths to active", () => {

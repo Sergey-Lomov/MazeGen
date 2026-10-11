@@ -49,7 +49,11 @@ export interface ColorVisibilityContext {
   vertical: boolean;
   /** `"decorative"` only exists in Vector by walls; corridors always draw the abstract style. */
   verticalStyle: "abstract" | "decorative";
-  /** The whole "Marker indices" section — hidden when the layer is disabled. */
+  /** The maze has at least one marker that could ever show an index (teleport, vertical passage
+   *  or elevator) — independent of the coverage settings. The whole "Marker indices" section is
+   *  hidden without it. */
+  markerIndexAvailable: boolean;
+  /** The "Marker indices" layer's colors — hidden when the section is hidden or the layer is disabled. */
   markerIndex: boolean;
   /** `markerIndex.borderColor` — hidden when the plate border color follows the marker. */
   markerIndexBorder: boolean;
@@ -83,6 +87,8 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
   const s = withResolvedGroupOverrides(rawSettings);
   const { twoWayPassages, oneWayPassages, elevators } = verticalVisibility(maze.edges, s.replaceTwoFloorElevatorsWithStairs);
   const walls = "verticalStyle" in s;
+  const teleports = maze.edges.some((e) => e.kind === "teleport");
+  const markerIndexAvailable = teleports || elevators || maze.edges.some((e) => e.kind === "vertical_passage");
   return {
     settings: s,
     mode: walls ? "walls" : "corridors",
@@ -91,7 +97,7 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     innerGrid: "showInnerGrid" in s && s.showInnerGrid,
     wall: !("randomWallColorMode" in s) || s.randomWallColorMode === "off",
     oneWayIndicator: hasDirectionalBasicEdge(maze.edges),
-    teleports: maze.edges.some((e) => e.kind === "teleport"),
+    teleports,
     crossFloorTeleports: hasCrossFloorTeleport(maze.nodes, maze.edges),
     teleportConnector: s.teleportConnectorStyle !== "none",
     teleportGroupOverrides: s.teleportGroupCustomization,
@@ -100,7 +106,8 @@ export function buildColorVisibility(maze: ColorVisibilityMaze, rawSettings: Exp
     elevators,
     vertical: twoWayPassages || oneWayPassages || elevators || maze.floors.length > 1,
     verticalStyle: walls ? (s as VectorByWallsSettings).verticalStyle : "abstract",
-    markerIndex: s.markerIndex.enabled,
+    markerIndexAvailable,
+    markerIndex: markerIndexAvailable && s.markerIndex.enabled,
     markerIndexBorder: !s.markerIndex.borderColorFromMarker,
   };
 }

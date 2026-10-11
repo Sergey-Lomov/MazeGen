@@ -292,6 +292,8 @@ describe("selectActiveProfileColors", () => {
 
   it("hides markerIndex colors when the layer is disabled, shows them (border included) when enabled", () => {
     const disabled = makeState({
+      nodes: [node(1, 0, 0), node(2, 1, 0)],
+      edges: [edge(1, 2, "teleport")],
       openRenderModeSettings: "vector_by_walls",
       vectorByWallsSettings: {
         ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
@@ -301,6 +303,8 @@ describe("selectActiveProfileColors", () => {
     expect(selectActiveProfileColors(disabled).map((c) => c.name)).not.toContain(PC.markerIndexFill.name());
 
     const enabled = makeState({
+      nodes: [node(1, 0, 0), node(2, 1, 0)],
+      edges: [edge(1, 2, "teleport")],
       openRenderModeSettings: "vector_by_walls",
       vectorByWallsSettings: {
         ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
@@ -311,6 +315,15 @@ describe("selectActiveProfileColors", () => {
     expect(names).toContain(PC.markerIndexFill.name());
     expect(names).toContain(PC.markerIndexText.name());
     expect(names).toContain(PC.markerIndexBorder.name());
+
+    const noMarkers = makeState({
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+        markerIndex: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex, enabled: true, borderColorFromMarker: false },
+      },
+    });
+    expect(selectActiveProfileColors(noMarkers).map((c) => c.name)).not.toContain(PC.markerIndexFill.name());
   });
 
   it("lists start/finish caption colors only while the caption is drawn (textEnabled)", () => {
