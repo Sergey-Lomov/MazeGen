@@ -489,6 +489,8 @@ describe("buildCorridorContour", () => {
   // shapes meeting edge-to-edge on shared borders (the per-tile rework). No path is ever a hole.
   const arcsOf = (paths: ContourPath[]): { c: { x: number; y: number }; r: number }[] =>
     paths.flatMap((p) => p.cmds).filter((c): c is Extract<PathCmd, { kind: "arc" }> => c.kind === "arc");
+  const quadraticsOf = (paths: ContourPath[]) =>
+    paths.flatMap((p) => p.cmds).filter((c): c is Extract<PathCmd, { kind: "quadratic" }> => c.kind === "quadratic");
   const pointDistance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.hypot(a.x - b.x, a.y - b.y);
   const expectContinuousPath = (path: ContourPath) => {
@@ -561,25 +563,23 @@ describe("buildCorridorContour", () => {
     }
   });
 
-  it("rounds a 90-degree turn tile with concentric arcs a thickness apart (#493)", () => {
+  it("builds a 90-degree turn tile with two quadratic offset rails (#493)", () => {
     // Middle cell of an L (step 40): passages west and north, corridor width 20.
     const paths = buildCorridorContour(
       [{ v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } }, { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } }],
       20,
     );
     const turn = paths[1]; // the turn tile (centre 40,0)
-    const arcs = arcsOf([turn]);
-    expect(arcs.length).toBe(2);
-    // Concentric: same centre, radii exactly a thickness (20) apart -> constant width through the bend.
-    expect(Math.hypot(arcs[0].c.x - arcs[1].c.x, arcs[0].c.y - arcs[1].c.y)).toBeLessThan(0.01);
-    expect(Math.abs(Math.abs(arcs[0].r - arcs[1].r) - 20)).toBeLessThan(0.01);
+    // The universal contour renderer uses two quadratic segments per rail. This keeps both rails
+    // tied to the same centreline construction instead of switching to a legacy arc builder.
+    expect(quadraticsOf([turn])).toHaveLength(4);
     // And the bend stays inside the tile — no bulge past its borders.
     const pts = allPts([turn]);
     expect(Math.min(...pts.map((p) => p.x))).toBeGreaterThanOrEqual(19.99);
     expect(Math.min(...pts.map((p) => p.y))).toBeGreaterThanOrEqual(-10.01);
   });
 
-  it("rounds a 120-degree hex turn tile with concentric arcs (#493)", () => {
+  it("builds a 120-degree hex turn tile with two quadratic offset rails (#493)", () => {
     // Hex step 60: passages at 0deg and at 120deg from a shared centre.
     const c = { x: 0, y: 0 };
     const a = { x: 60, y: 0 };
@@ -588,11 +588,9 @@ describe("buildCorridorContour", () => {
       [{ v0: a, v1: c }, { v0: c, v1: b }],
       20,
     );
-    const turn = paths.find((p) => arcsOf([p]).length === 2)!;
-    const arcs = arcsOf([turn]);
-    expect(arcs.length).toBe(2);
-    expect(Math.hypot(arcs[0].c.x - arcs[1].c.x, arcs[0].c.y - arcs[1].c.y)).toBeLessThan(0.01);
-    expect(Math.abs(Math.abs(arcs[0].r - arcs[1].r) - 20)).toBeLessThan(0.01);
+    const turn = paths.find((p) => quadraticsOf([p]).length === 4)!;
+    expect(turn).toBeDefined();
+    expect(quadraticsOf([turn])).toHaveLength(4);
   });
 
   it("draws a closed loop as four turn tiles, none a hole", () => {
@@ -606,8 +604,8 @@ describe("buildCorridorContour", () => {
     const paths = buildCorridorContour(segs, 12);
     expect(paths.length).toBe(4);
     expect(paths.some((p) => p.hole)).toBe(false);
-    // Every tile is a turn (two arcs).
-    for (const path of paths) expect(arcsOf([path]).length).toBe(2);
+    // Every tile is a turn (two quadratic segments per rail).
+    for (const path of paths) expect(quadraticsOf([path]).length).toBe(4);
   });
 
   it("draws a T-junction as one path per tile, none a hole", () => {
@@ -732,10 +730,13 @@ describe("buildCorridorContour", () => {
     ];
     const rounded = buildCorridorContour(segs, 12, true);
     const flat = buildCorridorContour(segs, 12, false);
+    const sharp = buildCorridorContour(segs, 12, true, "default", 0);
     const junctionR = rounded.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
     const junctionF = flat.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    const junctionS = sharp.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
     expect(arcsOf([junctionR]).length).toBe(2); // rounded: two armpit arcs
     expect(arcsOf([junctionF]).length).toBe(0); // flat: mitre corners only
+    expect(arcsOf([junctionS]).length).toBe(0); // explicit zero radius: sharp junction corners
     // Dead ends keep their round cap in both modes.
     const deadEndsR = rounded.filter((p) => arcsOf([p]).length === 1);
     const deadEndsF = flat.filter((p) => arcsOf([p]).length === 1);
@@ -768,6 +769,17 @@ describe("buildCorridorContour", () => {
     ];
     expect(buildCorridorContour(fourWay, 20, true, "shallowThreeWay"))
       .toEqual(buildCorridorContour(fourWay, 20, true));
+  });
+
+  it("uses an explicit junction radius for every eligible inner fillet", () => {
+    const segs = [
+      { v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } },
+      { v0: { x: 40, y: 0 }, v1: { x: 80, y: 0 } },
+      { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } },
+    ];
+    const junction = buildCorridorContour(segs, 12, true, "default", 2)
+      .reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    expect(arcsOf([junction]).map((arc) => arc.r)).toEqual([2, 2]);
   });
 
   it("roundJunctions=false: a 4-way junction is a plain octagon-ish fill, no arcs (#493 follow-up)", () => {
@@ -1354,9 +1366,12 @@ describe("VectorByCorridorsRenderer", () => {
       });
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; arc: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; arc: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).corridors;
       expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
-      expect(corridorsGraphics.arc).toHaveBeenCalled();
+      // The universal cell-safe contour may use Bezier fallbacks for synthetic split-cell fixtures;
+      // the production geometry path is still curved, but no longer relies on Pixi arc commands.
+      expect(corridorsGraphics.arc).not.toHaveBeenCalled();
+      expect(corridorsGraphics.bezierCurveTo).toHaveBeenCalled();
       expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsA.background)).toHaveLength(2);
       expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsA.color)).toHaveLength(4);
     });

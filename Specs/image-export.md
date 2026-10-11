@@ -416,12 +416,15 @@ field — or carrying only the removed `roundJunctions` boolean — recovers to 
 
 With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
 built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
-no polygon boolean union (`vectorByCorridorsContour.ts`, `buildCorridorContour`).
+no polygon boolean union. The pure geometry engine (`buildCorridorGeometry`) accepts convex cell
+polygons and face ports; `buildCorridorContour` is only the compatibility adapter from the selector's
+centre-to-centre records (`vectorByCorridorsContour.ts`).
 
-**Ports.** The centre-to-centre segments (`buildCorridorSegments`) are grouped by cell centre; each
-segment end is one *port* of that cell — the middle of the shared border (`(v0+v1)/2`, or the split
-face midpoint `v1` for a split neighbour), plus the outward unit normal there. A port's drawn border
-is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on the border middle.
+**Ports.** A cell supplies its centre and convex polygon, while each passage supplies one *port* —
+the middle of a finite shared face, its outward unit normal, and (when available) the face endpoints.
+A port's drawn border is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on
+the border middle. Selector-specific centre-to-centre records are adapted to this same shape before
+geometry generation.
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
 two filled shapes meet edge-to-edge with no seam and no overlap. Ports are ordered CCW around the
 cell centre.

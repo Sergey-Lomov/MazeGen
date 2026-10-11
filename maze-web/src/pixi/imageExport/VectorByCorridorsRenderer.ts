@@ -948,9 +948,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           if (!junction) return;
           for (const segment of passage.wallSegments) {
             if (settings.join === "round") {
+              const cellVertices = this.splitCellVertices(shape.pointKey, cfg);
               const outerContourSegments = passage.wallSegments.map((other) => ({
                 v0: passage.center,
                 v1: other.center,
+                cellVertices0: cellVertices,
                 v1TouchesSplit: true,
               }));
               const orderedOuter = outerContourSegments
