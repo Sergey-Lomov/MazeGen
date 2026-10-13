@@ -640,6 +640,8 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   gridColor: number;
   color: number;
   thickness: number;
+  /** Universal junction corner radius in world pixels, matching the geometry lab. */
+  junctionRadius: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
   join: CornerStyle;
@@ -806,6 +808,7 @@ export interface ImageExportActions {
   setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
+  setVectorByCorridorsJunctionRadius: (v: number) => void;
   setVectorByCorridorsJoin: (join: CornerStyle) => void;
   setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;

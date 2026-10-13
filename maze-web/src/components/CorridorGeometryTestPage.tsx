@@ -3,11 +3,13 @@ import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import { getTileDiagram } from "../pixi/tessellationGeometry";
 import {
   buildCorridorContour,
+  buildCorridorGeometryDebug,
   contourToSvgPath,
   type CorridorCell,
   type CorridorPoint,
   type CorridorPort,
 } from "../pixi/imageExport/vectorByCorridorsContour";
+import { buildCorridorContour as buildMainBranchCorridorContour } from "../pixi/imageExport/vectorByCorridorsContourMainReference";
 import type { FieldConfig } from "../fieldConfig";
 
 type Family = {
@@ -21,6 +23,17 @@ type Family = {
 type PreparedFamily = Family & {
   polygon: CorridorPoint[];
   ports: CorridorPort[];
+};
+
+type DebugVisibility = {
+  ports: boolean;
+  target: boolean;
+  centerCurves: boolean;
+  rawRibbonSides: boolean;
+  ribbonSides: boolean;
+  preCornerContour: boolean;
+  /** TEMPORARY MAIN RENDERER REFERENCE: remove after the direct comparison is complete. */
+  mainRendererReference: boolean;
 };
 
 const FAMILIES: Family[] = [
@@ -108,14 +121,52 @@ function bounds(polygon: readonly CorridorPoint[]): { minX: number; minY: number
   return { minX: centerX - size / 2, minY: centerY - size / 2, size };
 }
 
-function CombinationArtwork({ family, mask, thickness, cornerRadius, highlightActiveFaces, color, style }: {
+/** TEMPORARY MAIN-BRANCH REFERENCE: adapts the lab cell to the exact segment overload from the
+ * Git branch `main`, before issue 726. Remove this comparison layer when the comparison is done. */
+function temporaryMainRendererReference(
+  polygon: readonly CorridorPoint[],
+  ports: readonly CorridorPort[],
+  thickness: number,
+): string | null {
+  if (ports.length === 0) return null;
+
+  const segments = ports.map((port) => {
+    const face = port.face;
+    const faceStart = face ? ("start" in face ? face.start : face[0]) : undefined;
+    const faceEnd = face ? ("end" in face ? face.end : face[1]) : undefined;
+    const faceLength = faceStart && faceEnd
+      ? Math.hypot(faceEnd.x - faceStart.x, faceEnd.y - faceStart.y)
+      : undefined;
+
+    return {
+      v0: { x: 0, y: 0 },
+      v1: port.midpoint,
+      faceMidpoint: port.midpoint,
+      faceNormal: port.normal,
+      ...(faceLength !== undefined ? { faceLength } : {}),
+      cellVertices0: [...polygon],
+      // A real main-renderer segment ending at a split creates one port on v0. Grouping all
+      // synthetic segments at the same v0 reproduces this lab cell as one renderer tile.
+      v1TouchesSplit: true,
+    };
+  });
+
+  // `main` used the shallow three-way contour mode and had no junction-radius setting. Keep this
+  // call independent from the current universal renderer and deliberately ignore cornerRadius.
+  const paths = buildMainBranchCorridorContour(segments, thickness, true, "shallowThreeWay");
+  return paths.length > 0 ? contourToSvgPath(paths) : null;
+}
+
+function CombinationArtwork({ family, mask, thickness, cornerRadius, highlightActiveFaces, color, grayRendering, style, debugVisibility }: {
   family: PreparedFamily;
   mask: number;
   thickness: number;
   cornerRadius: number;
   highlightActiveFaces: boolean;
   color: string;
+  grayRendering: boolean;
   style: CSSProperties;
+  debugVisibility?: DebugVisibility;
 }) {
   const selected = family.ports.filter((_, index) => (mask & (1 << index)) !== 0);
   const paths = buildCorridorContour(
@@ -123,13 +174,30 @@ function CombinationArtwork({ family, mask, thickness, cornerRadius, highlightAc
     selected,
     thickness,
     true,
-    "shallowThreeWay",
+    cornerRadius,
+  );
+  const [debug] = buildCorridorGeometryDebug(
+    [{ id: family.id, center: { x: 0, y: 0 }, polygon: family.polygon } satisfies CorridorCell],
+    selected,
+    thickness,
+    true,
     cornerRadius,
   );
   const view = bounds(family.polygon);
+  const renderColor = grayRendering ? "#858c94" : color;
+  // TEMPORARY MAIN RENDERER REFERENCE: comparison layer only.
+  const mainRendererReference = debugVisibility?.mainRendererReference
+    ? temporaryMainRendererReference(family.polygon, selected, thickness)
+    : null;
   const label = mask.toString(2).padStart(family.ports.length, "0");
   const labelOffset = view.size * 0.07;
   const labelFontSize = view.size * 0.1;
+  const debugStrokeWidth = (minimum: number, factor: number) => Math.max(minimum, thickness * factor) / 2;
+  const debugPointRadius = (minimum: number, factor: number) => Math.max(minimum, thickness * factor) / 2;
+  const debugContourStrokeWidth = debugStrokeWidth(0.45, 0.045);
+  const handleStrokeWidth = debugStrokeWidth(0.35, 0.035);
+  const handlePointRadius = debugPointRadius(0.7, 0.08);
+  const handleDash = `${Math.max(2, thickness * 0.22)} ${Math.max(1.5, thickness * 0.16)}`;
 
   return (
     <svg viewBox={`${view.minX} ${view.minY} ${view.size} ${view.size}`} preserveAspectRatio="xMidYMid meet" style={style} role="img" aria-label={`${family.label} combination ${label}`}>
@@ -146,7 +214,7 @@ function CombinationArtwork({ family, mask, thickness, cornerRadius, highlightAc
               y1={port.face && Array.isArray(port.face) ? port.face[0].y : port.midpoint.y}
               x2={port.face && Array.isArray(port.face) ? port.face[1].x : port.midpoint.x}
               y2={port.face && Array.isArray(port.face) ? port.face[1].y : port.midpoint.y}
-              stroke={highlighted ? color : "#87909a"}
+              stroke={highlighted ? renderColor : "#87909a"}
               strokeWidth={highlighted ? 2.5 : 1}
             />
             <text x={labelX} y={labelY} textAnchor="middle" dominantBaseline="middle" fontSize={labelFontSize} fontWeight="600" fill="#d8dee5">{index}</text>
@@ -154,21 +222,73 @@ function CombinationArtwork({ family, mask, thickness, cornerRadius, highlightAc
         );
       })}
       {paths.map((path, index) => (
-        <path key={index} d={contourToSvgPath([path])} fill={color} />
+        <path key={index} d={contourToSvgPath([path])} fill={renderColor} />
       ))}
+      {mainRendererReference && (
+        <path
+          // TEMPORARY MAIN RENDERER REFERENCE: visual comparison overlay only.
+          d={mainRendererReference}
+          fill="#ffffff"
+          stroke="#ffffff"
+          fillOpacity={0.42}
+          strokeOpacity={0.8}
+          strokeWidth={debugStrokeWidth(0.35, 0.04)}
+        />
+      )}
+      {debugVisibility?.preCornerContour && debug?.contourBeforeCornerRadius.map((path, index) => (
+        <path key={`pre-contour-${index}`} d={contourToSvgPath([path])} fill="none" stroke="#fff" strokeWidth={debugContourStrokeWidth} strokeDasharray="2 2" />
+      ))}
+      {debugVisibility?.ribbonSides && debug?.ribbons.map((ribbon) => (
+        <g key={`ribbon-${ribbon.portIndex}`} fill="none" stroke="#fff" strokeWidth={debugContourStrokeWidth}>
+          <polyline points={pointsAttribute(ribbon.left)} />
+          <polyline points={pointsAttribute(ribbon.right)} />
+        </g>
+      ))}
+      {debugVisibility?.rawRibbonSides && debug?.rawRibbons.map((ribbon) => (
+        <g key={`raw-ribbon-${ribbon.portIndex}`} fill="none" stroke="#fff" strokeWidth={debugContourStrokeWidth}>
+          <polyline points={pointsAttribute(ribbon.left)} />
+          <polyline points={pointsAttribute(ribbon.right)} />
+        </g>
+      ))}
+      {debugVisibility?.centerCurves && debug?.centerCurves.map((curve) => {
+        const controls = curve.controlPoints;
+        const start = curve.path[0]?.kind === "move" ? curve.path[0].to : undefined;
+        const end = curve.path.find((command) => command.kind === "bezier");
+        if (!start || !end || end.kind !== "bezier" || controls.length < 2) return null;
+        return (
+          <g key={`centre-${curve.portIndex}`} fill="none" stroke="#fff" strokeWidth={debugContourStrokeWidth}>
+            {/* Solid path is the center curve; dashed segments are its control handles. */}
+            <path d={contourToSvgPath([{ cmds: curve.path, hole: false }], false)} />
+            <line x1={start.x} y1={start.y} x2={controls[0].x} y2={controls[0].y} stroke="#fff" strokeDasharray={handleDash} strokeWidth={handleStrokeWidth} strokeLinecap="round" />
+            <line x1={controls[1].x} y1={controls[1].y} x2={end.to.x} y2={end.to.y} stroke="#fff" strokeDasharray={handleDash} strokeWidth={handleStrokeWidth} strokeLinecap="round" />
+            {controls.map((control, index) => <circle key={index} cx={control.x} cy={control.y} r={handlePointRadius} fill="#fff" stroke="none" />)}
+          </g>
+        );
+      })}
+      {debugVisibility?.ports && selected.map((port, index) => (
+        <g key={`port-debug-${index}`}>
+          <circle cx={port.midpoint.x} cy={port.midpoint.y} r={debugPointRadius(0.7, 0.08)} fill="#fff" stroke="none" />
+          <line x1={port.midpoint.x} y1={port.midpoint.y} x2={port.midpoint.x + port.normal.x * labelOffset * 0.8} y2={port.midpoint.y + port.normal.y * labelOffset * 0.8} stroke="#fff" strokeWidth={handleStrokeWidth} />
+        </g>
+      ))}
+      {debugVisibility?.target && debug && (
+        <circle cx={debug.target.x} cy={debug.target.y} r={debugPointRadius(0.9, 0.09)} fill="#fff" stroke="none" />
+      )}
     </svg>
   );
 }
 
-function CombinationCard({ family, mask, thickness, cornerRadius, highlightActiveFaces, color, expanded = false, onOpen }: {
+function CombinationCard({ family, mask, thickness, cornerRadius, highlightActiveFaces, color, grayRendering = false, expanded = false, onOpen, debugVisibility }: {
   family: PreparedFamily;
   mask: number;
   thickness: number;
   cornerRadius: number;
   highlightActiveFaces: boolean;
   color: string;
+  grayRendering?: boolean;
   expanded?: boolean;
   onOpen?: () => void;
+  debugVisibility?: DebugVisibility;
 }) {
   const selected = family.ports.filter((_, index) => (mask & (1 << index)) !== 0);
   const label = mask.toString(2).padStart(family.ports.length, "0");
@@ -196,7 +316,9 @@ function CombinationCard({ family, mask, thickness, cornerRadius, highlightActiv
         cornerRadius={cornerRadius}
         highlightActiveFaces={highlightActiveFaces}
         color={color}
+        grayRendering={grayRendering}
         style={expanded ? styles.expandedSvg : styles.svg}
+        debugVisibility={debugVisibility}
       />
       {!expanded && <div style={styles.cardLabel}>
         <code>{label}</code>
@@ -255,6 +377,16 @@ export function CorridorGeometryTestPage() {
   const [highlightActiveFaces, setHighlightActiveFaces] = useState(false);
   const [selectedFamilyId, setSelectedFamilyId] = useState(FAMILIES[0].id);
   const [expandedCard, setExpandedCard] = useState<{ familyId: string; mask: number } | null>(null);
+  const [debugVisibility, setDebugVisibility] = useState<DebugVisibility>({
+    ports: false,
+    target: false,
+    centerCurves: false,
+    rawRibbonSides: false,
+    ribbonSides: false,
+    preCornerContour: false,
+    mainRendererReference: false,
+  });
+  const [grayRendering, setGrayRendering] = useState(false);
   const families = useMemo(() => FAMILIES.map(prepareFamily).filter((family): family is PreparedFamily => family !== null), []);
   const visibleFamilies = families.filter((family) => family.id === selectedFamilyId);
   const totalCombinations = visibleFamilies.reduce((sum, family) => sum + (1 << family.ports.length), 0);
@@ -343,15 +475,58 @@ export function CorridorGeometryTestPage() {
               </div>
               <button type="button" style={styles.modalClose} onClick={() => setExpandedCard(null)} aria-label="Close enlarged sample"><span style={styles.closeGlyph}>×</span></button>
             </div>
-            <CombinationCard
-              family={expandedFamily}
-              mask={expandedCard.mask}
-              thickness={thickness}
-              cornerRadius={cornerRadius}
-              highlightActiveFaces={highlightActiveFaces}
-              color={expandedColor}
-              expanded
-            />
+            <div style={styles.modalBody}>
+              <CombinationCard
+                family={expandedFamily}
+                mask={expandedCard.mask}
+                thickness={thickness}
+                cornerRadius={cornerRadius}
+                highlightActiveFaces={highlightActiveFaces}
+                color={expandedColor}
+                grayRendering={grayRendering}
+                expanded
+                debugVisibility={debugVisibility}
+              />
+              <div style={styles.debugControls}>
+                {([
+                  ["ports", "Ports"],
+                  ["target", "Target point"],
+                  ["centerCurves", "Center curves + controls"],
+                  ["rawRibbonSides", "Raw ribbon sides (before constraint)"],
+                  ["ribbonSides", "Ribbon side curves"],
+                  ["preCornerContour", "Contour before corner radius"],
+                  // TEMPORARY MAIN RENDERER REFERENCE: remove after the direct comparison is complete.
+                  ["mainRendererReference", "Main renderer reference"],
+                ] as const).map(([key, label]) => (
+                  <div key={key} style={styles.debugToggleRow}>
+                    <span>{label}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label={label}
+                      aria-checked={debugVisibility[key]}
+                      onClick={() => setDebugVisibility((current) => ({ ...current, [key]: !current[key] }))}
+                      style={{ ...styles.debugSwitch, ...(debugVisibility[key] ? styles.debugSwitchOn : {}) }}
+                    >
+                      <span style={{ ...styles.debugThumb, transform: debugVisibility[key] ? "translateX(14px)" : "translateX(0)" }} />
+                    </button>
+                  </div>
+                ))}
+                <div style={styles.debugToggleRow}>
+                  <span>Gray rendering</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Gray rendering"
+                    aria-checked={grayRendering}
+                    onClick={() => setGrayRendering((current) => !current)}
+                    style={{ ...styles.debugSwitch, ...(grayRendering ? styles.debugSwitchOn : {}) }}
+                  >
+                    <span style={{ ...styles.debugThumb, transform: grayRendering ? "translateX(14px)" : "translateX(0)" }} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -385,11 +560,17 @@ const styles: Record<string, CSSProperties> = {
   card: { minWidth: 0, padding: 7, background: "#1d2228", border: "1px solid #303840", borderRadius: 5, cursor: "zoom-in", outline: "none" },
   svg: { display: "block", width: "100%", height: 122, background: "#171b20", borderRadius: 3 },
   expandedCard: { padding: 12, background: "#1d2228", border: "1px solid #303840", borderRadius: 5 },
-  expandedSvg: { display: "block", width: "min(70vw, 560px)", height: "min(70vh, 560px)", minHeight: 280, background: "#171b20", borderRadius: 3 },
+  expandedSvg: { display: "block", width: "100%", height: "min(70vh, 560px)", minHeight: 280, background: "#171b20", borderRadius: 3 },
   cardLabel: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, color: "#8f9aa6", fontSize: 11 },
   modalBackdrop: { position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 24, background: "rgba(7, 9, 12, 0.78)" },
-  modal: { width: "min(680px, 92vw)", maxHeight: "92vh", overflow: "auto", padding: 16, background: "#151a20", border: "1px solid #4a5560", borderRadius: 8, boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)" },
+  modal: { width: "min(920px, 94vw)", maxHeight: "92vh", overflow: "auto", padding: 16, background: "#151a20", border: "1px solid #4a5560", borderRadius: 8, boxShadow: "0 18px 60px rgba(0, 0, 0, 0.5)" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 },
+  modalBody: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 220px", alignItems: "start", gap: 16 },
+  debugControls: { display: "grid", gap: 8, padding: 10, background: "#20262d", borderRadius: 5 },
+  debugToggleRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, color: "#cbd3dc", fontSize: 12, lineHeight: 1.2 },
+  debugSwitch: { display: "inline-flex", alignItems: "center", width: 30, height: 16, padding: 2, border: "1px solid #59636e", borderRadius: 10, background: "#39424a", cursor: "pointer", transition: "background 0.15s" },
+  debugSwitchOn: { background: "#3a6ea8" },
+  debugThumb: { display: "block", width: 10, height: 10, borderRadius: "50%", background: "#e7ebef", transition: "transform 0.15s" },
   modalTitle: { margin: 0, fontSize: 20, fontWeight: 600 },
   modalClose: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, padding: 0, border: "1px solid #59636e", borderRadius: 4, background: "#20262d", color: "#e7ebef", fontFamily: "inherit", fontSize: 24, lineHeight: 1, cursor: "pointer" },
   closeGlyph: { display: "block", transform: "translateY(-2px)", lineHeight: 1 },

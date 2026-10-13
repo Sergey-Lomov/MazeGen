@@ -1,14 +1,12 @@
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { VerticalArrowStyle } from "../../pixi/renderers/types";
 import { indent, inset, spacing, typography, ui } from "../../styles/theme";
-import { SelectRow } from "../SelectRow";
 import { LinkedColorRow, LinkedSelectRow, LinkedSliderRow, LinkedToggleRow } from "./LinkedRows";
 import { LinkContextProvider, type LinkContextValue } from "./LinkContext";
 import { TextFitContextProvider, type TextFitContextValue } from "./TextFitContext";
 import { maxFittingFontSize } from "../../pixi/textFit";
-import { CategoryInfoModal } from "../CategoryInfoModal";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
@@ -63,8 +61,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
-  const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
-  const [renderStyleInfoOpen, setRenderStyleInfoOpen] = useState(false);
+  const setJunctionRadius = useMazeStore((s) => s.setVectorByCorridorsJunctionRadius);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
@@ -370,16 +367,6 @@ export function VectorByCorridorsSettingsPanel() {
             onChange={setJoin}
             linkTarget="join"
           />
-          <SelectRow
-            label={m["image_export.vector_by_corridors.render_style"]()}
-            value={settings.renderStyle}
-            options={[
-              { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
-              { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
-            ]}
-            onChange={setRenderStyle}
-            info={() => setRenderStyleInfoOpen(true)}
-          />
           <LinkedSliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
             value={settings.thickness}
@@ -389,6 +376,16 @@ export function VectorByCorridorsSettingsPanel() {
             step={1}
             format={(v) => String(v)}
             linkTarget="thickness"
+          />
+          <LinkedSliderRow
+            label={m["image_export.vector_by_corridors.junction_radius"]()}
+            value={settings.junctionRadius}
+            onChange={setJunctionRadius}
+            min={0}
+            max={TILE_SIZE / 2}
+            step={0.5}
+            format={(v) => String(v)}
+            linkTarget={null}
           />
           <LinkedSliderRow
             label={m["image_export.vector_by_corridors.marker_widen_padding"]()}
@@ -1247,16 +1244,6 @@ export function VectorByCorridorsSettingsPanel() {
         />
       )}
 
-      {renderStyleInfoOpen && (
-        <CategoryInfoModal
-          title={m["image_export.vector_by_corridors.render_style"]()}
-          params={[
-            { label: m["image_export.vector_by_corridors.render_style_legacy_line"](), description: m["image_export.vector_by_corridors.render_style_info_line"]() },
-            { label: m["image_export.vector_by_corridors.render_style_contour"](), description: m["image_export.vector_by_corridors.render_style_info_contour"]() },
-          ]}
-          onClose={() => setRenderStyleInfoOpen(false)}
-        />
-      )}
     </div>
     </TextFitContextProvider>
     </ColorVisibilityProvider>

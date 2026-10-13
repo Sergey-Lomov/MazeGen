@@ -312,6 +312,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     gridColor: canvas.grid.line,
     color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
+    junctionRadius: 4,
     join: "round",
     renderStyle: "contour",
     startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0, text: "S", textEnabled: false, textFontWeight: "bold", textSize: DEFAULT_MARKER_TEXT_SIZE, textMargin: DEFAULT_TEXT_MARGIN, textColor: 0x2d2d2d },

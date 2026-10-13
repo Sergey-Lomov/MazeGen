@@ -333,7 +333,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       width: settings.thickness,
       color: settings.color,
       join: settings.join,
-      cap: settings.join === "miter" ? ("square" as const) : ("round" as const),
+      // The corridor body is always rendered by the universal filled-contour pipeline. Keep this
+      // local stroke shape round for the remaining split/indicator helpers as well; `join` no
+      // longer selects a second corridor-body algorithm.
+      cap: "round" as const,
     };
 
     // Points where a plain segment's own `v1` lands on a split point's shared-face midpoint (GitHub
@@ -376,7 +379,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // `settings.renderStyle` — neither calls into the other's helpers, so a bug in one can't leak
     // into the other. See `VectorByCorridorsSettings.renderStyle`'s own doc comment.
     this.corridors.clear();
-    if (settings.renderStyle === "contour") {
+    if (settings.renderStyle === "contour" || settings.renderStyle === "legacy_line") {
       // Round style (GitHub issue #493 rework): the corridor network is drawn as one filled shape
       // per tile (`buildCorridorContour`), each tile shaped only from its own passages. A turn tile
       // is a pair of concentric arcs (constant `thickness` width right through the bend — both
@@ -395,7 +398,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       // several chained paths' own ends meet (`junctionEnds` has 2+ entries) gets one shared
       // miter-style patch instead (GitHub issue #443 follow-up).
       if (strokeOpts.cap === "round") {
-        const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, true, "shallowThreeWay");
+        const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, true, settings.junctionRadius);
         if (contour.length > 0) {
           traceCorridorContour(this.corridors, contour);
           this.corridors.fill(strokeOpts.color);
@@ -816,7 +819,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const passage of passages) {
       const segments = this.bridgeUnderlaySegments(passage, cfg);
       if (segments.length === 0) continue;
-      const contour = buildCorridorContour(segments, settings.thickness, true, "shallowThreeWay");
+      const contour = buildCorridorContour(segments, settings.thickness, true, settings.junctionRadius);
       if (contour.length === 0) continue;
       traceCorridorContour(this.corridors, contour);
       this.corridors.fill(settings.color);
@@ -981,13 +984,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               if (settings.splitGapWidth > 0 && outerTurn.length === 2) {
                 const gridInset = 0.5 / (this.viewport.scale || 1);
                 const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, true, settings.junctionRadius));
                 this.corridors.fill(settings.background);
               }
-              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, true, "shallowThreeWay"));
+              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, true, settings.junctionRadius));
               this.corridors.fill(settings.color);
               if (outerTurn.length === 2) {
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, true, settings.junctionRadius));
                 this.corridors.fill(settings.color);
               }
               break;

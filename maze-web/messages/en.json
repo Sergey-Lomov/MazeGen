@@ -1968,6 +1968,7 @@
   "image_export.vector_by_corridors.render_style_info_line": "More stable, but junctions have sharp corners.",
   "image_export.vector_by_corridors.render_style_info_contour": "More decorative, rounds every corner, but is less reliable and junctions can look artificially thickened.",
   "image_export.vector_by_corridors.thickness": "Corridor width",
+  "image_export.vector_by_corridors.junction_radius": "Junction corner radius",
   "image_export.vector_by_corridors.marker_widen_padding": "Marker widen padding",
   "image_export.vector_by_corridors.marker_widen_shape": "Widen patch shape",
   "image_export.vector_by_corridors.marker_widen_shape_circle": "Circle",
