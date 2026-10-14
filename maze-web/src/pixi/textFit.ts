@@ -44,6 +44,8 @@ export interface TextFitItem {
    *  fit this rectangle (centred) instead of `shape` / `plateSize`. */
   plateWidth?: number;
   plateHeight?: number;
+  /** Shape of a rectangular plate. Parallelograms use the same skew as floor-label rendering. */
+  plateShape?: "rectangle" | "parallelogram";
   /** Distance (px) the glyph ink must keep from the plate edge (`TextStyleFields.textMargin`);
    *  `DEFAULT_TEXT_MARGIN` when omitted. */
   margin?: number;
@@ -263,8 +265,20 @@ function plateRadius(item: TextFitItem): number {
 /** Half extents of a rectangular plate (margin applied), or `null` for a shaped plate. */
 function plateHalfExtents(item: TextFitItem): { hw: number; hh: number } | null {
   if (item.plateWidth === undefined || item.plateHeight === undefined) return null;
+  if (item.plateShape === "parallelogram") return null;
   const margin = itemMargin(item);
   return { hw: Math.max(item.plateWidth / 2 - margin, 0), hh: Math.max(item.plateHeight / 2 - margin, 0) };
+}
+
+function parallelogramInnerHalfExtents(item: TextFitItem): { hw: number; hh: number } | null {
+  if (item.plateWidth === undefined || item.plateHeight === undefined || item.plateShape !== "parallelogram") return null;
+  const width = Math.max(item.plateWidth - itemMargin(item) * 2, 0);
+  const height = Math.max(item.plateHeight - itemMargin(item) * 2, 0);
+  const skew = Math.min(height * 0.45, width * 0.2);
+  // Use the narrowest horizontal slice of the plate. This is deliberately stricter than checking
+  // only the text's current y-coordinates: BitmapText's ink pivot can differ by a few pixels from
+  // the metric box, and the label must remain clear of both slanted sides in that case too.
+  return { hw: Math.max(width / 2 - skew, 0), hh: height / 2 };
 }
 
 /** Whether `item` drawn at `fontSize` px exceeds its plate shape. */
@@ -278,6 +292,13 @@ export function textOverflows(item: TextFitItem, fontSize: number): boolean {
 
 /** Whether every ink point, scaled by `scale`, lies inside the item's plate. */
 function inkFitsPlate(item: TextFitItem, points: number[], scale: number): boolean {
+  const parallelogram = parallelogramInnerHalfExtents(item);
+  if (parallelogram) {
+    for (let i = 0; i < points.length; i += 2) {
+      if (Math.abs(points[i] * scale) > parallelogram.hw + 1e-9 || Math.abs(points[i + 1] * scale) > parallelogram.hh + 1e-9) return false;
+    }
+    return true;
+  }
   const half = plateHalfExtents(item);
   if (!half) return inkInShape(item.shape, plateRadius(item), points, scale);
   for (let i = 0; i < points.length; i += 2) {
@@ -288,6 +309,10 @@ function inkFitsPlate(item: TextFitItem, points: number[], scale: number): boole
 
 /** Whether a `width` x `height` centred rectangle lies inside the item's plate. */
 function extentFitsPlate(item: TextFitItem, width: number, height: number): boolean {
+  const parallelogram = parallelogramInnerHalfExtents(item);
+  if (parallelogram) {
+    return width / 2 <= parallelogram.hw + 1e-9 && height / 2 <= parallelogram.hh + 1e-9;
+  }
   const half = plateHalfExtents(item);
   if (!half) return rectInShape(item.shape, plateRadius(item), width, height);
   return width / 2 <= half.hw + 1e-9 && height / 2 <= half.hh + 1e-9;
@@ -295,6 +320,9 @@ function extentFitsPlate(item: TextFitItem, width: number, height: number): bool
 
 /** Upper bound of the bisection range: any scale beyond it overflows regardless of shape. */
 function plateReach(item: TextFitItem): number {
+  if (item.plateShape === "parallelogram" && item.plateWidth !== undefined && item.plateHeight !== undefined) {
+    return Math.max(item.plateWidth, item.plateHeight) / 2;
+  }
   const half = plateHalfExtents(item);
   return half ? Math.max(half.hw, half.hh) : plateRadius(item);
 }
@@ -315,13 +343,13 @@ function maxFitScale(item: TextFitItem, width: number, height: number): number {
 /** Largest font size (px, floored to `TEXT_SIZE_RANGE.step`, clamped to its range) at which every
  *  item fits its plate. `null` when there is nothing to fit. Items that can never fit even at the
  *  range minimum resolve to the minimum. */
-export function maxFittingFontSize(items: readonly TextFitItem[]): number | null {
+export function maxFittingFontSize(items: readonly TextFitItem[], range: { min: number; max: number; step: number } = TEXT_SIZE_RANGE): number | null {
   let best = Infinity;
   // Identical labels (one elevator badge per floor target, many markers) fit identically.
   const seen = new Set<string>();
   for (const item of items) {
     if (item.text.length === 0) continue;
-    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${itemMargin(item)}`;
+    const key = `${item.text}|${item.fontWeight}|${item.shape}|${item.plateSize}|${item.plateWidth}|${item.plateHeight}|${item.plateShape}|${itemMargin(item)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const reachLimit = plateReach(item);
@@ -346,7 +374,40 @@ export function maxFittingFontSize(items: readonly TextFitItem[]): number | null
     best = Math.min(best, probeSize * maxFitScale(item, extent.width, extent.height));
   }
   if (!Number.isFinite(best)) return null;
-  const { min, max, step } = TEXT_SIZE_RANGE;
+  const { min, max, step } = range;
   const snapped = Math.floor(best / step + 1e-9) * step;
   return Math.min(Math.max(snapped, min), max);
+}
+
+/** Required rectangular plate dimensions for every label in `items` at the supplied font size.
+ *  The largest measured glyph extent across all floors wins; the text margin is added on both
+ *  sides. This is intentionally based on glyph metrics rather than character count, so Roman
+ *  `VIII` and `X` receive their actual widths. */
+export function requiredTextPlateDimensions(items: readonly TextFitItem[], fontSize: number): { width: number; height: number } | null {
+  let width = 0;
+  let height = 0;
+  let found = false;
+  for (const item of items) {
+    if (!item.text) continue;
+    const extent = measureText(item.text, item.fontWeight, fontSize);
+    if (extent.width <= 0 || extent.height <= 0) continue;
+    const margin = item.margin ?? DEFAULT_TEXT_MARGIN;
+    const baseWidth = extent.width + margin * 2;
+    const baseHeight = extent.height + margin * 2;
+    if (item.plateShape === "parallelogram") {
+      // The renderer skews the top/bottom edges by min(height * .45, width * .2). The usable
+      // centre width is therefore width - skew, so solve that dependency before rounding.
+      let requiredWidth = baseWidth;
+      for (let i = 0; i < 8; i++) {
+        const skew = Math.min(baseHeight * 0.45, requiredWidth * 0.2);
+        requiredWidth = baseWidth + skew * 2;
+      }
+      width = Math.max(width, requiredWidth);
+    } else {
+      width = Math.max(width, baseWidth);
+    }
+    height = Math.max(height, baseHeight);
+    found = true;
+  }
+  return found ? { width: Math.ceil(width), height: Math.ceil(height) } : null;
 }

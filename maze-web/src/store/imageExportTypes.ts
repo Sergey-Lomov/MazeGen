@@ -391,6 +391,23 @@ export interface BadgeSettings extends MarkerAppearance, TextStyleFields {
   labelType: IndexLabelStyle;
 }
 
+export type FloorLabelBackgroundShape = "none" | "rectangle" | "parallelogram";
+
+/** Label overlaid at the geometric center of the active floor for multi-floor mazes. */
+export interface FloorLabelSettings extends TextStyleFields {
+  enabled: boolean;
+  prefix: string;
+  labelType: IndexLabelStyle;
+  backgroundShape: FloorLabelBackgroundShape;
+  width: number;
+  height: number;
+  cornerRadius: number;
+  gap: number;
+  borderWidth: number;
+  fillColor: number;
+  borderColor: number;
+}
+
 /** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
  *  an ordinary linkable parameter in `VECTOR_BY_WALLS_PARAM_REGISTRY`/`VECTOR_BY_CORRIDORS_PARAM_
  *  REGISTRY` with no incoming link, driving whichever dependent fields `links` currently routes to
@@ -412,6 +429,8 @@ export interface SharedStyleSourceFields {
   markerTextSize: number;
   markerTextMargin: number;
   markerTextFontWeight: LabelFontWeight;
+  /** Shared floor-number format for floor, elevator and teleport labels. */
+  floorLabelType: IndexLabelStyle;
 }
 
 /** "Shared style" source values for the "Vertical connections" section (GitHub issue #668) — same
@@ -511,6 +530,7 @@ export interface MarkerIndexCoverage {
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
 export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+  floorLabel: FloorLabelSettings;
   /** "Vertical connections" shared-style source for the "decorative" style's line color/width
    *  (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator.lineColor`/`lineWidth`) —
    *  "Vector by corridors" has no decorative treatment (see `VerticalDecorativeFields`), so these
@@ -632,6 +652,7 @@ export interface OneWaySettingsFields {
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
 export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields, SharedStyleSourceFields, VerticalSharedStyleFields {
+  floorLabel: FloorLabelSettings;
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
    *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
@@ -873,6 +894,7 @@ export interface ImageExportActions {
   /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
    *  "Shared style" override to track. */
   patchVectorByCorridorsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
+  patchVectorByCorridorsFloorLabelSettings: (patch: Partial<FloorLabelSettings>) => void;
   setVectorByCorridorsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByCorridorsTwoWayPassageMarkerFillColor: (color: number) => void;
@@ -1010,6 +1032,7 @@ export interface ImageExportActions {
   /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
    *  "Shared style" override to track. */
   patchVectorByWallsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
+  patchVectorByWallsFloorLabelSettings: (patch: Partial<FloorLabelSettings>) => void;
   setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: CornerStyle) => void;
   setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;

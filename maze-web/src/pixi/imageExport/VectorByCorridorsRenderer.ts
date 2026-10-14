@@ -2,6 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
+import { FloorLabelRenderer, floorLabelCenter } from "../renderers/FloorLabelRenderer";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
@@ -23,7 +24,7 @@ import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
-import { cellCenterBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
+import { cellCenterBounds, exactCellBounds, getCellVertices, pointInPolygon } from "../tessellationGeometry";
 
 type SplitPoint = { x: number; y: number };
 type SplitClipViews = { clipView: Graphics; gapView: Graphics };
@@ -92,6 +93,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
   private readonly markerIndex: MarkerIndexRenderer;
+  private readonly floorLabelContainer: Container;
+  private readonly floorLabel: FloorLabelRenderer;
   private readonly warningHighlightContainer: Container;
   /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
    *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
@@ -157,6 +160,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     container.addChild(this.markerIndexBodyContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
 
+    this.floorLabelContainer = new Container();
+    container.addChild(this.floorLabelContainer);
+    this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
+
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByCorridorsWarnings);
@@ -203,6 +210,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
@@ -559,6 +567,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     } else {
       this.markerIndex.clear();
     }
+
+    this.floorLabel.render(
+      settings.floorLabel,
+      floorLabelCenter(exactCellBounds(nodes, cfg)),
+      activeFloorIndex,
+      state.floors.length,
+      settings.color,
+    );
 
     this.renderWarningHighlight(state);
   }
@@ -1379,8 +1395,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalConnections.destroy();
     this.verticalContainer.destroy();
     this.markerIndex.destroy();
+    this.floorLabel.destroy();
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
+    this.floorLabelContainer.destroy();
     this.warningHighlight.destroy();
     this.warningHighlightContainer.destroy();
   }

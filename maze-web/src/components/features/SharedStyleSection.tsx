@@ -199,6 +199,17 @@ export function SharedStyleSection<P extends string>({
           linkTarget={"markerTextMargin" as P}
         />
       </div>
+      <LinkedSelectRow
+        label={m["image_export.floors.general_style_floor_label"]()}
+        value={settings.floorLabelType}
+        options={[
+          { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+          { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+          { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+        ]}
+        onChange={(floorLabelType) => onChange({ floorLabelType })}
+        linkTarget={"floorLabelType" as P}
+      />
     </div>
   );
 }

@@ -12,8 +12,8 @@
 // switches — MSDF glyph shapes are baked, not synthesized, so a bold look needs its own atlas.
 //
 // Charset — only the glyphs canvas labels actually draw:
-//   digits 0-9, ':', uppercase A-Z, uppercase Cyrillic А-Я+Ё (GitHub issue #697 — marker
-//   character badge), '(' ')' ',' space
+//   digits 0-9, ':', Latin and Cyrillic letters (uppercase and lowercase), '(' ')' ',' space.
+//   Lowercase glyphs are required by the free-form floor-label prefix.
 // Extend `CHARSET` and re-run `npm run gen:msdf` when a new label introduces a new glyph.
 
 import { writeFile } from "node:fs/promises";
@@ -24,7 +24,7 @@ import generateBMFont from "msdf-bmfont-xml";
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(here, "../../public/fonts");
 
-const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:(), АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:(), АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя";
 
 const WEIGHTS = [
   { src: "Roboto-Regular.ttf", out: "roboto-regular-msdf" },
@@ -39,10 +39,10 @@ function bake(fontSrc, outName) {
         charset: CHARSET,
         fieldType: "msdf",
         outputType: "xml",
-        // 512x512 page, fontSize 54, wide 8px distance range — the wide spread keeps labels sharp
-        // at extreme viewport zoom (a narrow range runs out of gradient once a glyph is drawn much
-        // larger than its atlas size). Keep textureSize in sync if CHARSET grows a lot.
-        textureSize: [512, 512],
+        // 1024x1024 page, fontSize 54, wide 8px distance range — the wide spread keeps labels
+        // sharp at extreme viewport zoom (a narrow range runs out of gradient once a glyph is drawn
+        // much larger than its atlas size). Keep textureSize in sync if CHARSET grows a lot.
+        textureSize: [1024, 1024],
         fontSize: 54,
         distanceRange: 8,
         smartSize: true,

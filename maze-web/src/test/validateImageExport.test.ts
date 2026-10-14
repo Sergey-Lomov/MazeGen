@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings } from "../store/projectExport/validateImageExport";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings } from "../store/projectExport/validateImageExport";
 import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
@@ -326,5 +326,13 @@ describe("validateMarkerIndexSettings", () => {
     expect(validateMarkerIndexSettings({ width: 99, height: 2 }, "path", fb)).toMatchObject({ width: 20, height: 8 });
     expect(validateMarkerIndexSettings({ width: 1 }, "path", fb).width).toBe(8);
     expect(validateMarkerIndexSettings({ textMargin: 1.5 }, "path", fb).textMargin).toBe(1.5);
+  });
+});
+
+describe("validateFloorLabelSettings", () => {
+  it("clamps persisted floor-label size and width to the panel ranges", () => {
+    const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel;
+    expect(validateFloorLabelSettings({ textSize: 999, width: 999 }, "path", fallback)).toMatchObject({ textSize: 72, width: 250 });
+    expect(validateFloorLabelSettings({ textSize: 1, width: 1 }, "path", fallback)).toMatchObject({ textSize: 6, width: 20 });
   });
 });

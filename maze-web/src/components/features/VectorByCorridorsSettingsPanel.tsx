@@ -13,12 +13,15 @@ import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
+import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
 import { VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../../store/parameterLinksRegistry";
 import { computeActivePaths } from "../../store/parameterLinksActivity";
 import { computeVectorByCorridorsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
+import { requiredTextPlateDimensions } from "../../pixi/textFit";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
@@ -100,6 +103,7 @@ export function VectorByCorridorsSettingsPanel() {
   const patchVerticalSharedStyle = useMazeStore((s) => s.patchVectorByCorridorsVerticalSharedStyle);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByCorridorsElevatorBadges);
   const patchMarkerIndex = useMazeStore((s) => s.patchVectorByCorridorsMarkerIndexSettings);
+  const patchFloorLabel = useMazeStore((s) => s.patchVectorByCorridorsFloorLabelSettings);
   const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorBadgesCornerStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerCornerStyle);
@@ -208,13 +212,15 @@ export function VectorByCorridorsSettingsPanel() {
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
-  // Auto-fit data for every font-size row (GitHub issue #707) — all labels of the whole project,
-  // grouped by size control; `fitAll` is the smallest size that fits every label.
+  // Auto-fit data for font-size rows (GitHub issue #707) — floor labels have their own independent
+  // size control, so `fitAll` only covers the shared-style label controls.
   const textFit = useMemo<TextFitContextValue>(() => {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
-      fitFor: (kind) => maxFittingFontSize(items[kind]),
+      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
       fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
+      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
+      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
     };
   }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
@@ -246,8 +252,9 @@ export function VectorByCorridorsSettingsPanel() {
     () => computeActivePaths(VECTOR_BY_CORRIDORS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
       hasVerticalSection, hasMarkerIndexSource,
+      hasMultipleFloors: floors.length > 1,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, floors.length, settings],
   );
 
   // Group customization lists every teleport connection group of the *whole project*, cross-floor
@@ -402,6 +409,26 @@ export function VectorByCorridorsSettingsPanel() {
       )}
 
       <div style={styles.divider} />
+
+      {floors.length > 1 && (
+        <>
+          <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
+          {isExpanded("floors") && (
+            <FloorLabelSection
+              settings={settings.floorLabel}
+              onChange={patchFloorLabel}
+              fields={{ fill: PC.floorLabelFill, border: PC.floorLabelBorder, text: PC.floorLabelText }}
+              defaults={{ fill: D.floorLabel.fillColor, border: D.floorLabel.borderColor, text: D.floorLabel.textColor }}
+              priorities={{
+                fill: [PC.floorLabelText.at(settings.floorLabel.textColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), bg],
+                border: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelText.at(settings.floorLabel.textColor), bg],
+                text: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), corridor, bg],
+              }}
+            />
+          )}
+          <div style={styles.divider} />
+        </>
+      )}
 
       <SectionHeader
         label={m["image_export.vector_by_walls.section_markers"]()}

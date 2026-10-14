@@ -10,6 +10,7 @@ import type {
   PngExportSettings,
   MarkerSettings,
   MarkerIndexSettings,
+  FloorLabelSettings,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -62,6 +63,25 @@ export const DEFAULT_SHARED_STYLE_SOURCE: SharedStyleSourceFields = {
   markerTextSize: DEFAULT_MARKER_TEXT_SIZE,
   markerTextMargin: DEFAULT_TEXT_MARGIN,
   markerTextFontWeight: "bold",
+  floorLabelType: "letters",
+};
+
+export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
+  enabled: true,
+  prefix: "Floor ",
+  labelType: "letters",
+  textColor: canvas.floor.default,
+  textFontWeight: "bold",
+  textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
+  textMargin: DEFAULT_TEXT_MARGIN,
+  backgroundShape: "rectangle",
+  width: 72,
+  height: 28,
+  cornerRadius: 3,
+  gap: 8,
+  borderWidth: 2,
+  fillColor: 0xf0c900,
+  borderColor: canvas.vertical.default,
 };
 
 /** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub
@@ -147,15 +167,16 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   elevatorArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowSize,
   elevatorArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowStyle,
   elevatorArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowCornerStyle,
-  // "Floor-number badges" (GitHub issue #430) — enabled by default, Arabic numerals, a small
-  // fraction of the elevator marker's own radius, laid out above/below the marker
+  // "Floor-number badges" (GitHub issue #430) — enabled by default, using the shared floor-label
+  // style (letters by default), with a small fraction of the elevator marker's own radius, laid
+  // out above/below the marker
   // (`placement: "top_bottom"`). `fillColor`/`textColor` are an independently visible fill+text
   // pair (not a knockout/cutout like `drawFloorBadge`'s off-floor navigation stand-in), with
   // `fillColor` a dedicated accent yellow rather than `canvas.vertical.default`, so a badge ring
   // reads clearly against the marker it surrounds.
   elevatorBadges: {
     enabled: true,
-    labelType: "arabic",
+    labelType: "letters",
     size: 12,
     placement: "top_bottom",
     distance: 4,
@@ -265,6 +286,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
     splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
     splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     verticalDecorativeLineColor: canvas.vertical.default,
     verticalDecorativeLineWidth: 2,
@@ -275,7 +297,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = propagate
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_WALLS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
     "verticalDecorativeLineColor", "verticalDecorativeLineWidth", "verticalDecorativeSize", "verticalDecorativeArrowSize",
@@ -326,13 +348,14 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = p
     splitGapWidth: 0,
     splitDiagonalBowAmount: 0.5,
     ...DEFAULT_SHARED_STYLE_SOURCE,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...DEFAULT_VERTICAL_SHARED_STYLE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   } as unknown as Record<string, unknown>,
   DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
   [
-    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight",
+    "markerShape", "cornerStyle", "markerSize", "markerFillColor", "markerBorderColor", "markerBorderWidth", "gapWidth", "markerTextSize", "markerTextMargin", "markerTextFontWeight", "floorLabelType",
     "verticalCornerStyle", "verticalShape", "verticalSize", "verticalBorderWidth", "verticalGapWidth", "verticalFillColor",
     "verticalArrowColor", "verticalArrowSize", "verticalArrowStyle", "verticalArrowCornerStyle",
   ],

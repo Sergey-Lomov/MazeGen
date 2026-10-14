@@ -11,12 +11,15 @@ import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { computeVectorByWallsWarningsAcrossFloors, computeTextFitItemsAcrossFloors } from "../../pixi/selectors/exportWarnings";
+import { requiredTextPlateDimensions } from "../../pixi/textFit";
+import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../../pixi/renderConstants";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup, markerShapeSelectOptions } from "./MarkerSettingsGroup";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
+import { FloorLabelSection } from "./FloorLabelSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, SettingsSection } from "./SharedStyleSection";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
@@ -102,6 +105,7 @@ export function VectorByWallsSettingsPanel() {
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByWallsElevatorBadges);
   const patchMarkerIndex = useMazeStore((s) => s.patchVectorByWallsMarkerIndexSettings);
+  const patchFloorLabel = useMazeStore((s) => s.patchVectorByWallsFloorLabelSettings);
   const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByWallsElevatorBadgesCornerStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerCornerStyle);
@@ -162,13 +166,15 @@ export function VectorByWallsSettingsPanel() {
     [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints],
   );
 
-  // Auto-fit data for every font-size row (GitHub issue #707) — all labels of the whole project,
-  // grouped by size control; `fitAll` is the smallest size that fits every label.
+  // Auto-fit data for font-size rows (GitHub issue #707) — floor labels have their own independent
+  // size control, so `fitAll` only covers the shared-style label controls.
   const textFit = useMemo<TextFitContextValue>(() => {
     const items = computeTextFitItemsAcrossFloors(rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish);
     return {
-      fitFor: (kind) => maxFittingFontSize(items[kind]),
+      fitFor: (kind) => maxFittingFontSize(items[kind], kind === "floorLabel" ? FLOOR_LABEL_TEXT_SIZE_RANGE : undefined),
       fitAll: () => maxFittingFontSize([...items.start, ...items.finish, ...items.elevator, ...items.teleport, ...(settings.markerIndex.enabled ? items.markerIndex : [])]),
+      fitFloorLabelWidth: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.width ?? null,
+      fitFloorLabelHeight: () => requiredTextPlateDimensions(items.floorLabel, settings.floorLabel.textSize)?.height ?? null,
     };
   }, [rawNodes, rawEdges, floors, cfg, settings, rawEffectiveEndpoints]);
 
@@ -213,8 +219,9 @@ export function VectorByWallsSettingsPanel() {
     () => computeActivePaths(VECTOR_BY_WALLS_PARAM_REGISTRY, {
       hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators,
       hasVerticalSection, hasMarkerIndexSource,
+      hasMultipleFloors: floors.length > 1,
     }, settings),
-    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, settings],
+    [hasOneWays, hasTeleports, hasCrossFloorTeleports, hasTwoWayPassages, hasOneWayPassages, hasElevators, hasVerticalSection, hasMarkerIndexSource, floors.length, settings],
   );
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
@@ -432,6 +439,26 @@ export function VectorByWallsSettingsPanel() {
       )}
 
       <div style={styles.divider} />
+
+      {floors.length > 1 && (
+        <>
+          <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
+          {isExpanded("floors") && (
+            <FloorLabelSection
+              settings={settings.floorLabel}
+              onChange={patchFloorLabel}
+              fields={{ fill: PC.floorLabelFill, border: PC.floorLabelBorder, text: PC.floorLabelText }}
+              defaults={{ fill: D.floorLabel.fillColor, border: D.floorLabel.borderColor, text: D.floorLabel.textColor }}
+              priorities={{
+                fill: [PC.floorLabelText.at(settings.floorLabel.textColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), background],
+                border: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelText.at(settings.floorLabel.textColor), background],
+                text: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), floor, background],
+              }}
+            />
+          )}
+          <div style={styles.divider} />
+        </>
+      )}
 
       <SectionHeader
         label={m["image_export.vector_by_walls.section_markers"]()}

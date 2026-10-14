@@ -27,7 +27,7 @@ import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
   buildColorVisibility, visibleColor, unownedColor,
-  type ColorVisibilityContext, type VisibleColor,
+  type ColorVisibilityContext, type ColorVisibilityMaze, type VisibleColor,
 } from "./colorFieldRegistry";
 import { withResolvedGroupOverrides } from "../../store/teleportGroupLinks";
 import { splitNodeKey, teleportGroupKey, type ColorFieldKey, type TeleportGroupColorRole } from "../colorFieldKeys";
@@ -51,6 +51,7 @@ export type ExportWarningId =
   | "elevator_badge_text_overflow"
   | "marker_index_text_overflow"
   | "teleport_badge_text_overflow"
+  | "floor_label_text_overflow"
   /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
    *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
    *  `waypoint_on_split`/`teleport_on_special_split`. */
@@ -134,7 +135,12 @@ export type ExportWarningId =
   | "vertical_two_way_arrow_low_contrast_floor"
   | "vertical_one_way_line_low_contrast_floor"
   | "vertical_one_way_accent_low_contrast_floor"
-  | "elevator_line_low_contrast_floor";
+  | "elevator_line_low_contrast_floor"
+  | "floor_label_fill_low_contrast_corridor"
+  | "floor_label_fill_low_contrast_floor"
+  | "floor_label_border_low_contrast_corridor"
+  | "floor_label_border_low_contrast_floor"
+  | "floor_label_text_low_contrast";
 
 export type ExportWarning = {
   id: ExportWarningId;
@@ -461,6 +467,7 @@ export function computeVectorByWallsWarningsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+      floorCount: floors.length,
     };
     return computeVectorByWallsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, nodes, floorContext);
   });
@@ -478,6 +485,7 @@ export function computeVectorByCorridorsWarningsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: Math.max(floors.findIndex((candidate) => candidate.id === floor.id), 0),
+      floorCount: floors.length,
     };
     return computeVectorByCorridorsWarnings(scoped.nodes, scoped.edges, cfg, settings, scoped.start, scoped.finish, floorContext, nodes);
   });
@@ -635,18 +643,19 @@ function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cf
 
 /** Which size control a text label belongs to — one per independent font-size field (GitHub issue
  *  #707). Auto-fit resolves a size per kind; the overflow warnings group start/finish together. */
-export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex";
+export type TextFitKind = "start" | "finish" | "elevator" | "teleport" | "markerIndex" | "floorLabel";
 
 /** Visibility context of a warning pass. Built from the *unscoped* graph (a floor-scoped edge list
  *  can't tell a two-way passage from a one-way one — its reverse half lives on another floor); the
- *  per-floor data conditions (does this floor have such an edge) stay with the callers. `floors`
- *  is left empty: it only feeds the section-level `vertical` flag, and every per-kind vertical
- *  predicate already implies it. */
-function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings): ColorVisibilityContext {
-  return buildColorVisibility({ nodes, edges, floors: [] }, settings);
+ *  per-floor data conditions (does this floor have such an edge) stay with the callers. A minimal
+ *  floor array preserves project-wide visibility for the floor-label colors. */
+function warningVisibility(nodes: NodeDto[], edges: EdgeDto[], settings: VectorByWallsSettings | VectorByCorridorsSettings, floorCount?: number): ColorVisibilityContext {
+  const count = floorCount ?? new Set(nodes.map((node) => node.level ?? 0)).size;
+  const floors = Array.from({ length: count }, (_, i) => ({ id: String(i) })) as unknown as ColorVisibilityMaze["floors"];
+  return buildColorVisibility({ nodes, edges, floors }, settings);
 }
 
-type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex">;
+type TextFitSettings = Pick<VectorByWallsSettings, "startMarker" | "finishMarker" | "elevatorBadges" | "teleportFloorBadge" | "teleportConnectorStyle" | "markerIndex" | "floorLabel">;
 
 type TextFitEntry = TextFitItem & {
   kind: TextFitKind;
@@ -726,6 +735,25 @@ function collectTextFitEntries(
       });
     }
   }
+
+  // The floor label is a fixed rectangular/parallelogram plate centered on every floor. Its
+  // parallelogram geometry is passed through to text-fit checks so slanted edges are respected.
+  const floorLabel = settings.floorLabel;
+  if (floorLabel.enabled && floorLabel.backgroundShape !== "none") {
+    entries.push({
+      kind: "floorLabel",
+      text: `${floorLabel.prefix}${formatIndexLabel(displayFloorIndex, floorLabel.labelType)}`,
+      fontWeight: floorLabel.textFontWeight,
+      shape: "square",
+      plateSize: 0,
+      plateWidth: floorLabel.width,
+      plateHeight: floorLabel.height,
+      plateShape: floorLabel.backgroundShape,
+      fontSize: floorLabel.textSize,
+      margin: floorLabel.textMargin,
+      nodes: [],
+    });
+  }
   return entries;
 }
 
@@ -738,6 +766,7 @@ const TEXT_OVERFLOW_WARNING_ID: Record<TextFitKind, ExportWarningId> = {
   elevator: "elevator_badge_text_overflow",
   teleport: "teleport_badge_text_overflow",
   markerIndex: "marker_index_text_overflow",
+  floorLabel: "floor_label_text_overflow",
 };
 
 function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly TextFitEntry[]): void {
@@ -763,7 +792,7 @@ export function computeTextFitItemsAcrossFloors(
   nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
 ): Record<TextFitKind, TextFitItem[]> {
-  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [] };
+  const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [], floorLabel: [] };
   const resolveNodeLevel = selectNodeLevelResolver(nodes);
   for (const [index, floor] of floors.entries()) {
     const scoped = selectFloorScopedMaze(nodes, edges, floors, floor.id, start, finish);
@@ -772,13 +801,14 @@ export function computeTextFitItemsAcrossFloors(
       unscopedNodeById: new Map(nodes.map((node) => [node.id, node])),
       unscopedEdges: edges,
       activeFloorIndex: index,
+      floorCount: floors.length,
     };
     const nodeById = new Map(scoped.nodes.map((node) => [node.id, node]));
     const teleportEdges = buildTeleportEdges(nodeById, scoped.edges, cfg, floorContext);
     for (const entry of collectTextFitEntries(nodeById, scoped.edges, cfg, teleportEdges, settings, scoped.start, scoped.finish, resolveNodeLevel, index, { nodes, edges })) {
       result[entry.kind].push({
         text: entry.text, fontWeight: entry.fontWeight, shape: entry.shape, plateSize: entry.plateSize,
-        plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, margin: entry.margin,
+        plateWidth: entry.plateWidth, plateHeight: entry.plateHeight, plateShape: entry.plateShape, margin: entry.margin,
       });
     }
   }
@@ -886,6 +916,8 @@ function addCommonContrastWarnings(
   const elevatorBadgeFillWarningId = surfaceKind === "floor" ? "elevator_badge_fill_low_contrast_floor" : "elevator_badge_fill_low_contrast_corridor";
   const teleportBadgeBorderWarningId = surfaceKind === "floor" ? "teleport_badge_border_low_contrast_floor" : "teleport_badge_border_low_contrast_corridor";
   const teleportBadgeFillWarningId = surfaceKind === "floor" ? "teleport_badge_fill_low_contrast_floor" : "teleport_badge_fill_low_contrast_corridor";
+  const floorLabelFillWarningId = surfaceKind === "floor" ? "floor_label_fill_low_contrast_floor" : "floor_label_fill_low_contrast_corridor";
+  const floorLabelBorderWarningId = surfaceKind === "floor" ? "floor_label_border_low_contrast_floor" : "floor_label_border_low_contrast_corridor";
   const vertical = verticalPassageEdges(edges);
   const oneWayVertical = oneWayVerticalPassageEdges(edges, allEdgesForWarnings);
   const elevator = edges.filter((edge) => edge.kind === "elevator");
@@ -893,6 +925,9 @@ function addCommonContrastWarnings(
   pushContrastWarning(warnings, "grid_low_contrast_background", [[color("bgGrid"), color("bgFill")]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_floor", [[color("innerGrid"), base]]);
   pushContrastWarning(warnings, "inner_grid_low_contrast_wall", [[color("innerGrid"), color("tilesWall")]]);
+  pushContrastWarning(warnings, floorLabelFillWarningId, [[color("floorLabelFill"), base]]);
+  pushContrastWarning(warnings, floorLabelBorderWarningId, [[color("floorLabelBorder"), base]]);
+  pushContrastWarning(warnings, "floor_label_text_low_contrast", [[color("floorLabelText"), color("floorLabelFill") ?? base]]);
 
   const fillEntries: ContrastEntry[] = [];
   const borderEntries: ContrastEntry[] = [];
@@ -1035,7 +1070,7 @@ export function computeVectorByWallsWarnings(
     edges,
   );
 
-  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings);
+  const ctx = warningVisibility(unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, unscopedNodes, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
@@ -1226,7 +1261,7 @@ export function computeVectorByCorridorsWarnings(
     edges,
   );
 
-  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings);
+  const ctx = warningVisibility(allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, settings, teleportFloorContext?.floorCount);
   addCommonContrastWarnings(
     warnings, nodes, edges, ctx, teleportEdges, allNodesForWarnings, teleportFloorContext?.unscopedEdges ?? edges, start, finish,
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0, cfg,
