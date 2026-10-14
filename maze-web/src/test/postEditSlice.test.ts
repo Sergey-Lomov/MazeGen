@@ -2881,3 +2881,38 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
     expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
   });
 });
+
+describe("mazeStore setPostEditDragOverride dedup (GitHub issue #739)", () => {
+  it("skips the store write when the override is structurally unchanged", () => {
+    useMazeStore.setState({ postEditDragOverride: null });
+    const listener = vi.fn();
+    const unsubscribe = useMazeStore.subscribe(listener);
+    try {
+      const set = useMazeStore.getState().setPostEditDragOverride;
+      set({ kind: "teleportEndpoint", id: "t1", end: "to", endpoint: nodeEndpoint(3) });
+      expect(listener).toHaveBeenCalledTimes(1);
+      set({ kind: "teleportEndpoint", id: "t1", end: "to", endpoint: nodeEndpoint(3) });
+      expect(listener).toHaveBeenCalledTimes(1);
+      set({ kind: "teleportEndpoint", id: "t1", end: "to", endpoint: nodeEndpoint(4) });
+      expect(listener).toHaveBeenCalledTimes(2);
+      set({ kind: "teleportEndpoint", id: "t1", end: "from", endpoint: nodeEndpoint(4) });
+      expect(listener).toHaveBeenCalledTimes(3);
+      set({ kind: "marker", marker: "start", endpoint: splitEndpoint([1, 1], 2) });
+      set({ kind: "marker", marker: "start", endpoint: splitEndpoint([1, 1], 2) });
+      expect(listener).toHaveBeenCalledTimes(4);
+      set({ kind: "marker", marker: "finish", endpoint: splitEndpoint([1, 1], 2) });
+      expect(listener).toHaveBeenCalledTimes(5);
+      set({ kind: "elevatorEndpoint", id: "e1", level: 1, endpoint: nodeEndpoint(5) });
+      set({ kind: "elevatorEndpoint", id: "e1", level: 1, endpoint: nodeEndpoint(5) });
+      expect(listener).toHaveBeenCalledTimes(6);
+      set({ kind: "elevatorEndpoint", id: "e1", level: 2, endpoint: nodeEndpoint(5) });
+      expect(listener).toHaveBeenCalledTimes(7);
+      set(null);
+      set(null);
+      expect(listener).toHaveBeenCalledTimes(8);
+      expect(useMazeStore.getState().postEditDragOverride).toBeNull();
+    } finally {
+      unsubscribe();
+    }
+  });
+});

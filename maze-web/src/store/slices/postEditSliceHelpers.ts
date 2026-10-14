@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto, PostEditEndpointWasmDto } from "../../wasm/types";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver, endpointsEqual } from "../../pixi/postEditEndpoint";
 import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes, assignSequentialIds,
@@ -12,7 +12,7 @@ import type {
 import { applyPostEditCommand, replayPostEditCommands, cascadeRemoveLifelines } from "../../pixi/postEditReplay";
 import { compactPostEditCommands } from "../../pixi/postEditCompaction";
 import type { PostEditCommand } from "../postEditCommandTypes";
-import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
+import type { MazeStore, PostEditDragOverride, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditElevatorEntry, PostEditTeleportEntry } from "../postEditTypes";
 import { formatPostEditId, parsePostEditIdNumber } from "../../pixi/postEditIdFormat";
 import { buildPostEditPointEntities, type PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
@@ -21,6 +21,23 @@ import { buildPostEditResetLifelines, type PostEditResetLifelineDescriptor } fro
 import type { SplitLabelContext } from "../../pixi/postEditSplitLabels";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+
+/** Structural equality of two drag previews (GitHub issue #739) — `setPostEditDragOverride` skips
+ * the store write when the new value equals the current one, so a pointermove that stays within
+ * one cell neither notifies every store subscriber nor triggers a full `PostEditRenderer` redraw. */
+export function postEditDragOverridesEqual(a: PostEditDragOverride | null, b: PostEditDragOverride | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a.kind !== b.kind || !endpointsEqual(a.endpoint, b.endpoint)) return false;
+  switch (a.kind) {
+    case "marker":
+      return a.marker === (b as typeof a).marker;
+    case "teleportEndpoint":
+    case "verticalPassageEndpoint":
+      return a.id === (b as typeof a).id && a.end === (b as typeof a).end;
+    case "elevatorEndpoint":
+      return a.id === (b as typeof a).id && a.level === (b as typeof a).level;
+  }
+}
 
 /** GitHub issue #567: resolves every target of a teleport/vertical-passage/elevator drag OR fresh
  * placement against the maze-wide confirmed node snapshot, in `targets` order. A point with exactly
