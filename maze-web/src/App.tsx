@@ -69,7 +69,15 @@ export function App() {
     const app = new Application();
 
     app
-      .init({ resizeTo: canvasRef.current, background: canvas.stage.background, antialias: true })
+      // Render at the display's physical pixel density (e.g. 2 on Retina); at the default
+      // resolution of 1 the browser upscales the canvas and the maze looks blurry.
+      .init({
+        resizeTo: canvasRef.current,
+        background: canvas.stage.background,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+      })
       // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
       // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
       // later page load free. Blocking `setReady` on it avoids a flash of missing labels.

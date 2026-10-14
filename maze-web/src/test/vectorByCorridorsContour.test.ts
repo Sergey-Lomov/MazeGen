@@ -4,12 +4,14 @@ import {
   buildCorridorContour,
   buildCorridorGeometry,
   buildCorridorGeometryDebug,
+  buildCorridorGeometryInstances,
   contourToPolyline,
   contourToSvgPath,
   traceCorridorContour,
   type ContourPath,
   type CorridorCell,
   type CorridorPort,
+  type CorridorShapeCache,
 } from "../pixi/imageExport/vectorByCorridorsContour";
 import { convexPolygonOutsideDistance } from "./polygonTestHelpers";
 
@@ -213,6 +215,85 @@ describe("universal corridor contour", () => {
 
     expect(paths).toHaveLength(3);
     expect(paths.every((path) => path.hole === false && path.cmds.length > 2)).toBe(true);
+  });
+
+  it("shares one shape object per key across tiles and calls through the shape cache", () => {
+    const square = (id: string, x: number): CorridorCell => ({
+      id, center: { x, y: 0 },
+      polygon: [{ x: x - 50, y: -50 }, { x: x + 50, y: -50 }, { x: x + 50, y: 50 }, { x: x - 50, y: 50 }],
+    });
+    const deadEnd = (id: string, x: number): CorridorPort => ({ cellId: id, midpoint: { x, y: -50 }, normal: { x: 0, y: -1 } });
+    const cells = [square("a", 0), square("b", 300)];
+    const ports = [deadEnd("a", 0), deadEnd("b", 300)];
+    const cache: CorridorShapeCache = new Map();
+
+    const first = buildCorridorGeometryInstances(cells, ports, 20, 4, cache);
+    expect(first.map((instance) => instance.offset)).toEqual([{ x: 0, y: 0 }, { x: 300, y: 0 }]);
+    expect(first[0].key).toBe(first[1].key);
+    expect(first[0].shape).toBe(first[1].shape);
+    expect(cache.size).toBe(1);
+
+    // A later call reuses the cached shape object; another thickness or radius is a new key.
+    expect(buildCorridorGeometryInstances(cells, ports, 20, 4, cache)[0].shape).toBe(first[0].shape);
+    expect(buildCorridorGeometryInstances(cells, ports, 24, 4, cache)[0].key).not.toBe(first[0].key);
+    expect(buildCorridorGeometryInstances(cells, ports, 20, 6, cache)[0].key).not.toBe(first[0].key);
+    expect(cache.size).toBe(3);
+  });
+
+  it("reuses one shape per tile type, matching the per-tile build translated to each tile", () => {
+    // Square grid at a non-trivial offset; edges chosen so tiles cover dead ends, straights, turns,
+    // T-junctions and crossings, each type repeated in several places.
+    const size = 6;
+    const step = 37.3;
+    const origin = { x: 1234.567, y: -987.65 };
+    const id = (i: number, j: number) => `${i},${j}`;
+    const cells: CorridorCell[] = [];
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) {
+        const c = { x: origin.x + i * step, y: origin.y + j * step };
+        const h = step / 2;
+        cells.push({ id: id(i, j), center: c, polygon: [
+          { x: c.x - h, y: c.y - h }, { x: c.x + h, y: c.y - h }, { x: c.x + h, y: c.y + h }, { x: c.x - h, y: c.y + h },
+        ] });
+      }
+    }
+    const ports: CorridorPort[] = [];
+    const connect = (i: number, j: number, di: number, dj: number) => {
+      const a = { x: origin.x + i * step, y: origin.y + j * step };
+      const midpoint = { x: a.x + di * step / 2, y: a.y + dj * step / 2 };
+      const face = [
+        { x: midpoint.x - dj * step / 2, y: midpoint.y - di * step / 2 },
+        { x: midpoint.x + dj * step / 2, y: midpoint.y + di * step / 2 },
+      ] as const;
+      ports.push({ cellId: id(i, j), midpoint, normal: { x: di, y: dj }, face });
+      ports.push({ cellId: id(i + di, j + dj), midpoint, normal: { x: -di, y: -dj }, face });
+    };
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) {
+        if (i + 1 < size && (i * 7 + j * 3) % 5 < 3) connect(i, j, 1, 0);
+        if (j + 1 < size && (i * 2 + j * 5) % 4 < 2) connect(i, j, 0, 1);
+      }
+    }
+
+    const cached = buildCorridorGeometry(cells, ports, 14, 5);
+    const reference = buildCorridorGeometryDebug(cells, ports, 14, 5)
+      .map((tile) => tile.contour[0])
+      .filter((path): path is ContourPath => path !== undefined && path.cmds.length >= 2);
+
+    // The same closed shape may start at a different port: a port at angle ±π sorts first or last
+    // depending on float noise. So compare sampled outlines as point sets, plus signed area.
+    expect(cached).toHaveLength(reference.length);
+    const area = (points: { x: number; y: number }[]) =>
+      points.reduce((sum, p, k) => { const q = points[(k + 1) % points.length]; return sum + p.x * q.y - q.x * p.y; }, 0) / 2;
+    const covers = (from: { x: number; y: number }[], to: { x: number; y: number }[]) =>
+      from.every((p) => to.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6));
+    cached.forEach((path, index) => {
+      const actual = contourToPolyline(path);
+      const expected = contourToPolyline(reference[index]);
+      expect(area(actual)).toBeCloseTo(area(expected), 6);
+      expect(covers(actual, expected)).toBe(true);
+      expect(covers(expected, actual)).toBe(true);
+    });
   });
 
   it("supports irregular convex cells without producing non-finite contour points", () => {

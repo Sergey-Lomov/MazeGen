@@ -86,7 +86,7 @@ Sections:
 
   **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`; Cairo bridge gaps are clipped as cell-bounded polygons, allowing different lengths at the two ends, and the Cairo 2x3 fork remains as the ordinary corridor underlay beneath the deck. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The Cairo parallel divider draws canonical connection `2-3` above `1-4`, scales its top bow so `0.5` has the previous `0.3` effect, and omits the lower connection's gap underlay; a large upper gap is clipped to the cell polygon. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Every contour junction (ordinary, divider, bridge underlay) uses the same `junctionRadius`; under the miter join, contour mode draws the bridge underlay as plain connector lines. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
 
-  **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — the plain corridor's own chained paths (`chainSegmentsAtSharedVertices`) each draw as their own independent `stroke()` call, so a Pixi `join` never forms between two chained paths that happen to meet at the same point where chaining itself declined to extend through it (a degree != 2 vertex — an ordinary 3+-corridor T-junction, not a split hub, which `drawSplitPassages` owns entirely and is untouched by this fix): separate `moveTo`/`stroke` calls at a shared vertex draw independent caps, not a join, so a `"miter"` setting's own `cap: "square"` visibly poked out at every such T-junction instead of mitering cleanly. Every chained path here draws `butt` unconditionally first (never protrudes), then each of its own two non-split ends is patched back in separately — a genuine free end (nothing else meets it there) gets a plain round/square cap same as an ordinary stroke would draw, but a T-junction where 2+ chained paths' own ends meet gets one shared **miter polygon** instead of each path patching its own end independently (an earlier attempt at the latter left visible gaps between the independent per-path patches at non-perpendicular junction angles — each path's own patch only ever follows *that* path's own direction, not its neighbors'). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free specifically to allow memoizing by a rounded-angle+width key, though the renderer itself doesn't cache yet. Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
+  **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — a Pixi `join` only forms within one stroked polyline, so lines meeting at a 3+-corridor junction (not a split hub, which `drawSplitPassages` owns entirely) would each draw an independent cap, and a `"miter"` setting's own `cap: "square"` would visibly poke out across its neighbors at non-perpendicular angles. Since GitHub issue #736 the plain corridor network draws per-cell miter line tiles (see "Corridor tiles"): every line draws `butt` unconditionally (never protrudes); a dead-end cell gets a plain square cap patch at its centre, and a junction cell of 3+ lines gets one set of shared **miter wedges** instead of each line patching its own end independently (an earlier attempt at the latter left visible gaps between independent per-line patches at non-perpendicular junction angles — each patch only ever follows *its own* line's direction, not its neighbors'). Wedge rays use the same direction the former chained-path renderer passed (junction minus the line's next point, i.e. from the port toward the centre). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free; since GitHub issue #736 the plain corridor network applies it per miter line tile, so each junction shape is computed and triangulated once (see "Corridor tiles"). Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
 
   **Group customization** (`teleportGroupCustomization` toggle) layers per-group overrides on top of the base style: every group shares one style unless overridden via `TeleportGroupOverride` (fillColor/borderColor/shape, each falling back to the shared style when unset), stored in `VectorByWallsSettings.teleportGroupOverrides` keyed by `TeleportGroup.key`. `borderColor` is the group's "secondary" color (the panel's own tooltip, GitHub issue #503 follow-up, calls it out by name) — besides the marker's own border and this group's connector color, it also drives this group's own cross-floor badge fill *and* border, in place of the base style's `floorBadge.fillColor`/`borderColor` (`TeleportRenderer.drawGroupPoints`). Each override is named in the color picker's "Project colors" list (GitHub issue #503 follow-up) as "Teleports: Group N fill"/"Group N border" — `N` is the group's 1-based *display* order (`PC.teleportGroup(index, role)`, `projectColorsSelector.ts`), not its internal `key` (an unstable coordinate-pair string) — both the selector and the panel sort by the same `key.localeCompare` `buildTeleportGroups` already uses, so a color's "Group N" always matches the row numbered N on the panel. Each group row's own fill/border swatch lists, as its own "Project colors" priority group: this group's own other color first, then every other group's fill+border colors (in the same group order), then the section's common teleport colors (edge/border/connector/badges) last. The settings panel's group list is built over the *whole project* (GitHub issue #484), so every teleport connection group is customizable regardless of which floor is displayed and switching floors never changes the list. `useTeleportGroupsAndCollisions` (`TeleportSettingsSection.tsx`) builds the list **one floor at a time** — for each floor, `selectFloorScopedMaze` + `buildTeleportEdges` with the *exact same* `TeleportFloorContext` and badge-spread inputs that floor's own `VectorByWallsRenderer`/`VectorByCorridorsRenderer` passes, then `buildTeleportGroups` — and merges the per-floor results by `TeleportGroup.key`. Those `{ floorContext, spread }` inputs come from the shared `buildTeleportFloorInputs` helper (`mazeSelectors/teleport.ts`) — the same helper every floor-aware `buildTeleportEdges` caller uses (`GenerationRenderer`, `AnalyticsRenderer`, `PostEditRenderer`, both vector export renderers), so the hook can't drift from what the renderers pass; `spread` is floor-independent, built once, and only `floorContext.activeFloorIndex` is swapped per floor in the loop. Per-floor (not once over the unscoped `nodes`/`edges`) is required because `buildNodePositions` keys nodes by `(x, y)` with no floor component and `buildTeleportGroups`' union-find merges by rounded coordinate: two unrelated teleports at the same cell on different floors, built together, would collapse into one group whose `key` no per-floor renderer ever produces, and an override set against it would silently never apply. Building per floor keeps every list key identical to the key that floor's renderer resolves overrides against. A cross-floor pair is built once, on its `from` node's floor (far endpoint resolved via the `floorContext`), so it appears exactly once in the merged list. The on-canvas hit areas and selection stay per-floor (a group whose pair is entirely on another floor has a row but nothing to click on the canvas). Each group's canvas hit area (only wired while the Teleports section is expanded — `interactive: true`, gated on `vectorByWallsSectionsExpanded.teleports` AND `teleportGroupCustomization`) is its own invisible circle of radius `size + 4px`, bucketed into a `hitRadius`-sized spatial grid so a click only scans its own 3x3 cell neighborhood instead of every point of every group. The Teleports section's group list (one `TeleportGroupRow` per group, in `buildTeleportGroups`' sorted-key order) shows an `AlertTriangle` warning icon on any group whose *resolved* color+shape (after its own override falls back to the shared style) exactly matches another group's, but only when the connector style is `"none"` (with a connector drawn, two groups sharing a look are still visually distinguishable by which links connect to what).
 
@@ -398,8 +398,8 @@ clip-scratch reset, the `drawConnectorLine` helper, and the plain-connector pass
 no special-shape geometry) and the geometry helpers in `vectorByCorridorsGeometry.ts` that already
 predate #493 — so a bug in one mode's contour/line geometry can never leak into the other.
 It replaced the old `join`-gated `roundJunctions` boolean. The setting only distinguishes the two
-**round** renderings: under `join: "miter"` both values draw the same straight lines
-(`strokeChainedPathsWithPatchedCaps`), and the settings panel hides the selector. An old project file predating the
+**round** renderings: under `join: "miter"` both values draw the same straight miter line tiles
+(see "Corridor tiles" below), and the settings panel hides the selector. An old project file predating the
 field — or carrying only the removed `roundJunctions` boolean — recovers to `"contour"`
 (`optRenderStyle`, `validateImageExport.ts`).
 
@@ -407,15 +407,36 @@ field — or carrying only the removed `roundJunctions` boolean — recovers to 
   included, but has shown stability issues. Described below.
 - **Line** (`"legacy_line"`) — the corridor renderer as it stood before the #493 contour rework
   (`ac2e998~1`), restored verbatim (the
-  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` — the
-  `strokeChainedPathsWithPatchedCaps` miter path predates #493 and was never touched by the contour
-  rework, so both modes share it). More
+  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` — the miter look predates #493
+  and was never touched by the contour rework, so both modes share it). More
   stable, but junctions/turns have sharp corners under `join: "miter"`. Under `join: "round"` it
-  draws each chained corridor path as a `butt`-capped stroke with a plain filled circle patched at
-  every genuine free end (a T-junction needs no patch — coincident round caps safely overlap);
+  draws straight `butt` lines with round corners and round free ends (line tiles, see "Corridor
+  tiles" below);
   split shapes render via `drawSplitPassagesLegacy` (through corridor as a plain straight line,
   cross corridor on top with a background-colored gap; diagonal nodes as bowed ribbons) — never a
   contour fill regardless of `join`.
+
+#### Corridor tiles (GitHub issue #736)
+
+Every corridor style draws the plain corridor network as **one tile per cell**
+(`VectorByCorridorsRenderer.updateCorridorTiles`), in a `CorridorTileLayer` below the `corridors`
+`Graphics` (one-way chevrons, split passages and bridge underlays still draw there, on top):
+
+- **Contour + round join** — the contour tile shape described below.
+- **Miter join (either mode)** and **Line + round join** — line tiles (`vectorByCorridorsLineTiles.ts`):
+  every centre-to-centre segment is cut at its midpoint (a split-touching segment stays whole and
+  belongs to its `v0` cell), and each cell draws `butt` lines from its centre to those ports. Miter:
+  a degree-2 cell is one miter-joined polyline, a dead end gets a square cap patch
+  (`computeSquareCapPatch`), a junction of 3+ lines gets `computeMiterJunctionPatch` wedges. Round:
+  the lines plus a centre disc. Because the halves stay collinear and a chained path only ever bends
+  at a cell centre, this draws the same network the former per-chained-path stroke drew.
+
+Each distinct tile shape key (style + width + local shape) is traced once, in white, into a shared
+`GraphicsContext`; every tile is a `Graphics` using it, positioned at the cell centre and tinted with
+the corridor color. Pixi triangulates each shape once, and a color change only re-tints. Tiles are
+rebuilt only when the segments, style, thickness or (contour) junction radius change, and then
+incrementally: an unchanged cell keeps its `Graphics`, a changed one swaps context/position in place,
+and contexts no tile uses are destroyed.
 
 #### Contour mode — one filled shape per tile (GitHub issue #493)
 
@@ -433,6 +454,12 @@ geometry generation (a cell with no known polygon gets a square of half-side `th
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
 two filled shapes meet edge-to-edge with no seam and no overlap. The half-width is clamped once for
 the whole call to half the shortest finite face, so mirrored mouths always match.
+
+**Tile types.** A tile's shape depends only on its geometry relative to its centre (cell polygon +
+port set, half-width, junction radius), so `buildCorridorGeometryInstances` builds each distinct local
+shape once around the origin and returns per-tile instances (shape key, shared shape, centre offset).
+An optional `CorridorShapeCache` carries built shapes across calls. `buildCorridorGeometry` expands
+instances into world-space paths. Drawing: see "Corridor tiles" below.
 
 **Per-tile shape** (`buildTileGeometry`) — one algorithm for every port count and cell shape:
 
@@ -493,18 +520,16 @@ checks, on the real wasm build, that every lab combination equals the same cell 
 run through `buildCorridorSegments`; `vectorByCorridorsContour.test.ts` checks that the SVG
 (`contourToSvgPath`, lab) and pixi (`traceCorridorContour`, export) outputs draw the same arcs.
 
-**Tracing.** `traceCorridorContour` plays each tile path's `move` / `line` / `arc` onto the
-`Graphics` and `closePath()`s it; the caller fills once. The tiles never overlap, so a plain fill is
-seamless. `contourToPolyline` samples a path to a plain point list (arcs at ~0.2 rad) — for tests
+**Tracing.** `traceCorridorContour` plays each path's `move` / `line` / `arc` onto a `Graphics` or
+`GraphicsContext` and `closePath()`s it; the caller fills. The corridor network traces each distinct
+tile shape into its own shared context (see "Corridor tiles"); the tiles never overlap, so the fills
+meet without seams. `contourToPolyline` samples a path to a plain point list (arcs at ~0.2 rad) — for tests
 and export-margin measurement only, never for the render. `ContourPath.hole` is always `false` in
 this model (kept only so the trace/fill call site and tests need no signature change).
 
-Segments are still chained into polylines (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` —
-reused as-is) but only the **miter** branch (and the whole **Line** rendering mode) uses the chains
-now.
-
-A **miter** join keeps the straight
-`lineTo` polyline plus the square-cap/`computeMiterJunctionPatch` treatment below. `getRequiredExportMargin`/`getRequiredWallExportMargin`
+The corridor network no longer chains segments into polylines: every style draws per-cell tiles. A
+**miter** join draws straight miter line tiles with the square-cap/`computeMiterJunctionPatch`
+treatment (see "Corridor tiles"). `getRequiredExportMargin`/`getRequiredWallExportMargin`
 both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the widest of half the
 corridor stroke's own width, a start/finish marker's own footprint, the one-way chevron row's own
 width, a teleport marker/connector's own footprint, and (via `this.verticalContainer`'s own measured

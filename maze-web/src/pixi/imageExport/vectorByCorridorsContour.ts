@@ -1,4 +1,4 @@
-import type { Graphics } from "pixi.js";
+import type { Graphics, GraphicsContext } from "pixi.js";
 
 export type CorridorPoint = { x: number; y: number };
 type Pt = CorridorPoint;
@@ -871,9 +871,54 @@ export function buildCorridorGeometry(
   thickness: number,
   junctionRadius?: number,
 ): ContourPath[] {
-  return buildTiles(cells, ports, thickness, junctionRadius, false)
-    .map((tile) => tile.contour[0])
-    .filter((path): path is ContourPath => path !== undefined && path.cmds.length >= 2);
+  return buildCorridorGeometryInstances(cells, ports, thickness, junctionRadius)
+    .map((instance) => translateContourPath(instance.shape, instance.offset));
+}
+
+/** One tile placed as a shared local shape: `shape` is built around the origin and drawn at
+ *  `offset` (the tile centre). Tiles with equal `key` share the same `shape` object. */
+export type CorridorContourInstance = { cellId: CorridorCellId; key: string; shape: ContourPath; offset: CorridorPoint };
+
+/** Local tile shapes by key; `null` marks a key that produced no drawable path. A caller may keep
+ *  one across calls: keys include the effective half-width and junction radius. */
+export type CorridorShapeCache = Map<string, ContourPath | null>;
+
+/** `buildCorridorGeometry` without the final translation, in tile order: every tile of the same
+ *  local shape (cell polygon + port set relative to the tile centre, half-width, junction radius)
+ *  shares one shape built around the origin. Port order is not part of the shape key: the builder
+ *  orders ports by angle and the most-opposite-pair search is order-independent. Lab stages
+ *  (`buildCorridorGeometryDebug`) always build per tile. */
+export function buildCorridorGeometryInstances(
+  cells: readonly CorridorCell[],
+  ports: readonly CorridorPort[],
+  thickness: number,
+  junctionRadius?: number,
+  shapeCache: CorridorShapeCache = new Map(),
+): CorridorContourInstance[] {
+  if (thickness <= 0 || cells.length === 0 || ports.length === 0) return [];
+  const halfWidth = halfWidthForPorts(ports, thickness / 2);
+  const keyPrefix = "contour/" + halfWidth + "/" + (junctionRadius ?? "default") + "@";
+  const instances: CorridorContourInstance[] = [];
+  for (const tile of buildTilesFromCells(cells, ports)) {
+    const toLocal = (point: Pt): Pt => sub(point, tile.centre);
+    const portKeys = tile.ports.map((port) => keyPoint(toLocal(port.mid)) + ";" + keyPoint(port.out)).sort();
+    const key = keyPrefix + tile.boundary.map((point) => keyPoint(toLocal(point))).join("|") + "#" + portKeys.join("|");
+    let shape = shapeCache.get(key);
+    if (shape === undefined) {
+      const origin = { x: 0, y: 0 };
+      const localTile: Tile = {
+        id: tile.id,
+        centre: origin,
+        ports: tile.ports.map((port) => ({ centre: origin, mid: toLocal(port.mid), out: port.out })),
+        boundary: tile.boundary.map(toLocal),
+      };
+      const path = buildTileGeometry(localTile, halfWidth, junctionRadius, false).contour[0];
+      shape = path !== undefined && path.cmds.length >= 2 ? path : null;
+      shapeCache.set(key, shape);
+    }
+    if (shape) instances.push({ cellId: tile.id, key, shape, offset: tile.centre });
+  }
+  return instances;
 }
 
 /** `buildCorridorGeometry` with every intermediate construction stage, for the geometry lab. */
@@ -883,19 +928,34 @@ export function buildCorridorGeometryDebug(
   thickness: number,
   junctionRadius?: number,
 ): CorridorGeometryDebug[] {
-  return buildTiles(cells, ports, thickness, junctionRadius, true);
-}
-
-function buildTiles(
-  cells: readonly CorridorCell[],
-  ports: readonly CorridorPort[],
-  thickness: number,
-  junctionRadius: number | undefined,
-  withStages: boolean,
-): CorridorGeometryDebug[] {
   if (thickness <= 0 || cells.length === 0 || ports.length === 0) return [];
   const halfWidth = halfWidthForPorts(ports, thickness / 2);
-  return buildTilesFromCells(cells, ports).map((tile) => buildTileGeometry(tile, halfWidth, junctionRadius, withStages));
+  return buildTilesFromCells(cells, ports).map((tile) => buildTileGeometry(tile, halfWidth, junctionRadius, true));
+}
+
+/** Key quantum for tile-type keys, in world units: far below any visible difference, far above the
+ *  float noise left by subtracting the cell centre. */
+const TILE_KEY_QUANTUM = 1e-6;
+const keyNumber = (value: number): number => Math.round(value / TILE_KEY_QUANTUM);
+const keyPoint = (point: Pt): string => keyNumber(point.x) + "," + keyNumber(point.y);
+
+function translateContourPath(path: ContourPath, offset: Pt): ContourPath {
+  return {
+    hole: path.hole,
+    cmds: path.cmds.map((command): PathCmd => {
+      switch (command.kind) {
+        case "move":
+        case "line":
+          return { kind: command.kind, to: add(command.to, offset) };
+        case "quadratic":
+          return { kind: "quadratic", cp: add(command.cp, offset), to: add(command.to, offset) };
+        case "bezier":
+          return { kind: "bezier", cp1: add(command.cp1, offset), cp2: add(command.cp2, offset), to: add(command.to, offset) };
+        case "arc":
+          return { ...command, c: add(command.c, offset) };
+      }
+    }),
+  };
 }
 
 /** Adapts the selector's centre-to-centre corridor segments to the engine's cells and face ports.
@@ -940,7 +1000,13 @@ export function corridorSegmentsToGeometryInput(segments: readonly CorridorSegme
   };
 }
 
-/** Production entry point: `corridorSegmentsToGeometryInput` followed by `buildCorridorGeometry`. */
+/** `corridorSegmentsToGeometryInput` followed by `buildCorridorGeometryInstances`. */
+export function buildCorridorContourInstances(segments: readonly CorridorSegmentInput[], thickness: number, junctionRadius?: number, shapeCache?: CorridorShapeCache): CorridorContourInstance[] {
+  const { cells, ports } = corridorSegmentsToGeometryInput(segments, thickness);
+  return buildCorridorGeometryInstances(cells, ports, thickness, junctionRadius, shapeCache);
+}
+
+/** `corridorSegmentsToGeometryInput` followed by `buildCorridorGeometry`. */
 export function buildCorridorContour(segments: readonly CorridorSegmentInput[], thickness: number, junctionRadius?: number): ContourPath[] {
   const { cells, ports } = corridorSegmentsToGeometryInput(segments, thickness);
   return buildCorridorGeometry(cells, ports, thickness, junctionRadius);
@@ -972,7 +1038,7 @@ export function contourToPolyline(path: ContourPath, curveStep = 8): Pt[] {
   return result;
 }
 
-export function traceCorridorContour(target: Graphics, paths: ContourPath[]): void {
+export function traceCorridorContour(target: Graphics | GraphicsContext, paths: ContourPath[]): void {
   for (const path of paths) {
     for (const command of path.cmds) {
       if (command.kind === "move") target.moveTo(command.to.x, command.to.y);
