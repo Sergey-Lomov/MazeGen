@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildHoveredEntityHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, createFloorNodesSelector, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, type PostEditHoveredEntity } from "../pixi/postEditEndpoint";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -1612,6 +1612,31 @@ describe("selectFloorChangeLosesGenerationData", () => {
 
   it("true when both are dirty", () => {
     expect(selectFloorChangeLosesGenerationData({ mazeDirty: true, postEditDirty: true })).toBe(true);
+  });
+});
+
+describe("createFloorNodesSelector (GitHub issue #739)", () => {
+  const floors = [{ id: "f1" }, { id: "f2" }];
+  const nodes: NodeDto[] = [
+    { id: 0, x: 0, y: 0, i: 0 },
+    { id: 1, x: 0, y: 0, i: 0, level: 1 },
+  ];
+
+  it("returns the same array while inputs are unchanged", () => {
+    const select = createFloorNodesSelector();
+    const first = select(nodes, floors, "f1");
+    expect(first.map((n) => n.id)).toEqual([0]);
+    expect(select(nodes, floors, "f1")).toBe(first);
+  });
+
+  it("recomputes when the floor, the floor list or the node list changes", () => {
+    const select = createFloorNodesSelector();
+    const first = select(nodes, floors, "f1");
+    expect(select(nodes, floors, "f2").map((n) => n.id)).toEqual([1]);
+    expect(select(nodes, [...floors].reverse(), "f2").map((n) => n.id)).toEqual([0]);
+    const next = select([...nodes], floors, "f1");
+    expect(next).not.toBe(first);
+    expect(next.map((n) => n.id)).toEqual([0]);
   });
 });
 

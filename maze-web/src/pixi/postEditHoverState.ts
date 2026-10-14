@@ -11,6 +11,16 @@ export function emptyPostEditHoverState(): PostEditHoverState {
   return { edge: null, edgeDanger: false, cell: null, cellDanger: false };
 }
 
+export function sameHoverCell(a: [number, number] | null, b: [number, number] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+export function sameHoverEdge(a: FieldEdge | null, b: FieldEdge | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.key === b.key && sameHoverCell(a.from, b.from) && sameHoverCell(a.to, b.to);
+}
+
 /** Draft edits redraw the scene without changing the geometry under the pointer. */
 export interface PostEditHoverContext {
   postEditTool: string;

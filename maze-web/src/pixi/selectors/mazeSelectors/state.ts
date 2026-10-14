@@ -45,6 +45,19 @@ export function selectFloorScopedMaze(
   };
 }
 
+/** Memoized floor-node scoping (GitHub issue #739) — returns the previous array while `nodes`,
+ *  `floors` and `activeFloorId` are unchanged, so a per-pointermove caller gets a stable result and
+ *  identity-keyed caches built on top of it stay valid. Each caller owns its own instance. */
+export function createFloorNodesSelector(): (nodes: NodeDto[], floors: { id: string }[], activeFloorId: string) => NodeDto[] {
+  let last: { nodes: NodeDto[]; floors: { id: string }[]; activeFloorId: string; result: NodeDto[] } | null = null;
+  return (nodes, floors, activeFloorId) => {
+    if (last && last.nodes === nodes && last.floors === floors && last.activeFloorId === activeFloorId) return last.result;
+    const result = selectFloorScopedMaze(nodes, [], floors, activeFloorId).nodes;
+    last = { nodes, floors, activeFloorId, result };
+    return result;
+  };
+}
+
 /** Narrow "ask, don't fetch" access to a node's own floor (GitHub issue #347) — built once from the
  *  full, unscoped `nodes` list (before `selectFloorScopedMaze` narrows it to one floor), so a caller
  *  that only has floor-scoped data in hand (e.g. `VectorByWallsRenderer`, after scoping its own

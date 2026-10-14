@@ -11,7 +11,7 @@ import { BaseController } from "./BaseController";
 import {
   type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint,
 } from "./postEditEndpoint";
-import { selectFloorScopedMaze, selectNodeLevelResolver } from "./selectors/mazeSelectors";
+import { createFloorNodesSelector, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
 import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets } from "../store/slices/postEditSliceHelpers";
@@ -52,6 +52,9 @@ export class PostEditController extends BaseController {
   // old one-id-per-cell map, since a split point (GitHub issue #221) can have more than one.
   private nodeMap: Map<string, number[]> = new Map();
   private nodeMapNodes: NodeDto[] | null = null;
+  private readonly selectFloorNodes = createFloorNodesSelector();
+  private floorNodeIds: Set<number> = new Set();
+  private floorNodeIdsNodes: NodeDto[] | null = null;
   private dragDidApply = false;
 
   private draggingTeleportEndpoint: PostEditTeleportEndpointHit | null = null;
@@ -106,7 +109,17 @@ export class PostEditController extends BaseController {
    * restricts to floor 0 either), so every hit-test/nodeMap below narrows to the active floor
    * first via `selectFloorScopedMaze`, same helper `GenerationRenderer` uses. */
   private getFloorNodes(state: ReturnType<typeof useMazeStore.getState>): NodeDto[] {
-    return selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
+    // Memoized (GitHub issue #739) — called on every pointermove, and a fresh array each time would
+    // also defeat `getNodeMap`'s identity cache, rebuilding the node map per move.
+    return this.selectFloorNodes(state.nodes, state.floors, state.activeFloorId);
+  }
+
+  private getFloorNodeIds(floorNodes: NodeDto[]): Set<number> {
+    if (floorNodes !== this.floorNodeIdsNodes) {
+      this.floorNodeIds = new Set(floorNodes.map((n) => n.id));
+      this.floorNodeIdsNodes = floorNodes;
+    }
+    return this.floorNodeIds;
   }
 
   private getNodeMap(nodes: NodeDto[]): Map<string, number[]> {
@@ -197,7 +210,7 @@ export class PostEditController extends BaseController {
       // cell for the whole gesture. `endpoint === null` already means "not in field".
       this.renderer.updateCellHover(endpoint !== null ? [cell.x, cell.y] : null);
       if (endpoint === null) return;
-      const floorNodeIds = new Set(floorNodes.map((n) => n.id));
+      const floorNodeIds = this.getFloorNodeIds(floorNodes);
       const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
       // `current`/`other` are the FIXED origin captured on pointerdown (GitHub issue #545) — no
       // command is appended per move any more, so the store's own `postEditDraftTeleports` no
@@ -488,9 +501,9 @@ export class PostEditController extends BaseController {
       // non-zero `level`, but `resolveSplit` above is built from a bare-keyed, floor-scoped
       // `nodeMap`/`splitPoints` — resolving a level-tagged endpoint against it silently returns
       // `undefined` on any floor above the first (GitHub issue #425). Scope each teleport's
-      // endpoints to the active floor first, same as `PostEditRenderer.floorScoped` does for
-      // rendering; an off-floor endpoint stays untouched and correctly fails to resolve below.
-      const floorNodeIds = new Set(floorNodes.map((n) => n.id));
+      // endpoints to the active floor first, same as `PostEditRenderer.sceneBase`'s `onLevel` does
+      // for rendering; an off-floor endpoint stays untouched and correctly fails to resolve below.
+      const floorNodeIds = this.getFloorNodeIds(floorNodes);
       const scopedTeleports = state.postEditDraftTeleports.map((t) => ({
         ...t,
         from: floorScopedEndpoint(t.from, level, floorNodeIds) ?? t.from,

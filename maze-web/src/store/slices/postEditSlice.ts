@@ -41,7 +41,7 @@ import {
   derivedStateToLegacyFields as legacyFieldsFor, nextPostEditIdCounters,
   nextSplitSlotIdCounters,
   buildPostEditPointEntitiesAt, removePostEditSplitSlots, resolveNodeIdToEndpoint,
-  buildPostEditResetLifelinesAt,
+  buildPostEditResetLifelinesAt, postEditDragOverridesEqual,
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
 
@@ -1590,5 +1590,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   setPostEditChangesEntityFilter: (id) => set({ postEditChangesEntityFilter: id }),
 
-  setPostEditDragOverride: (override) => set({ postEditDragOverride: override }),
+  setPostEditDragOverride: (override) => {
+    if (postEditDragOverridesEqual(get().postEditDragOverride, override)) return;
+    set({ postEditDragOverride: override });
+  },
 });
