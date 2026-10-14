@@ -413,7 +413,7 @@ export function CorridorGeometryTestPage() {
         <div style={styles.controls}>
           <label style={styles.control}>
             <span>Corridor thickness: <strong>{thickness}px</strong></span>
-            <input className="maze-slider" type="range" min={2} max={28} step={1} value={thickness} onChange={(event) => setThickness(Number(event.target.value))} />
+            <input className="maze-slider" type="range" min={2} max={40} step={1} value={thickness} onChange={(event) => setThickness(Number(event.target.value))} />
           </label>
           <label style={styles.control}>
             <span>Junction corner radius: <strong>{cornerRadius}px</strong></span>

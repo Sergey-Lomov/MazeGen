@@ -84,9 +84,32 @@ function buildTilesFromCells(cells: readonly CorridorCell[], ports: readonly Cor
   return [...tiles.values()];
 }
 
+/** Returns the pair of ports whose normals are farthest apart in angle. The angle between two
+ *  directions is taken the short way round, so it never exceeds 180°: a pair 270° apart counts as
+ *  90° and loses to a pair 170° apart. Each unordered pair is considered once (1-2 and 2-1 are the
+ *  same pair). When several distinct pairs share the maximum angle there is no preferred one, and
+ *  `null` sends the target to the cell centre. */
+function mostOppositePortPair(ports: readonly Port[]): [Port, Port] | null {
+  if (ports.length < 2) return null;
+  let best: [Port, Port] | null = null;
+  let smallestNormalDot = Number.POSITIVE_INFINITY;
+  let tied = false;
+  for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
+      const normalDot = dot(ports[firstIndex].out, ports[secondIndex].out);
+      if (normalDot < smallestNormalDot - 1e-9) {
+        best = [ports[firstIndex], ports[secondIndex]];
+        smallestNormalDot = normalDot;
+        tied = false;
+      } else if (normalDot <= smallestNormalDot + 1e-9) tied = true;
+    }
+  }
+  return tied ? null : best;
+}
+
 function directPairCurveCenter(from: Port, to: Port): Pt {
-  // This provisional pair curve is used only to locate the common target. The target-side
-  // tangents of the actual centre curves are intentionally left for the next stage.
+  // This provisional pair curve is used only to locate the target. The target-side tangents of the
+  // actual centre curves are set separately by `biarcTargetTangents`.
   const distance = len(sub(to.mid, from.mid));
   if (distance <= 1e-7) return from.centre;
   const handle = distance * pairCurveHandleRatio(from, to);
@@ -98,38 +121,50 @@ function directPairCurveCenter(from: Port, to: Port): Pt {
   return pointAtPolylineDistance(points, polylineLength(points) / 2).point;
 }
 
-function targetPointForPorts(centre: Pt, ports: readonly Port[]): Pt {
-  // Every neighboring pair votes with the geometric midpoint of its direct connection. A shared
-  // target is the compromise between those pair centers, not an intersection of port tangents.
-  if (ports.length === 0) return centre;
-  const pairCenters: Pt[] = [];
-  for (let index = 0; index < ports.length; index++) {
-    pairCenters.push(directPairCurveCenter(ports[index], ports[(index + 1) % ports.length]));
-  }
-  const sum = pairCenters.reduce((result, point) => add(result, point), { x: 0, y: 0 });
-  return mul(sum, 1 / pairCenters.length);
+/** The target sits at the middle of the direct curve joining the most opposite pair's mouths. */
+function targetPointForPorts(centre: Pt, pair: readonly [Port, Port] | null): Pt {
+  return pair ? directPairCurveCenter(pair[0], pair[1]) : centre;
 }
 
-function targetTangentPairForPorts(ports: readonly Port[]): { first: number; second: number; firstTangent: Pt; secondTangent: Pt } | null {
-  if (ports.length < 2) return null;
-  let first = 0;
-  let second = 1;
-  let smallestNormalDot = dot(ports[first].out, ports[second].out);
-  for (let firstIndex = 0; firstIndex < ports.length; firstIndex++) {
-    for (let secondIndex = firstIndex + 1; secondIndex < ports.length; secondIndex++) {
-      const normalDot = dot(ports[firstIndex].out, ports[secondIndex].out);
-      if (normalDot < smallestNormalDot) {
-        first = firstIndex;
-        second = secondIndex;
-        smallestNormalDot = normalDot;
-      }
-    }
-  }
-  const firstInward = norm(mul(ports[first].out, -1));
-  const secondInward = norm(mul(ports[second].out, -1));
-  let firstTangent = norm(sub(firstInward, secondInward));
-  if (dot(firstTangent, firstInward) < 0) firstTangent = mul(firstTangent, -1);
-  return { first, second, firstTangent, secondTangent: mul(firstTangent, -1) };
+/** Direction of travel at `target` of the circular arc that leaves `port` inward and passes
+ *  through `target`: the inward direction mirrored across the port-to-target chord. */
+function arcArrivalTangent(port: Port, target: Pt): Pt {
+  const inward = norm(mul(port.out, -1));
+  const chord = norm(sub(target, port.mid));
+  return norm(sub(mul(chord, 2 * dot(inward, chord)), inward));
+}
+
+/** Cubic handle ratio (handle length / chord length) that approximates a circular arc turning
+ *  from `start` to `end`: `1 / (3 cos²(phi / 4))`, where `phi` is the arc's turning angle. */
+function arcHandleRatio(start: Pt, end: Pt): number {
+  const turn = Math.acos(Math.max(-1, Math.min(1, dot(norm(start), norm(end)))));
+  const cosine = Math.cos(turn / 4);
+  return 1 / (3 * cosine * cosine);
+}
+
+/** Target tangents and handle ratios for the most opposite pair, built as a biarc: each half would
+ *  be a circular arc from its port through the target, and the shared target tangent is the
+ *  compromise between the two arcs' arrival directions. Both halves then pass through the target as
+ *  one smooth curve. On regular cells both arcs agree and the turn is one exact circular arc;
+ *  on irregular cells (Cairo) the compromise depends on the real port positions, not on the port
+ *  normals alone, which would skew the curve into an S-shaped hump. */
+function biarcTargetTangents(first: Port, second: Port, target: Pt): {
+  firstTangent: Pt;
+  secondTangent: Pt;
+  firstHandleRatio: number;
+  secondHandleRatio: number;
+} {
+  // `secondTangent` is the second half's travel direction at the target (port -> target), so the
+  // continuous curve needs `firstTangent === -secondTangent`.
+  const joined = sub(arcArrivalTangent(first, target), arcArrivalTangent(second, target));
+  const firstTangent = len(joined) > 1e-7 ? norm(joined) : norm(sub(second.mid, first.mid));
+  const secondTangent = mul(firstTangent, -1);
+  return {
+    firstTangent,
+    secondTangent,
+    firstHandleRatio: arcHandleRatio(mul(first.out, -1), firstTangent),
+    secondHandleRatio: arcHandleRatio(mul(second.out, -1), secondTangent),
+  };
 }
 
 function portBorderEnds(port: Port, halfWidth: number): { left: Pt; right: Pt } {
@@ -546,29 +581,48 @@ function junctionCornerBridge(
     quadraticBridgeSegment(toTangent, to, arcTangent(a1), toDirection),
   ];
 }
-function targetCenteredClosureArc(from: Pt, to: Pt, target: Pt): PathCmd | null {
+/** `bulge`, when given, is the direction the arc's middle must face. A dead-end cap joins the two
+ *  sides of one ribbon, whose ends sit diametrically opposite around the target: both sweeps are
+ *  exactly half a turn, and picking the "short" one leaves the choice to rounding noise, which
+ *  sometimes folds the cap back through the ribbon as a concave bite. */
+function targetCenteredClosureArc(from: Pt, to: Pt, target: Pt, bulge?: Pt): PathCmd | null {
   const fromVector = sub(from, target);
   const toVector = sub(to, target);
   const radius = len(fromVector);
   if (radius <= 1e-7 || len(toVector) <= 1e-7) return null;
   const a0 = angleOf(fromVector);
   const a1 = angleOf(toVector);
-  return { kind: "arc", c: target, r: radius, a0, a1, ccw: shortSweepCcw(a0, a1) };
+  // `ccw: true` decreases the angle, i.e. starts moving along `(fromVector.y, -fromVector.x)`.
+  const ccw = bulge ? cross(fromVector, bulge) < 0 : shortSweepCcw(a0, a1);
+  return { kind: "arc", c: target, r: radius, a0, a1, ccw };
 }
-function appendContourBetweenRibbons(cmds: PathCmd[], current: readonly Pt[], next: readonly Pt[], target: Pt, halfWidth: number, radius: number): void {
+/** Maximum direction change at which two ribbon sides are treated as one smooth side. */
+const SMOOTH_JOIN_ANGLE = Math.PI / 18;
+function appendContourBetweenRibbons(cmds: PathCmd[], current: readonly Pt[], next: readonly Pt[], target: Pt, halfWidth: number, radius: number, deadEnd: boolean): void {
   const hit = firstPolylineIntersection(current, next);
   if (!hit) {
     appendPolylineForward(cmds, current, polylineLength(current));
     const currentEnd = current[current.length - 1];
     const nextEnd = next[next.length - 1];
     if (!pointsEqual(currentEnd, nextEnd)) {
-      const closure = targetCenteredClosureArc(currentEnd, nextEnd, target);
+      const forward = deadEnd ? add(polylineTangentAt(current, current.length - 1), polylineTangentAt(next, next.length - 1)) : undefined;
+      const closure = targetCenteredClosureArc(currentEnd, nextEnd, target, forward);
       if (closure) {
         cmds.push(closure);
         if (!pointsEqual(pathCommandEnd(closure), nextEnd)) cmds.push({ kind: "line", to: nextEnd });
       } else cmds.push({ kind: "line", to: nextEnd });
     }
     appendPolylineReverse(cmds, next, polylineLength(next));
+    return;
+  }
+  // Sides that already meet tangent-continuously (the inner side of a smooth two-port turn, whose
+  // halves share the target tangent) have no corner to round: a corner bridge there would only cut
+  // a dent into an otherwise circular side.
+  const currentTangent = pointAtPolylineDistance(current, hit.aDistance).tangent;
+  const nextTangent = pointAtPolylineDistance(next, hit.bDistance).tangent;
+  if (dot(currentTangent, nextTangent) <= -Math.cos(SMOOTH_JOIN_ANGLE)) {
+    appendPolylineForward(cmds, current, hit.aDistance);
+    appendPolylineReverse(cmds, next, hit.bDistance);
     return;
   }
   // Keep enough room for the requested corner, but do not discard a large part of the sampled
@@ -627,7 +681,7 @@ function universalJunctionContour(ribbons: readonly { left: Pt[]; right: Pt[] }[
     const mouth = current[0];
     const cursor = pathCommandEnd(cmds[cmds.length - 1]);
     if (!pointsEqual(cursor, mouth)) cmds.push({ kind: "line", to: mouth });
-    appendContourBetweenRibbons(cmds, current, next, target, halfWidth, radius);
+    appendContourBetweenRibbons(cmds, current, next, target, halfWidth, radius, ribbons.length === 1);
   }
   const first = ribbons[0].left[0];
   const cursor = pathCommandEnd(cmds[cmds.length - 1]);
@@ -672,23 +726,18 @@ function constrainPointInside(point: Pt, anchor: Pt, boundary: readonly Pt[] | u
 }
 
 function buildUniversalJunctionDebug(tile: Tile, halfWidth: number, roundJunctions: boolean, requestedRadius: number | undefined): CorridorGeometryDebug {
-  const target = constrainPointInside(targetPointForPorts(tile.centre, tile.ports), tile.centre, tile.boundary);
+  const oppositePair = mostOppositePortPair(tile.ports);
+  const target = constrainPointInside(targetPointForPorts(tile.centre, oppositePair), tile.centre, tile.boundary);
   const orderedPorts = [...tile.ports].sort((a, b) => angleOf(sub(a.mid, target)) - angleOf(sub(b.mid, target)));
-  const targetTangentPair = targetTangentPairForPorts(orderedPorts);
-  const pairHandleRatio = targetTangentPair
-    ? pairCurveHandleRatio(orderedPorts[targetTangentPair.first], orderedPorts[targetTangentPair.second])
-    : 1 / 3;
-  const rawRibbons = orderedPorts.map((port, portIndex) => {
-    const targetTangent = targetTangentPair
-      ? portIndex === targetTangentPair.first
-        ? targetTangentPair.firstTangent
-        : portIndex === targetTangentPair.second
-          ? targetTangentPair.secondTangent
-          : undefined
-      : undefined;
-    const handleRatio = targetTangent !== undefined ? pairHandleRatio : 1 / 3;
-    const ribbon = sampleRibbonSides(port, target, halfWidth, targetTangent, handleRatio);
-    return ribbon;
+  const pairTangents = oppositePair ? biarcTargetTangents(oppositePair[0], oppositePair[1], target) : null;
+  const rawRibbons = orderedPorts.map((port) => {
+    if (oppositePair && pairTangents && port === oppositePair[0]) {
+      return sampleRibbonSides(port, target, halfWidth, pairTangents.firstTangent, pairTangents.firstHandleRatio);
+    }
+    if (oppositePair && pairTangents && port === oppositePair[1]) {
+      return sampleRibbonSides(port, target, halfWidth, pairTangents.secondTangent, pairTangents.secondHandleRatio);
+    }
+    return sampleRibbonSides(port, target, halfWidth);
   });
   const ribbons = rawRibbons.map((ribbon) => {
     return {

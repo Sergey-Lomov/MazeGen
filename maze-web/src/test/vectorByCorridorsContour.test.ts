@@ -126,6 +126,30 @@ describe("universal corridor contour", () => {
     expect(tangentDot).toBeCloseTo(-1, 5);
   });
 
+  it("draws both sides of a thick adjacent-face turn as concentric arcs around the shared corner", () => {
+    const hex = Array.from({ length: 6 }, (_, index) => ({
+      x: 100 * Math.cos(index * Math.PI / 3),
+      y: 100 * Math.sin(index * Math.PI / 3),
+    }));
+    const facePort = (index: number): CorridorPort => {
+      const a = hex[index];
+      const b = hex[(index + 1) % 6];
+      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const length = Math.hypot(midpoint.x, midpoint.y);
+      return { cellId: "hex", midpoint, normal: { x: midpoint.x / length, y: midpoint.y / length }, face: [a, b] };
+    };
+    const corner = hex[1];
+    const [result] = buildCorridorGeometry([{ id: "hex", center: { x: 0, y: 0 }, polygon: hex }], [facePort(0), facePort(1)], 70);
+    const radii = contourToPolyline(result!, 1).map((point) => Math.hypot(point.x - corner.x, point.y - corner.y));
+    // The port midpoints are 50 away from the corner: the inner side follows radius 15, the outer 85.
+    const inner = radii.filter((radius) => radius < 49);
+    const outer = radii.filter((radius) => radius > 51);
+    expect(Math.min(...inner)).toBeGreaterThan(14.9);
+    expect(Math.max(...inner)).toBeLessThan(15.1);
+    expect(Math.min(...outer)).toBeGreaterThan(84.8);
+    expect(Math.max(...outer)).toBeLessThan(85.2);
+  });
+
   it("bends neighboring faces more than faces separated by one side", () => {
     const rootThree = Math.sqrt(3);
     const adjacent = [
