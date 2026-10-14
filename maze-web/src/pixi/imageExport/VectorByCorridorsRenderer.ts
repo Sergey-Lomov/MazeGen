@@ -333,10 +333,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       width: settings.thickness,
       color: settings.color,
       join: settings.join,
-      // The corridor body is always rendered by the universal filled-contour pipeline. Keep this
-      // local stroke shape round for the remaining split/indicator helpers as well; `join` no
-      // longer selects a second corridor-body algorithm.
-      cap: "round" as const,
+      cap: settings.join === "miter" ? ("square" as const) : ("round" as const),
     };
 
     // Points where a plain segment's own `v1` lands on a split point's shared-face midpoint (GitHub
@@ -379,7 +376,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // `settings.renderStyle` — neither calls into the other's helpers, so a bug in one can't leak
     // into the other. See `VectorByCorridorsSettings.renderStyle`'s own doc comment.
     this.corridors.clear();
-    if (settings.renderStyle === "contour" || settings.renderStyle === "legacy_line") {
+    if (settings.renderStyle === "contour") {
       // Round style (GitHub issue #493 rework): the corridor network is drawn as one filled shape
       // per tile (`buildCorridorContour`), each tile shaped only from its own passages. A turn tile
       // is a pair of concentric arcs (constant `thickness` width right through the bend — both
@@ -826,6 +823,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     }
   }
 
+  private drawBridgeUnderlayLines(
+    settings: VectorByCorridorsSettings,
+    passages: SplitPassage[],
+    drawConnectorLine: ReturnType<VectorByCorridorsRenderer["setupSplitPassageDraw"]>["drawConnectorLine"],
+  ): void {
+    for (const passage of passages) {
+      for (const segment of passage.wallSegments) {
+        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
+        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
+      }
+    }
+  }
+
   /** Draws one bridge's shared through/cross geometry. Both render styles use the same layer
    *  order and the same cell-clipped gap; only the ordinary fork underlay differs by style. */
   private drawBridgeSpecialShape(
@@ -928,7 +938,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
-    this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    // The universal contour engine draws only the round join; miter keeps plain connector lines.
+    if (settings.join === "round") this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    else this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     // A point recognized as `"hex_triple_bridge"`/`"hex_triple_corridor"` (GitHub issue #319)
     // emits 2 special-shape entries sharing the same `pointKey` (the third node's own "through"
@@ -1194,12 +1206,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     // Legacy line mode has no filled contour pass, so keep the same ordinary-corridor width and
     // line treatment for the fork while preserving the mode's existing split rendering below.
-    for (const passage of bridgeUnderlayPassages) {
-      for (const segment of passage.wallSegments) {
-        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
-        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
-      }
-    }
+    this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     const throughDrawnForPoint = new Set<string>();
     const diagonalRibbonDrawnForPoint = new Set<string>();
