@@ -55,7 +55,7 @@ type GuardedSet = (partial: GuardedUpdate | ((s: MazeStore) => GuardedUpdate)) =
  *  detach/propagate on write. Listing a registry path here is a compile error (`wallsPlain`/
  *  `corridorsPlain` constrain `path` to these) and a test failure (`imageExportLinkedSetters`). */
 export const WALLS_PLAIN_PATHS = ["randomWallColorMode", "oneWayPattern", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
-export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "markerWidenShape", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
+export const CORRIDORS_PLAIN_PATHS = ["renderStyle", "junctionRadius", "markerWidenShape", "startMarker.text", "finishMarker.text", "teleportGroupOverrides", "splitNodeColors"] as const;
 
 const wallsPlain = (path: (typeof WALLS_PLAIN_PATHS)[number], value: unknown) => (s: MazeStore) => ({
   vectorByWallsSettings: markLinked(setParamValue(s.vectorByWallsSettings, path, value)),
@@ -209,6 +209,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   setVectorByCorridorsGridColor: (color) => set(corridorsParam("gridColor", color)),
   setVectorByCorridorsColor: (color) => set(corridorsParam("color", color)),
   setVectorByCorridorsThickness: (v) => set(corridorsParam("thickness", v)),
+  setVectorByCorridorsJunctionRadius: (v) => set(corridorsPlain("junctionRadius", v)),
   setVectorByCorridorsJoin: (join) => set(corridorsParam("join", join)),
   setVectorByCorridorsRenderStyle: (v) =>
     set(corridorsPlain("renderStyle", v)),

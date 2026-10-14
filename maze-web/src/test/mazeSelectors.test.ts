@@ -363,10 +363,15 @@ describe("buildCorridorSegments", () => {
     const edges: EdgeDto[] = [e(1, 3), e(3, 1)];
     const segments = buildCorridorSegments(nodes, edges, squareCfg);
     expect(segments).toHaveLength(1);
-    expect(segments[0]).toEqual({
+    expect(segments[0]).toEqual(expect.objectContaining({
       v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg),
-      oneWayDir: undefined, fromNode: 1, toNode: 3, v1TouchesSplit: false,
-    });
+      fromNode: 1, toNode: 3, v1TouchesSplit: false,
+    }));
+    expect(segments[0].faceMidpoint).toBeDefined();
+    expect(segments[0].faceNormal).toBeDefined();
+    expect(segments[0].faceLength).toBeGreaterThan(0);
+    expect(segments[0].cellVertices0).toEqual(getCellVertices(1, 0, squareCfg));
+    expect(segments[0].cellVertices1).toEqual(getCellVertices(2, 0, squareCfg));
   });
 
   it("emits each connected pair's segment only once, not once per direction", () => {

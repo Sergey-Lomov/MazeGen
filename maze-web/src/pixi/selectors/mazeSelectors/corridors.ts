@@ -15,13 +15,13 @@ import { buildSplitPointKeys } from "./split";
 export type CorridorSegment = {
   v0: { x: number; y: number };
   v1: { x: number; y: number };
-  /** Centre of the actual shared face used as the corridor mouth for Cairo cells. */
+  /** Centre of the actual shared face used as the corridor mouth. */
   faceMidpoint?: { x: number; y: number };
   /** Unit normal to the shared face, pointing out of `v0`'s cell. */
   faceNormal?: { x: number; y: number };
-  /** Real shared-face length, used by contour width clamping for Cairo's irregular pentagons. */
+  /** Real shared-face length, used by contour width clamping. */
   faceLength?: number;
-  /** Cairo cell polygons, used to keep a centre-anchored dead-end cap inside its own cell. */
+  /** Convex cell polygons, used by the contour engine's containment guard. */
   cellVertices0?: { x: number; y: number }[];
   cellVertices1?: { x: number; y: number }[];
   oneWayDir?: { dx: number; dy: number };
@@ -107,8 +107,10 @@ export function buildCorridorSegments(
       // reaching all the way to the split cell's center — `buildSplitPassages`' own per-node share
       // (`SplitPassage.wallSegments[*].center`) picks up from there.
       let v1 = getCellCenter(nx, ny, cfg);
-      const needsFaceGeometry = neighborSplit || cfg.type.startsWith("cairo");
-      const sharedFace = needsFaceGeometry ? getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg) : undefined;
+      // Every production segment carries its real shared face and both convex cell polygons. This
+      // keeps the renderer on the tessellation-independent contour engine for square, hex, triangle,
+      // Cairo, and future convex cell families alike.
+      const sharedFace = getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg);
       const faceMidpoint = sharedFace
         ? { x: (sharedFace.v0.x + sharedFace.v1.x) / 2, y: (sharedFace.v0.y + sharedFace.v1.y) / 2 }
         : undefined;
@@ -140,7 +142,7 @@ export function buildCorridorSegments(
       result.push({
         v0,
         v1,
-        ...(cfg.type.startsWith("cairo") && faceMidpoint && faceNormal ? {
+        ...(faceMidpoint && faceNormal ? {
           faceMidpoint,
           faceNormal,
           faceLength,

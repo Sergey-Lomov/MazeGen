@@ -152,6 +152,43 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(slider).toBeDisabled();
   });
 
+  describe("round-join rendering controls", () => {
+    const renderStyleLabel = () => screen.queryByText(m["image_export.vector_by_corridors.render_style"]());
+    const radiusLabel = () => screen.queryByText(m["image_export.vector_by_corridors.junction_radius"]());
+    const setCorridors = (patch: Partial<typeof DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS>) =>
+      useMazeStore.setState((state) => ({ vectorByCorridorsSettings: { ...state.vectorByCorridorsSettings, ...patch } }));
+
+    it("shows the rendering mode and corner radius for the round-join contour", () => {
+      setCorridors({ join: "round", renderStyle: "contour" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).toBeInTheDocument();
+      expect(radiusLabel()).toBeInTheDocument();
+    });
+
+    it("hides the corner radius in Line mode", () => {
+      setCorridors({ join: "round", renderStyle: "legacy_line" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).toBeInTheDocument();
+      expect(radiusLabel()).not.toBeInTheDocument();
+    });
+
+    it("hides both for the miter join", () => {
+      setCorridors({ join: "miter", renderStyle: "contour" });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(renderStyleLabel()).not.toBeInTheDocument();
+      expect(radiusLabel()).not.toBeInTheDocument();
+    });
+
+    it("changing the corner radius slider updates the store", () => {
+      setCorridors({ join: "round", renderStyle: "contour", junctionRadius: 4 });
+      render(<VectorByCorridorsSettingsPanel />);
+      const slider = radiusLabel()!.parentElement?.querySelector('input[type="range"]');
+      expect(slider).toBeTruthy();
+      fireEvent.change(slider!, { target: { value: "6.5" } });
+      expect(useMazeStore.getState().vectorByCorridorsSettings.junctionRadius).toBe(6.5);
+    });
+  });
+
   it("changing the thickness slider updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
     const slider = screen.getByDisplayValue("6");

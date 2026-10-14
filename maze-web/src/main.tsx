@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initWasm } from "./wasm/wasmLoader";
 import { App } from "./App";
+import { CorridorGeometryTestPage } from "./components/CorridorGeometryTestPage";
 import { initLocale } from "./i18n/localeStore";
 import "./styles/global.css";
 
@@ -20,10 +21,21 @@ initLocale();
 
 async function bootstrap() {
   const root = document.getElementById("root")!;
+  const isCorridorGeometryRoute = window.location.pathname === "/corridor-geometry";
+  document.documentElement.classList.toggle("corridor-geometry-route", isCorridorGeometryRoute);
   try {
     await initWasm();
   } catch (err) {
     root.textContent = `Failed to load WASM: ${err instanceof Error ? err.message : String(err)}`;
+    return;
+  }
+
+  if (isCorridorGeometryRoute) {
+    createRoot(root).render(
+      <StrictMode>
+        <CorridorGeometryTestPage />
+      </StrictMode>,
+    );
     return;
   }
 

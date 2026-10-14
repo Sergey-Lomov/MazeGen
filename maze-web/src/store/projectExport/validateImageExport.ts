@@ -587,6 +587,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
+    junctionRadius: optNumber(obj, "junctionRadius", d.junctionRadius),
     join: optCornerStyle(obj, "join", d.join),
     renderStyle: optRenderStyle(obj, "renderStyle", d.renderStyle),
     startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),

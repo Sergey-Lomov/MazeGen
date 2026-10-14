@@ -102,6 +102,7 @@ describe("flat vector setters write their settings path", () => {
     ...common,
     ["Color", "color", 0x777777],
     ["Thickness", "thickness", 9],
+    ["JunctionRadius", "junctionRadius", 7.5],
     ["Join", "join", "miter"],
     ["RenderStyle", "renderStyle", "segments"],
     ["MarkerWidenPadding", "markerWidenPadding", 3],

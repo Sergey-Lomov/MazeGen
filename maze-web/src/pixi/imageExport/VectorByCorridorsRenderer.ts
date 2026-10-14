@@ -373,14 +373,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // into the other. See `VectorByCorridorsSettings.renderStyle`'s own doc comment.
     this.corridors.clear();
     if (settings.renderStyle === "contour") {
-      // Round style (GitHub issue #493 rework): the corridor network is drawn as one filled shape
-      // per tile (`buildCorridorContour`), each tile shaped only from its own passages. A turn tile
-      // is a pair of concentric arcs (constant `thickness` width right through the bend — both
-      // elbows rounded, the fix for #493); a straight-through tile a rectangle; a dead end a border
-      // plus a semicircle; a junction (3+ passages) joins each border to the next with an arc.
-      // Adjacent tiles draw mirror borders on the shared face, so the fills meet edge-to-edge with
-      // no seam. Angle-based → square / hex / triangle / any future tessellation, no per-grid
-      // constant.
+      // Round style (GitHub issues #493, #726): the corridor network is drawn as one filled shape
+      // per tile (`buildCorridorContour`), each tile shaped only from its own passages — a ribbon
+      // from every passage's face to a shared target point, joined around that target with corners
+      // rounded to `settings.junctionRadius`. Adjacent tiles draw mirror borders on the shared face,
+      // so the fills meet edge-to-edge with no seam. Works on any convex cell polygon, with no
+      // per-tessellation constant.
       //
       // Miter style keeps the straight-line stroke below: a `"square"` cap protrudes as a flat-edged
       // rectangle aligned to *that line's own* direction, so two lines meeting at a non-perpendicular
@@ -391,7 +389,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       // several chained paths' own ends meet (`junctionEnds` has 2+ entries) gets one shared
       // miter-style patch instead (GitHub issue #443 follow-up).
       if (strokeOpts.cap === "round") {
-        const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, true, "shallowThreeWay");
+        const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, settings.junctionRadius);
         if (contour.length > 0) {
           traceCorridorContour(this.corridors, contour);
           this.corridors.fill(strokeOpts.color);
@@ -789,8 +787,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  corridor layer; the bridge's own dedicated layer is appended afterwards and therefore sits
    *  above it. */
   private bridgeUnderlaySegments(passage: SplitPassage, cfg: TessellationConfig): CorridorSegment[] {
-    const [x, y] = passage.pointKey.split(",").map(Number);
-    const cellVertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
+    const cellVertices = this.splitCellVertices(passage.pointKey, cfg);
     return passage.wallSegments.map((segment) => {
       const dx = segment.v1.x - segment.v0.x;
       const dy = segment.v1.y - segment.v0.y;
@@ -818,10 +815,23 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const passage of passages) {
       const segments = this.bridgeUnderlaySegments(passage, cfg);
       if (segments.length === 0) continue;
-      const contour = buildCorridorContour(segments, settings.thickness, true, "shallowThreeWay");
+      const contour = buildCorridorContour(segments, settings.thickness, settings.junctionRadius);
       if (contour.length === 0) continue;
       traceCorridorContour(this.corridors, contour);
       this.corridors.fill(settings.color);
+    }
+  }
+
+  private drawBridgeUnderlayLines(
+    settings: VectorByCorridorsSettings,
+    passages: SplitPassage[],
+    drawConnectorLine: ReturnType<VectorByCorridorsRenderer["setupSplitPassageDraw"]>["drawConnectorLine"],
+  ): void {
+    for (const passage of passages) {
+      for (const segment of passage.wallSegments) {
+        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
+        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
+      }
     }
   }
 
@@ -927,7 +937,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
-    this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    // The universal contour engine draws only the round join; miter keeps plain connector lines.
+    if (settings.join === "round") this.drawBridgeUnderlayContour(settings, bridgeUnderlayPassages, cfg);
+    else this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     // A point recognized as `"hex_triple_bridge"`/`"hex_triple_corridor"` (GitHub issue #319)
     // emits 2 special-shape entries sharing the same `pointKey` (the third node's own "through"
@@ -945,6 +957,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     for (const shape of specialShapes) {
       if (shape.kind === "diagonal" && shape.dividerJunctions) {
         const nodePassages = passages.filter((passage) => passage.pointKey === shape.pointKey);
+        const cellVertices = settings.join === "round" ? this.splitCellVertices(shape.pointKey, cfg) : undefined;
         nodePassages.forEach((passage, nodeIndex) => {
           const junction = shape.dividerJunctions?.[nodeIndex];
           if (!junction) return;
@@ -953,6 +966,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               const outerContourSegments = passage.wallSegments.map((other) => ({
                 v0: passage.center,
                 v1: other.center,
+                cellVertices0: cellVertices,
                 v1TouchesSplit: true,
               }));
               const orderedOuter = outerContourSegments
@@ -981,28 +995,24 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
               if (settings.splitGapWidth > 0 && outerTurn.length === 2) {
                 const gridInset = 0.5 / (this.viewport.scale || 1);
                 const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, settings.junctionRadius));
                 this.corridors.fill(settings.background);
               }
-              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, true, "shallowThreeWay"));
+              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, settings.junctionRadius));
               this.corridors.fill(settings.color);
               if (outerTurn.length === 2) {
-                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, true));
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, settings.junctionRadius));
                 this.corridors.fill(settings.color);
               }
               break;
             }
-            drawConnectorLine(
-              junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors,
-              settings.join === "miter" ? "butt" : "round",
-            );
+            // Miter join from here on: the round join drew the whole node above and broke out.
+            drawConnectorLine(junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors, "butt");
 
             // Patch the seam between this angled split ray and the ordinary corridor continuing
             // beyond the hex face. Both strokes are butt-cut at `segment.center`; the two-ray
             // miter patch closes the resulting corner without adding anything at the split's own
             // internal convergence point.
-            if (settings.join !== "miter") continue;
-
             const faceDx = segment.v1.x - segment.v0.x, faceDy = segment.v1.y - segment.v0.y;
             let outward = { x: -faceDy, y: faceDx };
             const fromTileCenter = {
@@ -1191,12 +1201,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     // Legacy line mode has no filled contour pass, so keep the same ordinary-corridor width and
     // line treatment for the fork while preserving the mode's existing split rendering below.
-    for (const passage of bridgeUnderlayPassages) {
-      for (const segment of passage.wallSegments) {
-        const color = segment.isUndefined ? disabledOfNumber(passage.color) : settings.color;
-        drawConnectorLine(passage.center, segment.center, color, segment.oneWayOut, settings.thickness, this.corridors);
-      }
-    }
+    this.drawBridgeUnderlayLines(settings, bridgeUnderlayPassages, drawConnectorLine);
 
     const throughDrawnForPoint = new Set<string>();
     const diagonalRibbonDrawnForPoint = new Set<string>();

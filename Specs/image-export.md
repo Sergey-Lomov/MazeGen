@@ -84,7 +84,7 @@ Sections:
 
   **Not just special drawing — special node-point positioning too** (GitHub issue #318): a recognized special-shape node's marker/teleport-endpoint/debug-overlay point also moves off the generic evenly-spaced hub circle onto a shape-specific point (`specialSplitNodePoint`, `tessellationGeometry.ts`) — see `Specs/post-edit.md`'s "Marker/teleport anchoring" and "Shape-aware node point" notes for the exact per-shape geometry. Same detection (`detectSplitSpecialShapeKind`, shared via `splitFaceLayout.ts`), independent of this drawing toggle — positioning always applies once a shape is recognized, it isn't gated by `specialShapes`/`splitSpecialShapes`.
 
-  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`; Cairo bridge gaps are clipped as cell-bounded polygons, allowing different lengths at the two ends, and the Cairo 2x3 fork remains as the ordinary corridor underlay beneath the deck. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The Cairo parallel divider draws canonical connection `2-3` above `1-4`, scales its top bow so `0.5` has the previous `0.3` effect, and omits the lower connection's gap underlay; a large upper gap is clipped to the cell polygon. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Ordinary three-port junctions and this divider use a dedicated shallower fillet style, while other junction arities retain the default contour geometry. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
+  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`; Cairo bridge gaps are clipped as cell-bounded polygons, allowing different lengths at the two ends, and the Cairo 2x3 fork remains as the ordinary corridor underlay beneath the deck. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The Cairo parallel divider draws canonical connection `2-3` above `1-4`, scales its top bow so `0.5` has the previous `0.3` effect, and omits the lower connection's gap underlay; a large upper gap is clipped to the cell polygon. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Every contour junction (ordinary, divider, bridge underlay) uses the same `junctionRadius`; under the miter join, contour mode draws the bridge underlay as plain connector lines. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
 
   **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — the plain corridor's own chained paths (`chainSegmentsAtSharedVertices`) each draw as their own independent `stroke()` call, so a Pixi `join` never forms between two chained paths that happen to meet at the same point where chaining itself declined to extend through it (a degree != 2 vertex — an ordinary 3+-corridor T-junction, not a split hub, which `drawSplitPassages` owns entirely and is untouched by this fix): separate `moveTo`/`stroke` calls at a shared vertex draw independent caps, not a join, so a `"miter"` setting's own `cap: "square"` visibly poked out at every such T-junction instead of mitering cleanly. Every chained path here draws `butt` unconditionally first (never protrudes), then each of its own two non-split ends is patched back in separately — a genuine free end (nothing else meets it there) gets a plain round/square cap same as an ordinary stroke would draw, but a T-junction where 2+ chained paths' own ends meet gets one shared **miter polygon** instead of each path patching its own end independently (an earlier attempt at the latter left visible gaps between the independent per-path patches at non-perpendicular junction angles — each path's own patch only ever follows *that* path's own direction, not its neighbors'). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free specifically to allow memoizing by a rounded-angle+width key, though the renderer itself doesn't cache yet. Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
 
@@ -238,7 +238,9 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
 - **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`), **Rendering mode** (a Contour/Line
   `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
-  `join === "round"`-gated "Round junctions" toggle; see the "Rendering mode" section below) and
+  `join === "round"`-gated "Round junctions" toggle; shown only for the round join; see the "Rendering
+  mode" section below), **Corner radius** (`junctionRadius`, 0 to `TILE_SIZE / 2` in 0.5 steps,
+  default 4 — shown only for the round join in Contour mode, the only path that reads it) and
   thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
   wall-thickness range). At thick junctions, the contour builder applies one shared clamp to every
@@ -395,8 +397,9 @@ special-shape drawing — the only code the two modes share is `setupSplitPassag
 clip-scratch reset, the `drawConnectorLine` helper, and the plain-connector pass — boilerplate with
 no special-shape geometry) and the geometry helpers in `vectorByCorridorsGeometry.ts` that already
 predate #493 — so a bug in one mode's contour/line geometry can never leak into the other.
-It replaced the old `join`-gated `roundJunctions` boolean. Both modes still honor the `join`
-(round/miter) setting; each applies its own round/miter behavior. An old project file predating the
+It replaced the old `join`-gated `roundJunctions` boolean. The setting only distinguishes the two
+**round** renderings: under `join: "miter"` both values draw the same straight lines
+(`strokeChainedPathsWithPatchedCaps`), and the settings panel hides the selector. An old project file predating the
 field — or carrying only the removed `roundJunctions` boolean — recovers to `"contour"`
 (`optRenderStyle`, `validateImageExport.ts`).
 
@@ -418,73 +421,77 @@ field — or carrying only the removed `roundJunctions` boolean — recovers to 
 
 With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
 built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
-no polygon boolean union (`vectorByCorridorsContour.ts`, `buildCorridorContour`).
+no polygon boolean union. The pure geometry engine (`buildCorridorGeometry`) accepts convex cell
+polygons and face ports; `buildCorridorContour` is only the compatibility adapter from the selector's
+centre-to-centre records (`vectorByCorridorsContour.ts`).
 
-**Ports.** The centre-to-centre segments (`buildCorridorSegments`) are grouped by cell centre; each
-segment end is one *port* of that cell — the middle of the shared border (`(v0+v1)/2`, or the split
-face midpoint `v1` for a split neighbour), plus the outward unit normal there. A port's drawn border
-is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on the border middle.
+**Ports.** A cell supplies its centre and convex polygon, while each passage supplies one *port* —
+the middle of a finite shared face, its outward unit normal, and (when available) the face endpoints.
+A port's drawn border is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on
+the border middle. Selector-specific centre-to-centre records are adapted to this same shape before
+geometry generation (a cell with no known polygon gets a square of half-side `thickness`).
 Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
-two filled shapes meet edge-to-edge with no seam and no overlap. Ports are ordered CCW around the
-cell centre.
+two filled shapes meet edge-to-edge with no seam and no overlap. The half-width is clamped once for
+the whole call to half the shortest finite face, so mirrored mouths always match.
 
-**Per-tile shape** (`tileContour`), by port count:
+**Per-tile shape** (`buildTileGeometry`) — one algorithm for every port count and cell shape:
 
-- **1 port — dead end**: a `thickness`-wide stub running from the shared border straight into the
-  tile to its centre, then a 180-degree semicircular cap of radius `thickness/2`. Four anchor
-  points — two on the border (shared with the neighbour tile), two where the straight walls hand off
-  to the cap.
-- **2 collinear ports — straight through**: a rectangle joining the two borders (four corners
-  ordered by angle around their centroid to guarantee a simple quad).
-- **2 ports at an angle — turn**: a pair of **concentric** circular arcs. `O` is where the two
-  border *lines* meet, `R` the distance from `O` to each border midpoint; the inner (concave) elbow
-  is an arc of radius `R − thickness/2`, the outer (convex) elbow a concentric arc of radius
-  `R + thickness/2`. The corridor therefore keeps a **constant `thickness` width right through the
-  bend, both elbows rounded** — the fix for issue #493 (the old renderer rounded only the outer
-  elbow, leaving the inner corner a sharp point). For a square tile with the port at the face
-  middle: `R` = half the tile step, `O` = the tile corner, inner radius `step/2 − thickness/2`.
-- **3+ ports — junction**: the outline is walked CCW — each port lays its `thickness`-wide border,
-  then the piece between it and the next port is one of:
-  - **concave armpit** (passages on both sides, CCW turn between the two arm axes < 180°): a
-    **tangent fillet**. Each arm's own side-wall is run *inward* from its inner border end; the two
-    extended walls meet at `W`; the corner is rounded with an arc that touches each wall, radius
-    `min(R − thickness/2, ARMPIT_FILLET_K · thickness, reach · tan(half-angle))` where `R` is the
-    distance from `O` (border lines' intersection) to each border midpoint, `ARMPIT_FILLET_K` = 0.9,
-    and `reach` is how far `W` sits from the nearer inner border end. Capping the radius against the
-    corridor width keeps a thin corridor at a wide junction about one corridor wide instead of
-    ballooning with the tessellation step; when no cap bites it is the turn-tile inner elbow
-    `R − thickness/2`.
-  - **convex gap** (the wide dead sector between the two outermost arms — reflex turn, e.g. a hex
-    cell with passages on 3 adjacent faces): the *outer* elbow of the same turn construction — an
-    arc of radius `R + thickness/2` around `O` between the two borders' outer ends, the exact arc a
-    one-face-apart passage draws. By construction `R + thickness/2 ≈ |O − tile centre|`, so the arc
-    passes close by the centre without reaching it; the fill still reads as one smooth junction.
-    Drawing the *inner* arc here instead would invert and punch a hole in the tile.
-  - **straight-through** (collinear arms): a plain line across.
+1. **Target.** The *most opposite pair* is the port pair whose normals are farthest apart (ties →
+   no pair). The target is the middle of a cubic joining that pair's mouths, its handles following an
+   arc around the intersection of the two faces' lines; with no pair (one port, or a tie) the target
+   is the cell centre. The target is pulled inside the cell polygon if needed. A **dead end** (one
+   port) caps its ribbon with a half-disc of the half-width around the target, facing along the
+   centre curve. When that half-disc does not fit the cell (checked exactly against every face),
+   the target moves back along the original centre curve toward the port — the curve is cut there
+   as an exact cubic — to the farthest point where it fits. When it does not fit even at the port,
+   the cap becomes one circular arc through the two mouth ends, bulging into the cell as deep as
+   fits (`kinkedDeadEndCap`): below a semicircle it meets the mouth at an angle — a kink at each
+   mouth end — instead of flattening. Its depth (sagitta) is computed in closed form per face as the
+   larger root of `(1 + β)s² − 2rs + (1 − β)h² ≤ 0` (`β` = face normal · inward, `r` = room from
+   the port, `h` = half-width). That cap is the whole tile.
+2. **Centre curves.** Every port gets a cubic from its mouth (leaving along the inward normal) to the
+   target. The opposite pair forms a smooth *biarc*: both halves share one tangent at the target,
+   the compromise between the two circular arcs from each mouth through the target, so a two-port
+   turn on a regular cell is one exact circular arc. Other ports arrive radially.
+3. **Ribbons.** Each centre curve is offset by the half-width on both sides (a least-squares cubic
+   fit with a curvature limit), the first point snapped to the port's border ends, and every sample
+   pulled inside the cell polygon.
+4. **Contour.** Ribbons are ordered CCW around the target; each ribbon's right side is joined to the
+   next ribbon's left side at their first intersection. A tangent-continuous crossing (the inner
+   side of a smooth turn) is kept as is; any other crossing is rounded with an arc of radius
+   `junctionRadius` (default `0.75 · half-width` when not given). Sides that never meet are joined
+   by an arc centred on the target — for a single port this is the dead-end cap, bulging along the
+   centre curve's end direction. Curve control points are clamped into the cell. Each corner arc is
+   limited to what fits its own corner (`junctionCornerBridge`: at most `reach · tan(half-angle)`),
+   so no radius search is done.
 
-  **Special case — exactly one dead sector** (e.g. a hex cell with passages on 3 *adjacent* faces):
-  a corridor bends one-face-apart across the junction. Its outer edge is the dead sector's
-  `R + thickness/2` arc about `O`; its inner edge must be the **concentric** `R − thickness/2` arc
-  about the *same* `O`, running unbroken from one dead-sector arm to the other along the short side.
-  Any arm in between cuts a shallow notch out of that single inner arc (its two side-walls each
-  cross the circle once; between the crossings the arm's own `thickness`-wide border juts outward),
-  and each concave corner where the inner arc meets such a side-wall is rounded with a small tangent
-  fillet (radius `min(ARMPIT_FILLET_K · thickness, (R − thickness/2)/2)`). The whole junction
-  contour is emitted by a dedicated traversal that bypasses the per-piece loop above — building
-  those middle sections as stand-alone armpit fillets about their own local corner would leave a
-  straight inner edge against the curved outer one and pinch the fill (issue #493).
+**Junction closure near a face.** At a junction, two neighbouring sides that never cross are joined
+by an arc centred on the target with the radius of the nearer side end, plus a straight piece to the
+farther one. When that arc would cross a face (checked exactly: `arcInsideConvexCell`), it is
+replaced by the deepest arc straight between the two side ends that fits (`deepestChordArc`, the
+same closed form as the kinked dead-end cap), kinked at both ends. Not seen on the real
+tessellations; the lab's "Overflow problems" view shows irregular cells where it applies.
 
-  **No core disc.**
+`buildCorridorGeometryDebug` returns every stage (target, centre curves, raw and constrained
+ribbons, the radius-0 and final contours) for the geometry lab (`/corridor-geometry`,
+`CorridorGeometryTestPage.tsx`); `buildCorridorGeometry` returns only the final contours.
+`buildCorridorContour` is `corridorSegmentsToGeometryInput` (segment records → cells and ports)
+followed by `buildCorridorGeometry`.
 
-  In contour mode a 3+-port junction always gets this arc treatment (`buildCorridorContour`'s
-  `roundJunctions` param is passed `true` unconditionally now — the old user-facing toggle was
-  replaced by the Rendering mode switch, GitHub issue #510). To leave junctions angular, select the
-  **Line** rendering mode instead.
-
-All arc sweeps take the short way between their endpoints (`shortSweepCcw`), except the dead-end cap
-which sweeps the long way (around its own centre). Angle-based throughout, so it works unchanged on
-square / hex / triangle and any future tessellation — there is no radius parameter and no per-grid
-constant.
+**Geometry lab.** Shows every port combination of one cell per tessellation. A "Cell size" slider
+sets the cell's longest face in pixels, per tessellation (`cellSize`/`scaleCell`), while thickness
+stays in pixels too — e.g. the triangle at 40px (half its native 80px) shows a dead-end cap moving
+toward the port above thickness 23.1 and bending into a kinked arc on the port's face above 34.6.
+Cell borders and face lines keep a constant on-screen width at any cell size. The "Cell outline on top" debug layer redraws the cell border over the corridor to
+make such overflow visible. The "Overflow problems" view (`PROBLEM_TYPES`) lists each way a contour
+used to leave its cell — a description followed by five ordinary cards, each a hand-picked cell with
+its own fixed thickness (the thickness and cell-size sliders are hidden there).
+`CorridorGeometryTestPage.test.tsx` checks that every example now stays inside its cell. The lab
+builds each cell through the production adapter (`labCellGeometry`: each port becomes a segment record like `buildCorridorSegments` emits) and
+clamps the thickness to the cell's shortest face, as a whole maze does. `corridorLabParity.test.ts`
+checks, on the real wasm build, that every lab combination equals the same cell taken from a maze
+run through `buildCorridorSegments`; `vectorByCorridorsContour.test.ts` checks that the SVG
+(`contourToSvgPath`, lab) and pixi (`traceCorridorContour`, export) outputs draw the same arcs.
 
 **Tracing.** `traceCorridorContour` plays each tile path's `move` / `line` / `arc` onto the
 `Graphics` and `closePath()`s it; the caller fills once. The tiles never overlap, so a plain fill is
@@ -596,7 +603,7 @@ root-shaped patch), and `propagateLinkedSources(next, changed)` for source-style
 detach (the vertical "Shared style" patch). Both return `Linked<S>`, a branded settings type: the
 image-export slice's `set` accepts only `Linked` values for `vectorByWallsSettings`/
 `vectorByCorridorsSettings`, so a hand-rolled `{ ...settings, field: v }` write does not compile.
-Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`,
+Fields outside the registry (`randomWallColorMode`, `oneWayPattern`, `renderStyle`, `junctionRadius`,
 `markerWidenShape`, `*.text`, `teleportGroupOverrides`, `splitNodeColors`) are written through
 `wallsPlain`/`corridorsPlain`, whose `path` is restricted to `WALLS_PLAIN_PATHS`/
 `CORRIDORS_PLAIN_PATHS` (a test asserts these never overlap the registry); link-management actions and
