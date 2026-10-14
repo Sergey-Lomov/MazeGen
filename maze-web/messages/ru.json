@@ -1972,6 +1972,7 @@
   "image_export.vector_by_corridors.render_style_info_line": "Более стабильный, но развилки имеют острые углы.",
   "image_export.vector_by_corridors.render_style_info_contour": "Более декоративный, скругляет все углы, но менее надёжен, и развилки могут выглядеть искусственно утолщёнными.",
   "image_export.vector_by_corridors.thickness": "Ширина",
+  "image_export.vector_by_corridors.junction_radius": "Радиус углов",
   "image_export.vector_by_corridors.marker_widen_padding": "Расширение",
   "image_export.vector_by_corridors.marker_widen_shape": "Форма расширения",
   "image_export.vector_by_corridors.marker_widen_shape_circle": "Круг",

@@ -4,6 +4,14 @@
 
 Pixi.js-based rendering system. `MazeScene` owns a Pixi `Application` and orchestrates all renderers. Created by `App` once on mount, destroyed on unmount.
 
+**Canvas density.** `App` initializes the `Application` (WebGL by default) with `antialias: true`,
+`resolution: window.devicePixelRatio` and `autoDensity: true`: the canvas backing store is sized in
+physical pixels (2x on Retina) while its CSS size follows the container, so the maze stays sharp
+instead of being upscaled by the browser. The resolution is read once at init — moving the window to
+a display with a different pixel ratio keeps the old density until reload. Eyedropper sampling
+(`MazeScene.sampleColorAt`/`sampleRegionAt`) already converts through `renderer.resolution`; PNG
+export renders into its own explicitly sized `RenderTexture`, independent of the screen density.
+
 ## Cairo geometry
 
 Cairo uses the same integer point coordinates as `maze-core`, including Euclidean residue classes

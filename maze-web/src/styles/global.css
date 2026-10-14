@@ -3,6 +3,25 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* The application shell intentionally occupies the viewport and clips its canvas. The geometry
+   laboratory is a document-sized route, so let its complete combination list scroll normally. */
+html.corridor-geometry-route,
+html.corridor-geometry-route body,
+html.corridor-geometry-route #root {
+  height: 100%;
+  min-height: 0;
+}
+
+html.corridor-geometry-route,
+html.corridor-geometry-route body {
+  overflow: hidden;
+}
+
+html.corridor-geometry-route #root {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 input:focus,
 select:focus {
   outline: none;

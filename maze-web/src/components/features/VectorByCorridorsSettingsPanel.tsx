@@ -68,6 +68,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
   const [renderStyleInfoOpen, setRenderStyleInfoOpen] = useState(false);
+  const setJunctionRadius = useMazeStore((s) => s.setVectorByCorridorsJunctionRadius);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
@@ -364,16 +365,32 @@ export function VectorByCorridorsSettingsPanel() {
             onChange={setJoin}
             linkTarget="join"
           />
-          <SelectRow
-            label={m["image_export.vector_by_corridors.render_style"]()}
-            value={settings.renderStyle}
-            options={[
-              { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
-              { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
-            ]}
-            onChange={setRenderStyle}
-            info={() => setRenderStyleInfoOpen(true)}
-          />
+          {/* The rendering mode only chooses how round joins are drawn; miter always draws lines. */}
+          {settings.join === "round" && (
+            <SelectRow
+              label={m["image_export.vector_by_corridors.render_style"]()}
+              value={settings.renderStyle}
+              options={[
+                { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
+                { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
+              ]}
+              onChange={setRenderStyle}
+              info={() => setRenderStyleInfoOpen(true)}
+            />
+          )}
+          {/* Only the round-join contour engine reads the junction radius. */}
+          {settings.renderStyle === "contour" && settings.join === "round" && (
+            <LinkedSliderRow
+              label={m["image_export.vector_by_corridors.junction_radius"]()}
+              value={settings.junctionRadius}
+              onChange={setJunctionRadius}
+              min={0}
+              max={TILE_SIZE / 2}
+              step={0.5}
+              format={(v) => String(v)}
+              linkTarget={null}
+            />
+          )}
           <LinkedSliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
             value={settings.thickness}

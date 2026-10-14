@@ -15,7 +15,7 @@ The card body (`QualityFeature` component) renders a status hint only when the p
 
 ## Canvas lifecycle
 
-`qualityOpen` is derived in `App.tsx` as `openCard === "quality"`, not its own store field — opening Quality means calling `setOpenCard("quality")` (the same action every feature card uses to become the active card). `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place when `qualityOpen` is true. `MazeScene` subscribes to `qualityOpen` and stops the Pixi ticker when open, restarts it when closed.
+`qualityOpen` is derived in `App.tsx` as `openCard === "quality"`, not its own store field — opening Quality means calling `setOpenCard("quality")` (the same action every feature card uses to become the active card). `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place when `qualityOpen` is true. `MazeScene` subscribes to `qualityOpen` and suspends its `RenderScheduler` while it is open (no renders at all, including Pixi's own resize renders); on close the scheduler resumes with one render that draws everything changed meanwhile. See `Specs/canvas-rendering.md`.
 
 ## What a rule is
 

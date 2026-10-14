@@ -21,6 +21,8 @@ import { backgroundImageEditMode } from "./sceneTypes";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import { BackgroundImageController } from "./BackgroundImageController";
+import { RenderScheduler } from "./renderScheduler";
+import { watchDevicePixelRatio } from "./devicePixelRatioWatcher";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { DefaultHoverProvider } from "./hoverProviders";
 import type { FeatureId, PngExportSettings } from "../store/storeTypes";
@@ -65,6 +67,7 @@ export function shouldCancelFieldEditGesture(args: {
 
 export class MazeScene {
   private app: Application;
+  private renderScheduler: RenderScheduler;
   private viewport: Container;
   private generationRenderer: GenerationRenderer;
   private tessellationRenderer: TessellationRenderer;
@@ -99,6 +102,8 @@ export class MazeScene {
   // All renderers/overlays that must be notified when the viewport changes.
   private viewportListeners: ViewportListener[] = [];
 
+  private unsubscribeRender: (() => void) | null = null;
+  private unwatchDevicePixelRatio: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
   private unsubscribeQualityOpen: (() => void) | null = null;
@@ -107,6 +112,7 @@ export class MazeScene {
 
   constructor(app: Application) {
     this.app = app;
+    this.renderScheduler = new RenderScheduler(app);
 
     this.viewport = new Container();
 
@@ -246,10 +252,14 @@ export class MazeScene {
       },
     );
 
+    // Renderers react to store updates by editing Pixi objects, which the scheduler's render-group
+    // hooks already pick up; this explicit request is the safety net for any update path they miss.
+    this.unsubscribeRender = useMazeStore.subscribe(() => this.renderScheduler.requestRender());
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToQualityOpen();
     this.subscribeToQualityRulesReconfirm();
+    this.unwatchDevicePixelRatio = watchDevicePixelRatio((dpr) => this.applyDevicePixelRatio(dpr));
     this.syncLayersToViewport();
   }
 
@@ -340,8 +350,8 @@ export class MazeScene {
         const wasQuality = prevCard === "quality";
         const isQuality = state.openCard === "quality";
         prevCard = state.openCard;
-        if (isQuality) this.app.ticker.stop();
-        else if (wasQuality) this.app.ticker.start();
+        if (isQuality) this.renderScheduler.setSuspended(true);
+        else if (wasQuality) this.renderScheduler.setSuspended(false);
       }
     });
   }
@@ -459,6 +469,7 @@ export class MazeScene {
       );
     }
     this.viewportScaleCallback?.(this.viewport.scale.x);
+    this.renderScheduler.requestRender();
   }
 
   exportPng(settings: PngExportSettings): Promise<Blob | null> {
@@ -543,6 +554,17 @@ export class MazeScene {
     this.exportFrameOverlay.applyViewportScaleAroundFrameCentre(targetScale);
   }
 
+  /** Re-renders at the new display density after the window moves to a monitor with a different
+   * device pixel ratio (or browser zoom changes) — `resolution` is otherwise fixed at app init, so
+   * moving onto a Retina display would leave the canvas blurry, and moving off it would keep
+   * rendering at 2x for nothing. The screen size in CSS pixels is unchanged; only the backing
+   * buffer is resized. MSAA (`antialias`) is a WebGL context attribute and stays as chosen at init. */
+  private applyDevicePixelRatio(dpr: number): void {
+    if (dpr === this.app.renderer.resolution) return;
+    this.app.renderer.resize(this.app.screen.width, this.app.screen.height, dpr);
+    this.renderScheduler.requestRender();
+  }
+
   /** Re-notifies every `viewportListeners` entry (and `ExportFrameOverlay`'s screen-space frame,
    * via `syncLayersToViewport`'s fresh `app.screen.width/height` read) with the current viewport
    * transform, without changing it — for a real canvas-size change (the DOM element itself
@@ -595,6 +617,8 @@ export class MazeScene {
 
   destroy(): void {
     this.hoverCallback?.(null);
+    this.unsubscribeRender?.();
+    this.unwatchDevicePixelRatio?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribeQualityOpen?.();
@@ -613,6 +637,7 @@ export class MazeScene {
     this.postEditController.destroy();
     this.fieldEditController.destroy();
     this.interaction.destroy();
+    this.renderScheduler.destroy();
     this.app.destroy();
   }
 }

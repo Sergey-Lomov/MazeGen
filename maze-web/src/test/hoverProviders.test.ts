@@ -114,6 +114,7 @@ describe("zoom reset controls", () => {
       viewportListeners: [viewportListener],
       viewportScaleCallback: viewportScaleListener,
       app: { screen: { width: 800, height: 600 } },
+      renderScheduler: { requestRender: vi.fn() },
     } as unknown as MazeScene;
 
     (MazeScene.prototype as any).syncLayersToViewport.call(scene);
@@ -121,6 +122,23 @@ describe("zoom reset controls", () => {
     expect(layer).toEqual({ x: 12, y: -7, scale: { x: 2.5, y: 2.5 } });
     expect(viewportListener.onViewportChanged).toHaveBeenCalledWith(12, -7, 800, 600, 2.5);
     expect(viewportScaleListener).toHaveBeenCalledWith(2.5);
+    expect((scene as any).renderScheduler.requestRender).toHaveBeenCalled();
+  });
+
+  it("resizes the renderer to a new device pixel ratio and skips an unchanged one", () => {
+    const resize = vi.fn();
+    const requestRender = vi.fn();
+    const scene = {
+      app: { screen: { width: 800, height: 600 }, renderer: { resolution: 1, resize } },
+      renderScheduler: { requestRender },
+    } as unknown as MazeScene;
+    const apply = (dpr: number) => (MazeScene.prototype as any).applyDevicePixelRatio.call(scene, dpr);
+
+    apply(1);
+    expect(resize).not.toHaveBeenCalled();
+    apply(2);
+    expect(resize).toHaveBeenCalledWith(800, 600, 2);
+    expect(requestRender).toHaveBeenCalledTimes(1);
   });
 
   it("keeps only one hover and viewport-scale listener and notifies replacements", () => {

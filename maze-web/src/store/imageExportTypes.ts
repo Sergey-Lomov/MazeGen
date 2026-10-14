@@ -661,23 +661,24 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   gridColor: number;
   color: number;
   thickness: number;
+  /** Corner radius (world px) where corridors meet inside a cell; read only by the round-join
+   *  `"contour"` render style, which shrinks it at each corner where it would not fit. */
+  junctionRadius: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
   join: CornerStyle;
-  /** Which corridor-drawing algorithm renders this mode's corridor network (GitHub issue #510),
-   *  independent of `join` (each style applies its own round/miter behavior). `"contour"` (the
-   *  default) draws each tile as one filled shape (`buildCorridorContour`/`vectorByCorridorsContour.ts`,
-   *  GitHub issue #493 rework) — more decorative (rounds every corner, junctions included), but has
-   *  shown stability issues. `"legacy_line"` restores the pre-#493 renderer — a stroked polyline per
-   *  chained corridor path with patched caps/miter wedges at junctions (the
-   *  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` in
-   *  `VectorByCorridorsRenderer.ts`) — more stable, but junctions/turns
-   *  have sharp corners under `join: "miter"` (round corners are still smooth under `join: "round"`,
-   *  just via per-path circle-cap patches instead of a contour fill). The two corridor-drawing
-   *  algorithms and the two special-shape drawing blocks are fully independent — the only code they
-   *  share is `setupSplitPassageDraw` (per-call clip-scratch reset + `drawConnectorLine` helper +
-   *  the plain-connector pass, boilerplate with no special-shape geometry) — so a `"contour"`-only
-   *  bug can't leak into `"legacy_line"` mode. */
+  /** Which corridor look renders this mode's corridor network (GitHub issue #510). It only
+   *  distinguishes the two **round** renderings; under `join: "miter"` both values draw the same
+   *  straight miter line tiles. `"contour"` (the default) draws each cell as one filled contour shape
+   *  (`buildCorridorContourInstances`/`vectorByCorridorsContour.ts`, GitHub issue #493 rework) — more
+   *  decorative (rounds every corner, junctions included), but has shown stability issues.
+   *  `"legacy_line"` keeps the pre-#493 look — straight `butt` lines with round corners and ends
+   *  (line tiles, `vectorByCorridorsLineTiles.ts`) — more stable. Every look draws per-cell tiles
+   *  through `CorridorTileLayer` (GitHub issue #736, `VectorByCorridorsRenderer.updateCorridorTiles`).
+   *  The two split special-shape drawing blocks (`drawSplitPassagesContour`/`drawSplitPassagesLegacy`)
+   *  are fully independent — the only code they share is `setupSplitPassageDraw` (per-call
+   *  clip-scratch reset + `drawConnectorLine` helper + the plain-connector pass, boilerplate with no
+   *  special-shape geometry) — so a `"contour"`-only split bug can't leak into `"legacy_line"` mode. */
   renderStyle: "contour" | "legacy_line";
   /** Start/finish marker appearance (GitHub issue #311) — same `MarkerSettings` shape and
    *  "Waypoints" section convention `VectorByWallsSettings` uses, reusing its settings-panel
@@ -825,6 +826,7 @@ export interface ImageExportActions {
   setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
+  setVectorByCorridorsJunctionRadius: (v: number) => void;
   setVectorByCorridorsJoin: (join: CornerStyle) => void;
   setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
