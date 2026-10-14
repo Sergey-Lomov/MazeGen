@@ -640,7 +640,8 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   gridColor: number;
   color: number;
   thickness: number;
-  /** Universal junction corner radius in world pixels, matching the geometry lab. */
+  /** Corner radius (world px) where corridors meet inside a cell; read only by the round-join
+   *  `"contour"` render style, which shrinks it at each corner where it would not fit. */
   junctionRadius: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */

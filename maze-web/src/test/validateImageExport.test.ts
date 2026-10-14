@@ -253,6 +253,13 @@ describe("optRenderStyle (VectorByCorridorsSettings.renderStyle recovery)", () =
     const recovered = validateVectorByCorridorsSettings({ ...legacyObj, roundJunctions: true }, "path", []);
     expect(recovered.renderStyle).toBe("contour");
   });
+
+  it("validateVectorByCorridorsSettings keeps a stored junctionRadius and defaults a missing one", () => {
+    const { junctionRadius, ...withoutRadius } = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
+    expect(validateVectorByCorridorsSettings({ ...withoutRadius, junctionRadius: 9 }, "path", []).junctionRadius).toBe(9);
+    expect(validateVectorByCorridorsSettings(withoutRadius, "path", []).junctionRadius).toBe(junctionRadius);
+    expect(validateVectorByCorridorsSettings({ ...withoutRadius, junctionRadius: "x" }, "path", []).junctionRadius).toBe(junctionRadius);
+  });
 });
 
 describe("validateLinks (GitHub issue #651)", () => {

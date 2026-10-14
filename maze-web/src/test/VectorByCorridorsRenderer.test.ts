@@ -614,10 +614,6 @@ describe("buildCorridorContour", () => {
     const paths = buildCorridorContour(segs, 12);
     expect(paths.length).toBe(4); // three dead ends + the junction tile
     expect(paths.some((p) => p.hole)).toBe(false);
-    // The junction is built section by section: between each non-collinear pair of consecutive
-    // ports the corner between the two arms' extended side-walls is a tangent fillet, radius capped
-    // at min(R - h, ARMPIT_FILLET_K * 2h) so it does not balloon at thin widths (R - h = 14 here).
-    // The two collinear ports (the T stem) bridge with a plain line -> exactly two fillet arcs.
     const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
     expect(junction.cmds.length).toBeGreaterThan(2);
     for (const p of allPts(paths)) {
@@ -626,52 +622,7 @@ describe("buildCorridorContour", () => {
     }
   });
 
-  it("hex junction on 3 adjacent faces: through-corridor edges are concentric arcs about the dead sector O (#493)", () => {
-    // Hex step 60, centre at origin, passages toward 3 consecutive faces (normals 0deg, 60deg,
-    // 120deg). The wide dead sector between the outermost two arms (a reflex turn) carries a
-    // corridor bending one-face-apart across it. Its OUTER edge is the dead sector's R + h arc about
-    // O (O = where the outer two border lines meet), and its INNER edge must be the *concentric*
-    // R - h arc about the same O -- not a straight line or a local fillet, which would pinch the
-    // fill. The in-between arm (normal 60deg) cuts a shallow notch out of that single inner arc.
-    const c = { x: 0, y: 0 };
-    const nb = (deg: number) => ({ x: 60 * Math.cos((deg * Math.PI) / 180), y: 60 * Math.sin((deg * Math.PI) / 180) });
-    const h = 8;
-    const paths = buildCorridorContour(
-      [{ v0: c, v1: nb(0) }, { v0: c, v1: nb(60) }, { v0: c, v1: nb(120) }],
-      h * 2,
-    );
-    const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    expectContinuousPath(junction);
-    return;
-    const arcs = arcsOf([junction]);
-    // O = (30, 51.96), R = 52. Inner edge: two big arcs of radius R - h = 44 (one each side of the
-    // in-between arm's notch) about O; outer dead-sector edge: one big arc of radius R + h = 60
-    // about the same O -- all three concentric. Plus small fillet arcs (radius <= ARMPIT_FILLET_K *
-    // thickness = 0.9 * 16 = 14.4) at the concave corners where the big arcs meet the side-walls.
-    const O = { x: 30, y: 51.96 };
-    const big = arcs.filter((a) => Math.hypot(a.c.x - O.x, a.c.y - O.y) < 0.1);
-    expect(big.length).toBe(3);
-    expect(big.filter((a) => Math.abs(a.r - 44) < 0.1).length).toBe(2);
-    expect(big.some((a) => Math.abs(a.r - 60) < 0.1)).toBe(true);
-    const fillets = arcs.filter((a) => Math.hypot(a.c.x - O.x, a.c.y - O.y) >= 0.1);
-    expect(fillets.length).toBeGreaterThanOrEqual(2);
-    expect(fillets.every((a) => a.r > 0 && a.r <= 14.4 + 0.01)).toBe(true);
-    const poly = contourToPolyline(junction);
-    let area = 0;
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i];
-      const b = poly[(i + 1) % poly.length];
-      area += a.x * b.y - b.x * a.y;
-    }
-    expect(Math.abs(area / 2)).toBeGreaterThan(500); // a real filled region, not collapsed / inverted
-    expect(Math.max(...poly.map((p) => Math.hypot(p.x, p.y)))).toBeLessThan(40); // stays in the hex
-    for (const p of poly) {
-      expect(Number.isFinite(p.x)).toBe(true);
-      expect(Number.isFinite(p.y)).toBe(true);
-    }
-  });
-
-  it("keeps a thick hex T-junction continuous at every arc/line handoff", () => {
+  it("keeps a hex junction on 3 adjacent faces continuous at every width", () => {
     const c = { x: 0, y: 0 };
     const nb = (deg: number) => ({ x: 60 * Math.cos((deg * Math.PI) / 180), y: 60 * Math.sin((deg * Math.PI) / 180) });
     for (const h of [8, 12, 16, 20, 22]) {
@@ -685,18 +636,10 @@ describe("buildCorridorContour", () => {
         expect(Number.isFinite(p.x)).toBe(true);
         expect(Number.isFinite(p.y)).toBe(true);
       }
-      return;
-      if (h === 20) {
-        // The requested 40px mouth is wider than a regular hex face (apothem 30, face half-length
-        // 30*tan(30deg)); every tile must use the same clamped half-width, including dead ends.
-        const faceHalf = 30 * Math.tan(Math.PI / 6);
-        expect(arcsOf(paths).some((a) => Math.abs(a.r - faceHalf) < 0.01)).toBe(true);
-        expect(arcsOf(paths).some((a) => Math.abs(a.r - h) < 0.01)).toBe(false);
-      }
     }
   });
 
-  it("draws a 4-way junction with an inner arc per armpit, none a hole (#493)", () => {
+  it("draws a 4-way junction as one path per tile, none a hole (#493)", () => {
     const c = { x: 40, y: 40 };
     const segs = [
       { v0: c, v1: { x: 0, y: 40 } },
@@ -708,91 +651,20 @@ describe("buildCorridorContour", () => {
     expect(paths.length).toBe(5); // four dead ends + the centre junction
     expect(paths.some((p) => p.hole)).toBe(false);
     const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    // Four concave armpits, each an inner arc of radius R - h. R = 20 (half step), h = 10 -> r = 10.
-    expect(junction.cmds.length).toBeGreaterThan(2);
-    return;
-    // Stays inside the tile.
-    const pts = allPts([junction]);
-    expect(Math.min(...pts.map((p) => p.x))).toBeGreaterThanOrEqual(19.99);
-    expect(Math.max(...pts.map((p) => p.x))).toBeLessThanOrEqual(60.01);
-    for (const p of pts) {
-      expect(Number.isFinite(p.x)).toBe(true);
-      expect(Number.isFinite(p.y)).toBe(true);
-    }
+    expectContinuousPath(junction);
   });
 
-  it("roundJunctions=false: junctions get straight mitre corners, turns and dead ends stay rounded", () => {
-    // A T: dead ends (1 port) keep their semicircle cap, the junction tile (3 ports) has no arcs.
+  it("junctionRadius 0 leaves junction corners sharp; the default radius rounds them", () => {
     const segs = [
       { v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } },
       { v0: { x: 40, y: 0 }, v1: { x: 80, y: 0 } },
       { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } },
     ];
-    const rounded = buildCorridorContour(segs, 12, true);
-    const flat = buildCorridorContour(segs, 12, false);
-    const sharp = buildCorridorContour(segs, 12, true, 0);
-    expect(rounded).not.toEqual(flat);
-    expect(flat).toEqual(sharp);
-    return;
-    // Dead ends keep their round cap in both modes.
-    const deadEndsR = rounded.filter((p) => arcsOf([p]).length === 1);
-    const deadEndsF = flat.filter((p) => arcsOf([p]).length === 1);
-    expect(deadEndsR.length).toBe(3);
-    expect(deadEndsF.length).toBe(3);
-    for (const p of allPts(flat)) {
-      expect(Number.isFinite(p.x)).toBe(true);
-      expect(Number.isFinite(p.y)).toBe(true);
-    }
-  });
-
-  it("uses one contour algorithm for every junction size", () => {
-    const segs = [
-      { v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } },
-      { v0: { x: 40, y: 0 }, v1: { x: 80, y: 0 } },
-      { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } },
-    ];
-    const normal = buildCorridorContour(segs, 12, true);
-    const shallow = buildCorridorContour(segs, 12, true);
-    const normalJunction = normal.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    const shallowJunction = shallow.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    expect(arcsOf([shallowJunction]).length).toBe(arcsOf([normalJunction]).length);
-    expect(shallowJunction).toEqual(normalJunction);
-
-    const fourWay = [
-      { v0: { x: 40, y: 40 }, v1: { x: 0, y: 40 } },
-      { v0: { x: 40, y: 40 }, v1: { x: 80, y: 40 } },
-      { v0: { x: 40, y: 40 }, v1: { x: 40, y: 0 } },
-      { v0: { x: 40, y: 40 }, v1: { x: 40, y: 80 } },
-    ];
-    expect(buildCorridorContour(fourWay, 20, true))
-      .toEqual(buildCorridorContour(fourWay, 20, true));
-  });
-
-  it("uses an explicit junction radius for every eligible inner fillet", () => {
-    const segs = [
-      { v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } },
-      { v0: { x: 40, y: 0 }, v1: { x: 80, y: 0 } },
-      { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } },
-    ];
-    const junction = buildCorridorContour(segs, 12, true, 2)
-      .reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    expect(junction.cmds.length).toBeGreaterThan(2);
-  });
-
-  it("roundJunctions=false: a 4-way junction is a plain octagon-ish fill, no arcs (#493 follow-up)", () => {
-    const c = { x: 40, y: 40 };
-    const segs = [
-      { v0: c, v1: { x: 0, y: 40 } },
-      { v0: c, v1: { x: 80, y: 40 } },
-      { v0: c, v1: { x: 40, y: 0 } },
-      { v0: c, v1: { x: 40, y: 80 } },
-    ];
-    const junction = buildCorridorContour(segs, 20, false).reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-    expect(junction.cmds.length).toBeGreaterThan(2);
-    return;
-    const pts = allPts([junction]);
-    expect(Math.min(...pts.map((p) => p.x))).toBeGreaterThanOrEqual(19.99);
-    expect(Math.max(...pts.map((p) => p.x))).toBeLessThanOrEqual(60.01);
+    const junctionOf = (paths: ContourPath[]) => paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    const rounded = junctionOf(buildCorridorContour(segs, 12));
+    const sharp = junctionOf(buildCorridorContour(segs, 12, 0));
+    expect(arcsOf([sharp])).toHaveLength(0);
+    expect(arcsOf([rounded]).length).toBeGreaterThan(0);
   });
 });
 
@@ -848,7 +720,7 @@ describe("VectorByCorridorsRenderer", () => {
     expect(corridors.fill).toHaveBeenCalledWith(settingsA.color);
   });
 
-  it("miter join still uses the universal filled contour", () => {
+  it("miter join keeps a straight lineTo polyline for a corridor turn (no centreline rounding)", () => {
     const a = { x: 20, y: 20 }, b = { x: 40, y: 20 }, c = { x: 40, y: 40 };
     vi.mocked(buildCorridorSegments).mockReturnValueOnce([
       { v0: a, v1: b, fromNode: 1, toNode: 2 },
@@ -857,17 +729,19 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[a, b, c]]);
     currentState = baseState({ vectorByCorridorsSettings: settingsB }); // join: "miter"
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const corridors = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn> } }).corridors;
-    expect(corridors.fill).toHaveBeenCalledWith(settingsB.color);
-    expect(corridors.stroke).not.toHaveBeenCalled();
+    const corridors = (renderer as unknown as { corridors: { lineTo: ReturnType<typeof vi.fn>; arcTo: ReturnType<typeof vi.fn> } }).corridors;
+    expect(corridors.lineTo).toHaveBeenCalledWith(b.x, b.y);
+    expect(corridors.lineTo).toHaveBeenCalledWith(c.x, c.y);
   });
 
-  // `renderStyle` remains load-compatible for old projects, but no longer selects a second corridor
-  // geometry algorithm. Both old values must produce the same universal contour.
+  // GitHub issue #510 — the "Line" rendering mode (`renderStyle: "legacy_line"`) restores the
+  // pre-#493 renderer as a fully independent path. These assert the legacy branch is actually wired
+  // (a regression that fell through to the contour path, or dropped the circle-cap patch, would
+  // otherwise pass CI — every other renderer test runs `"contour"`).
   const legacyRound: VectorByCorridorsSettings = { ...settingsA, renderStyle: "legacy_line" }; // join: "round"
   const legacyMiter: VectorByCorridorsSettings = { ...settingsB, renderStyle: "legacy_line" }; // join: "miter"
 
-  it("legacy_line setting still uses the universal filled contour", () => {
+  it("legacy_line round style strokes each chained path and patches every non-split free end with a filled circle", () => {
     const a = { x: 0, y: 20 }, b = { x: 60, y: 20 }, c = { x: 60, y: 80 };
     vi.mocked(buildCorridorSegments).mockReturnValueOnce([
       { v0: a, v1: b, fromNode: 1, toNode: 2 },
@@ -881,12 +755,14 @@ describe("VectorByCorridorsRenderer", () => {
       circle: ReturnType<typeof vi.fn>;
       fill: ReturnType<typeof vi.fn>;
     } }).corridors;
-    expect(corridors.stroke).not.toHaveBeenCalled();
-    expect(corridors.circle).not.toHaveBeenCalled();
+    // A stroked polyline (not a contour fill) with a butt cap, plus a radius-sized disc at each end.
+    expect(corridors.stroke).toHaveBeenCalledWith(expect.objectContaining({ cap: "butt" }));
+    expect(corridors.circle).toHaveBeenCalledWith(a.x, a.y, legacyRound.thickness / 2);
+    expect(corridors.circle).toHaveBeenCalledWith(c.x, c.y, legacyRound.thickness / 2);
     expect(corridors.fill).toHaveBeenCalledWith(legacyRound.color);
   });
 
-  it("legacy_line setting keeps split-touching geometry on the universal path", () => {
+  it("legacy_line round style skips the circle patch at a split-touching end (drawSplitPassages owns it)", () => {
     const freeEnd = { x: 0, y: 20 }, splitEnd = { x: 40, y: 20 };
     vi.mocked(buildCorridorSegments).mockReturnValueOnce([
       { v0: freeEnd, v1: splitEnd, fromNode: 1, toNode: 2, v1TouchesSplit: true },
@@ -894,12 +770,12 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[freeEnd, splitEnd]]);
     currentState = baseState({ vectorByCorridorsSettings: legacyRound });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    const corridors = (renderer as unknown as { corridors: { circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
-    expect(corridors.circle).not.toHaveBeenCalled();
-    expect(corridors.fill).toHaveBeenCalledWith(legacyRound.color);
+    const corridors = (renderer as unknown as { corridors: { circle: ReturnType<typeof vi.fn> } }).corridors;
+    expect(corridors.circle).toHaveBeenCalledWith(freeEnd.x, freeEnd.y, legacyRound.thickness / 2);
+    expect(corridors.circle).not.toHaveBeenCalledWith(splitEnd.x, splitEnd.y, expect.anything());
   });
 
-  it("legacy_line plus miter still uses the universal filled contour", () => {
+  it("legacy_line miter style shares the contour mode's patched-cap stroke (butt stroke, no contour fill of the network)", () => {
     const a = { x: 20, y: 20 }, b = { x: 40, y: 20 }, c = { x: 40, y: 40 };
     vi.mocked(buildCorridorSegments).mockReturnValueOnce([
       { v0: a, v1: b, fromNode: 1, toNode: 2 },
@@ -910,10 +786,11 @@ describe("VectorByCorridorsRenderer", () => {
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const corridors = (renderer as unknown as { corridors: {
       stroke: ReturnType<typeof vi.fn>;
-      fill: ReturnType<typeof vi.fn>;
+      lineTo: ReturnType<typeof vi.fn>;
     } }).corridors;
-    expect(corridors.stroke).not.toHaveBeenCalled();
-    expect(corridors.fill).toHaveBeenCalledWith(legacyMiter.color);
+    expect(corridors.stroke).toHaveBeenCalledWith(expect.objectContaining({ cap: "butt" }));
+    expect(corridors.lineTo).toHaveBeenCalledWith(b.x, b.y);
+    expect(corridors.lineTo).toHaveBeenCalledWith(c.x, c.y);
   });
 
   it("legacy_line draws split passages via the legacy path (plain straight connector to each face midpoint, no contour trace)", () => {
@@ -1465,35 +1342,39 @@ describe("VectorByCorridorsRenderer", () => {
       expect(allStrokeCalls.some((s) => s.color === settingsA.background)).toBe(false);
     });
 
+    // A crossing bridge with no through line: the second node is a 3-face fork (it reaches the
+    // extra face midpoint (10, 10)) drawn as the ordinary corridor underlay beneath the deck.
+    const bridgeOverFork = () => ({
+      passages: [
+        {
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
+          wallSegments: [
+            { v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 20, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 }, center: { x: 20, y: 40 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+          ],
+          connectors: [],
+        },
+        {
+          color: 0xbbbbbb, pointKey: "0,0", center: { x: 20, y: 20 },
+          wallSegments: [
+            { v0: { x: 0, y: 10 }, v1: { x: 0, y: 30 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            { v0: { x: 40, y: 10 }, v1: { x: 40, y: 30 }, center: { x: 40, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            { v0: { x: 5, y: 5 }, v1: { x: 15, y: 15 }, center: { x: 10, y: 10 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+          ],
+          connectors: [],
+        },
+      ],
+      wallFaces: [],
+      specialShapes: [{
+        kind: "bridge", pointKey: "0,0",
+        crossFaces: [{ v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 } }, { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 } }],
+        edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
+        edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
+      }],
+    });
+
     it("bridge special shape without a through line keeps the underlying fork below the bridge", () => {
-      vi.mocked(buildSplitPassages).mockReturnValueOnce({
-        passages: [
-          {
-            color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
-            wallSegments: [
-              { v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 20, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
-              { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 }, center: { x: 20, y: 40 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
-            ],
-            connectors: [],
-          },
-          {
-            color: 0xbbbbbb, pointKey: "0,0", center: { x: 20, y: 20 },
-            wallSegments: [
-              { v0: { x: 0, y: 10 }, v1: { x: 0, y: 30 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
-              { v0: { x: 40, y: 10 }, v1: { x: 40, y: 30 }, center: { x: 40, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
-              { v0: { x: 5, y: 5 }, v1: { x: 15, y: 15 }, center: { x: 10, y: 10 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
-            ],
-            connectors: [],
-          },
-        ],
-        wallFaces: [],
-        specialShapes: [{
-          kind: "bridge", pointKey: "0,0",
-          crossFaces: [{ v0: { x: 10, y: 0 }, v1: { x: 30, y: 0 } }, { v0: { x: 10, y: 40 }, v1: { x: 30, y: 40 } }],
-          edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
-          edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
-        }],
-      });
+      vi.mocked(buildSplitPassages).mockReturnValueOnce(bridgeOverFork() as never);
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
       const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
@@ -1503,6 +1384,20 @@ describe("VectorByCorridorsRenderer", () => {
       expect(allStrokeCalls.filter((s) => s.color === settingsA.color && s.width === settingsA.thickness)).toHaveLength(1);
       expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
       expect(corridorsGraphics.fill.mock.calls.every(([color]) => color === settingsA.color)).toBe(true);
+    });
+
+    it("miter bridge underlay draws the fork as plain connector lines, not a contour fill", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce(bridgeOverFork() as never);
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true, splitGapWidth: 0 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridors = (renderer as unknown as { corridors: {
+        moveTo: ReturnType<typeof vi.fn>;
+        lineTo: ReturnType<typeof vi.fn>;
+        closePath: ReturnType<typeof vi.fn>;
+      } }).corridors;
+      expect(corridors.moveTo).toHaveBeenCalledWith(20, 20);
+      expect(corridors.lineTo).toHaveBeenCalledWith(10, 10);
+      expect(corridors.closePath).not.toHaveBeenCalled();
     });
 
     it("clips a Cairo bridge gap as a cell-bounded polygon with independently limited ends", () => {
