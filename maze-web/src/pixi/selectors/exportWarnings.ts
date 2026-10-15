@@ -19,11 +19,15 @@ import { chevronRowStep } from "../renderers/wallUtils";
 import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../constants";
 import { hasLowContrast } from "../colorContrast";
-import { buildEffectiveSplitNodeColors } from "../imageExport/exportStyleBuilders";
+import {
+  buildEffectiveSplitNodeColors, buildMarkerIndexEndpointResolver, buildTeleportLineStyle, buildVerticalConnectionStyle,
+} from "../imageExport/exportStyleBuilders";
+import { oneWayStopLineShape, stopLineOverlapsRoundedRect } from "../renderers/verticalConnectionGeometry";
+import type { VerticalConnectionStyle } from "../renderers/types";
 import { nearestCellCoord } from "../tessellationGeometry";
 import { textOverflows, type TextFitItem } from "../textFit";
 import { formatIndexLabel } from "../renderers/indexLabel";
-import { buildMarkerIndexLabels } from "./mazeSelectors/markerIndex";
+import { buildMarkerIndexLabels, markerIndexPlateBox } from "./mazeSelectors/markerIndex";
 import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN } from "../renderConstants";
 import {
   buildColorVisibility, visibleColor, unownedColor,
@@ -50,6 +54,9 @@ export type ExportWarningId =
   | "marker_text_overflow"
   | "elevator_badge_text_overflow"
   | "marker_index_text_overflow"
+  /** Both vector modes (GitHub issue #744) — a marker-index plate (border included) overlaps the
+   *  stop line (wall tick) of a one-way vertical passage marker, so that end may read as two-way. */
+  | "marker_index_covers_stop_line"
   | "teleport_badge_text_overflow"
   | "floor_label_text_overflow"
   /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
@@ -757,6 +764,55 @@ function collectTextFitEntries(
   return entries;
 }
 
+/** `marker_index_covers_stop_line` (GitHub issue #744): on the displayed floor, every one-way
+ *  vertical passage marker whose stop line (wall tick) is overlapped by any marker-index plate —
+ *  its body plus border, never its floor-colored gap ring, which is drawn under the markers. The
+ *  plate body is drawn above the markers, so an overlap hides part of the stop line. Mirrors both
+ *  mode renderers: markers from `buildVerticalConnectionMarkers`, plates from
+ *  `buildMarkerIndexLabels` + `markerIndexPlateBox`. Highlights the affected markers. */
+function computeMarkerIndexStopLineWarning(
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  settings: VectorByWallsSettings | VectorByCorridorsSettings,
+  verticalStyle: VerticalConnectionStyle,
+  teleportEdges: TeleportEdge[],
+  displayFloorIndex: number,
+  unscoped: { nodes: NodeDto[]; edges: EdgeDto[] },
+): ExportWarning | null {
+  const index = settings.markerIndex;
+  if (!index.enabled) return null;
+  const markers = buildVerticalConnectionMarkers(
+    nodeById, edges, cfg, selectNodeLevelResolver(unscoped.nodes), displayFloorIndex,
+    selectVerticalPassagePairSet(unscoped.edges), unscoped.edges, settings.replaceTwoFloorElevatorsWithStairs,
+  );
+  const stopLines = markers.flatMap((marker) => {
+    const shape = oneWayStopLineShape(marker, verticalStyle);
+    return shape ? [{ node: marker.fromNode, shape }] : [];
+  });
+  if (stopLines.length === 0) return null;
+
+  // Plate placement depends only on each endpoint marker's outer radius, never on its colors, so
+  // the teleport gap color and group customization are irrelevant here.
+  const resolveEndpointVisual = buildMarkerIndexEndpointResolver({
+    teleportEdges, teleportStyle: buildTeleportLineStyle(settings, 0), groupCustomization: false, groupOverrides: {}, verticalStyle,
+  });
+  const { labels } = buildMarkerIndexLabels(unscoped.nodes, unscoped.edges, cfg, displayFloorIndex, index, resolveEndpointVisual);
+  const plates = labels.map((label) => {
+    const box = markerIndexPlateBox(label, index);
+    const border = box.borderWidth;
+    return {
+      x: box.x - border, y: box.y - border, w: box.w + 2 * border, h: box.h + 2 * border,
+      radius: box.cornerRadius + border,
+    };
+  });
+  const flagged = stopLines
+    .filter(({ shape }) => plates.some((plate) => stopLineOverlapsRoundedRect(shape, plate)))
+    .map(({ node }) => node);
+  if (flagged.length === 0) return null;
+  return { id: "marker_index_covers_stop_line", key: "marker_index_covers_stop_line", nodes: Array.from(new Set(flagged)), edges: [] };
+}
+
 /** Endpoint visual stand-in: the text-fit passes need the index strings and cells, not plate colors. */
 const NO_ENDPOINT_VISUAL = () => ({ outerRadius: 0, borderWidth: 0, borderMatchColor: 0 });
 
@@ -1217,6 +1273,13 @@ export function computeVectorByWallsWarnings(
     { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
   ));
 
+  const stopLineCovered = computeMarkerIndexStopLineWarning(
+    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.floorColor, settings), teleportEdges,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: unscopedNodes, edges: teleportFloorContext?.unscopedEdges ?? edges },
+  );
+  if (stopLineCovered) warnings.push(stopLineCovered);
+
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
   );
@@ -1378,6 +1441,13 @@ export function computeVectorByCorridorsWarnings(
     teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
     { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
   ));
+
+  const stopLineCovered = computeMarkerIndexStopLineWarning(
+    nodeById, edges, cfg, settings, buildVerticalConnectionStyle(settings, settings.color), teleportEdges,
+    teleportFloorContext?.activeFloorIndex ?? nodes[0]?.level ?? 0,
+    { nodes: allNodesForWarnings, edges: teleportFloorContext?.unscopedEdges ?? edges },
+  );
+  if (stopLineCovered) warnings.push(stopLineCovered);
 
   const indistinguishable = computeElevatorIndistinguishableWarning(
     nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,

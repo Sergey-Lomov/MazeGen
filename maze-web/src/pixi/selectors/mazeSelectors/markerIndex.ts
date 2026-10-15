@@ -195,3 +195,30 @@ export function buildMarkerIndexLabels(
 
   return { allLabelStrings, labels };
 }
+
+/** Plate body rectangle of one index label (before its border), in world px. */
+export interface MarkerIndexPlateBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  cornerRadius: number;
+  /** Whole pixels; the border is drawn *outside* the body rectangle. */
+  borderWidth: number;
+}
+
+/** Where `MarkerIndexRenderer` draws `label`'s plate: a fixed `style.width` x `style.height`
+ *  rectangle centered horizontally on the anchor, its center `style.offset` below the marker's
+ *  outer edge. Shared with the export warnings, which test the plate against other geometry. */
+export function markerIndexPlateBox(label: MarkerIndexLabel, style: MarkerIndexSettings): MarkerIndexPlateBox {
+  const [cx, cy] = label.pos;
+  const plateCenterY = cy + label.markerOuterRadius + style.offset;
+  return {
+    x: cx - style.width / 2,
+    y: plateCenterY - style.height / 2,
+    w: style.width,
+    h: style.height,
+    cornerRadius: style.cornerRadius,
+    borderWidth: Math.max(0, Math.round(style.borderWidthFromMarker ? label.markerBorderWidth : style.borderWidth)),
+  };
+}

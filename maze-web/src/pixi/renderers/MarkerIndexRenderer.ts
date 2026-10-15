@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
-import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
+import { markerIndexPlateBox, type MarkerIndexLabel, type MarkerIndexPlateBox } from "../selectors/mazeSelectors/markerIndex";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { drawRoundedRect } from "./markerShapes";
 
@@ -13,14 +13,8 @@ export interface MarkerIndexRenderData {
 }
 
 /** Geometry of one plate, shared between the gap pass and the body pass. */
-interface PlateBox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  cornerRadius: number;
+interface PlateBox extends MarkerIndexPlateBox {
   borderColor: number;
-  borderWidth: number;
 }
 
 /** "Marker indices" layer (GitHub issue #471) — draws a rectangular framed plate carrying a
@@ -59,28 +53,14 @@ export class MarkerIndexRenderer {
     const { labels, style, floorColor } = data;
     if (!style.enabled || labels.length === 0) return;
 
-    const plateW = style.width;
-    const plateH = style.height;
-    const cornerRadius = style.cornerRadius;
     const gap = Math.max(0, style.gap);
     const fontSize = style.textSize;
     const fontFamily = msdfFontFamily(style.textFontWeight);
 
-    const boxes: PlateBox[] = labels.map((item) => {
-      const [cx, cy] = item.pos;
-      // `offset` is the distance from the marker's outer edge to the plate's *center*.
-      const plateCenterY = cy + item.markerOuterRadius + style.offset;
-      const borderColor = style.borderColorFromMarker ? item.borderMatchColor : style.borderColor;
-      return {
-        x: cx - plateW / 2,
-        y: plateCenterY - plateH / 2,
-        w: plateW,
-        h: plateH,
-        cornerRadius,
-        borderColor,
-        borderWidth: Math.max(0, Math.round(style.borderWidthFromMarker ? item.markerBorderWidth : style.borderWidth)),
-      };
-    });
+    const boxes: PlateBox[] = labels.map((item) => ({
+      ...markerIndexPlateBox(item, style),
+      borderColor: style.borderColorFromMarker ? item.borderMatchColor : style.borderColor,
+    }));
 
     // Pass 1 — gap rings (below the markers). A single outset rounded-rect fill in the floor
     // color, so the plate reads as a cut-out of the floor exactly like every other marker gap.

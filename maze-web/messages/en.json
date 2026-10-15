@@ -2370,6 +2370,8 @@
   "image_export.vector_by_walls.warning_teleport_badge_text_overflow_description": "A floor number on a teleport badge is wider or taller than its badge. Reduce the text size or enlarge the badge.",
   "image_export.vector_by_walls.warning_marker_index_text_overflow": "Marker index text does not fit",
   "image_export.vector_by_walls.warning_marker_index_text_overflow_description": "A marker index is wider or taller than its plate. Reduce the text size or enlarge the plate.",
+  "image_export.vector_by_walls.warning_marker_index_covers_stop_line": "Marker index covers a one-way stop line",
+  "image_export.vector_by_walls.warning_marker_index_covers_stop_line_description": "A marker index plate, border included, overlaps the stop line of a one-way vertical passage marker. That end of the passage may be hard to tell apart from a two-way one.",
   "image_export.vector_by_walls.warning_elevator_indistinguishable": "Elevators cannot be told apart",
   "image_export.vector_by_walls.warning_elevator_indistinguishable_description": "Two unlinked elevators share the same cell, and neither marker indices nor elevator floor badges are enabled, so the player cannot tell where each one leads.",
   "image_export.vector_by_walls.section_marker_index": "Marker indices",

@@ -1,5 +1,5 @@
 import type { LabelFontWeight } from "./indexLabel";
-import type { TeleportFloorBadgeSettings } from "../../store/imageExportTypes";
+import type { TeleportFloorBadgeSettings, ElevatorBadgeSettings } from "../../store/imageExportTypes";
 
 export type Viewport = {
   x: number;
@@ -446,4 +446,76 @@ export type LockEntry = {
   position?: { x: number; y: number };
   scale?: number;
   color?: number;
+};
+
+/** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
+ *  own type since this lower-level renderer module must not depend on the store layer, same
+ *  rationale as `mazeSelectors.ts`'s own `MarkerStyle`. `gapColor` mirrors the caller's own floor
+ *  color, same convention every other marker's gap ring in this codebase uses (never the marker's
+ *  own `fillColor`). */
+export type VerticalMarkerStyle = {
+  shape: MarkerShape;
+  cornerStyle: CornerStyle;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+  gapWidth: number;
+  gapColor: number;
+  size: number;
+};
+
+/** Same field shape as `DecorativeLineStyle` (`imageExportTypes.ts`), kept as its own type for the
+ *  same "no store-layer dependency" reason as `VerticalMarkerStyle` (GitHub issue #428). A
+ *  decorative pictogram's stroke — no fill/border/gap/shape concept, unlike a marker. */
+export type VerticalDecorativeLineStyle = {
+  lineColor: number;
+  lineWidth: number;
+  size: number;
+};
+
+/** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc
+ *  comment (`storeTypes.ts`, GitHub issue #347) for the settings this is built from. Three
+ *  independent marker/arrow styles (GitHub issue #347 three-section follow-up), by how a marker
+ *  actually reads on the map: `twoWayPassageMarker` for a two-way `VerticalPassage`
+ *  (`marker.filled === true`), `oneWayPassageMarker` for a one-way `VerticalPassage`
+ *  (`marker.filled === false`, both ends), `elevatorMarker` for every `Elevator` (always two-way by
+ *  construction, but its own separate section/look). `"decorative"` (GitHub issue #428) draws
+ *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator` instead — a separate,
+ *  line-only style surface (see `VerticalDecorativeLineStyle`), replacing the marker-shaped fields
+ *  above for that style only. */
+export type VerticalConnectionStyle = {
+  style: "abstract" | "decorative";
+  twoWayPassageMarker: VerticalMarkerStyle;
+  oneWayPassageMarker: VerticalMarkerStyle;
+  elevatorMarker: VerticalMarkerStyle;
+  twoWayArrowColor: number;
+  /** Direction-arrow size, as a fraction of the marker's own radius (0-1). */
+  twoWayArrowSize: number;
+  twoWayArrowStyle: VerticalArrowStyle;
+  twoWayArrowCornerStyle: CornerStyle;
+  oneWayArrowColor: number;
+  oneWayArrowSize: number;
+  oneWayArrowStyle: VerticalArrowStyle;
+  oneWayArrowCornerStyle: CornerStyle;
+  elevatorArrowColor: number;
+  elevatorArrowSize: number;
+  elevatorArrowStyle: VerticalArrowStyle;
+  elevatorArrowCornerStyle: CornerStyle;
+  decorativeStairsTwoWay: VerticalDecorativeLineStyle;
+  decorativeStairsOneWay: VerticalDecorativeLineStyle;
+  decorativeElevator: VerticalDecorativeLineStyle;
+  decorativeStairsArrowColor: number;
+  /** Direction-arrow size, as a fraction of the stairs icon's own half-width (0-1) — same
+   *  convention as `twoWayArrowSize`. */
+  decorativeStairsArrowSize: number;
+  /** One-way stairs arrow color, both ends — same color for the departure and arrival end (there's
+   *  no fill on a line icon to split into a per-end accent, unlike the abstract marker's own
+   *  wall-tick indicator, GitHub issue #693). */
+  decorativeStairsOneWayArrowColor: number;
+  /** One-way stairs arrow size, independent of `decorativeStairsArrowSize` (GitHub issue #583) —
+   *  same fraction-of-half-width convention. */
+  decorativeStairsOneWayArrowSize: number;
+  /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
+   *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
+  elevatorBadges: ElevatorBadgeSettings;
 };

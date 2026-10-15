@@ -6,7 +6,8 @@ import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay } from "..
 import { GEN_SOURCE_COLOR } from "../../pixi/renderers/GenSourceRenderer";
 import { CROSS_ARM, CROSS_WIDTH } from "../../pixi/renderers/crossMarker";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "../../pixi/renderers/wallUtils";
-import { drawOneWayWallTick, arrowThickness, ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION, ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION, patternVisualTipFraction, patternBaseFraction } from "../../pixi/renderers/VerticalConnectionRenderer";
+import { drawOneWayWallTick } from "../../pixi/renderers/VerticalConnectionRenderer";
+import { arrowThickness, oneWayTickCenteringFraction, patternMidpointOffset } from "../../pixi/renderers/verticalConnectionGeometry";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../../pixi/defaultMazeRenderStyle";
 import { TILE_SIZE } from "../../pixi/constants";
 import { canvas } from "../../pixi/colorTokens";
@@ -182,25 +183,13 @@ function drawVerticalArrows(
   const originOffset = both ? markerRadius * 0.4 : 0;
   const pairFraction = both ? 0.75 : 1;
   const pairArrowSize = arrowSize * pairFraction;
-  const midpointFraction = -1 / 39; // triangle, `patternMidpointOffset`
+  const midpointFraction = patternMidpointOffset("triangle");
   const midpointOffset = midpointFraction * pairArrowSize;
   // One-way glyph only: recenters the triangle+tick *pair* in the button, instead of leaving the
   // triangle alone centered and the tick sitting off to one side of that (GitHub issue #693,
-  // centering follow-up) — mirrors `VerticalConnectionRenderer.render`'s own copy of this same
-  // centering math. The pair's own extent along the arrow axis runs between its two outermost
-  // points: the tick's own far edge on one side, and whichever of the triangle's own visual tip
-  // (`patternVisualTipFraction` — NOT the nominal `+1`: `drawOneWayTriangle`'s `roundPoly` corner
-  // rounding cuts its sharp tip back along the axis by a non-negligible amount, see that
-  // function's own doc comment) or base (`patternBaseFraction`, `-0.35/0.65` of its own rescaled
-  // tip reach — see `drawOneWayTriangle`'s own doc comment) ends up furthest from the tick on the
-  // other side — for the arrival end (`wallTickAtTip: true`) the tick sits past the tip, so the
-  // triangle's own base is the other extreme; for the departure end (`false`) the tick sits past
-  // the base, so the triangle's own (visual) tip is the other extreme.
-  const triangleBaseFraction = patternBaseFraction("triangle");
-  const triangleVisualTipFraction = patternVisualTipFraction("triangle");
-  const pairCenterFraction = wallTickAtTip === undefined ? 0
-    : wallTickAtTip ? (triangleBaseFraction + ONE_WAY_WALL_TICK_TIP_DISTANCE_FRACTION) / 2
-    : (triangleVisualTipFraction - ONE_WAY_WALL_TICK_BASE_DISTANCE_FRACTION) / 2;
+  // centering follow-up) — the same `oneWayTickCenteringFraction` `VerticalConnectionRenderer.render`
+  // uses; `wallTickAtTip: true` is the arrival end (`arrowFilled: false`).
+  const pairCenterFraction = wallTickAtTip === undefined ? 0 : oneWayTickCenteringFraction("triangle", !wallTickAtTip);
   dys.forEach((dy, i) => {
     const side = i === 0 ? -1 : 1;
     const oy = C - dy * midpointOffset - dy * pairCenterFraction * pairArrowSize + (both ? side * originOffset : 0);
