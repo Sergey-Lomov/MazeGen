@@ -23,6 +23,10 @@ src/
     DebugPanel      — node ID / coords toggles, selected node info
   store/
     mazeStore       — Zustand store: maze state + actions
+  notifications/
+    notificationRegistry — toast codes (category, message, dedupParams) — see notifications.md
+    notificationStore    — notify(), notice/error zones, timers
+    announcer            — screen-reader announcement queue for `Announcer`
   wasm/
     types           — TypeScript interfaces matching WASM DTOs
     wasmLoader      — lazy WASM init, singleton module ref

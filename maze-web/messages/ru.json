@@ -2563,5 +2563,14 @@
   "field.print_sizing.floor_non_standard": "Нестандартная форма",
   "field.print_sizing.floor_total": "Итого: {count}",
   "image_export.format.png.result.cell_size_mm_side": "Размер ячейки (сторона): {size} мм",
-  "image_export.format.png.result.cell_size_mm_diameter": "Размер ячейки (диаметр): {size} мм"
+  "image_export.format.png.result.cell_size_mm_diameter": "Размер ячейки (диаметр): {size} мм",
+
+  "notifications.close": "Закрыть",
+  "notifications.close_all": "Закрыть все",
+  "notifications.details": "Подробности",
+  "notifications.copy": "Копировать",
+  "notifications.more_errors": "Ещё ошибок: {count}",
+  "notifications.more_errors_plural": "Ещё ошибок: {count}",
+  "notifications.notice_zone": "Уведомления",
+  "notifications.error_zone": "Ошибки"
 }

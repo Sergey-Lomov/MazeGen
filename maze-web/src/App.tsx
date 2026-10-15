@@ -9,6 +9,8 @@ import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
+import { NotificationHost } from "./components/notifications/NotificationHost";
+import { Announcer } from "./components/Announcer";
 import { useMazeStore } from "./store/mazeStore";
 import type { FeatureId } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
@@ -137,6 +139,10 @@ export function App() {
        * features panel. */}
       <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
       {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
+      {/* Toast channel (GitHub issue #767) — portals itself to the end of `body`, above modals,
+       * anchored to the canvas column's top-left corner. */}
+      <NotificationHost canvasLeft={PANEL_WIDTH} />
+      <Announcer />
     </div>
   );
 }

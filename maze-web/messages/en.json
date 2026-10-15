@@ -2551,5 +2551,14 @@
   "image_export.warning.teleport_badge_fill_low_contrast_floor": "Teleport floor badge fill is too close to floor color",
   "image_export.warning.teleport_badge_fill_low_contrast_floor_description": "A cross-floor teleport floor badge fill may be difficult to distinguish from the floor.",
   "status.render_mode_not_selected": "Render mode not selected",
-  "status.render_mode_active": "Active: {mode}"
+  "status.render_mode_active": "Active: {mode}",
+
+  "notifications.close": "Close",
+  "notifications.close_all": "Close all",
+  "notifications.details": "Details",
+  "notifications.copy": "Copy",
+  "notifications.more_errors": "{count} more error",
+  "notifications.more_errors_plural": "{count} more errors",
+  "notifications.notice_zone": "Notices",
+  "notifications.error_zone": "Errors"
 }

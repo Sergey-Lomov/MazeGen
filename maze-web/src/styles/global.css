@@ -257,6 +257,13 @@ input[type="number"]::-webkit-inner-spin-button {
   to { transform: rotate(360deg); }
 }
 
+/* Toast countdown line (`NotificationHost`'s `CountdownBar`): shrinks from the remaining fraction
+   (`--countdown-from`) to zero; the duration is the remaining active display time. */
+@keyframes notice-countdown {
+  from { transform: scaleX(var(--countdown-from)); }
+  to { transform: scaleX(0); }
+}
+
 /* Problem headers stay in the layout even while their content is collapsed. Amber text makes a
    newly reported problem visible without relying on the counter alone. */
 .problem-section-attention {
