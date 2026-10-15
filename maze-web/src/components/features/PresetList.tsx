@@ -61,7 +61,7 @@ export interface PresetListBubble {
 
 export type PresetListControl =
   | { kind: "direction"; id: string }
-  | { kind: "elevator"; endpoint: PresetEndpoint }
+  | { kind: "elevator"; id: number; endpoint: PresetEndpoint }
   | { kind: "split"; endpoint: PresetEndpoint };
 
 export interface PresetListCell {
@@ -287,7 +287,7 @@ export function buildPresetListCells(input: PresetListInput): PresetListCell[] {
       title,
       id: `e${entry.id}`,
       bubbles: entry.floors.map(pointBubble),
-      control: { kind: "elevator", endpoint: entry.floors[0] },
+      control: { kind: "elevator", id: entry.id, endpoint: entry.floors[0] },
       descriptor: descriptor("elevator", String(entry.id), entry.floors[0], title),
     });
   }
@@ -368,7 +368,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
   const cyclePresetConnectionDirection = useMazeStore((s) => s.cyclePresetConnectionDirection);
   const cyclePresetTeleportDirection = useMazeStore((s) => s.cyclePresetTeleportDirection);
   const cyclePresetVerticalPassageDirection = useMazeStore((s) => s.cyclePresetVerticalPassageDirection);
-  const startPresetElevatorPlacement = useMazeStore((s) => s.startPresetElevatorPlacement);
+  const editPresetElevator = useMazeStore((s) => s.editPresetElevator);
   const removePresetPointEntity = useMazeStore((s) => s.removePresetPointEntity);
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
   const setPresetHoveredEntity = useMazeStore((s) => s.setPresetHoveredEntity);
@@ -494,7 +494,7 @@ export function PresetList({ onClose }: { onClose: () => void }) {
               key={cell.key}
               cell={cell}
               onCycleDirection={() => cycleDirection(cell)}
-              onEditElevator={() => cell.control?.kind === "elevator" && startPresetElevatorPlacement(cell.control.endpoint)}
+              onEditElevator={() => cell.control?.kind === "elevator" && editPresetElevator(cell.control.id, cell.control.endpoint)}
               onEditSplit={() => {
                 if (cell.control?.kind !== "split") return;
                 navigateToFloor(cell.control.endpoint.level ?? 0);

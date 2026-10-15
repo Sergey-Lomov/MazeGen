@@ -1,7 +1,7 @@
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
-import type { PresetConnectionState } from "../wasm/types";
+import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
@@ -24,7 +24,7 @@ export interface PresetConnectionEntry {
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "clear";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "clear" | "move" | "settings";
 
 export interface FieldEdge {
   key: string;
@@ -158,6 +158,22 @@ export function mapOnLevel<T>(map: Map<string, T>, level: number | undefined): M
     }
   }
   return result;
+}
+
+/** `lockedNodes` with the lock a live drag carries (GitHub issue #748) shown on `override.point`'s
+ *  original node, on the lock's own floor, instead of its committed node. A lock already there is
+ *  replaced in the preview, as it would be on drop. */
+export function lockedNodesWithMovedLock(
+  lockedNodes: Map<string, NodeLockKind>,
+  override: { from: PresetEndpoint; point: [number, number] },
+): Map<string, NodeLockKind> {
+  const fromKey = presetEndpointKey(override.from);
+  const kind = lockedNodes.get(fromKey);
+  if (!kind) return lockedNodes;
+  const next = new Map(lockedNodes);
+  next.delete(fromKey);
+  next.set(presetEndpointKey(presetEndpoint(override.point, undefined, override.from.level)), kind);
+  return next;
 }
 
 export function setOnLevel(set: Set<string>, level: number | undefined): Set<string> {
@@ -855,10 +871,27 @@ export function materializeReset(
   return next;
 }
 
+/** Edge mutation applied by `applyTool`: a toolbar tool, or `one_way_flip` — the settings tool's
+ *  direction swap of an existing one-way edge (GitHub issue #748). */
+export type PresetEdgeToolMode = PresetConnectionTool | "one_way_flip";
+
+/** Current preset state of the face between `edge.from`/`edge.to`, resolved through the same
+ *  active-node/floor key `applyTool` writes to. `undefined` when the face has no entry. */
+export function presetEdgeStateAt(
+  connections: Map<string, PresetConnectionEntry>,
+  edge: FieldEdge,
+  activeMap: Record<string, PresetEndpoint> = {},
+  level?: number,
+): PresetConnectionClientState | undefined {
+  const from = resolvePresetActiveEndpoint(edge.from, activeMap, level);
+  const to = resolvePresetActiveEndpoint(edge.to, activeMap, level);
+  return connections.get(presetEdgeKey(from, to))?.state;
+}
+
 export function applyTool(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
-  tool: PresetConnectionTool,
+  tool: PresetEdgeToolMode,
   defaultEdgeState: PresetConnectionClientState = "undefined",
   activeMap: Record<string, PresetEndpoint> = {},
   level?: number,
@@ -878,15 +911,14 @@ export function applyTool(
     return materializeReset(connections, { ...edge, key }, defaultEdgeState, from, to);
   }
   const next = new Map(connections);
-  if (tool === "one_way") {
+  if (tool === "one_way" || tool === "one_way_flip") {
     const current = connections.get(key);
-    if (current?.state === "one_way_forward") {
-      next.set(key, { from, to, state: "one_way_backward", source: "user" });
-    } else if (current?.state === "one_way_backward") {
-      next.set(key, { from, to, state: "one_way_forward", source: "user" });
-    } else {
-      next.set(key, { from, to, state: "one_way_forward", source: "user" });
-    }
+    const isOneWay = current?.state === "one_way_forward" || current?.state === "one_way_backward";
+    // The one-way tool creates a forward one-way edge or reverses an existing one; `one_way_flip`
+    // (settings tool, GitHub issue #748) only reverses and leaves any other face unchanged.
+    if (tool === "one_way_flip" && !isOneWay) return connections;
+    const state: PresetConnectionState = current?.state === "one_way_forward" ? "one_way_backward" : "one_way_forward";
+    next.set(key, { from, to, state, source: "user" });
     return next;
   }
   const state: PresetConnectionState = tool === "wall" ? "wall" : "passage";

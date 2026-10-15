@@ -66,7 +66,10 @@ export type PostEditCommand =
   // an id-only lookup into `live` (the CURRENT draft) is correct only for the newest row about this
   // id, and shows a stale (or, once the entity is removed, unresolved) location for every OLDER row
   // about the same teleport.
-  | { kind: "setTeleportDirection"; id: string; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint }
+  // `absolute` (GitHub issue #748) marks a settings-dialog command: `direction` is the resulting
+  // direction, applied as-is (it may switch between two-way and one-way). Without it the command is
+  // a forward/backward flip.
+  | { kind: "setTeleportDirection"; id: string; direction: PostEditTeleportDirection; from: PostEditEndpoint; to: PostEditEndpoint; absolute?: true }
   // `from`/`to`/`direction` (same follow-up) are this teleport's own RESULTING pair/direction after
   // this move — same denormalization reasoning as `setTeleportDirection` above.
   | { kind: "moveTeleportEndpoint"; id: string; end: "from" | "to"; endpoint: PostEditEndpoint; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
@@ -159,7 +162,9 @@ export type PostEditCommand =
   // itself. Generation-baked vertical passages are full baseline draft entries with their own
   // stable id (GitHub issue #564) — there is no separate generation-mesh suppression concept any
   // more; editing one is an ordinary edit of an existing draft entry, like any other.
-  | { kind: "setVerticalPassageDirection"; id: string; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint }
+  // `absolute` (GitHub issue #748): `direction` is the resulting direction set by the settings
+  // dialog, applied as-is. Without it `direction` is the pre-click direction and replay flips it.
+  | { kind: "setVerticalPassageDirection"; id: string; direction: PostEditVerticalPassageDirection; from: PostEditEndpoint; to: PostEditEndpoint; absolute?: true }
   // `from`/`to` (GitHub issue #564 follow-up) are this passage's own RESULTING endpoints after this
   // move (i.e. `end`'s side already replaced by `endpoint`) — same denormalization reasoning as
   // `setVerticalPassageDirection`'s own `from`/`to` above. `direction` (same follow-up, second pass)

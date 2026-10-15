@@ -24,6 +24,9 @@ import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog"
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import { PresetEntityDeleteDialog } from "../dialogs/PresetEntityDeleteDialog";
+import { PresetEntityPickDialog } from "../dialogs/PresetEntityPickDialog";
+import { PresetConnectionSettingsDialog } from "../dialogs/PresetConnectionSettingsDialog";
+import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
 
@@ -108,6 +111,12 @@ export function PresetConnectionsFeature() {
   const cancelPresetSplitTarget = useMazeStore((s) => s.cancelPresetSplitTarget);
   const presetEntityDeletePrompt = useMazeStore((s) => s.presetEntityDeletePrompt);
   const cancelPresetEntityDelete = useMazeStore((s) => s.cancelPresetEntityDelete);
+  const presetEntityPickPrompt = useMazeStore((s) => s.presetEntityPickPrompt);
+  const cancelPresetEntityPick = useMazeStore((s) => s.cancelPresetEntityPick);
+  const presetConnectionSettingsPrompt = useMazeStore((s) => s.presetConnectionSettingsPrompt);
+  const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
+  const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
+  const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
   const presetDragFailureMessage = useMazeStore((s) => s.presetDragFailureMessage);
   const dismissPresetDragFailureMessage = useMazeStore((s) => s.dismissPresetDragFailureMessage);
   const floors = useMazeStore((s) => s.floors);
@@ -244,6 +253,8 @@ export function PresetConnectionsFeature() {
             ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
             ...(floors.length > 1 ? getVerticalTools() : []),
             ...getGenerationTools(),
+            ["move", m["tools.move"]()],
+            ["settings", m["tools.settings"]()],
             ["clear", m["preset.clear_tool"]()],
           ]}
           activeTool={tool}
@@ -283,6 +294,18 @@ export function PresetConnectionsFeature() {
 
       {presetEntityDeletePrompt && (
         <PresetEntityDeleteDialog onClose={cancelPresetEntityDelete} />
+      )}
+
+      {presetEntityPickPrompt && (
+        <PresetEntityPickDialog onClose={cancelPresetEntityPick} />
+      )}
+
+      {presetConnectionSettingsPrompt && (
+        <PresetConnectionSettingsDialog onClose={cancelPresetConnectionSettings} />
+      )}
+
+      {presetLockSettingsPrompt && (
+        <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
       )}
 
       {presetDragFailureMessage && <VerticalDragFailureAlert failure={presetDragFailureMessage} onClose={dismissPresetDragFailureMessage} />}

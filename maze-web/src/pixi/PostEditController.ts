@@ -14,13 +14,18 @@ import {
 import { createFloorNodesSelector, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
-import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets } from "../store/slices/postEditSliceHelpers";
+import { resolveNodeIdToEndpoint, buildMultiFloorPointNodeMap, resolveDragTargets, buildPostEditPointEntitiesAt } from "../store/slices/postEditSliceHelpers";
+import { postEditEntitiesForPurpose } from "./entityToolKinds";
+import type { PostEditPointEntityDescriptor } from "./postEditPointEntities";
+import type { FieldEdge } from "./fieldEditUtils";
 import { cancelPendingPointerAction, isPointerModalOpen, resetPointerHover } from "./pointerInteraction";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
 const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_passage_two_way"]);
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
+
+type State = ReturnType<typeof useMazeStore.getState>;
 
 /** Whether a point currently has more than one node (a split point) — used by the unified Reset
  * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an
@@ -39,6 +44,8 @@ function isPostEditModalOpen(state: ReturnType<typeof useMazeStore.getState>): b
   return isPointerModalOpen(
     state.postEditEntityDeletePrompt !== null,
     state.postEditResetPrompt !== null,
+    state.postEditEntityPickPrompt !== null,
+    state.postEditConnectionSettingsPrompt !== null,
   );
 }
 
@@ -63,7 +70,15 @@ export class PostEditController extends BaseController {
   private verticalPassageDragMoved = false;
   private draggingElevatorEndpoint: PostEditElevatorEndpointHit | null = null;
   private elevatorDragMoved = false;
-  private lastViewportPos = { x: 0, y: 0 };
+  // Node of the press that armed an element drag. A placement tool adds its own element there when
+  // the press is released without moving (GitHub issue #748): every click adds an element, and a
+  // press-drag moves the element under the cursor.
+  private pressPlacement: { endpoint: PostEditEndpoint; nodeId: number; cell: [number, number] } | null = null;
+  // Move tool (GitHub issue #748): an element picked up by a click (or from the pick dialog) follows
+  // the pointer with no button held until the next click drops it.
+  private carrying = false;
+  // The press of that dropping click — the drop is committed on its release.
+  private dropPressed = false;
 
   // Origin endpoints captured at drag-arm time (GitHub issue #545) — the command log only gets one
   // command on release, so pointermove can't lean on "the store already reflects every intermediate
@@ -72,6 +87,8 @@ export class PostEditController extends BaseController {
   // back and forth still resolves "did this end up different from where it started" correctly.
   private markerDragOrigin: PostEditEndpoint | null = null;
   private teleportDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
+  /** Node of the dragged teleport's other endpoint, resolved on the last pointer move. */
+  private teleportDragOtherNodeId: number | undefined = undefined;
   private verticalPassageDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
   private elevatorDragOrigin: PostEditEndpoint | null = null;
 
@@ -83,8 +100,14 @@ export class PostEditController extends BaseController {
   // gesture, whichever picker-backed tool is active.
   private bulkPointAction = false;
 
+  private unsubscribeFloor: () => void;
+  private settingsHoverCache: { state: State; key: string; configurable: boolean } | null = null;
+
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === "Escape") {
+      if (this.hasArmedElement) this.cancelPointerGesture();
+      useMazeStore.getState().cancelPostEditEntityPick();
+      useMazeStore.getState().cancelPostEditConnectionSettings();
       this.cancelPendingTeleport();
       useMazeStore.getState().cancelPostEditVerticalPassagePlacement();
       useMazeStore.getState().cancelPostEditElevatorPlacement();
@@ -102,6 +125,11 @@ export class PostEditController extends BaseController {
     super(getViewport, onViewportPan);
     this.renderer = renderer;
     window.addEventListener("keydown", this.onKeyDown);
+    // A carried or dragged element belongs to the floor it was picked up on (GitHub issue #748):
+    // switching floors cancels the gesture instead of dropping it on another floor's coordinates.
+    this.unsubscribeFloor = useMazeStore.subscribe((state, prev) => {
+      if (state.activeFloorId !== prev.activeFloorId && this.hasArmedElement) this.cancelPointerGesture();
+    });
   }
 
   /** Floor-scoped node list (GitHub issue #358) — post-edit's own `state.nodes` can span every
@@ -153,6 +181,107 @@ export class PostEditController extends BaseController {
     return new Map(nodes.map(n => [n.id, n]));
   }
 
+  private get hasArmedElement(): boolean {
+    return this.draggingMarker !== null
+      || this.draggingTeleportEndpoint !== null
+      || this.draggingVerticalPassageEndpoint !== null
+      || this.draggingElevatorEndpoint !== null;
+  }
+
+  private get armedElementMoved(): boolean {
+    if (this.draggingMarker !== null) {
+      const override = useMazeStore.getState().postEditDragOverride;
+      return override?.kind === "marker" && (this.markerDragOrigin === null || !endpointsEqual(override.endpoint, this.markerDragOrigin));
+    }
+    return this.teleportDragMoved || this.verticalPassageDragMoved || this.elevatorDragMoved;
+  }
+
+  /** Arms a drag of exactly the element `descriptor` names — the move tool's counterpart of the
+   *  placement tools' hit-test priority, so any element of a cell (on any split node) is movable. */
+  private armElement(descriptor: PostEditPointEntityDescriptor, state: State): void {
+    switch (descriptor.kind) {
+      case "start":
+      case "finish":
+        this.armMarkerDrag(descriptor.kind === "start" ? "set_start" : "set_finish");
+        this.markerDragOrigin = descriptor.endpoint;
+        break;
+      case "teleport": {
+        const entry = state.postEditDraftTeleports.find((t) => t.id === descriptor.id);
+        if (!entry) return;
+        const end = endpointsEqual(entry.from, descriptor.endpoint) ? "from" : "to";
+        this.draggingTeleportEndpoint = { id: entry.id, end };
+        this.teleportDragOrigin = { current: entry[end], other: end === "from" ? entry.to : entry.from };
+        this.teleportDragMoved = false;
+        break;
+      }
+      case "vertical_passage": {
+        const entry = state.postEditDraftVerticalPassages.find((p) => p.id === descriptor.id);
+        if (!entry) return;
+        const end = endpointsEqual(entry.from, descriptor.endpoint) ? "from" : "to";
+        this.draggingVerticalPassageEndpoint = { id: entry.id, end };
+        this.verticalPassageDragOrigin = { current: entry[end], other: end === "from" ? entry.to : entry.from };
+        this.verticalPassageDragMoved = false;
+        break;
+      }
+      case "elevator": {
+        const endpoint = descriptor.endpoint;
+        const level = endpoint.kind === "node" ? (state.nodes.find((n) => n.id === endpoint.id)?.level ?? 0) : (endpoint.level ?? 0);
+        this.draggingElevatorEndpoint = { id: descriptor.id, level };
+        this.elevatorDragOrigin = endpoint;
+        this.elevatorDragMoved = false;
+        break;
+      }
+      default:
+        return;
+    }
+    this.renderer.updateCellHover(null);
+  }
+
+  /** An element picked in the move tool's dialog starts being carried right away. */
+  private takeMoveRequest(state: State): void {
+    const request = state.postEditMoveRequest === null ? null : state.takePostEditMoveRequest();
+    if (!request) return;
+    if (this.hasArmedElement) this.cancelPointerGesture();
+    this.armElement(request, state);
+    this.carrying = this.hasArmedElement;
+    this.pressPlacement = null;
+  }
+
+  /** Whether the settings tool can configure anything in the cell at `point`. Cached per store
+   *  snapshot and cell: hover calls it on every pointer move, and building the descriptors is not
+   *  free. */
+  private isConfigurableCell(state: State, point: [number, number], level: number | undefined): boolean {
+    const key = `${point[0]},${point[1]}@${level ?? 0}`;
+    const cached = this.settingsHoverCache;
+    if (cached && cached.state === state && cached.key === key) return cached.configurable;
+    const configurable = postEditEntitiesForPurpose("settings", buildPostEditPointEntitiesAt(state, point, level)).length > 0;
+    this.settingsHoverCache = { state, key, configurable };
+    return configurable;
+  }
+
+  /** The settings tool targets an edge only when it is a one-way edge between unsplit cells. */
+  private settingsEdgeAt(state: State, vpX: number, vpY: number, nodeMap: Map<string, number[]>, level: number | undefined): { edge: FieldEdge; from: PostEditEndpoint; to: PostEditEndpoint; key: string } | null {
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+    if (!edge || isSplitCell(edge.from, nodeMap) || isSplitCell(edge.to, nodeMap)) return null;
+    const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode, level);
+    if (!nodeKey) return null;
+    const edges = state.postEditDraftEdges ?? {};
+    const kinds = [edges[edgeKey(nodeKey.from, nodeKey.to)]?.kind, edges[edgeKey(nodeKey.to, nodeKey.from)]?.kind];
+    const isOneWay = kinds.some((kind) => kind === "one_way_forward" || kind === "one_way_backward");
+    return isOneWay ? { edge, ...nodeKey } : null;
+  }
+
+  /** Adds the active vertex tool's own element at `endpoint` — a click always adds, even on a node
+   *  that already holds elements (GitHub issue #748). */
+  private placeVertexAt(endpoint: PostEditEndpoint, nodeId: number, tool: string): void {
+    const store = useMazeStore.getState();
+    if (tool === "set_start") store.setPostEditEndpoint("start", endpoint);
+    else if (tool === "set_finish") store.setPostEditEndpoint("finish", endpoint);
+    else if (tool === "elevator") store.startPostEditElevatorPlacement(endpoint);
+    else if (VERTICAL_PASSAGE_TOOLS.has(tool)) store.startPostEditVerticalPassagePlacement(endpoint, tool as "vertical_passage_one_way" | "vertical_passage_two_way");
+    else if (TELEPORT_TOOLS.has(tool)) this.tryTeleportClick(nodeId, tool);
+  }
+
   /** Clears `postEditDragOverride`, unless a split-target prompt is currently open — leaving it
    * set in that case is what keeps the drag preview showing the dropped position while the dialog
    * asks which node to use, instead of snapping back to the pre-drag position for as long as the
@@ -177,9 +306,15 @@ export class PostEditController extends BaseController {
     }
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
-    this.lastViewportPos = { x: vpX, y: vpY };
     const floorNodes = this.getFloorNodes(state);
     const level = activeFloorLevel(state);
+    this.takeMoveRequest(state);
+    if (this.carrying && state.postEditTool !== "move") this.cancelPointerGesture();
+    if (this.pressPlacement) {
+      // A press that leaves its cell (even off the field) is a drag, never a placement click.
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      if (x !== this.pressPlacement.cell[0] || y !== this.pressPlacement.cell[1]) this.pressPlacement = null;
+    }
 
     if (this.draggingMarker) {
       const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
@@ -224,7 +359,11 @@ export class PostEditController extends BaseController {
       const currentId = resolveEndpoint(floorScopedEndpoint(current, level, floorNodeIds) ?? current, resolveSplit);
       const otherId = resolveEndpoint(floorScopedEndpoint(other, level, floorNodeIds) ?? other, resolveSplit);
       const endpointId = resolveEndpoint(endpoint, resolveSplit);
-      const movedToOther = otherId !== undefined && endpointId !== undefined && otherId === endpointId;
+      // A split tile is never "the other endpoint" here: the drop asks for a node, and the other
+      // endpoint's own node is left out of that choice (see the pointerup commit).
+      this.teleportDragOtherNodeId = otherId;
+      const movedToOther = otherId !== undefined && endpointId !== undefined && otherId === endpointId
+        && !isSplitCell([cell.x, cell.y], nodeMap);
       if (currentId !== endpointId) {
         // Cursor left the original node — this is a drag gesture even if landing on the other
         // endpoint's node is rejected below, so pointerup must not reinterpret it as a click.
@@ -309,7 +448,28 @@ export class PostEditController extends BaseController {
       this.renderer.updateTeleportPreview(null, 0, 0);
     }
 
-    if (state.postEditTool === "manage_split_nodes" || state.postEditTool === "delete" || VERTEX_TOOLS.has(state.postEditTool)) {
+    if (state.postEditTool === "settings") {
+      // Highlights only what the settings tool can configure: a one-way edge near the cursor, else
+      // the cell when it holds a configurable element (GitHub issue #748).
+      const nodeMap = this.getNodeMap(floorNodes);
+      const target = this.settingsEdgeAt(state, vpX, vpY, nodeMap, level);
+      if (target) {
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(target.edge);
+        return;
+      }
+      this.renderer.updateHover(null);
+      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
+        this.renderer.updateCellHover(null);
+        return;
+      }
+      const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
+      this.renderer.updateCellHover(this.isConfigurableCell(state, [x, y], level) ? [x, y] : null);
+      return;
+    }
+
+    if (state.postEditTool === "manage_split_nodes" || state.postEditTool === "delete" || state.postEditTool === "move" || VERTEX_TOOLS.has(state.postEditTool)) {
       // Vertex tools (set start/finish, teleports) and manage_split_nodes all target a whole
       // point, not one of its faces — highlight the cell under the cursor, not a wall/edge (see
       // GitHub issue #221's follow-up for manage_split_nodes; issue #326 extends this to every
@@ -432,6 +592,44 @@ export class PostEditController extends BaseController {
     const floorNodes = this.getFloorNodes(state);
     const level = activeFloorLevel(state);
     const nodeMap = this.getNodeMap(floorNodes);
+    this.takeMoveRequest(state);
+
+    if (this.carrying) {
+      // A carried element is dropped by the release of the next left click; a right click cancels.
+      if (button === 0) this.dropPressed = true;
+      else if (button === 2) this.cancelPointerGesture();
+      return;
+    }
+
+    if (tool === "move") {
+      if (button !== 0) return;
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      if (!nodeMap.has(`${x},${y}`)) return;
+      // A single element is picked up by this press (drag it, or release to carry it); several
+      // open the pick dialog, whose choice is carried (`takeMoveRequest`).
+      state.requestPostEditEntityPick([x, y], level, "move");
+      const request = useMazeStore.getState().takePostEditMoveRequest();
+      if (request) {
+        this.armElement(request, useMazeStore.getState());
+        this.pressPlacement = null;
+      }
+      return;
+    }
+
+    if (tool === "settings") {
+      if (button !== 0) return;
+      const target = this.settingsEdgeAt(state, vpX, vpY, nodeMap, level);
+      if (target) {
+        state.applyPostEditToolAt("one_way_flip", target.key, target.from, target.to);
+        if (state.postEditAutoConfirm) this.scheduleConfirm();
+        return;
+      }
+      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
+      const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
+      state.requestPostEditEntityPick([x, y], level, "settings");
+      return;
+    }
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
@@ -540,16 +738,20 @@ export class PostEditController extends BaseController {
       }
       if (button !== 0) return;
 
+      // A press on an existing element arms a drag candidate for it, resolved on pointerup: moved
+      // to another node — the element moves; released in place — this tool adds its own new
+      // element at the pressed node (GitHub issue #748), whatever already occupies it. A split node
+      // not yet confirmed (`nodeId` undefined) can't host a new element yet.
+      const placement = endpoint !== null && nodeId !== undefined ? { endpoint, nodeId, cell: [cell.x, cell.y] as [number, number] } : null;
       if (markerUnderCursor) {
         this.armMarkerDrag(markerUnderCursor === "start" ? "set_start" : "set_finish");
         this.markerDragOrigin = markerUnderCursor === "start" ? meta.start : meta.finish;
+        this.pressPlacement = placement;
         this.renderer.updateCellHover(null);
         return;
       }
       if (teleportHit) {
-        // Arm as a drag candidate — resolved on pointerup: if the cursor never moved to a
-        // different node, treat it as a plain click (start/complete a new teleport, or cycle
-        // direction) instead of a drag.
+        this.pressPlacement = placement;
         this.draggingTeleportEndpoint = teleportHit;
         this.teleportDragMoved = false;
         const originTeleport = scopedTeleports.find((t) => t.id === teleportHit.id);
@@ -560,6 +762,7 @@ export class PostEditController extends BaseController {
         return;
       }
       if (verticalPassageHit) {
+        this.pressPlacement = placement;
         this.draggingVerticalPassageEndpoint = verticalPassageHit;
         this.verticalPassageDragMoved = false;
         const originPassage = state.postEditDraftVerticalPassages.find((p) => p.id === verticalPassageHit.id);
@@ -570,6 +773,7 @@ export class PostEditController extends BaseController {
         return;
       }
       if (elevatorMarkerHit) {
+        this.pressPlacement = placement;
         this.draggingElevatorEndpoint = elevatorMarkerHit;
         this.elevatorDragMoved = false;
         const originElevator = state.postEditDraftElevators.find((e) => e.id === elevatorMarkerHit.id);
@@ -580,16 +784,9 @@ export class PostEditController extends BaseController {
 
       // A split node not yet confirmed (`nodeId` undefined) can't be set as start/finish or
       // teleport-clicked yet — no-op, not an error (see postEditEndpoint.ts's doc comment; the
-      // same click works once the node is confirmed).
-      if (endpoint === null || nodeId === undefined) return;
-
-      // Split points were already handled at the top of this branch (GitHub issue #474) — every
-      // path from here targets a plain single-node point.
-      if (tool === "set_start") useMazeStore.getState().setPostEditEndpoint("start", endpoint);
-      else if (tool === "set_finish") useMazeStore.getState().setPostEditEndpoint("finish", endpoint);
-      else if (tool === "elevator") useMazeStore.getState().startPostEditElevatorPlacement(endpoint);
-      else if (VERTICAL_PASSAGE_TOOLS.has(tool)) useMazeStore.getState().startPostEditVerticalPassagePlacement(endpoint, tool as "vertical_passage_one_way" | "vertical_passage_two_way");
-      else this.tryTeleportClick(nodeId, tool);
+      // same click works once the node is confirmed). Split points were already handled at the top
+      // of this branch (GitHub issue #474) — every path from here targets a plain single-node point.
+      if (placement) this.placeVertexAt(placement.endpoint, placement.nodeId, tool);
       return;
     }
 
@@ -650,6 +847,15 @@ export class PostEditController extends BaseController {
   }
 
   onPointerUp(button: number): void {
+    if (button === 0 && this.hasArmedElement) {
+      // Move tool (GitHub issue #748): a release that did not move the element starts carrying it;
+      // while carrying, only the release of the dropping click commits.
+      if (this.carrying && !this.dropPressed) return;
+      if (!this.carrying && !this.armedElementMoved && useMazeStore.getState().postEditTool === "move") {
+        this.carrying = true;
+        return;
+      }
+    }
     if (button === 0 && this.isDragActive) {
       if (this.dragDidApply && useMazeStore.getState().postEditAutoConfirm) {
         this.scheduleConfirm();
@@ -692,6 +898,8 @@ export class PostEditController extends BaseController {
           const target = picks[0] ?? overrideEndpoint;
           useMazeStore.getState().setPostEditEndpoint(marker === "set_start" ? "start" : "finish", target);
         }
+      } else if (this.pressPlacement) {
+        this.placeVertexAt(this.pressPlacement.endpoint, this.pressPlacement.nodeId, useMazeStore.getState().postEditTool);
       }
       // Leave `postEditDragOverride` alone while a split-target prompt is open (queued above) — see
       // `clearDragOverrideUnlessPromptOpen`'s own doc comment for why.
@@ -721,7 +929,14 @@ export class PostEditController extends BaseController {
             const { picks, queue } = node
               ? resolveDragTargets([{ point: [node.x, node.y], level: node.level }], pointNodeMap)
               : { picks: [], queue: [] };
-            if (queue.length > 0) {
+            // The endpoint may land on any node of a split tile except the other endpoint's own.
+            const otherNodeId = this.teleportDragOtherNodeId;
+            const candidates = queue.length > 0 ? queue[0].nodeIds.filter((id) => id !== otherNodeId) : [];
+            if (queue.length > 0 && candidates.length === 1) {
+              state.movePostEditTeleportEndpoint(
+                override.id, override.end, resolveNodeIdToEndpoint(state.nodes, state.postEditDraftSplitPoints, candidates[0]),
+              );
+            } else if (queue.length > 0) {
               // `queue[0]` is ALSO the point about to be shown — `requestPostEditSplitTarget`'s
               // `point`/`level`/`nodeIds` always mirror `queue[0]`, `queue` itself stays un-shifted
               // (current entry included) so `applyPostEditSplitTargetPick` can read `queue[0]`'s own
@@ -731,29 +946,14 @@ export class PostEditController extends BaseController {
                 point: first.point, level: first.level, nodeIds: first.nodeIds,
                 action: { tool: "move_teleport_endpoint", id: hit.id, end: hit.end },
                 queue, picks,
+                ...(otherNodeId !== undefined && first.nodeIds.includes(otherNodeId) ? { excludedNodeId: otherNodeId } : {}),
               });
             } else {
               state.movePostEditTeleportEndpoint(override.id, override.end, override.endpoint);
             }
           }
-        } else {
-          const state = useMazeStore.getState();
-          if (TELEPORT_TOOLS.has(state.postEditTool)) {
-            const level = activeFloorLevel(state);
-            const nodeMap = this.getNodeMap(this.getFloorNodes(state));
-            const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, this.lastViewportPos.x, this.lastViewportPos.y);
-            const cell = { x, y };
-            const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
-            const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
-            const nodeId = endpoint !== null ? resolveEndpoint(endpoint, resolveSplit) : undefined;
-            if (state.postEditTeleportPendingFrom !== null) {
-              // A placement is already in progress — clicking an existing endpoint's node
-              // completes the new link there rather than cycling that endpoint's direction.
-              if (nodeId !== undefined) this.tryTeleportClick(nodeId, state.postEditTool);
-            } else {
-              state.cyclePostEditTeleportDirection(this.draggingTeleportEndpoint.id);
-            }
-          }
+        } else if (this.pressPlacement) {
+          this.placeVertexAt(this.pressPlacement.endpoint, this.pressPlacement.nodeId, useMazeStore.getState().postEditTool);
         }
         // Leave `postEditDragOverride` alone while a split-target prompt is open (queued above) —
         // see `clearDragOverrideUnlessPromptOpen`'s own doc comment for why.
@@ -761,6 +961,7 @@ export class PostEditController extends BaseController {
         this.draggingTeleportEndpoint = null;
         this.teleportDragMoved = false;
         this.teleportDragOrigin = null;
+        this.teleportDragOtherNodeId = undefined;
       }
 
       if (this.draggingVerticalPassageEndpoint) {
@@ -799,11 +1000,8 @@ export class PostEditController extends BaseController {
               state.movePostEditVerticalPassageEndpoint(override.id, override.end, override.endpoint);
             }
           }
-        } else {
-          const state = useMazeStore.getState();
-          if (VERTICAL_PASSAGE_TOOLS.has(state.postEditTool)) {
-            state.cyclePostEditVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
-          }
+        } else if (this.pressPlacement) {
+          this.placeVertexAt(this.pressPlacement.endpoint, this.pressPlacement.nodeId, useMazeStore.getState().postEditTool);
         }
         // See `clearDragOverrideUnlessPromptOpen`'s own doc comment for why this is conditional.
         this.clearDragOverrideUnlessPromptOpen();
@@ -853,15 +1051,8 @@ export class PostEditController extends BaseController {
               state.movePostEditElevatorEndpoint(override.id, override.level, override.endpoint);
             }
           }
-        } else {
-          // Plain click on an elevator's own marker reopens the floor-picker dialog to edit it,
-          // mirroring `startPostEditElevatorPlacement`'s existing-entry edit path.
-          const state = useMazeStore.getState();
-          const hit = this.draggingElevatorEndpoint;
-          const entry = state.postEditDraftElevators.find((e) => e.id === hit.id);
-          const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
-          const own = entry?.floors.find((f) => f.kind === "node" && (resolveNodeLevel(f.id) ?? 0) === hit.level);
-          if (own) state.startPostEditElevatorPlacement(own);
+        } else if (this.pressPlacement) {
+          this.placeVertexAt(this.pressPlacement.endpoint, this.pressPlacement.nodeId, useMazeStore.getState().postEditTool);
         }
         // See `clearDragOverrideUnlessPromptOpen`'s own doc comment for why this is conditional.
         this.clearDragOverrideUnlessPromptOpen();
@@ -869,6 +1060,9 @@ export class PostEditController extends BaseController {
         this.elevatorDragMoved = false;
         this.elevatorDragOrigin = null;
       }
+      this.pressPlacement = null;
+      this.carrying = false;
+      this.dropPressed = false;
     }
   }
 
@@ -895,6 +1089,9 @@ export class PostEditController extends BaseController {
     this.verticalPassageDragMoved = false;
     this.draggingElevatorEndpoint = null;
     this.elevatorDragMoved = false;
+    this.pressPlacement = null;
+    this.carrying = false;
+    this.dropPressed = false;
     this.bulkPointAction = false;
     if (gestureActive) {
       useMazeStore.getState().setPostEditDragOverride(null);
@@ -943,6 +1140,7 @@ export class PostEditController extends BaseController {
 
   destroy(): void {
     window.removeEventListener("keydown", this.onKeyDown);
+    this.unsubscribeFloor();
     if (this.confirmDebounceTimer !== null) {
       clearTimeout(this.confirmDebounceTimer);
     }

@@ -639,7 +639,7 @@ passage/elevator placement used a hard `origin.kind !== "node"` guard in
 — any placement STARTED from a split point's numbered slot was silently dropped rather than resolving
 the slot correctly, so these two entity kinds only ever placed onto a split tile's original node,
 never a chosen slot (teleport was unaffected — it never had this guard). `findPostEditVerticalPassageForPair`
-was extended the same way, from a node-only `(passages, aId: number, bId: number)` lookup to
+(since removed with the placement dedup, GitHub issue #748) was extended the same way, from a node-only `(passages, aId: number, bId: number)` lookup to
 `(passages, a: PostEditEndpoint, b: PostEditEndpoint)` matched via `endpointsEqual`, since the
 confirmed-snapshot extraction path (`extractPostEditVerticalPassages`/`extractPostEditElevators`)
 already produced split endpoints for these kinds — the interactive placement code was the only piece
@@ -1142,7 +1142,7 @@ Async, versioned via `_postEditRequestId`:
 6. If `_postEditRequestId` changed (stale) — discards result.
 7. Writes to `postEditAnalytics`, `postEditEdges` (confirmed snapshot), `postEditTeleportEdges` (confirmed snapshot, converted teleport `EdgeDto[]`), `postEditMeta` (confirmed snapshot). Auto-resets `showRouteOverlay` to `false` when `route_info == null`.
 
-Teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`) call `confirmPostEdit()` directly when `postEditAutoConfirm` is true, same as endpoint tools — the controller does not schedule an additional debounced call for these.
+Teleport-editing actions (`addPostEditTeleport`, `setPostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`; likewise `setPostEditVerticalPassageDirection`) call `confirmPostEdit()` directly when `postEditAutoConfirm` is true, same as endpoint tools — the controller does not schedule an additional debounced call for these.
 
 ## Tools
 
@@ -1163,6 +1163,13 @@ The **Management** section below the tool row keeps only the whole-graph actions
 | `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
 | `teleport_one_way` | Two-click placement of a one-way (`"forward"`) teleport link. |
 | `teleport_two_way` | Two-click placement of a two-way teleport link. |
+| `move` | Moves any element of a cell, including split nodes' elements — see `Specs/element-tools.md` (GitHub issue #748). |
+| `settings` | Reverses a one-way edge, or opens the settings of a cell's teleport, vertical passage, elevator, or split tile — see `Specs/element-tools.md`. |
+
+`Specs/element-tools.md` (GitHub issue #748) supersedes the click semantics described in this
+section: a plain click with a vertex tool always adds the tool's own element, even on a node that
+already holds elements; pressing an existing element still arms a drag, and releasing in the same
+cell is that click. Direction changes and elevator floor edits belong to the settings tool.
 
 `set_start` and `set_finish` are a shared vertex-editing pair. While either is active, drag-to-move and right-click-to-delete apply uniformly to **both** the start and finish markers, regardless of which one is currently selected: right-click on the current start node clears it (`clearPostEditEndpoint`) even while `set_finish` is active, and press-and-drag from either marker's node moves it live to whichever node is under the cursor, even while the other tool is active. Only the plain-click "assign to this empty node" action stays tied to the active tool (`set_start` assigns start, `set_finish` assigns finish).
 
@@ -1175,7 +1182,7 @@ The **Management** section below the tool row keeps only the whole-graph actions
 - **Click on the pending origin node again** → no-op (does not complete a zero-length link).
 - **Escape key, or right-click with a placement pending and no marker/endpoint under the cursor** → cancels the pending placement (`setPostEditTeleportPendingFrom(null)`), clears the preview.
 - **Left press-drag starting on an existing teleport endpoint's node** → arms a drag candidate (`draggingTeleportEndpoint`). Each pointer move to a different node calls `movePostEditTeleportEndpoint`; landing back on the link's other endpoint is rejected (would collapse the link to zero length) but still counts as "moved" so release doesn't misread it as a click.
-- **Release without ever moving to a different node** → resolves as a plain click: if a placement is already pending, completes it at that endpoint's node; otherwise cycles that entry's direction (`cyclePostEditTeleportDirection` — `"forward"` ↔ `"backward"`; `"two_way"` entries are unaffected, they have no direction to cycle).
+- **Release without ever moving to a different node** → resolves as a plain click at the pressed node: starts a new placement there, or completes the pending one (GitHub issue #748). Type and direction changes use the settings tool (`setPostEditTeleportDirection`).
 - **Right click on an existing teleport endpoint's node (no placement pending)** → `removePostEditTeleport(id)`.
 
 Endpoint hit-testing is done by `pickPostEditTeleportEndpointAt` (in `postEditUtils.ts`), which resolves node id → screen position via `nodeById` before comparing to the cursor — unlike `PresetConnectionsController`'s `pickTeleportEndpointAt`, which works directly in cell coordinates since preset connections predate node ids.
@@ -1193,15 +1200,16 @@ Both tools use an override-preview + commit-on-release pattern, distinct from te
 
 If the drag's landing point (or, for vertical passage/elevator, any of the OTHER end's/floors' own points) turns out to be a split tile, the commit defers through `PostEditSplitTargetDialog` instead of blindly picking a node — see "Landing on a split tile: drag-to-move and fresh placement (GitHub issue #567)" above. `resolveVerticalPassageMove`/`resolveElevatorMove` both accept the user's own picks as overrides (`ownEndpoint`/`otherEndpoint` and `overridesByLevel` respectively) that short-circuit `findNodeAt` for exactly the points that needed a prompt; every other point still resolves the plain `findNodeAt` way, unaffected.
 
-Both tools' hit-testing (`pickPostEditVerticalPassageEndpointAt`, `pickPostEditElevatorEndpointAt`) mirrors `pickPostEditTeleportEndpointAt`, filtered to the active floor's own endpoints before hit-testing. A plain click (no drag) on an existing vertical-passage endpoint cycles `forward ↔ backward`; a plain click on an elevator's own marker reopens the floor-picker dialog to edit that entry (mirrors `startPostEditElevatorPlacement`'s existing-entry edit path).
+Both tools' hit-testing (`pickPostEditVerticalPassageEndpointAt`, `pickPostEditElevatorEndpointAt`) mirrors `pickPostEditTeleportEndpointAt`, filtered to the active floor's own endpoints before hit-testing. A plain click (no drag) on an existing vertical-passage or elevator marker adds a new passage or starts a new elevator there (GitHub issue #748). `startPostEditVerticalPassagePlacement` offers every direction with a node on the adjacent floor, even where passages already exist. Editing uses the settings tool: `setPostEditVerticalPassageDirection` for a passage, `editPostEditElevator` (floor dialog with `editingId`) for an elevator.
 
 ### `one_way` Tool Detail
 
 Operates on an edge pair `(from_, to_)`, reading each direction's *effective* current kind
 (`?? "wall"`, since wall is never an explicit record):
 
-- Either direction currently reads as one-way (`from_→to_` is `one_way_forward`, or `to_→from_` is
-  `one_way_backward`) → this click **flips** the existing one-way passage's direction: swap which
+- `one_way_flip` (the settings tool's mode of `applyPostEditToolAt`, GitHub issue #748) behaves like
+  `one_way` on a face that reads as one-way and is a no-op on any other face.
+- On a face that reads as one-way, `one_way` **flips** the existing one-way passage's direction: swap which
   side is `one_way_forward`/`wall`; the emitted command contains only the resulting face states, so the
   Changes panel labels it as a direction change, not a fresh passage.
 - Otherwise (wall or a two-way `basic` passage) → creates a **fresh** forward one-way passage
@@ -1429,7 +1437,7 @@ Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`,
 
 The panel's auto-confirm switch has an info icon (GitHub issue #576, `AutoConfirmInfoModal`) explaining, in plain language, that confirming is what makes post-edit changes take effect elsewhere, that auto-confirm applies each change immediately instead of requiring the manual Confirm button, that every confirm recomputes the full analytics (a potential slowdown on large mazes), and recommending auto-confirm be turned off — confirming manually once editing is done — on large mazes.
 
-When `postEditAutoConfirm = true`, `PostEditController` schedules `confirmPostEdit` with 300ms debounce after each edge tool click. For endpoint tools (`set_start`/`set_finish`) and teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`), `confirmPostEdit` is called directly by the store action (only when `autoConfirm = true`) — controller does not schedule an additional call.
+When `postEditAutoConfirm = true`, `PostEditController` schedules `confirmPostEdit` with 300ms debounce after each edge tool click. For endpoint tools (`set_start`/`set_finish`) and teleport-editing actions (`addPostEditTeleport`, `setPostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`; likewise `setPostEditVerticalPassageDirection`), `confirmPostEdit` is called directly by the store action (only when `autoConfirm = true`) — controller does not schedule an additional call.
 
 When `postEditAutoConfirm = false`:
 - Edge tool clicks update `postEditDraftEdges` but do not trigger `confirmPostEdit`.

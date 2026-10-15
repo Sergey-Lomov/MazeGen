@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as m from "~/paraglide/messages";
 import { ElevatorFloorPicker, type ElevatorFloorRow } from "../components/dialogs/ElevatorFloorPicker";
 import { EntityChoiceDialog } from "../components/dialogs/EntityChoiceDialog";
-import { SplitTargetPicker, numberToCssColor } from "../components/dialogs/SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets } from "../components/dialogs/SplitTargetPicker";
 import { VerticalDirectionPicker } from "../components/dialogs/VerticalDirectionPicker";
 import { ToolIconRow } from "../components/ToolIconRow";
 import { VerticalDragFailureAlert } from "../components/VerticalDragFailureAlert";
@@ -65,6 +65,14 @@ describe("shared preset/post-edit dialog components", () => {
 
   it("formats packed colors for split-target dots", () => {
     expect(numberToCssColor(0x0a1b2c)).toBe("#0a1b2c");
+  });
+
+  it("leaves out an excluded split node but keeps every other node's own index (GitHub issue #748)", () => {
+    expect(shownSplitTargets([undefined, 0, 1], (slotId) => slotId === 0)).toEqual([
+      { node: undefined, index: 0 },
+      { node: 1, index: 2 },
+    ]);
+    expect(shownSplitTargets([7, 9], () => false)).toEqual([{ node: 7, index: 0 }, { node: 9, index: 1 }]);
   });
 
   it("routes split-target selection and cancellation while keeping the preview slot", () => {

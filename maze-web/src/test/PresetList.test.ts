@@ -69,7 +69,7 @@ describe("buildPresetListCells", () => {
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.control).toEqual({ kind: "direction", id: "user" });
     expect(cells.find((cell) => cell.key === "teleport:4")?.control).toEqual({ kind: "direction", id: "4" });
     expect(cells.find((cell) => cell.key === "vertical_passage:5")?.control).toEqual({ kind: "direction", id: "5" });
-    expect(cells.find((cell) => cell.key === "elevator:6")?.control).toEqual({ kind: "elevator", endpoint: from });
+    expect(cells.find((cell) => cell.key === "elevator:6")?.control).toEqual({ kind: "elevator", id: 6, endpoint: from });
     expect(cells.find((cell) => cell.key === "teleport:4")?.arrow).toBe("->");
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.id).toBeUndefined();
     expect(cells.find((cell) => cell.key === "edge:0,0-0,1")?.linkHighlightStyle).toBe("one_way");

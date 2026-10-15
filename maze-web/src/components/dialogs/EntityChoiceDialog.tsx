@@ -17,23 +17,27 @@ interface Props {
   title: string;
   hint: string;
   rows: EntityChoiceRow[];
-  deleteAllLabel: string;
+  /** Omitted (with `onDeleteAll`) for a pure choice dialog — e.g. the move/settings pickers. */
+  deleteAllLabel?: string;
   onSelect: (row: EntityChoiceRow) => void;
-  onDeleteAll: () => void;
+  onDeleteAll?: () => void;
   onClose: () => void;
+  /** One line per row; the dialog is exactly as wide as its widest row (the hint wraps to that
+   *  width instead of widening it). */
+  compact?: boolean;
 }
 
-/** Shared presentation for entity-delete and post-edit command-choice dialogs. */
-export function EntityChoiceDialog({ title, hint, rows, deleteAllLabel, onSelect, onDeleteAll, onClose }: Props) {
+/** Shared presentation for entity-delete, move/settings pick and post-edit command-choice dialogs. */
+export function EntityChoiceDialog({ title, hint, rows, deleteAllLabel, onSelect, onDeleteAll, onClose, compact = false }: Props) {
   return (
-    <Modal title={title} size="approveWide" onClose={onClose}>
-      <p style={styles.hint}>{hint}</p>
+    <Modal title={title} size={compact ? "fit" : "approveWide"} onClose={onClose}>
+      <p style={compact ? { ...styles.hint, ...styles.compactHint } : styles.hint}>{hint}</p>
       <div style={styles.list}>
         {rows.map((row) => (
-          <Button key={row.key} variant="secondary" layoutStyle={styles.item} onClick={() => onSelect(row)}>
+          <Button key={row.key} variant="secondary" layoutStyle={compact ? { ...styles.item, ...styles.compactItem } : styles.item} onClick={() => onSelect(row)}>
             <span style={styles.action}>{row.title}</span>
             {row.entityId !== undefined && <span style={styles.idBubble}>id: {row.entityId}</span>}
-            <div style={styles.bubbles}>
+            <div style={compact ? { ...styles.bubbles, ...styles.compactBubbles } : styles.bubbles}>
               {row.bubbles.map((bubble, index) => (
                 <span key={`${row.key}:${index}`} style={styles.bubbleGroup}>
                   {index > 0 && row.showArrow && <span style={styles.arrow}>{row.arrow}</span>}
@@ -46,7 +50,9 @@ export function EntityChoiceDialog({ title, hint, rows, deleteAllLabel, onSelect
       </div>
       <div style={styles.footer}>
         <Button variant="secondary" layoutStyle={styles.footerButton} onClick={onClose}>{m["common.cancel"]()}</Button>
-        <Button variant="destructive" layoutStyle={styles.footerButton} onClick={onDeleteAll}>{deleteAllLabel}</Button>
+        {onDeleteAll && deleteAllLabel && (
+          <Button variant="destructive" layoutStyle={styles.footerButton} onClick={onDeleteAll}>{deleteAllLabel}</Button>
+        )}
       </div>
     </Modal>
   );
@@ -54,11 +60,14 @@ export function EntityChoiceDialog({ title, hint, rows, deleteAllLabel, onSelect
 
 const styles: Record<string, React.CSSProperties> = {
   hint: { ...typography.control, color: ui.text.secondary, margin: 0, paddingBottom: dialogSpacing.paddingY },
+  // `width: 0` + `minWidth: 100%` keeps the hint out of the dialog's shrink-to-fit width.
+  compactHint: { width: 0, minWidth: "100%" },
   list: { display: "flex", flexDirection: "column", gap: dialogSpacing.gap },
   item: {
     ...typography.control, display: "flex", alignItems: "center", flexWrap: "wrap", gap: spacing.rowGap,
     width: "100%", justifyContent: "flex-start", padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`, borderRadius: radius.sm,
   },
+  compactItem: { flexWrap: "nowrap" },
   action: { ...typography.body, whiteSpace: "nowrap" },
   idBubble: {
     ...typography.caption, fontFamily: "Consolas, Menlo, Monaco, monospace", display: "inline-flex", alignItems: "center",
@@ -66,6 +75,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.success, borderColor: ui.text.success, color: ui.text.success, whiteSpace: "nowrap",
   },
   bubbles: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: spacing.itemGap / 2 },
+  compactBubbles: { flexWrap: "nowrap" },
   bubbleGroup: { display: "inline-flex", alignItems: "center", gap: spacing.itemGap },
   arrow: { ...muted(typography.caption) },
   bubble: {

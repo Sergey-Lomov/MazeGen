@@ -5,7 +5,6 @@ import {
   postEditTeleportsToDto,
   rotateSplitPointNodes,
   currentSplitNodeFaces,
-  findPostEditVerticalPassageForPair,
   postEditVerticalToDto, pruneRemovedSplitNodes,
   resolveVerticalPassageMove,
   resolveElevatorMove,
@@ -30,6 +29,8 @@ import type { PostEditCommand, ResolvedSplitFace, ResolvedSplitSlot } from "../p
 import type { PostEditEdge, PostEditEdgeState } from "../postEditTypes";
 import { filterCommandsForPoint, resetCommandsAt, deleteCommandAt, isCreateCommand, replayPostEditCommands, lifelineKeysOf } from "../../pixi/postEditReplay";
 import { compactPostEditCommands } from "../../pixi/postEditCompaction";
+import { postEditEntitiesForPurpose, type EntityToolPurpose } from "../../pixi/entityToolKinds";
+import type { PostEditPointEntityDescriptor } from "../../pixi/postEditPointEntities";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
 import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
@@ -183,6 +184,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditChangesEntityFilter: null,
   postEditDragOverride: null,
   postEditDragFailureMessage: null,
+  postEditEntityPickPrompt: null,
+  postEditMoveRequest: null,
+  postEditConnectionSettingsPrompt: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
   // Turning auto-compact ON compacts the log immediately (GitHub issue #548 follow-up) — otherwise
@@ -194,6 +198,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
   setPostEditTool: (tool) => set({
     postEditTool: tool,
+    postEditEntityPickPrompt: null,
+    postEditMoveRequest: null,
+    postEditConnectionSettingsPrompt: null,
     ...(tool !== "manage_split_nodes" ? { postEditFocusedPoint: null, postEditFocusedPointCovered: false } : {}),
   }),
 
@@ -246,7 +253,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (curAToB === "basic" && curBToA === "basic") return;
       aToB = { kind: "basic", from: from_, to: to_ };
       bToA = { kind: "basic", from: to_, to: from_ };
-    } else if (tool === "one_way") {
+    } else if (tool === "one_way" || tool === "one_way_flip") {
+      // The one-way tool creates a forward one-way edge or reverses an existing one; `one_way_flip`
+      // (settings tool, GitHub issue #748) only reverses and leaves any other face unchanged.
+      if (tool === "one_way_flip" && !wasOneWay) return;
       // Flip only when THIS face is already the one-way side - not just "some record exists" (a
       // `basic` two-way passage also has a record on both sides, and clicking `one_way` on it must
       // create a fresh forward one-way, not silently flip to backward-only and drop the passage).
@@ -609,6 +619,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditEntityDeletePrompt: null,
         postEditResetPrompt: null,
         postEditChangesEntityFilter: null,
+        postEditEntityPickPrompt: null,
+        postEditMoveRequest: null,
+        postEditConnectionSettingsPrompt: null,
       };
     });
     void get().confirmPostEdit();
@@ -733,6 +746,58 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   cancelPostEditEntityDelete: () => set({ postEditEntityDeletePrompt: null }),
+
+  requestPostEditEntityPick: (point, level, purpose) => {
+    const entities = postEditEntitiesForPurpose(purpose, buildPostEditPointEntitiesAt(get(), point, level));
+    if (entities.length === 0) return;
+    if (entities.length === 1) {
+      actOnPostEditEntity(get, set, purpose, entities[0]);
+      return;
+    }
+    set({ postEditEntityPickPrompt: { point, level, purpose }, postEditSplitTargetPrompt: null, postEditEntityDeletePrompt: null });
+  },
+
+  choosePostEditEntityPick: (descriptor) => {
+    const prompt = get().postEditEntityPickPrompt;
+    if (!prompt) return;
+    set({ postEditEntityPickPrompt: null });
+    actOnPostEditEntity(get, set, prompt.purpose, descriptor);
+  },
+
+  cancelPostEditEntityPick: () => set({ postEditEntityPickPrompt: null }),
+
+  takePostEditMoveRequest: () => {
+    const request = get().postEditMoveRequest;
+    if (request) set({ postEditMoveRequest: null });
+    return request;
+  },
+
+  openPostEditEntitySettings: (descriptor) => {
+    switch (descriptor.kind) {
+      case "teleport":
+      case "vertical_passage":
+        set({ postEditConnectionSettingsPrompt: { kind: descriptor.kind, id: descriptor.id } });
+        break;
+      case "elevator":
+        get().editPostEditElevator(descriptor.id, descriptor.endpoint);
+        break;
+      case "split_point": {
+        // The row's endpoint is the point's original node. The split-node panel is only shown
+        // while its own tool is active (GitHub issue #699).
+        const endpoint = descriptor.endpoint;
+        const node = endpoint.kind === "node" ? get().nodes.find((n) => n.id === endpoint.id) : undefined;
+        const point: [number, number] | undefined = node ? [node.x, node.y] : endpoint.kind === "split" ? endpoint.point : undefined;
+        if (!point) break;
+        get().setPostEditTool("manage_split_nodes");
+        get().setPostEditFocusedPoint(point);
+        break;
+      }
+      default:
+        break;
+    }
+  },
+
+  cancelPostEditConnectionSettings: () => set({ postEditConnectionSettingsPrompt: null }),
 
   removePostEditPointEntity: (descriptor) => {
     switch (descriptor.kind) {
@@ -903,11 +968,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
-  cyclePostEditTeleportDirection: (id) => {
+  setPostEditTeleportDirection: (id, direction) => {
     const target = get().postEditDraftTeleports.find((t) => t.id === id);
-    if (!target || target.direction === "two_way") return;
-    const direction = target.direction === "forward" ? "backward" : "forward";
-    appendPostEditCommand(get, set, { kind: "setTeleportDirection", id, direction, from: target.from, to: target.to });
+    if (!target || target.direction === direction) return;
+    appendPostEditCommand(get, set, { kind: "setTeleportDirection", id, direction, from: target.from, to: target.to, absolute: true });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
     }
@@ -1221,57 +1285,18 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     if (origin.kind === "node" && !originNode) return;
     const point: [number, number] = origin.kind === "node" ? [originNode!.x, originNode!.y] : origin.point;
     const originLevel = origin.kind === "node" ? (originNode!.level ?? 0) : (origin.level ?? 0);
-    // `PostEditController`'s hit-test (`pickPostEditVerticalPassageEndpointAt`) only drags/cycles a
-    // draft passage when the click lands within an endpoint marker's own hit radius, and it only
-    // searches `postEditDraftVerticalPassages` — so every other click on a vertical-passage tool
-    // reaches here: a plain new placement, a click on a node with a generation-baked passage (now a
-    // full baseline draft entry with its own id, GitHub issue #564 — no separate seed branch needed
-    // any more, `findPostEditVerticalPassageForPair` below already finds it), and (GitHub issue #491)
-    // a click elsewhere in the same cell as an existing draft passage, which resolves to the same
-    // `origin` node the marker would.
-    //
-    // The direction-aware create path below (guard, GitHub issue #491) keeps this from stacking a
-    // duplicate directed edge that would resolve as two-way on the next confirm regardless of either
-    // entry's own direction: a direction already covered by *any* draft entry (baseline-seeded,
-    // still pre-confirm, or its edge already echoed into `state.edges` by an auto-confirm) is
-    // cycled/skipped rather than re-placed.
+    // Every click adds a new passage, even where one already exists (GitHub issue #748): a cell may
+    // hold any number of elements. Editing an existing passage is the settings tool's job.
     const resolveFieldAt = resolveFieldAtOf(state);
     const availableDirections: ("up" | "down")[] = [];
     if (cellExistsAt(resolveFieldAt, point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, point, originLevel - 1)) availableDirections.push("down");
     if (availableDirections.length === 0) return;
-    // Direction-aware create path (GitHub issue #491). This click could place a passage in each of
-    // `availableDirections`; for any direction already covered by a draft entry (baseline-seeded,
-    // still pre-confirm in `postEditDraftVerticalPassages`, or its edge already echoed into
-    // `state.edges` by an auto-confirm), adding a fresh one would mint a *second* entry for the same
-    // pair, which then reads as two-way on the next confirm regardless of either entry's own
-    // direction. Resolve the partner node per direction and look up its own draft entry — the
-    // partner is always this exact point's OTHER floor, so it's always a plain `nodeEndpoint` (its
-    // own point isn't necessarily split, and even if it were, the partner floor's own active slot
-    // isn't resolved here — same convention `commitPostEditVerticalPassage`'s `to` already uses).
-    const draftEntryFor = (direction: "up" | "down") => {
-      const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-      const toNode = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === toLevel);
-      if (!toNode) return undefined;
-      return findPostEditVerticalPassageForPair(state.postEditDraftVerticalPassages, origin, nodeEndpoint(toNode.id));
-    };
-    const directionEntries = availableDirections.map((d) => [d, draftEntryFor(d)] as const);
-    const freeDirections = directionEntries.filter(([, entry]) => entry === undefined).map(([d]) => d);
-    if (freeDirections.length === 0) {
-      // Every direction this click could place is already drafted. One direction → cycle that
-      // entry, mirroring the marker-click path (a one-way passage flips, a two-way stays). Two →
-      // the cell click can't disambiguate which passage to cycle, so it's a no-op rather than a
-      // guess or a duplicate; the user can still use the markers themselves.
-      if (directionEntries.length === 1 && directionEntries[0][1]) {
-        get().cyclePostEditVerticalPassageDirection(directionEntries[0][1].id);
-      }
+    if (availableDirections.length === 1) {
+      tryCommitPostEditVerticalPassage(get, set, origin, tool, availableDirections[0]);
       return;
     }
-    if (freeDirections.length === 1) {
-      tryCommitPostEditVerticalPassage(get, set, origin, tool, freeDirections[0]);
-      return;
-    }
-    set({ postEditVerticalPassagePending: { origin, tool, availableDirections: freeDirections } });
+    set({ postEditVerticalPassagePending: { origin, tool, availableDirections } });
   },
 
   choosePostEditVerticalPassageDirection: (direction) => {
@@ -1282,21 +1307,11 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   cancelPostEditVerticalPassagePlacement: () => set({ postEditVerticalPassagePending: null }),
 
-  cyclePostEditVerticalPassageDirection: (id) => {
+  setPostEditVerticalPassageDirection: (id, direction) => {
     const target = get().postEditDraftVerticalPassages.find((p) => p.id === id);
-    if (!target) return;
-    // A two-way passage has no direction to flip (`cyclePostEditVerticalPassageDirection` in
-    // `postEditVerticalUtils.ts` is a documented no-op for it) — bail out before logging anything,
-    // rather than appending a command for a click that changes nothing (GitHub issue #545: a no-op
-    // click must not touch the log at all).
-    if (target.direction === "two_way") return;
-    // `direction` here is informational only — the reducer's `setVerticalPassageDirection` case
-    // always cycles from whatever direction the log has produced up to that point (replay
-    // determinism), it never reads this field. Pass the entry's own current direction as the most
-    // meaningful placeholder value.
+    if (!target || target.direction === direction) return;
     appendPostEditCommand(get, set, {
-      kind: "setVerticalPassageDirection", id, direction: target.direction,
-      from: target.from, to: target.to,
+      kind: "setVerticalPassageDirection", id, direction, from: target.from, to: target.to, absolute: true,
     });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
@@ -1355,23 +1370,22 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const originNode = origin.kind === "node" ? state.nodes.find((n) => n.id === origin.id) : undefined;
     if (origin.kind === "node" && !originNode) return;
     const originLevel = origin.kind === "node" ? (originNode!.level ?? 0) : (origin.level ?? 0);
-    // Clicking an existing elevator's own marker edits that entry instead of creating a second one
-    // — `floors` seeds from its actual current floors so the dialog reflects real state (GitHub
-    // issue #341 follow-up). A generation-baked elevator is now a full baseline draft entry with its
-    // own stable id (GitHub issue #564), same as a user-placed one — both are found here, no separate
-    // generation-time connected-component branch needed any more. Matched by `PostEditEndpoint`
-    // equality (GitHub issue #550 ninth follow-up), not a `node`-only id check, so a split origin
-    // finds its own existing entry too, mirroring `findPostEditVerticalPassageForPair`'s own fix.
-    const existingDraft = state.postEditDraftElevators.find((e) => e.floors.some((f) => endpointsEqual(f, origin)));
-    if (existingDraft) {
-      const floors = new Set<number>();
-      for (const f of existingDraft.floors) {
-        floors.add(f.kind === "node" ? (state.nodes.find((nd) => nd.id === f.id)?.level ?? 0) : (f.level ?? 0));
-      }
-      set({ postEditElevatorPending: { origin, floors, editingId: existingDraft.id } });
-      return;
-    }
+    // Always starts a new elevator, even on a node that already has one (GitHub issue #748).
     set({ postEditElevatorPending: { origin, floors: new Set([originLevel]) } });
+  },
+
+  // `floors` seeds from the entry's current floors so the dialog reflects real state, and confirming
+  // updates the entry in place (GitHub issue #341 follow-up). Generation-baked elevators are full
+  // baseline draft entries with their own ids (GitHub issue #564), so they are edited the same way.
+  editPostEditElevator: (id, origin) => {
+    const state = get();
+    const existing = state.postEditDraftElevators.find((e) => e.id === id);
+    if (!existing) return;
+    const floors = new Set<number>();
+    for (const f of existing.floors) {
+      floors.add(f.kind === "node" ? (state.nodes.find((nd) => nd.id === f.id)?.level ?? 0) : (f.level ?? 0));
+    }
+    set({ postEditElevatorPending: { origin, floors, editingId: existing.id } });
   },
 
   togglePostEditElevatorFloor: (floorIndex) => {
@@ -1595,3 +1609,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ postEditDragOverride: override });
   },
 });
+
+/** Starts carrying `descriptor` (move) or opens its settings surface (settings) — GitHub issue #748. */
+function actOnPostEditEntity(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore>) => void,
+  purpose: EntityToolPurpose,
+  descriptor: PostEditPointEntityDescriptor,
+): void {
+  if (purpose === "move") set({ postEditMoveRequest: descriptor });
+  else get().openPostEditEntitySettings(descriptor);
+}

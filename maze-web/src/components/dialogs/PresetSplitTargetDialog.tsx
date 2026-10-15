@@ -11,7 +11,7 @@ import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { levelFieldsOf } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
@@ -102,7 +102,10 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   };
 
   const coords = formatTargetLabel(point, level ?? 0, true, undefined);
-  const targetOptions: SplitTargetOption[] = options.map((slotId, index) => ({
+  // Colors and names follow each node's index on the full list, so a node left out by `excluded`
+  // keeps every other node's own color and name.
+  const shown = shownSplitTargets(options, (slotId) => prompt.excluded !== undefined && prompt.excluded.slotId === slotId);
+  const targetOptions: SplitTargetOption[] = shown.map(({ node: slotId, index }) => ({
     key: slotId === undefined ? "original" : String(slotId),
     color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
     label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),
@@ -113,7 +116,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     hint={lockAction ? m["preset.lock_target_hint"]() : m["preset.split_target_hint"]()}
     options={targetOptions}
     preview={preview ? <PresetSplitPointPixiPreview point={point} cfg={preview.cfg} slotIds={prompt.slotIds} presetSplitPoints={preview.presetSplitPoints} presetConnections={preview.presetConnections} cells={preview.cells} showMarkers={preview.special} /> : undefined}
-    onSelect={(option) => pick(options[targetOptions.indexOf(option)] ?? undefined)}
+    onSelect={(option) => pick(shown[targetOptions.indexOf(option)]?.node)}
     onClose={onClose}
   />;
 }

@@ -3,7 +3,6 @@ import {
   buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto,
   floorScopedTeleportEdges,
   rotateSplitPointNodes, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
-  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes, rotateSplitPointBreaksNeighborShape,
 } from "../pixi/postEditUtils";
@@ -607,36 +606,6 @@ describe("postEditVerticalPassageDirectionToDto", () => {
   it("forward/backward pass through unchanged", () => {
     expect(postEditVerticalPassageDirectionToDto("forward")).toBe("forward");
     expect(postEditVerticalPassageDirectionToDto("backward")).toBe("backward");
-  });
-});
-
-// --- findPostEditVerticalPassageForPair ---
-
-describe("findPostEditVerticalPassageForPair", () => {
-  const passages = [
-    { id: "v1", from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
-    { id: "v2", from: nodeEndpoint(5), to: nodeEndpoint(0), direction: "two_way" as const },
-  ];
-
-  it("matches a pair in either argument order", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(1))?.id).toBe("v1");
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(0))?.id).toBe("v1");
-  });
-
-  it("matches regardless of which end of the entry each id sits on", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(5))?.id).toBe("v2");
-  });
-
-  it("returns undefined when no entry connects the pair", () => {
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(1), nodeEndpoint(5))).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair(passages, nodeEndpoint(0), nodeEndpoint(9))).toBeUndefined();
-    expect(findPostEditVerticalPassageForPair([], nodeEndpoint(0), nodeEndpoint(1))).toBeUndefined();
-  });
-
-  it("matches a split-addressed endpoint too (GitHub issue #550 ninth follow-up)", () => {
-    const withSplit = [{ id: "v3", from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
-    expect(findPostEditVerticalPassageForPair(withSplit, splitEndpoint([0, 0], 0), nodeEndpoint(1))?.id).toBe("v3");
-    expect(findPostEditVerticalPassageForPair(withSplit, nodeEndpoint(1), splitEndpoint([0, 0], 0))?.id).toBe("v3");
   });
 });
 

@@ -924,3 +924,25 @@ describe("affectedIndicesForReset / affectedIndicesForDelete — blast-radius pr
     expect(affectedIndicesForDelete(commands, 5)).toBeUndefined();
   });
 });
+
+describe("applyPostEditCommand — absolute direction commands (GitHub issue #748)", () => {
+  it("sets a teleport's and a vertical passage's direction outright, including two-way <-> one-way", () => {
+    const baseline = makeBaseline();
+    const derived = replayPostEditCommands(baseline, [
+      { kind: "addTeleport", id: "t1", from: n(0), to: n(1), direction: "two_way" },
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setTeleportDirection", id: "t1", direction: "backward", from: n(0), to: n(1), absolute: true },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "two_way", from: n(0), to: n(1), absolute: true },
+    ]);
+    expect(derived.teleports.find((t) => t.id === "t1")?.direction).toBe("backward");
+    expect(derived.verticalPassages.find((p) => p.id === "v1")?.direction).toBe("two_way");
+  });
+
+  it("a non-absolute vertical-passage command still flips the current direction", () => {
+    const derived = replayPostEditCommands(makeBaseline(), [
+      { kind: "addVerticalPassage", id: "v1", from: n(0), to: n(1), direction: "forward" },
+      { kind: "setVerticalPassageDirection", id: "v1", direction: "forward", from: n(0), to: n(1) },
+    ]);
+    expect(derived.verticalPassages.find((p) => p.id === "v1")?.direction).toBe("backward");
+  });
+});

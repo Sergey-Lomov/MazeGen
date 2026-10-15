@@ -20,6 +20,13 @@ interface Props {
   onClose: () => void;
 }
 
+/** The split-tile nodes a picker offers, each with its index on the tile's full node list — colors
+ *  and names follow that index, so leaving a node out (`excluded`, GitHub issue #748) keeps every
+ *  other node's own color and name. */
+export function shownSplitTargets<T>(nodes: readonly T[], excluded: (node: T) => boolean): { node: T; index: number }[] {
+  return nodes.map((node, index) => ({ node, index })).filter(({ node }) => !excluded(node));
+}
+
 export function numberToCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }

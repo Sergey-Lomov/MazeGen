@@ -39,6 +39,7 @@ import {
   pickTeleportEndpointAt,
   pickVerticalPassageEndpointAt,
   pickElevatorEndpointAt,
+  lockedNodesWithMovedLock,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -239,22 +240,40 @@ describe("applyTool — one_way", () => {
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
   });
 
-  it("one_way_forward → one_way_backward", () => {
-    const connections = new Map([[
-      edgeKey([0, 0], [1, 0]),
-      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const },
-    ]]);
-    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
-    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
-  });
-
-  it("one_way_backward → one_way_forward", () => {
+  it("a repeated click on a one-way edge reverses it (GitHub issue #748)", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
       { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_backward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
+  });
+
+  it("one_way_flip: one_way_forward → one_way_backward", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const },
+    ]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way_flip");
+    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
+  });
+
+  it("one_way_flip: one_way_backward → one_way_forward", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_backward" as const, source: "user" as const },
+    ]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "one_way_flip");
+    expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
+  });
+
+  it("one_way_flip leaves a non-one-way edge unchanged", () => {
+    const connections = new Map([[
+      edgeKey([0, 0], [1, 0]),
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const },
+    ]]);
+    expect(applyTool(connections, fe(0, 0, 1, 0), "one_way_flip")).toBe(connections);
+    expect(applyTool(new Map(), fe(0, 0, 1, 0), "one_way_flip").size).toBe(0);
   });
 
   it("does not mutate input map", () => {
@@ -1163,5 +1182,19 @@ describe("resolvePresetPartnerAt (GitHub issue #243)", () => {
   it("falls back to the neighbor's original node when nothing is decided and nothing is active", () => {
     const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], new Map(), { "1,0": [0] }, {});
     expect(result).toEqual(presetEndpoint([1, 0]));
+  });
+});
+
+describe("lockedNodesWithMovedLock (GitHub issue #748)", () => {
+  it("shows the dragged lock on the target's original node, on the lock's own floor, replacing a lock there", () => {
+    const locks = new Map([["0,0:1@2", "in" as const], ["2,0@2", "out" as const], ["5,5", "both" as const]]);
+    const result = lockedNodesWithMovedLock(locks, { from: presetEndpoint([0, 0], 1, 2), point: [2, 0] });
+    expect(result).toEqual(new Map([["2,0@2", "in"], ["5,5", "both"]]));
+    expect(locks.size).toBe(3);
+  });
+
+  it("returns the map unchanged when the dragged node has no user lock", () => {
+    const locks = new Map([["5,5", "both" as const]]);
+    expect(lockedNodesWithMovedLock(locks, { from: presetEndpoint([0, 0]), point: [1, 0] })).toBe(locks);
   });
 });
