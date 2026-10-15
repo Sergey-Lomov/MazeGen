@@ -83,6 +83,9 @@ export const DEFAULT_VECTOR_BY_WALLS_LINKS: ParamLink<VectorByWallsParamPath>[] 
   link("markerTextFontWeight", "finishMarker.textFontWeight", false),
   link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
   link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
+  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "elevatorBadges.labelType"),
+  link("floorLabelType", "floorLabel.labelType"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — the panel-level group
   // above chains into this one (cornerStyle -> verticalCornerStyle, etc.), which in turn drives the
@@ -205,6 +208,9 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_LINKS: ParamLink<VectorByCorridorsParam
   link("markerTextFontWeight", "finishMarker.textFontWeight", false),
   link("markerTextFontWeight", "teleportFloorBadge.textFontWeight", false),
   link("markerTextFontWeight", "elevatorBadges.textFontWeight", false),
+  link("floorLabelType", "teleportFloorBadge.labelType"),
+  link("floorLabelType", "elevatorBadges.labelType"),
+  link("floorLabelType", "floorLabel.labelType"),
 
   // "Vertical connections" section's own "Shared style" (GitHub issue #668) — see
   // `DEFAULT_VECTOR_BY_WALLS_LINKS`'s own doc comment. "Vector by corridors" has no decorative

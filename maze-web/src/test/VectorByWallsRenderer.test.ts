@@ -6,6 +6,7 @@ import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -162,6 +163,7 @@ const {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
@@ -223,7 +225,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     cornerStyle: "round",
     markerSize: 0.16,
     markerBorderWidth: 3, markerShape: "circle", markerFillColor: 0, markerBorderColor: 0,
-    gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold",
+    gapWidth: 3, markerTextSize: 17, markerTextMargin: 1, markerTextFontWeight: "bold", floorLabelType: "letters",
     verticalCornerStyle: "round",
     verticalShape: "circle",
     verticalSize: 0.2,

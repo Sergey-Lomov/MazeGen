@@ -4,7 +4,7 @@ import { VectorByWallsSettingsPanel } from "../components/features/VectorByWalls
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { pickColor, pickColorForLabel } from "./colorTestHelpers";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { distributeOklchHues } from "../store/colorMath";
 import * as m from "~/paraglide/messages";
@@ -85,6 +85,7 @@ beforeEach(() => {
       splitNodeColors: [],
       splitSpecialShapes: false,
       markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+      floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
       ...DEFAULT_SHARED_STYLE_SOURCE,
       links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     },
@@ -194,6 +195,7 @@ describe("VectorByWallsSettingsPanel", () => {
         verticalDecorativeArrowSize: 0.75,
         splitNodeColors: [], splitSpecialShapes: false,
         markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+        floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
         ...DEFAULT_SHARED_STYLE_SOURCE,
         links: DEFAULT_VECTOR_BY_WALLS_LINKS,
       },
@@ -875,7 +877,7 @@ describe("VectorByWallsSettingsPanel", () => {
       it("changing the label type updates the store", () => {
         setElevatorState({ elevatorBadgesEnabled: true });
         render(<VectorByWallsSettingsPanel />);
-        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]());
+        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_letters"]());
         fireEvent.change(select, { target: { value: "roman" } });
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.labelType).toBe("roman");
       });

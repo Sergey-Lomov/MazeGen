@@ -12,8 +12,11 @@ import * as m from "~/paraglide/messages";
 export interface TextFitContextValue {
   /** Largest size at which every label of this size control fits its plate. */
   fitFor: (kind: TextFitKind) => number | null;
-  /** Smallest of the per-kind fits — the one size that fits every label. */
+  /** Smallest of the shared-style per-kind fits; floor labels use their independent size control. */
   fitAll: () => number | null;
+  /** Required floor-label backplate dimensions at its current font size, across every floor. */
+  fitFloorLabelWidth: () => number | null;
+  fitFloorLabelHeight: () => number | null;
 }
 
 const TextFitContext = createContext<TextFitContextValue | null>(null);

@@ -10,6 +10,7 @@ import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
+import { FloorLabelRenderer, floorLabelCenter } from "../renderers/FloorLabelRenderer";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -291,6 +292,7 @@ export class VectorByWallsRenderer {
    *  (so a plate's gap never occludes its marker), the body pass *above* them (GitHub issue #471). */
   private readonly markerIndexGapContainer: Container;
   private readonly markerIndexBodyContainer: Container;
+  private readonly floorLabelContainer: Container;
   private readonly warningHighlightContainer: Container;
   /** Optional grid overlay inside the filled maze cells, below walls and markers. */
   private readonly innerGridContainer: Container;
@@ -309,6 +311,7 @@ export class VectorByWallsRenderer {
   private readonly markers: WaypointsRenderer;
   /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #471). */
   private readonly markerIndex: MarkerIndexRenderer;
+  private readonly floorLabel: FloorLabelRenderer;
   /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay or
    *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
    *  rule. Highlights the currently hovered export warning's cells (GitHub issue #298 follow-up —
@@ -355,6 +358,7 @@ export class VectorByWallsRenderer {
     this.markersContainer = new Container();
     this.markerIndexGapContainer = new Container();
     this.markerIndexBodyContainer = new Container();
+    this.floorLabelContainer = new Container();
 
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
@@ -366,6 +370,7 @@ export class VectorByWallsRenderer {
     container.addChild(this.verticalContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.markerIndexBodyContainer);
+    container.addChild(this.floorLabelContainer);
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
 
@@ -378,6 +383,7 @@ export class VectorByWallsRenderer {
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.markerIndex = new MarkerIndexRenderer(this.markerIndexGapContainer, this.markerIndexBodyContainer);
+    this.floorLabel = new FloorLabelRenderer(this.floorLabelContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByWallsWarnings);
 
     this.syncVisibility(useMazeStore.getState());
@@ -425,6 +431,7 @@ export class VectorByWallsRenderer {
     this.markersContainer.visible = visible;
     this.markerIndexGapContainer.visible = visible;
     this.markerIndexBodyContainer.visible = visible;
+    this.floorLabelContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
@@ -660,6 +667,14 @@ export class VectorByWallsRenderer {
       this.markerIndex.clear();
     }
 
+    this.floorLabel.render(
+      state.vectorByWallsSettings.floorLabel,
+      floorLabelCenter(exactCellBounds(nodes, cfg)),
+      activeFloorIndex,
+      state.floors.length,
+      floorColor,
+    );
+
     this.renderWarningHighlight(state);
   }
 
@@ -710,6 +725,7 @@ export class VectorByWallsRenderer {
     this.verticalConnections.destroy();
     this.markers.destroy();
     this.markerIndex.destroy();
+    this.floorLabel.destroy();
     this.warningHighlight.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -721,6 +737,7 @@ export class VectorByWallsRenderer {
     this.markersContainer.destroy();
     this.markerIndexGapContainer.destroy();
     this.markerIndexBodyContainer.destroy();
+    this.floorLabelContainer.destroy();
     this.warningHighlightContainer.destroy();
   }
 }

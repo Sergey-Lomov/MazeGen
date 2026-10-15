@@ -1,12 +1,12 @@
 import {
   type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
-  type DigitalExportSettings, type PrintExportSettings,
+  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
 import { sanitizeMarkerGlyph } from "../../pixi/renderers/markerGlyph";
-import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE } from "../../pixi/renderConstants";
+import { DEFAULT_MARKER_TEXT_SIZE, DEFAULT_TEXT_MARGIN, TEXT_MARGIN_RANGE, MARKER_INDEX_MIN_HEIGHT, MARKER_INDEX_WIDTH_RANGE, FLOOR_LABEL_TEXT_SIZE_RANGE, FLOOR_LABEL_WIDTH_RANGE } from "../../pixi/renderConstants";
 import type { RenderModeId, LinkIconVisibility } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -256,6 +256,29 @@ export function validateMarkerIndexSettings(v: unknown, path: string, fallback: 
   };
 }
 
+export function validateFloorLabelSettings(v: unknown, path: string, fallback: FloorLabelSettings): FloorLabelSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try { obj = assertObject(v, path); } catch { return fallback; }
+  return {
+    enabled: optBool(obj, "enabled", fallback.enabled),
+    prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
+    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
+    textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textSize: Math.min(FLOOR_LABEL_TEXT_SIZE_RANGE.max, Math.max(FLOOR_LABEL_TEXT_SIZE_RANGE.min, optNumber(obj, "textSize", fallback.textSize))),
+    textMargin: readTextMargin(obj, fallback.textMargin),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    backgroundShape: optEnum(obj, "backgroundShape", ["none", "rectangle", "parallelogram"] as const, fallback.backgroundShape),
+    width: Math.min(FLOOR_LABEL_WIDTH_RANGE.max, Math.max(FLOOR_LABEL_WIDTH_RANGE.min, optNumber(obj, "width", fallback.width))),
+    height: optNumber(obj, "height", fallback.height),
+    cornerRadius: optNumber(obj, "cornerRadius", fallback.cornerRadius),
+    gap: optNumber(obj, "gap", fallback.gap),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+  };
+}
+
 function validateMarkerIndexCoverage(v: unknown, path: string, fallback: MarkerIndexSettings["coverage"]): MarkerIndexSettings["coverage"] {
   if (v == null) return fallback;
   let obj: Record<string, unknown> | null;
@@ -459,6 +482,8 @@ export function validateVectorByWallsSettings(v: unknown, path: string, links: P
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
+    floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
+    floorLabel: validateFloorLabelSettings(obj.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),
@@ -617,6 +642,8 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
     markerTextSize: optNumber(obj, "markerTextSize", d.markerTextSize),
     markerTextMargin: clampTextMargin(optNumber(obj, "markerTextMargin", d.markerTextMargin)),
     markerTextFontWeight: optElevatorBadgeFontWeight(obj, "markerTextFontWeight", d.markerTextFontWeight),
+    floorLabelType: optElevatorBadgeLabelType(obj, "floorLabelType", d.floorLabelType),
+    floorLabel: validateFloorLabelSettings(obj?.floorLabel, `${path}.floorLabel`, d.floorLabel),
     verticalCornerStyle: optCornerStyle(obj, "verticalCornerStyle", d.verticalCornerStyle),
     verticalShape: optMarkerShape(obj, "verticalShape", d.verticalShape),
     verticalSize: optNumber(obj, "verticalSize", d.verticalSize),

@@ -6,7 +6,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
-import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
 
@@ -44,6 +44,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_WALLS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...overrides,
   };
 }
@@ -65,6 +66,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     ...DEFAULT_SHARED_STYLE_SOURCE,
     links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS,
     markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
+    floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS,
     ...overrides,
   };
 }

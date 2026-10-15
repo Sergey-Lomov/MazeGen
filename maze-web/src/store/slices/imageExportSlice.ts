@@ -21,6 +21,7 @@ export {
   DEFAULT_VERTICAL_SETTINGS,
   DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
   DEFAULT_MARKER_INDEX_SETTINGS,
+  DEFAULT_FLOOR_LABEL_SETTINGS,
   DEFAULT_ONE_WAY_SETTINGS,
   DEFAULT_SHARED_STYLE_SOURCE,
   DEFAULT_VERTICAL_SHARED_STYLE,
@@ -117,6 +118,11 @@ const TELEPORT_OVERRIDABLE = [
 ] as const;
 const ELEVATOR_BADGES_OVERRIDABLE = ["elevatorBadges.shape", "elevatorBadges.fillColor", "elevatorBadges.borderColor", "elevatorBadges.borderWidth", "elevatorBadges.textColor", "elevatorBadges.textSize", "elevatorBadges.textMargin", "elevatorBadges.textFontWeight"] as const;
 const MARKER_INDEX_OVERRIDABLE = ["markerIndex.gap", "markerIndex.fillColor", "markerIndex.textColor", "markerIndex.borderColor"] as const;
+const FLOOR_LABEL_OVERRIDABLE = [
+  "floorLabel.enabled", "floorLabel.labelType", "floorLabel.textFontWeight", "floorLabel.textSize",
+  "floorLabel.textMargin", "floorLabel.width", "floorLabel.height", "floorLabel.cornerRadius",
+  "floorLabel.gap", "floorLabel.borderWidth", "floorLabel.fillColor", "floorLabel.borderColor", "floorLabel.textColor",
+] as const;
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
@@ -282,6 +288,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     set(corridorsPatch({ elevatorBadges: patch }, ELEVATOR_BADGES_OVERRIDABLE, (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
   patchVectorByCorridorsMarkerIndexSettings: (patch) =>
     set(corridorsPatch({ markerIndex: patch }, MARKER_INDEX_OVERRIDABLE, (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
+  patchVectorByCorridorsFloorLabelSettings: (patch) =>
+    set(corridorsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) => set(corridorsParam("elevatorBadges.cornerStyle", style)),
   setVectorByCorridorsTwoWayPassageMarkerShape: (shape) => set(corridorsParam("twoWayPassageMarker.shape", shape)),
   setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style) => set(corridorsParam("twoWayPassageMarker.cornerStyle", style)),
@@ -391,6 +399,8 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
     set(wallsPatch({ elevatorBadges: patch }, ELEVATOR_BADGES_OVERRIDABLE, (c) => ({ ...c, elevatorBadges: { ...c.elevatorBadges, ...patch } }))),
   patchVectorByWallsMarkerIndexSettings: (patch) =>
     set(wallsPatch({ markerIndex: patch }, MARKER_INDEX_OVERRIDABLE, (c) => ({ ...c, markerIndex: { ...c.markerIndex, ...patch } }))),
+  patchVectorByWallsFloorLabelSettings: (patch) =>
+    set(wallsPatch({ floorLabel: patch }, FLOOR_LABEL_OVERRIDABLE, (c) => ({ ...c, floorLabel: { ...c.floorLabel, ...patch } }))),
   setVectorByWallsElevatorBadgesCornerStyle: (style) => set(wallsParam("elevatorBadges.cornerStyle", style)),
   setVectorByWallsTwoWayPassageMarkerShape: (shape) => set(wallsParam("twoWayPassageMarker.shape", shape)),
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style) => set(wallsParam("twoWayPassageMarker.cornerStyle", style)),

@@ -9,7 +9,7 @@ A **maze editor and generator** with a Rust core (`maze-core`). Workspace; more 
 ## Languages
 
 - Converse, plan, and respond in the user's language; general terms in the user's language, specific technologies in English (`Result`, `impl`, `trait`, etc.).
-- All file contents (code, comments, docs, specs) and commit messages: English only.
+- All repository artifacts (code, comments, docs, specs, commit messages, GitHub issues, pull requests, and their comments): English only.
 
 ## Commits
 

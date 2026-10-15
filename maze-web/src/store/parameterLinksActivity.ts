@@ -18,6 +18,7 @@ export interface ParamActivityContext {
   /** Maze has a teleport / vertical passage / elevator — the "Marker indices" section is shown
    *  only then, regardless of its coverage settings. */
   hasMarkerIndexSource: boolean;
+  hasMultipleFloors?: boolean;
 }
 
 /** Settings fields this activity check needs to read across both render modes' settings objects —
@@ -31,6 +32,7 @@ export interface ParamActivitySettings {
   markerIndex?: { enabled: boolean };
   startMarker?: { textEnabled?: boolean };
   finishMarker?: { textEnabled?: boolean };
+  floorLabel?: { enabled: boolean; backgroundShape: "none" | "rectangle" | "parallelogram" };
 }
 
 const TELEPORT_PREFIXES = ["teleportMarker.", "teleportConnector", "teleportAvoidFieldExit", "teleportGroupCustomization", "teleportFloorBadge."];
@@ -135,6 +137,16 @@ export function isPathActive<P extends string>(path: P, registry: Record<P, Para
   if (p.startsWith("markerIndex.")) {
     if (!ctx.hasMarkerIndexSource) return false;
     return p === "markerIndex.enabled" || settings.markerIndex?.enabled !== false;
+  }
+
+  if (p.startsWith("floorLabel.")) {
+    if (!ctx.hasMultipleFloors) return false;
+    if (p === "floorLabel.enabled") return true;
+    if (settings.floorLabel?.enabled === false) return false;
+    if (["floorLabel.width", "floorLabel.height", "floorLabel.cornerRadius", "floorLabel.gap", "floorLabel.borderWidth", "floorLabel.fillColor", "floorLabel.borderColor"].includes(p)) {
+      return settings.floorLabel?.backgroundShape !== "none";
+    }
+    return true;
   }
 
   for (const kind of ["startMarker", "finishMarker"] as const) {

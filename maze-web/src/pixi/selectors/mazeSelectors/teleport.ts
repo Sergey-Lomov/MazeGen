@@ -24,6 +24,7 @@ export type TeleportFloorContext = {
   unscopedNodeById: Map<number, NodeDto>;
   unscopedEdges: EdgeDto[];
   activeFloorIndex: number;
+  floorCount?: number;
 };
 
 // Collapses opposite-direction teleport-edge pairs into one entity so a two-way teleport never

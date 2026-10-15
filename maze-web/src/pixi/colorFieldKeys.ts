@@ -19,6 +19,7 @@ export const STATIC_COLOR_FIELD_KEYS = [
   "elevatorFill", "elevatorBorder", "elevatorArrow",
   "elevatorBadgeFill", "elevatorBadgeBorder", "elevatorBadgeText",
   "markerIndexFill", "markerIndexText", "markerIndexBorder",
+  "floorLabelFill", "floorLabelBorder", "floorLabelText",
 ] as const;
 
 export type StaticColorFieldKey = (typeof STATIC_COLOR_FIELD_KEYS)[number];
