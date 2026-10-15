@@ -174,6 +174,16 @@ export interface ProjectFileStage {
   collapsed: boolean;
 }
 
+/** Quality control settings — the project file's `quality` section, also the whole payload of a
+ *  quality preset (`QualityPresetFile`). */
+export interface ProjectFileQuality {
+  rules: ProjectFileQcRule[];
+  stages: ProjectFileStage[];
+  strategyParams: Record<string, Record<string, string>>;
+  repairMaxIterations: number | null;
+  repairTimeBudgetSecs: number | null;
+}
+
 export interface ProjectFile {
   version: number;
   /** Maze-wide kind/orientation confirmation only (Specs/field-editor.md) — per-floor field shape
@@ -202,13 +212,7 @@ export interface ProjectFile {
     seedHistory: number[];
     seedHistoryIndex: number;
   };
-  quality: {
-    rules: ProjectFileQcRule[];
-    stages: ProjectFileStage[];
-    strategyParams: Record<string, Record<string, string>>;
-    repairMaxIterations: number | null;
-    repairTimeBudgetSecs: number | null;
-  };
+  quality: ProjectFileQuality;
   presets: {
     connections: [string, PresetConnectionEntry][];
     lockedNodes: [string, NodeLockKind][];
@@ -294,15 +298,40 @@ export interface VisualPresetFile {
 
 /** Raised when a project file is loaded as a visual preset or the other way round, so the UI can
  *  show a dedicated message instead of a generic validation error. */
+export type FileKind = "project" | "visual_preset" | "quality_preset";
+
 export class FileKindMismatchError extends Error {
-  constructor(readonly expected: "project" | "visual_preset", readonly found: "project" | "visual_preset") {
+  constructor(readonly expected: FileKind, readonly found: FileKind) {
     super(`Expected a ${expected} file, got a ${found} file`);
     this.name = "FileKindMismatchError";
   }
+}
+
+/** A project file has no `kind` marker; recognize it by its mandatory top-level sections. */
+export function looksLikeProjectFile(obj: Record<string, unknown>): boolean {
+  return obj.kind === undefined && obj.generation != null && obj.tessellation != null;
 }
 
 /** `accept` value for the visual preset load dialog — same iOS/iPadOS exception as
  *  `projectFileAccept`. */
 export function visualPresetFileAccept(nav: PlatformInfo): string | undefined {
   return isIOS(nav) ? undefined : VISUAL_PRESET_FILE_EXTENSION;
+}
+
+/** Standalone quality preset (GitHub issue #751): only the quality control settings (rules,
+ *  stages, strategy params, repair limits), without anything else from the project. */
+export const QUALITY_PRESET_KIND = "maze-quality-preset";
+export const QUALITY_PRESET_VERSION = 1;
+export const QUALITY_PRESET_FILE_EXTENSION = ".mazequality";
+
+export interface QualityPresetFile {
+  kind: typeof QUALITY_PRESET_KIND;
+  version: number;
+  quality: ProjectFileQuality;
+}
+
+/** `accept` value for the quality preset load dialog — same iOS/iPadOS exception as
+ *  `projectFileAccept`. */
+export function qualityPresetFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : QUALITY_PRESET_FILE_EXTENSION;
 }

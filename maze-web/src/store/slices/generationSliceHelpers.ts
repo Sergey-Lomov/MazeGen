@@ -1,6 +1,7 @@
 import type { CheckDescriptor, StrategyDescriptor } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
 import type { QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
+import type { ProjectFileQcRule } from "../projectExport/types";
 import * as m from "~/paraglide/messages";
 
 // Rule-kind matching across the store (addCheck/newRule below, RulesColumn's candidate filter,
@@ -82,6 +83,16 @@ export function buildDefaultNestedStrategies(strategyId: string, availableStrate
 export function defaultRuleName(kind: string): string {
   const fn = (m as unknown as Record<string, (() => string) | undefined>)[`issue.${kind}.label`];
   return fn?.() ?? kind;
+}
+
+/** Store rules from a saved `quality.rules` list (project file or quality preset).
+ *  `nextLocalCheckId` is not saved, so it is recomputed here — see CheckInstance's doc comment in
+ *  storeTypes.ts. */
+export function rulesFromFile(rules: ProjectFileQcRule[]): QcRuleState[] {
+  return rules.map((rule) => ({
+    ...rule,
+    nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
+  }));
 }
 
 // `name: null` means no custom name; the view model resolves the issue kind's current-locale

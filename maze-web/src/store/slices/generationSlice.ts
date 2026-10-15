@@ -5,7 +5,7 @@ import type { InitialGenerationConfig } from "../../wasm/types";
 import type { MazeStore, GenerationState, GenerationActions, QcRuleState } from "../storeTypes";
 import { debugStaleOf, buildResetDownstreamState } from "../storeHelpers";
 import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
-import { resolveCheckKind, defaultParamsFor, newRule, newStage } from "./generationSliceHelpers";
+import { resolveCheckKind, defaultParamsFor, newRule, newStage, rulesFromFile } from "./generationSliceHelpers";
 import { generateWithSeed, generateWithSeedAsync } from "./generateConfigBuilder";
 import { createGenerationRulesSlice } from "./generationSliceRules";
 import { createGenerationStagesSlice } from "./generationSliceStages";
@@ -232,6 +232,14 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setError: (msg) => set({ error: msg }),
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
+  loadQualityPreset: (quality) => set((state) => ({
+    rules: rulesFromFile(quality.rules),
+    stages: quality.stages,
+    strategyParams: quality.strategyParams,
+    repairMaxIterations: quality.repairMaxIterations,
+    repairTimeBudgetSecs: quality.repairTimeBudgetSecs,
+    debugStale: debugStaleOf(state),
+  })),
   setRepairTimeBudgetSecs: (v) => set({ repairTimeBudgetSecs: v }),
 
   setSplitPatternMode: (v) => set((state) => ({ splitPatternMode: v, debugStale: debugStaleOf(state) })),

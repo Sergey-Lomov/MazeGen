@@ -216,8 +216,8 @@ export function validatePairArray<T>(
  * `quality.rules[].checks`, `presets.teleports`), where a duplicate signals file corruption
  * rather than something recoverable with a default. `label` names the id field in the error
  * message (e.g. "teleport id", "localId"). */
-export function assertUniqueIds<T>(items: T[], getId: (item: T) => number, label: string, path: string): void {
-  const seen = new Set<number>();
+export function assertUniqueIds<T, K extends number | string>(items: T[], getId: (item: T) => K, label: string, path: string): void {
+  const seen = new Set<K>();
   for (const item of items) {
     const id = getId(item);
     if (seen.has(id)) throw new Error(`Duplicate ${label} ${id} at ${path}`);

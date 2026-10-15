@@ -5,7 +5,9 @@ import {
   VISUAL_PRESET_KIND,
   VISUAL_PRESET_VERSION,
   VISUAL_PRESET_FILE_EXTENSION,
+  QUALITY_PRESET_KIND,
   FileKindMismatchError,
+  looksLikeProjectFile,
   type ProjectFileImageExport,
   type VisualPresetFile,
   type VisualPresetImageExport,
@@ -45,17 +47,13 @@ export function serializeVisualPreset(state: MazeState): VisualPresetFile {
   };
 }
 
-/** A project file has no `kind` marker; recognize it by its mandatory top-level sections. */
-function looksLikeProjectFile(obj: Record<string, unknown>): boolean {
-  return obj.kind === undefined && obj.generation != null && obj.tessellation != null;
-}
-
 /** Validates a visual preset file. Missing or unknown fields fall back to defaults through the
  *  same lenient validators the project file's `imageExport` section uses; a project file passed
  *  by mistake raises `FileKindMismatchError`. */
 export function parseVisualPreset(raw: unknown): VisualPresetFile {
   const obj = assertObject(raw, "root");
   if (obj.kind !== VISUAL_PRESET_KIND) {
+    if (obj.kind === QUALITY_PRESET_KIND) throw new FileKindMismatchError("visual_preset", "quality_preset");
     if (looksLikeProjectFile(obj)) throw new FileKindMismatchError("visual_preset", "project");
     throw new Error("Not a visual preset file");
   }

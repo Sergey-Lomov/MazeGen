@@ -217,7 +217,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         loadProject(parseAndValidate(json));
       } catch (err) {
         if (err instanceof FileKindMismatchError) {
-          setError(m["project.load_error_visual_preset"]());
+          setError(err.found === "quality_preset" ? m["project.load_error_quality_preset"]() : m["project.load_error_visual_preset"]());
           return;
         }
         const message = err instanceof Error ? err.message : String(err);

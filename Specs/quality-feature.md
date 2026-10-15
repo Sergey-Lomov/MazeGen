@@ -11,7 +11,9 @@ The Quality feature manages active checks, their **rules** (the unit a fix strat
 
 Subtitle: `"N check(s) active"`.
 
-The card body (`QualityFeature` component) renders a status hint only when the panel is **closed**. When `qualityOpen` is true, `QualityFeature` returns `null`.
+The card body (`QualityFeature` component) shows `status.no_checks` when no check is active, otherwise the `quality.open_to_configure` hint while the panel is **closed** (no hint while it is open). Below that it always shows the repair limits (max iterations, time budget — each a switch plus a number input), then a divider, then "Save rules" / "Load rules" buttons that save and load the whole quality configuration as a standalone rules file (GitHub issue #751 — see `Specs/project-file.md`'s "Quality preset" section). Unknown ids skipped on load are listed in an `AlertModal`.
+
+`QualityDetailPanel` shows the `quality.select_to_view` hint both for no selection and for a selection that no longer resolves (e.g. after a rules load replaced every rule).
 
 ## Canvas lifecycle
 

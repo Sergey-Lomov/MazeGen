@@ -1,6 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { typography, muted, disabled, spacing } from "../../styles/theme";
+import { Button } from "../Button";
+import { Inline } from "../Layout";
+import { AlertModal } from "../AlertModal";
+import { readJsonFile } from "../jsonFile";
+import {
+  downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError,
+  type ProjectFileQuality,
+} from "../../store/projectExport";
+import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -38,6 +46,10 @@ export function QualityFeature() {
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const setRepairMaxIterations = useMazeStore((s) => s.setRepairMaxIterations);
   const setRepairTimeBudgetSecs = useMazeStore((s) => s.setRepairTimeBudgetSecs);
+  const loadQualityPreset = useMazeStore((s) => s.loadQualityPreset);
+  const setError = useMazeStore((s) => s.setError);
+  const presetInputRef = useRef<HTMLInputElement>(null);
+  const [skippedIds, setSkippedIds] = useState<string[] | null>(null);
 
   // The store only has room for "a number" or "disabled" (null) — it can't remember what number
   // was last set while disabled. Re-enabling the switch should restore that last value, not snap
@@ -55,6 +67,31 @@ export function QualityFeature() {
     (v) => { setLastTimeBudgetSecs(v); setRepairTimeBudgetSecs(v); },
     0.1,
   );
+
+  function handlePresetFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    readJsonFile(file, (json) => {
+      let quality: ProjectFileQuality;
+      let skipped: string[];
+      try {
+        ({ quality, skipped } = prepareQualityPresetLoad(json, useMazeStore.getState()));
+      } catch (err) {
+        if (err instanceof FileKindMismatchError) {
+          setError(err.found === "project"
+            ? m["quality.preset.load_error_project_file"]()
+            : m["quality.preset.load_error_visual_preset"]());
+          return;
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        setError(m["quality.preset.load_error"]({ message }));
+        return;
+      }
+      loadQualityPreset(quality);
+      if (skipped.length > 0) setSkippedIds(skipped);
+    }, setError);
+  }
 
   return (
     <div style={styles.root}>
@@ -97,6 +134,29 @@ export function QualityFeature() {
           />
         </div>
       </div>
+      <div style={styles.divider} />
+      <Inline gap="itemGap">
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => downloadQualityPresetFile(useMazeStore.getState())}>
+          {m["quality.preset.save"]()}
+        </Button>
+        <Button variant="secondary" layoutStyle={{ flex: 1 }} onClick={() => presetInputRef.current?.click()}>
+          {m["quality.preset.load"]()}
+        </Button>
+      </Inline>
+      <input
+        ref={presetInputRef}
+        type="file"
+        name="quality-preset-file"
+        accept={qualityPresetFileAccept(navigator)}
+        style={{ display: "none" }}
+        onChange={handlePresetFileChange}
+      />
+      {skippedIds && (
+        <AlertModal
+          message={m["quality.preset.skipped_ids"]({ ids: skippedIds.join(", ") })}
+          onClose={() => setSkippedIds(null)}
+        />
+      )}
     </div>
   );
 }
@@ -128,6 +188,9 @@ const styles: Record<string, React.CSSProperties> = {
   limitLabel: {
     ...muted(typography.body),
     flex: 1,
+  },
+  divider: {
+    borderTop: `1px solid ${ui.border.default}`,
   },
   limitInput: {
     ...sharedStyles.inputSm,

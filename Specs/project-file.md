@@ -67,8 +67,50 @@ reused in another project without copying generation settings or maze content. C
   same lenient validators as the project file's `imageExport`; unknown fields are ignored. A
   preset whose `version` is newer than supported is rejected.
 - File kind mix-up: a project file has no `kind`. `parseAndValidate` rejects a file with the preset
-  `kind`, and `parseVisualPreset` rejects a file that looks like a project (no `kind`, has
+  `kind` (or the quality preset `kind`, see below), and `parseVisualPreset` rejects a file that looks like a project (no `kind`, has
   `generation` and `tessellation`), both with `FileKindMismatchError`, which the UI maps to a
   dedicated message (`project.load_error_visual_preset` /
   `image_export.visual_preset.load_error_project_file`). Other JSON without the preset `kind`
   fails with a generic error.
+
+## Quality preset (rules file)
+
+GitHub issue #751. A standalone file with only the quality control settings, so a tuned rule set
+can be reused in another project or shared without copying the whole project. Code:
+`maze-web/src/store/projectExport/qualityPreset.ts` (save/parse/unknown-id filter) and the
+`loadQualityPreset` action (`generationSlice.ts`); UI: "Save rules" / "Load rules" buttons in the
+Quality card (`QualityFeature.tsx`).
+
+- Content: JSON `QualityPresetFile` (`types.ts`) — `kind: "maze-quality-preset"`,
+  `version: QUALITY_PRESET_VERSION`, and `quality`: exactly the project file's `quality` section
+  (`ProjectFileQuality` — rules, stages, `strategyParams`, `repairMaxIterations`,
+  `repairTimeBudgetSecs`), built by the shared `serializeQuality(state)` and validated by the shared
+  `validateQuality` (`validateSections.ts`).
+- Extension: `QUALITY_PRESET_FILE_EXTENSION = ".mazequality"`, with the same iOS/iPadOS `accept`
+  exception as project files (`qualityPresetFileAccept`) and the same neutral download MIME type.
+- Load replaces the whole quality configuration (rules, stages, strategy params, repair limits);
+  maze content, generation parameters, visual style and every other setting stay untouched.
+  `nextLocalCheckId` is recomputed (`rulesFromFile`, shared with `loadProject`).
+- Older presets: keys added after a preset was saved fall back to their defaults, the same way as
+  in an old project file's `quality` section; unknown keys are ignored. A preset whose `version` is
+  newer than supported is rejected.
+- Malformed presets (invalid JSON, wrong shape, inconsistent stages, duplicate rule or stage ids)
+  are rejected as a whole; `prepareQualityPresetLoad` fully parses and filters the file before
+  `loadQualityPreset` runs, so nothing is applied partially. Duplicate rule/stage ids are rejected
+  by the shared `validateQuality`, so project files get the same check.
+- Unknown ids (removed or renamed since the preset was saved, or added in a newer build) are
+  skipped by `dropUnknownQualityIds` against the loaded registry, and the UI lists the skipped ids
+  in a notice (`quality.preset.skipped_ids`):
+  - an unknown check is removed from its rule, and a rule left without checks by that removal is
+    dropped and scrubbed from its stage (a rule saved with no checks stays);
+  - a rule whose issue kind no check or strategy handles is dropped;
+  - an unknown top-level strategy becomes "no fix";
+  - a nested strategy entry with an unknown strategy, or in a slot its parent strategy doesn't
+    declare (listed as `<parent strategy id>.<slot id>`), is removed with its own nested chain;
+  - `strategyParams` of unknown strategies are dropped silently.
+
+  Before the registry is loaded no filtering is done.
+- File kind mix-up: `parseQualityPreset` rejects a visual preset (by `kind`) and a project file (no
+  `kind`, has `generation` and `tessellation`) with `FileKindMismatchError`; `parseAndValidate` and
+  `parseVisualPreset` reject a quality preset the same way. Each load dialog maps the error's
+  `found` kind to a dedicated message.

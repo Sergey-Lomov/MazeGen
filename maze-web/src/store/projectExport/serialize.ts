@@ -1,7 +1,7 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
-import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport } from "./types";
+import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport, type ProjectFileQuality } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -57,15 +57,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       seedHistory: state.seedHistory,
       seedHistoryIndex: state.seedHistoryIndex,
     },
-    quality: {
-      // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc
-      // comment in storeTypes.ts.
-      rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
-      stages: state.stages,
-      strategyParams: state.strategyParams,
-      repairMaxIterations: state.repairMaxIterations,
-      repairTimeBudgetSecs: state.repairTimeBudgetSecs,
-    },
+    quality: serializeQuality(state),
     presets: {
       connections: Array.from(state.presetConnections.entries()),
       lockedNodes: Array.from(state.lockedNodes.entries()),
@@ -134,6 +126,18 @@ export function serializeProject(state: MazeState): ProjectFile {
   };
 }
 
+export function serializeQuality(state: MazeState): ProjectFileQuality {
+  return {
+    // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc
+    // comment in storeTypes.ts.
+    rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
+    stages: state.stages,
+    strategyParams: state.strategyParams,
+    repairMaxIterations: state.repairMaxIterations,
+    repairTimeBudgetSecs: state.repairTimeBudgetSecs,
+  };
+}
+
 export function serializeImageExport(state: MazeState): ProjectFileImageExport {
   return {
     activeRenderMode: state.activeRenderMode,
@@ -153,7 +157,7 @@ export function serializeImageExport(state: MazeState): ProjectFileImageExport {
 
 /** Downloads `data` as pretty-printed JSON under `fileName`. Neutral MIME type: with
  *  `application/json` some browsers (Safari, mobile) append `.json` to the name, and the resulting
- *  `.maze.json`/`.mazestyle.json` file no longer passes the load dialog's extension filter. */
+ *  `.maze.json`/`.mazestyle.json`/`.mazequality.json` file no longer passes the load dialog's extension filter. */
 export function downloadJsonFile(data: unknown, fileName: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);

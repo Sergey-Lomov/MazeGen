@@ -4,7 +4,7 @@ import { ImageExportFeature } from "../components/features/ImageExportFeature";
 import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { serializeProject, serializeVisualPreset } from "../store/projectExport";
+import { serializeProject, serializeVisualPreset, serializeQualityPreset } from "../store/projectExport";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -152,6 +152,13 @@ describe("ImageExportFeature", () => {
       const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
       pickPresetFile(serializeProject(useMazeStore.getState()), container);
       await waitFor(() => expect(useMazeStore.getState().error).toBe(m["image_export.visual_preset.load_error_project_file"]()));
+    });
+
+    it("shows a dedicated message when a quality preset is picked", async () => {
+      useMazeStore.setState({ error: null });
+      const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+      pickPresetFile(serializeQualityPreset(useMazeStore.getState()), container);
+      await waitFor(() => expect(useMazeStore.getState().error).toBe(m["image_export.visual_preset.load_error_quality_preset"]()));
     });
   });
 });

@@ -313,6 +313,10 @@ export interface GenerationActions {
   setDebugSearchQuery: (query: string) => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
+  /** Replaces the whole quality control configuration (rules, stages, strategy params, repair
+   *  limits) with a loaded quality preset's (GitHub issue #751). Everything else in the project
+   *  is untouched. The caller validates the file and drops unknown ids first. */
+  loadQualityPreset: (quality: import("./projectExport").ProjectFileQuality) => void;
   setRepairTimeBudgetSecs: (v: number | null) => void;
   setSplitPatternMode: (v: boolean) => void;
   setSplitMaxNodes: (v: number) => void;
