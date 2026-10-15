@@ -50,7 +50,7 @@ key = `${a.point[0]},${a.point[1]}${aSlotSuffix}-${b.point[0]},${b.point[1]}${bS
 
 `one_way_forward` means passage in direction A → B (A = canonically lesser). `one_way_backward` means B → A.
 
-Clicking a one-way tool on an undecided or non-one-way edge sets `one_way_forward`. Clicking again on `one_way_forward` sets `one_way_backward`. Clicking again on `one_way_backward` sets `one_way_forward`. No other states are toggled this way.
+Clicking the one-way tool on an undecided or non-one-way edge sets `one_way_forward`; on an existing one-way edge it reverses the direction (`one_way_forward` ↔ `one_way_backward`). The settings tool reverses one-way edges too (`one_way_flip` mode of `applyTool`, which leaves any other edge unchanged) — see `Specs/element-tools.md` (GitHub issue #748).
 
 ## Markers
 
@@ -91,6 +91,13 @@ Both live in the single Tools section (GitHub issue #456 — see "## Tools" belo
 
 ### Shared vertex editing mode
 
+`Specs/element-tools.md` (GitHub issue #748) supersedes the click semantics below: a plain click
+with a vertex tool always adds the tool's own element (completing a pending teleport where one is
+pending), including on a cell that already holds elements. A press on an existing element still
+arms a drag; releasing in the same cell is that click. Direction changes and elevator floor edits
+belong to the settings tool, and the move tool relocates any element, including the generation
+source, locks, and elements on split nodes.
+
 All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_two_way`) share one editing mode: whichever vertex tool is active, drag-to-move and right-click-to-delete apply uniformly to the start marker, the finish marker, and every teleport endpoint — not just the element type matching the active tool.
 
 - **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker. Live preview only (`presetDragOverride`'s `marker` variant, GitHub issue #613): the pointermove handler writes the drag's current cell to `presetDragOverride` instead of calling `setPresetStart` on every move — `PresetConnectionsRenderer` substitutes it in place of the committed `presetStart` while it's set. Returning to the origin clears the preview back to the committed marker, while the drag remains armed so a later cell is still previewed (GitHub issue #695). Nothing is written to `presetStart` until pointerup, and only if the cursor actually left the origin cell; a plain click that never moved stays a no-op.
@@ -102,7 +109,7 @@ All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_
 
 Hit-testing checks the start marker, then the finish marker, then teleport endpoints, regardless of which vertex tool is active — so drag/delete on overlapping elements at the same cell resolves in that priority order.
 
-Only when nothing is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools (still tool-specific: the placement gesture and preview line only run while a teleport tool is active). A plain click (no drag) on an existing teleport endpoint's own cell, with no placement pending, still cycles that entry's direction only when a teleport tool is active (see below).
+Only when nothing is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools (still tool-specific: the placement gesture and preview line only run while a teleport tool is active). A plain click (no drag) on an existing teleport endpoint's own cell starts or completes a new teleport there, like a click on an empty cell; direction changes belong to the settings tool (`Specs/element-tools.md`, GitHub issue #748).
 
 ### Placement gesture
 
@@ -116,9 +123,8 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell determines the hit and the closest endpoint in that cell wins) while a teleport tool is active:
 
 - **RMB on an existing endpoint** — removes that entire teleport entry (`removePresetTeleport`).
-- **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor (`movePresetTeleportEndpoint`), live-updating on every cell change during the drag. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
-- **LMB click (no drag) on an existing endpoint**, when no placement is pending — cycles that entry's direction: `forward ↔ backward`; `two_way` is unaffected (`cyclePresetTeleportDirection`). This is how a one-way teleport's direction is flipped after creation; there's no other UI path to reach `"backward"`.
-- **LMB click (no drag) on an existing endpoint's cell**, while a placement *is* pending — completes the pending placement at that cell (starts a new link) rather than cycling the existing entry's direction.
+- **LMB press-drag on an existing endpoint** — moves that one endpoint (`from` or `to`) to the cell under the cursor. The drag is a live preview (`presetDragOverride`'s `teleportEndpoint` variant) committed once on release through `movePresetTeleportEndpointTo`, which opens the node picker when the landing point is split. Dragging an endpoint onto its own link's other endpoint is a no-op (prevents collapsing a teleport to a single cell).
+- **LMB click (no drag) on an existing endpoint's cell** — starts a new placement there, or completes the pending one (GitHub issue #748). The type and direction of an existing teleport are edited with the settings tool (`setPresetTeleportDirection`), or with the preset list's direction toggle.
 
 A press that doesn't move to a different cell is resolved as a click on `pointerup`, not a drag, via the controller's `draggingTeleportEndpoint`/`teleportDragMoved` flags. The controller captures the pointerdown viewport position so this release-only resolution remains correct even when no `pointermove` event was delivered.
 
@@ -213,7 +219,7 @@ Single click, not a two-click gesture like teleports (GitHub issue #357 follow-u
 3. **Both directions available** → `presetVerticalPassagePending: { origin, tool, availableDirections: ["up","down"] }` is set and `PresetVerticalDirectionDialog` opens — a small `Modal` with two plain buttons, "Up"/"Down", no separate Confirm/Cancel footer; picking one commits the entry via `choosePresetVerticalPassageDirection` and closes the dialog in the same click. ESC or closing the dialog calls `cancelPresetVerticalPassagePlacement()`, discarding the pending placement.
 4. **Neither direction available** (no floor above or below has a cell at that point) → no-op; the tools are hidden entirely below 2 floors, so this only guards a same-point edge case on a taller maze.
 
-Hit-testing, right-click-to-delete, and click-to-cycle-direction on an *existing* endpoint (`pickVerticalPassageEndpointAt`) mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click (no drag) on an existing endpoint still cycles `forward ↔ backward` the same way a teleport endpoint's own click-to-cycle works. A plain click anywhere else in a cell with an existing vertical passage also targets that same cell/floor pair: one available pair cycles `forward ↔ backward`, while two existing adjacent-floor pairs are left unchanged rather than duplicated (GitHub issue #495; same behavior as post-edit issues #385/#491).
+Hit-testing and right-click-to-delete on an *existing* endpoint (`pickVerticalPassageEndpointAt`) mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click always adds a new passage, offering every direction that has a cell on the adjacent floor, even where passages already exist (GitHub issue #748, superseding #495). Direction and type changes use the settings tool.
 
 **Drag-to-move** (GitHub issue #566): dragging an existing vertical-passage endpoint moves BOTH ends to the dragged point's `(x, y)` — a vertical passage's two ends are the same column on different floors, so moving only the dragged end would desync them. The drag is a live preview only (`presetDragOverride`, set on pointerdown/pointermove, read by `PresetConnectionsRenderer` in place of the entry's committed endpoint); nothing is written to `presetVerticalPassages`/`presetElevators` until pointerup. On release, `moveVerticalPassageEndpoint` (`fieldValidity.ts`) validates that the OTHER end's own floor has a cell at the new `(x, y)` (`cellExistsAt`) — if not, the whole drag is reverted (no state change) and `presetDragFailureMessage` is set so `PresetConnectionsFeature` can show an `AlertModal` naming the rejecting floor/point. The dragged end's own floor is never rejected: the pointermove handler already gates candidate points to `getCachedCellSet()` (the active floor's own valid cells) before a drag override is even set.
 
@@ -231,7 +237,7 @@ Same override-preview + commit-on-release mechanics as vertical-passage drag (Gi
 3. Confirm (`confirmPresetElevatorPlacement`) is disabled until at least 2 floors are selected. On confirm, one `PresetElevatorEntry` is created with one `PresetEndpoint` per selected floor — **the same `(x, y)` point on every floor**, only `level` differs.
 4. Cancel (ESC, or closing the dialog) calls `cancelPresetElevatorPlacement()`, discarding the pending placement without creating an entry.
 
-Editing an existing elevator: right-click any of its floor endpoints removes the entire entry (`removePresetElevator`). Dragging a floor endpoint moves the whole elevator (see "Elevator drag-to-move" below); there is no other per-floor endpoint edit — floor membership itself is only set at creation time.
+Editing an existing elevator: right-click any of its floor endpoints removes the entire entry (`removePresetElevator`). Dragging a floor endpoint moves the whole elevator (see "Elevator drag-to-move" above). Floor membership is edited with the settings tool or the preset list's gear (`editPresetElevator`, which seeds the dialog with the entry's current floors and sets `editingId`). A click with the elevator tool always starts a new elevator (GitHub issue #748).
 
 ### Validity
 
@@ -366,10 +372,12 @@ All tools live in one **Tools** section of the feature card, rendered as a wrapp
 | `vertical_passage_one_way` | Two-click placement of a one-way vertical passage — see "Preset vertical passages and elevators" |
 | `vertical_passage_two_way` | Two-click placement of a two-way vertical passage — see "Preset vertical passages and elevators" |
 | `elevator` | Click a point, then pick reachable floors in a dialog — see "Preset vertical passages and elevators" |
-| `lock_in` | Locks node to block incoming edges |
+| `move` | Moves any element of a cell, including split nodes' elements — see `Specs/element-tools.md` |
+| `settings` | Reverses a one-way edge, or opens the settings of a cell's teleport, vertical passage, elevator, lock, or split tile — see `Specs/element-tools.md` |
+| `lock_in` | Locks node to block incoming edges (lock tools set their kind and never toggle it off; press-dragging an existing lock moves it — see `Specs/element-tools.md`) |
 | `lock_out` | Locks node to block outgoing edges |
 | `full_lock` | Locks node both in and out (`"both"`) |
-| `gen_source` | On a plain (unsplit) cell: toggles `presetGenSource` on left-click (click the same cell to clear). On a declared split point: left-click opens `PresetSplitTargetDialog` (GitHub issue #494) — the picked node is assigned unconditionally (no toggle). Right-click clears `presetGenSource` whenever it sits on the clicked cell, on any cell (split or not). |
+| `gen_source` | Left-click sets `presetGenSource` (no toggle, GitHub issue #748). On a declared split point: left-click opens `PresetSplitTargetDialog` (GitHub issue #494) and the picked node is assigned. Right-click clears `presetGenSource` whenever it sits on the clicked cell, on any cell (split or not). |
 | `manage_split_nodes` | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
 | `clear` | Removes any preset object in the clicked cell. Shown with a danger-hued selected border (`btn-tool-icon-selected-danger`) and a trash-can glyph; previously a text button in the Control section. |
 

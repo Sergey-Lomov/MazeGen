@@ -521,6 +521,7 @@ export function buildResetDownstreamState() {
     postEditFocusedPoint: null, postEditHoveredEntity: null, postEditEntityDeletePrompt: null,
     postEditResetPrompt: null, postEditChangesOpen: false, postEditChangesEntityFilter: null,
     postEditDragOverride: null, postEditDragFailureMessage: null,
+    postEditEntityPickPrompt: null, postEditMoveRequest: null, postEditConnectionSettingsPrompt: null,
   };
 }
 
@@ -605,6 +606,10 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
       presetFocusedPoint: null,
       postEditFocusedPoint: null,
       presetSplitTargetPrompt: null,
+      presetEntityPickPrompt: null,
+      presetMoveRequest: null,
+      presetConnectionSettingsPrompt: null,
+      presetLockSettingsPrompt: null,
     } as Partial<MazeState>;
   };
 }

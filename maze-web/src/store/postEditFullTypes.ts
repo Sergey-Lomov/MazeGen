@@ -5,11 +5,14 @@ import type { PostEditCommand } from "./postEditCommandTypes";
 import type { PostEditResetLifelineDescriptor } from "../pixi/postEditResetLifelines";
 import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
 import type { PostEditPointEntityDescriptor } from "../pixi/postEditPointEntities";
+import type { EntityToolPurpose } from "../pixi/entityToolKinds";
 import type {
   PostEditTool,
+  PostEditEdgeToolMode,
   PostEditEdge,
   PostEditMeta,
   PostEditTeleportDirection,
+  PostEditVerticalPassageDirection,
   PostEditTeleportEntry,
   PostEditVerticalPassageEntry,
   PostEditElevatorEntry,
@@ -289,6 +292,9 @@ export interface PostEditState {
           | { tool: "place_elevator"; origin: PostEditEndpoint; levels: number[]; editingId?: string };
         queue?: { targetIndex: number; point: [number, number]; level?: number; nodeIds: number[] }[];
         picks?: (PostEditEndpoint | undefined)[];
+        /** A node the picker leaves out: the other endpoint of a teleport whose endpoint is being
+         *  moved onto this tile (GitHub issue #748). */
+        excludedNodeId?: number;
       }
     | null;
   /** In-progress entity-delete prompt (GitHub issue #550, mirroring the preset-side dialog from
@@ -334,6 +340,15 @@ export interface PostEditState {
    *  floor/point rejected the move. Cleared by `dismissPostEditDragFailureMessage` (the dialog's
    *  own OK button). */
   postEditDragFailureMessage: (PostEditVerticalDragFailure & { entityKind: "vertical_passage" | "elevator" }) | null;
+  /** Point whose elements the move or settings tool must disambiguate (GitHub issue #748) — set by
+   *  `requestPostEditEntityPick` when the cell carries more than one element relevant to `purpose`.
+   *  `PostEditEntityPickDialog` lists every node's elements of a split tile at once. */
+  postEditEntityPickPrompt: { point: [number, number]; level?: number; purpose: EntityToolPurpose } | null;
+  /** Element chosen for the move tool from `postEditEntityPickPrompt`. `PostEditController` takes it
+   *  on the next pointer event and starts carrying it (click-to-drop). */
+  postEditMoveRequest: PostEditPointEntityDescriptor | null;
+  /** Teleport or vertical passage whose type/direction the settings dialog edits (GitHub issue #748). */
+  postEditConnectionSettingsPrompt: { kind: "teleport" | "vertical_passage"; id: string } | null;
 }
 
 /** See `PostEditState.postEditDragOverride`. Each variant names the entity being dragged and its
@@ -353,12 +368,14 @@ export interface PostEditActions {
   /** Same as `applyPostEditTool`, but takes `tool` explicitly instead of reading
    * `state.postEditTool` — used by the "Manage split nodes" dialog's own kind switcher (GitHub
    * issue #234), which must not disturb the canvas's globally active edge tool. */
-  applyPostEditToolAt: (tool: PostEditTool, edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
+  applyPostEditToolAt: (tool: PostEditEdgeToolMode, edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
   setPostEditEndpoint: (kind: "start" | "finish", endpoint: PostEditEndpoint) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
   setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
   addPostEditTeleport: (from: PostEditEndpoint, to: PostEditEndpoint, direction: PostEditTeleportDirection) => void;
-  cyclePostEditTeleportDirection: (id: string) => void;
+  /** Sets a teleport's type/direction outright (settings dialog, GitHub issue #748) — appends an
+   *  `absolute` `setTeleportDirection` command; a no-op when nothing changes. */
+  setPostEditTeleportDirection: (id: string, direction: PostEditTeleportDirection) => void;
   removePostEditTeleport: (id: string) => void;
   movePostEditTeleportEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   confirmPostEdit: () => Promise<void>;
@@ -452,7 +469,8 @@ export interface PostEditActions {
   startPostEditVerticalPassagePlacement: (origin: PostEditEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
   choosePostEditVerticalPassageDirection: (direction: "up" | "down") => void;
   cancelPostEditVerticalPassagePlacement: () => void;
-  cyclePostEditVerticalPassageDirection: (id: string) => void;
+  /** Vertical-passage counterpart of `setPostEditTeleportDirection` (GitHub issue #748). */
+  setPostEditVerticalPassageDirection: (id: string, direction: PostEditVerticalPassageDirection) => void;
   removePostEditVerticalPassage: (id: string) => void;
   /** Moves BOTH ends of the passage so the dragged end lands on `endpoint` (GitHub issue #566) —
    *  see `movePostEditVerticalPassageEndpoint` (postEditVerticalUtils.ts)'s own doc comment. Sets
@@ -463,6 +481,21 @@ export interface PostEditActions {
    *  `findNodeAt` resolution `resolveVerticalPassageMove` always used before this issue. */
   movePostEditVerticalPassageEndpoint: (id: string, end: "from" | "to", endpoint: PostEditEndpoint, otherEndpoint?: PostEditEndpoint) => void;
   startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
+  /** Opens the floor dialog for the existing elevator `id`, seeded with its current floors. */
+  editPostEditElevator: (id: string, origin: PostEditEndpoint) => void;
+  /** Entry point of the move and settings tools (GitHub issue #748) for one cell: lists the cell's
+   *  elements relevant to `purpose` across every node of a split tile. 0 is a no-op, exactly 1 is
+   *  acted on directly, more than 1 opens `postEditEntityPickPrompt`. */
+  requestPostEditEntityPick: (point: [number, number], level: number | undefined, purpose: EntityToolPurpose) => void;
+  /** Acts on the element picked in `PostEditEntityPickDialog` and closes the prompt. */
+  choosePostEditEntityPick: (descriptor: PostEditPointEntityDescriptor) => void;
+  cancelPostEditEntityPick: () => void;
+  /** Returns and clears `postEditMoveRequest`. */
+  takePostEditMoveRequest: () => PostEditPointEntityDescriptor | null;
+  /** Opens the settings surface of one element: the connection dialog, the elevator floor dialog,
+   *  or the split-node panel. Other kinds have no settings and are ignored. */
+  openPostEditEntitySettings: (descriptor: PostEditPointEntityDescriptor) => void;
+  cancelPostEditConnectionSettings: () => void;
   togglePostEditElevatorFloor: (floorIndex: number) => void;
   confirmPostEditElevatorPlacement: () => void;
   cancelPostEditElevatorPlacement: () => void;

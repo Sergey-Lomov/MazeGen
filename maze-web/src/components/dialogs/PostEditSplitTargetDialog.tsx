@@ -8,7 +8,7 @@ import { activeFloorLevel } from "../../store/storeHelpers";
 import { buildSplitFloorGeometry } from "../../pixi/splitFloorPreview";
 import { SplitPointPixiPreview } from "./SplitPointPixiPreview";
 import { formatTargetLabel } from "../../pixi/targetLabel";
-import { SplitTargetPicker, numberToCssColor, type SplitTargetOption } from "./SplitTargetPicker";
+import { SplitTargetPicker, numberToCssColor, shownSplitTargets, type SplitTargetOption } from "./SplitTargetPicker";
 import * as m from "~/paraglide/messages";
 import { cairoCanonicalFaceOrder } from "../../pixi/cairoGeometry";
 
@@ -75,7 +75,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   if (!prompt || !point) return null;
 
   const coords = formatTargetLabel(point, level, true, undefined);
-  const targetOptions: SplitTargetOption[] = prompt.nodeIds.map((id, index) => ({
+  // Colors and names follow each node's index on the full list, so a node left out by
+  // `excludedNodeId` keeps every other node's own color and name.
+  const targetOptions: SplitTargetOption[] = shownSplitTargets(prompt.nodeIds, (id) => id === prompt.excludedNodeId).map(({ node: id, index }) => ({
     key: String(id),
     color: numberToCssColor(splitSlotColor(index, canvas.node.splitSlots)),
     label: preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 }),

@@ -11,13 +11,17 @@ import type { PresetTeleportEntry } from "./fieldEditUtils";
 export function isPresetConnectionsModalOpen(
   state: Pick<
     PresetConnectionsState,
-    "presetSplitTargetPrompt" | "presetEntityDeletePrompt" | "presetVerticalPassagePending" | "presetElevatorPending"
+    | "presetSplitTargetPrompt" | "presetEntityDeletePrompt" | "presetVerticalPassagePending" | "presetElevatorPending"
+    | "presetEntityPickPrompt" | "presetConnectionSettingsPrompt" | "presetLockSettingsPrompt"
   >,
 ): boolean {
   return state.presetSplitTargetPrompt !== null
     || state.presetEntityDeletePrompt !== null
     || state.presetVerticalPassagePending !== null
-    || state.presetElevatorPending !== null;
+    || state.presetElevatorPending !== null
+    || state.presetEntityPickPrompt !== null
+    || state.presetConnectionSettingsPrompt !== null
+    || state.presetLockSettingsPrompt !== null;
 }
 
 /**

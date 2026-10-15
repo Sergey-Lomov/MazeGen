@@ -301,6 +301,44 @@ const manage_split_nodes: GlyphFn = (g) => {
   }
 };
 
+// ─── Settings — a filled gear in the wall color, its hub knocked out with the floor fill ──────
+
+const settings: GlyphFn = (g) => {
+  const teeth = 8;
+  const outer = TILE_SIZE * 0.32;
+  const inner = TILE_SIZE * 0.24;
+  const hole = TILE_SIZE * 0.1;
+  // Each tooth spans half of its angular period; corner points alternate between the rim radii.
+  const points: number[] = [];
+  for (let i = 0; i < teeth; i++) {
+    const period = (Math.PI * 2) / teeth;
+    const a0 = i * period - period / 4;
+    for (const [a, r] of [[a0, inner], [a0 + period * 0.1, outer], [a0 + period * 0.4, outer], [a0 + period * 0.5, inner]] as const) {
+      points.push(C + Math.cos(a) * r, C + Math.sin(a) * r);
+    }
+  }
+  g.poly(points).fill(S.wall.color);
+  g.circle(C, C, hole).fill(GAP);
+};
+
+// ─── Move — four arrows pointing out from the center, in the wall color ─────────────────────
+
+const move: GlyphFn = (g) => {
+  const arm = TILE_SIZE * 0.32;
+  const head = TILE_SIZE * 0.1;
+  const width = 3;
+  g.moveTo(C - arm, C).lineTo(C + arm, C).moveTo(C, C - arm).lineTo(C, C + arm);
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    const tipX = C + dx * arm;
+    const tipY = C + dy * arm;
+    // Arrowhead wings run back from the tip at 45 degrees on both sides of the shaft.
+    g.moveTo(tipX - dx * head - dy * head, tipY - dy * head - dx * head)
+      .lineTo(tipX, tipY)
+      .lineTo(tipX - dx * head + dy * head, tipY - dy * head + dx * head);
+  }
+  g.stroke({ color: S.wall.color, width, cap: "round", join: "round" });
+};
+
 // ─── Trash can — a FILLED silhouette in the danger hue ─────────────────────
 //
 // Simple solid silhouette, matching the other filled glyphs (lock, split-slot triangles): a
@@ -411,6 +449,8 @@ export const GLYPHS: Partial<Record<PresetConnectionTool | PostEditTool | "post_
   gen_source,
   clear,
   delete: del,
+  move,
+  settings,
   post_edit_reset,
 };
 

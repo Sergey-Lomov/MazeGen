@@ -106,6 +106,9 @@ export function applyPostEditCommand(
       if (!state.teleports.some((t) => t.id === command.id)) return fail(state);
       const target = state.teleports.find((t) => t.id === command.id)!;
       if (target.direction === command.direction) return ok(state);
+      if (command.absolute) {
+        return ok({ ...state, teleports: state.teleports.map((t) => (t.id === command.id ? { ...t, direction: command.direction } : t)) });
+      }
       const cycled = cyclePostEditTeleportDirection(state.teleports, command.id);
       return ok({ ...state, teleports: cycled });
     }
@@ -335,7 +338,9 @@ export function applyPostEditCommand(
     }
     case "setVerticalPassageDirection": {
       if (!state.verticalPassages.some((p) => p.id === command.id)) return fail(state);
-      const verticalPassages = cyclePostEditVerticalPassageDirection(state.verticalPassages, command.id);
+      const verticalPassages = command.absolute
+        ? state.verticalPassages.map((p) => (p.id === command.id ? { ...p, direction: command.direction } : p))
+        : cyclePostEditVerticalPassageDirection(state.verticalPassages, command.id);
       return ok({ ...state, verticalPassages });
     }
     case "moveVerticalPassageEndpoint": {

@@ -5,7 +5,7 @@ import type {
 } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey, endpointsEqual } from "./postEditEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
 
 /** Same hit-test as `pickPostEditTeleportEndpointAt`, for post-edit vertical passages (GitHub issue
@@ -70,22 +70,6 @@ export function pickPostEditElevatorEndpointAt(
     (candidate) => pointerCell.x === candidate.node.x && pointerCell.y === candidate.node.y,
   );
   return hit ? { id: hit.id, level: hit.level } : null;
-}
-
-/** The draft vertical-passage entry connecting endpoints `a` and `b` (either order), or `undefined`.
- *  Both `startPostEditVerticalPassagePlacement`'s generation-time seed guard (GitHub issue #385) and
- *  its direction-aware create path (GitHub issue #491) need "is this pair already drafted?" — keyed
- *  by `PostEditEndpoint` equality (GitHub issue #550 ninth follow-up), not raw node ids, since either
- *  side can be a split point's numbered slot (a generation-baked passage on a split node already
- *  extracts as a `split`-kind endpoint, see `extractPostEditVerticalPassages`; user placement must
- *  match that, not silently treat every split origin as "no existing entry"). */
-export function findPostEditVerticalPassageForPair(
-  passages: PostEditVerticalPassageEntry[],
-  a: PostEditEndpoint,
-  b: PostEditEndpoint,
-): PostEditVerticalPassageEntry | undefined {
-  return passages.find(p =>
-    (endpointsEqual(p.from, a) && endpointsEqual(p.to, b)) || (endpointsEqual(p.from, b) && endpointsEqual(p.to, a)));
 }
 
 /** Only meaningful for the `vertical_passage_one_way` tool — mirrors `cycleVerticalPassageDirection`. */

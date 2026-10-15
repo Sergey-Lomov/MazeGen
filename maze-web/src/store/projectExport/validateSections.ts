@@ -19,6 +19,13 @@ import {
 
 // ─── Section validators ──────────────────────────────────────────────────────
 
+/** Optional `absolute: true` marker of a settings-dialog direction command (GitHub issue #748). */
+function validateAbsoluteFlag(v: unknown, path: string): { absolute?: true } {
+  if (v === undefined) return {};
+  if (assertBoolean(v, path) !== true) throw new Error(`${path}: expected true when present`);
+  return { absolute: true };
+}
+
 export function validateTessellationConfig(v: unknown, path = "tessellation.config"): TessellationConfig {
   const obj = assertObject(v, path);
   const type = assertString(obj.type, `${path}.type`);
@@ -259,6 +266,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, id: assertString(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        ...validateAbsoluteFlag(obj.absolute, `${path}.absolute`),
       };
     case "moveTeleportEndpoint":
       return {
@@ -325,6 +333,7 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, id: assertString(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
         from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        ...validateAbsoluteFlag(obj.absolute, `${path}.absolute`),
       };
     case "moveVerticalPassageEndpoint":
       return {

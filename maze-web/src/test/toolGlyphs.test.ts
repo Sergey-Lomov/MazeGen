@@ -29,6 +29,8 @@ const ALL_POST_EDIT_TOOLS: Record<PostEditTool, true> = {
   vertical_passage_two_way: true,
   elevator: true,
   manage_split_nodes: true,
+  move: true,
+  settings: true,
 };
 
 const ALL_PRESET_TOOLS: Record<PresetConnectionTool, true> = {
@@ -49,6 +51,8 @@ const ALL_PRESET_TOOLS: Record<PresetConnectionTool, true> = {
   elevator: true,
   manage_split_nodes: true,
   clear: true,
+  move: true,
+  settings: true,
 };
 
 // Post-edit's `reset` tool has different semantics from the preset `reset` (undecided-edge stub),

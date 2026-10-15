@@ -3,6 +3,7 @@ import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, 
 import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, resolvePresetSplitTargets, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, moveElevatorEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
+import { presetPurposeEntitiesAt, type EntityToolPurpose } from "../../pixi/entityToolKinds";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -44,6 +45,21 @@ function appendPresetEntityOrder(order: string[], key: string): string[] {
 
 function removePresetEntityOrder(order: string[], key: string): string[] {
   return order.filter((existing) => existing !== key);
+}
+
+/** Moves the user lock on `from` to `to`, keeping its kind and its place in the entity order. A
+ *  lock already on `to` is replaced. */
+function relocatePresetLock(state: MazeState, from: PresetEndpoint, to: PresetEndpoint): Partial<MazeState> {
+  const fromKey = presetEndpointKey(from);
+  const toKey = presetEndpointKey(to);
+  const kind = state.lockedNodes.get(fromKey);
+  if (!kind || fromKey === toKey) return {};
+  const lockedNodes = new Map(state.lockedNodes);
+  lockedNodes.delete(fromKey);
+  lockedNodes.set(toKey, kind);
+  const presetEntityOrder = removePresetEntityOrder(state.presetEntityOrder, `lock:${toKey}`)
+    .map((key) => (key === `lock:${fromKey}` ? `lock:${toKey}` : key));
+  return { lockedNodes, presetEntityOrder, debugStale: debugStaleOf(state) };
 }
 
 function edgeEntityKey(key: string): string {
@@ -119,6 +135,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetEntityDeletePrompt: null,
   presetDragOverride: null,
   presetDragFailureMessage: null,
+  presetEntityPickPrompt: null,
+  presetMoveRequest: null,
+  presetConnectionSettingsPrompt: null,
+  presetLockSettingsPrompt: null,
 
   setPresetConnectionsTool: (tool) => set((state) => {
     const enteringLockTools = isPresetLockTool(tool) && !isPresetLockTool(state.presetConnectionsTool);
@@ -137,6 +157,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       presetElevatorPending: null,
       presetSplitTargetPrompt: null,
       presetEntityDeletePrompt: null,
+      presetEntityPickPrompt: null,
+      presetMoveRequest: null,
+      presetConnectionSettingsPrompt: null,
+      presetLockSettingsPrompt: null,
       ...(tool !== "manage_split_nodes" ? { presetFocusedPoint: null } : {}),
     };
   }),
@@ -249,6 +273,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetHoveredEntity: null,
     presetSplitTargetPrompt: null,
     presetEntityDeletePrompt: null,
+    presetEntityPickPrompt: null,
+    presetMoveRequest: null,
+    presetConnectionSettingsPrompt: null,
+    presetLockSettingsPrompt: null,
     debugStale: debugStaleOf(state),
   })),
 
@@ -375,36 +403,13 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
     if (availableDirections.length === 0) return;
-
-    // A click anywhere in a cell must edit an existing vertical passage for that adjacent floor,
-    // not mint a second entry for the same pair. Two such entries are resolved as a bidirectional
-    // graph connection on generation, regardless of their individual directions (GitHub issues
-    // #385/#491). Keep the up/down pairs independent: a cell can have one passage to each floor.
-    const entryFor = (direction: "up" | "down") => {
-      const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
-      const to = presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
-      const pairKey = presetEdgeKey(origin, to);
-      return state.presetVerticalPassages.find((p) => presetEdgeKey(p.from, p.to) === pairKey);
-    };
-    const directionEntries = availableDirections.map((direction) => [direction, entryFor(direction)] as const);
-    const freeDirections = directionEntries.filter(([, entry]) => entry === undefined).map(([direction]) => direction);
-    if (freeDirections.length === 0) {
-      // If the cell identifies exactly one existing pair, mirror marker-click behavior. When both
-      // adjacent floors already have passages, a cell click cannot tell which one was intended.
-      if (directionEntries.length === 1 && directionEntries[0][1]) {
-        set({
-          presetVerticalPassages: cycleVerticalPassageDirection(state.presetVerticalPassages, directionEntries[0][1].id),
-          presetsDirty: true,
-          debugStale: debugStaleOf(state),
-        });
-      }
+    // Every click adds a new passage, even where one already exists (GitHub issue #748): a cell may
+    // hold any number of elements. Editing an existing passage is the settings tool's job.
+    if (availableDirections.length === 1) {
+      tryCommitPresetVerticalPassage(get, set, origin, tool, availableDirections[0]);
       return;
     }
-    if (freeDirections.length === 1) {
-      tryCommitPresetVerticalPassage(get, set, origin, tool, freeDirections[0]);
-      return;
-    }
-    set({ presetVerticalPassagePending: { origin, tool, availableDirections: freeDirections } });
+    set({ presetVerticalPassagePending: { origin, tool, availableDirections } });
   },
 
   choosePresetVerticalPassageDirection: (direction) => {
@@ -518,18 +523,15 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setPresetDragOverride: (override) => set({ presetDragOverride: override }),
   dismissPresetDragFailureMessage: () => set({ presetDragFailureMessage: null }),
 
-  startPresetElevatorPlacement: (origin) => set((state) => {
-    const originLevel = origin.level ?? 0;
-    // Clicking an existing elevator's own marker (its point already has an entry reaching this
-    // floor) edits that entry instead of creating a second one — `floors` seeds from its actual
-    // current floors so the dialog reflects real state, not just the clicked floor (GitHub issue
-    // #341 follow-up).
-    const existing = state.presetElevators.find((e) =>
-      e.floors.some((f) => (f.level ?? 0) === originLevel && f.point[0] === origin.point[0] && f.point[1] === origin.point[1]));
-    if (existing) {
-      return { presetElevatorPending: { origin, floors: new Set(existing.floors.map((f) => f.level ?? 0)), editingId: existing.id } };
-    }
-    return { presetElevatorPending: { origin, floors: new Set([originLevel]) } };
+  // Always starts a new elevator, even on a point that already has one (GitHub issue #748).
+  startPresetElevatorPlacement: (origin) => set({ presetElevatorPending: { origin, floors: new Set([origin.level ?? 0]) } }),
+
+  // `floors` seeds from the entry's current floors so the dialog reflects real state, and confirming
+  // updates the entry in place (GitHub issue #341 follow-up).
+  editPresetElevator: (id, origin) => set((state) => {
+    const existing = state.presetElevators.find((e) => e.id === id);
+    if (!existing) return {};
+    return { presetElevatorPending: { origin, floors: new Set(existing.floors.map((f) => f.level ?? 0)), editingId: existing.id } };
   }),
 
   togglePresetElevatorFloor: (floorIndex) => set((state) => {
@@ -997,7 +999,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   }),
 
   requestPresetSplitTarget: (prompt) => set({ presetSplitTargetPrompt: prompt, presetEntityDeletePrompt: null }),
-  cancelPresetSplitTarget: () => set({ presetSplitTargetPrompt: null }),
+  cancelPresetSplitTarget: () => set({ presetSplitTargetPrompt: null, presetDragOverride: null }),
   applyPresetSplitTargetPick: (slotId) => {
     const prompt = get().presetSplitTargetPrompt;
     if (!prompt) return;
@@ -1070,7 +1072,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       return;
     }
 
-    set({ presetSplitTargetPrompt: null });
+    set({ presetSplitTargetPrompt: null, presetDragOverride: null });
     switch (action.tool) {
       case "set_start":
         get().setPresetStartEndpoint(endpoint);
@@ -1078,12 +1080,24 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       case "set_finish":
         get().setPresetFinishEndpoint(endpoint);
         break;
+      case "move_lock":
+        set((state) => relocatePresetLock(state, action.from, endpoint));
+        break;
+      case "move_teleport_endpoint":
+        set((state) => ({
+          presetTeleports: state.presetTeleports.map((t) => (t.id === action.id ? { ...t, [action.end]: endpoint } : t)),
+          presetDragOverride: null,
+          presetsDirty: true,
+          debugStale: debugStaleOf(state),
+        }));
+        break;
       case "lock_in":
       case "lock_out":
       case "full_lock": {
+        // A lock tool always sets its own kind; changing an existing lock is the settings tool's
+        // job (GitHub issue #748).
         const kind: NodeLockKind = action.tool === "lock_in" ? "in" : action.tool === "lock_out" ? "out" : "both";
-        if (get().lockedNodes.get(presetEndpointKey(endpoint)) === kind) get().removeLockedNode(endpoint.point[0], endpoint.point[1], endpoint.slotId);
-        else get().setLockedNode(endpoint.point[0], endpoint.point[1], kind, endpoint.slotId);
+        get().setLockedNode(endpoint.point[0], endpoint.point[1], kind, endpoint.slotId);
         break;
       }
       case "gen_source":
@@ -1138,6 +1152,141 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   },
 
   cancelPresetEntityDelete: () => set({ presetEntityDeletePrompt: null }),
+
+  requestPresetEntityPick: (point, level, purpose) => {
+    const entities = presetPurposeEntitiesAt(get(), point, level, purpose);
+    if (entities.length === 0) return;
+    if (entities.length === 1) {
+      actOnPresetEntity(get, set, purpose, entities[0]);
+      return;
+    }
+    set({ presetEntityPickPrompt: { point, level, purpose }, presetSplitTargetPrompt: null, presetEntityDeletePrompt: null });
+  },
+
+  choosePresetEntityPick: (descriptor) => {
+    const prompt = get().presetEntityPickPrompt;
+    if (!prompt) return;
+    set({ presetEntityPickPrompt: null });
+    actOnPresetEntity(get, set, prompt.purpose, descriptor);
+  },
+
+  cancelPresetEntityPick: () => set({ presetEntityPickPrompt: null }),
+
+  takePresetMoveRequest: () => {
+    const request = get().presetMoveRequest;
+    if (request) set({ presetMoveRequest: null });
+    return request;
+  },
+
+  openPresetEntitySettings: (descriptor) => {
+    switch (descriptor.kind) {
+      case "teleport":
+      case "vertical_passage":
+        set({ presetConnectionSettingsPrompt: { kind: descriptor.kind, id: Number(descriptor.id) } });
+        break;
+      case "elevator":
+        get().editPresetElevator(Number(descriptor.id), descriptor.endpoint);
+        break;
+      case "lock":
+        set({ presetLockSettingsPrompt: { endpoint: descriptor.endpoint } });
+        break;
+      case "split_node":
+        // The split-node panel is only shown while its own tool is active (GitHub issue #699).
+        get().setPresetConnectionsTool("manage_split_nodes");
+        get().setPresetFocusedPoint(descriptor.endpoint.point);
+        break;
+      default:
+        break;
+    }
+  },
+
+  cancelPresetConnectionSettings: () => set({ presetConnectionSettingsPrompt: null }),
+  cancelPresetLockSettings: () => set({ presetLockSettingsPrompt: null }),
+
+  setPresetTeleportDirection: (id, direction) => set((state) => {
+    const entry = state.presetTeleports.find((t) => t.id === id);
+    if (!entry || entry.direction === direction) return {};
+    return {
+      presetTeleports: state.presetTeleports.map((t) => (t.id === id ? { ...t, direction } : t)),
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  setPresetVerticalPassageDirection: (id, direction) => set((state) => {
+    const entry = state.presetVerticalPassages.find((p) => p.id === id);
+    if (!entry || entry.direction === direction) return {};
+    return {
+      presetVerticalPassages: state.presetVerticalPassages.map((p) => (p.id === id ? { ...p, direction } : p)),
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  setPresetLockKind: (endpoint, kind) => set((state) => {
+    const key = presetEndpointKey(endpoint);
+    if (!state.lockedNodes.has(key) || state.lockedNodes.get(key) === kind) return {};
+    const lockedNodes = new Map(state.lockedNodes);
+    lockedNodes.set(key, kind);
+    return { lockedNodes, debugStale: debugStaleOf(state) };
+  }),
+
+  movePresetMarker: (marker, point) => {
+    const state = get();
+    const level = activeFloorLevel(state);
+    const slotIds = state.presetSplitPoints[splitPointKeyOf(point, level)] ?? [];
+    if (slotIds.length > 0) {
+      const tool = marker === "start" ? "set_start" : marker === "finish" ? "set_finish" : "gen_source";
+      get().requestPresetSplitTarget({ point, level, slotIds: [...slotIds].sort((a, b) => a - b), action: { tool } });
+      return;
+    }
+    const endpoint = presetEndpoint(point, undefined, level);
+    if (marker === "start") get().setPresetStartEndpoint(endpoint);
+    else if (marker === "finish") get().setPresetFinishEndpoint(endpoint);
+    else get().setPresetGenSourceEndpoint(endpoint);
+  },
+
+  movePresetTeleportEndpointTo: (id, end, point) => {
+    const state = get();
+    const entry = state.presetTeleports.find((t) => t.id === id);
+    if (!entry) return;
+    const level = entry[end].level;
+    const allSlotIds = state.presetSplitPoints[splitPointKeyOf(point, level)] ?? [];
+    if (allSlotIds.length > 0) {
+      // The endpoint may land on any node of a split tile except the one the other endpoint uses.
+      const slotIds = [...allSlotIds].sort((a, b) => a - b);
+      const other = entry[end === "from" ? "to" : "from"];
+      const otherHere = other.point[0] === point[0] && other.point[1] === point[1] && (other.level ?? 0) === (level ?? 0);
+      const candidates = [undefined, ...slotIds].filter((slotId) => !otherHere || other.slotId !== slotId);
+      if (candidates.length === 1) {
+        const endpoint = presetEndpoint(point, candidates[0], level);
+        set((s) => ({
+          presetTeleports: s.presetTeleports.map((t) => (t.id === id ? { ...t, [end]: endpoint } : t)),
+          presetDragOverride: null,
+          presetsDirty: true,
+          debugStale: debugStaleOf(s),
+        }));
+      } else {
+        get().requestPresetSplitTarget({
+          point, level, slotIds, action: { tool: "move_teleport_endpoint", id, end },
+          ...(otherHere ? { excluded: other.slotId === undefined ? {} : { slotId: other.slotId } } : {}),
+        });
+      }
+      return;
+    }
+    get().movePresetTeleportEndpoint(id, end, point, level ?? 0);
+  },
+
+  movePresetLockTo: (from, point) => {
+    const state = get();
+    const level = from.level;
+    const slotIds = state.presetSplitPoints[splitPointKeyOf(point, level)] ?? [];
+    if (slotIds.length > 0) {
+      get().requestPresetSplitTarget({ point, level, slotIds: [...slotIds].sort((a, b) => a - b), action: { tool: "move_lock", from } });
+      return;
+    }
+    set((s) => ({ ...relocatePresetLock(s, from, presetEndpoint(point, undefined, level)), presetDragOverride: null }));
+  },
 
   removePresetPointEntity: (descriptor) => {
     switch (descriptor.kind) {
@@ -1376,4 +1525,19 @@ export function applyDefaultEdgeState(
     }
   }
   return presetConnections;
+}
+
+function splitPointKeyOf(point: [number, number], level: number | undefined): string {
+  return level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+}
+
+/** Starts carrying `descriptor` (move) or opens its settings surface (settings) — GitHub issue #748. */
+function actOnPresetEntity(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeState>) => void,
+  purpose: EntityToolPurpose,
+  descriptor: PresetPointEntityDescriptor,
+): void {
+  if (purpose === "move") set({ presetMoveRequest: descriptor });
+  else get().openPresetEntitySettings(descriptor);
 }

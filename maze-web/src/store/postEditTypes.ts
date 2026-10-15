@@ -3,7 +3,10 @@ import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
-export type PostEditTool = "wall" | "passage" | "reset" | "delete" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
+export type PostEditTool = "wall" | "passage" | "reset" | "delete" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "move" | "settings";
+/** Edge mutation applied by `applyPostEditToolAt`: a toolbar tool, or `one_way_flip` — the settings
+ *  tool's direction swap of an existing one-way edge (GitHub issue #748). */
+export type PostEditEdgeToolMode = PostEditTool | "one_way_flip";
 
 /** A directed post-edit edge state. One-way is a face state, not a separate entity: it carries no
  * id and is replaced by the next wall/passage/one-way state on the same face. */
