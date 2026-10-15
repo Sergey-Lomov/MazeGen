@@ -1,6 +1,7 @@
 {
   "tessellation": {
-    "tessellation_type": "square"
+    "kind": "square",
+    "params": {}
   },
   "stages": [
     {

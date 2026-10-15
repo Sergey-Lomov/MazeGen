@@ -32,7 +32,8 @@ pub fn find_invalid_teleports<T: Tessellation>(
             if floor_mode == GeometricFloorMode::SameFloorOnly && from_level != to_level {
                 return false;
             }
-            let dist = floor_aware_distance::<T>(
+            let dist = floor_aware_distance(
+                maze.field.tessellation(),
                 from_level,
                 from,
                 to_level,

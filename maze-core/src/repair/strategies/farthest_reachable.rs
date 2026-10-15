@@ -122,6 +122,7 @@ mod tests {
     use crate::Maze;
     use crate::graph::{EdgeKind, Graph};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn nav_for(maze: &Maze<SquareTessellation>) -> NavGraph {
         maze.analysis.nav_graph(&maze.graph, &maze.meta)
@@ -130,7 +131,8 @@ mod tests {
     #[test]
     fn farthest_from_breaks_ties_by_lowest_node_id() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -157,7 +159,8 @@ mod tests {
     #[test]
     fn farthest_from_returns_source_itself_when_nothing_else_is_reachable() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -178,7 +181,8 @@ mod tests {
     #[test]
     fn farthest_from_exhaustive_breaks_ties_by_lowest_node_id() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -203,7 +207,8 @@ mod tests {
     #[test]
     fn farthest_from_exhaustive_returns_source_itself_when_nothing_else_is_reachable() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -228,7 +233,8 @@ mod tests {
     #[test]
     fn exhaustive_search_finds_a_mid_corridor_farthest_point_that_nav_graph_search_cannot() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -268,7 +274,8 @@ mod tests {
     #[test]
     fn farthest_to_finds_the_node_with_the_longest_incoming_path() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -296,7 +303,8 @@ mod tests {
     #[test]
     fn farthest_to_exhaustive_finds_the_node_with_the_longest_incoming_path() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

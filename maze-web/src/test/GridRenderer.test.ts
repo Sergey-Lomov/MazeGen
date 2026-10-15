@@ -31,6 +31,7 @@ import {
   shouldRenderViewportGrid,
   viewportGridCellCount,
 } from "../pixi/renderers/GridRenderer";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("viewport grid density", () => {
   it("counts the inclusive viewport bounds", () => {
@@ -53,7 +54,7 @@ describe("viewport grid density", () => {
   it("reuses geometry while panning inside the same grid bounds, but redraws for zoom", () => {
     pixi.graphics.length = 0;
     const renderer = new GridRenderer({ addChild: vi.fn() } as never);
-    const cfg = { type: "square", width: 10, height: 10 } as const;
+    const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
     const graphics = pixi.graphics[0];
 
     renderer.render({ viewport: { x: 0, y: 0, w: 100, h: 100, scale: 1 } }, cfg);
@@ -68,7 +69,7 @@ describe("viewport grid density", () => {
   it("clears dense grid geometry once and keeps it suppressed during further panning", () => {
     pixi.graphics.length = 0;
     const renderer = new GridRenderer({ addChild: vi.fn() } as never);
-    const cfg = { type: "square", width: 10, height: 10 } as const;
+    const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
     const graphics = pixi.graphics[0];
 
     renderer.render({ viewport: { x: 0, y: 0, w: 1_000_000, h: 1_000_000, scale: 1 } }, cfg);

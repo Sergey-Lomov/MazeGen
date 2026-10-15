@@ -25,7 +25,7 @@ export function PostEditEntityPickDialog({ onClose }: Props) {
   const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const floors = useMazeStore((s) => s.floors);
   const postEditActiveSplitNode = useMazeStore((s) => s.postEditActiveSplitNode);
-  const activeTessellationConfig = useMazeStore((s) => s.activeTessellationConfig);
+  const activeFieldConfig = useMazeStore((s) => s.activeFieldConfig);
   const floorFields = useMazeStore((s) => s.floorFields);
 
   const entities = useMemo(() => {
@@ -33,14 +33,14 @@ export function PostEditEntityPickDialog({ onClose }: Props) {
     return postEditEntitiesForPurpose(prompt.purpose, buildPostEditPointEntitiesAt(
       {
         nodes, postEditDraftSplitPoints, postEditDraftMeta, postEditDraftTeleports, postEditDraftVerticalPassages, postEditDraftElevators,
-        postEditDraftEdges, floors, floorFields, activeTessellationConfig, postEditActiveSplitNode,
+        postEditDraftEdges, floors, floorFields, activeFieldConfig, postEditActiveSplitNode,
       },
       prompt.point,
       prompt.level,
     ));
   }, [
     prompt, nodes, postEditDraftSplitPoints, postEditDraftMeta, postEditDraftTeleports, postEditDraftVerticalPassages, postEditDraftElevators,
-    postEditDraftEdges, floors, floorFields, activeTessellationConfig, postEditActiveSplitNode,
+    postEditDraftEdges, floors, floorFields, activeFieldConfig, postEditActiveSplitNode,
   ]);
 
   if (!prompt) return null;

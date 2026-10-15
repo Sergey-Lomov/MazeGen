@@ -16,6 +16,7 @@ vi.mock("../pixi/fieldEditUtils", async () => {
 
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { presetTargetLabel, resolvePresetSplitNodeShortLabel, type PresetSplitLabelContext } from "../pixi/presetSplitLabels";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("resolvePresetSplitNodeShortLabel", () => {
   it("uses semantic names for a recognized bridge instead of N labels", () => {
@@ -25,7 +26,7 @@ describe("resolvePresetSplitNodeShortLabel", () => {
       splitPoints: { "5,5": [0] },
       presetConnections: new Map(),
       activeSplitNode: {},
-      cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+      cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
       inFieldCellsAt: () => new Set(),
     };
 
@@ -41,7 +42,7 @@ describe("presetTargetLabel floorOnly", () => {
       splitPoints: { "5,5@1": [0] },
       presetConnections: new Map(),
       activeSplitNode: {},
-      cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+      cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
       inFieldCellsAt: () => new Set(),
     };
 

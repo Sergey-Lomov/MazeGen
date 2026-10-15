@@ -136,6 +136,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_split_density";
 
@@ -147,7 +148,7 @@ mod tests {
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for x in 0..count as i32 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
@@ -220,7 +221,7 @@ mod tests {
     fn maze_with_300_of_1000_split_tiles() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1000, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for x in 0..300 {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
@@ -275,11 +276,14 @@ mod tests {
     ) -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
         for x in 0..bottom_count as i32 {
             mf.add_node_at(bottom, SquarePoint { x, y: 0 }, &mut ids);
         }

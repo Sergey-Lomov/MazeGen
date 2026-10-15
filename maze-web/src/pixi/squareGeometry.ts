@@ -1,7 +1,7 @@
 import { TILE_SIZE } from "./constants";
 import type { Pos } from "./hexGeometry";
 import { getCartesian } from "./cartesianCache";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { kindFieldConfig, type FieldConfig } from "../fieldConfig";
 
 /// Scales `maze-core`'s canonical unit-tile-scale projection (`Tessellation::cartesian`, read via
 /// `getCartesian` -- for square, simply `(x, y)`, the tile's corner not its center) by
@@ -9,9 +9,9 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 /// offset (core's origin is the tile's corner; the cell center is +0.5 tile in each axis) and a Y
 /// flip (core has no notion of "up" on screen; positive Y renders upward, i.e. negative screen Y
 /// in Pixi's downward-Y convention). No rotation needed for square (only hex/tri have a
-/// configurable display orientation). `cfg` needs only its `type` discriminant; callers that
-/// don't have a full config in hand may pass a minimal `{ type: "square" }`.
-export function squareCenter(x: number, y: number, cfg: TessellationConfig = { type: "square", width: 0, height: 0 }): Pos {
+/// configurable display orientation). `cfg` needs only its tessellation; callers that don't have
+/// a full config in hand may pass `kindFieldConfig("square")`.
+export function squareCenter(x: number, y: number, cfg: FieldConfig = kindFieldConfig("square")): Pos {
   const [cx, cy] = getCartesian(x, y, cfg);
   return { x: (cx + 0.5) * TILE_SIZE, y: -(cy + 0.5) * TILE_SIZE };
 }

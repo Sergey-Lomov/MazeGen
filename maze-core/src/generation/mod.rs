@@ -308,6 +308,7 @@ pub(crate) mod test_utils {
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     pub fn default_elements() -> ElementsConfig {
         ElementsConfig {
@@ -324,7 +325,8 @@ pub(crate) mod test_utils {
         h: usize,
     ) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);
@@ -340,7 +342,8 @@ pub(crate) mod test_utils {
         h: usize,
     ) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
             graph.add_node(node);

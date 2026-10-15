@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { NodeDto, RegionClass, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { RegionOverlayRenderer } from "./renderers/RegionOverlayRenderer";
 import { REGION_CLASS_MASK_ALPHA } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -12,7 +12,7 @@ export interface RegionClassesData {
   components: number[][];
   /** component index (as string) -> region class. */
   regionClasses: Record<string, RegionClass>;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   allEdges?: EdgeDto[];
   resolveNodeLevel?: (id: number) => number | undefined;
   activeFloorIndex?: number;

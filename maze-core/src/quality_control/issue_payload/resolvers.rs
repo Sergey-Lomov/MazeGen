@@ -1048,10 +1048,11 @@ mod cross_element_preset_tests {
     use super::*;
     use crate::ids::IdGenerator;
     use crate::space::{SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn field() -> MultiLevelField<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap()
+        MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap()
     }
 
     #[test]

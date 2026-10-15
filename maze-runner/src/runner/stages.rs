@@ -47,7 +47,7 @@ pub fn seed_graph<T: Tessellation>(
         point_to_xy,
     } = prepared;
 
-    let degree = T::faces().len();
+    let degree = field.tessellation().faces().len();
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
 
     let mut graph = Graph::new();

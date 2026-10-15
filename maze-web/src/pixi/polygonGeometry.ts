@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { makeProjection } from "./tessellationProjection";
 import { pointInPolygon as containsPointInPolygon } from "./tessellationGeometry";
 import type { PrimitiveWorldGeometry } from "./primitiveGeometry";
@@ -11,7 +11,7 @@ export interface PolygonPoint {
 /** Converts a world-space polygon into the cells whose centers it contains. */
 export function cellsInsidePolygon(
   polygon: PolygonPoint[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): [number, number][] {
   if (polygon.length < 3 || !hasNonCollinearPoints(polygon)) return [];
 

@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellVertices } from "../tessellationGeometry";
 import { buildRegionGeometry } from "../selectors/issueHighlightSelectors";
 import { drawCellHighlight, drawCellHighlightPath, getCellHighlightInset, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
@@ -179,7 +179,7 @@ export interface RegionHighlightData {
   color: number;
   width: number;
   alpha: number;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Additional cells that are visual targets but do not have a node id (for example a
    *  cross-floor teleport badge drawn at a snapped midpoint). */
   cells?: [number, number][];

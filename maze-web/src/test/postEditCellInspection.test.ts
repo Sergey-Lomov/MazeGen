@@ -5,6 +5,7 @@ import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
 import { useMazeStore } from "../store/mazeStore";
+import { fieldOf } from "./fieldConfigFixtures";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -22,7 +23,7 @@ function state(over: Partial<MazeState>): MazeState {
     finish: null,
     floors: [{ id: "f0" }],
     activeFloorId: "f0",
-    activeTessellationConfig: { type: "square", width: 8, height: 8 },
+    activeFieldConfig: fieldOf("square", { shape: "rect", cols: 8, rows: 8 }),
     _generatedEdges: [] as EdgeDto[],
     postEditDraftEdges: {} as Record<string, PostEditEdge>,
     postEditDraftTeleports: [],

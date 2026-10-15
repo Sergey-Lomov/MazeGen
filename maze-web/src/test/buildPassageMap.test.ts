@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { buildMazeWalls } from "../pixi/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -18,7 +19,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const squareCfg = { type: "square" as const, width: 11, height: 11 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 11, rows: 11 });
 const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y, i: 0 });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const tp = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });

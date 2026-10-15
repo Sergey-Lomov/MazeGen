@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BackgroundImageToggle } from "../components/BackgroundImageToggle";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const autoFillStub = vi.hoisted(() => ({
   delayed: false,
@@ -158,7 +159,7 @@ describe("BackgroundImageToggle", () => {
           ...field,
           fieldEditMode: "custom",
           fieldPoints: new Set(),
-          tessellationConfig: { type: "square_custom", points: [] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [] }),
         },
       },
     });
@@ -438,7 +439,7 @@ describe("BackgroundImageToggle", () => {
       floorFields: {
         [fieldId]: {
           ...useMazeStore.getState().floorFields[fieldId],
-          tessellationConfig: { type: "square", width: 7, height: 7 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 7 }),
         },
       },
     });

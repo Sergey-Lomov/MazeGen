@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { blueprintsForDegree, rotateBlueprint, fittingRotation, blueprintToSplitPattern, tileNodesForBlueprint } from "../pixi/splitBlueprints";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("blueprintsForDegree", () => {
   it("returns the built-in set for a known degree", () => {
@@ -120,7 +121,7 @@ describe("blueprintToSplitPattern", () => {
 
   it("stores Cairo canonical blueprint faces in the anchor tile's native slots", () => {
     const blueprint = blueprintsForDegree(5)[0];
-    const pattern = blueprintToSplitPattern(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
+    const pattern = blueprintToSplitPattern(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), [2, 1]);
     expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 4]);
     expect(pattern.faces[1].map((face) => face.face_index)).toEqual([3, 1]);
   });
@@ -137,7 +138,7 @@ describe("tileNodesForBlueprint", () => {
 
   it("resolves Cairo canonical faces for a concrete tile preview", () => {
     const blueprint = blueprintsForDegree(5)[0];
-    const nodes = tileNodesForBlueprint(blueprint, { type: "cairo", cols: 3, rows: 3 }, [2, 1]);
+    const nodes = tileNodesForBlueprint(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), [2, 1]);
     expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "wall", "passage", "wall", "passage"]);
     expect(nodes[1].faces.map((f) => f.kind)).toEqual(["wall", "passage", "wall", "passage", "wall"]);
   });

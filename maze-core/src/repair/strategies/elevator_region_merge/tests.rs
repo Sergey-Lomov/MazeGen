@@ -7,6 +7,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn params_with(mode: &str, use_existing: PriorityLevel) -> StrategyParams {
     let mut overrides = StdHashMap::new();
@@ -41,9 +42,9 @@ fn build_multi_level(
 ) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..levels)
-        .map(|_| crate::space::Field::new(square_rect(w, h), &mut ids).unwrap())
+        .map(|_| crate::space::Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -93,8 +94,12 @@ fn apply_fixed_immediately_when_invalid_is_empty() {
 #[test]
 fn apply_fails_when_field_is_single_level() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(1, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);

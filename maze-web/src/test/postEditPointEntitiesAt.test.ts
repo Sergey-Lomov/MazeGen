@@ -3,6 +3,7 @@ import { buildPostEditPointEntitiesAt, type PostEditPointEntitiesSourceState } f
 import { nodeEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
 import { baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const n = (id: number, x: number, y: number, level?: number, i = 0): NodeDto =>
   (level === undefined ? { id, x, y, i } : { id, x, y, i, level }) as NodeDto;
@@ -12,13 +13,13 @@ const n = (id: number, x: number, y: number, level?: number, i = 0): NodeDto =>
  *  `buildPostEditPointEntitiesAt` (the live-state assembly `PostEditEntityDeleteDialog`/
  *  `requestPostEditEntityDelete` actually call), not a hand-built `SplitLabelContext`. Regression
  *  coverage for GitHub issue #611's bug class at its actual root: `cfgAt`/`inFieldCellsAt` inside
- *  `buildPostEditPointEntitiesAt` must resolve each floor's OWN `tessellationConfig`
- *  (`state.floorFields[floor.id]`), not the maze-wide `state.activeTessellationConfig` snapshot.
+ *  `buildPostEditPointEntitiesAt` must resolve each floor's OWN `fieldConfig`
+ *  (`state.floorFields[floor.id]`), not the maze-wide `state.activeFieldConfig` snapshot.
  *  Point (0, 0) — a square field's cells are centered on the origin (`configAllCells`/
  *  `configOriginOffset`), so (0, 0) and its 4 cardinal neighbors are guaranteed in-field for any
  *  square/triangle size used here, unlike an arbitrary off-center point. */
 describe("buildPostEditPointEntitiesAt", () => {
-  it("resolves a non-active floor's split-node topology through that floor's own field config, not the maze-wide activeTessellationConfig", () => {
+  it("resolves a non-active floor's split-node topology through that floor's own field config, not the maze-wide activeFieldConfig", () => {
     const floor0Id = TEST_FLOOR_ID;
     const floor1Id = "floor_2";
 
@@ -58,7 +59,7 @@ describe("buildPostEditPointEntitiesAt", () => {
       floors: [{ id: floor0Id, title: "Floor 1" }, { id: floor1Id, title: "Floor 2" }],
       floorFields: {
         // Floor 0's own config is irrelevant here (the split point lives on floor 1) — its
-        // presence just makes `activeTessellationConfig`'s square shape ALSO the "if the bug
+        // presence just makes `activeFieldConfig`'s square shape ALSO the "if the bug
         // regressed" wrong answer for floor 1's own lookup, so a regression can't accidentally
         // pass by coincidence.
         [floor0Id]: baseFloorFieldConfig(),
@@ -67,9 +68,9 @@ describe("buildPostEditPointEntitiesAt", () => {
         // degree-3 tile never matches "bridge", unlike the square field this point would resolve
         // against if `cfgAt`/`inFieldCellsAt` fell back to a shared/active config instead of this
         // floor's own.
-        [floor1Id]: baseFloorFieldConfig({ tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10 } }),
+        [floor1Id]: baseFloorFieldConfig({ fieldConfig: fieldOf("tri", { shape: "rect", cols: 10, rows: 10 }) }),
       },
-      activeTessellationConfig: { type: "square", width: 10, height: 10 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
       postEditActiveSplitNode: {},
     };
 

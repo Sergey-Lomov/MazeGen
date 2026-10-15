@@ -3,7 +3,7 @@ import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
 import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import type { PrimitiveWorldGeometry, TessellationKind } from "./primitiveGeometry";
 import { canvas } from "./colorTokens";
 
@@ -24,7 +24,7 @@ export class PrimitivePreviewOverlay {
   private pendingCells: [number, number][] | null = null;
   private pendingButton = 0;
   private pendingKind: TessellationKind = "square";
-  private pendingCfg: TessellationConfig | null = null;
+  private pendingCfg: FieldConfig | null = null;
   private pendingGeometry: PrimitiveWorldGeometry | null = null;
   private frameVisible = true;
 
@@ -34,7 +34,7 @@ export class PrimitivePreviewOverlay {
     this.root.addChild(this.layer);
   }
 
-  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
+  update(cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     this.pendingCells = cells;
     this.pendingButton = button;
     this.pendingKind = kind;
@@ -56,7 +56,7 @@ export class PrimitivePreviewOverlay {
     }
   }
 
-  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: TessellationConfig, geometry: PrimitiveWorldGeometry): void {
+  private redraw(cells: [number, number][], button: number, kind: TessellationKind, cfg: FieldConfig, geometry: PrimitiveWorldGeometry): void {
     const g = this.layer;
     g.clear();
     const color = geometry.kind === "polygon" && geometry.cellColor !== undefined
@@ -193,7 +193,7 @@ function drawDashedEllipse(
   }
 }
 
-function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: TessellationConfig) {
+function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: FieldConfig) {
   switch (kind) {
     case "square": {
       const h = TILE_SIZE / 2;
@@ -207,12 +207,12 @@ function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: Tess
       ];
     }
     case "hex": {
-      const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+      const orientation = hexOrientationOf(cfg);
       const center = hexCenter(x, y, orientation, cfg);
       return hexVertices(center.x, center.y, orientation);
     }
-    case "triangle": {
-      const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
+    case "tri": {
+      const orientation = triOrientationOf(cfg);
       return triVertices(x, y, orientation);
     }
     case "cairo":

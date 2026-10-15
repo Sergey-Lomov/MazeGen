@@ -12,6 +12,7 @@ import { CellFillRenderer } from "../pixi/renderers/CellFillRenderer";
 import { EdgeHighlightRenderer } from "../pixi/renderers/EdgeHighlightRenderer";
 import { IssueHighlightOverlay } from "../pixi/IssueHighlightOverlay";
 import { canvas } from "../pixi/colorTokens";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -47,8 +48,8 @@ describe("PostEditRenderer layer skipping (GitHub issue #739)", () => {
   beforeEach(() => {
     useMazeStore.setState({
       ...baseStoreState(),
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 4, height: 1 } }) },
-      activeTessellationConfig: { type: "square", width: 4, height: 1 },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 4, rows: 1 }) }) },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 4, rows: 1 }),
       ...postEditStatePatch({ nodes: NODES, edges: EDGES, start: 0, finish: 1 }),
       postEditActiveSplitNode: {},
       postEditDragOverride: null,
@@ -138,7 +139,7 @@ describe("PostEditRenderer layer skipping (GitHub issue #739)", () => {
     const walls = vi.spyOn(WallRenderer.prototype, "render");
     const fills = vi.spyOn(CellFillRenderer.prototype, "render");
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 4, height: 1 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 4, rows: 1 }) }) },
     });
     expect(walls).toHaveBeenCalledTimes(1);
     const closedCellDraws = fills.mock.calls.filter(([data]) => !Array.isArray(data) && data.color === canvas.wall.default);

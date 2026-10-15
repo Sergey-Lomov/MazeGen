@@ -1,4 +1,3 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
@@ -23,12 +22,12 @@ export function serializeProject(state: MazeState): ProjectFile {
     const freeFieldPoints: ProjectFileFloorField["freeFieldPoints"] = {
       square: Array.from(f.freeFieldPoints.square).map((k) => decodePoint(k) as [number, number]),
       hex: Array.from(f.freeFieldPoints.hex).map((k) => decodePoint(k) as [number, number]),
-      triangle: Array.from(f.freeFieldPoints.triangle).map((k) => decodePoint(k) as [number, number]),
+      tri: Array.from(f.freeFieldPoints.tri).map((k) => decodePoint(k) as [number, number]),
       cairo: Array.from(f.freeFieldPoints.cairo ?? []).map((k) => decodePoint(k) as [number, number]),
     };
     floorFields[floorId] = {
-      config: f.tessellationConfig,
-      savedConfigs: Object.values(f.savedConfigs) as TessellationConfig[],
+      shape: f.fieldConfig.shape,
+      savedShapes: Object.values(f.savedShapes),
       freeFieldPoints,
       fieldEditMode: f.fieldEditMode,
     };
@@ -38,6 +37,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: {
       kind: state.tessellationKind,
+      params: {},
       hexOrientation: state.hexOrientation,
       triOrientation: state.triOrientation,
     },

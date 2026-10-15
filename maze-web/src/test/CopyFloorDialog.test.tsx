@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { CopyFloorDialog } from "../components/dialogs/CopyFloorDialog";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const FLOOR_2_ID = "floor_2";
 const FLOOR_3_ID = "floor_3";
@@ -17,9 +18,9 @@ beforeEach(() => {
     ],
     activeFloorId: FLOOR_2_ID,
     floorFields: {
-      [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
-      [FLOOR_2_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 5, height: 5 } }),
-      [FLOOR_3_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 9, height: 9 } }),
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
+      [FLOOR_2_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }) }),
+      [FLOOR_3_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 9, rows: 9 }) }),
     },
   });
 });
@@ -47,7 +48,7 @@ describe("CopyFloorDialog", () => {
     fireEvent.click(screen.getByText("Floor 3"));
     expect(screen.getByText("Confirm")).not.toBeDisabled();
     fireEvent.click(screen.getByText("Confirm"));
-    expect(useMazeStore.getState().floorFields[FLOOR_2_ID].tessellationConfig).toEqual({ type: "square", width: 9, height: 9 });
+    expect(useMazeStore.getState().floorFields[FLOOR_2_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 9, rows: 9 }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -63,6 +64,6 @@ describe("CopyFloorDialog", () => {
     fireEvent.click(screen.getByText("Floor 3"));
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
-    expect(useMazeStore.getState().floorFields[FLOOR_2_ID].tessellationConfig).toEqual({ type: "square", width: 5, height: 5 });
+    expect(useMazeStore.getState().floorFields[FLOOR_2_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }));
   });
 });

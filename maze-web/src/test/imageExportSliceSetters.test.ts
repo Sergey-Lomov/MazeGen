@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -243,7 +244,7 @@ describe("png export setters", () => {
     actions().setPrintScaleAutoFit(true);
     actions().setPrintFieldSizing(
       { paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "portrait", marginHMm: 10, marginVMm: 10, cellSizeMm: 5 },
-      { type: "square" },
+      fieldOf("square", { shape: "rect", cols: 1, rows: 1 }),
     );
     const print = useMazeStore.getState().pngExportSettings.print;
     expect(print.scaleAutoFit).toBe(false);

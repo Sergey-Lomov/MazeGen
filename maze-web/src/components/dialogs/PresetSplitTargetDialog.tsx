@@ -79,7 +79,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
     ));
     const semanticNames = splitNodeSemanticNamesFromKinds(
       faceKindsByNode,
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+      cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
     );
 
     return { cfg, cells, presetSplitPoints, presetConnections, special, semanticNames };

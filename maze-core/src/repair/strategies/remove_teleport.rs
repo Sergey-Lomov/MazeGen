@@ -90,11 +90,16 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn maze_with_duplicate_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -154,8 +159,12 @@ mod tests {
     #[test]
     fn apply_removes_both_directions_of_a_two_way_duplicate_teleport() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -214,8 +223,12 @@ mod tests {
         // that only ever inspects/flags one end) -- the strategy must still remove the backward
         // Teleport counterpart so a two-way teleport is never left downgraded to one-way.
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -260,8 +273,12 @@ mod tests {
         // "reverse" -- only a Teleport-kind reverse counts. Regression guard for
         // `Graph::teleport_reverse`'s kind check.
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -300,8 +317,12 @@ mod tests {
     #[test]
     fn apply_with_allow_reverse_removes_only_the_flagged_direction() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -344,8 +365,12 @@ mod tests {
     #[test]
     fn apply_default_still_removes_the_reverse_direction() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

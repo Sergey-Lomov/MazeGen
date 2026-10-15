@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculatePrintFieldConfig, resolvePrintPaperSizeMm } from "../pixi/fieldPrintSizing";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const printInput = {
   paperSize: "a4" as const,
@@ -18,9 +19,9 @@ describe("field print sizing", () => {
   });
 
   it("calculates a square field from printable A4 area", () => {
-    const result = calculatePrintFieldConfig({ type: "square", width: 11, height: 11 }, printInput);
+    const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), printInput);
 
-    expect(result?.config).toEqual({ type: "square", width: 20, height: 28 });
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
     expect(result?.fieldWidthMm).toBe(200);
     expect(result?.fieldHeightMm).toBe(280);
     expect(result?.usableWidthMm).toBe(200);
@@ -28,27 +29,27 @@ describe("field print sizing", () => {
   });
 
   it("uses the selected paper orientation when calculating a square field", () => {
-    const result = calculatePrintFieldConfig({ type: "square", width: 11, height: 11 }, {
+    const result = calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 11, rows: 11 }), {
       ...printInput,
       orientation: "landscape",
     });
 
-    expect(result?.config).toEqual({ type: "square", width: 28, height: 20 });
+    expect(result?.config).toEqual(fieldOf("square", { shape: "rect", cols: 28, rows: 20 }));
   });
 
   it("calculates a radial field that fits both printable axes", () => {
-    const result = calculatePrintFieldConfig({ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, printInput);
+    const result = calculatePrintFieldConfig(fieldOf("hex", { shape: "hexagon", radius: 5 }, "flat_top"), printInput);
 
-    expect(result?.config.type).toBe("hex_hexagon");
-    expect((result?.config as { radius: number }).radius).toBeGreaterThan(0);
+    expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["hex", "hexagon"]);
+    expect((result?.config.shape as { radius: number }).radius).toBeGreaterThan(0);
     expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });
 
   it("fits a Cairo rectangle from its pentagon bounds", () => {
-    const result = calculatePrintFieldConfig({ type: "cairo", cols: 1, rows: 1 }, printInput);
-    expect(result?.config.type).toBe("cairo");
-    expect(result?.config).toEqual({ type: "cairo", cols: 13, rows: 18 });
+    const result = calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }), printInput);
+    expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["cairo", "rect"]);
+    expect(result?.config).toEqual(fieldOf("cairo", { shape: "rect", cols: 13, rows: 18 }));
     expect(result?.fieldWidthMm).toBe(200);
     expect(result?.fieldHeightMm).toBe(275);
     expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
@@ -56,32 +57,33 @@ describe("field print sizing", () => {
   });
 
   it("keeps small Cairo print cells responsive while fitting the paper", () => {
-    const result = calculatePrintFieldConfig({ type: "cairo", cols: 1, rows: 1 }, { ...printInput, cellSizeMm: 1 });
-    expect(result?.config.type).toBe("cairo");
+    const result = calculatePrintFieldConfig(fieldOf("cairo", { shape: "rect", cols: 1, rows: 1 }), { ...printInput, cellSizeMm: 1 });
+    expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["cairo", "rect"]);
     expect(result!.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
     expect(result!.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });
 
   it.each([
-    [{ type: "square_circle", radius: 5 }, "square_circle"],
-    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "hex_circle"],
-    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "triangle_circle"],
-  ] as const)("keeps the new circle config type when fitting %s", (config, type) => {
+    [fieldOf("square", { shape: "circle", radius: 5 })],
+    [fieldOf("hex", { shape: "circle", radius: 5 }, "flat_top")],
+    [fieldOf("tri", { shape: "circle", radius: 4 }, "r0")],
+  ])("keeps the circle shape and tessellation when fitting %o", (config) => {
     const result = calculatePrintFieldConfig(config, printInput);
-    expect(result?.config.type).toBe(type);
+    expect(result?.config.tessellation).toEqual(config.tessellation);
+    expect(result?.config.shape.shape).toBe("circle");
     expect(result?.fieldWidthMm).toBeLessThanOrEqual(result!.usableWidthMm + 1e-9);
     expect(result?.fieldHeightMm).toBeLessThanOrEqual(result!.usableHeightMm + 1e-9);
   });
 
   it("calculates the new hex rectangle shape", () => {
-    const result = calculatePrintFieldConfig({ type: "hex_rectangle", cols: 5, rows: 5, orientation: "flat_top" }, printInput);
-    expect(result?.config.type).toBe("hex_rectangle");
-    expect((result?.config as { cols: number; rows: number }).cols).toBeGreaterThan(0);
-    expect((result?.config as { cols: number; rows: number }).rows).toBeGreaterThan(0);
+    const result = calculatePrintFieldConfig(fieldOf("hex", { shape: "rect", cols: 5, rows: 5 }, "flat_top"), printInput);
+    expect([result?.config.tessellation.kind, result?.config.shape.shape]).toEqual(["hex", "rect"]);
+    expect((result?.config.shape as { cols: number; rows: number }).cols).toBeGreaterThan(0);
+    expect((result?.config.shape as { cols: number; rows: number }).rows).toBeGreaterThan(0);
   });
 
   it("rejects a cell size that cannot fit inside the printable area", () => {
-    expect(calculatePrintFieldConfig({ type: "square", width: 1, height: 1 }, {
+    expect(calculatePrintFieldConfig(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), {
       ...printInput,
       cellSizeMm: 300,
     })).toBeNull();

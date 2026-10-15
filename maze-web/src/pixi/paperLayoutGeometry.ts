@@ -15,7 +15,7 @@ export interface PaperLayoutWorldGeometry {
  * print scale as PNG export, so a paper edge drawn here has exactly the same physical ratio as
  * the sheet used by the print exporter. */
 export function paperLayoutWorldGeometry(
-  config: Pick<FieldConfig, "type">,
+  config: Pick<FieldConfig, "tessellation">,
   settings: PrintExportSettings,
 ): PaperLayoutWorldGeometry | null {
   const { widthMm, heightMm } = resolveSheetSizeMm(settings);

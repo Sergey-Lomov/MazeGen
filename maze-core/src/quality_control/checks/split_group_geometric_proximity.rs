@@ -73,7 +73,8 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
                         && other_level != own_level)
             },
             |&(_, own_level_index, own_point, _), &(_, other_level_index, other_point, _)| {
-                floor_aware_distance::<T>(
+                floor_aware_distance(
+                    maze.field.tessellation(),
                     own_level_index,
                     own_point,
                     other_level_index,
@@ -107,6 +108,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_group_geometric_proximity";
 
@@ -118,7 +120,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = xs.iter().copied().max().unwrap_or(0) as usize + 1;
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for &x in xs {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
@@ -186,10 +188,15 @@ mod tests {
     fn maze_with_cross_floor_splits() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let bottom = field.single_level_id();
         let top = field.add_level(
-            crate::space::Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap(),
+            crate::space::Field::<SquareTessellation>::new(
+                Arc::default(),
+                square_rect(2, 1),
+                &mut ids,
+            )
+            .unwrap(),
         );
         field.add_node_at(bottom, SquarePoint { x: 0, y: 0 }, &mut ids);
         field.add_node_at(top, SquarePoint { x: 0, y: 0 }, &mut ids);

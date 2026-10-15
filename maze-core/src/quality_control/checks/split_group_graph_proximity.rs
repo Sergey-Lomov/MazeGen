@@ -98,6 +98,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_group_graph_proximity";
 
@@ -109,7 +110,7 @@ mod tests {
     fn maze_with_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for &x in xs {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
@@ -186,7 +187,7 @@ mod tests {
     fn maze_with_inline_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         for &x in xs {
             field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);

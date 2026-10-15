@@ -18,7 +18,7 @@ import { splitNodeSemanticNames } from "./splitNodeNames";
 import { splitNodeLabelShort } from "../components/features/SplitNodesDialogView";
 import { formatTargetLabel } from "./targetLabel";
 import type { TileFace, TileFaceKind } from "../components/features/TileFaceEditor";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 /** Everything needed to resolve any point's per-node short labels, maze-wide (not pre-scoped to one
@@ -32,7 +32,7 @@ export interface SplitLabelContext {
   /** A floor's own tessellation config — field shape/size is per-floor (GitHub issue #611), so this
    *  is looked up by `level` (`undefined` = floor 0) rather than a single maze-wide config, same as
    *  `inFieldCellsAt` below. */
-  cfgAt: (level: number | undefined) => TessellationConfig;
+  cfgAt: (level: number | undefined) => FieldConfig;
   /** A floor's in-field cell set (`"x,y"` keys) — looked up by `level` (`undefined` = floor 0)
    *  rather than a single fixed set, same reasoning as `cfgAt` above. */
   inFieldCellsAt: (level: number | undefined) => ReadonlySet<string>;
@@ -173,7 +173,7 @@ export function resolveSplitNodeShortLabel(
   const cfg = ctx.cfgAt(level);
   const semanticNames = splitNodeSemanticNames(
     nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ctx, floorNodes, level, point, ep) })),
-    cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+    cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
   );
   const idx = nodeEndpointsInOrder.findIndex((ep) => endpointsMatch(ep, endpoint));
   if (idx < 0) {

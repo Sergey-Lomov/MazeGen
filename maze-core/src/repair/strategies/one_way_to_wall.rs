@@ -55,12 +55,17 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     #[test]
     fn apply_removes_the_flagged_one_way() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -92,8 +97,12 @@ mod tests {
     #[test]
     fn apply_does_not_remove_a_preset_protected_one_way() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -134,8 +143,12 @@ mod tests {
     #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

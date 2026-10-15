@@ -62,6 +62,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "min_elevator_density";
 
@@ -72,11 +73,14 @@ mod tests {
     /// 20 field cells total (10 per floor), `count` of them carrying an elevator.
     fn maze_with_elevators(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -126,7 +130,8 @@ mod tests {
     #[test]
     fn silent_when_no_field_cells() {
         let mut ids = IdGenerator::new();
-        let mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let g = Graph::new();
         let _ = &mut ids;
         let maze: Maze<SquareTessellation> = Maze::new(mf, g);
@@ -145,11 +150,16 @@ mod tests {
         // 300/1000 = 30% density. min_density 29.9 must fire (density falls fractionally short);
         // 30.1 must not fire (density clears it) -- pins the exact cross-multiplied comparison.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(500, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(500, 1), &mut ids)
+                .unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(500, 1), &mut ids)
+                .unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);

@@ -11,10 +11,13 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn maze_with_triangle() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field =
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -189,7 +192,9 @@ fn shared_edge_between_two_cycles_does_not_panic_on_second_cut() {
     // Bowtie graph: cutting one shared edge first must not panic when the
     // strategy later tries to cut the same already-removed edge in the other cycle.
     let mut ids = IdGenerator::new();
-    let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field =
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -251,8 +256,12 @@ fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
     // once A->B is cut, so D keeps at least one of its two edges.
     fn build() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(4, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -332,8 +341,12 @@ fn apply_result_is_identical_for_full_and_invalid_only_requirement() {
     // Triangle (invalid, 3 tile-hops) plus a separate valid 10-tile-hop loop sharing no edges.
     fn build() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(13, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(13, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -544,7 +557,9 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 /// Triangle where exactly one edge is `VerticalPassage`, the other two `Basic`.
 fn maze_with_triangle_one_vertical() -> (Maze<SquareTessellation>, EdgeId) {
     let mut ids = IdGenerator::new();
-    let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field =
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -646,7 +661,8 @@ fn vertical_priority_protected_never_cuts_the_vertical_edge() {
 fn vertical_priority_protected_reports_failed_when_the_whole_cycle_is_vertical() {
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -706,7 +722,12 @@ fn vertical_priority_prioritized_picks_among_several_vertical_candidates_by_seed
     fn maze_with_two_vertical() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
         let mut ids = IdGenerator::new();
         let field: crate::space::MultiLevelField<SquareTessellation> =
-            crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            crate::space::MultiLevelField::single_level(
+                Arc::default(),
+                square_rect(4, 1),
+                &mut ids,
+            )
+            .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

@@ -7,8 +7,9 @@ import {
   symmetryStatus,
   type SymmetryOptions,
 } from "../pixi/symmetry";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg = { type: "square_custom" as const, points: [[0, 0], [1, 0], [2, 0], [1, 1]] as [number, number][] };
+const cfg = fieldOf("square", { shape: "custom", points: [[0, 0], [1, 0], [2, 0], [1, 1]] as [number, number][] });
 
 function options(overrides: Partial<SymmetryOptions> = {}): SymmetryOptions {
   return {

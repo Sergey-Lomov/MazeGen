@@ -114,10 +114,12 @@ mod tests {
     use crate::IdGenerator;
     use crate::graph::{EdgeKind, Graph};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn make_maze_and_edges(n: usize) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {
@@ -209,7 +211,8 @@ mod tests {
     fn make_maze_with_kinds(kinds: &[EdgeKind]) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
         let n = kinds.len() + 1;
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut graph = Graph::new();
         for node in field.all_node_ids() {

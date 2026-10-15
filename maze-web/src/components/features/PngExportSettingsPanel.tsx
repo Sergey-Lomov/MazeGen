@@ -94,7 +94,7 @@ export function PngExportSettingsPanel() {
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
   const edges = useMazeStore((s) => s.edges);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const rawStart = useMazeStore((s) => s.start);
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
@@ -339,8 +339,7 @@ export function PngExportSettingsPanel() {
                     })}
                   </span>
                   <span style={typography.caption}>
-                    {(cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom"
-                      || cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom"
+                    {(cfg.tessellation.kind === "hex" || cfg.tessellation.kind === "tri"
                       ? m["image_export.format.png.result.cell_size_mm_diameter"]
                       : m["image_export.format.png.result.cell_size_mm_side"]
                     )({ size: printCellSizeMm.toFixed(2) })}

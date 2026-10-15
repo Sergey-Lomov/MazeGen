@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, computeTextFitItemsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 import { hasLowContrast, perceptualColorDistance } from "../pixi/colorContrast";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { bridgeSplitNodes, bridgeSplitEdges, plainSplitNodes } from "./splitTopologyFixtures";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
@@ -17,7 +18,7 @@ vi.mock("../wasm/mazeService", () => ({
 const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
-const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,

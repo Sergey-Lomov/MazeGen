@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
 import { makeProjection } from "./tessellationProjection";
 import { hexCenter, hexVertices } from "./hexGeometry";
@@ -40,18 +40,18 @@ export function sideOfAxis(point: SymmetryPoint, axis: [SymmetryPoint, SymmetryP
   return Math.sign((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x));
 }
 
-export function worldPointForCell(cell: [number, number], cfg: TessellationConfig): SymmetryPoint {
+export function worldPointForCell(cell: [number, number], cfg: FieldConfig): SymmetryPoint {
   const screen = makeProjection(cfg).gridToScreen(cell[0], cell[1]);
   return { x: screen.x, y: -screen.y };
 }
 
-export function cellForWorldPoint(point: SymmetryPoint, cfg: TessellationConfig): [number, number] {
+export function cellForWorldPoint(point: SymmetryPoint, cfg: FieldConfig): [number, number] {
   const grid = makeProjection(cfg).screenToGrid(point.x, -point.y);
   return [grid.x, grid.y];
 }
 
 /** Snap a world point using the same grid projection used by field editing. */
-export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, cfg: TessellationConfig): SymmetryPoint {
+export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, cfg: FieldConfig): SymmetryPoint {
   if (mode === "free") return { ...point };
   if (mode === "centers") return worldPointForCell(cellForWorldPoint(point, cfg), cfg);
 
@@ -76,7 +76,7 @@ export function snapSymmetryPoint(point: SymmetryPoint, mode: SymmetrySnapMode, 
 export function computeSymmetryPreview(
   filledCells: Set<number>,
   candidateCells: [number, number][],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   options: SymmetryOptions,
   encode: (x: number, y: number) => number,
 ): SymmetryPreview {
@@ -112,7 +112,7 @@ export function computeSymmetryPreview(
 /** Returns a finite editable universe around the current field and axis. */
 export function symmetryCandidateCells(
   filledCells: Set<number>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   axisPoints: SymmetryAxisPoints,
   decode: (key: number) => [number, number],
 ): [number, number][] {
@@ -147,8 +147,8 @@ export function symmetryCandidateCells(
   return [...cells.values()];
 }
 
-function cellVertices(x: number, y: number, cfg: TessellationConfig): SymmetryPoint[] {
-  if (cfg.type.startsWith("square")) {
+function cellVertices(x: number, y: number, cfg: FieldConfig): SymmetryPoint[] {
+  if (cfg.tessellation.kind === "square") {
     const center = worldPointForCell([x, y], cfg);
     const h = TILE_SIZE / 2;
     return [
@@ -156,12 +156,12 @@ function cellVertices(x: number, y: number, cfg: TessellationConfig): SymmetryPo
       { x: center.x + h, y: center.y + h }, { x: center.x - h, y: center.y + h },
     ];
   }
-  if (cfg.type.startsWith("hex")) {
-    const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+  if (cfg.tessellation.kind === "hex") {
+    const orientation = hexOrientationOf(cfg);
     const center = hexCenter(x, y, orientation, cfg);
     return hexVertices(center.x, center.y, orientation).map((point) => ({ x: point.x, y: -point.y }));
   }
-  const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
+  const orientation = triOrientationOf(cfg);
   return triVertices(x, y, orientation).map((point) => ({ x: point.x, y: -point.y }));
 }
 

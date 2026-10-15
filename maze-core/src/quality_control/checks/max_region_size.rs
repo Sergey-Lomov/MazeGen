@@ -57,6 +57,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "max_region_size";
 
@@ -67,7 +68,8 @@ mod tests {
     /// 4 cells, one 3-node SCC (triangle) + one singleton.
     fn maze_with_large_region() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

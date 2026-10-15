@@ -3,6 +3,7 @@ use super::tests::{default_params, empty_presets, generate_default_split, no_spl
 use super::*;
 use crate::generation::test_utils::default_elements;
 use crate::space::{Field, SquarePoint, square_rect};
+use std::sync::Arc;
 
 fn multi_floor_field(
     w: usize,
@@ -15,9 +16,9 @@ fn multi_floor_field(
 ) {
     let mut ids = IdGenerator::new();
     let fields: Vec<Field<crate::space::SquareTessellation>> = (0..floors)
-        .map(|_| Field::new(square_rect(w, h), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let mf = MultiLevelField::new(fields);
+    let mf = MultiLevelField::new(Arc::default(), fields);
     let mut graph = Graph::new();
     for node in mf.all_node_ids() {
         graph.add_node(node);
@@ -513,10 +514,11 @@ fn passage_fail_blocked_fallback_when_balance_fully_committed_to_passage() {
 fn resolve_vertical_passage_target_none_when_node_at_misses() {
     let mut ids = IdGenerator::new();
     let bottom =
-        Field::<crate::space::SquareTessellation>::new(square_rect(3, 3), &mut ids).unwrap();
+        Field::<crate::space::SquareTessellation>::new(Arc::default(), square_rect(3, 3), &mut ids)
+            .unwrap();
     // Top floor is smaller — (2,2) doesn't exist there.
-    let top = Field::new(square_rect(2, 2), &mut ids).unwrap();
-    let mf = MultiLevelField::new(vec![bottom, top]);
+    let top = Field::new(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
+    let mf = MultiLevelField::new(Arc::default(), vec![bottom, top]);
 
     let bottom_level = mf.levels_ordered().next().unwrap();
     let corner = mf
@@ -533,10 +535,11 @@ fn resolve_vertical_passage_target_none_when_node_at_misses() {
 fn elevator_floor_candidates_skips_floors_missing_node_at() {
     let mut ids = IdGenerator::new();
     let bottom =
-        Field::<crate::space::SquareTessellation>::new(square_rect(3, 3), &mut ids).unwrap();
-    let small_top = Field::new(square_rect(1, 1), &mut ids).unwrap();
-    let full_top = Field::new(square_rect(3, 3), &mut ids).unwrap();
-    let mf = MultiLevelField::new(vec![bottom, small_top, full_top]);
+        Field::<crate::space::SquareTessellation>::new(Arc::default(), square_rect(3, 3), &mut ids)
+            .unwrap();
+    let small_top = Field::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
+    let full_top = Field::new(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
+    let mf = MultiLevelField::new(Arc::default(), vec![bottom, small_top, full_top]);
 
     let bottom_level = mf.levels_ordered().next().unwrap();
     let corner = mf

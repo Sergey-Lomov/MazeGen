@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const OTHER_FLOOR_ID = "floor_other";
 
@@ -9,8 +10,8 @@ beforeEach(() => {
     floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: OTHER_FLOOR_ID, title: "Floor 2" }],
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {
-      [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 }, fieldDirty: false }),
-      [OTHER_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 9 }, fieldDirty: false }),
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }), fieldDirty: false }),
+      [OTHER_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 9 }), fieldDirty: false }),
     },
     mazeDirty: false,
     postEditDirty: false,
@@ -43,7 +44,7 @@ describe("copyFloorField", () => {
   it("replaces the active floor's FloorFieldConfig with a copy of the source floor's", () => {
     useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
     const { floorFields } = useMazeStore.getState();
-    expect(floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+    expect(floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
   });
 
   it("copies into an independent object, not a shared reference with the source", () => {
@@ -55,7 +56,7 @@ describe("copyFloorField", () => {
   it("leaves the source floor's own config untouched", () => {
     useMazeStore.getState().copyFloorField(OTHER_FLOOR_ID);
     const { floorFields } = useMazeStore.getState();
-    expect(floorFields[OTHER_FLOOR_ID].tessellationConfig).toEqual({ type: "square", width: 7, height: 9 });
+    expect(floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 9 }));
   });
 
   it("marks the active floor's field dirty", () => {
@@ -70,7 +71,7 @@ describe("copyFloorField", () => {
   });
 });
 
-describe("setTessellationConfigsForFloors", () => {
+describe("setFieldConfigsForFloors", () => {
   it("preserves per-floor configs when the dirty-edit confirmation is accepted", () => {
     useMazeStore.setState({
       mazeDirty: true,
@@ -78,21 +79,21 @@ describe("setTessellationConfigsForFloors", () => {
     });
 
     const configs = {
-      [TEST_FLOOR_ID]: { type: "square", width: 12, height: 14 } as const,
-      [OTHER_FLOOR_ID]: { type: "square", width: 5, height: 6 } as const,
+      [TEST_FLOOR_ID]: fieldOf("square", { shape: "rect", cols: 12, rows: 14 }),
+      [OTHER_FLOOR_ID]: fieldOf("square", { shape: "rect", cols: 5, rows: 6 }),
     };
-    useMazeStore.getState().setTessellationConfigsForFloors(configs, true);
+    useMazeStore.getState().setFieldConfigsForFloors(configs, true);
 
     expect(useMazeStore.getState().fieldEditConfirmation).toEqual({
-      kind: "setTessellationConfigsForFloors",
+      kind: "setFieldConfigsForFloors",
       configs,
       applyToAllStandardFloors: true,
     });
 
     useMazeStore.getState().confirmFieldEdit();
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual(configs[TEST_FLOOR_ID]);
-    expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].tessellationConfig).toEqual(configs[OTHER_FLOOR_ID]);
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(configs[TEST_FLOOR_ID]);
+    expect(useMazeStore.getState().floorFields[OTHER_FLOOR_ID].fieldConfig).toEqual(configs[OTHER_FLOOR_ID]);
     expect(useMazeStore.getState().fieldEditConfirmation).toBeNull();
   });
 });

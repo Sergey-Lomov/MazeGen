@@ -2,6 +2,7 @@ use crate::graph::Graph;
 use crate::ids::{IdGenerator, NodeId};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 pub mod cairo;
 pub mod hex;
@@ -17,7 +18,11 @@ pub use multi_level::{LevelId, MultiLevelField};
 pub use square::{SquareFace, SquarePoint, SquareTessellation, square_rect};
 pub use triangle::{TriFace, TriPoint, TriTessellation, tri_hexagon, tri_rect, tri_triangle};
 
-pub trait Tessellation {
+/// A tessellation is an instance, not a marker type: one instance per maze, shared via `Arc` by
+/// `Field`/`MultiLevelField` (every level of a maze uses the same instance). Built
+/// deterministically from a `{ kind, params }` config by the `maze-wasm`/`maze-runner`
+/// factories; the built-in tessellations are zero-sized instances. See `Specs/space.md`.
+pub trait Tessellation: Send + Sync + 'static {
     type Point: Copy + Eq + Hash;
     type Face: Copy + PartialEq + 'static;
 
@@ -28,28 +33,28 @@ pub trait Tessellation {
     /// `f1 != f2` — every future `Tessellation` impl must uphold this for the `Some` results (all
     /// three current ones already do). `Field::neighbors` relies on it to guarantee it never
     /// visits the same neighboring point twice while iterating `faces()`.
-    fn step(point: Self::Point, face: Self::Face) -> Option<Self::Point>;
+    fn step(&self, point: Self::Point, face: Self::Face) -> Option<Self::Point>;
     /// Returns whether `point` represents an actual tile in this tessellation's coordinate space.
-    fn is_valid_point(point: Self::Point) -> bool;
-    fn faces() -> &'static [Self::Face];
+    fn is_valid_point(&self, point: Self::Point) -> bool;
+    fn faces(&self) -> &[Self::Face];
     /// Returns the geometric face direction from `from` to `to`.
     ///
     /// This describes coordinate geometry only; it does not guarantee that
     /// `step(from, returned_face)` reaches `to`. Callers that need a real transition must also
     /// resolve the face through `step` (and, for a particular field, check that the resulting
     /// point belongs to that field).
-    fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
+    fn face_between(&self, from: Self::Point, to: Self::Point) -> Option<Self::Face>;
 
     /// Position of `face` within `Self::faces()` — the index a `SplitPattern` face refers to.
     /// Default impl is an O(degree) linear scan; fine as-is since it's only ever called from
     /// `enumerate_adaptations` (a split-roll-hit-only path), never per-tile.
-    fn face_index(face: Self::Face) -> Option<usize> {
-        Self::faces().iter().position(|f| *f == face)
+    fn face_index(&self, face: Self::Face) -> Option<usize> {
+        self.faces().iter().position(|f| *f == face)
     }
 
     /// Inverse of `face_index` — the face at a given position in `Self::faces()`.
-    fn face_at(index: usize) -> Option<Self::Face> {
-        Self::faces().get(index).copied()
+    fn face_at(&self, index: usize) -> Option<Self::Face> {
+        self.faces().get(index).copied()
     }
 
     /// Every rotational symmetry of one tile, as a permutation of `Self::faces()` indices —
@@ -71,7 +76,7 @@ pub trait Tessellation {
     /// symmetry explicitly, in terms of its own faces — never derived from a shared arithmetic
     /// rule, and never expressed in terms of what a split pattern or a specific pair of connected
     /// tiles needs (this is pure tile geometry, reusable by any future caller, not just splits).
-    fn rotation_symmetries() -> &'static [&'static [usize]];
+    fn rotation_symmetries(&self) -> &[&[usize]];
 
     /// Every mirror (reflection) symmetry of one tile, same permutation-table shape as
     /// `rotation_symmetries` — empty when the tessellation's tile has no reflective symmetry at
@@ -79,7 +84,7 @@ pub trait Tessellation {
     /// sides while fixing the third is not realizable as a rotation of the tile itself). Unlike
     /// `rotation_symmetries`, there is no implied identity element — an empty slice here means
     /// "mirroring is not a thing for this tessellation", not "only identity".
-    fn mirror_symmetries() -> &'static [&'static [usize]];
+    fn mirror_symmetries(&self) -> &[&[usize]];
 
     /// Canonical Cartesian projection of `point`, in unit tile scale (one tile = 1.0), with no
     /// rendering-specific orientation/rotation applied — a display-only concept (e.g. hex
@@ -100,7 +105,7 @@ pub trait Tessellation {
     /// an impl picked); callers doing anything convention-sensitive (e.g. `maze-web`'s
     /// `squareCenter`/`hexCenter`/`triCenter`, which each apply their own scale/offset/rotation on
     /// top) must check the specific impl's doc comment rather than assume one is like another.
-    fn cartesian(point: Self::Point) -> (f64, f64);
+    fn cartesian(&self, point: Self::Point) -> (f64, f64);
 
     /// Canonical Cartesian position of the edge between `from` and `to`, same coordinate
     /// convention/scale as `cartesian` — used for geometric distance *between edges* (as opposed
@@ -110,15 +115,15 @@ pub trait Tessellation {
     /// edge crossing squarely between its two nodes) — a future tessellation whose edges don't
     /// sit at the node midpoint (e.g. an off-center border) overrides this method instead of
     /// `geometric_edge_distance`'s callers each reimplementing the correction themselves.
-    fn edge_position(from: Self::Point, to: Self::Point) -> (f64, f64) {
-        let (fx, fy) = Self::cartesian(from);
-        let (tx, ty) = Self::cartesian(to);
+    fn edge_position(&self, from: Self::Point, to: Self::Point) -> (f64, f64) {
+        let (fx, fy) = self.cartesian(from);
+        let (tx, ty) = self.cartesian(to);
         ((fx + tx) / 2.0, (fy + ty) / 2.0)
     }
 }
 
-/// Applies a rotation (index into `T::rotation_symmetries()`) then, optionally, a mirror (index
-/// into `T::mirror_symmetries()`) to `face_index`, returning the resulting face index —
+/// Applies a rotation (index into `Tessellation::rotation_symmetries()`) then, optionally, a mirror (index
+/// into `Tessellation::mirror_symmetries()`) to `face_index`, returning the resulting face index —
 /// `None` if `face_index`/`rotation`/the mirror index is out of range for `T`. Shared by every
 /// split-pattern consumer that needs to reorient a `SplitPattern`'s stored face indices onto a
 /// specific point's real faces: `generation::split_logic` (adaptation search during generation),
@@ -128,21 +133,29 @@ pub trait Tessellation {
 /// every tessellation's `faces()` order was angular (true for hex, false for square/tri) with this
 /// single implementation built on each tessellation's own explicit symmetry tables.
 ///
-/// No `degree` parameter — `T::faces().len()` is the single source of truth (every caller used to
+/// No `degree` parameter — `Tessellation::faces().len()` is the single source of truth (every caller used to
 /// compute and pass it separately, a redundant value that could in principle drift from `T`'s own
 /// tables; `rotation_symmetries`'s doc comment states the invariant this relies on).
 pub fn transform_face_index<T: Tessellation>(
+    tessellation: &T,
     face_index: usize,
     rotation: usize,
     mirror: Option<usize>,
 ) -> Option<usize> {
-    if face_index >= T::faces().len() {
+    if face_index >= tessellation.faces().len() {
         return None;
     }
-    let rotated = *T::rotation_symmetries().get(rotation)?.get(face_index)?;
+    let rotated = *tessellation
+        .rotation_symmetries()
+        .get(rotation)?
+        .get(face_index)?;
     match mirror {
         None => Some(rotated),
-        Some(m) => T::mirror_symmetries().get(m)?.get(rotated).copied(),
+        Some(m) => tessellation
+            .mirror_symmetries()
+            .get(m)?
+            .get(rotated)
+            .copied(),
     }
 }
 
@@ -150,9 +163,9 @@ pub fn transform_face_index<T: Tessellation>(
 /// `Tessellation::cartesian`. Purely geometric — unrelated to graph/nav distance
 /// (`MazeAnalysis::distance_from_start`/`distance_from_finish`), which counts tile-hops along
 /// actual edges instead.
-pub fn geometric_distance<T: Tessellation>(a: T::Point, b: T::Point) -> f64 {
-    let (ax, ay) = T::cartesian(a);
-    let (bx, by) = T::cartesian(b);
+pub fn geometric_distance<T: Tessellation>(tessellation: &T, a: T::Point, b: T::Point) -> f64 {
+    let (ax, ay) = tessellation.cartesian(a);
+    let (bx, by) = tessellation.cartesian(b);
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
 }
 
@@ -162,13 +175,14 @@ pub fn geometric_distance<T: Tessellation>(a: T::Point, b: T::Point) -> f64 {
 /// either endpoint node, so measuring edge proximity via node distance would systematically
 /// underestimate how far apart two edges actually render.
 pub fn geometric_edge_distance<T: Tessellation>(
+    tessellation: &T,
     a_from: T::Point,
     a_to: T::Point,
     b_from: T::Point,
     b_to: T::Point,
 ) -> f64 {
-    let (ax, ay) = T::edge_position(a_from, a_to);
-    let (bx, by) = T::edge_position(b_from, b_to);
+    let (ax, ay) = tessellation.edge_position(a_from, a_to);
+    let (bx, by) = tessellation.edge_position(b_from, b_to);
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
 }
 
@@ -181,6 +195,7 @@ pub fn geometric_edge_distance<T: Tessellation>(
 /// passing a mode here — this function only ever computes a distance, it never decides whether a
 /// pair should be evaluated at all.
 pub fn floor_aware_distance<T: Tessellation>(
+    tessellation: &T,
     a_level: usize,
     a: T::Point,
     b_level: usize,
@@ -189,9 +204,9 @@ pub fn floor_aware_distance<T: Tessellation>(
 ) -> f64 {
     floor_aware_xy_distance(
         a_level,
-        T::cartesian(a),
+        tessellation.cartesian(a),
         b_level,
-        T::cartesian(b),
+        tessellation.cartesian(b),
         include_height,
     )
 }
@@ -199,7 +214,9 @@ pub fn floor_aware_distance<T: Tessellation>(
 /// Euclidean distance between two edges' `Tessellation::edge_position`s, each on its own floor —
 /// the edge-based counterpart of `floor_aware_distance`, mirroring how `geometric_edge_distance`
 /// relates to `geometric_distance`. See GitHub issue #342.
+#[allow(clippy::too_many_arguments)]
 pub fn floor_aware_edge_distance<T: Tessellation>(
+    tessellation: &T,
     a_level: usize,
     a_from: T::Point,
     a_to: T::Point,
@@ -210,9 +227,9 @@ pub fn floor_aware_edge_distance<T: Tessellation>(
 ) -> f64 {
     floor_aware_xy_distance(
         a_level,
-        T::edge_position(a_from, a_to),
+        tessellation.edge_position(a_from, a_to),
         b_level,
-        T::edge_position(b_from, b_to),
+        tessellation.edge_position(b_from, b_to),
         include_height,
     )
 }
@@ -245,18 +262,19 @@ pub fn floor_aware_xy_distance(
 /// point; deciding which of a point's several nodes should connect to what is entirely up to the
 /// caller (generation algorithms, QC/repair strategies).
 pub struct Field<T: Tessellation> {
+    tessellation: Arc<T>,
     point_to_nodes: HashMap<T::Point, Vec<NodeId>>,
     node_to_point: HashMap<NodeId, T::Point>,
 }
 
-/// Manual impl (not `#[derive(Clone)]`) — the derive would require `T: Clone`, but only
-/// `T::Point` needs to be (already `Copy` per `Tessellation`'s bound); `T` itself is typically a
-/// zero-sized marker type. Needed by `Maze::draft()` (GitHub issue #118, `Specs/repair.md`'s
+/// Manual impl (not `#[derive(Clone)]`) — the derive would require `T: Clone`, but the
+/// tessellation instance is shared via `Arc`, never copied. Needed by `Maze::draft()` (GitHub issue #118, `Specs/repair.md`'s
 /// mutation-command contract) to produce an independent working copy without disturbing the
 /// original.
 impl<T: Tessellation> Clone for Field<T> {
     fn clone(&self) -> Self {
         Self {
+            tessellation: Arc::clone(&self.tessellation),
             point_to_nodes: self.point_to_nodes.clone(),
             node_to_point: self.node_to_point.clone(),
         }
@@ -265,6 +283,7 @@ impl<T: Tessellation> Clone for Field<T> {
 
 impl<T: Tessellation> Field<T> {
     pub fn new(
+        tessellation: Arc<T>,
         points: impl IntoIterator<Item = T::Point>,
         ids: &mut IdGenerator,
     ) -> Result<Self, &'static str> {
@@ -272,7 +291,10 @@ impl<T: Tessellation> Field<T> {
         if points.is_empty() {
             return Err("field is empty");
         }
-        if points.iter().any(|&point| !T::is_valid_point(point)) {
+        if points
+            .iter()
+            .any(|&point| !tessellation.is_valid_point(point))
+        {
             return Err("field contains an invalid point");
         }
         let mut point_to_nodes = HashMap::new();
@@ -283,9 +305,20 @@ impl<T: Tessellation> Field<T> {
             node_to_point.insert(id, point);
         }
         Ok(Self {
+            tessellation,
             point_to_nodes,
             node_to_point,
         })
+    }
+
+    /// The tessellation instance this field's points belong to.
+    pub fn tessellation(&self) -> &T {
+        &self.tessellation
+    }
+
+    /// The shared handle of `tessellation()`, for building another field on the same instance.
+    pub fn shared_tessellation(&self) -> &Arc<T> {
+        &self.tessellation
     }
 
     pub fn node_count(&self) -> usize {
@@ -325,12 +358,13 @@ impl<T: Tessellation> Field<T> {
     /// condition a caller could reasonably handle — mirroring `Graph::add_edge`'s existing
     /// convention for the same kind of "this should be structurally impossible" invariant.
     pub fn from_id_points(
+        tessellation: Arc<T>,
         entries: impl IntoIterator<Item = (NodeId, T::Point)>,
     ) -> Result<Self, &'static str> {
         let mut point_to_nodes: HashMap<T::Point, Vec<NodeId>> = HashMap::new();
         let mut node_to_point = HashMap::new();
         for (id, point) in entries {
-            if !T::is_valid_point(point) {
+            if !tessellation.is_valid_point(point) {
                 return Err("field contains an invalid point");
             }
             debug_assert!(
@@ -343,6 +377,7 @@ impl<T: Tessellation> Field<T> {
             node_to_point.insert(id, point);
         }
         Ok(Self {
+            tessellation,
             point_to_nodes,
             node_to_point,
         })
@@ -452,10 +487,13 @@ impl<T: Tessellation> Field<T> {
             Some(p) => *p,
             None => return Vec::new(),
         };
-        T::faces()
+        let tessellation = &*self.tessellation;
+        tessellation
+            .faces()
             .iter()
             .flat_map(|&face| {
-                T::step(point, face)
+                tessellation
+                    .step(point, face)
                     .into_iter()
                     .flat_map(|neighbor_point| self.nodes_at(neighbor_point).iter().copied())
             })
@@ -488,10 +526,10 @@ impl<T: Tessellation> Field<T> {
         let Some(tp) = self.node_to_point.get(&to) else {
             return false;
         };
-        let Some(face_in) = T::face_between(*fp, *vp) else {
+        let Some(face_in) = self.tessellation.face_between(*fp, *vp) else {
             return false;
         };
-        let Some(face_out) = T::face_between(*vp, *tp) else {
+        let Some(face_out) = self.tessellation.face_between(*vp, *tp) else {
             return false;
         };
         face_in == face_out

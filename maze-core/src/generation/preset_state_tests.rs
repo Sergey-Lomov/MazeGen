@@ -4,6 +4,7 @@ use super::*;
 use crate::IdGenerator;
 use crate::event_log::EventLog;
 use crate::space::SquarePoint;
+use std::sync::Arc;
 
 fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
     let level = field.single_level_id();
@@ -1193,9 +1194,9 @@ fn multi_floor_field(
     use crate::space::Field;
     let mut ids = IdGenerator::new();
     let fields: Vec<Field<crate::space::SquareTessellation>> = (0..floors)
-        .map(|_| Field::new(crate::space::square_rect(w, h), &mut ids).unwrap())
+        .map(|_| Field::new(Arc::default(), crate::space::square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let mf = MultiLevelField::new(fields);
+    let mf = MultiLevelField::new(Arc::default(), fields);
     let mut graph = Graph::new();
     for node in mf.all_node_ids() {
         graph.add_node(node);

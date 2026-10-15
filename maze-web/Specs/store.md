@@ -10,20 +10,20 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tessellationKind` | `"square" \| "hex" \| "triangle"` | Confirmed tessellation type |
+| `tessellationKind` | `"square" \| "hex" \| "tri" \| "cairo"` | Confirmed tessellation kind (params are always `{}` for the registered kinds) |
 | `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
 | `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
 | `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |
 | `previewKind` | `TessellationKind` | Preview (changes on every dropdown change) |
 | `previewHexOrientation` | `HexOrientation` | Preview hex orientation |
 | `previewTriOrientation` | `TriOrientation` | Preview tri orientation |
-| `previewTessellationConfig` | `TessellationConfig` | Drives canvas grid during field setup |
+| `previewFieldConfig` | `FieldConfig` | Drives canvas grid during field setup |
 | `squareShape` | `"rect" \| "circle" \| "triangle" \| "free"` | Active square shape |
-| `hexShape` | `"rectangle" \| "circle" \| "parallelogram" \| "hexagon" \| "free"` | Active hex shape |
+| `hexShape` | `"rect" \| "circle" \| "triangle" \| "parallelogram" \| "hexagon" \| "free"` | Active hex shape |
 | `triangleShape` | `"rect" \| "triangle" \| "circle" \| "hexagon" \| "free"` | Active triangle shape |
-| `savedConfigs` | `Partial<Record<type, TessellationConfig>>` | Saved config per type, survives shape switches |
-| `tessellationConfig` | `TessellationConfig` | Active config for field setup |
-| `activeTessellationConfig` | `TessellationConfig` | Config that was active at last generation |
+| `savedShapes` | `Partial<Record<PresetFieldShapeName, PresetFieldShape>>` | Saved params per preset shape, survives shape switches |
+| `fieldConfig` | `FieldConfig` | Active config for field setup: `{ tessellation: { kind, params }, orientation?, shape }` |
+| `activeFieldConfig` | `ResolvedField` | Config that was active at last generation, its shape resolved to `custom` cells |
 
 ### Field
 
@@ -118,9 +118,9 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 
 ## Key Invariants
 
-- `tessellationConfig` = config driving field setup UI; `activeTessellationConfig` = config used at last generation. They diverge when user changes config after generating.
+- `fieldConfig` = config driving field setup UI; `activeFieldConfig` = config used at last generation. They diverge when user changes config after generating.
 - `fieldPoints` mirrors `freeFieldPoints[tessellationKind]` when `isEditingField`.
-- `autoLockedNodes` is recomputed whenever `presetConnections`, `tessellationConfig`, or `autoLock` change.
+- `autoLockedNodes` is recomputed whenever `presetConnections`, `fieldConfig`, or `autoLock` change.
 - `debugStale = true` whenever any generation-relevant config changes after an arena exists.
 - `debugMode = false` clears `debugStale`.
 
@@ -131,7 +131,7 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `confirmTessellation()` — copies preview → confirmed; resets maze data if kind changed
 - `syncPreviewToConfirmed()` — sync preview dropdowns to confirmed values
 - `setTessellationKind/setSquareShape/setHexShape/setTriangleShape/setHexOrientation/setTriOrientation` — update confirmed tessellation
-- `setTessellationConfig(cfg)` — full config override, derives kind/shape from config type
+- `setFieldConfig(cfg)` — full config override, derives kind/shape from `cfg.tessellation.kind` and `cfg.shape`
 
 ### Generation
 - `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`. Also updates `seedHistory`: truncates from `seedHistoryIndex` and appends the used seed (capped at 20, oldest dropped), unless this is a repeat-generate on the exact seed just navigated to via history (`seedAttachedToHistory` and unchanged)

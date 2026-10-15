@@ -1,5 +1,6 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeStatisticsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { DisplayOrientation, FieldConfig, FieldShape, PresetFieldShape, PresetFieldShapeName } from "../fieldConfig";
+import { FIELD_SHAPES_BY_KIND, hexOrientationOf, tessellationConfigOf, triOrientationOf } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
 import { computeAutoLockedNodes, presetEdgeKey } from "../pixi/fieldEditUtils";
@@ -8,7 +9,6 @@ import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint"
 import type {
   MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, CairoShape, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";
-import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "./storeTypes";
 
 /** The active floor's own field-shape state — the per-floor scoping point every field-editing
  * helper below reads/writes through (GitHub issue #338). */
@@ -183,49 +183,59 @@ export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: num
   };
 }
 
-export function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape; cairoShape: CairoShape } {
-  switch (cfg.type) {
-    case "square":
-      return { kind: "square", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "square_circle":
-      return { kind: "square", squareShape: "circle", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "square_triangle":
-      return { kind: "square", squareShape: "triangle", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_triangle":
-      return { kind: "hex", squareShape: "rect", hexShape: "triangle", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_parallelogram":
-      return { kind: "hex", squareShape: "rect", hexShape: "parallelogram", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_hexagon":
-      return { kind: "hex", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_rectangle":
-      return { kind: "hex", squareShape: "rect", hexShape: "rectangle", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_circle":
-      return { kind: "hex", squareShape: "rect", hexShape: "circle", triangleShape: "triangle", cairoShape: "rect" };
-    case "triangle_rect":
-      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "rect", cairoShape: "rect" };
-    case "triangle_triangle":
-      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "triangle_hexagon":
-      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "hexagon", cairoShape: "rect" };
-    case "triangle_circle":
-      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "circle", cairoShape: "rect" };
-    case "cairo":
-      return { kind: "cairo", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "cairo_circle":
-      return { kind: "cairo", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "circle" };
-    case "cairo_triangle":
-      return { kind: "cairo", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "triangle" };
-    case "cairo_hexagon":
-      return { kind: "cairo", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "hexagon" };
-    case "square_custom":
-      return { kind: "square", squareShape: "free", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "rect" };
-    case "hex_custom":
-      return { kind: "hex", squareShape: "rect", hexShape: "free", triangleShape: "triangle", cairoShape: "rect" };
-    case "tri_custom":
-      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "free", cairoShape: "rect" };
-    case "cairo_custom":
-      return { kind: "cairo", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle", cairoShape: "free" };
-  }
+/** Per-kind editor shape selection for `cfg` — the kind's own selection follows `cfg.shape`, every
+ * other kind keeps its default selection. */
+export function kindAndShapeFromConfig(cfg: FieldConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape; cairoShape: CairoShape } {
+  const kind = cfg.tessellation.kind;
+  const selected = cfg.shape.shape === "custom" ? "free" : cfg.shape.shape;
+  return {
+    kind,
+    squareShape: kind === "square" ? selected as SquareShape : "rect",
+    hexShape: kind === "hex" ? selected as HexShape : "hexagon",
+    triangleShape: kind === "tri" ? selected as TriangleShape : "triangle",
+    cairoShape: kind === "cairo" ? selected as CairoShape : "rect",
+  };
+}
+
+/** Default params of each preset shape per kind — UI registry metadata. */
+const DEFAULT_PRESET_SHAPES: Record<TessellationKind, Partial<Record<PresetFieldShapeName, PresetFieldShape>>> = {
+  square: {
+    rect: { shape: "rect", cols: 11, rows: 11 },
+    circle: { shape: "circle", radius: 10 },
+    triangle: { shape: "triangle", side: 20 },
+  },
+  hex: {
+    rect: { shape: "rect", cols: 10, rows: 10 },
+    parallelogram: { shape: "parallelogram", cols: 10, rows: 10 },
+    hexagon: { shape: "hexagon", radius: 8 },
+    circle: { shape: "circle", radius: 8 },
+    triangle: { shape: "triangle", side: 20 },
+  },
+  tri: {
+    rect: { shape: "rect", cols: 10, rows: 10 },
+    triangle: { shape: "triangle", side: 12 },
+    hexagon: { shape: "hexagon", radius: 10 },
+    circle: { shape: "circle", radius: 10 },
+  },
+  cairo: {
+    rect: { shape: "rect", cols: 10, rows: 10 },
+    circle: { shape: "circle", radius: 12 },
+    triangle: { shape: "triangle", side: 20 },
+    hexagon: { shape: "hexagon", radius: 12 },
+  },
+};
+
+/** The maze-wide display orientation a kind's field carries (hex/tri only). */
+export function orientationFor(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): DisplayOrientation | undefined {
+  return kind === "hex" ? hexOrientation : kind === "tri" ? triOrientation : undefined;
+}
+
+/** Composes a runtime `FieldConfig` from the maze-wide kind/orientation and a floor's shape. */
+export function composeFieldConfig(kind: TessellationKind, shape: FieldShape, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
+  const orientation = orientationFor(kind, hexOrientation, triOrientation);
+  return orientation === undefined
+    ? { tessellation: tessellationConfigOf(kind), shape }
+    : { tessellation: tessellationConfigOf(kind), orientation, shape };
 }
 
 export function buildPredefinedConfig(
@@ -234,80 +244,15 @@ export function buildPredefinedConfig(
   triangleShape: TriangleShape,
   hexOrientation: HexOrientation,
   triOrientation: TriOrientation,
-  saved?: Partial<Record<TessellationConfig["type"], TessellationConfig>>,
+  saved?: Partial<Record<PresetFieldShapeName, PresetFieldShape>>,
   squareShape: SquareShape = "rect",
   cairoShape: CairoShape = "rect",
-): TessellationConfig {
-  if (kind === "cairo") {
-    if (cairoShape === "circle") {
-      const base = saved?.["cairo_circle"] as { type: "cairo_circle"; radius: number } | undefined;
-      return { type: "cairo_circle", radius: base?.radius ?? 12 };
-    }
-    if (cairoShape === "triangle") {
-      const base = saved?.["cairo_triangle"] as { type: "cairo_triangle"; side: number } | undefined;
-      return { type: "cairo_triangle", side: base?.side ?? 20 };
-    }
-    if (cairoShape === "hexagon") {
-      const base = saved?.["cairo_hexagon"] as { type: "cairo_hexagon"; radius: number } | undefined;
-      return { type: "cairo_hexagon", radius: base?.radius ?? 12 };
-    }
-    const base = saved?.["cairo"] as { type: "cairo"; cols: number; rows: number } | undefined;
-    return { type: "cairo", cols: base?.cols ?? 10, rows: base?.rows ?? 10 };
-  }
-  if (kind === "square") {
-    if (squareShape === "circle") {
-      const circleBase = saved?.["square_circle"] as { type: "square_circle"; radius: number } | undefined;
-      return { type: "square_circle", radius: circleBase?.radius ?? 10 };
-    }
-    if (squareShape === "triangle") {
-      const base = saved?.["square_triangle"] as { type: "square_triangle"; side: number } | undefined;
-      return { type: "square_triangle", side: base?.side ?? 20 };
-    }
-    const base = saved?.["square"] as { type: "square"; width: number; height: number } | undefined;
-    return { type: "square", width: base?.width ?? 11, height: base?.height ?? 11 };
-  }
-  if (kind === "hex") {
-    if (hexShape === "rectangle") {
-      const base = saved?.["hex_rectangle"] as { type: "hex_rectangle"; cols: number; rows: number; orientation: HexOrientation } | undefined;
-      return { type: "hex_rectangle", cols: base?.cols ?? 10, rows: base?.rows ?? 10, orientation: hexOrientation };
-    }
-    if (hexShape === "circle") {
-      const base = saved?.["hex_circle"] as { type: "hex_circle"; radius: number; orientation: HexOrientation } | undefined;
-      return { type: "hex_circle", radius: base?.radius ?? 8, orientation: hexOrientation };
-    }
-    if (hexShape === "triangle") {
-      const base = saved?.["hex_triangle"] as { type: "hex_triangle"; side: number; orientation: HexOrientation } | undefined;
-      return { type: "hex_triangle", side: base?.side ?? 20, orientation: hexOrientation };
-    }
-    if (hexShape === "parallelogram") {
-      const base = saved?.["hex_parallelogram"] as { type: "hex_parallelogram"; cols: number; rows: number; orientation: HexOrientation } | undefined;
-      return { type: "hex_parallelogram", cols: base?.cols ?? 10, rows: base?.rows ?? 10, orientation: hexOrientation };
-    }
-    if (hexShape === "hexagon") {
-      const base = saved?.["hex_hexagon"] as { type: "hex_hexagon"; radius: number; orientation: HexOrientation } | undefined;
-      return { type: "hex_hexagon", radius: base?.radius ?? 8, orientation: hexOrientation };
-    }
-    const base = saved?.["hex_circle"] as { type: "hex_circle"; radius: number; orientation: HexOrientation } | undefined;
-    return { type: "hex_circle", radius: base?.radius ?? 8, orientation: hexOrientation };
-  }
-  if (triangleShape === "rect") {
-    const base = saved?.["triangle_rect"] as { type: "triangle_rect"; cols: number; rows: number; orientation: TriOrientation } | undefined;
-    return { type: "triangle_rect", cols: base?.cols ?? 10, rows: base?.rows ?? 10, orientation: triOrientation };
-  }
-  if (triangleShape === "triangle") {
-    const base = saved?.["triangle_triangle"] as { type: "triangle_triangle"; side: number; orientation: TriOrientation } | undefined;
-    return { type: "triangle_triangle", side: base?.side ?? 12, orientation: triOrientation };
-  }
-  if (triangleShape === "circle") {
-    const base = saved?.["triangle_circle"] as { type: "triangle_circle"; radius: number; orientation: TriOrientation } | undefined;
-    return { type: "triangle_circle", radius: base?.radius ?? 10, orientation: triOrientation };
-  }
-  if (triangleShape === "hexagon") {
-    const base = saved?.["triangle_hexagon"] as { type: "triangle_hexagon"; radius: number; orientation: TriOrientation } | undefined;
-    return { type: "triangle_hexagon", radius: base?.radius ?? 10, orientation: triOrientation };
-  }
-  const base = saved?.["triangle_hexagon"] as { type: "triangle_hexagon"; radius: number; orientation: TriOrientation } | undefined;
-  return { type: "triangle_hexagon", radius: base?.radius ?? 10, orientation: triOrientation };
+): FieldConfig {
+  const selected = kind === "square" ? squareShape : kind === "hex" ? hexShape : kind === "tri" ? triangleShape : cairoShape;
+  const fallback: PresetFieldShapeName = kind === "hex" ? "circle" : kind === "tri" ? "hexagon" : "rect";
+  const name: PresetFieldShapeName = selected !== "free" && FIELD_SHAPES_BY_KIND[kind].includes(selected) ? selected : fallback;
+  const shape = saved?.[name] ?? DEFAULT_PRESET_SHAPES[kind][name]!;
+  return composeFieldConfig(kind, shape, hexOrientation, triOrientation);
 }
 
 // Memoized on its own inputs (last-call cache) — `activeTessellationOf` calls this on every
@@ -315,31 +260,30 @@ export function buildPredefinedConfig(
 // object per call would fail zustand's reference-equality snapshot check on every render and loop
 // forever ("Maximum update depth exceeded" / "getSnapshot should be cached").
 let freeConfigCacheKey: string | null = null;
-let freeConfigCacheValue: TessellationConfig | null = null;
+let freeConfigCacheValue: FieldConfig | null = null;
 
-export function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): TessellationConfig {
+export function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): FieldConfig {
   const key = `${kind}|${hexOrientation}|${triOrientation}|${Array.from(pts).sort((a, b) => a - b).join(",")}`;
   if (freeConfigCacheKey === key && freeConfigCacheValue) return freeConfigCacheValue;
 
   const points = Array.from(pts).map(k => decodePoint(k) as [number, number]);
-  const config: TessellationConfig = kind === "square"
-    ? { type: "square_custom", points }
-    : kind === "hex"
-      ? ({ type: "hex_custom", points, orientation: hexOrientation } as TessellationConfig)
-      : kind === "triangle"
-        ? ({ type: "tri_custom", points, orientation: triOrientation } as TessellationConfig)
-        : { type: "cairo_custom", points };
+  const config = composeFieldConfig(kind, { shape: "custom", points }, hexOrientation, triOrientation);
 
   freeConfigCacheKey = key;
   freeConfigCacheValue = config;
   return config;
 }
 
-export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): TessellationConfig {
-  if (kind === "square") return { type: "square", width: 11, height: 11 };
-  if (kind === "hex") return { type: "hex_parallelogram", cols: 10, rows: 10, orientation: hexOri };
-  if (kind === "triangle") return { type: "triangle_rect", cols: 10, rows: 10, orientation: triOri };
-  return { type: "cairo", cols: 5, rows: 5 };
+/** The kind's full default shape shown while choosing a tessellation in Basic configuration. */
+const PREVIEW_SHAPES: Record<TessellationKind, PresetFieldShape> = {
+  square: { shape: "rect", cols: 11, rows: 11 },
+  hex: { shape: "parallelogram", cols: 10, rows: 10 },
+  tri: { shape: "rect", cols: 10, rows: 10 },
+  cairo: { shape: "rect", cols: 5, rows: 5 },
+};
+
+export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): FieldConfig {
+  return composeFieldConfig(kind, PREVIEW_SHAPES[kind], hexOri, triOri);
 }
 
 export function buildPreviewState(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation) {
@@ -347,14 +291,14 @@ export function buildPreviewState(kind: TessellationKind, hexOri: HexOrientation
     previewKind: kind,
     previewHexOrientation: hexOri,
     previewTriOrientation: triOri,
-    previewTessellationConfig: buildPreviewConfig(kind, hexOri, triOri),
+    previewFieldConfig: buildPreviewConfig(kind, hexOri, triOri),
   };
 }
 
 export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   square: new Set<number>(),
   hex: new Set<number>(),
-  triangle: new Set<number>(),
+  tri: new Set<number>(),
   cairo: new Set<number>(),
 });
 
@@ -364,13 +308,13 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
 export function defaultFloorFieldConfig(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): FloorFieldConfig {
   const squareShape: SquareShape = "rect";
   const hexShape: HexShape = kind === "hex" ? "hexagon" : "parallelogram";
-  const triangleShape: TriangleShape = kind === "triangle" ? "triangle" : "rect";
+  const triangleShape: TriangleShape = kind === "tri" ? "triangle" : "rect";
   const cairoShape: CairoShape = "rect";
   const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, hexOrientation, triOrientation, undefined, squareShape, cairoShape);
   return {
     squareShape, hexShape, triangleShape, cairoShape,
-    savedConfigs: { [cfg.type]: cfg },
-    tessellationConfig: cfg,
+    savedShapes: cfg.shape.shape === "custom" ? {} : { [cfg.shape.shape]: cfg.shape },
+    fieldConfig: cfg,
     freeFieldPoints: emptyFreePoints(),
     isEditingField: false,
     fieldPoints: new Set<number>(),
@@ -410,23 +354,23 @@ export function withFieldPointsEdit(
   const changed = editFn(fieldPoints);
   if (!changed) return {};
   const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
-  const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+  const fieldConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
   return {
-    ...withActiveFloorField(state, { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true }),
+    ...withActiveFloorField(state, { fieldPoints, freeFieldPoints, fieldConfig, fieldDirty: true }),
     debugStale: debugStaleOf(state),
   };
 }
 
-/** Derive any floor's active TessellationConfig, accounting for free-field editing. */
-export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation; floorFields: MazeState["floorFields"] }, floorId: string): TessellationConfig {
+/** Derive any floor's active FieldConfig, accounting for free-field editing. */
+export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation; floorFields: MazeState["floorFields"] }, floorId: string): FieldConfig {
   const field = state.floorFields[floorId];
   return field.isEditingField
     ? buildFreeConfig(state.tessellationKind, field.fieldPoints, state.hexOrientation, state.triOrientation)
-    : field.tessellationConfig;
+    : field.fieldConfig;
 }
 
-/** Derive the active floor's active TessellationConfig, accounting for free-field editing. */
-export function activeFloorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState): TessellationConfig {
+/** Derive the active floor's active FieldConfig, accounting for free-field editing. */
+export function activeFloorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState): FieldConfig {
   return floorTessellationOf(state, state.activeFloorId);
 }
 
@@ -525,32 +469,26 @@ export function buildResetDownstreamState() {
   };
 }
 
-/** Derive kind/shape/orientation/freeFieldPoints/savedConfigs from a TessellationConfig for the
- * active floor — shared by setTessellationConfig and loadProject. */
+/** Derive kind/shape/orientation/freeFieldPoints/savedShapes from a FieldConfig for the
+ * active floor — shared by setFieldConfig and loadProject. */
 export function deriveTessellationFromConfig(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   currentHexOrientation: HexOrientation,
   currentTriOrientation: TriOrientation,
   currentFreeFieldPoints: Record<TessellationKind, Set<number>>,
-  currentSavedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>,
+  currentSavedShapes: Partial<Record<PresetFieldShapeName, PresetFieldShape>>,
 ) {
   const { kind, squareShape, hexShape, triangleShape, cairoShape } = kindAndShapeFromConfig(cfg);
-  const hexOrientation = (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom")
-    ? ((cfg as { orientation?: HexOrientation }).orientation ?? DEFAULT_HEX_ORI)
-    : currentHexOrientation;
-  const triOrientation = (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "triangle_circle" || cfg.type === "tri_custom")
-    ? ((cfg as { orientation?: TriOrientation }).orientation ?? DEFAULT_TRI_ORI)
-    : currentTriOrientation;
-  const isCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom" || cfg.type === "cairo_custom";
-  const freeFieldPoints = isCustom
-    ? {
-        ...currentFreeFieldPoints,
-        [kind]: new Set<number>((cfg as { points?: [number, number][] }).points?.map(([x, y]) => encodePoint(x, y)) ?? []),
-      }
+  const hexOrientation = kind === "hex" ? hexOrientationOf(cfg) : currentHexOrientation;
+  const triOrientation = kind === "tri" ? triOrientationOf(cfg) : currentTriOrientation;
+  const shape = cfg.shape;
+  const isCustom = shape.shape === "custom";
+  const freeFieldPoints = shape.shape === "custom"
+    ? { ...currentFreeFieldPoints, [kind]: new Set<number>(shape.points.map(([x, y]) => encodePoint(x, y))) }
     : currentFreeFieldPoints;
   const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, cairoShape, freeFieldPoints);
-  const savedConfigs = isCustom ? currentSavedConfigs : { ...currentSavedConfigs, [cfg.type]: cfg };
-  return { kind, squareShape, hexShape, triangleShape, cairoShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, isCustom };
+  const savedShapes = shape.shape === "custom" ? currentSavedShapes : { ...currentSavedShapes, [shape.shape]: shape };
+  return { kind, squareShape, hexShape, triangleShape, cairoShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedShapes, isCustom };
 }
 
 /** Shape-setter factory — setSquareShape/setHexShape/setTriangleShape differ only by which shape field changes. Operates on the active floor's own FloorFieldConfig. */
@@ -568,9 +506,9 @@ export function makeShapeSetter<K extends "squareShape" | "hexShape" | "triangle
     const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, squareShape, hexShape, triangleShape, cairoShape, field.freeFieldPoints);
     const cfg = isEditingField
       ? buildFreeConfig(kind, fieldPoints, state.hexOrientation, state.triOrientation)
-      : buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs, squareShape, cairoShape);
+      : buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, field.savedShapes, squareShape, cairoShape);
     return {
-      ...withActiveFloorField(state, { [fieldKey]: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true } as Partial<FloorFieldConfig>),
+      ...withActiveFloorField(state, { [fieldKey]: shape, fieldConfig: cfg, isEditingField, fieldPoints, fieldDirty: true } as Partial<FloorFieldConfig>),
       ...buildResetDownstreamState(),
       error: null,
       debugStale: debugStaleOf(state),
@@ -580,23 +518,23 @@ export function makeShapeSetter<K extends "squareShape" | "hexShape" | "triangle
 
 /** Orientation-setter factory — setHexOrientation/setTriOrientation differ only by axis kind and
  * field name. Kind/orientation are maze-wide (Specs/field-editor.md), so a rotation rewrites
- * every floor's own tessellationConfig/savedConfigs for the affected kind, not just the active floor's. */
-export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexOrientation" | "triOrientation") {
+ * every floor's own fieldConfig/savedShapes for the affected kind, not just the active floor's. */
+export function makeOrientationSetter(axisKind: "hex" | "tri", field: "hexOrientation" | "triOrientation") {
   return (orientation: HexOrientation | TriOrientation) => (state: MazeState): Partial<MazeState> => {
     if (orientation === state[field]) return {};
     if (state.tessellationKind !== axisKind) return { ...buildResetDownstreamState(), [field]: orientation } as Partial<MazeState>;
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const [floorId, f] of Object.entries(state.floorFields)) {
-      const tessellationConfig = mergeOrientation(f.tessellationConfig, orientation);
+      const fieldConfig = mergeOrientation(f.fieldConfig, orientation);
       const { isEditingField } = deriveEditState(state.tessellationKind, f.squareShape, f.hexShape, f.triangleShape, f.cairoShape, f.freeFieldPoints);
-      const savedConfigs = isEditingField ? f.savedConfigs : { ...f.savedConfigs, [tessellationConfig.type]: tessellationConfig };
-      floorFields[floorId] = { ...f, tessellationConfig, savedConfigs, fieldDirty: true };
+      const savedShapes = isEditingField || fieldConfig.shape.shape === "custom" ? f.savedShapes : { ...f.savedShapes, [fieldConfig.shape.shape]: fieldConfig.shape };
+      floorFields[floorId] = { ...f, fieldConfig, savedShapes, fieldDirty: true };
     }
-    const activeTessellationConfig = state.nodes.length > 0
-      ? mergeOrientation(state.activeTessellationConfig, orientation)
-      : state.activeTessellationConfig;
+    const activeFieldConfig = state.nodes.length > 0
+      ? mergeOrientation(state.activeFieldConfig, orientation)
+      : state.activeFieldConfig;
     return {
-      [field]: orientation, floorFields, activeTessellationConfig,
+      [field]: orientation, floorFields, activeFieldConfig,
       ...buildResetDownstreamState(),
       // A rotation changes which geometric face each offset index means (GitHub issue #235
       // follow-up) — a split-node panel left open across the flip would keep addressing faces
@@ -614,8 +552,8 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
   };
 }
 
-export function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {
-  return { ...current, orientation } as TessellationConfig;
+export function mergeOrientation(current: FieldConfig, orientation: HexOrientation | TriOrientation): FieldConfig {
+  return { ...current, orientation };
 }
 
 /** Rule-level parameters (GitHub issue #253) relevant to a rule's own composition — filters

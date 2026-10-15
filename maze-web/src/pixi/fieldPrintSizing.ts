@@ -1,4 +1,4 @@
-import type { FieldConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig, type PresetFieldShape } from "../fieldConfig";
 import type { PrintFieldSizingInput } from "../store/imageExportTypes";
 import { PAPER_SIZES_MM } from "./imageExport/paperSizes";
 import { printMeasureToCellSideMm } from "./imageExport/printFit";
@@ -16,12 +16,10 @@ export const DEFAULT_PRINT_CELL_SIZE_MM = 10;
 
 export type { PrintFieldSizingInput } from "../store/imageExportTypes";
 
-export type PredefinedFieldConfig = Exclude<FieldConfig,
-  { type: "square_custom"; points: [number, number][] }
-  | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
-  | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "cairo_custom"; points: [number, number][] }
->;
+export type PredefinedFieldConfig = FieldConfig & { shape: PresetFieldShape };
+
+type RectShape = Extract<PresetFieldShape, { cols: number }>;
+type RadialShape = Exclude<PresetFieldShape, RectShape>;
 
 export interface PrintFieldSizingResult {
   config: FieldConfig;
@@ -51,7 +49,7 @@ export function resolvePrintPaperSizeMm(input: Pick<PrintFieldSizingInput, "pape
 }
 
 export function isPredefinedFieldConfig(config: FieldConfig): config is PredefinedFieldConfig {
-  return config.type !== "square_custom" && config.type !== "hex_custom" && config.type !== "tri_custom" && config.type !== "cairo_custom";
+  return config.shape.shape !== "custom";
 }
 
 /** Calculates a predefined field shape that fits the requested printed cell size and paper area.
@@ -90,38 +88,21 @@ function calculateConfig(
   usableHeightMm: number,
   cellSizeMm: number,
 ): FieldConfig | null {
-  switch (current.type) {
-    case "square": {
-      const width = Math.floor(usableWidthMm / cellSizeMm);
-      const height = Math.floor(usableHeightMm / cellSizeMm);
-      return width >= 1 && height >= 1 ? { ...current, width, height } : null;
-    }
-    case "hex_rectangle":
-    case "triangle_rect":
-    case "hex_parallelogram":
-    case "cairo":
-      return calculateBestRectConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
-    case "square_circle":
-    case "square_triangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "triangle_triangle":
-    case "hex_hexagon":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon": {
-      return calculateBestRadialConfig(current, usableWidthMm, usableHeightMm, cellSizeMm);
-    }
-    default:
-      current satisfies never;
-      return null;
+  const { shape } = current;
+  if (shape.shape === "rect" && current.tessellation.kind === "square") {
+    const cols = Math.floor(usableWidthMm / cellSizeMm);
+    const rows = Math.floor(usableHeightMm / cellSizeMm);
+    return cols >= 1 && rows >= 1 ? { ...current, shape: { ...shape, cols, rows } } : null;
   }
+  if (shape.shape === "rect" || shape.shape === "parallelogram") {
+    return calculateBestRectConfig(current, shape, usableWidthMm, usableHeightMm, cellSizeMm);
+  }
+  return calculateBestRadialConfig(current, shape, usableWidthMm, usableHeightMm, cellSizeMm);
 }
 
 function calculateBestRectConfig(
-  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" | "cairo" }>,
+  current: FieldConfig,
+  shape: RectShape,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -129,7 +110,8 @@ function calculateBestRectConfig(
   let best: FieldConfig | null = null;
   let bestCellCount = 0;
   let bestFill = -Infinity;
-  const maxCols = maxFittingRectDimension(current, "cols", usableWidthMm, usableHeightMm, cellSizeMm);
+  const withSize = (cols: number, rows: number): FieldConfig => ({ ...current, shape: { ...shape, cols, rows } });
+  const maxCols = maxFittingRectDimension(withSize, "cols", usableWidthMm, usableHeightMm, cellSizeMm);
 
   for (let cols = 1; cols <= maxCols; cols++) {
     let low = 1;
@@ -137,7 +119,7 @@ function calculateBestRectConfig(
     let rows = 0;
     while (low <= high) {
       const candidateRows = Math.floor((low + high) / 2);
-      const candidate = { ...current, cols, rows: candidateRows };
+      const candidate = withSize(cols, candidateRows);
       if (fits(boundsInCellSides(candidate), usableWidthMm, usableHeightMm, cellSizeMm)) {
         rows = candidateRows;
         low = candidateRows + 1;
@@ -147,7 +129,7 @@ function calculateBestRectConfig(
     }
     if (rows === 0) continue;
 
-    const candidate = { ...current, cols, rows };
+    const candidate = withSize(cols, rows);
     const bounds = boundsInCellSides(candidate);
     // The geometric rectangle is evaluated by the shared selector.  During this search only the
     // ordering matters; materializing every hex cell for every binary-search candidate turns a
@@ -166,7 +148,8 @@ function calculateBestRectConfig(
 }
 
 function calculateBestRadialConfig(
-  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" | "cairo_circle" | "cairo_triangle" | "cairo_hexagon" }>,
+  current: FieldConfig,
+  shape: RadialShape,
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
@@ -179,7 +162,7 @@ function calculateBestRadialConfig(
   // the requested cell is large; the binary search below avoids the O(radius^3) behavior that
   // occurred for tiny cells when every candidate regenerated all radial cells.
   while (probe <= MAX_RADIUS) {
-    const candidate = radialCandidate(current, probe);
+    const candidate = radialCandidate(current, shape, probe);
     if (!fits(boundsInCellSides(candidate), usableWidthMm, usableHeightMm, cellSizeMm)) break;
     best = candidate;
     low = probe + 1;
@@ -191,7 +174,7 @@ function calculateBestRadialConfig(
   let high = Math.min(probe - 1, MAX_RADIUS);
   while (low <= high) {
     const radius = Math.floor((low + high) / 2);
-    const candidate = radialCandidate(current, radius);
+    const candidate = radialCandidate(current, shape, radius);
     if (fits(boundsInCellSides(candidate), usableWidthMm, usableHeightMm, cellSizeMm)) {
       best = candidate;
       low = radius + 1;
@@ -202,24 +185,18 @@ function calculateBestRadialConfig(
   return best;
 }
 
-function radialCandidate(
-  current: Extract<FieldConfig, { type: "square_circle" | "square_triangle" | "hex_circle" | "hex_triangle" | "triangle_triangle" | "triangle_circle" | "hex_hexagon" | "triangle_hexagon" | "cairo_circle" | "cairo_triangle" | "cairo_hexagon" }>,
-  radius: number,
-): FieldConfig {
-  if (current.type === "triangle_triangle" || current.type === "square_triangle" || current.type === "hex_triangle" || current.type === "cairo_triangle") return { ...current, side: radius };
-  return { ...current, radius };
+function radialCandidate(current: FieldConfig, shape: RadialShape, radius: number): FieldConfig {
+  return { ...current, shape: shape.shape === "triangle" ? { ...shape, side: radius } : { ...shape, radius } };
 }
 
 function maxFittingRectDimension(
-  current: Extract<FieldConfig, { type: "hex_rectangle" | "triangle_rect" | "hex_parallelogram" | "cairo" }>,
+  withSize: (cols: number, rows: number) => FieldConfig,
   dimension: "cols" | "rows",
   usableWidthMm: number,
   usableHeightMm: number,
   cellSizeMm: number,
 ): number {
-  const candidate = (value: number): FieldConfig => dimension === "cols"
-    ? { ...current, cols: value, rows: 1 }
-    : { ...current, cols: 1, rows: value };
+  const candidate = (value: number): FieldConfig => dimension === "cols" ? withSize(value, 1) : withSize(1, value);
   if (!fits(boundsInCellSides(candidate(1)), usableWidthMm, usableHeightMm, cellSizeMm)) return 0;
 
   let best = 1;
@@ -269,42 +246,20 @@ function boundsInCellSides(config: FieldConfig): Bounds {
 }
 
 function boundaryCells(config: FieldConfig): [number, number][] {
-  if (config.type === "cairo") {
-    return cairoRectangleBoundaryCells(config.cols, config.rows);
-  }
-  if (config.type === "hex_rectangle") {
-    return hexRectangleBoundaryCells(config.cols, config.rows, config.orientation ?? "flat_top");
-  }
-  if (config.type === "square_circle") {
-    return squareCircleBoundaryCells(config.radius);
-  }
-  if (config.type === "square_triangle") {
-    return configAllCells(config);
-  }
-  if (config.type === "hex_triangle") {
-    return configAllCells(config);
-  }
-  if (config.type === "hex_circle" || config.type === "hex_hexagon") {
-    return hexagonBoundaryCells(config.radius);
-  }
-  if (config.type === "triangle_triangle") {
-    return triangleTriangleBoundaryCells(config.side);
-  }
-  if (config.type === "triangle_circle") {
-    return configAllCells(config);
-  }
-  if (config.type === "triangle_hexagon") {
-    return triangleHexagonBoundaryCells(config.radius);
-  }
-  if (config.type === "cairo_circle" || config.type === "cairo_triangle" || config.type === "cairo_hexagon") {
-    return configAllCells(config);
-  }
-  if (config.type !== "square" && config.type !== "triangle_rect" && config.type !== "hex_parallelogram") {
-    return configAllCells(config);
-  }
+  const { shape } = config;
+  const kind = config.tessellation.kind;
+  if (shape.shape === "rect" && kind === "cairo") return cairoRectangleBoundaryCells(shape.cols, shape.rows);
+  if (shape.shape === "rect" && kind === "hex") return hexRectangleBoundaryCells(shape.cols, shape.rows, hexOrientationOf(config));
+  if (shape.shape === "circle" && kind === "square") return squareCircleBoundaryCells(shape.radius);
+  if ((shape.shape === "circle" || shape.shape === "hexagon") && kind === "hex") return hexagonBoundaryCells(shape.radius);
+  if (shape.shape === "triangle" && kind === "tri") return triangleTriangleBoundaryCells(shape.side);
+  if (shape.shape === "hexagon" && kind === "tri") return triangleHexagonBoundaryCells(shape.radius);
+  const cornerRect = (shape.shape === "rect" && (kind === "square" || kind === "tri"))
+    || (shape.shape === "parallelogram" && kind === "hex");
+  if (!cornerRect || (shape.shape !== "rect" && shape.shape !== "parallelogram")) return configAllCells(config);
 
-  const cols = config.type === "square" ? config.width : config.type === "triangle_rect" ? config.cols * 2 : config.cols;
-    const rows = config.type === "square" ? config.height : config.rows;
+  const cols = kind === "tri" ? shape.cols * 2 : shape.cols;
+  const rows = shape.rows;
   // Cell vertices are affine in the row/column coordinates. Therefore extrema of a rectangular
   // field are reached at corners; the one-cell halo also covers both triangle parities. Keeping
   // this set bounded avoids walking an entire 1000×1000 boundary during every keystroke.
@@ -392,22 +347,17 @@ function centerBoundaryCells(raw: [number, number][]): [number, number][] {
 }
 
 function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
-  switch (config.type) {
+  if (config.shape.shape === "custom") return [];
+  switch (config.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
       return [
         { x: x, y: y },
         { x: x + 1, y: y },
         { x: x + 1, y: y + 1 },
         { x: x, y: y + 1 },
       ];
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_triangle": {
-      const orientation = config.orientation ?? "flat_top";
+    case "hex": {
+      const orientation = hexOrientationOf(config);
       const angle = orientation === "pointy_top" ? Math.PI / 6 : 0;
       const center = rotate(
         1.5 * x,
@@ -420,11 +370,8 @@ function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
         return { x: center.x + Math.cos(a), y: center.y - Math.sin(a) };
       });
     }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon": {
-      const orientation = config.orientation ?? "r0";
+    case "tri": {
+      const orientation = triOrientationOf(config);
       const side = 1;
       const height = SQRT_3 / 2;
       const pointingUp = ((x + y) % 2 + 2) % 2 === 0;
@@ -437,15 +384,7 @@ function cellVertices(x: number, y: number, config: FieldConfig): Point[] {
         : [{ x: -side / 2, y: -height / 3 }, { x: side / 2, y: -height / 3 }, { x: 0, y: 2 * height / 3 }];
       return offsets.map((offset) => rotate(center.x + offset.x, center.y + offset.y, triRotation(orientation)));
     }
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom":
-    case "cairo_custom":
-      return [];
-    case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon": {
+    case "cairo": {
       return (geometryCellVertices(x, y, config) ?? []).map((point) => ({
         x: point.x / TILE_SIZE,
         y: -point.y / TILE_SIZE,

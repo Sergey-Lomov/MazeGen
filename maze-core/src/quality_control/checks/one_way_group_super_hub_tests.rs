@@ -3,6 +3,7 @@ use crate::graph::EdgeKind;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 const TEST_ID: &str = "one_way_group_super_hub";
 
@@ -17,7 +18,7 @@ fn check(max_connections: u32) -> OneWayGroupSuperHubCheck {
 fn silent_when_no_one_way_edges() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -36,7 +37,7 @@ fn fires_when_vertex_outgoing_count_exceeds_max() {
     // node[0] has 3 outgoing one-ways -- exceeds max_connections=2.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -72,7 +73,7 @@ fn fires_when_vertex_outgoing_count_exceeds_max() {
 fn silent_when_vertex_outgoing_count_at_or_below_max() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -96,7 +97,7 @@ fn ignores_bidirectional_edges() {
     // neither vertex's outgoing one-way count includes it, since it isn't a one-way at all.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -123,7 +124,7 @@ fn incoming_and_outgoing_one_ways_count_toward_the_same_vertex_total() {
     // total, exceeding max_connections=2, even though neither direction alone would.
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -159,7 +160,7 @@ fn incoming_and_outgoing_one_ways_count_toward_the_same_vertex_total() {
 fn ignores_teleport_edges() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -190,7 +191,7 @@ fn shared_edge_between_two_over_threshold_vertices_appears_in_both_groups() {
     // `OneWayGroupSelectStrategy`'s shared-edge tests).
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(5, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(5, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -258,7 +259,7 @@ fn shared_edge_between_two_over_threshold_vertices_appears_in_both_groups() {
 fn flags_multiple_vertices_as_separate_groups() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 2), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {

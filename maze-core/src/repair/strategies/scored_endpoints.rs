@@ -406,8 +406,12 @@ impl<'a> ScoredPathContext<'a> {
         let mut dijkstra_scratch = DijkstraScratch::new(n);
 
         for &s in &starts {
-            let (dist, prev_edge) =
-                dijkstra_with_prev_into(s, &self.edges, &self.outgoing_by_node, &mut dijkstra_scratch);
+            let (dist, prev_edge) = dijkstra_with_prev_into(
+                s,
+                &self.edges,
+                &self.outgoing_by_node,
+                &mut dijkstra_scratch,
+            );
 
             for &f in &finishes {
                 if f == s {
@@ -536,7 +540,9 @@ fn prune_dominated_tail_nodes(
     // comparison is against a single genuine dead end and not some other route back into the graph
     // (e.g. the other side of a loop through this same fork), where no such monotonic hop-by-hop
     // argument holds.
-    let is_plain_fork: Vec<bool> = (0..n).map(|node| plain_neighbors[node].len() >= 3).collect();
+    let is_plain_fork: Vec<bool> = (0..n)
+        .map(|node| plain_neighbors[node].len() >= 3)
+        .collect();
     let is_never_removed: Vec<bool> = (0..n)
         .map(|node| is_true_anchor[node] || is_plain_fork[node])
         .collect();
@@ -631,7 +637,10 @@ fn prune_dominated_tail_nodes(
 
         removed[node] = true;
         plain_neighbors[neighbor].retain(|&nb| nb != node);
-        if !is_never_removed[neighbor] && plain_neighbors[neighbor].len() <= 1 && !in_queue[neighbor] {
+        if !is_never_removed[neighbor]
+            && plain_neighbors[neighbor].len() <= 1
+            && !in_queue[neighbor]
+        {
             in_queue[neighbor] = true;
             queue.push_back(neighbor);
         }

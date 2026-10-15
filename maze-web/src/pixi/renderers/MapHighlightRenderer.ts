@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { drawEdge, type RenderEdge } from "../BaseGraphRenderer";
 import { NODE_RADIUS } from "../renderConstants";
@@ -12,7 +12,7 @@ export interface MapHighlightData {
    *  between one pair's value and the next pair's key). */
   entries: Map<number, number>;
   color: number;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
 }
 
 /** Draws a `DebugValueKind.Map` debug value (GitHub issue #145's follow-up, e.g. Wilson's
@@ -28,7 +28,7 @@ export class MapHighlightRenderer {
   // `SequenceHighlightRenderer`'s own cache for the same reason (avoids O(total node count) work
   // on every debug-step tick during scrubbing/autoplay).
   private cachedNodes: NodeDto[] | null = null;
-  private cachedCfg: TessellationConfig | null = null;
+  private cachedCfg: FieldConfig | null = null;
   private nodePos: Map<number, { x: number; y: number }> = new Map();
 
   constructor(container: Container) {

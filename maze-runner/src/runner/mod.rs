@@ -5,6 +5,7 @@ pub(crate) mod rule_factory;
 pub(crate) mod rule_params;
 pub mod stages;
 pub(crate) mod strategy_factory;
+pub mod tessellation_factory;
 #[cfg(test)]
 mod tests;
 
@@ -17,7 +18,7 @@ use maze_core::{
     quality_control::{Issue, QcEvent},
     space::Tessellation,
 };
-use prepare::{Prepared, TessellationVisitor, dispatch};
+use prepare::{Prepared, PreparedVisitor, dispatch};
 use stages::{Repaired, run_generation, run_repair, seed_graph};
 use std::collections::HashMap;
 
@@ -74,13 +75,10 @@ struct FullRun<'a> {
     config: &'a GenerateConfig,
 }
 
-impl TessellationVisitor for FullRun<'_> {
+impl PreparedVisitor for FullRun<'_> {
     type Output = MazeRunResult;
 
-    fn visit<T: Tessellation + 'static>(
-        self,
-        prepared: Prepared<T>,
-    ) -> Result<MazeRunResult, String> {
+    fn visit<T: Tessellation>(self, prepared: Prepared<T>) -> Result<MazeRunResult, String> {
         let config = self.config;
         let mut seeded = seed_graph(prepared, config)?;
         let start_reassignment = run_generation(&mut seeded, config);

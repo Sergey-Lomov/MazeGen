@@ -5,8 +5,9 @@ import { TILE_SIZE } from "../pixi/constants";
 import { computeCrossFloorBadgePos } from "../pixi/renderers/floorBadge";
 import { getCellCenter, nearestCellCoord } from "../pixi/tessellationGeometry";
 import type { Pos } from "../pixi/BaseGraphRenderer";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { debugRefEdgePairs } from "../pixi/DebugRefHighlightOverlay";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // `getCellCenter`/`nearestCellCoord` (square tessellation) round-trip through wasm's own
 // `cartesian_coords` — mocked here as an identity mapping (square cell (x, y) IS its own cartesian
@@ -142,7 +143,7 @@ describe("buildPathRenderEdges", () => {
 });
 
 describe("buildCrossFloorMarkers", () => {
-  const cfg: TessellationConfig = { type: "square", width: 20, height: 20 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 20, rows: 20 });
   const nodePos = posMap([
     [1, { x: 0, y: 0 }],
     [2, { x: 10, y: 0 }],

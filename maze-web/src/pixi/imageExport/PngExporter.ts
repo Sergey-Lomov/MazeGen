@@ -42,8 +42,8 @@ export class PngExporter {
       const margin = modeRenderer.getRequiredExportMargin();
       const basis = resolveContentBoundsBasis(mode);
       const fit = settings.outputMode === "print"
-        ? toDigitalShapedFit(computePrintExportFit(state.activeTessellationConfig, state.nodes, margin, settings.print, basis))
-        : computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, settings.digital, basis);
+        ? toDigitalShapedFit(computePrintExportFit(state.activeFieldConfig, state.nodes, margin, settings.print, basis))
+        : computeDigitalExportFit(state.activeFieldConfig, state.nodes, margin, settings.digital, basis);
 
       if (fit.width <= 0 || fit.height <= 0) return null;
 

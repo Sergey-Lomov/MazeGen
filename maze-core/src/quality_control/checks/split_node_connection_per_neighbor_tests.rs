@@ -3,13 +3,14 @@ use crate::graph::EdgeKind;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 const TEST_ID: &str = "split_node_connection_per_neighbor";
 
 fn maze_with_split_and_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
     let level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 1 };
     let slot0 = field.node_at(level, p).unwrap();
@@ -28,7 +29,7 @@ fn maze_with_split_and_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId,
 fn silent_when_no_split_points() {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);

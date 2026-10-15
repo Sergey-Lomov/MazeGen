@@ -261,7 +261,7 @@ export class PostEditController extends BaseController {
 
   /** The settings tool targets an edge only when it is a one-way edge between unsplit cells. */
   private settingsEdgeAt(state: State, vpX: number, vpY: number, nodeMap: Map<string, number[]>, level: number | undefined): { edge: FieldEdge; from: PostEditEndpoint; to: PostEditEndpoint; key: string } | null {
-    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     if (!edge || isSplitCell(edge.from, nodeMap) || isSplitCell(edge.to, nodeMap)) return null;
     const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode, level);
     if (!nodeKey) return null;
@@ -312,12 +312,12 @@ export class PostEditController extends BaseController {
     if (this.carrying && state.postEditTool !== "move") this.cancelPointerGesture();
     if (this.pressPlacement) {
       // A press that leaves its cell (even off the field) is a drag, never a placement click.
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       if (x !== this.pressPlacement.cell[0] || y !== this.pressPlacement.cell[1]) this.pressPlacement = null;
     }
 
     if (this.draggingMarker) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
@@ -337,7 +337,7 @@ export class PostEditController extends BaseController {
     }
 
     if (this.draggingTeleportEndpoint && this.teleportDragOrigin) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
@@ -380,7 +380,7 @@ export class PostEditController extends BaseController {
     }
 
     if (this.draggingVerticalPassageEndpoint && this.verticalPassageDragOrigin) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
@@ -408,7 +408,7 @@ export class PostEditController extends BaseController {
     }
 
     if (this.draggingElevatorEndpoint && this.elevatorDragOrigin) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
@@ -437,7 +437,7 @@ export class PostEditController extends BaseController {
         // `floorNodes`/`nodeById` would silently drop the preview once the user switches floors.
         const fromNode = state.nodes.find((n) => n.id === state.postEditTeleportPendingFrom);
         if (fromNode) {
-          const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
+          const proj = makeProjection(state.floorFields[state.activeFloorId].fieldConfig);
           const { x: px, y: py } = proj.gridToScreen(fromNode.x, fromNode.y);
           this.renderer.updateTeleportPreview({ x: px, y: py }, vpX, vpY);
         }
@@ -459,7 +459,7 @@ export class PostEditController extends BaseController {
         return;
       }
       this.renderer.updateHover(null);
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
         this.renderer.updateCellHover(null);
         return;
@@ -474,7 +474,7 @@ export class PostEditController extends BaseController {
       // point, not one of its faces — highlight the cell under the cursor, not a wall/edge (see
       // GitHub issue #221's follow-up for manage_split_nodes; issue #326 extends this to every
       // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const nodeMap = this.getNodeMap(floorNodes);
       const inField = nodeMap.has(`${cell.x},${cell.y}`);
@@ -501,7 +501,7 @@ export class PostEditController extends BaseController {
       // pointerdown. The cursor may cross an edge hit zone, but that must not switch a cell reset
       // stroke to edge mutations (or make the cell stroke stop being processed).
       if (this.isCellDrag) {
-        const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+        const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
         const cell = { x, y };
         const inField = nodeMap.has(`${cell.x},${cell.y}`);
         this.renderer.updateHover(null);
@@ -514,7 +514,7 @@ export class PostEditController extends BaseController {
         return;
       }
       if (this.isEdgeDrag) {
-        const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+        const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
         this.renderer.updateCellHover(null);
         this.renderer.updateHover(edge, true);
         this.continueEdgeDrag(edge, (e) => {
@@ -526,7 +526,7 @@ export class PostEditController extends BaseController {
         });
         return;
       }
-      const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       // Split connections can't be reset via the edge branch (GitHub issue #327) — outside the
       // near-edge zone, or when the near-edge hit touches a split point, fall back to cell hover.
       if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
@@ -543,12 +543,12 @@ export class PostEditController extends BaseController {
       }
       // Near a shared vertex (edge dead zone, #188) — withhold the cell fallback too, or the
       // vertex dead zone silently becomes "picks the cell instead" (GitHub issue #340 follow-up).
-      if (isInEdgeVertexDeadZone(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
+      if (isInEdgeVertexDeadZone(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
         this.renderer.updateHover(null);
         this.renderer.updateCellHover(null);
         return;
       }
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const inField = nodeMap.has(`${cell.x},${cell.y}`);
       this.renderer.updateHover(null);
@@ -564,7 +564,7 @@ export class PostEditController extends BaseController {
     }
     this.renderer.updateCellHover(null);
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
     this.continueEdgeDrag(edge, (e) => {
@@ -603,7 +603,7 @@ export class PostEditController extends BaseController {
 
     if (tool === "move") {
       if (button !== 0) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       if (!nodeMap.has(`${x},${y}`)) return;
       // A single element is picked up by this press (drag it, or release to carry it); several
       // open the pick dialog, whose choice is carried (`takeMoveRequest`).
@@ -624,7 +624,7 @@ export class PostEditController extends BaseController {
         if (state.postEditAutoConfirm) this.scheduleConfirm();
         return;
       }
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
       const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
       state.requestPostEditEntityPick([x, y], level, "settings");
@@ -633,7 +633,7 @@ export class PostEditController extends BaseController {
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const key = `${cell.x},${cell.y}`;
       useMazeStore.getState().setPostEditFocusedPoint(nodeMap.has(key) ? [cell.x, cell.y] : null);
@@ -642,7 +642,7 @@ export class PostEditController extends BaseController {
 
     if (tool === "delete") {
       if (button !== 0) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
@@ -660,7 +660,7 @@ export class PostEditController extends BaseController {
     }
 
     if (VERTEX_TOOLS.has(tool)) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
 
       // On a split point the active-node concept must not decide anything for a vertex tool
@@ -707,14 +707,14 @@ export class PostEditController extends BaseController {
         from: floorScopedEndpoint(t.from, level, floorNodeIds) ?? t.from,
         to: floorScopedEndpoint(t.to, level, floorNodeIds) ?? t.to,
       }));
-      const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, scopedTeleports, nodeById, resolveSplit);
+      const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, scopedTeleports, nodeById, resolveSplit);
       // Vertical-passage endpoints can live on either floor of the pair, so hit-testing needs the
       // *unscoped* node map/level resolver — `floorNodes`/`nodeById` above only cover the active
       // floor's own nodes.
       const allNodeById = this.getNodeById(state.nodes);
       const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
-      const verticalPassageHit = pickPostEditVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, state.postEditDraftVerticalPassages, allNodeById, resolveNodeLevel, level);
-      const elevatorMarkerHit = pickPostEditElevatorEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, state.postEditDraftElevators, allNodeById, resolveNodeLevel, level);
+      const verticalPassageHit = pickPostEditVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, state.postEditDraftVerticalPassages, allNodeById, resolveNodeLevel, level);
+      const elevatorMarkerHit = pickPostEditElevatorEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, state.postEditDraftElevators, allNodeById, resolveNodeLevel, level);
       const elevatorHit = state.postEditDraftElevators.find((e) => e.floors.some((f) => {
         if (f.kind !== "node") return false;
         if ((resolveNodeLevel(f.id) ?? 0) !== (level ?? 0)) return false;
@@ -791,7 +791,7 @@ export class PostEditController extends BaseController {
     }
 
     if (tool === "reset" && button === 0) {
-      const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
         const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode);
         if (nodeKey) {
@@ -802,8 +802,8 @@ export class PostEditController extends BaseController {
         this.renderer.updateHover(edge, true);
         return;
       }
-      if (isInEdgeVertexDeadZone(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      if (isInEdgeVertexDeadZone(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
@@ -820,7 +820,7 @@ export class PostEditController extends BaseController {
     }
     if (tool === "reset") return; // right/middle click has no reset-tool meaning outside pan
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     if (!edge) return;
 
     const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode, level);

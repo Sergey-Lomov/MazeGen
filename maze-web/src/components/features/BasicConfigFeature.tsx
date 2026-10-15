@@ -35,7 +35,7 @@ export function BasicConfigFeature() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const isHex = previewKind === "hex";
-  const isTri = previewKind === "triangle";
+  const isTri = previewKind === "tri";
 
   function handleConfirmTessellation() {
     if (wouldLoseData) {
@@ -57,7 +57,7 @@ export function BasicConfigFeature() {
         >
           <option value="square">{m["tessellation.square"]()}</option>
           <option value="hex">{m["tessellation.hex"]()}</option>
-          <option value="triangle">{m["tessellation.triangle"]()}</option>
+          <option value="tri">{m["tessellation.triangle"]()}</option>
           <option value="cairo">{m["tessellation.cairo"]()}</option>
         </select>
       </label>

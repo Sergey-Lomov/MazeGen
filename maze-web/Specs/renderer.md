@@ -89,7 +89,7 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 **Visibility:** all layers hidden when `openCard !== "generation" || !showMaze`.
 
 **Store subscription fires `renderAll` when:**
-- `nodes`, `edges`, `start`, `finish`, `tessellationConfig`, `activeTessellationConfig` change
+- `nodes`, `edges`, `start`, `finish`, `fieldConfig`, `activeFieldConfig` change
 - `debugMode`, `debugArena`, `debugStep` change
 
 **Debug view projection (`debugView`)** — event-tree based (GitHub issue #124/#125), replaces the old per-step full-graph-snapshot model:

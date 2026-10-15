@@ -8,6 +8,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { PC } from "../pixi/selectors/projectColorsSelector";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
@@ -79,7 +80,7 @@ describe("ColorSwatch", () => {
     useMazeStore.setState({
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_corridors",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       floors: [{ id: "floor_1", title: "Floor 1" }],
       nodes: [
         { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 1 },

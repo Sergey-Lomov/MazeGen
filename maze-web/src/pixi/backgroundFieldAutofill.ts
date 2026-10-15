@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { BackgroundImage } from "../store/tessellationTypes";
 import { colorToRgb } from "../store/colorMath";
 import { backgroundImageCrop } from "./BackgroundImageLayer";
@@ -39,7 +39,7 @@ export async function getBackgroundImageTopLeftColor(dataUrl: string): Promise<n
  */
 export function buildBackgroundFieldPreview(
   image: BackgroundImage,
-  config: TessellationConfig,
+  config: FieldConfig,
   pixels: BackgroundPixelData,
   mode: BackgroundAutoFillMode,
   backgroundColor: number,
@@ -250,7 +250,7 @@ function sampleCell(
 /** Loads the data URL through a canvas and calculates a preview from its decoded pixels. */
 export async function buildBackgroundFieldPreviewFromImage(
   image: BackgroundImage,
-  config: TessellationConfig,
+  config: FieldConfig,
   mode: BackgroundAutoFillMode,
   backgroundColor: number,
   threshold: number,

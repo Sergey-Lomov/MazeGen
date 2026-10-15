@@ -197,7 +197,7 @@ export function VectorByCorridorsSettingsPanel() {
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const floors = useMazeStore((s) => s.floors);
 
   const rawEffectiveEndpoints = useMemo(

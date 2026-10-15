@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
 import { getCellVertices, getCellCenter } from "../../pixi/tessellationGeometry";
 import { buildPresetSplitPassages, buildPresetNodePositions, presetEndpointScreenPos } from "../../pixi/selectors/presetSelectors";
@@ -14,7 +14,7 @@ import { ui } from "../../styles/theme";
 
 interface Props {
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** The point's declared slot ids on the active floor, ascending — index 0 of the rendered
    *  marker dots is always the original node, then one per slot. */
   slotIds: number[];

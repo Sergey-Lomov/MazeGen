@@ -87,8 +87,8 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
     for (const floor of floors) {
       if (!applyToAllStandardFloors && floor.id !== activeFloorId) continue;
       const field = floorFields[floor.id];
-      if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.tessellationConfig)) continue;
-      const floorResult = calculatePrintFieldConfig(field.tessellationConfig, {
+      if (!field || field.fieldEditMode === "custom" || !isPredefinedFieldConfig(field.fieldConfig)) continue;
+      const floorResult = calculatePrintFieldConfig(field.fieldConfig, {
         paperSize, customWidthMm, customHeightMm, orientation, cellSizeMm, marginHMm, marginVMm,
       });
       if (!floorResult || !isPredefinedFieldConfig(floorResult.config)) return;
@@ -126,7 +126,7 @@ export function FieldPrintSizingDialog({ config, hasMultipleFloors, onApply, onC
         />
 
         <NumberInputRow
-          label={config.type === "square" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
+          label={config.tessellation.kind === "square" ? m["field.print_sizing.cell_size_side"]() : m["field.print_sizing.cell_size_diameter"]()}
           value={cellSizeText}
           suffix="mm"
           onChange={setCellSizeText}
@@ -218,28 +218,14 @@ function NumberInputRow({ label, value, suffix, onChange }: { label: string; val
 }
 
 export function configSizeDescription(config: FieldConfig): string {
-  switch (config.type) {
-    case "square": return m["field.print_sizing.result_size"]({ size: `${config.width} × ${config.height}` });
-    case "square_circle":
-    case "hex_circle":
-    case "triangle_circle":
-    case "hex_hexagon":
-    case "triangle_hexagon":
-    case "cairo_circle":
-    case "cairo_hexagon": return m["field.print_sizing.result_radius"]({ size: String(config.radius) });
-    case "hex_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
-    case "hex_rectangle":
-    case "triangle_rect":
-    case "hex_parallelogram":
-      return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
-    case "triangle_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
-    case "square_triangle":
-    case "cairo_triangle": return m["field.print_sizing.result_side"]({ size: String(config.side) });
-    case "cairo": return m["field.print_sizing.result_size"]({ size: `${config.cols} × ${config.rows}` });
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom": return "";
-    case "cairo_custom": return "";
+  const { shape } = config;
+  switch (shape.shape) {
+    case "rect":
+    case "parallelogram": return m["field.print_sizing.result_size"]({ size: `${shape.cols} × ${shape.rows}` });
+    case "circle":
+    case "hexagon": return m["field.print_sizing.result_radius"]({ size: String(shape.radius) });
+    case "triangle": return m["field.print_sizing.result_side"]({ size: String(shape.side) });
+    case "custom": return "";
   }
 }
 
@@ -260,7 +246,7 @@ function floorPrintInfo(field: FloorFieldConfig | undefined, input: PrintFieldSi
     };
   }
 
-  const config = field.tessellationConfig;
+  const config = field.fieldConfig;
   if (!isPredefinedFieldConfig(config)) {
     return { shape: m["field.print_sizing.floor_non_standard"](), size: "—", cellCount: field.fieldPoints.size, isValid: true };
   }
@@ -285,54 +271,29 @@ function formatCellCount(count: number): string {
 }
 
 function printFieldShapeLabel(config: FieldConfig): string {
-  switch (config.type) {
-    case "square":
-    case "hex_rectangle":
-    case "triangle_rect": return m["field.shape.rectangle"]();
-    case "square_circle":
-    case "hex_circle":
-    case "triangle_circle": return m["field.shape.circle"]();
-    case "square_triangle":
-    case "hex_triangle":
-    case "triangle_triangle": return m["field.shape.triangle"]();
-    case "hex_parallelogram": return m["field.shape.parallelogram"]();
-    case "hex_hexagon":
-    case "triangle_hexagon": return m["field.shape.hexagon"]();
-    case "cairo": return m["field.shape.rectangle"]();
-    case "cairo_circle": return m["field.shape.circle"]();
-    case "cairo_triangle": return m["field.shape.triangle"]();
-    case "cairo_hexagon": return m["field.shape.hexagon"]();
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom": return m["field.print_sizing.floor_non_standard"]();
-    case "cairo_custom": return m["field.print_sizing.floor_non_standard"]();
+  switch (config.shape.shape) {
+    case "rect": return m["field.shape.rectangle"]();
+    case "circle": return m["field.shape.circle"]();
+    case "triangle": return m["field.shape.triangle"]();
+    case "parallelogram": return m["field.shape.parallelogram"]();
+    case "hexagon": return m["field.shape.hexagon"]();
+    case "custom": return m["field.print_sizing.floor_non_standard"]();
   }
 }
 
 function printFieldSizeLabel(config: PredefinedFieldConfig): string {
-  switch (config.type) {
-    case "square": return `${config.width} × ${config.height}`;
-    case "hex_rectangle":
-    case "hex_parallelogram":
-    case "triangle_rect": return `${config.cols} × ${config.rows}`;
-    case "square_circle":
-    case "hex_circle":
-    case "triangle_circle":
-    case "hex_hexagon":
-    case "triangle_hexagon": return `${m["field.radius"]()} ${config.radius}`;
-    case "square_triangle":
-    case "hex_triangle":
-    case "triangle_triangle": return `${m["field.side"]()} ${config.side}`;
-    case "cairo": return `${config.cols} × ${config.rows}`;
-    case "cairo_circle":
-    case "cairo_hexagon": return `${m["field.radius"]()} ${config.radius}`;
-    case "cairo_triangle": return `${m["field.side"]()} ${config.side}`;
+  const { shape } = config;
+  switch (shape.shape) {
+    case "rect":
+    case "parallelogram": return `${shape.cols} × ${shape.rows}`;
+    case "circle":
+    case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
+    case "triangle": return `${m["field.side"]()} ${shape.side}`;
   }
 }
 
 function printFieldCellCount(config: FieldConfig): number {
-  if (config.type === "square_custom" || config.type === "hex_custom" || config.type === "tri_custom" || config.type === "cairo_custom") return config.points.length;
-  return configAllCells(config as PredefinedFieldConfig).length;
+  return configAllCells(config).length;
 }
 
 const styles: Record<string, React.CSSProperties> = {

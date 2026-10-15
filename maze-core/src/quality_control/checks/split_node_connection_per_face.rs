@@ -20,7 +20,7 @@ pub const SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT: u32 = 1;
 /// must differ from the split tile's own point), and only edges *from* a split node *to* the
 /// neighbor count. `EdgeKind` doesn't matter.
 ///
-/// **Face direction** is `T::face_between(split_point, neighbor_point)`, converted to a stable
+/// **Face direction** is `Tessellation::face_between(split_point, neighbor_point)`, converted to a stable
 /// index via `T::face_index` so it can key a `HashMap` — resolved once per edge from the two
 /// points involved, independent of which of the split's nodes the edge actually starts at.
 pub struct SplitNodeConnectionPerFaceCheck {
@@ -50,6 +50,7 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
 
         let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
+        let tessellation = maze.field.tessellation();
         for &(level, point) in &split_points {
             let nodes = maze.field.nodes_at(level, point);
             // Bucket every outgoing edge to an outside neighbor by its face-direction index --
@@ -66,10 +67,10 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue>
                 if neighbor_point == point {
                     continue; // sibling edge to another node of the same split -- not "outside".
                 }
-                let Some(face) = T::face_between(point, neighbor_point) else {
+                let Some(face) = tessellation.face_between(point, neighbor_point) else {
                     continue;
                 };
-                let Some(face_index) = T::face_index(face) else {
+                let Some(face_index) = tessellation.face_index(face) else {
                     continue;
                 };
                 by_face.entry(face_index).or_default().push(edge.id);

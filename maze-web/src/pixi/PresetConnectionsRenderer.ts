@@ -203,7 +203,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.floorFields[state.activeFloorId].tessellationConfig;
+    return state.floorFields[state.activeFloorId].fieldConfig;
   }
 
   protected setRootVisible(visible: boolean): void {

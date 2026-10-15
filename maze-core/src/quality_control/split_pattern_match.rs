@@ -25,17 +25,18 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
     else {
         return Vec::new();
     };
-    let degree = T::faces().len();
+    let tessellation = field.tessellation();
+    let degree = tessellation.faces().len();
 
     nodes
         .iter()
         .map(|&node| {
             (0..degree)
                 .map(|face_index| {
-                    let Some(face) = T::face_at(face_index) else {
+                    let Some(face) = tessellation.face_at(face_index) else {
                         return SplitFaceRequirement::Wall;
                     };
-                    let Some(neighbor_point) = T::step(point, face) else {
+                    let Some(neighbor_point) = tessellation.step(point, face) else {
                         return SplitFaceRequirement::Wall;
                     };
                     let candidates = field.nodes_at(level, neighbor_point);
@@ -69,10 +70,11 @@ pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
 /// so the two are directly comparable). `sibling_target` faces compare as their own requirement
 /// (`Passage`/`OneWay`), same simplification `reconstruct_tile_faces` makes.
 ///
-/// `rotation`/`mirror` index into `T::rotation_symmetries()`/`T::mirror_symmetries()` (via
+/// `rotation`/`mirror` index into `Tessellation::rotation_symmetries()`/`Tessellation::mirror_symmetries()` (via
 /// `space::transform_face_index`, GitHub issue #275) — never raw arithmetic on the face index,
 /// since `Self::faces()` order isn't angular for every tessellation.
 fn pattern_faces_at<T: Tessellation>(
+    tessellation: &T,
     pattern: &SplitPattern,
     degree: usize,
     rotation: usize,
@@ -82,8 +84,12 @@ fn pattern_faces_at<T: Tessellation>(
         vec![vec![SplitFaceRequirement::Wall; degree]; pattern.node_count];
     for (node_index, node_faces) in pattern.faces.iter().enumerate() {
         for face in node_faces {
-            let resolved =
-                crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
+            let resolved = crate::space::transform_face_index(
+                tessellation,
+                face.face_index,
+                rotation,
+                mirror,
+            )?;
             if resolved >= degree {
                 return None;
             }
@@ -109,7 +115,8 @@ pub fn split_tile_matches_any<T: Tessellation>(
     if nodes.len() < 2 {
         return false;
     }
-    let degree = T::faces().len();
+    let tessellation = field.tessellation();
+    let degree = tessellation.faces().len();
     if degree == 0 {
         return false;
     }
@@ -118,15 +125,17 @@ pub fn split_tile_matches_any<T: Tessellation>(
         return false;
     }
 
-    let mirror_choices = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some));
+    let mirror_choices =
+        std::iter::once(None).chain((0..tessellation.mirror_symmetries().len()).map(Some));
 
     patterns.iter().any(|pattern| {
         if pattern.node_count != nodes.len() {
             return false;
         }
-        (0..T::rotation_symmetries().len()).any(|rotation| {
+        (0..tessellation.rotation_symmetries().len()).any(|rotation| {
             mirror_choices.clone().any(|mirror| {
-                let Some(expected) = pattern_faces_at::<T>(pattern, degree, rotation, mirror)
+                let Some(expected) =
+                    pattern_faces_at(tessellation, pattern, degree, rotation, mirror)
                 else {
                     return false;
                 };
@@ -143,6 +152,7 @@ mod tests {
     use crate::space::test_support::GappedSquareTessellation;
     use crate::space::{SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     fn two_node_pattern(east_req: SplitFaceRequirement) -> SplitPattern {
         // SquareFace order: [N, S, E, W] (see square.rs) — node 0 gets an East face (index 2),
@@ -171,7 +181,7 @@ mod tests {
     fn maze_with_middle_split() -> (Graph, MultiLevelField<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
@@ -217,7 +227,7 @@ mod tests {
     fn single_node_point_never_matches() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -234,7 +244,7 @@ mod tests {
         let east = SquarePoint { x: 1, y: 0 };
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<GappedSquareTessellation> =
-            MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), [origin, east], &mut ids).unwrap();
         let level = field.single_level_id();
         let origin_node = field.node_at(level, origin).unwrap();
         let graph = Graph::new();
@@ -243,7 +253,9 @@ mod tests {
 
         assert_eq!(actual.len(), 1);
         assert_eq!(
-            actual[0][GappedSquareTessellation::face_index(crate::space::SquareFace::E,).unwrap()],
+            actual[0][GappedSquareTessellation
+                .face_index(crate::space::SquareFace::E,)
+                .unwrap()],
             SplitFaceRequirement::Wall
         );
     }
@@ -259,7 +271,7 @@ mod tests {
 
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<TriTessellation> =
-            MultiLevelField::single_level(tri_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), tri_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = TriPoint { col: 1, row: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);

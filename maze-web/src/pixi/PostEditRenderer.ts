@@ -20,7 +20,7 @@ import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import { WALL_THICKNESS } from "./renderConstants";
 import type { EdgeDto, NodeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { WallEdge } from "./renderers/types";
 import type { SplitPassagesResult } from "./selectors/mazeSelectors/split";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../store/mazeStore";
@@ -101,7 +101,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private splitSceneCache: { base: PostEditSceneBase; specialKey: string; scene: PostEditSplitScene } | null = null;
   private drawnLayers: {
     floor: PostEditSceneBase | null;
-    closedCells: { cfg: TessellationConfig; cells: [number, number][] } | null;
+    closedCells: { cfg: FieldConfig; cells: [number, number][] } | null;
     split: PostEditSplitScene | null;
     walls: { wallEdges: WallEdge[]; split: PostEditSplitScene } | null;
     issueHighlight: PostEditSceneBase | null;
@@ -180,7 +180,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.floorFields[state.activeFloorId].tessellationConfig;
+    return state.floorFields[state.activeFloorId].fieldConfig;
   }
 
   protected setRootVisible(visible: boolean): void {
@@ -355,7 +355,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * none of them, so a teleport/marker/vertical drag reuses the whole floor-scoped base instead of
    * re-deriving it for every cell the cursor crosses. Everything drag-dependent (meta, teleports,
    * vertical entities) is layered on top of it in `redrawAll`. */
-  private sceneBase(state: MazeState, cfg: TessellationConfig): PostEditSceneBase {
+  private sceneBase(state: MazeState, cfg: FieldConfig): PostEditSceneBase {
     const key = [
       cfg, state.nodes, state.edges, state.floors, state.activeFloorId,
       state.postEditDraftEdges, state.postEditDraftSplitPoints, state.postEditActiveSplitNode,
@@ -429,7 +429,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   /** Split passages depend on the drag only through `specialNodeIds` restricted to split points'
    * own nodes (a hub is kept for a marker/teleport endpoint there) — memoized on that subset so a
    * drag across ordinary cells reuses the previous result and its wall/junction layers. */
-  private splitScene(base: PostEditSceneBase, cfg: TessellationConfig, specialNodeIds: ReadonlySet<number>): PostEditSplitScene {
+  private splitScene(base: PostEditSceneBase, cfg: FieldConfig, specialNodeIds: ReadonlySet<number>): PostEditSplitScene {
     const specialKey = [...specialNodeIds].filter((id) => base.splitNodeIds.has(id)).sort((a, b) => a - b).join(",");
     const cached = this.splitSceneCache;
     if (cached && cached.base === base && cached.specialKey === specialKey) return cached.scene;

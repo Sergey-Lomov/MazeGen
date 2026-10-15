@@ -1,7 +1,7 @@
 import { generateMaze, generateMazeAsync } from "../../wasm/mazeService";
 import type { GenerateMazeResult } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpointFromKey, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells, resolveFieldConfig } from "../../pixi/tessellationCells";
@@ -31,13 +31,8 @@ export function resolveAlgorithmKind(sources: DebugArenaHandle["sources"]): Debu
   return generationSource?.kind ?? sources[sources.length - 1].kind;
 }
 
-export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
-  const t = cfg.type;
-  const tessellation_type = t.startsWith("hex") ? "hex" as const
-    : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
-    : t.startsWith("cairo") ? "cairo" as const
-    : "square" as const;
-  return { tessellation_type };
+export function fieldConfigToWasm(cfg: FieldConfig): WasmTessellationConfig {
+  return cfg.tessellation;
 }
 
 // Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
@@ -350,7 +345,7 @@ function applyGenerationResult(
       selectedNode: null,
       issues: snapshot.issues,
       error: null,
-      activeTessellationConfig: resolveFieldConfig(activeTessellation),
+      activeFieldConfig: resolveFieldConfig(activeTessellation),
       routeInfo: snapshot.route_info,
       timing: snapshot.timing,
       generationStatus: "done",

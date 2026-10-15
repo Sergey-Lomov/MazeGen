@@ -7,8 +7,9 @@ import { canvas } from "../pixi/colorTokens";
 import { cairoCanonicalFaceOrder } from "../pixi/cairoGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -234,7 +235,7 @@ describe("buildMazeWalls", () => {
   });
 
   it("treats hex_triangle as a hex grid when finding shared walls", () => {
-    const cfg: TessellationConfig = { type: "hex_triangle", side: 20, orientation: "flat_top" };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "triangle", side: 20 }, "flat_top");
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     const walls = buildMazeWalls(nodes, [], cfg);
     expect(walls.some(w =>
@@ -284,7 +285,7 @@ describe("buildCorridorSegments", () => {
   });
 
   it("Cairo segments use the shared-face midpoint and its perpendicular outward normal", () => {
-    const cfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+    const cfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const a: [number, number] = [2, 1];
     const b: [number, number] = [-1, 2];
     const nodes = [n(0, ...a), n(1, ...b)];
@@ -801,7 +802,7 @@ describe("buildSplitJunctionPositions", () => {
 // Opposite pairs: (0,3) (1,4) (2,5). Adjacent pairs: (i,i+1). Skip pairs: (i,i+2).
 // Neighbor node ids are always 1..6 (one per face index); split-point node ids start at 100 to
 // avoid colliding with them.
-const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 4 };
+const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 4 });
 const hexNeighborNodes = (x: number, y: number) => [
   n(1, x + 1, y), n(2, x, y + 1), n(3, x - 1, y + 1),
   n(4, x - 1, y), n(5, x, y - 1), n(6, x + 1, y - 1),
@@ -990,8 +991,8 @@ describe("hasCrossFloorTeleport (GitHub issue #485)", () => {
 
 // --- buildTeleportEdges ---
 
-const squareCfg: TessellationConfig = { type: "square", width: 4, height: 4 };
-const cairoCfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
+const cairoCfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 
 describe("buildTeleportEdges", () => {
@@ -1153,7 +1154,7 @@ describe("buildTeleportEdges", () => {
     blockedCellsByFloor: buildTeleportBadgeBlockedCells(nodes, unscopedEdges, selectNodeLevelResolver(nodes), null, null),
     ...extra,
   });
-  const isCellCenter = (p: [number, number], cfg: TessellationConfig): boolean => {
+  const isCellCenter = (p: [number, number], cfg: FieldConfig): boolean => {
     const [gx, gy] = nearestCellCoord(p[0], p[1], cfg);
     const c = getCellCenter(gx, gy, cfg);
     return Math.abs(c.x - p[0]) < 1e-6 && Math.abs(c.y - p[1]) < 1e-6;

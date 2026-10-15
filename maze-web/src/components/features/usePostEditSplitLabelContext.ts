@@ -12,7 +12,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
  *  Shared by the post-edit "Changes" panel and the Teleports section's group list so both resolve
  *  split nodes identically.
  *
- *  Each floor's own `tessellationConfig` (GitHub issue #611's bug class) — a single list entry's
+ *  Each floor's own `fieldConfig` (GitHub issue #611's bug class) — a single list entry's
  *  bubbles can span several floors, each potentially needing a different floor's own field shape,
  *  not one maze-wide snapshot. */
 export function usePostEditSplitLabelContext(): {
@@ -32,7 +32,7 @@ export function usePostEditSplitLabelContext(): {
     return (level: number | undefined) => {
       const index = level ?? 0;
       const floor = floors[index];
-      return floor ? floorFields[floor.id].tessellationConfig : floorFields[floors[0].id].tessellationConfig;
+      return floor ? floorFields[floor.id].fieldConfig : floorFields[floors[0].id].fieldConfig;
     };
   }, [floors, floorFields]);
   const inFieldCellsByLevel = useMemo(() => {
@@ -43,7 +43,7 @@ export function usePostEditSplitLabelContext(): {
       if (cached) return cached;
       const floor = floors[index];
       const field = floor ? floorFields[floor.id] : undefined;
-      const cells = field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
+      const cells = field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
       cache.set(index, cells);
       return cells;
     };

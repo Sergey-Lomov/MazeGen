@@ -14,13 +14,14 @@ pub enum SquareFace {
     W,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
 
 impl Tessellation for SquareTessellation {
     type Point = SquarePoint;
     type Face = SquareFace;
 
-    fn step(point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
+    fn step(&self, point: SquarePoint, face: SquareFace) -> Option<SquarePoint> {
         Some(match face {
             SquareFace::N => SquarePoint {
                 x: point.x,
@@ -41,15 +42,15 @@ impl Tessellation for SquareTessellation {
         })
     }
 
-    fn is_valid_point(_point: SquarePoint) -> bool {
+    fn is_valid_point(&self, _point: SquarePoint) -> bool {
         true
     }
 
-    fn faces() -> &'static [SquareFace] {
+    fn faces(&self) -> &[SquareFace] {
         &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
     }
 
-    fn face_between(from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
+    fn face_between(&self, from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
         match (to.x - from.x, to.y - from.y) {
             (0, 1) => Some(SquareFace::N),
             (0, -1) => Some(SquareFace::S),
@@ -59,12 +60,12 @@ impl Tessellation for SquareTessellation {
         }
     }
 
-    fn cartesian(point: SquarePoint) -> (f64, f64) {
+    fn cartesian(&self, point: SquarePoint) -> (f64, f64) {
         (point.x as f64, point.y as f64)
     }
 
     /// Faces in `[N, S, E, W]` order (indices 0-3). 90°-clockwise rotation cycles N->E->S->W->N.
-    fn rotation_symmetries() -> &'static [&'static [usize]] {
+    fn rotation_symmetries(&self) -> &[&[usize]] {
         &[
             &[0, 1, 2, 3], // identity
             &[2, 3, 1, 0], // 90°:  N->E, S->W, E->S, W->N
@@ -74,7 +75,7 @@ impl Tessellation for SquareTessellation {
     }
 
     /// Two independent mirror axes: N-S (E<->W swap, N/S fixed) and E-W (N<->S swap, E/W fixed).
-    fn mirror_symmetries() -> &'static [&'static [usize]] {
+    fn mirror_symmetries(&self) -> &[&[usize]] {
         &[
             &[0, 1, 3, 2], // mirror across the N-S axis
             &[1, 0, 2, 3], // mirror across the E-W axis

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "../pixi/constants";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/wasmLoader", () => ({
   getWasm: () => ({
@@ -13,8 +14,8 @@ vi.mock("../wasm/wasmLoader", () => ({
 const { fitMazeViewport } = await import("../pixi/viewportFit");
 const { fitFieldViewport } = await import("../pixi/FieldEditorOverlay");
 
-const small: TessellationConfig = { type: "square", width: 2, height: 2 };
-const big: TessellationConfig = { type: "square", width: 6, height: 2 };
+const small: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
+const big: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 2 });
 
 describe("fitMazeViewport", () => {
   it("scales by the largest floor's own width/height, even when it's a different floor than the active one", () => {

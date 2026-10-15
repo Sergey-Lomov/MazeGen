@@ -8,6 +8,7 @@ use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use region_merge_core::{MODE_LARGEST, MODE_PREFER_NEEDY, MODE_SMALLEST};
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn params_with(mode: &str, connection_mode: &str, prefer_partial: bool) -> StrategyParams {
     let mut overrides = StdHashMap::new();
@@ -49,7 +50,7 @@ fn default_params() -> StrategyParams {
 /// wiring up its own edges.
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(w, h), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {

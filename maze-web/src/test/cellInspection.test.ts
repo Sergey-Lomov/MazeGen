@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
 import { setLocale } from "~/paraglide/runtime";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const node = (id: number, x: number, y: number, extra: Partial<NodeDto> = {}): NodeDto =>
   ({ id, x, y, i: 0, level: 0, ...extra });
@@ -123,7 +124,7 @@ describe("buildCellInspection", () => {
   // GitHub issue #487 — a split point whose faces match a recognized special-split topology
   // (degree-4 "bridge") titles each block with the semantic node name instead of "Node N".
   it("bridge split cell: blocks titled 'Corridor' / 'Bridge' when cfg recognizes the topology", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     // Square neighbor offsets are [+x, +y, -x, -y]; the through node (i:0) owns the +x/-x pair,
     // the crossing node (i:1) owns the +y/-y pair — each an opposite-face pair => "bridge".
     const nodeById = new Map<number, NodeDto>([

@@ -2,7 +2,7 @@ import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEnt
 import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
 import { presetEndpointScreenPos } from "./selectors/presetSelectors";
 import { withoutLevel, type PresetEndpoint } from "./presetEndpoint";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
 import { resolveCrossFloorBadgeCells, type CrossFloorBadgePair } from "./selectors/mazeSelectors/teleport";
 
@@ -66,7 +66,7 @@ type PresetNodePositions = Map<string, { x: number; y: number }>;
  *  are forwarded straight through — the preset editor always passes `allowOutOfField: true`. */
 export function buildPresetTeleportEdges(
   teleports: PresetTeleportEntry[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   activeLevel: number | undefined,
   nodePositions: PresetNodePositions = new Map(),
   spread?: {
@@ -174,7 +174,7 @@ export function buildPresetTeleportEdges(
 export function buildPresetVerticalMarkers(
   passages: PresetVerticalPassageEntry[],
   elevators: PresetElevatorEntry[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   activeLevel: number | undefined,
   nodePositions: PresetNodePositions = new Map(),
 ): VerticalConnectionMarker[] {

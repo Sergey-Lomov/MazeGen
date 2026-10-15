@@ -8,6 +8,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     build_params(
@@ -38,11 +39,13 @@ fn multi_floor_maze(
     side: usize,
 ) -> (Maze<SquareTessellation>, Vec<crate::space::LevelId>) {
     let mut ids = IdGenerator::new();
-    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let mut mf: MultiLevelField<SquareTessellation> =
+        MultiLevelField::new(Arc::default(), std::iter::empty());
     let levels: Vec<_> = (0..floors)
         .map(|_| {
             mf.add_level(
-                Field::<SquareTessellation>::new(square_rect(side, side), &mut ids).unwrap(),
+                Field::<SquareTessellation>::new(Arc::default(), square_rect(side, side), &mut ids)
+                    .unwrap(),
             )
         })
         .collect();

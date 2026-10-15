@@ -4,7 +4,7 @@ import type {
   PostEditElevatorEntry, PostEditElevatorEndpointHit, PostEditVerticalDragFailure,
 } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, resolveEndpoint, endpointKey } from "./postEditEndpoint";
 import { pickNearestPointerHit } from "./pointerInteraction";
 
@@ -17,7 +17,7 @@ import { pickNearestPointerHit } from "./pointerInteraction";
 export function pickPostEditVerticalPassageEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   passages: PostEditVerticalPassageEntry[],
   nodeById: Map<number, NodeDto>,
   resolveNodeLevel: (id: number) => number | undefined,
@@ -48,7 +48,7 @@ export function pickPostEditVerticalPassageEndpointAt(
 export function pickPostEditElevatorEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   elevators: PostEditElevatorEntry[],
   nodeById: Map<number, NodeDto>,
   resolveNodeLevel: (id: number) => number | undefined,

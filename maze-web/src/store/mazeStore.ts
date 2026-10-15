@@ -9,7 +9,7 @@ import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { createFloorsSlice } from "./slices/floorsSlice";
-import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
+import { buildPreviewState, buildResetMazeState, composeFieldConfig, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 import { resolveFieldConfig } from "../pixi/tessellationCells";
@@ -51,18 +51,19 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     const floorFields: Record<string, FloorFieldConfig> = {};
     for (const floor of file.floors.floors) {
       const ff = file.floorFields[floor.id];
-      const { squareShape, hexShape, triangleShape, cairoShape } = kindAndShapeFromConfig(ff.config);
+      const fieldConfig = composeFieldConfig(kind, ff.shape, hexOrientation, triOrientation);
+      const { squareShape, hexShape, triangleShape, cairoShape } = kindAndShapeFromConfig(fieldConfig);
       const freeFieldPoints = {
         square: new Set(ff.freeFieldPoints.square.map(([x, y]) => encodePoint(x, y))),
         hex: new Set(ff.freeFieldPoints.hex.map(([x, y]) => encodePoint(x, y))),
-        triangle: new Set(ff.freeFieldPoints.triangle.map(([x, y]) => encodePoint(x, y))),
+        tri: new Set(ff.freeFieldPoints.tri.map(([x, y]) => encodePoint(x, y))),
         cairo: new Set(ff.freeFieldPoints.cairo.map(([x, y]) => encodePoint(x, y))),
       };
       const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, cairoShape, freeFieldPoints);
       floorFields[floor.id] = {
         squareShape, hexShape, triangleShape, cairoShape,
-        savedConfigs: Object.fromEntries(ff.savedConfigs.map((c) => [c.type, c])),
-        tessellationConfig: ff.config,
+        savedShapes: Object.fromEntries(ff.savedShapes.map((shape) => [shape.shape, shape])),
+        fieldConfig,
         freeFieldPoints,
         isEditingField,
         fieldPoints,
@@ -74,7 +75,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     }
     const activeFloorId = file.floors.activeFloorId;
     const activeField = floorFields[activeFloorId];
-    const cfg = activeField.tessellationConfig;
+    const cfg = activeField.fieldConfig;
 
     // Recompute auto-locked nodes against the active floor's own field.
     const restoredPresetConnections = new Map(file.presets.connections);
@@ -108,7 +109,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       hexOrientation,
       triOrientation,
       floorFields,
-      activeTessellationConfig: resolveFieldConfig(cfg),
+      activeFieldConfig: resolveFieldConfig(cfg),
       tessellationConfirmed: true,
       ...previewState,
       // generation settings (seed used below for generate call)

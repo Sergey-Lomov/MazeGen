@@ -8,6 +8,7 @@ use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use region_merge_core::{MODE_LARGEST, MODE_PREFER_NEEDY, MODE_SMALLEST};
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 fn params_with(
     mode: &str,
@@ -63,9 +64,9 @@ fn build_multi_level(
 ) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
     let fields: Vec<_> = (0..levels)
-        .map(|_| crate::space::Field::new(square_rect(w, h), &mut ids).unwrap())
+        .map(|_| crate::space::Field::new(Arc::default(), square_rect(w, h), &mut ids).unwrap())
         .collect();
-    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let field = MultiLevelField::<SquareTessellation>::new(Arc::default(), fields);
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);
@@ -171,8 +172,12 @@ fn apply_completes_an_existing_one_way_vertical_edge_into_a_full_passage() {
 #[test]
 fn apply_fails_when_field_is_single_level() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(1, 1),
+        &mut ids,
+    )
+    .unwrap();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
         g.add_node(node);

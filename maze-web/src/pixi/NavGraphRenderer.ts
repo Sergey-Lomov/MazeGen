@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { BaseGraphRenderer, buildPathRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
@@ -16,7 +16,7 @@ export interface NavGraphData {
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a nav-edge whose other endpoint crosses to another floor (GitHub
    *  issue #339). Omitted callers draw no cross-floor badges (same as passing an always-`undefined`

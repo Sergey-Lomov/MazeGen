@@ -184,12 +184,9 @@ export interface StageConfig {
   rules: QcRuleConfig[];
 }
 
-/** Wire tessellation kind. */
-export type TessellationKindWasm = "square" | "hex" | "tri" | "cairo";
-
-export interface WasmTessellationConfig {
-  tessellation_type: TessellationKindWasm;
-}
+/** Wire tessellation instance config, `{ kind, params }` — mirrors `maze-runner`'s
+ * `TessellationConfig`. */
+export type WasmTessellationConfig = import("../fieldConfig").TessellationConfig;
 
 export interface GenerationParams {
   depth_first?: number;

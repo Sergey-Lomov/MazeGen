@@ -64,9 +64,14 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   const migrated = assertObject(migrateToLatest(obj, version), "root (migrated)");
 
-  // tessellation (kind/orientation only — per-floor field shape is `floorFields`, GitHub issue #338)
+  // tessellation ({ kind, params } plus display orientation — per-floor field shape is
+  // `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const kind = optEnum(tessObj, "kind", ["square", "hex", "triangle", "cairo"] as const, "square");
+  const kind = optEnum(tessObj, "kind", ["square", "hex", "tri", "cairo"] as const, "square");
+  const params = assertObject(tessObj.params, "tessellation.params");
+  // The registered kinds take no params; core's tessellation factory rejects any others too.
+  const unsupportedParam = Object.keys(params)[0];
+  if (unsupportedParam !== undefined) throw new Error(`tessellation.params: kind "${kind}" does not accept param "${unsupportedParam}"`);
   const hexOrientation = optEnum(tessObj, "hexOrientation", ["flat_top", "pointy_top"] as const, "flat_top");
   const triOrientation = optEnum(tessObj, "triOrientation", ["r0", "r90", "r180", "r270"] as const, "r0");
 
@@ -265,18 +270,18 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // entry (file saved before this issue, or hand-edited) falls back to the kind's bare default
   // shape, same convention `defaultFloorFieldConfig` (storeHelpers.ts) uses for a brand-new floor.
   const floorFieldsObj = migrated.floorFields != null ? assertObject(migrated.floorFields, "floorFields") : {};
-  const defaultConfig = buildPredefinedConfig(kind, kind === "hex" ? "hexagon" : "parallelogram", kind === "triangle" ? "triangle" : "rect", hexOrientation, triOrientation);
+  const defaultConfig = buildPredefinedConfig(kind, kind === "hex" ? "hexagon" : "parallelogram", kind === "tri" ? "triangle" : "rect", hexOrientation, triOrientation);
   const floorFields: Record<string, ProjectFileFloorField> = {};
   for (const floor of floors.floors) {
     const raw = floorFieldsObj[floor.id];
     floorFields[floor.id] = raw != null
-      ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`)
-      : { config: defaultConfig, savedConfigs: [defaultConfig], freeFieldPoints: { square: [], hex: [], triangle: [], cairo: [] }, fieldEditMode: "default" };
+      ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`, kind)
+      : { shape: defaultConfig.shape, savedShapes: defaultConfig.shape.shape === "custom" ? [] : [defaultConfig.shape], freeFieldPoints: { square: [], hex: [], tri: [], cairo: [] }, fieldEditMode: "default" };
   }
 
   return {
     version: CURRENT_VERSION,
-    tessellation: { kind, hexOrientation, triOrientation },
+    tessellation: { kind, params, hexOrientation, triOrientation },
     floorFields,
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },

@@ -109,9 +109,9 @@ pub struct CrossElementOccurrence<T: Tessellation> {
     pub level_index: usize,
     /// `field.point_of(node)`.
     pub point: T::Point,
-    /// Cartesian position the geometric metric measures from — `T::cartesian(point)` for every
+    /// Cartesian position the geometric metric measures from — `Tessellation::cartesian(point)` for every
     /// occurrence, except a one-way's two occurrences, which both carry the one-way edge's own
-    /// `T::edge_position(from, to)` instead (GitHub issue #376's follow-up: a one-way renders on
+    /// `Tessellation::edge_position(from, to)` instead (GitHub issue #376's follow-up: a one-way renders on
     /// the tile border it crosses, not at either endpoint node, so its geometric distance is
     /// measured the same way `OneWayGroupGeometricProximityCheck` measures it, from the edge's own
     /// position rather than from either of its two endpoint nodes). Both of a one-way's occurrences
@@ -204,6 +204,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
     nav: &NavGraph,
 ) -> Vec<CrossElementOccurrence<T>> {
     let mut out = Vec::new();
+    let tessellation = maze.field.tessellation();
     let push_at =
         |out: &mut Vec<CrossElementOccurrence<T>>, element: CrossElement, node: NodeId| {
             let (Some(level_index), Some(point)) =
@@ -216,7 +217,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
                 node,
                 level_index,
                 point,
-                xy: T::cartesian(point),
+                xy: tessellation.cartesian(point),
                 nav_node: nav.nav_node_for(node),
             });
         };
@@ -245,7 +246,7 @@ pub fn cross_element_occurrences<T: Tessellation>(
             else {
                 continue;
             };
-            let edge_xy = T::edge_position(from_point, to_point);
+            let edge_xy = tessellation.edge_position(from_point, to_point);
             let before = out.len();
             push_at(&mut out, CrossElement::OneWay(id), from);
             push_at(&mut out, CrossElement::OneWay(id), to);
@@ -390,6 +391,7 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     fn all_types() -> CrossElementSet {
         CrossElementSet {
@@ -425,7 +427,7 @@ mod tests {
     fn teleport_contributes_two_occurrences_for_one_portal_regardless_of_direction() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -456,10 +458,14 @@ mod tests {
     #[test]
     fn each_elevator_stop_is_its_own_element_with_the_stop_node_as_id() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();
@@ -502,7 +508,7 @@ mod tests {
     fn set_excludes_disabled_types_from_occurrences() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -526,7 +532,7 @@ mod tests {
     fn still_violates_tracks_edge_removal() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for n in field.all_node_ids() {
@@ -546,7 +552,7 @@ mod tests {
     fn still_violates_split_arm_tracks_the_tile_collapsing_below_two_nodes() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let extra = field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
         let mut g = Graph::new();
@@ -575,10 +581,14 @@ mod tests {
     #[test]
     fn still_violates_elevator_stop_arm_tracks_the_fan_dropping_below_two_stops() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();
@@ -622,11 +632,14 @@ mod tests {
     #[test]
     fn cross_element_edges_two_way_vertical_passage_includes_the_reverse_edge() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let g0 =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let g1 =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let g0 = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let g1 = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for n in mf.all_node_ids() {
             g.add_node(n);

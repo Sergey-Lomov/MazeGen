@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { RegionOverlayRenderer } from "./renderers/RegionOverlayRenderer";
 import { buildPalette } from "./colorUtils";
 import { COMPONENT_MASK_ALPHA } from "./renderConstants";
@@ -9,7 +9,7 @@ import type { TeleportEdge } from "./renderers/types";
 export interface RegionsData {
   nodes: NodeDto[];
   components: number[][];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   allEdges?: EdgeDto[];
   resolveNodeLevel?: (id: number) => number | undefined;
   activeFloorIndex?: number;

@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { DebugValueKind } from "../debug/eventTape";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { SequenceHighlightRenderer } from "./renderers/SequenceHighlightRenderer";
@@ -41,7 +41,7 @@ export interface DebugValueHighlightData {
   /** Region-valued names that must remain one independent cell per value item instead of being
    *  merged into connected contours. Used by CustomVertexBased's frontier/reserve sets. */
   singleCellRegionNames?: ReadonlySet<string>;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
 }
 
 type RendererEntry =

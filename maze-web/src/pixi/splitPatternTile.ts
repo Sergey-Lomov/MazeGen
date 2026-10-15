@@ -4,7 +4,7 @@ import { getNeighborData, splitFaceIndexToCore } from "./tessellationGeometry";
 import { CAIRO_ANCHOR_POINT } from "./cairoGeometry";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 
 /** Number of faces (`Tessellation::faces().len()`) for `cfg` — derived from
  *  `getNeighborData`'s own offset list (the same source `TileFaceEditor`'s face geometry uses),
@@ -15,15 +15,15 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
  *  synthetic anchor point is the origin except for Cairo, whose origin is not an occupied tile.
  *  Triangle cells alternate up/down parity by `(x+y) % 2`, but both parities have the same degree
  *  (3), so the origin's value is representative here too. */
-export function degreeFor(cfg: TessellationConfig): number {
+export function degreeFor(cfg: FieldConfig): number {
   const [x, y] = patternAnchorPoint(cfg);
   return getNeighborData(cfg, x, y).offsets.length;
 }
 
 /** Stable point for split-pattern previews. Keep the origin for the existing tessellations so
  * triangle parity stays unchanged; Cairo needs one of its four occupied residue classes. */
-export function patternAnchorPoint(cfg: TessellationConfig): [number, number] {
-  return cfg.type.startsWith("cairo") ? [...CAIRO_ANCHOR_POINT] : [0, 0];
+export function patternAnchorPoint(cfg: FieldConfig): [number, number] {
+  return cfg.tessellation.kind === "cairo" ? [...CAIRO_ANCHOR_POINT] : [0, 0];
 }
 
 export function colorToCss(color: number): string {
@@ -69,7 +69,7 @@ export function tileNodesForPattern(pattern: SplitPattern, degree: number): Tile
  *  point `splitPatternsToCore` uses at the wasm-config-serialization boundary (GitHub issue #273),
  *  just read in the opposite direction (core value -> web slot) since this data already arrived
  *  from wasm in core ordering, unlike an authored `SplitPattern`. */
-export function tileNodesForTopology(topology: SplitFaceRequirement[][], cfg: TessellationConfig): TileFaceNode[] {
+export function tileNodesForTopology(topology: SplitFaceRequirement[][], cfg: FieldConfig): TileFaceNode[] {
   const degree = degreeFor(cfg);
   return topology.map((nodeFaces, nodeIndex): TileFaceNode => ({
     color: splitPatternNodeColor(nodeIndex),

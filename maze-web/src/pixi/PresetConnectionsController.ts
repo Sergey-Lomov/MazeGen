@@ -178,7 +178,7 @@ export class PresetConnectionsController extends BaseController {
 
   /** The settings tool targets an edge only when it is a one-way edge between unsplit cells. */
   private settingsEdgeAt(state: State, vpX: number, vpY: number): FieldEdge | null {
-    const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+    const cfg = state.floorFields[state.activeFloorId].fieldConfig;
     const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     if (!edge) return null;
     const level = activeFloorLevel(state);
@@ -203,13 +203,13 @@ export class PresetConnectionsController extends BaseController {
     if (this.carrying && state.presetConnectionsTool !== "move") this.cancelPointerGesture();
     if (this.pressCell) {
       // A press that leaves its cell (even off the field) is a drag, never a placement click.
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       if (x !== this.pressCell[0] || y !== this.pressCell[1]) this.pressCell = null;
     }
 
     const marker = this.draggedMarker;
     if (marker) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell or vanishing for the whole gesture.
@@ -236,7 +236,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingLock) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const inField = this.renderer.getCachedCellSet().has(encodePoint(x, y));
       this.renderer.updateCellHover(inField ? [x, y] : null);
       if (!inField) return;
@@ -252,7 +252,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingTeleportEndpoint) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
@@ -283,7 +283,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingVerticalPassageEndpoint) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
@@ -314,7 +314,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingElevatorEndpoint) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       // Cursor highlight follows the drag (GitHub issue #612) instead of staying on the origin
       // cell for the whole gesture.
@@ -355,7 +355,7 @@ export class PresetConnectionsController extends BaseController {
         return;
       }
       this.renderer.updateHover(null);
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
         this.renderer.updateCellHover(null);
         return;
@@ -370,7 +370,7 @@ export class PresetConnectionsController extends BaseController {
       // point, not one of its faces — highlight the cell under the cursor, not an edge (mirrors
       // manage_split_nodes's original fix, GitHub issue #231; issue #326 extends this to every
       // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
@@ -386,7 +386,7 @@ export class PresetConnectionsController extends BaseController {
       // edge" to point-hover there; the point branch (delete everything at the point) covers it.
       // Both branches are drag-capable (GitHub issue #489) — edge via `beginEdgeDrag`, cell via
       // `beginCellDrag` (BaseController, shared bookkeeping).
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       // Once a clear gesture has started, keep dispatching through the branch selected at
       // pointerdown. Crossing an edge hit zone must not switch a cell clear to edge mutations,
       // and a cell clear must continue while the cursor is over an edge.
@@ -451,7 +451,7 @@ export class PresetConnectionsController extends BaseController {
     }
     this.renderer.updateCellHover(null);
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
     this.continueEdgeDrag(edge, (e) => {
@@ -483,7 +483,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "move") {
       if (button !== 0) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       if (!this.renderer.getCachedCellSet().has(encodePoint(x, y))) return;
       // A single element is picked up by this press (drag it, or release to carry it); several
       // open the pick dialog, whose choice is carried (`takeMoveRequest`).
@@ -503,7 +503,7 @@ export class PresetConnectionsController extends BaseController {
         state.applyPresetConnectionsToolAt("one_way_flip", edge.key, edge.from, edge.to);
         return;
       }
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
       const [x, y] = pointerCellAtConfig(cfg, vpX, vpY);
       state.requestPresetEntityPick([x, y], activeFloorLevel(state), "settings");
@@ -513,7 +513,7 @@ export class PresetConnectionsController extends BaseController {
     // Locks are cell tools (not VERTEX_TOOLS), but a split cell still needs an explicit node
     // target. Defer the click to the same picker used by other split-node vertex actions.
     if (button === 0 && (tool === "lock_in" || tool === "lock_out" || tool === "full_lock")) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const point: [number, number] = [cell.x, cell.y];
       const level = activeFloorLevel(state);
@@ -526,7 +526,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (VERTEX_TOOLS.has(tool)) {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
@@ -564,9 +564,9 @@ export class PresetConnectionsController extends BaseController {
         store.presetStart !== null && (store.presetStart.level ?? 0) === (level ?? 0) && store.presetStart.point[0] === coords[0] && store.presetStart.point[1] === coords[1];
       const onFinish =
         store.presetFinish !== null && (store.presetFinish.level ?? 0) === (level ?? 0) && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
-      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, teleportsOnLevel(store.presetTeleports, level));
-      const verticalPassageHit = pickVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetVerticalPassages, level);
-      const elevatorMarkerHit = pickElevatorEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetElevators, level);
+      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, teleportsOnLevel(store.presetTeleports, level));
+      const verticalPassageHit = pickVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, store.presetVerticalPassages, level);
+      const elevatorMarkerHit = pickElevatorEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, store.presetElevators, level);
       const elevatorHit = store.presetElevators.find((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0) && f.point[0] === coords[0] && f.point[1] === coords[1]));
 
       if (button === 2) {
@@ -626,7 +626,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "gen_source") {
       if (button !== 0 && button !== 2) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
@@ -659,7 +659,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const cell = { x, y };
       const key = encodePoint(cell.x, cell.y);
       useMazeStore.getState().setPresetFocusedPoint(this.renderer.getCachedCellSet().has(key) ? [cell.x, cell.y] : null);
@@ -668,7 +668,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "clear") {
       if (button !== 0) return;
-      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const cfg = state.floorFields[state.activeFloorId].fieldConfig;
       const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       const level = activeFloorLevel(state);
       const isSplit = (p: [number, number]) => {
@@ -699,7 +699,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (tool === "lock_in" || tool === "lock_out" || tool === "full_lock") {
-      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].tessellationConfig, vpX, vpY);
+      const [x, y] = pointerCellAtConfig(state.floorFields[state.activeFloorId].fieldConfig, vpX, vpY);
       const store = useMazeStore.getState();
       if (button === 2) {
         store.removeLockedNode(x, y);
@@ -720,7 +720,7 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].fieldConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     if (!edge) return;
 
     if (button === 2) {

@@ -106,7 +106,7 @@ export class SceneInteraction {
       if (controller) {
         controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey, e.detail);
         if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
-          fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
+          fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
         }
         return;
       }
@@ -145,7 +145,7 @@ export class SceneInteraction {
           : field.fieldOperation === "select" ? canvas.fieldEditor.previewSelect : canvas.fieldEditor.previewAdd;
         fieldEditorOverlay.updateHover(
           fieldEditController.isGestureActive() || fieldEditController.hasSelectionPreview?.() ? null : hoverCell,
-          field.tessellationConfig,
+          field.fieldConfig,
           hoverColor,
           field.fieldPrimitive === "magic_wand" ? 0.5 : undefined,
         );
@@ -202,7 +202,7 @@ export class SceneInteraction {
       onHoverChanged(null);
       setCanvasCursor(app.canvas, "");
       if (st.openCard === "field_setup") {
-        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
+        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
       }
       this.defaultPan.end();
     });
@@ -212,7 +212,7 @@ export class SceneInteraction {
       onHoverChanged(null);
       setCanvasCursor(app.canvas, "");
       if (st.openCard === "field_setup") {
-        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
+        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].fieldConfig);
       }
     });
 

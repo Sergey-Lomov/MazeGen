@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { WallEdge, PassageKind } from "../../renderers/types";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
@@ -58,7 +58,7 @@ export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[], allEdges?: 
 export function buildMazeWalls(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): WallEdge[] {
   const nodeById = new Map<number, NodeDto>();
   for (const n of nodes) nodeById.set(n.id, n);
@@ -155,7 +155,7 @@ export function buildMazeWalls(
  *  duplicating it, so the position matches exactly where the indicator is actually drawn. */
 export function buildOneWayWallIndicatorPositions(
   edges: WallEdge[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): [number, number][] {
   const result: [number, number][] = [];
   for (const edge of edges) {

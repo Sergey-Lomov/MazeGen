@@ -5,6 +5,7 @@ use crate::random::MazeRng;
 use crate::repair::draft::DraftMaze;
 use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 /// 1x4 row: 0=start, 1=finish (edge 0->1), 2=candidate (singleton Unreachable, field-neighbor
 /// of finish only, no graph edge to it). 3 is a geometric buffer so candidate has exactly one
@@ -68,7 +69,7 @@ fn maze_with_isolated_candidate_having_two_distinct_neighbors()
 -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(5, 3), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(5, 3), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {
@@ -144,7 +145,7 @@ fn convert_region_unreachable_to_alternative_adds_both_inbound_and_outbound() {
 fn maze_with_trap_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(5, 3), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(5, 3), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = G::new();
     for node in field.all_node_ids() {

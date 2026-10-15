@@ -25,7 +25,7 @@ pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
 /// always canonicalize to the same value and can be grouped/compared with plain equality.
 ///
 /// Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-/// (`T::faces()` empty).
+/// (`Tessellation::faces()` empty).
 pub fn canonical_split_topology<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
@@ -34,7 +34,8 @@ pub fn canonical_split_topology<T: Tessellation>(
     if nodes.len() < 2 {
         return None;
     }
-    let degree = T::faces().len();
+    let tessellation = field.tessellation();
+    let degree = tessellation.faces().len();
     if degree == 0 {
         return None;
     }
@@ -44,16 +45,18 @@ pub fn canonical_split_topology<T: Tessellation>(
         return None;
     }
 
-    let mirror_choices = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some));
+    let mirror_choices =
+        std::iter::once(None).chain((0..tessellation.mirror_symmetries().len()).map(Some));
 
     let mut best: Option<SplitTopology> = None;
-    for rotation in 0..T::rotation_symmetries().len() {
+    for rotation in 0..tessellation.rotation_symmetries().len() {
         for mirror in mirror_choices.clone() {
             let mut candidate: SplitTopology = Vec::with_capacity(actual.len());
             for node_faces in &actual {
                 let mut transformed = vec![SplitFaceRequirement::Wall; degree];
                 for (face_index, &requirement) in node_faces.iter().enumerate() {
-                    let Some(resolved) = transform_face_index::<T>(face_index, rotation, mirror)
+                    let Some(resolved) =
+                        transform_face_index(tessellation, face_index, rotation, mirror)
                     else {
                         continue;
                     };
@@ -119,6 +122,7 @@ mod tests {
     use super::*;
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     /// 3x1 field, middle point split into 2 nodes, each connected to one horizontal neighbor.
     fn maze_with_middle_split() -> (
@@ -128,7 +132,7 @@ mod tests {
     ) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
@@ -149,7 +153,7 @@ mod tests {
     fn non_split_tile_has_no_canonical_topology() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -176,7 +180,7 @@ mod tests {
         // degree rotation of the first fixture's shape.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 3), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 3), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 0, y: 1 };
         let extra = field.add_node_at(level, mid, &mut ids);
@@ -204,7 +208,7 @@ mod tests {
     fn split_totals_counts_tiles_and_nodes_and_groups_by_topology() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(5, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         // Two equivalent 2-node split tiles (same shape, different points) plus one 3-node tile.
         field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
@@ -243,10 +247,11 @@ mod tests {
     fn split_totals_scoped_counts_only_the_given_floor() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level0 = field.single_level_id();
         field.add_node_at(level0, SquarePoint { x: 1, y: 0 }, &mut ids);
-        let level1 = field.add_level(Field::new(square_rect(3, 1), &mut ids).unwrap());
+        let level1 =
+            field.add_level(Field::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap());
         field.add_node_at(level1, SquarePoint { x: 1, y: 0 }, &mut ids);
         field.add_node_at(level1, SquarePoint { x: 2, y: 0 }, &mut ids);
         let mut g = Graph::new();
@@ -266,7 +271,7 @@ mod tests {
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

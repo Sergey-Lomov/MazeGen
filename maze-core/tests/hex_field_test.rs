@@ -1,14 +1,15 @@
 use maze_core::IdGenerator;
 use maze_core::space::{Field, HexPoint, HexTessellation, hex_hexagon, hex_parallelogram};
+use std::sync::Arc;
 
 fn make_parallelogram(cols: usize, rows: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(hex_parallelogram(cols, rows), &mut ids).unwrap()
+    Field::new(Arc::default(), hex_parallelogram(cols, rows), &mut ids).unwrap()
 }
 
 fn make_hexagon(radius: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(hex_hexagon(radius), &mut ids).unwrap()
+    Field::new(Arc::default(), hex_hexagon(radius), &mut ids).unwrap()
 }
 
 // --- HexParallelogram ---

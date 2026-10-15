@@ -150,7 +150,7 @@ export class AnalyticsRenderer {
         state.routeInfo !== prev.routeInfo ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFieldConfig !== prev.activeFieldConfig ||
         state.postEditAnalytics !== prev.postEditAnalytics ||
         state.postEditEdges !== prev.postEditEdges ||
         state.postEditTeleportEdges !== prev.postEditTeleportEdges ||
@@ -169,7 +169,7 @@ export class AnalyticsRenderer {
 
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const analyticsOpen = state.openCard === "analytics";
-    const { activeTessellationConfig: cfg,
+    const { activeFieldConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
       showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
 
@@ -401,7 +401,7 @@ export class AnalyticsRenderer {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "analytics" && state.nodes.length > 0) {
-      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+      this.grid.render({ viewport: this.viewport }, state.activeFieldConfig);
     }
   }
 

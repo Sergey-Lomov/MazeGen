@@ -1,18 +1,19 @@
-use crate::generation_config::TessellationType;
-use maze_core::space::{
-    CairoPoint, CairoTessellation, HexPoint, SquarePoint, SquareTessellation, Tessellation,
-    TriPoint,
+use crate::generation_config::TessellationConfig;
+use maze_core::space::Tessellation;
+use maze_runner::runner::tessellation_factory::{
+    PointCodec, TessellationVisitor, build_tessellation,
 };
 use serde::Deserialize;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-/// Wire shape for `cartesian_coords` — a standalone point list plus its tessellation kind,
-/// independent of `GenerateConfig`'s own `TessellationConfig`/`level_fields` (which carry no
-/// `points` themselves — see GitHub issue #338). This endpoint answers a single geometry query,
-/// not a multi-level generation config.
+/// Wire shape for `cartesian_coords` — a standalone point list plus its tessellation config,
+/// independent of `GenerateConfig`'s `level_fields` (which carry no `points` themselves — see
+/// GitHub issue #338). This endpoint answers a single geometry query, not a multi-level
+/// generation config.
 #[derive(Deserialize)]
 struct CartesianCoordsConfig {
-    tessellation_type: TessellationType,
+    tessellation: TessellationConfig,
     points: Vec<[i32; 2]>,
 }
 
@@ -26,58 +27,56 @@ struct CartesianCoordsConfig {
 pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
     let cfg: CartesianCoordsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
-    let coords = cartesian_coords_for(&cfg);
+    let coords = cartesian_coords_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
     Ok(serde_wasm_bindgen::to_value(&coords).unwrap())
 }
 
-fn cartesian_coords_for(cfg: &CartesianCoordsConfig) -> Vec<[f64; 2]> {
-    match cfg.tessellation_type {
-        TessellationType::Square => cfg
-            .points
+fn cartesian_coords_for(cfg: &CartesianCoordsConfig) -> Result<Vec<[f64; 2]>, String> {
+    build_tessellation(
+        &cfg.tessellation,
+        Project {
+            points: &cfg.points,
+        },
+    )
+}
+
+/// Projects wire points through the built tessellation instance.
+struct Project<'a> {
+    points: &'a [[i32; 2]],
+}
+
+impl TessellationVisitor for Project<'_> {
+    type Output = Vec<[f64; 2]>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+        self.points
             .iter()
             .map(|&[x, y]| {
-                let (cx, cy) = SquareTessellation::cartesian(SquarePoint { x, y });
+                let (cx, cy) = tessellation.cartesian((codec.from_xy)(x, y));
                 [cx, cy]
             })
-            .collect(),
-        TessellationType::Hex => cfg
-            .points
-            .iter()
-            .map(|&[q, r]| {
-                let (cx, cy) = maze_core::space::HexTessellation::cartesian(HexPoint { q, r });
-                [cx, cy]
-            })
-            .collect(),
-        TessellationType::Tri => cfg
-            .points
-            .iter()
-            .map(|&[col, row]| {
-                let (cx, cy) = maze_core::space::TriTessellation::cartesian(TriPoint { col, row });
-                [cx, cy]
-            })
-            .collect(),
-        TessellationType::Cairo => cfg
-            .points
-            .iter()
-            .map(|&[x, y]| {
-                let (cx, cy) = CairoTessellation::cartesian(CairoPoint { x, y });
-                [cx, cy]
-            })
-            .collect(),
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CartesianCoordsConfig, cartesian_coords_for};
-    use crate::generation_config::TessellationType;
+    use crate::generation_config::TessellationConfig;
+    use maze_runner::config::TessellationKind;
 
     #[test]
     fn cairo_cartesian_projection_preserves_wire_coordinates() {
         let cfg = CartesianCoordsConfig {
-            tessellation_type: TessellationType::Cairo,
+            tessellation: TessellationConfig {
+                kind: TessellationKind::Cairo,
+                params: serde_json::Map::new(),
+            },
             points: vec![[-6, -5], [3, 2]],
         };
-        assert_eq!(cartesian_coords_for(&cfg), vec![[-6.0, -5.0], [3.0, 2.0]]);
+        assert_eq!(
+            cartesian_coords_for(&cfg),
+            Ok(vec![[-6.0, -5.0], [3.0, 2.0]])
+        );
     }
 }

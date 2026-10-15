@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Circle, FlipHorizontal, Hexagon, Minus, Plus, Square, Triangle } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, CairoShape, TessellationKind, FieldPrimitive, FieldOperation } from "../../store/mazeStore";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig, FieldShape } from "../../fieldConfig";
 import { sharedStyles } from "../../styles/shared";
 import { Button } from "../Button";
 import { ToolIconButton } from "../ToolIconButton";
@@ -73,7 +73,7 @@ export function FieldSetupFeature() {
   const hexShape = useMazeStore((s) => s.floorFields[s.activeFloorId].hexShape);
   const triangleShape = useMazeStore((s) => s.floorFields[s.activeFloorId].triangleShape);
   const cairoShape = useMazeStore((s) => s.floorFields[s.activeFloorId].cairoShape);
-  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const fieldOperation = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldOperation);
@@ -81,8 +81,8 @@ export function FieldSetupFeature() {
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setCairoShape = useMazeStore((s) => s.setCairoShape);
-  const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
-  const setTessellationConfigsForFloors = useMazeStore((s) => s.setTessellationConfigsForFloors);
+  const setFieldConfig = useMazeStore((s) => s.setFieldConfig);
+  const setFieldConfigsForFloors = useMazeStore((s) => s.setFieldConfigsForFloors);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setPrintFieldSizing = useMazeStore((s) => s.setPrintFieldSizing);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
@@ -111,12 +111,12 @@ export function FieldSetupFeature() {
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
-  const printableConfig = !isCustom && isPredefinedFieldConfig(tessellationConfig)
-    ? tessellationConfig
+  const printableConfig = !isCustom && isPredefinedFieldConfig(fieldConfig)
+    ? fieldConfig
     : null;
 
-  function setField(field: string, value: number) {
-    setTessellationConfig({ ...tessellationConfig, [field]: value } as TessellationConfig);
+  function setField(field: "cols" | "rows" | "radius" | "side", value: number) {
+    setFieldConfig({ ...fieldConfig, shape: { ...fieldConfig.shape, [field]: value } as FieldShape });
   }
 
   function handleSwitchToDefault() {
@@ -161,7 +161,7 @@ export function FieldSetupFeature() {
             name="field-hex-shape"
             disabled={fieldEditLocked}
             onChange={(e) => setHexShape(e.target.value as HexShape)}>
-            <option value="rectangle">{m["field.shape.rectangle"]()}</option>
+            <option value="rect">{m["field.shape.rectangle"]()}</option>
             <option value="circle">{m["field.shape.circle"]()}</option>
             <option value="triangle">{m["field.shape.triangle"]()}</option>
             <option value="parallelogram">{m["field.shape.parallelogram"]()}</option>
@@ -203,63 +203,28 @@ export function FieldSetupFeature() {
   }
 
   function renderParams() {
-    if (tessellationConfig.type === "square") {
-      return (
-        <>
-          <SizeParam label={m["field.width"]()} value={tessellationConfig.width} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("width", v)} />
-          <SizeParam label={m["field.height"]()} value={tessellationConfig.height} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("height", v)} />
-        </>
-      );
+    const { shape } = fieldConfig;
+    const limits = SHAPE_PARAM_LIMITS[tessellationKind];
+    switch (shape.shape) {
+      case "rect":
+      case "parallelogram": {
+        const squareRect = shape.shape === "rect" && tessellationKind === "square";
+        return (
+          <>
+            <SizeParam label={squareRect ? m["field.width"]() : m["field.cols"]()} value={shape.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
+            <SizeParam label={squareRect ? m["field.height"]() : m["field.rows"]()} value={shape.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
+          </>
+        );
+      }
+      case "circle":
+        return <SizeParam label={m["field.radius"]()} value={shape.radius} min={1} max={limits.circle} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
+      case "hexagon":
+        return <SizeParam label={m["field.radius"]()} value={shape.radius} min={1} max={limits.hexagon} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
+      case "triangle":
+        return <SizeParam label={m["field.side"]()} value={shape.side} min={1} max={limits.triangle} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
+      case "custom":
+        return null;
     }
-    if (tessellationConfig.type === "square_circle") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
-    }
-    if (tessellationConfig.type === "square_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
-    }
-    if (tessellationConfig.type === "hex_rectangle" || tessellationConfig.type === "hex_parallelogram") {
-      return (
-        <>
-          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
-        </>
-      );
-    }
-    if (tessellationConfig.type === "hex_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={100} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
-    }
-    if (tessellationConfig.type === "hex_circle" || tessellationConfig.type === "hex_hexagon") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
-    }
-    if (tessellationConfig.type === "triangle_rect") {
-      return (
-        <>
-          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
-        </>
-      );
-    }
-    if (tessellationConfig.type === "triangle_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={30} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
-    }
-    if (tessellationConfig.type === "triangle_circle" || tessellationConfig.type === "triangle_hexagon") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={15} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
-    }
-    if (tessellationConfig.type === "cairo") {
-      return (
-        <>
-          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} disabled={fieldEditLocked} onCommit={(v) => setField("rows", v)} />
-        </>
-      );
-    }
-    if (tessellationConfig.type === "cairo_circle" || tessellationConfig.type === "cairo_hexagon") {
-      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("radius", v)} />;
-    }
-    if (tessellationConfig.type === "cairo_triangle") {
-      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={50} disabled={fieldEditLocked} onCommit={(v) => setField("side", v)} />;
-    }
-    return null;
   }
 
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
@@ -405,7 +370,7 @@ export function FieldSetupFeature() {
           config={printableConfig}
           hasMultipleFloors={floorCount > 1}
           onApply={(config, printSizing, applyToAllStandardFloors, configsByFloor) => {
-            setTessellationConfigsForFloors(configsByFloor, applyToAllStandardFloors);
+            setFieldConfigsForFloors(configsByFloor, applyToAllStandardFloors);
             setPrintFieldSizing(printSizing, config);
           }}
           onClose={() => setPrintSizingDialogOpen(false)}
@@ -413,9 +378,9 @@ export function FieldSetupFeature() {
       )}
       {paperLayoutDialogOpen && (
         <PaperLayoutDialog
-          config={tessellationConfig}
+          config={fieldConfig}
           onApply={(input) => {
-            setPrintFieldSizing(input, { type: tessellationConfig.type });
+            setPrintFieldSizing(input, { tessellation: fieldConfig.tessellation });
             setShowPaperLayout(true);
           }}
           onClose={() => setPaperLayoutDialogOpen(false)}
@@ -594,7 +559,7 @@ function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: 
     return "Free";
   }
   if (kind === "hex") {
-    if (hexShape === "rectangle") return m["field.shape.rectangle"]();
+    if (hexShape === "rect") return m["field.shape.rectangle"]();
     if (hexShape === "circle") return m["field.shape.circle"]();
     if (hexShape === "triangle") return m["field.shape.triangle"]();
     if (hexShape === "parallelogram") return m["field.shape.parallelogram"]();
@@ -620,17 +585,17 @@ interface FloorFieldSummary {
   hexShape: HexShape;
   triangleShape: TriangleShape;
   cairoShape: CairoShape;
-  tessellationConfig: TessellationConfig;
+  fieldConfig: FieldConfig;
 }
 
 function floorCellCount(field: FloorFieldSummary): number {
-  return field.fieldEditMode === "custom" ? field.fieldPoints.size : configCellCount(field.tessellationConfig);
+  return field.fieldEditMode === "custom" ? field.fieldPoints.size : configCellCount(field.fieldConfig);
 }
 
 function floorShapeLabel(kind: TessellationKind, field: FloorFieldSummary): string {
   if (field.fieldEditMode === "custom") return m["field.custom"]();
   const shape = shapeLabel(kind, field.squareShape, field.hexShape, field.triangleShape, field.cairoShape);
-  const size = configSizeLabel(field.tessellationConfig);
+  const size = configSizeLabel(field.fieldConfig);
   return size ? `${shape} · ${size}` : shape;
 }
 
@@ -643,30 +608,45 @@ export function fieldSetupSubtitle(kind: TessellationKind, floorFields: FloorFie
   return `${shape}${countStr}`;
 }
 
-export function configCellCount(cfg: TessellationConfig): number {
-  if (cfg.type === "square") return cfg.width * cfg.height;
-  if (cfg.type === "square_circle" || cfg.type === "square_triangle" || cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle") return configAllCells(cfg).length;
-  if (cfg.type === "hex_parallelogram") return cfg.cols * cfg.rows;
-  if (cfg.type === "triangle_rect") return 2 * cfg.cols * cfg.rows;
-  if (cfg.type === "hex_hexagon") { const r = cfg.radius; return 3 * r * r + 3 * r + 1; }
-  if (cfg.type === "triangle_triangle") { const n = cfg.side; return n * n; }
-  if (cfg.type === "cairo") return configAllCells(cfg).length;
-  if (cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon") {
-    return configAllCells(cfg).length;
+export function configCellCount(cfg: FieldConfig): number {
+  const { shape } = cfg;
+  const kind = cfg.tessellation.kind;
+  switch (shape.shape) {
+    case "custom": return 0;
+    case "rect":
+      if (kind === "square") return shape.cols * shape.rows;
+      if (kind === "tri") return 2 * shape.cols * shape.rows;
+      return configAllCells(cfg).length;
+    case "parallelogram": return shape.cols * shape.rows;
+    case "hexagon":
+      if (kind === "hex") { const r = shape.radius; return 3 * r * r + 3 * r + 1; }
+      return configAllCells(cfg).length;
+    case "triangle":
+      if (kind === "tri") { const n = shape.side; return n * n; }
+      return configAllCells(cfg).length;
+    case "circle": return configAllCells(cfg).length;
   }
-  return 0;
 }
 
-
-function configSizeLabel(cfg: TessellationConfig): string {
-  if (cfg.type === "square") return `${cfg.width}×${cfg.height}`;
-  if (cfg.type === "square_circle") return `${m["field.radius"]()} ${cfg.radius}`;
-  if (cfg.type === "hex_rectangle" || cfg.type === "hex_parallelogram" || cfg.type === "triangle_rect") return `${cfg.cols}×${cfg.rows}`;
-  if (cfg.type === "hex_circle" || cfg.type === "hex_hexagon" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon") return `${m["field.radius"]()} ${cfg.radius}`;
-  if (cfg.type === "square_triangle" || cfg.type === "hex_triangle" || cfg.type === "triangle_triangle") return `${m["field.side"]()} ${cfg.side}`;
-  if (cfg.type === "cairo") return `${cfg.cols}\u00D7${cfg.rows}`;
-  return "";
+function configSizeLabel(cfg: FieldConfig): string {
+  const { shape } = cfg;
+  switch (shape.shape) {
+    case "rect":
+    case "parallelogram": return `${shape.cols}\u00D7${shape.rows}`;
+    case "circle":
+    case "hexagon": return `${m["field.radius"]()} ${shape.radius}`;
+    case "triangle": return `${m["field.side"]()} ${shape.side}`;
+    case "custom": return "";
+  }
 }
+
+/** Upper bounds of the radial/side shape params per kind — UI registry metadata. */
+const SHAPE_PARAM_LIMITS: Record<TessellationKind, { circle: number; hexagon: number; triangle: number }> = {
+  square: { circle: 100, hexagon: 50, triangle: 100 },
+  hex: { circle: 50, hexagon: 50, triangle: 100 },
+  tri: { circle: 15, hexagon: 15, triangle: 30 },
+  cairo: { circle: 50, hexagon: 50, triangle: 50 },
+};
 
 const styles: Record<string, React.CSSProperties> = {
   label: sharedStyles.fieldLabel,

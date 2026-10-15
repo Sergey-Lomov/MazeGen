@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { Viewport } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
 import { getCellVertices } from "../tessellationGeometry";
 import { GRID_LINE_ALPHA } from "../renderConstants";
@@ -27,7 +27,7 @@ export function shouldRenderViewportGrid(bounds: GridBounds): boolean {
 }
 
 interface GridRenderState {
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   color: number;
   scale: number;
   cells: readonly [number, number][] | undefined;
@@ -46,7 +46,7 @@ export class GridRenderer {
 
   render(
     data: { viewport: Viewport; color?: number },
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     cells?: readonly [number, number][],
   ): void {
     const { x, y, w, h, scale } = data.viewport;

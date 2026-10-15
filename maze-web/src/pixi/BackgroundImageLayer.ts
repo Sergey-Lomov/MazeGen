@@ -2,7 +2,7 @@ import { Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import type { BackgroundImage, BackgroundImageLayerMode } from "../store/tessellationTypes";
 import type { PrintExportSettings } from "../store/storeTypes";
 import type { MazeState } from "../store/storeTypes";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { cellBounds } from "./tessellationGeometry";
 import { paperLayoutWorldGeometry } from "./paperLayoutGeometry";
 import { backgroundImageEditMode } from "./sceneTypes";
@@ -40,7 +40,7 @@ export interface FieldBounds {
 }
 
 /** Tight world-space bounds of the field cells used by the three visual editors. */
-export function fieldBounds(cells: readonly [number, number][], cfg: TessellationConfig): FieldBounds | null {
+export function fieldBounds(cells: readonly [number, number][], cfg: FieldConfig): FieldBounds | null {
   const bounds = cellBounds(cells, cfg);
   return Object.values(bounds).every(Number.isFinite) ? bounds : null;
 }
@@ -120,7 +120,7 @@ export function calculateBackgroundImagePageLayout(
   dataUrl: string,
   naturalWidth: number,
   naturalHeight: number,
-  config: Pick<TessellationConfig, "type">,
+  config: Pick<FieldConfig, "tessellation">,
   settings: PrintExportSettings,
   crop: BackgroundImageCrop = { x: 0, y: 0, width: naturalWidth, height: naturalHeight },
 ): BackgroundImage {

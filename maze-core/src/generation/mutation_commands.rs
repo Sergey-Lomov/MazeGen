@@ -188,11 +188,12 @@ mod cmd_builders_tests {
     };
     use super::*;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn graph_and_nodes(n: usize) -> (Graph, Vec<NodeId>) {
         let mut ids = crate::IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         let nodes: Vec<NodeId> = field.all_node_ids().collect();
         for &node in &nodes {
@@ -207,7 +208,7 @@ mod cmd_builders_tests {
     fn field_with_extra_node() -> (MultiLevelField<SquareTessellation>, NodeId, NodeId) {
         let mut ids = crate::IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = field.field_of(level).unwrap().all_points().next().unwrap();
         let slot0 = field.node_at(level, p).unwrap();
@@ -531,7 +532,7 @@ mod cmd_builders_tests {
     fn cmd_remove_node_empty_for_a_points_last_remaining_node() {
         let mut ids = crate::IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = field.field_of(level).unwrap().all_points().next().unwrap();
         let slot0 = field.node_at(level, p).unwrap();

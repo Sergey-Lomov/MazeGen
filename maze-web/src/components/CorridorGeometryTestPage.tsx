@@ -10,7 +10,7 @@ import {
   type CorridorPort,
   type CorridorSegmentInput,
 } from "../pixi/imageExport/vectorByCorridorsContour";
-import type { FieldConfig } from "../fieldConfig";
+import { tessellationConfigOf, type FieldConfig } from "../fieldConfig";
 
 export type Family = {
   id: string;
@@ -67,28 +67,28 @@ export const FAMILIES: Family[] = [
     id: "square",
     label: "Square",
     note: "4 faces · 16 combinations",
-    config: { type: "square", width: 40, height: 40 },
+    config: { tessellation: tessellationConfigOf("square"), shape: { shape: "rect", cols: 40, rows: 40 } },
     coordinate: [0, 0],
   },
   {
     id: "hex",
     label: "Hexagonal",
     note: "6 faces · 64 combinations",
-    config: { type: "hex_hexagon", radius: 8, orientation: "flat_top" },
+    config: { tessellation: tessellationConfigOf("hex"), orientation: "flat_top", shape: { shape: "hexagon", radius: 8 } },
     coordinate: [0, 0],
   },
   {
     id: "triangle",
     label: "Triangular",
     note: "3 faces · 8 combinations",
-    config: { type: "triangle_triangle", side: 12, orientation: "r0" },
+    config: { tessellation: tessellationConfigOf("tri"), orientation: "r0", shape: { shape: "triangle", side: 12 } },
     coordinate: [0, 0],
   },
   {
     id: "cairo",
     label: "Cairo",
     note: "5 faces · 32 combinations",
-    config: { type: "cairo", cols: 3, rows: 3 },
+    config: { tessellation: tessellationConfigOf("cairo"), shape: { shape: "rect", cols: 3, rows: 3 } },
     coordinate: [2, 1],
   },
 ];
@@ -174,7 +174,7 @@ export function prepareFamily(family: Family): PreparedFamily | null {
   if (!diagram) return null;
 
   const portsByFace = diagram.sides.map((side) => facePort(family.id, side.v0, side.v1));
-  const faceOrder = family.config.type.startsWith("cairo")
+  const faceOrder = family.config.tessellation.kind === "cairo"
     ? cairoCanonicalFaceOrder(family.coordinate[0], family.coordinate[1])
     : [];
   const ports = faceOrder.length === portsByFace.length

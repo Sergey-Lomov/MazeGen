@@ -138,13 +138,18 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn three_stop_elevator() -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();

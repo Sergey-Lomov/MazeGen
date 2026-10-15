@@ -1,6 +1,7 @@
 // GitHub issue #147 — narration-level debug events for the QC/repair pipeline. Per
 // CLAUDE.md's `EventLog`/`DebugTape` testing policy: one exact-sequence test on the smallest
 // possible deterministic input, plus invariant tests that survive narration wording changes.
+use std::sync::Arc;
 
 use maze_core::event_log::{DebugEvent, EventLog, NodePayload};
 use maze_core::generation::PresetState;
@@ -67,7 +68,7 @@ fn now_ms_stub() -> f64 {
 /// converges (no issue) on iteration 2.
 fn connected_chain_missing_endpoints() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);

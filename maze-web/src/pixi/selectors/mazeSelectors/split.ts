@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
 import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
 import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceKind } from "../../splitFaceLayout";
@@ -74,7 +74,7 @@ export function maxSplitNodeCount(nodes: NodeDto[]): number {
 export function getSplitAwareNodePosition(
   nodes: NodeDto[],
   nodeId: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edges: EdgeDto[] = [],
 ): { x: number; y: number } | null {
   const node = nodes.find((n) => n.id === nodeId);
@@ -244,7 +244,7 @@ function connectedFaces(kinds: SplitFaceKind[]): number[] {
 function buildHexDiagonalEndpoints(
   px: number,
   py: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edgeVerts: [number, number][],
   faceInputs: Seg[],
   node0Faces: number[],
@@ -287,7 +287,7 @@ function buildHexDiagonalEndpoints(
 export function buildSplitPassagesCore<Id>(
   nodes: SplitPassageNode<Id>[],
   directedPairs: { from: Id; to: Id }[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   specialNodeIds: ReadonlySet<Id> = new Set(),
   activeId: (pointKey: string) => Id | undefined = () => undefined,
   defaultKind: SplitFaceKind = "wall",
@@ -388,7 +388,7 @@ export function buildSplitPassagesCore<Id>(
     const faceKindsByNode: SplitFaceKind[][] = pointNodes.map((_, nodeIndex) =>
       kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
     );
-    const canonicalFaceOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(px, py) : undefined;
+    const canonicalFaceOrder = cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(px, py) : undefined;
     const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalFaceOrder);
     if (specialShapeKind === "cairo_diagonal_divider") {
       // Cairo's canonical template separates canonical faces 1-2 from 3-4. Its divider is a
@@ -647,7 +647,7 @@ export function buildSplitPassagesCore<Id>(
 export function buildSplitPassages(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   specialNodeIds: ReadonlySet<number> = new Set(),
   activeSplitNode: Record<string, PostEditEndpoint> = {},
   postEditDraftSplitPoints: Record<string, number[]> = {},

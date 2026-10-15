@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { PostEditEdge } from "../../../store/mazeStore";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { NodeEdgeHighlight } from "../../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter } from "../../tessellationGeometry";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../renderConstants";
@@ -67,7 +67,7 @@ function buildLinkHoverHighlight(
   link: { from: PostEditHoverPoint; to: PostEditHoverPoint; danger?: boolean },
   nodes: NodeDto[],
   activeLevel: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): { line: NodeEdgeHighlight[]; soloPoints: number[][] } {
   const fromNode = nodes.find((n) => pointMatchesNode(link.from, n));
   const toNode = nodes.find((n) => pointMatchesNode(link.to, n));
@@ -140,7 +140,7 @@ export function buildHoveredEntityHighlight(
   entity: PostEditHoveredEntity | null,
   nodes: NodeDto[],
   activeLevel: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): { link: NodeEdgeHighlight[]; regionGroups: number[][]; boundaryLinks?: PostEditBoundaryLink[] } {
   if (!entity) return { link: [], regionGroups: [] };
   if (entity.kind === "link") {

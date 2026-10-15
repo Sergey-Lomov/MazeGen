@@ -10,10 +10,11 @@ import type {
   ProjectFileQcRule,
   ProjectFileStage,
   ProjectFileNestedStrategy,
+  ProjectFileFloorField,
 } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { FIELD_SHAPES_BY_KIND, type FieldShape, type PresetFieldShape, type TessellationKind } from "../../fieldConfig";
 import {
-  assertObject, assertString, assertNumber, assertBoolean, assertArray, assertHexOrientation, assertTriOrientation,
+  assertObject, assertString, assertNumber, assertBoolean, assertArray,
   assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
@@ -26,97 +27,58 @@ function validateAbsoluteFlag(v: unknown, path: string): { absolute?: true } {
   return { absolute: true };
 }
 
-export function validateTessellationConfig(v: unknown, path = "tessellation.config"): TessellationConfig {
+/** Validates a preset field shape (`rect`, `parallelogram`, `circle`, `triangle`, `hexagon`). */
+export function validatePresetFieldShape(v: unknown, path: string): PresetFieldShape {
+  const shape = validateFieldShape(v, path);
+  if (shape.shape === "custom") throw new Error(`${path}.shape: expected a preset shape`);
+  return shape;
+}
+
+export function validateFieldShape(v: unknown, path: string): FieldShape {
   const obj = assertObject(v, path);
-  const type = assertString(obj.type, `${path}.type`);
-  switch (type) {
-    case "square":
-      assertNumber(obj.width, `${path}.width`);
-      assertNumber(obj.height, `${path}.height`);
-      return obj as unknown as TessellationConfig;
-    case "square_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      return obj as unknown as TessellationConfig;
-    case "square_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      return obj as unknown as TessellationConfig;
-    case "hex_parallelogram":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_rectangle":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "hex_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_rect":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "triangle_circle":
-      assertNumber(obj.radius, `${path}.radius`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "square_custom":
-      assertArray(obj.points, `${path}.points`);
-      return obj as unknown as TessellationConfig;
-    case "hex_custom":
-      assertArray(obj.points, `${path}.points`);
-      assertHexOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "tri_custom":
-      assertArray(obj.points, `${path}.points`);
-      assertTriOrientation(obj.orientation, `${path}.orientation`);
-      return obj as unknown as TessellationConfig;
-    case "cairo":
-      assertNumber(obj.cols, `${path}.cols`);
-      assertNumber(obj.rows, `${path}.rows`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_circle":
-    case "cairo_hexagon":
-      assertNumber(obj.radius, `${path}.radius`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_triangle":
-      assertNumber(obj.side, `${path}.side`);
-      return obj as unknown as TessellationConfig;
-    case "cairo_custom":
-      assertArray(obj.points, `${path}.points`);
-      return obj as unknown as TessellationConfig;
+  const shape = assertString(obj.shape, `${path}.shape`);
+  switch (shape) {
+    case "rect":
+    case "parallelogram":
+      return { shape, cols: assertNumber(obj.cols, `${path}.cols`), rows: assertNumber(obj.rows, `${path}.rows`) };
+    case "circle":
+    case "hexagon":
+      return { shape, radius: assertNumber(obj.radius, `${path}.radius`) };
+    case "triangle":
+      return { shape, side: assertNumber(obj.side, `${path}.side`) };
+    case "custom":
+      return {
+        shape,
+        points: assertArray(obj.points, `${path}.points`).map((pt, i) => {
+          const pair = assertArray(pt, `${path}.points[${i}]`);
+          return [assertNumber(pair[0], `${path}.points[${i}][0]`), assertNumber(pair[1], `${path}.points[${i}][1]`)] as [number, number];
+        }),
+      };
     default:
-      throw new Error(`Unknown tessellation config type: ${type}`);
+      throw new Error(`Unknown field shape: ${shape}`);
   }
 }
 
-/** Validates one floor's own field-shape state (GitHub issue #338) — `config`/`savedConfigs` reuse
- * `validateTessellationConfig`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
+/** Validates one floor's own field-shape state (GitHub issue #338) — `shape`/`savedShapes` reuse
+ * `validateFieldShape`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
  * itself is re-derived on load, same as the pre-#338 shape always did). */
-export function validateFloorFieldConfig(v: unknown, path: string): { config: TessellationConfig; savedConfigs: TessellationConfig[]; freeFieldPoints: Record<"square" | "hex" | "triangle" | "cairo", [number, number][]>; fieldEditMode: "default" | "custom" } {
+/** Rejects a preset shape the maze-wide tessellation kind does not offer (`FIELD_SHAPES_BY_KIND`). */
+function assertShapeOfKind(shape: FieldShape, kind: TessellationKind, path: string): void {
+  if (shape.shape !== "custom" && !FIELD_SHAPES_BY_KIND[kind].includes(shape.shape)) {
+    throw new Error(`${path}: kind "${kind}" does not offer shape "${shape.shape}"`);
+  }
+}
+
+export function validateFloorFieldConfig(v: unknown, path: string, kind: TessellationKind): ProjectFileFloorField {
   const obj = assertObject(v, path);
-  const config = validateTessellationConfig(obj.config, `${path}.config`);
-  const savedConfigs: TessellationConfig[] = obj.savedConfigs != null
-    ? assertArray(obj.savedConfigs, `${path}.savedConfigs`).map((sv, i) => validateTessellationConfig(sv, `${path}.savedConfigs[${i}]`))
+  const shape = validateFieldShape(obj.shape, `${path}.shape`);
+  assertShapeOfKind(shape, kind, `${path}.shape`);
+  const savedShapes: PresetFieldShape[] = obj.savedShapes != null
+    ? assertArray(obj.savedShapes, `${path}.savedShapes`).map((sv, i) => {
+      const saved = validatePresetFieldShape(sv, `${path}.savedShapes[${i}]`);
+      assertShapeOfKind(saved, kind, `${path}.savedShapes[${i}]`);
+      return saved;
+    })
     : [];
   const validatePoints = (raw: unknown, kindPath: string): [number, number][] => {
     if (raw == null) return [];
@@ -129,11 +91,11 @@ export function validateFloorFieldConfig(v: unknown, path: string): { config: Te
   const freeFieldPoints = {
     square: validatePoints(freeObj.square, `${path}.freeFieldPoints.square`),
     hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
-    triangle: validatePoints(freeObj.triangle, `${path}.freeFieldPoints.triangle`),
+    tri: validatePoints(freeObj.tri, `${path}.freeFieldPoints.tri`),
     cairo: validatePoints(freeObj.cairo, `${path}.freeFieldPoints.cairo`),
   };
   const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
-  return { config, savedConfigs, freeFieldPoints, fieldEditMode };
+  return { shape, savedShapes, freeFieldPoints, fieldEditMode };
 }
 
 /** Validates a `PostEditEndpoint` tagged union (GitHub issue #221) — `kind: "node"` (a plain

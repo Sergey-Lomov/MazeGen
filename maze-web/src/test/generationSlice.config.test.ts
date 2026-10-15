@@ -30,6 +30,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 
 import { generateMaze, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
+import { fieldOf } from "./fieldConfigFixtures";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
@@ -40,7 +41,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("includes preset_start and preset_finish when set inside the field", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }) },
       presetStart: presetEndpoint([0, 0]),
       presetFinish: presetEndpoint([1, 1]),
     });
@@ -53,7 +54,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("omits preset_start and preset_finish when unset", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }) },
       presetStart: null,
       presetFinish: null,
     });
@@ -66,7 +67,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("omits preset_start and preset_finish when they fall outside the field", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) }) },
       presetStart: presetEndpoint([5, 5]),
       presetFinish: presetEndpoint([9, 9]),
     });
@@ -81,7 +82,7 @@ describe("buildGenerateConfig — preset_gen_source", () => {
   it("omits preset_gen_source when it falls outside the field", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } }) },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) }) },
       presetGenSource: presetEndpoint([5, 5]),
     });
     useMazeStore.getState().generate();
@@ -341,7 +342,7 @@ describe("mazeStore generation misc actions", () => {
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
           cairoShape: "free",
-          tessellationConfig: { type: "cairo_custom", points: [[1, 2], [2, 1]] },
+          fieldConfig: fieldOf("cairo", { shape: "custom", points: [[1, 2], [2, 1]] }),
           freeFieldPoints: { ...baseStoreState().floorFields[TEST_FLOOR_ID].freeFieldPoints, cairo: points },
           isEditingField: true,
           fieldPoints: points,
@@ -354,7 +355,7 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.getState().loadProject(file);
 
     const field = useMazeStore.getState().floorFields[TEST_FLOOR_ID];
-    expect(field.tessellationConfig).toEqual({ type: "cairo_custom", points: [[1, 2], [2, 1]] });
+    expect(field.fieldConfig).toEqual(fieldOf("cairo", { shape: "custom", points: [[1, 2], [2, 1]] }));
     expect(field.cairoShape).toBe("free");
     expect(field.fieldPoints).toEqual(points);
     expect(field.freeFieldPoints.cairo).toEqual(points);

@@ -7,6 +7,7 @@ import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { replayPostEditCommands } from "../pixi/postEditReplay";
 import { buildPostEditBaseline, derivedStateToLegacyFields, nextSplitSlotIdCounters } from "../store/slices/postEditSliceHelpers";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
+import { fieldOf } from "./fieldConfigFixtures";
 
 export { emptyFreePoints };
 
@@ -22,8 +23,8 @@ export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}):
     hexShape: "parallelogram",
     triangleShape: "rect",
     cairoShape: "rect",
-    savedConfigs: {},
-    tessellationConfig: { type: "square", width: 10, height: 10 },
+    savedShapes: {},
+    fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
     freeFieldPoints: emptyFreePoints(),
     isEditingField: false,
     fieldPoints: new Set<number>(),
@@ -176,7 +177,7 @@ export function baseStoreState() {
     nextFloorNumber: 2,
     activeFloorId: TEST_FLOOR_ID,
     floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig() },
-    activeTessellationConfig: { type: "square" as const, width: 10, height: 10 },
+    activeFieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
     nodes: [],
     edges: [],
     start: null,
@@ -210,10 +211,10 @@ export function baseStoreState() {
 /** Free-field-editing state for a given kind, used by free field point mutation tests. Field-shape
  *  fields land in `floorFields[TEST_FLOOR_ID]` (GitHub issue #338) — merge on top of `extra` when
  *  a test also needs to override other floorFields entries. */
-export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo", pts: Set<number>) {
+export function freeFieldEditState(kind: "square" | "hex" | "tri" | "cairo", pts: Set<number>) {
   const squareShape: "free" | "rect" = kind === "square" ? "free" : "rect";
   const hexShape: "free" | "parallelogram" = kind === "hex" ? "free" : "parallelogram";
-  const triangleShape: "free" | "rect" = kind === "triangle" ? "free" : "rect";
+  const triangleShape: "free" | "rect" = kind === "tri" ? "free" : "rect";
   const cairoShape: "free" | "rect" = kind === "cairo" ? "free" : "rect";
   return {
     tessellationKind: kind,
@@ -236,7 +237,7 @@ export function freeFieldEditState(kind: "square" | "hex" | "triangle" | "cairo"
 
 /** State for hex-predefined-mode orientation tests: hexShape=parallelogram, other shapes=rect.
  *  `extra` may contain top-level MazeState fields (e.g. `nodes`) and/or a `floorFieldOverrides`
- *  patch merged into `floorFields[TEST_FLOOR_ID]` (e.g. `tessellationConfig`). */
+ *  patch merged into `floorFields[TEST_FLOOR_ID]` (e.g. `fieldConfig`). */
 export function hexPredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
   const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
@@ -260,7 +261,7 @@ export function hexPredefinedState(extra?: Record<string, unknown> & { floorFiel
 export function trianglePredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
   const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
-    tessellationKind: "triangle" as const,
+    tessellationKind: "tri" as const,
     triOrientation: "r0" as const,
     activeFloorId: TEST_FLOOR_ID,
     floorFields: {

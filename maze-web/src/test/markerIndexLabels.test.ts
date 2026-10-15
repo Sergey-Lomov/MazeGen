@@ -10,9 +10,10 @@ import { formatIndexLabel } from "../pixi/renderers/indexLabel";
 import { DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg: TessellationConfig = { type: "square", width: 8, height: 8 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 8, rows: 8 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });
 const style = (patch: Partial<MarkerIndexSettings> = {}): MarkerIndexSettings => ({
   ...DEFAULT_MARKER_INDEX_SETTINGS,

@@ -31,8 +31,9 @@ vi.mock("pixi.js", () => {
 const { WallRenderer, randomContrastingWallColor } = await import("../pixi/renderers/WallRenderer");
 const { Container, Graphics } = await import("pixi.js");
 import type { WallEdge, OneWayStyleOverride } from "../pixi/renderers/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
 // Two solid edges sharing a vertex: (0,0)-(1,0)'s east wall and (1,0)-(1,1)'s south wall meet at
 // the cell corner between them, forming an ordinary corridor corner.

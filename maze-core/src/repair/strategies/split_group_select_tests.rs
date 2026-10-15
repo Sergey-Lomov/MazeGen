@@ -7,6 +7,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     crate::repair::params::build_params(
@@ -45,7 +46,8 @@ fn fix_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
 fn maze_with_two_split_tiles() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
     let mut field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let extra1 = field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
     let extra2 = field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
@@ -238,7 +240,8 @@ fn maze_with_a_small_and_a_big_split_tile()
 -> (Maze<SquareTessellation>, SplitTileNodes, SplitTileNodes) {
     let mut ids = IdGenerator::new();
     let mut field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
     field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
@@ -336,7 +339,8 @@ fn maze_with_a_plain_and_a_hub_split_tile()
 -> (Maze<SquareTessellation>, SplitTileNodes, SplitTileNodes) {
     let mut ids = IdGenerator::new();
     let mut field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
     field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);

@@ -10,24 +10,41 @@ Module: `maze-core/src/space/`.
 > (GitHub epic #752). Each sub-issue rewrites the affected parts of this section when it lands.
 
 ```rust
-pub trait Tessellation {
+pub trait Tessellation: Send + Sync + 'static {
     type Point: Copy + Eq + Hash;
     type Face: Copy + PartialEq + 'static;
 
-    fn step(point: Self::Point, face: Self::Face) -> Option<Self::Point>;
-    fn is_valid_point(point: Self::Point) -> bool;
-    fn faces() -> &'static [Self::Face];
-    fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
-    fn face_index(face: Self::Face) -> Option<usize>;   // default: linear scan over faces()
-    fn face_at(index: usize) -> Option<Self::Face>;      // inverse of face_index
-    fn rotation_symmetries() -> &'static [&'static [usize]];
-    fn mirror_symmetries() -> &'static [&'static [usize]];
-    fn cartesian(point: Self::Point) -> (f64, f64);
-    fn edge_position(from: Self::Point, to: Self::Point) -> (f64, f64); // default: midpoint of endpoints
+    fn step(&self, point: Self::Point, face: Self::Face) -> Option<Self::Point>;
+    fn is_valid_point(&self, point: Self::Point) -> bool;
+    fn faces(&self) -> &[Self::Face];
+    fn face_between(&self, from: Self::Point, to: Self::Point) -> Option<Self::Face>;
+    fn face_index(&self, face: Self::Face) -> Option<usize>;   // default: linear scan over faces()
+    fn face_at(&self, index: usize) -> Option<Self::Face>;      // inverse of face_index
+    fn rotation_symmetries(&self) -> &[&[usize]];
+    fn mirror_symmetries(&self) -> &[&[usize]];
+    fn cartesian(&self, point: Self::Point) -> (f64, f64);
+    fn edge_position(&self, from: Self::Point, to: Self::Point) -> (f64, f64); // default: midpoint of endpoints
 }
 ```
 
-Three implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation` (`space::square`/`hex`/`triangle`), each with its own `Point`/`Face` type.
+Four implementations: `SquareTessellation`, `HexTessellation`, `TriTessellation`, `CairoTessellation` (`space::square`/`hex`/`triangle`/`cairo`), each with its own `Point`/`Face` type.
+
+**Instance (GitHub issue #755).** A tessellation is an instance: methods take `&self`, and one
+instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (accessors
+`tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The four built-in tessellations
+are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
+(`transform_face_index`, `geometric_distance`, `geometric_edge_distance`, `floor_aware_distance`,
+`floor_aware_edge_distance`) take the instance as their first argument; consumers resolve it from
+the field (`maze.field.tessellation()`).
+
+**Config and factory.** The wire, project and fixture formats store `{ "kind": "square" | "hex" |
+"tri" | "cairo", "params": { … } }` (`maze-runner`'s `TessellationConfig`/`TessellationKind`).
+`maze-runner::runner::tessellation_factory::build_tessellation(config, visitor)` is the single
+place where the runtime kind becomes a compile-time `T`: it builds the instance, rejects params
+the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
+`Arc<T>` plus the kind's wire point codec (`PointCodec`) to a `TessellationVisitor`. `maze-runner`
+(full run, canonical baselines, benchmarks) and `maze-wasm` (generate, compute analytics,
+`cartesian_coords`) all dispatch through it.
 
 - **`step`** moves from a point through a face to the neighboring point, returning `None` when that face has no coordinate in the tessellation (for example, a gap in a non-rectangular coordinate space). For a fixed point, distinct faces must not produce the same `Some` point — `Field::neighbors` relies on this to never visit the same neighbor twice. Total coordinate spaces return `Some` for every face, as the built-in square, hex, and triangle tessellations do.
 - **`face_between`** reports the geometric face direction between two coordinates. It does not imply that `step(from, face)` reaches `to`; code that needs a traversable transition must check `step` and, for a concrete `Field`, membership of the resulting point.
@@ -46,9 +63,9 @@ pub struct Field<T: Tessellation> {
 
 The single-tessellation building block: a fixed set of points, each resolving to one or more `NodeId`s (a point splits into several routing passages via `add_node_at` — GitHub issue #219/epic #218). `Field` has no notion of "groups" or which geometric face belongs to which of a point's several nodes — deciding that is entirely the caller's job (generation algorithms, QC/repair strategies).
 
-Key methods: `new(points, &mut IdGenerator) -> Result<_, _>`, `from_id_points(entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid points), `add_node_at`/`remove_node_at`/`replace_nodes_at` (point-based, panic on an unknown point), `nodes_at(point)`/`node_at(point)` (creation-order slice / first node), `neighbors(node)` (skips faces whose `step` returns `None`), `is_straight(from, via, to)`, `point_of(node)`, `all_points()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `point_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `point_count()`, GitHub issue #267), `contains(point)`, `build_nodes(&mut Graph)`.
+Key methods: `new(tessellation: Arc<T>, points, &mut IdGenerator) -> Result<_, _>`, `from_id_points(tessellation: Arc<T>, entries) -> Result<_, _>` (rebuild preserving given ids, e.g. from a client snapshot — GitHub issue #236, while still rejecting invalid points), `add_node_at`/`remove_node_at`/`replace_nodes_at` (point-based, panic on an unknown point), `nodes_at(point)`/`node_at(point)` (creation-order slice / first node), `neighbors(node)` (skips faces whose `step` returns `None`), `is_straight(from, via, to)`, `point_of(node)`, `all_points()`/`all_node_ids()` (both `NodeId`-sorted, deterministic), `point_count()` (distinct cells) vs `node_count()` (all nodes, inflated by splits — density/ratio QC checks must use `point_count()`, GitHub issue #267), `contains(point)`, `build_nodes(&mut Graph)`.
 
-`Field`'s point set is fixed at construction — `add_node_at`/`remove_node_at` only add/remove nodes *within* an existing point, never grow or shrink the point set itself. `Clone` is a manual impl (not derived) since only `T::Point` needs `Clone`, not `T` itself (typically a zero-sized marker).
+`Field`'s point set is fixed at construction — `add_node_at`/`remove_node_at` only add/remove nodes *within* an existing point, never grow or shrink the point set itself. `Clone` is a manual impl (not derived): the tessellation instance is shared via `Arc`, never copied, so `T` itself needs no `Clone`.
 
 This layer is unaffected by the multi-level work below — `Field<T>` remains the single-tessellation, single-level primitive it always was. Everything below is a wrapper around one-or-more `Field<T>` instances.
 
@@ -87,7 +104,7 @@ Operations addressing an existing node take only `NodeId` — the level is resol
 - `replace_nodes_at(level, point, new_ids: Vec<NodeId>)` — unmaps every old node currently at that point, then maps every id in `new_ids`; after the call, any old id not in `new_ids` gives `level_of(old_id) == None`, and every id in `new_ids` gives `level_of(new_id) == Some(level)`
 
 **Level management:**
-- `add_level(field: Field<T>) -> LevelId` — mints a fresh id, registers every node of `field` into `node_to_level`. Debug-asserts none of `field`'s nodes already belong to another level (a `NodeId` collision across levels would otherwise silently overwrite the mapping instead of signaling a broken invariant — the global per-`Maze` `IdGenerator` is expected to guarantee uniqueness, but the aggregator does not blindly trust callers).
+- `add_level(field: Field<T>) -> LevelId` — mints a fresh id, registers every node of `field` into `node_to_level`. Debug-asserts none of `field`'s nodes already belong to another level (a `NodeId` collision across levels would otherwise silently overwrite the mapping instead of signaling a broken invariant — the global per-`Maze` `IdGenerator` is expected to guarantee uniqueness, but the aggregator does not blindly trust callers). Also debug-asserts `field` shares the aggregator's tessellation instance (`Arc::ptr_eq`), skipped for zero-sized tessellations whose instances are indistinguishable.
 - `remove_level(level) -> Option<Field<T>>` — removes the level and unmaps all of its nodes, returns the removed `Field` (or `None` if `level` doesn't exist). The caller decides what to do with the returned `Field`'s nodes (GitHub issue #335); this only guarantees the aggregator's own structure stays consistent afterward.
 - `reorder_levels(&[LevelId])` — sets the display/iteration order. Panics (`assert_eq!`) if `new_order` isn't a permutation of the current level set — a structural invariant violation, not a recoverable runtime condition.
 - `single_level_id() -> LevelId` — the aggregator's *first* level (by `levels_ordered()` position); panics only if there are no levels at all (never happens for a live `MultiLevelField` — every constructor adds at least one). QC/repair/routing/analytics/post-edit are all multi-floor-aware as of the GitHub issue #333 epic; the only remaining caller is `io::render_ascii`, a debug/example tool that only ever renders one floor by design.
@@ -105,8 +122,8 @@ Operations addressing an existing node take only `NodeId` — the level is resol
 
 ### Constructors
 
-- `single_level(points, &mut IdGenerator) -> Result<Self, &'static str>` — wraps a single `Field::new(points, ids)` call into a one-level aggregator. The drop-in replacement for every pre-#334 `Field::new` call site across `maze-core`/`maze-wasm`/`maze-runner`; the resulting level's id is retrievable via `single_level_id()`.
-- `new(levels: impl IntoIterator<Item = Field<T>>) -> Self` — builds from already-constructed `Field`s, one level per entry in iteration order. General-purpose constructor for genuinely multi-level scenarios and for wrapping a `Field` built via an alternate constructor (e.g. `Field::from_id_points`, used by `maze-wasm`'s post-edit path) — not used by the single-level migration itself.
+- `single_level(tessellation: Arc<T>, points, &mut IdGenerator) -> Result<Self, &'static str>` — wraps a single `Field::new(tessellation, points, ids)` call into a one-level aggregator. The drop-in replacement for every pre-#334 `Field::new` call site across `maze-core`/`maze-wasm`/`maze-runner`; the resulting level's id is retrievable via `single_level_id()`.
+- `new(tessellation: Arc<T>, levels: impl IntoIterator<Item = Field<T>>) -> Self` — builds from already-constructed `Field`s, one level per entry in iteration order. General-purpose constructor for genuinely multi-level scenarios and for wrapping a `Field` built via an alternate constructor (e.g. `Field::from_id_points`, used by `maze-wasm`'s post-edit path) — not used by the single-level migration itself.
 
 ### Migration status (GitHub issue #334)
 

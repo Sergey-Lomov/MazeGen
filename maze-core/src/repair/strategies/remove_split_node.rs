@@ -215,6 +215,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -243,7 +244,7 @@ mod tests {
     fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -290,7 +291,7 @@ mod tests {
     fn apply_never_removes_slot0_when_it_is_the_last_node() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -380,7 +381,7 @@ mod tests {
     fn apply_with_redistribute_picks_among_multiple_siblings() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -426,7 +427,7 @@ mod tests {
         // different remaining siblings instead of funneling them all onto one.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -498,7 +499,7 @@ mod tests {
         for seed in 0..50u64 {
             let mut ids = IdGenerator::new();
             let mut field: MultiLevelField<SquareTessellation> =
-                MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+                MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
             let level = field.single_level_id();
             let p = SquarePoint { x: 1, y: 0 };
             let slot0 = field.node_at(level, p).unwrap();
@@ -555,7 +556,7 @@ mod tests {
         // target is slot0, which survives the whole batch.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -639,7 +640,7 @@ mod tests {
     fn apply_with_redistribute_skips_the_sibling_edge_to_the_target_itself() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();
@@ -678,7 +679,7 @@ mod tests {
     fn apply_with_redistribute_preserves_teleport_kind() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let slot0 = field.node_at(level, p).unwrap();

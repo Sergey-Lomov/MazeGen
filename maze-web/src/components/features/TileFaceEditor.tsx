@@ -2,7 +2,7 @@ import { useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
 import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { ui, radius, spacing, typography } from "../../styles/theme";
 import { disabledOf } from "../../styles/palette";
 import * as m from "~/paraglide/messages";
@@ -29,7 +29,7 @@ export interface TileFaceNode {
 
 interface Props {
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   nodes: TileFaceNode[];
   /** Index into `nodes` of the currently active node (tile-face clicks/z-order), or `null` if
    * none is active. Its segments/connectors always draw last (on top) — GitHub issue #234

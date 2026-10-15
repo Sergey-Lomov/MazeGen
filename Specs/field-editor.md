@@ -24,28 +24,40 @@ Switching default→custom preserves existing drawn points. Switching custom→d
 
 ### Available predefined shapes
 
-The field-shape selector exposes these additional shapes:
+Tessellation kind, its params and the field shape are separate settings (GitHub issue #755): a
+floor's runtime `FieldConfig` is `{ tessellation: { kind, params }, orientation?, shape }`
+(`maze-web/src/fieldConfig.ts`). `shape` is kind-independent (`FieldShape`):
 
-| Tessellation | Shape | Config type | Parameters |
-|---|---|---|---|
-| Square | Circle | `square_circle` | radius |
-| Square | Triangle | `square_triangle` | side |
-| Hexagonal | Rectangle | `hex_rectangle` | columns, rows |
-| Hexagonal | Circle | `hex_circle` | radius |
-| Hexagonal | Triangle | `hex_triangle` | side |
-| Triangular | Circle | `triangle_circle` | radius |
-| Cairo | Rectangle | `cairo` | fundamental-square columns, rows |
-| Cairo | Circle | `cairo_circle` | radius |
-| Cairo | Triangle | `cairo_triangle` | side |
-| Cairo | Hexagon | `cairo_hexagon` | radius |
+| Shape | Parameters |
+|---|---|
+| `rect` | `cols`, `rows` (square: width/height in cells; tri: pairs of opposite triangles per column; Cairo: fundamental 4×4 squares) |
+| `parallelogram` | `cols`, `rows` |
+| `circle` | `radius` |
+| `triangle` | `side` |
+| `hexagon` | `radius` |
+| `custom` | `points` (the free-drawn cell list) |
 
-The existing parallelogram, hexagon, triangle, and rectangular variants remain available. Cairo
+Which preset shapes a kind offers is UI registry metadata (`FIELD_SHAPES_BY_KIND`):
+
+| Kind | Preset shapes |
+|---|---|
+| `square` | rect, circle, triangle |
+| `hex` | rect, parallelogram, hexagon, circle, triangle |
+| `tri` | rect, triangle, hexagon, circle |
+| `cairo` | rect, circle, triangle, hexagon |
+
+Project load rejects a floor `shape` or `savedShapes` entry the maze-wide kind does not offer
+(for example a `square` field with a `parallelogram` shape); `custom` is accepted for every kind.
+
+Hex/tri display orientation is a maze-wide display setting (`hexOrientation`/`triOrientation`),
+never part of the tessellation params or the shape; the runtime `FieldConfig` only carries it for
+geometry consumers until the display transform (#763) replaces it. Cairo
 rectangles use the canonical `maze-core` layout: every fundamental 4-by-4 coordinate square
 contributes two valid pentagon centres, with the complete block rectangle translated around the
 grid origin. Other standard forms are rasterized from valid Cairo points around the origin, just
 like the other predefined forms. Each
-predefined config type owns its size parameters, so switching shapes does not overwrite another
-shape's saved dimensions.
+preset shape owns its size parameters (`savedShapes`, keyed by shape name), so switching shapes
+does not overwrite another shape's saved dimensions.
 
 ### Calculate for print (GitHub issue #615)
 
@@ -66,7 +78,7 @@ usable_height = paper_height - 2 * vertical_margin
 ```
 
 The dialog calculates the largest predefined field that fits this area, rounding cell counts down,
-then applies the resulting ordinary `tessellationConfig`. With multiple floors and the “apply to
+then applies the resulting ordinary `fieldConfig`. With multiple floors and the “apply to
 all” switch enabled, each standard floor is recalculated from its own shape and receives its own
 resulting configuration; custom-mode floors are left unchanged. No
 physical-size settings are added to the generation or WASM config, and the dialog's inputs are not
@@ -74,7 +86,7 @@ persisted separately. Square/rectangular forms calculate independent column/row 
 includes Cairo's fundamental-square columns and rows; the fit is evaluated from the actual
 pentagon bounds of the complete block rectangle, so every cell whose polygon fits inside the
 printable area is retained. Radial
-forms (`square_circle`, `hex_circle`, `triangle_circle`, `hexagon`, `triangle`, `triangle_hexagon`)
+forms (`circle`, `hexagon`, `triangle` shapes)
 calculate the largest fitting radius; because a
 single radius cannot match every paper aspect ratio exactly, the dialog displays the resulting
 field dimensions before confirmation. The result describes rectangular forms by field size, radial
@@ -173,19 +185,19 @@ image sizing; it does not add cells, change the custom field, or alter any gener
 
 When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
 
-| Kind | Default shape | Config type |
-|---|---|---|
-| `square` | `rect` | `square` |
-| `hex` | `hexagon` | `hex_hexagon` |
-| `triangle` | `triangle` | `triangle_triangle` |
-| `cairo` | `rect` | `cairo` |
+| Kind | Default shape |
+|---|---|
+| `square` | `rect` |
+| `hex` | `hexagon` |
+| `tri` | `triangle` |
+| `cairo` | `rect` |
 
 When either action changes the tessellation kind, it also clears all tessellation-dependent presets,
 including teleports, vertical passages, and elevators.
 
 Predefined circle and hexagon configurations use a default radius of `10` cells when no saved
 radius exists, except Cairo circle and hexagon configurations, which default to `12` cells, and
-`hex_circle` and `hex_hexagon` on hexagonal tessellations, which default to `8` cells. The
+hex circle and hexagon shapes, which default to `8` cells. The
 default side of the predefined triangular field is `12` cells, while the Cairo triangle defaults
 to `20` cells. Existing saved size values are preserved.
 
@@ -208,8 +220,8 @@ floors via the floor switcher shows and edits that floor's own shape without tou
 | `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
 | `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, including Cairo coordinates, preserved across shape/mode switches |
 | `floorFields[floorId].cairoShape` | Cairo's rect/circle/triangle/hexagon standard shape or free custom mode |
-| `floorFields[floorId].tessellationConfig` | That floor's current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
-| `floorFields[floorId].savedConfigs` | That floor's saved size params per predefined config type, restored on shape/mode switch |
+| `floorFields[floorId].fieldConfig` | That floor's current `FieldConfig`; a preset shape in default mode, `custom` shape in free-draw mode |
+| `floorFields[floorId].savedShapes` | That floor's saved size params per preset shape, restored on shape/mode switch |
 
 `fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.
 
@@ -249,26 +261,27 @@ shape must not maintain a separate cell-coordinate implementation for the same g
 Once resolved to cells, a predefined shape uses the tessellation family of its cells for adjacency,
 wall, and shared-edge geometry; the shape variant only determines which cells belong to the field.
 
-The generated maze's active runtime field is normalized to `kind` (`square`, `hex`, or
-`triangle`), the family orientation where applicable, and the resolved cell set. Field setup,
-project serialization/restoration, and resolution retain the detailed `FieldConfig.type` value.
+The generated maze's active runtime field (`ResolvedField`, `resolveFieldConfig`) keeps the same
+tessellation config and orientation and replaces the preset shape with a `custom` shape holding
+the resolved cell set. Field setup, project serialization/restoration, and resolution retain the
+floor's preset `shape`.
 Adding a preset shape therefore does not require a generated-maze runtime consumer to support its
 shape variant.
 
-| Config type | Cell count | Centering |
+| Kind / shape | Cell count | Centering |
 |---|---|---|
-| `square` | `width × height` | offset by `floor(w/2), floor(h/2)` |
-| `square_circle` | cells with `x² + y² < r²` | naturally centered |
-| `square_triangle` | `side × (side + 1) / 2` | centered by its bounding box |
-| `hex_triangle` | cells whose centers fit the configured triangle | naturally centered |
-| `hex_rectangle` | `cols × rows` cells in a screen-aligned rectangle with alternating half-cell offsets | naturally centered |
-| `hex_parallelogram` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
-| `hex_circle` | cells whose centers fit the Euclidean radius | naturally centered |
-| `hex_hexagon` | `3r² + 3r + 1` cells from the axial hex-distance rule | naturally centered on the origin cell |
-| `triangle_rect` | `(2 × cols) × rows` triangle cells; each configured column supplies the complete opposite-orientation pair | centered complete coordinate block |
-| `triangle_triangle` | `n²` | bbox center, parity-safe offset |
-| `triangle_hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
-| `triangle_circle` | cells whose complete triangles lie within radius `r` | naturally centered, without isolated edge spikes |
+| square `rect` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
+| square `circle` | cells with `x² + y² < r²` | naturally centered |
+| square `triangle` | `side × (side + 1) / 2` | centered by its bounding box |
+| hex `triangle` | cells whose centers fit the configured triangle | naturally centered |
+| hex `rect` | `cols × rows` cells in a screen-aligned rectangle with alternating half-cell offsets | naturally centered |
+| hex `parallelogram` | `cols × rows` | offset by `floor(cols/2), floor(rows/2)` |
+| hex `circle` | cells whose centers fit the Euclidean radius | naturally centered |
+| hex `hexagon` | `3r² + 3r + 1` cells from the axial hex-distance rule | naturally centered on the origin cell |
+| tri `rect` | `(2 × cols) × rows` triangle cells; each configured column supplies the complete opposite-orientation pair | centered complete coordinate block |
+| tri `triangle` | `n²` | bbox center, parity-safe offset |
+| tri `hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
+| tri `circle` | cells whose complete triangles lie within radius `r` | naturally centered, without isolated edge spikes |
 
 ## Primitive brushes (custom mode)
 
@@ -412,9 +425,9 @@ while Delete/Backspace calls
 
 Grid rendering is embedded in each feature renderer, not in a standalone component:
 
-- **`TessellationRenderer`** — shows `previewTessellationConfig` grid when no feature card is open (`!fieldSetupOpen && !presetConnectionsOpen && !generationOpen`). Hidden the moment any card opens. Redraws on viewport change or `previewTessellationConfig` change.
-- **`FieldEditorOverlay`** — renders grid using `tessellationConfig` while `fieldSetupOpen = true`. Redraws on viewport change or config change.
-- **`PresetConnectionsRenderer`** — renders grid using `tessellationConfig` while `presetConnectionsOpen = true`. Redraws on viewport change or config change.
+- **`TessellationRenderer`** — shows `previewFieldConfig` grid when no feature card is open (`!fieldSetupOpen && !presetConnectionsOpen && !generationOpen`). Hidden the moment any card opens. Redraws on viewport change or `previewFieldConfig` change.
+- **`FieldEditorOverlay`** — renders grid using `fieldConfig` while `fieldSetupOpen = true`. Redraws on viewport change or config change.
+- **`PresetConnectionsRenderer`** — renders grid using `fieldConfig` while `presetConnectionsOpen = true`. Redraws on viewport change or config change.
 
 ## Synchronized underlay (GitHub issue #673)
 

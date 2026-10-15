@@ -53,9 +53,9 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
  *  back it with whatever storage its own value lives in (generation's own store slice, or a
  *  JSON-string param round-tripped by the caller). */
 export function SplitPatternListEditor({ patterns, onChange, withWeights, locked = false }: Props) {
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
-  const degree = degreeFor(tessellationConfig);
-  const anchorPoint = patternAnchorPoint(tessellationConfig);
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const degree = degreeFor(fieldConfig);
+  const anchorPoint = patternAnchorPoint(fieldConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   function addPattern(pattern: SplitPattern) {
@@ -79,7 +79,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
 
   function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
-    addPattern(blueprintToSplitPattern(blueprint, tessellationConfig, anchorPoint));
+    addPattern(blueprintToSplitPattern(blueprint, fieldConfig, anchorPoint));
   }
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
@@ -128,7 +128,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
         ) : (
           patterns.map((pattern, i) => (
             <div key={i} style={styles.patternCard}>
-              <PatternPreviewTile pattern={pattern} degree={degree} cfg={tessellationConfig} />
+              <PatternPreviewTile pattern={pattern} degree={degree} cfg={fieldConfig} />
               <div style={styles.patternInfo}>
                 {withWeights && (
                   <div style={styles.weightRow}>
@@ -173,7 +173,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
                   onClick={() => handleAddBlueprint(blueprint)}
                 >
                   <TileFaceEditor
-                    point={anchorPoint} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint, tessellationConfig, anchorPoint)}
+                    point={anchorPoint} cfg={fieldConfig} nodes={tileNodesForBlueprint(blueprint, fieldConfig, anchorPoint)}
                     activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
                   />
                 </button>

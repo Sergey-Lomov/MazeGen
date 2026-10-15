@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const stubs = vi.hoisted(() => ({
   grids: [] as unknown[],
@@ -105,7 +106,7 @@ vi.mock("../pixi/tessellationProjection", () => ({
 }));
 
 vi.mock("../pixi/tessellationCells", () => ({
-  configAllCells: (cfg: { width?: number }) => cfg.width === 0 ? [] : [[0, 0], [2, 4]],
+  configAllCells: (cfg: { shape: { cols?: number } }) => cfg.shape.cols === 0 ? [] : [[0, 0], [2, 4]],
   resolveFieldConfig: (cfg: unknown) => cfg,
 }));
 
@@ -148,7 +149,7 @@ beforeEach(() => {
         fieldEditMode: "custom",
         fieldPrimitive: "point",
         fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
-        tessellationConfig: { type: "square", width: 4, height: 4 },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 4, rows: 4 }),
       }),
     },
   });
@@ -169,7 +170,7 @@ function openOverlay(): { overlay: FieldEditorOverlay; root: FakeContainer } {
 describe("FieldEditorOverlay", () => {
   it("redraws the editor layers when the field setup card opens and the viewport changes", () => {
     const { overlay, root } = openOverlay();
-    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig;
+    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig;
 
     expect(root.visible).toBe(true);
     expect((stubs.grids[0] as Stub).render).toHaveBeenCalled();
@@ -210,7 +211,7 @@ describe("FieldEditorOverlay", () => {
       { edges: expect.arrayContaining([
         expect.objectContaining({ a: [0, 0], b: [0, 1], kind: "none", style: "solid" }),
       ]) },
-      expect.objectContaining({ type: "square" }),
+      expect.objectContaining({ tessellation: { kind: "square", params: {} } }),
     );
     expect(boundary.render.mock.calls[0][0].edges).toHaveLength(6);
   });
@@ -250,7 +251,7 @@ describe("FieldEditorOverlay", () => {
 
   it("hides the source cells and renders only the temporary translated cells while moving", () => {
     const { overlay } = openOverlay();
-    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig;
+    const cfg = useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig;
 
     overlay.setSelectionMovePreview([[0, 0]], [[2, 0]]);
     expect((stubs.floors[0] as Stub).render).toHaveBeenLastCalledWith(
@@ -274,12 +275,12 @@ describe("FieldEditorOverlay", () => {
 
 describe("FieldEditorOverlay viewport helpers", () => {
   it("returns the center of configured cells and a centered fit transform", () => {
-    expect(configScreenCenter({ type: "square", width: 4, height: 4 })).toEqual({ x: 10, y: 40 });
-    expect(configScreenCenter({ type: "square", width: 0, height: 0 })).toEqual({ x: 0, y: 0 });
+    expect(configScreenCenter(fieldOf("square", { shape: "rect", cols: 4, rows: 4 }))).toEqual({ x: 10, y: 40 });
+    expect(configScreenCenter(fieldOf("square", { shape: "rect", cols: 0, rows: 0 }))).toEqual({ x: 0, y: 0 });
 
     const fit = fitFieldViewport(
-      { type: "square", width: 4, height: 4 },
-      [{ type: "square", width: 4, height: 4 }],
+      fieldOf("square", { shape: "rect", cols: 4, rows: 4 }),
+      [fieldOf("square", { shape: "rect", cols: 4, rows: 4 })],
       800,
       600,
     );

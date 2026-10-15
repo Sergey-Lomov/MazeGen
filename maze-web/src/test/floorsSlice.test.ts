@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig } from "./storeTestHelpers";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { presetEdgeKey } from "../pixi/fieldEditUtils";
+import { fieldOf } from "./fieldConfigFixtures";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -65,14 +66,14 @@ describe("floorsSlice", () => {
       // topmost floor), not floor_1 (the active one), proving addFloor's copy source is
       // floors[floors.length - 1], not activeFloorId.
       useMazeStore.setState({
-        floorFields: { floor_1: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+        floorFields: { floor_1: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }) },
       });
       useMazeStore.getState().addFloor(); // Floor 2, copies floor_1's 3x4 config
       const floor2Id = useMazeStore.getState().floors[1].id;
       useMazeStore.setState({
         floorFields: {
           ...useMazeStore.getState().floorFields,
-          [floor2Id]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 8 } }),
+          [floor2Id]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 7, rows: 8 }) }),
         },
       });
       useMazeStore.getState().setActiveFloorId("floor_1");
@@ -81,7 +82,7 @@ describe("floorsSlice", () => {
 
       const { floors, floorFields } = useMazeStore.getState();
       const floor3Id = floors[2].id;
-      expect(floorFields[floor3Id].tessellationConfig).toEqual({ type: "square", width: 7, height: 8 });
+      expect(floorFields[floor3Id].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 7, rows: 8 }));
     });
 
     it("copies into an independent object, not a shared reference", () => {

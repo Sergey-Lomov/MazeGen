@@ -4,6 +4,7 @@ use maze_core::graph::Graph;
 use maze_core::graph::nav::{build_nav_graph, build_nav_graph_pinned};
 use maze_core::ids::IdGenerator;
 use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
     g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
@@ -168,8 +169,12 @@ fn deterministic() {
 #[test]
 fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut ids = IdGenerator::new();
-    let mut field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(10, 10), &mut ids).unwrap();
+    let mut field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(10, 10),
+        &mut ids,
+    )
+    .unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

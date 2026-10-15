@@ -46,6 +46,7 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
 import type { LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // --- canonicalize ---
 
@@ -76,7 +77,7 @@ describe("edgeKey", () => {
 });
 
 describe("preset endpoint hit-testing", () => {
-  const cfg = { type: "square" as const, width: 4, height: 4 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
   const point: [number, number] = [1, 2];
   const markerCenter = makeProjection(cfg).gridToScreen(point[0], point[1]);
   const insideCell = { x: markerCenter.x + 15, y: markerCenter.y + 15 };
@@ -334,7 +335,7 @@ describe("presetConnectionsOnLevel", () => {
 
 describe("presetSplitNodeFaceKinds", () => {
   // 3x3 square, point (1,1). Square offsets are [+x, +y, -x, -y] -> neighbors (2,1),(1,2),(0,1),(1,0).
-  const cfg = { type: "square" as const, width: 3, height: 3 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
   const inFieldCells = new Set(["0,1", "1,0", "1,1", "1,2", "2,1"]);
   const point: [number, number] = [1, 1];
   const original = presetEndpoint(point);
@@ -397,7 +398,7 @@ describe("presetSplitNodeFaceKinds", () => {
 
 // --- computeAutoLockedNodes ---
 
-const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 const squareLevelFields: LevelField[] = [{ level: undefined, cfg: squareCfg }];
 const resolveSquare: ResolveFieldAt = (level) => (level === undefined || level === 0 ? { cfg: squareCfg } : undefined);
 
@@ -763,7 +764,7 @@ describe("pickEdgeAtPosition", () => {
   // 2x2 square field: cells (0,0), (1,0), (0,1), (1,1). Their shared corner (grid vertex)
   // sits at viewport (TILE_SIZE, -TILE_SIZE), where the vertical edge between (0,0)/(1,0)
   // meets the horizontal edge between (0,0)/(0,1).
-  const cfg = { type: "square" as const, width: 2, height: 2 };
+  const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
   const cells: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
   const proj = makeProjection(cfg);
   const vx = proj.gridToScreen(0, 0).x + TILE_SIZE / 2; // = TILE_SIZE, shared corner x
@@ -810,7 +811,7 @@ const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1
 
 describe("rotatePresetSplitPoint", () => {
   it("rotates Cairo's five face slots without assuming four or six faces", () => {
-    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const from = presetEndpoint([2, 1]);
     const oldNeighbor = presetEndpoint([-1, 2]);
     const newNeighbor = presetEndpoint([1, -2]);

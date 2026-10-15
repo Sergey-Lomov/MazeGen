@@ -76,7 +76,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             },
             |&(own_id, own_level, own_from, own_to),
              &(other_id, other_level, other_from, other_to)| {
-                let dist = floor_aware_edge_distance::<T>(
+                let dist = floor_aware_edge_distance(
+                    maze.field.tessellation(),
                     own_level,
                     own_from,
                     own_to,

@@ -27,7 +27,7 @@ fire only during repair, not in the check-only pass on the still-disconnected fi
 graph thresholds only (`teleport_graph_distance`, `max_teleport_count`, waypoint distances,
 region sizes, loop lengths/counts) — no geometric-length check — so the intentional
 `cell_scale` threshold change of #759 doesn't move these baselines. One geometric dependency
-remains: `expand_region_passage` ranks candidate pairs by `T::cartesian` distance; a geometry port
+remains: `expand_region_passage` ranks candidate pairs by `Tessellation::cartesian` distance; a geometry port
 that preserves relative distances keeps it unchanged.
 
 ## Canonical form (`maze_runner::canonical`)

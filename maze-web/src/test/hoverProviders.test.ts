@@ -7,12 +7,13 @@ import { TILE_SIZE } from "../pixi/constants";
 import { MazeScene, shouldCancelFieldEditGesture, TESSELLATION_CONFIG_BY_CARD } from "../pixi/MazeScene";
 import { SceneInteraction } from "../pixi/SceneInteraction";
 import { useMazeStore } from "../store/mazeStore";
+import { fieldOf } from "./fieldConfigFixtures";
 
 function fakeViewport(x: number, y: number, scale = 1): Container {
   return { x, y, scale: { x: scale, y: scale } } as unknown as Container;
 }
 
-const squareProjection = makeProjection({ type: "square", width: 10, height: 10 });
+const squareProjection = makeProjection(fieldOf("square", { shape: "rect", cols: 10, rows: 10 }));
 
 describe("canvasToGrid", () => {
   it("maps canvas origin through viewport offset to grid coords", () => {
@@ -91,17 +92,17 @@ describe("zoom reset controls", () => {
 
   it("resolves the tessellation config for every feature card", () => {
     const state = useMazeStore.getState();
-    const floorConfig = state.floorFields[state.activeFloorId].tessellationConfig;
+    const floorConfig = state.floorFields[state.activeFloorId].fieldConfig;
 
-    expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.basic_config(state)).toBe(state.previewFieldConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.floors(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.field_setup(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.preset_connections(state)).toBe(floorConfig);
     expect(TESSELLATION_CONFIG_BY_CARD.quality(state)).toBe(floorConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.generation(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.post_edit(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.analytics(state)).toBe(state.activeTessellationConfig);
-    expect(TESSELLATION_CONFIG_BY_CARD.image_export(state)).toBe(state.activeTessellationConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.generation(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.post_edit(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.analytics(state)).toBe(state.activeFieldConfig);
+    expect(TESSELLATION_CONFIG_BY_CARD.image_export(state)).toBe(state.activeFieldConfig);
   });
 
   it("syncs layer transforms, viewport listeners, and the scale listener", () => {
@@ -278,7 +279,7 @@ describe("zoom reset controls", () => {
     const canvas = {} as HTMLCanvasElement;
     const pngExporter = { export: vi.fn().mockResolvedValue(new Blob(["png"])) };
     const scene = { cachedProjection: null, pngExporter, app: { canvas } } as unknown as MazeScene;
-    const cfg = { type: "square", width: 2, height: 2 } as const;
+    const cfg = fieldOf("square", { shape: "rect", cols: 2, rows: 2 });
 
     const first = (MazeScene.prototype as any).getProjectionFor.call(scene, cfg);
     expect((MazeScene.prototype as any).getProjectionFor.call(scene, cfg)).toBe(first);
@@ -332,7 +333,7 @@ describe("zoom reset controls", () => {
 
     stageHandlers.pointermove?.({ globalX: 10, globalY: 10, buttons: 0 });
 
-    expect(updateHover).toHaveBeenCalledWith(null, activeField.tessellationConfig, expect.any(Number), undefined);
+    expect(updateHover).toHaveBeenCalledWith(null, activeField.fieldConfig, expect.any(Number), undefined);
     useMazeStore.setState({
       openCard: state.openCard,
       floorFields: { ...useMazeStore.getState().floorFields, [state.activeFloorId]: activeField },
@@ -387,7 +388,7 @@ describe("zoom reset controls", () => {
 
     expect(getMagicWandPreview).toHaveBeenCalledWith(10, 10);
     expect(updateHover).toHaveBeenCalledWith(
-      [[1, 1], [2, 1]], activeField.tessellationConfig, expect.any(Number), 0.5,
+      [[1, 1], [2, 1]], activeField.fieldConfig, expect.any(Number), 0.5,
     );
     useMazeStore.setState({
       openCard: state.openCard,

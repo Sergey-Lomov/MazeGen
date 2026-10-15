@@ -8,7 +8,7 @@
 
 use crate::config::GenerateConfig;
 use crate::runner::build_check_types;
-use crate::runner::prepare::{Prepared, TessellationVisitor, dispatch};
+use crate::runner::prepare::{Prepared, PreparedVisitor, dispatch};
 use crate::runner::stages::{
     Checked, Repaired, Seeded, run_check_only, run_generation, run_repair, seed_graph,
 };
@@ -48,10 +48,10 @@ struct BaselineRun<'a> {
     config: &'a GenerateConfig,
 }
 
-impl TessellationVisitor for BaselineRun<'_> {
+impl PreparedVisitor for BaselineRun<'_> {
     type Output = Value;
 
-    fn visit<T: Tessellation + 'static>(self, prepared: Prepared<T>) -> Result<Value, String> {
+    fn visit<T: Tessellation>(self, prepared: Prepared<T>) -> Result<Value, String> {
         let config = self.config;
         let mut seeded = seed_graph(prepared, config)?;
         if !config.qc_experiment {
@@ -545,12 +545,16 @@ mod tests {
     use super::*;
     use maze_core::ids::IdGenerator;
     use maze_core::space::{SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn three_cells() -> (MultiLevelField<SquareTessellation>, [NodeId; 3], NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field =
-            MultiLevelField::<SquareTessellation>::single_level(square_rect(3, 1), &mut ids)
-                .unwrap();
+        let mut field = MultiLevelField::<SquareTessellation>::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let level = field.single_level_id();
         let node = |x| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         let nodes = [node(0), node(1), node(2)];

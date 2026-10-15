@@ -1,15 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
 // — same mock `hexGeometry.test.ts` uses, canonical (unit-tile-scale) formulas mirroring
 // `maze-core::space`'s Tessellation impls.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { type: string }): [number, number] => {
-    if (cfg.type.startsWith("square")) return [x, y];
-    if (cfg.type.startsWith("hex")) {
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] => {
+    if (cfg.tessellation.kind === "square") return [x, y];
+    if (cfg.tessellation.kind === "hex") {
       const inradius = Math.sqrt(3) / 2;
       return [x * 1.5, -(y * inradius * 2 + x * inradius)];
     }
@@ -38,7 +39,7 @@ const HEX_CORE_ORDER = ["E", "NE", "NW", "W", "SW", "SE"];
 // (GitHub issue #235 follow-up). Checked from the *higher*-coordinate cell's own diagram, since
 // `getTileDiagram` used its own `edgeVerts` unconditionally before the fix — a bug only visible
 // when the diagram's own cell isn't the canonical-lower one for a given shared edge.
-function expectSideMatchesShared(cfg: TessellationConfig, x: number, y: number) {
+function expectSideMatchesShared(cfg: FieldConfig, x: number, y: number) {
   const diagram = getTileDiagram(x, y, cfg);
   expect(diagram).not.toBeNull();
   const center = getCellCenter(x, y, cfg);
@@ -60,24 +61,24 @@ function expectSideMatchesShared(cfg: TessellationConfig, x: number, y: number) 
 
 describe("getTileDiagram side direction matches getSharedEdgeSegment", () => {
   it("agrees for a hex cell that is the canonical-lower cell on every shared edge", () => {
-    expectSideMatchesShared({ type: "hex_hexagon", radius: 3, orientation: "flat_top" }, -1, -1);
+    expectSideMatchesShared(fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"), -1, -1);
   });
 
   it("agrees for a hex cell that is the canonical-higher cell on some shared edges", () => {
     // (1, 1) has neighbors with both lower and higher coordinates — exercises both branches.
-    expectSideMatchesShared({ type: "hex_hexagon", radius: 3, orientation: "flat_top" }, 1, 1);
+    expectSideMatchesShared(fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"), 1, 1);
   });
 
   it("agrees for a triangle 'up' cell ((x+y) even)", () => {
-    expectSideMatchesShared({ type: "triangle_hexagon", radius: 3 }, 2, 2);
+    expectSideMatchesShared(fieldOf("tri", { shape: "hexagon", radius: 3 }), 2, 2);
   });
 
   it("agrees for a triangle 'down' cell ((x+y) odd)", () => {
-    expectSideMatchesShared({ type: "triangle_hexagon", radius: 3 }, 3, 2);
+    expectSideMatchesShared(fieldOf("tri", { shape: "hexagon", radius: 3 }), 3, 2);
   });
 
   it("agrees for a square cell (sanity check — square never disagreed even before the fix)", () => {
-    expectSideMatchesShared({ type: "square", width: 5, height: 5 }, 1, 1);
+    expectSideMatchesShared(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }), 1, 1);
   });
 });
 
@@ -89,45 +90,45 @@ describe("getSharedEdgeSegment returns null for a non-neighbor offset", () => {
   // newly added tessellation whose `offsets`/`edgeVerts` tables fall out of sync would otherwise
   // surface as a silent missing perimeter side instead of a caught test failure here.
   it("square: a two-step offset is not a real neighbor direction", () => {
-    expect(getSharedEdgeSegment([0, 0], [2, 0], { type: "square", width: 5, height: 5 })).toBeNull();
+    expect(getSharedEdgeSegment([0, 0], [2, 0], fieldOf("square", { shape: "rect", cols: 5, rows: 5 }))).toBeNull();
   });
 
   it("hex: a diagonal offset outside the 6 neighbor directions", () => {
-    expect(getSharedEdgeSegment([0, 0], [1, 1], { type: "hex_hexagon", radius: 3, orientation: "flat_top" })).toBeNull();
+    expect(getSharedEdgeSegment([0, 0], [1, 1], fieldOf("hex", { shape: "hexagon", radius: 3 }, "flat_top"))).toBeNull();
   });
 
   it("triangle: cells that only touch at a corner, not a real neighbor direction", () => {
-    expect(getSharedEdgeSegment([0, 0], [1, 1], { type: "triangle_hexagon", radius: 3 })).toBeNull();
+    expect(getSharedEdgeSegment([0, 0], [1, 1], fieldOf("tri", { shape: "hexagon", radius: 3 }))).toBeNull();
   });
 });
 
 describe("getSplitCircleRotationDeg", () => {
   it("returns 45 for square tessellations (halfway between its 4 edge directions)", () => {
-    expect(getSplitCircleRotationDeg({ type: "square", width: 5, height: 5 })).toBe(45);
-    expect(getSplitCircleRotationDeg({ type: "square_custom", points: [] })).toBe(45);
+    expect(getSplitCircleRotationDeg(fieldOf("square", { shape: "rect", cols: 5, rows: 5 }))).toBe(45);
+    expect(getSplitCircleRotationDeg(fieldOf("square", { shape: "custom", points: [] }))).toBe(45);
   });
 
   it("returns 30 for hex tessellations (halfway between its 6 edge directions)", () => {
-    expect(getSplitCircleRotationDeg({ type: "hex_hexagon", radius: 3 })).toBe(30);
-    expect(getSplitCircleRotationDeg({ type: "hex_parallelogram", cols: 3, rows: 3 })).toBe(30);
-    expect(getSplitCircleRotationDeg({ type: "hex_custom", points: [] })).toBe(30);
+    expect(getSplitCircleRotationDeg(fieldOf("hex", { shape: "hexagon", radius: 3 }))).toBe(30);
+    expect(getSplitCircleRotationDeg(fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }))).toBe(30);
+    expect(getSplitCircleRotationDeg(fieldOf("hex", { shape: "custom", points: [] }))).toBe(30);
   });
 
   it("returns 60 for triangle tessellations (halfway between its 3 edge directions)", () => {
-    expect(getSplitCircleRotationDeg({ type: "triangle_hexagon", radius: 3 })).toBe(60);
-    expect(getSplitCircleRotationDeg({ type: "triangle_rect", cols: 3, rows: 3 })).toBe(60);
-    expect(getSplitCircleRotationDeg({ type: "triangle_triangle", side: 3 })).toBe(60);
-    expect(getSplitCircleRotationDeg({ type: "tri_custom", points: [] })).toBe(60);
+    expect(getSplitCircleRotationDeg(fieldOf("tri", { shape: "hexagon", radius: 3 }))).toBe(60);
+    expect(getSplitCircleRotationDeg(fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }))).toBe(60);
+    expect(getSplitCircleRotationDeg(fieldOf("tri", { shape: "triangle", side: 3 }))).toBe(60);
+    expect(getSplitCircleRotationDeg(fieldOf("tri", { shape: "custom", points: [] }))).toBe(60);
   });
 
   it("returns 36 for Cairo's five evenly distributed split-node slots", () => {
-    expect(getSplitCircleRotationDeg({ type: "cairo", cols: 3, rows: 3 })).toBe(36);
+    expect(getSplitCircleRotationDeg(fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }))).toBe(36);
   });
 });
 
 describe("rotateFaceIndex", () => {
   it("follows Cairo's physical perimeter instead of its stable core slot order", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
 
     // At the D tile [2, 1], the stable slots 1 and 4 are adjacent in space while
     // slot 2 is the next numeric slot. This is the skipped-edge regression.
@@ -136,7 +137,7 @@ describe("rotateFaceIndex", () => {
   });
 
   it("keeps the established cyclic index behavior for square", () => {
-    const cfg = { type: "square", width: 3, height: 3 } as const;
+    const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     expect(rotateFaceIndex(cfg, 0, 0, 0, 1)).toBe(1);
     expect(rotateFaceIndex(cfg, 0, 0, 0, -1)).toBe(3);
   });
@@ -144,7 +145,7 @@ describe("rotateFaceIndex", () => {
 
 describe("Cairo special split node anchors", () => {
   it("places Cor1 at 1/4 and Cor2 at 3/4 from corner 2/3 toward face-0 midpoint", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
     const order = cairoCanonicalFaceOrder(...point);
     const vertices = getCellVertices(...point, cfg)!;
@@ -164,7 +165,7 @@ describe("Cairo special split node anchors", () => {
   });
 
   it("places adjacent-divider markers between the divider center and edge 1/4 centers", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
     const order = cairoCanonicalFaceOrder(...point);
     const vertices = getCellVertices(...point, cfg)!;
@@ -195,7 +196,7 @@ describe("Cairo special split node anchors", () => {
   });
 
   it("places Cairo 2x3 bridge at the edge-1/edge-4 midpoint and fork at 1/3", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const point: [number, number] = [2, 1];
     const order = cairoCanonicalFaceOrder(...point);
     const vertices = getCellVertices(...point, cfg)!;
@@ -227,7 +228,7 @@ describe("Cairo special split node anchors", () => {
 
 describe("splitHubPoint", () => {
   it("distributes slots evenly around the center starting at the tessellation's own rotation", () => {
-    const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
     const center = { x: 0, y: 0 };
     const p0 = splitHubPoint(center, 0, 4, cfg);
     const p1 = splitHubPoint(center, 1, 4, cfg);
@@ -240,7 +241,7 @@ describe("splitHubPoint", () => {
   });
 
   it("places every slot at the same distance from center", () => {
-    const cfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const center = { x: 10, y: -5 };
     const distances = [0, 1, 2].map((i) => {
       const p = splitHubPoint(center, i, 3, cfg);
@@ -252,11 +253,11 @@ describe("splitHubPoint", () => {
 });
 
 describe("specialSplitNodePoint", () => {
-  const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
   const center = { x: 0, y: 0 };
 
   it("returns null for a hex special shape that has no dedicated anchor", () => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     expect(specialSplitNodePoint(hexCfg, center, "diagonal", [0, 1], 0)).toBeNull();
     expect(specialSplitNodePoint(hexCfg, center, "bridge", [0, 2], 0)).toBeNull();
   });
@@ -265,7 +266,7 @@ describe("specialSplitNodePoint", () => {
     ["adjacent", [0, 1] as [number, number]],
     ["skip-face", [0, 2] as [number, number]],
   ])("hex diagonal %s pair anchors on its face-center bisector at the skip-pair radius", (_name, faces) => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);
     const vertices = getCellVertices(0, 0, hexCfg)!;
     const { edgeVerts } = getNeighborData(hexCfg, 0, 0);
@@ -283,7 +284,7 @@ describe("specialSplitNodePoint", () => {
   });
 
   it("hex bridge keeps the rendered upper node centered and offsets the lower node 2/3 toward the vertex between the bridge sides", () => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);
     const allFaces: [number, number][] = [[0, 3], [1, 4]];
     expect(specialSplitNodePoint(hexCfg, hexCenter, "hex_bridge", allFaces[1], 1, allFaces)).toEqual(hexCenter);
@@ -295,7 +296,7 @@ describe("specialSplitNodePoint", () => {
   });
 
   it("hex triple corridor puts slots between the corners belonging to its two side corridors", () => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);
     const vertices = getCellVertices(0, 0, hexCfg)!;
     const from = vertices[2], to = vertices[5]; // shared corners of side pairs [1,2] and [4,5]
@@ -311,7 +312,7 @@ describe("specialSplitNodePoint", () => {
   });
 
   it("hex triple bridge puts every node at 5/6 of its axis and reverses the bottom/top node directions", () => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);
     const vertices = getCellVertices(0, 0, hexCfg)!;
     const { edgeVerts } = getNeighborData(hexCfg, 0, 0);
@@ -332,7 +333,7 @@ describe("specialSplitNodePoint", () => {
   });
 
   it("hex diagonal divider uses the same anchors as the equivalent 0-2 / 3-5 double passage", () => {
-    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
     const hexCenter = getCellCenter(0, 0, hexCfg);
     const faces = [[0, 1, 2], [3, 4, 5]];
     const equivalentPairs = [[0, 2], [3, 5]];
@@ -366,7 +367,7 @@ describe("specialSplitNodePoint", () => {
 });
 
 describe("buildNodePositions", () => {
-  const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 
   it("matches getCellCenter/splitHubPoint exactly, the same formula the canvas uses for split passages", () => {
     const nodes = [
@@ -479,7 +480,7 @@ describe("buildNodePositions", () => {
     });
 
     it("positions a recognized hex diagonal node midway between its connected face centers", () => {
-      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
       const node0 = { id: 0, x: 0, y: 0 };
       const node1 = { id: 1, x: 0, y: 0 };
       const { offsets } = getNeighborData(hexCfg, 0, 0);
@@ -495,7 +496,7 @@ describe("buildNodePositions", () => {
     });
 
     it("detects a three-node hex triple corridor and applies its three dedicated anchors", () => {
-      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
       const pointNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
       const { offsets } = getNeighborData(hexCfg, 0, 0);
       const neighbors = offsets.map(([x, y], i) => ({ id: 200 + i, x, y }));
@@ -513,7 +514,7 @@ describe("buildNodePositions", () => {
     });
 
     it("uses the hex diagonal divider anchors for graph and marker positioning", () => {
-      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const hexCfg: FieldConfig = fieldOf("hex", { shape: "hexagon", radius: 3 });
       const pointNodes = [0, 1].map((id) => ({ id, x: 0, y: 0 }));
       const { offsets } = getNeighborData(hexCfg, 0, 0);
       const neighbors = offsets.map(([x, y], i) => ({ id: 200 + i, x, y }));
@@ -533,7 +534,7 @@ describe("buildNodePositions", () => {
 });
 
 describe("splitPointFaceKindsByNode", () => {
-  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
   // Split point at (2,2); face order per getNeighborData: 0=E, 1=N, 2=W, 3=S.
   const node0 = { id: 0, x: 2, y: 2 };
   const node1 = { id: 1, x: 2, y: 2 };
@@ -571,7 +572,7 @@ describe("splitPointFaceKindsByNode", () => {
 // face-name-to-delta mapping ever changes, not just the permutation table.
 describe("splitFaceIndexToCore", () => {
   it("maps every square web offset to its same-direction core index", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const { offsets } = getNeighborData(cfg, 1, 1);
     const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "N", "-1,0": "W", "0,-1": "S" };
     offsets.forEach(([dx, dy], webIndex) => {
@@ -581,7 +582,7 @@ describe("splitFaceIndexToCore", () => {
   });
 
   it("maps every hex flat_top web offset to its same-direction core index", () => {
-    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const { offsets } = getNeighborData(cfg, 1, 1);
     const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
     offsets.forEach(([dx, dy], webIndex) => {
@@ -591,7 +592,7 @@ describe("splitFaceIndexToCore", () => {
   });
 
   it("maps every hex pointy_top web offset to its same-direction core index", () => {
-    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "pointy_top" };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "pointy_top");
     const { offsets } = getNeighborData(cfg, 1, 1);
     const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
     offsets.forEach(([dx, dy], webIndex) => {
@@ -601,7 +602,7 @@ describe("splitFaceIndexToCore", () => {
   });
 
   it("is identity for triangle tessellations (web/core orders already agree)", () => {
-    const cfg: TessellationConfig = { type: "triangle_rect", cols: 3, rows: 3 };
+    const cfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 3, rows: 3 });
     for (let i = 0; i < 3; i++) expect(splitFaceIndexToCore(cfg, i)).toBe(i);
   });
 });
@@ -611,11 +612,11 @@ describe("splitFaceIndexToCore", () => {
 // in core ordering (GitHub issue #273's `ParamFields.tsx` fix) but re-opening the editor converts
 // back to web ordering for `TileFaceEditor`; a round-trip must reproduce the original web indices.
 describe("splitFaceIndexToWeb / splitPatternsToWeb (round-trip with *ToCore)", () => {
-  const cfgs: [string, TessellationConfig][] = [
-    ["square", { type: "square", width: 3, height: 3 }],
-    ["hex flat_top", { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" }],
-    ["hex pointy_top", { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "pointy_top" }],
-    ["triangle", { type: "triangle_rect", cols: 3, rows: 3 }],
+  const cfgs: [string, FieldConfig][] = [
+    ["square", fieldOf("square", { shape: "rect", cols: 3, rows: 3 })],
+    ["hex flat_top", fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top")],
+    ["hex pointy_top", fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "pointy_top")],
+    ["triangle", fieldOf("tri", { shape: "rect", cols: 3, rows: 3 })],
   ];
 
   it.each(cfgs)("round-trips every face index for %s", (_label, cfg) => {
@@ -629,14 +630,14 @@ describe("splitFaceIndexToWeb / splitPatternsToWeb (round-trip with *ToCore)", (
 });
 
 describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
-  const cfgs: [string, TessellationConfig][] = [
-    ["square", { type: "square", width: 9, height: 9 }],
-    ["hex flat_top", { type: "hex_parallelogram", cols: 9, rows: 9, orientation: "flat_top" }],
-    ["hex pointy_top", { type: "hex_parallelogram", cols: 9, rows: 9, orientation: "pointy_top" }],
-    ["triangle r0", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r0" }],
-    ["triangle r90", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r90" }],
-    ["triangle r180", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r180" }],
-    ["triangle r270", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r270" }],
+  const cfgs: [string, FieldConfig][] = [
+    ["square", fieldOf("square", { shape: "rect", cols: 9, rows: 9 })],
+    ["hex flat_top", fieldOf("hex", { shape: "parallelogram", cols: 9, rows: 9 }, "flat_top")],
+    ["hex pointy_top", fieldOf("hex", { shape: "parallelogram", cols: 9, rows: 9 }, "pointy_top")],
+    ["triangle r0", fieldOf("tri", { shape: "rect", cols: 9, rows: 9 }, "r0")],
+    ["triangle r90", fieldOf("tri", { shape: "rect", cols: 9, rows: 9 }, "r90")],
+    ["triangle r180", fieldOf("tri", { shape: "rect", cols: 9, rows: 9 }, "r180")],
+    ["triangle r270", fieldOf("tri", { shape: "rect", cols: 9, rows: 9 }, "r270")],
   ];
 
   it.each(cfgs)("round-trips every cell's own center back to itself for %s", (_label, cfg) => {
@@ -660,7 +661,7 @@ describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
   });
 
   it("resolves a coordinate outside any real field the same way regardless of caller (deterministic, not clamped to a field)", () => {
-    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const farCenter = getCellCenter(50, 50, cfg);
     expect(nearestCellCoord(farCenter.x, farCenter.y, cfg)).toEqual([50, 50]);
   });
@@ -668,7 +669,7 @@ describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
 
 describe("splitPatternsToWeb round-trip", () => {
   it("splitPatternsToWeb undoes splitPatternsToCore for a full pattern", () => {
-    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" };
+    const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const original: SplitPattern[] = [
       {
         node_count: 2,

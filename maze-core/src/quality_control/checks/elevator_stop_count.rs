@@ -61,6 +61,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "elevator_stop_count";
 
@@ -70,10 +71,14 @@ mod tests {
 
     fn three_floor_maze() -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();
@@ -155,10 +160,14 @@ mod tests {
     #[test]
     fn flags_only_the_offending_elevator_among_several() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..3)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();

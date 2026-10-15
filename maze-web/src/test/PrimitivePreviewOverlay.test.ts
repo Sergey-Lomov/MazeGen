@@ -25,8 +25,9 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { PrimitivePreviewOverlay } from "../pixi/PrimitivePreviewOverlay";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg = { type: "square", width: 10, height: 10 } as const;
+const cfg = fieldOf("square", { shape: "rect", cols: 10, rows: 10 });
 
 beforeEach(() => {
   stubs.graphics.length = 0;

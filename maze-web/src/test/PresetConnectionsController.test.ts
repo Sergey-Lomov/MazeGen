@@ -7,6 +7,7 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { PresetConnectionsController } from "../pixi/PresetConnectionsController";
 import type { PresetConnectionsRenderer } from "../pixi/PresetConnectionsRenderer";
 import type { PresetConnectionEntry, PresetElevatorEntry, PresetTeleportEntry, PresetVerticalPassageEntry } from "../pixi/fieldEditUtils";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -77,8 +78,8 @@ function setTwoFloors(cells = fieldCells): void {
   useMazeStore.setState({
     floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
     floorFields: {
-      [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, fieldPoints: cells }),
-      floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, fieldPoints: cells }),
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }), fieldPoints: cells }),
+      floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }), fieldPoints: cells }),
     },
   });
 }
@@ -114,7 +115,7 @@ beforeEach(() => {
     _nextPresetSplitPointId: 1,
     floorFields: {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
-        tessellationConfig: { type: "square", width: 3, height: 3 },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }),
         fieldPoints: fieldCells,
       }),
     },
@@ -470,7 +471,7 @@ describe("PresetConnectionsController vertical interactions", () => {
       floorFields: {
         ...useMazeStore.getState().floorFields,
         floor_2: baseFloorFieldConfig({
-          tessellationConfig: { type: "square", width: 3, height: 3 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }),
           fieldPoints: new Set([encodePoint(0, 0)]),
           isEditingField: true,
         }),

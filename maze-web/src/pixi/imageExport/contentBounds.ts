@@ -1,5 +1,5 @@
 import { exactCellBounds, cellCenterBounds } from "../tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { ExportMargin } from "./exportMargins";
 
 /** Which raw bbox `contentWorldBounds` insets by `margin` — `"cell"` (default, `exactCellBounds`)
@@ -17,7 +17,7 @@ export type ContentBoundsBasis = "cell" | "center";
  * passes the same pixel-accurate `ModeRenderer.getRequiredExportMargin()` (GitHub issue #324
  * follow-up), no separate wall-only vs. full-margin variant needed anymore. */
 export function contentWorldBounds(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   margin: ExportMargin,
   basis: ContentBoundsBasis = "cell",

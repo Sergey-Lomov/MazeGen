@@ -2,7 +2,7 @@ import { TILE_SIZE } from "./constants";
 import { INRADIUS } from "./hexGeometry";
 import { TRI_TILE_SIZE } from "./triGeometry";
 import { cairoCenter, CAIRO_CENTER_SCALE, isCairoPoint } from "./cairoGeometry";
-import { tessellationFamily, type Tessellation as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, tessellationFamily, triOrientationOf, type FieldConfig } from "../fieldConfig";
 
 export interface TessellationProjection {
   // viewport-space coords (after viewport transform) → grid coords
@@ -213,15 +213,15 @@ class CairoProjection implements TessellationProjection {
   }
 }
 
-export function makeProjection(cfg: TessellationConfig): TessellationProjection {
+export function makeProjection(cfg: FieldConfig): TessellationProjection {
   const kind = tessellationFamily(cfg);
   switch (kind) {
     case "square":
       return new SquareProjection();
     case "hex":
-      return new HexProjection(("orientation" in cfg ? cfg.orientation : undefined) as "flat_top" | "pointy_top" ?? "flat_top");
-    case "triangle":
-      return new TriProjection(("orientation" in cfg ? cfg.orientation : undefined) as "r0" | "r90" | "r180" | "r270" ?? "r0");
+      return new HexProjection(hexOrientationOf(cfg));
+    case "tri":
+      return new TriProjection(triOrientationOf(cfg));
     case "cairo":
       return new CairoProjection();
   }

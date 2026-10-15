@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
 import { canvas } from "../colorTokens";
 import { CROSS_WIDTH, drawCrossMarker } from "./crossMarker";
@@ -12,7 +12,7 @@ export class OriginRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { show: boolean }, cfg: TessellationConfig): void {
+  render(data: { show: boolean }, cfg: FieldConfig): void {
     this.g.clear();
     if (!data.show) return;
 

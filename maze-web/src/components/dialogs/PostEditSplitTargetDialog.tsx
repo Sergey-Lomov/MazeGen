@@ -44,7 +44,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
   const prompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
   const pick = useMazeStore((s) => s.applyPostEditSplitTargetPick);
   const allNodes = useMazeStore((s) => s.nodes);
-  const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s) => s.activeFieldConfig);
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const splitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
@@ -65,7 +65,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     const geometry = buildSplitFloorGeometry(point, level ?? 0, allNodes, draftEdges, draftTeleports, splitPoints, cfg);
     if (!geometry) return null;
     const { pointNodes, floorNodes, edges, faceKindsByNode } = geometry;
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined;
+    const canonicalOrder = cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined;
     const special = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder) !== null;
     const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode, canonicalOrder);
 

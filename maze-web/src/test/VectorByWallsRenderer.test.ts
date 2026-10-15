@@ -7,6 +7,7 @@ import type { VectorByWallsSettings } from "../store/storeTypes";
 import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -247,14 +248,14 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 const stableNodes: NodeDto[] = [];
 const stableEdges: never[] = [];
-const stableCfg = { type: "square" as const, width: 4, height: 4 };
+const stableCfg = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 
 function baseState(overrides: Record<string, unknown> = {}) {
   return {
     openCard: "image_export",
     nodes: stableNodes,
     edges: stableEdges,
-    activeTessellationConfig: stableCfg,
+    activeFieldConfig: stableCfg,
     vectorByWallsSettings: baseSettings(),
     vectorByWallsSectionsExpanded: {},
     start: null,
@@ -467,7 +468,7 @@ describe("VectorByWallsRenderer", () => {
     // (verified directly against the tessellation's own cell-polygon math).
     const nodes: NodeDto[] = [];
     for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) nodes.push({ id: y * 3 + x, x, y, i: 0 });
-    currentState = baseState({ nodes, activeTessellationConfig: { type: "square", width: 3, height: 3 } });
+    currentState = baseState({ nodes, activeFieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
 
     const asAny = renderer as unknown as {

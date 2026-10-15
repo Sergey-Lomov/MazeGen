@@ -2,6 +2,7 @@ use super::*;
 use crate::dto::NodeDto;
 use maze_core::ids::IdGenerator;
 use maze_core::space::{SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 fn edge(from: u32, to: u32, kind: &str) -> PostEditEdgeDto {
     PostEditEdgeDto {
@@ -254,7 +255,8 @@ fn node(id: u32, x: i32, y: i32, i: u32) -> NodeDto {
 fn build_field_from_nodes_preserves_given_ids_and_populates_index_maps() {
     let nodes = vec![node(10, 0, 0, 0), node(20, 1, 0, 0)];
     let (field, existing_by_index, index_by_node, level_ids) =
-        build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_square).unwrap();
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &nodes, 1, &xy_to_square)
+            .unwrap();
     let level = level_ids[0];
 
     assert_eq!(field.nodes_at(level, SquarePoint { x: 0, y: 0 }), &[10]);
@@ -271,7 +273,8 @@ fn build_field_from_nodes_places_extra_slots_after_the_original_regardless_of_in
     // matching `nodes_at`'s creation-order contract regardless of input order.
     let nodes = vec![node(2, 0, 0, 1), node(1, 0, 0, 0)];
     let (field, _, _, level_ids) =
-        build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_square).unwrap();
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &nodes, 1, &xy_to_square)
+            .unwrap();
 
     assert_eq!(
         field.nodes_at(level_ids[0], SquarePoint { x: 0, y: 0 }),
@@ -285,7 +288,8 @@ fn build_field_from_nodes_rejects_a_node_outside_the_current_tessellation() {
     // tessellation shrank, whose stale node no longer resolves to a real point.
     let nodes = vec![node(1, 5, 5, 0)];
     let xy_to_none = |_: [i32; 2]| -> Option<SquarePoint> { None };
-    let result = build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_none);
+    let result =
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &nodes, 1, &xy_to_none);
     let err = match result {
         Err(e) => e,
         Ok(_) => panic!("expected an error for a node outside the current tessellation"),
@@ -304,7 +308,8 @@ fn build_field_from_nodes_rejects_a_node_outside_the_current_tessellation() {
 fn build_field_from_nodes_rejects_a_node_referencing_an_unknown_level() {
     let mut n = node(1, 0, 0, 0);
     n.level = 3;
-    let result = build_field_from_nodes::<SquareTessellation>(&[n], 1, &xy_to_square);
+    let result =
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &[n], 1, &xy_to_square);
     let err = match result {
         Err(e) => e,
         Ok(_) => panic!("expected an error for a node referencing an unknown level"),
@@ -324,7 +329,8 @@ fn build_field_from_nodes_keeps_two_levels_sharing_a_point_separate() {
     let mut n1 = node(2, 0, 0, 0);
     n1.level = 1;
     let (field, _, _, level_ids) =
-        build_field_from_nodes::<SquareTessellation>(&[n0, n1], 2, &xy_to_square).unwrap();
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &[n0, n1], 2, &xy_to_square)
+            .unwrap();
 
     assert_eq!(level_ids.len(), 2);
     assert_eq!(
@@ -339,7 +345,7 @@ fn build_field_from_nodes_keeps_two_levels_sharing_a_point_separate() {
 
 fn build_single_level_maze() -> (Maze<SquareTessellation>, Vec<maze_core::space::LevelId>) {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let level_ids: Vec<_> = field.levels_ordered().collect();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -373,7 +379,8 @@ fn apply_split_points_mints_distinct_new_nodes_when_none_exist_yet() {
 #[test]
 fn apply_split_points_reuses_an_already_existing_slots_node_id() {
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let level = field.single_level_id();
     let level_ids = vec![level];
     let p = SquarePoint { x: 0, y: 0 };
@@ -409,7 +416,8 @@ fn apply_split_points_reuses_an_already_existing_slots_node_id() {
 #[test]
 fn apply_split_points_mints_only_the_newly_added_slot() {
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let level = field.single_level_id();
     let level_ids = vec![level];
     let p = SquarePoint { x: 0, y: 0 };
@@ -452,7 +460,8 @@ fn apply_split_points_mints_only_the_newly_added_slot() {
 #[test]
 fn apply_split_points_keeps_a_surviving_later_slot_correct_after_an_earlier_slot_is_removed() {
     let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let mut field =
+        MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let level = field.single_level_id();
     let level_ids = vec![level];
     let p = SquarePoint { x: 0, y: 0 };
@@ -570,7 +579,7 @@ fn apply_split_points_rejects_point_removed_from_field_without_panicking() {
 #[test]
 fn build_graph_from_post_edit_edges_accepts_split_endpoints_end_to_end() {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
     let level_ids: Vec<_> = field.levels_ordered().collect();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -619,7 +628,7 @@ fn build_graph_from_post_edit_edges_accepts_split_endpoints_end_to_end() {
 #[test]
 fn route_exists_through_a_split_node_bridging_a_walled_off_pair() {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
     let level_ids: Vec<_> = field.levels_ordered().collect();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -693,7 +702,8 @@ fn two_levels_sharing_a_point_resolve_to_independent_nodes() {
     let mut n1 = node(2, 0, 0, 0);
     n1.level = 1;
     let (field, existing_by_index, _, level_ids) =
-        build_field_from_nodes::<SquareTessellation>(&[n0, n1], 2, &xy_to_square).unwrap();
+        build_field_from_nodes::<SquareTessellation>(&Arc::default(), &[n0, n1], 2, &xy_to_square)
+            .unwrap();
     let mut g = Graph::new();
     for id in field.all_node_ids() {
         g.add_node(id);

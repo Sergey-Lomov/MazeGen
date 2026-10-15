@@ -265,7 +265,7 @@ this reuse) — the same per-node, per-face-position `Passage`/`OneWay`/`Wall` r
 function, `canonical_split_topology` needs no candidate pattern list at all — it reduces a tile to
 one canonical value that can be grouped/compared with plain equality, no rotation search needed by
 the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-(`T::faces()` empty).
+(`Tessellation::faces()` empty).
 
 ### `split_totals`
 

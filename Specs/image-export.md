@@ -1167,4 +1167,4 @@ Both output modes show a result-info block (image size in px for digital, sheet 
 
 ## Scene integration
 
-`MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (resolves to `activeTessellationConfig`, same as generation/post-edit/analytics) and to `refit()`'s `showsMaze` gate. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.
+`MazeScene` wires `ImageExportRenderer` the same way as every other feature-renderer: its own synced layer container, its own entry in `viewportListeners`, `image_export` added to `TESSELLATION_CONFIG_BY_CARD` (resolves to `activeFieldConfig`, same as generation/post-edit/analytics) and to `refit()`'s `showsMaze` gate. `ExportFrameOverlay` is wired as the **last** `viewportListeners` entry (after `imageExportRenderer`) so the frame's own canvas-position sync always sees every other listener's up-to-date state first.

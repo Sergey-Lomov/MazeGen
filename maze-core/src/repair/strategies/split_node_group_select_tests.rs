@@ -6,6 +6,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn no_params() -> StrategyParams {
     crate::repair::params::build_params(
@@ -48,7 +49,7 @@ fn group_issue(groups: Vec<(Vec<NodeId>, u32)>) -> InvalidSplitNodeGroupIssue {
 fn maze_with_three_node_split() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -168,7 +169,7 @@ fn removes_exactly_one_node_of_the_group() {
 fn apply_fixes_to_remove_multiple_nodes_from_a_single_group_in_one_call() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();

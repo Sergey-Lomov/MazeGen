@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
 // — same mock `tessellationGeometry.test.ts` uses, canonical (unit-tile-scale) square formula.
@@ -340,7 +341,7 @@ describe("drawDirectionArrow", () => {
 });
 
 describe("drawOneWayWallHighlight", () => {
-  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
 
   it("returns true and strokes the shared wall plus a gapless triangle for tessellation-adjacent cells", () => {
     const g = newG();
@@ -380,7 +381,7 @@ describe("drawCellBoundaryHighlight", () => {
     expect(cellBoundaryKey([1, 2], [3, 4])).toBe(cellBoundaryKey([3, 4], [1, 2]));
   });
 
-  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 5, rows: 5 });
 
   it("draws a rounded, stroked quad spanning the shared edge and both cell halves", () => {
     const g = newG();

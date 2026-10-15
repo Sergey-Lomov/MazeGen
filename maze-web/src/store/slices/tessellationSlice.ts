@@ -5,7 +5,7 @@ import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
 import type { NodeLockKind, SplitPattern } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
-import { buildPreviewState, debugStaleOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
+import { buildPreviewConfig, buildPreviewState, debugStaleOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
   seed: 42,
@@ -16,8 +16,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   previewKind: "square",
   previewHexOrientation: DEFAULT_HEX_ORI,
   previewTriOrientation: DEFAULT_TRI_ORI,
-  previewTessellationConfig: { type: "square", width: 11, height: 11 },
-  activeTessellationConfig: resolveFieldConfig({ type: "square", width: 11, height: 11 }),
+  previewFieldConfig: buildPreviewConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI),
+  activeFieldConfig: resolveFieldConfig(buildPreviewConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI)),
   showFieldOverlay: true,
   showFieldOrigin: true,
   showPrimitiveFrame: true,
@@ -39,17 +39,17 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
 
   setPreviewKind: (kind) => set((state) => ({
     previewKind: kind,
-    previewTessellationConfig: buildPreviewState(kind, state.previewHexOrientation, state.previewTriOrientation).previewTessellationConfig,
+    previewFieldConfig: buildPreviewState(kind, state.previewHexOrientation, state.previewTriOrientation).previewFieldConfig,
   })),
 
   setPreviewHexOrientation: (orientation) => set((state) => ({
     previewHexOrientation: orientation,
-    previewTessellationConfig: buildPreviewState(state.previewKind, orientation, state.previewTriOrientation).previewTessellationConfig,
+    previewFieldConfig: buildPreviewState(state.previewKind, orientation, state.previewTriOrientation).previewFieldConfig,
   })),
 
   setPreviewTriOrientation: (orientation) => set((state) => ({
     previewTriOrientation: orientation,
-    previewTessellationConfig: buildPreviewState(state.previewKind, state.previewHexOrientation, orientation).previewTessellationConfig,
+    previewFieldConfig: buildPreviewState(state.previewKind, state.previewHexOrientation, orientation).previewFieldConfig,
   })),
 
   syncPreviewToConfirmed: () => set((state) =>
@@ -62,7 +62,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
     const triOrientation = state.previewTriOrientation;
     const clearMaze = kind !== state.tessellationKind;
     const freshField = defaultFloorFieldConfig(kind, hexOrientation, triOrientation);
-    warmCartesianCache(freshField.tessellationConfig);
+    warmCartesianCache(freshField.fieldConfig);
     // Kind/orientation are maze-wide (Specs/field-editor.md) — every floor's own field config is
     // rebuilt against the newly confirmed kind, same as a single-floor maze always did.
     const floorFields: Record<string, FloorFieldConfig> = {};
@@ -170,7 +170,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   }),
 
   setHexOrientation: (orientation) => set(makeOrientationSetter("hex", "hexOrientation")(orientation)),
-  setTriOrientation: (orientation) => set(makeOrientationSetter("triangle", "triOrientation")(orientation)),
+  setTriOrientation: (orientation) => set(makeOrientationSetter("tri", "triOrientation")(orientation)),
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
   setShowFieldOrigin: (show) => set({ showFieldOrigin: show }),

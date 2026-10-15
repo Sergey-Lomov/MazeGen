@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { getCellVertices } from "../tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { drawCellHighlight, type CellHighlightCornerStyle } from "../cellHighlightGeometry";
 
 export type CellFillGroup = { cells: [number, number][]; color: number; alpha: number; inset?: number; cornerStyle?: CellHighlightCornerStyle; borderWidth?: number };
@@ -13,7 +13,7 @@ export class CellFillRenderer {
     container.addChild(this.g);
   }
 
-  render(data: CellFillGroup | CellFillGroup[], cfg?: TessellationConfig): void {
+  render(data: CellFillGroup | CellFillGroup[], cfg?: FieldConfig): void {
     this.g.clear();
     if (!cfg) return;
     const groups = Array.isArray(data) ? data : [data];

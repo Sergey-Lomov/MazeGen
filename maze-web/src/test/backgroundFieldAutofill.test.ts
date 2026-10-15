@@ -17,6 +17,7 @@ vi.mock("../pixi/tessellationGeometry", () => ({
 
 import { buildBackgroundFieldPreview, buildBackgroundFieldPreviewFromImage, getBackgroundImageTopLeftColor, topLeftPixelColor } from "../pixi/backgroundFieldAutofill";
 import { encodePoint } from "../pixi/tessellationProjection";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const image = {
   dataUrl: "data:image/png;base64,test",
@@ -30,7 +31,7 @@ const image = {
   opacity: 0.5,
 };
 
-const config = { type: "square_custom" as const, points: [] };
+const config = fieldOf("square", { shape: "custom", points: [] });
 
 describe("buildBackgroundFieldPreview", () => {
   it("falls back to white for an invalid pixel buffer", () => {

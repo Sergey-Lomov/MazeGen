@@ -71,7 +71,8 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue>
                         && own_level != other_level)
             },
             |&(_, _, own_level, own_point), &(_, _, other_level, other_point)| {
-                floor_aware_distance::<T>(
+                floor_aware_distance(
+                    maze.field.tessellation(),
                     own_level,
                     own_point,
                     other_level,
@@ -104,6 +105,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "elevator_stop_group_geometric_proximity";
 
@@ -114,11 +116,16 @@ mod tests {
     fn two_elevators_at(xs: &[i32]) -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let width = xs.iter().copied().max().unwrap_or(0) as usize + 1;
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf
-            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
-        let top = mf
-            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(width, 1), &mut ids)
+                .unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(width, 1), &mut ids)
+                .unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -194,10 +201,14 @@ mod tests {
         // Elevator A spans floors 0-1 at x=0, elevator B spans floors 2-3 at x=1 -- no shared
         // floor between the two elevators' own stops, so SameFloorOnly must find nothing.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..4)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();
@@ -235,11 +246,13 @@ mod tests {
         // floors distinct without introducing a second close pair. The one relevant comparison is
         // A's floor-0 stop (x=0) against B's floor-3 stop (x=1): dx=1, dz=3.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..4)
             .map(|_| {
                 mf.add_level(
-                    Field::<SquareTessellation>::new(square_rect(41, 1), &mut ids).unwrap(),
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(41, 1), &mut ids)
+                        .unwrap(),
                 )
             })
             .collect();

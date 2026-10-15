@@ -20,7 +20,7 @@ import { buildCorridorContour, buildCorridorContourInstances, traceCorridorConto
 import { buildCorridorLineTiles, traceCorridorLineTile } from "./vectorByCorridorsLineTiles";
 import { CorridorTileLayer } from "./corridorTileLayer";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
@@ -113,7 +113,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     rawNodes: NodeDto[];
     rawEdges: EdgeDto[];
     activeFloorId: string;
-    cfg: TessellationConfig;
+    cfg: FieldConfig;
     start: number | null;
     finish: number | null;
     splitNodeColors: readonly number[];
@@ -194,7 +194,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         state.finish !== prev.finish ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFieldConfig !== prev.activeFieldConfig ||
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
@@ -229,7 +229,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.backgroundGrid.onViewportChanged(this.viewport);
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
-      this.backgroundGrid.render(state.vectorByCorridorsSettings, state.activeTessellationConfig);
+      this.backgroundGrid.render(state.vectorByCorridorsSettings, state.activeFieldConfig);
     }
   }
 
@@ -257,7 +257,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // Floor-scoped (GitHub issue #348), same reason `renderAll` scopes its own `nodes` — the
     // *drawn* content is only ever one floor's worth, so the bounds basis must match.
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
-    const cellBounds = cellCenterBounds(floorNodes, state.activeTessellationConfig);
+    const cellBounds = cellCenterBounds(floorNodes, state.activeFieldConfig);
     return measureContentMargin(
       [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
       cellBounds,
@@ -270,7 +270,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state.activeTessellationConfig;
+    const cfg = state.activeFieldConfig;
 
     this.backgroundGrid.render(state.vectorByCorridorsSettings, cfg);
 
@@ -573,7 +573,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.corridorTiles.setTint(settings.color);
   }
 
-  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     if (settings.renderStyle === "legacy_line") {
       this.drawSplitPassagesLegacy(settings, passages, specialShapes, cfg);
       return;
@@ -705,7 +705,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  contour input used by a normal corridor junction. The resulting tile is drawn on the shared
    *  corridor layer; the bridge's own dedicated layer is appended afterwards and therefore sits
    *  above it. */
-  private bridgeUnderlaySegments(passage: SplitPassage, cfg: TessellationConfig): CorridorSegment[] {
+  private bridgeUnderlaySegments(passage: SplitPassage, cfg: FieldConfig): CorridorSegment[] {
     const cellVertices = this.splitCellVertices(passage.pointKey, cfg);
     return passage.wallSegments.map((segment) => {
       const dx = segment.v1.x - segment.v0.x;
@@ -730,7 +730,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
   }
 
-  private drawBridgeUnderlayContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], cfg: TessellationConfig): void {
+  private drawBridgeUnderlayContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], cfg: FieldConfig): void {
     for (const passage of passages) {
       const segments = this.bridgeUnderlaySegments(passage, cfg);
       if (segments.length === 0) continue;
@@ -759,7 +759,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private drawBridgeSpecialShape(
     settings: VectorByCorridorsSettings,
     shape: Extract<SplitSpecialShape, { kind: "bridge" }>,
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
     clipViewAt: () => SplitClipViews,
     drawConnectorLine: SplitConnectorLine,
     throughDrawnForPoint: Set<string>,
@@ -818,7 +818,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  GitHub issue #510's own "no shared logic between render styles" requirement (the shared
    *  `setupSplitPassageDraw` above is boilerplate + the plain-connector pass, not special-shape
    *  geometry). */
-  private splitCellVertices(pointKey: string, cfg: TessellationConfig, referencePoints: { x: number; y: number }[] = []): { x: number; y: number }[] | undefined {
+  private splitCellVertices(pointKey: string, cfg: FieldConfig, referencePoints: { x: number; y: number }[] = []): { x: number; y: number }[] | undefined {
     const [x, y] = pointKey.split(",").map(Number);
     const vertices = Number.isFinite(x) && Number.isFinite(y) ? getCellVertices(x, y, cfg) ?? undefined : undefined;
     if (!vertices || referencePoints.length === 0) return vertices;
@@ -852,7 +852,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     return best ? { x: best.v1.x - best.v0.x, y: best.v1.y - best.v0.y } : { x: 1, y: 0 };
   }
 
-  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassagesContour(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
@@ -1113,7 +1113,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  contour fill, regardless of `join`. Independent of `drawSplitPassagesContour`'s special-shape
    *  block — no shared drawing logic beyond geometry helpers that already predate #493
    *  (`vectorByCorridorsGeometry.ts`) and the mode-agnostic `setupSplitPassageDraw` boilerplate. */
-  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: TessellationConfig): void {
+  private drawSplitPassagesLegacy(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[], cfg: FieldConfig): void {
     const { clipViewAt, drawConnectorLine, oneWayStyle, oneWayLengthPx, useSpecial, bridgeUnderlayPassages } = this.setupSplitPassageDraw(settings, passages, specialShapes);
 
     if (!useSpecial) return;
@@ -1264,11 +1264,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           state.nodes, state.edges, state.floors, state.activeFloorId, null, null,
         );
         this.warningHighlight.renderNodes(
-          hoveredTeleportNodeIds, nodes, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+          hoveredTeleportNodeIds, nodes, state.activeFieldConfig, state.vectorByCorridorsSettings,
           2 / (this.viewport.scale || 1),
         );
       } else {
-        this.warningHighlight.render(null, [], [], state.activeTessellationConfig, state.vectorByCorridorsSettings, null, null);
+        this.warningHighlight.render(null, [], [], state.activeFieldConfig, state.vectorByCorridorsSettings, null, null);
       }
       return;
     }
@@ -1280,11 +1280,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
     const warnings = computeVectorByCorridorsWarningsAcrossFloors(
-      state.nodes, state.edges, state.floors, state.activeTessellationConfig, state.vectorByCorridorsSettings,
+      state.nodes, state.edges, state.floors, state.activeFieldConfig, state.vectorByCorridorsSettings,
       rawEndpoints.start, rawEndpoints.finish,
     );
     const oneWayBoundaryWidth = state.vectorByCorridorsSettings.oneWayWidth * state.vectorByCorridorsSettings.thickness + state.vectorByCorridorsSettings.oneWayThickness;
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeFieldConfig, state.vectorByCorridorsSettings, start, finish, state.nodes, warnings, 2 / (this.viewport.scale || 1), oneWayBoundaryWidth, true);
   }
 
   destroy(): void {

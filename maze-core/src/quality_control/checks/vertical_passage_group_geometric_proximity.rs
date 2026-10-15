@@ -74,7 +74,8 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue>
                         && own_level != other_level)
             },
             |&(_, own_level, own_point, _), &(_, other_level, other_point, _)| {
-                floor_aware_distance::<T>(
+                floor_aware_distance(
+                    maze.field.tessellation(),
                     own_level,
                     own_point,
                     other_level,
@@ -101,6 +102,7 @@ mod tests {
     use crate::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "vertical_passage_group_geometric_proximity";
 
@@ -111,11 +113,16 @@ mod tests {
     fn three_floor_maze_with_passages_at(xs: &[i32]) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
         let width = xs.iter().copied().max().unwrap_or(0) as usize + 1;
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom = mf
-            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
-        let top = mf
-            .add_level(Field::<SquareTessellation>::new(square_rect(width, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(width, 1), &mut ids)
+                .unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(width, 1), &mut ids)
+                .unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -196,11 +203,14 @@ mod tests {
     #[test]
     fn same_type_only_ignores_a_mixed_up_down_pair() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -229,11 +239,14 @@ mod tests {
     #[test]
     fn same_type_only_still_flags_a_matching_pair() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -263,11 +276,14 @@ mod tests {
     #[test]
     fn passage_type_scope_excludes_a_non_matching_edge_from_the_scan_entirely() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -296,11 +312,14 @@ mod tests {
     #[test]
     fn count_incoming_off_excludes_a_one_way_passages_to_end() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -330,11 +349,14 @@ mod tests {
     #[test]
     fn two_way_passage_scans_both_ends_regardless_of_count_incoming() {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -371,11 +393,14 @@ mod tests {
         // Up-passage at x=0 (from = bottom), down-passage at x=1 (from = top) -- x=0/x=1 are
         // close in plain x/y, but the two from-ends live on different floors.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);
@@ -403,10 +428,14 @@ mod tests {
         // dx = 1 between the two from-ends, but they sit 3 floors apart: dz = 3.
         // Ignore sees only dx = 1.0 (< 2.0, flags). AsCoordinate sees sqrt(1^2 + 3^2) = 3.16 (> 2.0, silent).
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..4)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();

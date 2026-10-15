@@ -47,12 +47,14 @@ mod tests {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "scc_count";
 
     fn maze_with_two_isolated_components() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -72,7 +74,8 @@ mod tests {
 
     fn maze_with_one_scc() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

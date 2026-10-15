@@ -7,12 +7,13 @@ import { makeProjection } from "../pixi/tessellationProjection";
 import { cellsInsideShape, type ShapeDefinition } from "../pixi/shapeSelection";
 import { pickEdgeAtPosition } from "../pixi/edgeHitTesting";
 import { selectionBoundarySegments } from "../pixi/fieldSelectionGeometry";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../pixi/cartesianCache", () => ({
   getCartesian: (x: number, y: number): [number, number] => [x, y],
 }));
 
-const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
 
 function expectSameSegment(a: { x: number; y: number }, b: { x: number; y: number }): void {
   expect(a.x).toBeCloseTo(b.x);
@@ -74,23 +75,23 @@ describe("Cairo geometry", () => {
 
   it("builds every standard form around the grid origin", () => {
     const configs = [
-      { type: "cairo", cols: 5, rows: 5 },
-      { type: "cairo_circle", radius: 8 },
-      { type: "cairo_hexagon", radius: 6 },
-      { type: "cairo_triangle", side: 10 },
+      fieldOf("cairo", { shape: "rect", cols: 5, rows: 5 }),
+      fieldOf("cairo", { shape: "circle", radius: 8 }),
+      fieldOf("cairo", { shape: "hexagon", radius: 6 }),
+      fieldOf("cairo", { shape: "triangle", side: 10 }),
     ] as const;
 
     for (const config of configs) {
       const cells = configAllCells(config);
       expect(cells.length).toBeGreaterThan(0);
-      if (config.type === "cairo") expect(cells).toHaveLength(config.cols * config.rows * 2);
+      if (config.shape.shape === "rect") expect(cells).toHaveLength(config.shape.cols * config.shape.rows * 2);
       expect(cells.every(([x, y]) => isCairoPoint(x, y))).toBe(true);
       const bounds = exactCellBounds(cells.map(([x, y], id) => ({ x, y, id })), config);
       const center = cells.reduce((sum, [x, y]) => {
         const point = cairoCenter(x, y);
         return { x: sum.x + point.x, y: sum.y + point.y };
       }, { x: 0, y: 0 });
-      if (config.type !== "cairo_triangle") {
+      if (config.shape.shape !== "triangle") {
         expect(Math.abs((bounds.minX + bounds.maxX) / 2)).toBeLessThanOrEqual(TILE_SIZE);
         expect(Math.abs((bounds.minY + bounds.maxY) / 2)).toBeLessThanOrEqual(TILE_SIZE);
       }
@@ -121,9 +122,9 @@ describe("Cairo geometry", () => {
     const point: [number, number] = [2, 1];
     const configs = [
       cfg,
-      { type: "cairo_circle", radius: 12 },
-      { type: "cairo_triangle", side: 20 },
-      { type: "cairo_hexagon", radius: 12 },
+      fieldOf("cairo", { shape: "circle", radius: 12 }),
+      fieldOf("cairo", { shape: "triangle", side: 20 }),
+      fieldOf("cairo", { shape: "hexagon", radius: 12 }),
     ] as const;
 
     for (const config of configs) {
@@ -160,7 +161,7 @@ describe("Cairo geometry", () => {
 
   it("keeps the bounded Cairo rectangle boundary exact", () => {
     for (const [cols, rows] of [[1, 1], [2, 3], [6, 5]] as const) {
-      const config = { type: "cairo", cols, rows } as const;
+      const config = fieldOf("cairo", { shape: "rect", cols, rows });
       const allBounds = cellBounds(configAllCells(config), config);
       const boundaryBounds = cellBounds(cairoRectangleBoundaryCells(cols, rows), config);
       expect(boundaryBounds).toEqual(allBounds);

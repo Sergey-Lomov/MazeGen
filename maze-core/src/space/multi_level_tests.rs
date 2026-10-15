@@ -1,10 +1,15 @@
 use super::*;
 use crate::space::{SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 fn single(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, IdGenerator) {
     let mut ids = IdGenerator::new();
-    let mf =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(w, h), &mut ids).unwrap();
+    let mf = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(w, h),
+        &mut ids,
+    )
+    .unwrap();
     (mf, ids)
 }
 
@@ -94,12 +99,16 @@ fn vertical_neighbors_unknown_node_is_empty() {
 #[test]
 fn vertical_neighbors_on_boundary_floors_only_has_the_one_adjacent_side() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let bottom =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let middle =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let bottom = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let middle = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let top = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     let p = SquarePoint { x: 0, y: 0 };
     let bottom_node = mf.node_at(bottom, p).unwrap();
     let middle_node = mf.node_at(middle, p).unwrap();
@@ -112,12 +121,16 @@ fn vertical_neighbors_on_boundary_floors_only_has_the_one_adjacent_side() {
 #[test]
 fn vertical_neighbors_on_an_interior_floor_has_both_sides() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let bottom =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let middle =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let bottom = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let middle = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let top = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     let p = SquarePoint { x: 0, y: 0 };
     let bottom_node = mf.node_at(bottom, p).unwrap();
     let middle_node = mf.node_at(middle, p).unwrap();
@@ -135,10 +148,13 @@ fn vertical_neighbors_ignores_points_with_no_node_on_the_adjacent_floor() {
     // Two floors whose fields don't share the same shape at (1, 0) — the smaller field has no
     // node there at all, so the larger field's own node at that point has no vertical partner.
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let small =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let wide = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let small = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let wide = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+    );
     let far_node = mf.node_at(wide, SquarePoint { x: 1, y: 0 }).unwrap();
     let _ = small;
 
@@ -148,10 +164,13 @@ fn vertical_neighbors_ignores_points_with_no_node_on_the_adjacent_floor() {
 #[test]
 fn vertical_neighbors_returns_every_split_node_at_the_adjacent_point_not_just_the_first() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let bottom =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let bottom = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let top = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     let p = SquarePoint { x: 0, y: 0 };
     let bottom_node = mf.node_at(bottom, p).unwrap();
     // A split point on `top` at the same (x, y) — a second node co-located with the original.
@@ -178,11 +197,15 @@ fn is_straight_true_on_same_level_false_across_levels() {
     // from it makes the triple non-straight (and, more fundamentally, unresolved to a single
     // level at all).
     let mut shared_ids = IdGenerator::new();
-    let mut mf_multi = MultiLevelField::<SquareTessellation>::new([]);
-    let l1 = mf_multi
-        .add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut shared_ids).unwrap());
-    let l2 = mf_multi
-        .add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut shared_ids).unwrap());
+    let mut mf_multi = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l1 = mf_multi.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut shared_ids)
+            .unwrap(),
+    );
+    let l2 = mf_multi.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut shared_ids)
+            .unwrap(),
+    );
     let x = mf_multi.node_at(l1, SquarePoint { x: 0, y: 0 }).unwrap();
     let y = mf_multi.node_at(l1, SquarePoint { x: 1, y: 0 }).unwrap();
     let z = mf_multi.node_at(l2, SquarePoint { x: 0, y: 0 }).unwrap();
@@ -192,9 +215,9 @@ fn is_straight_true_on_same_level_false_across_levels() {
 #[test]
 fn add_level_remove_level_reorder_levels_lifecycle() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let f0 = Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap();
-    let f1 = Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap();
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let f0 = Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
+    let f1 = Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let l0 = mf.add_level(f0);
     let l1 = mf.add_level(f1);
     assert_eq!(mf.level_count(), 2);
@@ -215,49 +238,63 @@ fn add_level_remove_level_reorder_levels_lifecycle() {
 #[should_panic(expected = "must be a permutation")]
 fn reorder_levels_panics_on_non_permutation() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     mf.reorder_levels(&[l0, LevelId(999)]);
 }
 
 #[test]
 #[should_panic]
 fn single_level_id_panics_on_an_empty_aggregator() {
-    let mf = MultiLevelField::<SquareTessellation>::new([]);
+    let mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
     mf.single_level_id();
 }
 
 #[test]
 fn single_level_id_returns_the_first_level_when_several_exist() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     assert_eq!(mf.single_level_id(), l0);
 }
 
 #[test]
 fn level_index_of_matches_levels_ordered_position() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let l1 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     let node_on_l1 = mf.node_at(l1, SquarePoint { x: 0, y: 0 }).unwrap();
     assert_eq!(mf.level_index_of(node_on_l1), Some(1));
 }
 
 #[test]
 fn level_index_of_none_for_unknown_node() {
-    let mf = MultiLevelField::<SquareTessellation>::new([]);
+    let mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
     assert_eq!(mf.level_index_of(999), None);
 }
 
 #[test]
 fn level_index_of_tracks_reordering_not_the_original_insertion_position() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let l1 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     let node_on_l0 = mf.node_at(l0, SquarePoint { x: 0, y: 0 }).unwrap();
     assert_eq!(mf.level_index_of(node_on_l0), Some(0));
 
@@ -293,9 +330,11 @@ fn split_points_dedups_a_split_tile_and_skips_unsplit_points() {
 #[test]
 fn split_points_is_scoped_per_level() {
     let mut ids = IdGenerator::new();
-    let field_a = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
-    let field_b = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([field_a]);
+    let field_a =
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
+    let field_b =
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), [field_a]);
     let level_a = mf.single_level_id();
     let level_b = mf.add_level(field_b);
     mf.add_node_at(level_a, SquarePoint { x: 0, y: 0 }, &mut ids);
@@ -327,9 +366,9 @@ fn is_split_point_matches_split_points() {
 #[test]
 fn all_points_with_level_covers_every_level_in_order() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let f0 = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
-    let f1 = Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap();
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let f0 = Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
+    let f1 = Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
     let l0 = mf.add_level(f0);
     let l1 = mf.add_level(f1);
 
@@ -343,11 +382,16 @@ fn all_points_with_level_covers_every_level_in_order() {
 fn single_level_all_node_ids_matches_plain_field_all_node_ids_order() {
     let mut ids_a = IdGenerator::new();
     let mut ids_b = IdGenerator::new();
-    let field = Field::<SquareTessellation>::new(square_rect(4, 3), &mut ids_a).unwrap();
+    let field =
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(4, 3), &mut ids_a).unwrap();
     let expected: Vec<NodeId> = field.all_node_ids().collect();
 
-    let mf =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(4, 3), &mut ids_b).unwrap();
+    let mf = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(4, 3),
+        &mut ids_b,
+    )
+    .unwrap();
     let actual: Vec<NodeId> = mf.all_node_ids().collect();
 
     assert_eq!(actual, expected);
@@ -375,9 +419,13 @@ fn add_level_panics_on_node_id_collision_across_levels() {
     // node_to_level.
     let mut ids_a = IdGenerator::new();
     let mut ids_b = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids_a).unwrap());
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids_b).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids_a).unwrap(),
+    );
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids_b).unwrap(),
+    );
 }
 
 #[test]
@@ -416,8 +464,9 @@ fn remove_level_on_unknown_level_is_none() {
 #[test]
 fn remove_level_returns_the_same_field_that_was_added() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let field = Field::<SquareTessellation>::new(square_rect(2, 2), &mut ids).unwrap();
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let field =
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
     let expected_points: Vec<SquarePoint> = field.all_points().collect();
     let expected_nodes: Vec<NodeId> = field.all_node_ids().collect();
     let level = mf.add_level(field);
@@ -431,11 +480,17 @@ fn remove_level_returns_the_same_field_that_was_added() {
 #[test]
 fn level_ids_are_never_reused_after_remove_and_re_add() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let l1 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     mf.remove_level(l0);
-    let l2 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let l2 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
 
     assert_ne!(l2, l0, "a removed level's id must never be reused");
     assert_ne!(l2, l1);
@@ -444,10 +499,16 @@ fn level_ids_are_never_reused_after_remove_and_re_add() {
 #[test]
 fn three_level_lifecycle_mid_removal_and_rotation() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    let l2 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let l0 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let l1 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    let l2 = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     assert_eq!(mf.levels_ordered().collect::<Vec<_>>(), vec![l0, l1, l2]);
 
     // Cyclic rotation exercises reorder_levels beyond the only-nontrivial-2-permutation case.
@@ -467,9 +528,13 @@ fn three_level_lifecycle_mid_removal_and_rotation() {
 #[test]
 fn max_node_id_spans_multiple_levels() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+    );
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap(),
+    );
 
     let expected = mf.all_node_ids().max();
     assert!(expected.is_some());
@@ -479,10 +544,13 @@ fn max_node_id_spans_multiple_levels() {
 #[test]
 fn point_count_sums_across_levels_and_differs_from_node_count_with_splits() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    let level =
-        mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 2), &mut ids).unwrap());
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    let level = mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 2), &mut ids).unwrap(),
+    );
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
 
     // 4 points on the first level + 1 on the second = 5, regardless of extra split nodes added below.
     assert_eq!(mf.point_count(), 5);
@@ -515,13 +583,18 @@ fn point_of_resolves_on_the_nodes_own_level_and_is_none_for_unknown_node() {
 #[test]
 fn clone_of_a_multi_level_field_keeps_levels_and_level_order_independent() {
     let mut ids = IdGenerator::new();
-    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
-    mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let mut mf = MultiLevelField::<SquareTessellation>::new(Arc::default(), []);
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
+    mf.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
 
     let mut cloned = mf.clone();
-    let extra_level =
-        cloned.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let extra_level = cloned.add_level(
+        Field::<SquareTessellation>::new(Arc::default(), square_rect(1, 1), &mut ids).unwrap(),
+    );
     cloned.remove_level(extra_level);
     let removed_from_clone = cloned.levels_ordered().next().unwrap();
     cloned.remove_level(removed_from_clone);
@@ -532,4 +605,42 @@ fn clone_of_a_multi_level_field_keeps_levels_and_level_order_independent() {
         "original's levels must be untouched by mutating the clone"
     );
     assert_eq!(cloned.level_count(), 1);
+}
+
+#[test]
+fn add_level_accepts_a_field_sharing_the_instance_of_a_data_carrying_tessellation() {
+    use crate::space::test_support::ScaledSquareTessellation;
+    let tessellation = Arc::new(ScaledSquareTessellation { scale: 2.0 });
+    let mut ids = IdGenerator::new();
+    let mut mf =
+        MultiLevelField::single_level(Arc::clone(&tessellation), square_rect(2, 1), &mut ids)
+            .unwrap();
+    mf.add_level(Field::new(Arc::clone(&tessellation), square_rect(2, 1), &mut ids).unwrap());
+    assert_eq!(mf.level_count(), 2);
+    assert_eq!(
+        mf.tessellation().cartesian(SquarePoint { x: 1, y: 1 }),
+        (2.0, 2.0)
+    );
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "add_level: field uses a different tessellation instance")]
+fn add_level_rejects_a_field_built_on_another_instance_of_a_data_carrying_tessellation() {
+    use crate::space::test_support::ScaledSquareTessellation;
+    let mut ids = IdGenerator::new();
+    let mut mf = MultiLevelField::single_level(
+        Arc::new(ScaledSquareTessellation { scale: 2.0 }),
+        square_rect(2, 1),
+        &mut ids,
+    )
+    .unwrap();
+    mf.add_level(
+        Field::new(
+            Arc::new(ScaledSquareTessellation { scale: 2.0 }),
+            square_rect(2, 1),
+            &mut ids,
+        )
+        .unwrap(),
+    );
 }

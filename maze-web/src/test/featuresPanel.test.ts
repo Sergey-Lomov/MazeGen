@@ -11,12 +11,13 @@ import {
 import { resolveIssue } from "../components/issueRegistry";
 import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const squareConfig: FieldConfig = { type: "square", width: 3, height: 3 };
-const emptySquareConfig: FieldConfig = { type: "square", width: 0, height: 0 };
+const squareConfig: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
+const emptySquareConfig: FieldConfig = fieldOf("square", { shape: "rect", cols: 0, rows: 0 });
 
-function floorField(fieldEditMode: "default" | "custom", fieldPoints: Set<number>, tessellationConfig: FieldConfig) {
-  return { fieldEditMode, fieldPoints, tessellationConfig };
+function floorField(fieldEditMode: "default" | "custom", fieldPoints: Set<number>, fieldConfig: FieldConfig) {
+  return { fieldEditMode, fieldPoints, fieldConfig };
 }
 
 describe("computeFieldStatus", () => {
@@ -247,6 +248,6 @@ describe("getTessellationKindLabel", () => {
   it("returns non-empty label for each kind", () => {
     expect(getTessellationKindLabel("square")).toBeTruthy();
     expect(getTessellationKindLabel("hex")).toBeTruthy();
-    expect(getTessellationKindLabel("triangle")).toBeTruthy();
+    expect(getTessellationKindLabel("tri")).toBeTruthy();
   });
 });

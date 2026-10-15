@@ -53,24 +53,30 @@ pub struct StageConfig {
     pub rules: Vec<QcRuleConfig>,
 }
 
-#[derive(Deserialize, Clone, PartialEq, Eq)]
+/// Registered tessellation kinds. Branching on a kind is allowed only in the tessellation factory
+/// (`runner::tessellation_factory`), registries and serialization (`Specs/space.md`).
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum TessellationType {
+pub enum TessellationKind {
     Square,
     Hex,
     Tri,
     Cairo,
 }
 
-#[derive(Deserialize)]
+/// Wire form of a tessellation instance: `{ "kind": "<kind>", "params": { … } }`. The factory
+/// builds the instance deterministically from it and rejects params the kind does not accept.
+#[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct TessellationConfig {
-    pub tessellation_type: TessellationType,
+    pub kind: TessellationKind,
+    pub params: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for TessellationConfig {
     fn default() -> Self {
         TessellationConfig {
-            tessellation_type: TessellationType::Square,
+            kind: TessellationKind::Square,
+            params: serde_json::Map::new(),
         }
     }
 }

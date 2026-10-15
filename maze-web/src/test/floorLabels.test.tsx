@@ -12,6 +12,7 @@ import { maxFittingFontSize } from "../pixi/textFit";
 import { FLOOR_LABEL_TEXT_SIZE_RANGE } from "../pixi/renderConstants";
 import { computeTextFitItemsAcrossFloors, computeVectorByWallsWarningsAcrossFloors } from "../pixi/selectors/exportWarnings";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
@@ -108,7 +109,7 @@ describe("export floor labels", () => {
     };
     const warnings = computeVectorByWallsWarningsAcrossFloors(
       [], [], [{ id: "floor_1" }, { id: "floor_2" }],
-      { type: "square", width: 4, height: 4 }, settings, null, null,
+      fieldOf("square", { shape: "rect", cols: 4, rows: 4 }), settings, null, null,
     );
     expect(warnings.map((warning) => warning.id)).toEqual(expect.arrayContaining([
       "floor_label_fill_low_contrast_floor",
@@ -130,7 +131,7 @@ describe("export floor labels", () => {
     };
     const warnings = computeVectorByWallsWarningsAcrossFloors(
       [{ id: 0, x: 0, y: 0, i: 0 }], [], [{ id: "floor_1" }, { id: "floor_2" }],
-      { type: "square", width: 4, height: 4 }, settings, null, null,
+      fieldOf("square", { shape: "rect", cols: 4, rows: 4 }), settings, null, null,
     );
     expect(warnings.map((warning) => warning.id)).toContain("floor_label_text_overflow");
   });
@@ -164,7 +165,7 @@ describe("export floor labels", () => {
     };
     const items = computeTextFitItemsAcrossFloors(
       [{ id: 0, x: 0, y: 0, i: 0 }], [], [{ id: "floor_1" }, { id: "floor_2" }],
-      { type: "square", width: 4, height: 4 }, settings, null, null,
+      fieldOf("square", { shape: "rect", cols: 4, rows: 4 }), settings, null, null,
     );
     expect(items.floorLabel).toHaveLength(2);
     expect(items.floorLabel.every((item) => item.plateShape === "parallelogram")).toBe(true);

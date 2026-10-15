@@ -7,6 +7,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 import { mmToPx } from "../pixi/imageExport/printFit";
 import { baseStoreState, baseFloorFieldConfig, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../components/BackgroundImageToggle", () => ({
   BackgroundImageToggle: () => null,
@@ -33,17 +34,17 @@ describe("FieldSetupFeature — Copy floor button", () => {
   });
 
   const descriptionCases: [FieldConfig, string][] = [
-    [{ type: "square", width: 20, height: 28 }, "Field size: 20 × 28 cells"],
-    [{ type: "square_circle", radius: 5 }, "Field radius: 5 cells"],
-    [{ type: "hex_rectangle", cols: 10, rows: 8, orientation: "flat_top" }, "Field size: 10 × 8 cells"],
-    [{ type: "hex_circle", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
-    [{ type: "hex_triangle", side: 6, orientation: "flat_top" }, "Field side: 6 cells"],
-    [{ type: "triangle_circle", radius: 4, orientation: "r0" }, "Field radius: 4 cells"],
-    [{ type: "hex_hexagon", radius: 5, orientation: "flat_top" }, "Field radius: 5 cells"],
-    [{ type: "triangle_triangle", side: 5, orientation: "r0" }, "Field side: 5 cells"],
-    [{ type: "cairo_circle", radius: 12 }, "Field radius: 12 cells"],
-    [{ type: "cairo_triangle", side: 20 }, "Field side: 20 cells"],
-    [{ type: "cairo_hexagon", radius: 12 }, "Field radius: 12 cells"],
+    [fieldOf("square", { shape: "rect", cols: 20, rows: 28 }), "Field size: 20 × 28 cells"],
+    [fieldOf("square", { shape: "circle", radius: 5 }), "Field radius: 5 cells"],
+    [fieldOf("hex", { shape: "rect", cols: 10, rows: 8 }, "flat_top"), "Field size: 10 × 8 cells"],
+    [fieldOf("hex", { shape: "circle", radius: 5 }, "flat_top"), "Field radius: 5 cells"],
+    [fieldOf("hex", { shape: "triangle", side: 6 }, "flat_top"), "Field side: 6 cells"],
+    [fieldOf("tri", { shape: "circle", radius: 4 }, "r0"), "Field radius: 4 cells"],
+    [fieldOf("hex", { shape: "hexagon", radius: 5 }, "flat_top"), "Field radius: 5 cells"],
+    [fieldOf("tri", { shape: "triangle", side: 5 }, "r0"), "Field side: 5 cells"],
+    [fieldOf("cairo", { shape: "circle", radius: 12 }), "Field radius: 12 cells"],
+    [fieldOf("cairo", { shape: "triangle", side: 20 }), "Field side: 20 cells"],
+    [fieldOf("cairo", { shape: "hexagon", radius: 12 }), "Field radius: 12 cells"],
   ];
 
   it.each(descriptionCases)("describes calculated field dimensions clearly", (config, expected) => {
@@ -62,11 +63,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
     fireEvent.click(dialogQueries.getByTitle("Portrait"));
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({
-      type: "square",
-      width: 20,
-      height: 28,
-    });
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
     expect(useMazeStore.getState().pngExportSettings.print).toMatchObject({
       paperSize: "a4",
       orientation: "portrait",
@@ -233,19 +230,19 @@ describe("FieldSetupFeature — Copy floor button", () => {
       ],
       floorFields: {
         [TEST_FLOOR_ID]: baseFloorFieldConfig(),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square_triangle", side: 4 } }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "triangle", side: 4 }) }),
         floor_3: baseFloorFieldConfig({
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
       pngExportSettings: {
         ...DEFAULT_PNG_EXPORT_SETTINGS,
         print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, paperSize: "a4", orientation: "portrait", marginHMm: 5, marginVMm: 5 },
       },
-      activeTessellationConfig: { type: "square", width: 10, height: 10 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
       mazeDirty: false,
       postEditDirty: false,
       fieldEditConfirmation: null,
@@ -263,10 +260,10 @@ describe("FieldSetupFeature — Copy floor button", () => {
     expect(dialogQueries.getByRole("button", { name: "Confirm" })).not.toBeDisabled();
     fireEvent.click(dialogQueries.getByRole("button", { name: "Confirm" }));
 
-    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].tessellationConfig).toEqual({ type: "square", width: 20, height: 28 });
-    expect(useMazeStore.getState().floorFields.floor_2.tessellationConfig.type).toBe("square_triangle");
-    expect((useMazeStore.getState().floorFields.floor_2.tessellationConfig as { side: number }).side).toBeGreaterThan(0);
-    expect(useMazeStore.getState().floorFields.floor_3.tessellationConfig).toEqual({ type: "square_custom", points: [[0, 0]] });
+    expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldConfig).toEqual(fieldOf("square", { shape: "rect", cols: 20, rows: 28 }));
+    expect(useMazeStore.getState().floorFields.floor_2.fieldConfig.shape.shape).toBe("triangle");
+    expect((useMazeStore.getState().floorFields.floor_2.fieldConfig.shape as { side: number }).side).toBeGreaterThan(0);
+    expect(useMazeStore.getState().floorFields.floor_3.fieldConfig).toEqual(fieldOf("square", { shape: "custom", points: [[0, 0]] }));
   });
 
   it("recalculates every standard floor when print parameters change", async () => {
@@ -277,15 +274,15 @@ describe("FieldSetupFeature — Copy floor button", () => {
         { id: "floor_3", title: "Custom floor" },
       ],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 11, height: 11 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 11, rows: 11 }) }),
         floor_2: baseFloorFieldConfig({
-          tessellationConfig: { type: "square_triangle", side: 5 },
+          fieldConfig: fieldOf("square", { shape: "triangle", side: 5 }),
         }),
         floor_3: baseFloorFieldConfig({
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
     });
@@ -327,7 +324,7 @@ describe("FieldSetupFeature — Copy floor button", () => {
           fieldEditMode: "custom",
           isEditingField: true,
           fieldPoints: new Set([0]),
-          tessellationConfig: { type: "square_custom", points: [[0, 0]] },
+          fieldConfig: fieldOf("square", { shape: "custom", points: [[0, 0]] }),
         }),
       },
     });
@@ -356,31 +353,31 @@ describe("FieldSetupFeature — Copy floor button", () => {
 describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", () => {
   it("sums cell counts across floors, not just the first floor's", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 2 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 2 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("13");
   });
 
   it("shows the shared shape label when all floors match", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Rect");
   });
 
   it("labels a Cairo rectangle with its fundamental-square dimensions", () => {
     const floors = [
-      baseFloorFieldConfig({ cairoShape: "rect", tessellationConfig: { type: "cairo", cols: 2, rows: 3 } }),
+      baseFloorFieldConfig({ cairoShape: "rect", fieldConfig: fieldOf("cairo", { shape: "rect", cols: 2, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("cairo", floors)).toContain("2×3");
   });
 
   it("shows 'Different floor shapes' when floors' shapes/sizes differ", () => {
     const floors = [
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 5, height: 5 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
   });
@@ -396,7 +393,7 @@ describe("fieldSetupSubtitle — multi-floor aggregation (GitHub issue #383)", (
   it("treats a custom floor and a default floor as different shapes", () => {
     const floors = [
       baseFloorFieldConfig({ fieldEditMode: "custom", fieldPoints: new Set([1]) }),
-      baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }),
+      baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) }),
     ];
     expect(fieldSetupSubtitle("square", floors)).toContain("Different floor shapes");
   });

@@ -13,13 +13,14 @@ pub enum TriFace {
     Base,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TriTessellation;
 
 impl Tessellation for TriTessellation {
     type Point = TriPoint;
     type Face = TriFace;
 
-    fn step(point: TriPoint, face: TriFace) -> Option<TriPoint> {
+    fn step(&self, point: TriPoint, face: TriFace) -> Option<TriPoint> {
         let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
         Some(match face {
             TriFace::Left => TriPoint {
@@ -46,15 +47,15 @@ impl Tessellation for TriTessellation {
         })
     }
 
-    fn is_valid_point(_point: TriPoint) -> bool {
+    fn is_valid_point(&self, _point: TriPoint) -> bool {
         true
     }
 
-    fn faces() -> &'static [TriFace] {
+    fn faces(&self) -> &[TriFace] {
         &[TriFace::Left, TriFace::Right, TriFace::Base]
     }
 
-    fn face_between(from: TriPoint, to: TriPoint) -> Option<TriFace> {
+    fn face_between(&self, from: TriPoint, to: TriPoint) -> Option<TriFace> {
         let pointing_up = (from.col + from.row).rem_euclid(2) == 0;
         match (to.col - from.col, to.row - from.row) {
             (-1, 0) => Some(TriFace::Left),
@@ -72,7 +73,7 @@ impl Tessellation for TriTessellation {
     /// (triangle height). Same centroid formula as `maze-web`'s `triCenter` (r0 branch), minus
     /// the `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side
     /// concerns — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(point: TriPoint) -> (f64, f64) {
+    fn cartesian(&self, point: TriPoint) -> (f64, f64) {
         let s = 2.0;
         let h = s * 3f64.sqrt() / 2.0;
         let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
@@ -88,7 +89,7 @@ impl Tessellation for TriTessellation {
 
     /// Faces in `[Left, Right, Base]` order (indices 0-2). A triangle's only geometric symmetry is
     /// its 3-fold rotation, a cyclic shift Left->Right->Base->Left.
-    fn rotation_symmetries() -> &'static [&'static [usize]] {
+    fn rotation_symmetries(&self) -> &[&[usize]] {
         &[
             &[0, 1, 2], // identity
             &[1, 2, 0], // 120°
@@ -99,7 +100,7 @@ impl Tessellation for TriTessellation {
     /// A triangle has no reflective symmetry realizable as a permutation of its own 3 faces
     /// (swapping any two sides while fixing the third isn't a symmetry of an equilateral
     /// triangle's face *labels* under this tessellation's `pointing_up`-dependent geometry).
-    fn mirror_symmetries() -> &'static [&'static [usize]] {
+    fn mirror_symmetries(&self) -> &[&[usize]] {
         &[]
     }
 }

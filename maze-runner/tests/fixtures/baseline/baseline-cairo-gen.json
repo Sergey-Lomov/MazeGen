@@ -1,6 +1,7 @@
 {
   "tessellation": {
-    "tessellation_type": "cairo"
+    "kind": "cairo",
+    "params": {}
   },
   "stages": [
     {

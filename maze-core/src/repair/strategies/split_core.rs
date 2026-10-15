@@ -191,7 +191,8 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
     let point = maze.field.point_of(at)?;
-    let degree = T::faces().len();
+    let tessellation = maze.field.tessellation();
+    let degree = tessellation.faces().len();
     if degree == 0 || pattern.node_count < 2 {
         return None;
     }
@@ -199,10 +200,10 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
         return None;
     }
 
-    let mut rotations: Vec<usize> = (0..T::rotation_symmetries().len()).collect();
+    let mut rotations: Vec<usize> = (0..tessellation.rotation_symmetries().len()).collect();
     shuffle(&mut rotations, rng);
     let mut mirrors: Vec<Option<usize>> = std::iter::once(None)
-        .chain((0..T::mirror_symmetries().len()).map(Some))
+        .chain((0..tessellation.mirror_symmetries().len()).map(Some))
         .collect();
     shuffle(&mut mirrors, rng);
 
@@ -249,22 +250,27 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
     required: Option<&RequiredConnection>,
     excluded: ExcludedTargets,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
+    let tessellation = maze.field.tessellation();
     let mut per_node: Vec<Vec<SplitNodeEdge>> = Vec::with_capacity(pattern.faces.len());
     let mut claimed_directions: HashSet<NodeId> = HashSet::new();
 
     for node_faces in pattern.faces.iter() {
         let mut node_edges: Vec<SplitNodeEdge> = Vec::new();
         for face in node_faces {
-            let resolved_index =
-                crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
+            let resolved_index = crate::space::transform_face_index(
+                tessellation,
+                face.face_index,
+                rotation,
+                mirror,
+            )?;
             if face.sibling_target.is_some() {
                 continue; // inter-split edge, not an outside connection — out of scope here
             }
             match face.requirement {
                 SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let tess_face = T::face_at(resolved_index)?;
-                    let neighbor_point = T::step(point, tess_face)?;
+                    let tess_face = tessellation.face_at(resolved_index)?;
+                    let neighbor_point = tessellation.step(point, tess_face)?;
                     let level = maze.field.level_of(at).expect("at must be in field");
                     let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
@@ -353,11 +359,12 @@ mod tests {
     use crate::random::MazeRng;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -411,7 +418,8 @@ mod tests {
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -607,7 +615,7 @@ mod tests {
         // never gain a second edge.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

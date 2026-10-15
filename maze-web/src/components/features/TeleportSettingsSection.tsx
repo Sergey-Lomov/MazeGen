@@ -24,7 +24,7 @@ import { endpointBubble } from "../../pixi/postEditCommandLabels";
 import { nodeEndpoint } from "../../pixi/postEditEndpoint";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { MarkerAppearanceRows, TextStyleRows, MARKER_SHAPE_OPTIONS } from "./MarkerFieldRows";
 import { distributeOklchHues } from "../../store/colorMath";
 import * as m from "~/paraglide/messages";
@@ -51,7 +51,7 @@ import * as m from "~/paraglide/messages";
 export function useTeleportGroupsAndCollisions(
   rawNodes: NodeDto[],
   rawEdges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   floors: { id: string }[],
   settings: TeleportSettingsFields & { links: ParamLink<string>[] },
   start: number | null,

@@ -40,6 +40,7 @@ pub enum CairoTileKind {
     D,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CairoTessellation;
 
 const FACES: [CairoFace; 5] = [
@@ -176,21 +177,21 @@ impl Tessellation for CairoTessellation {
     type Point = CairoPoint;
     type Face = CairoFace;
 
-    fn step(point: CairoPoint, face: CairoFace) -> Option<CairoPoint> {
+    fn step(&self, point: CairoPoint, face: CairoFace) -> Option<CairoPoint> {
         let offsets = Self::offsets(point)?;
         let (_, offset) = offsets.iter().find(|(candidate, _)| *candidate == face)?;
         Self::offset_point(point, *offset)
     }
 
-    fn is_valid_point(point: CairoPoint) -> bool {
+    fn is_valid_point(&self, point: CairoPoint) -> bool {
         CairoTessellation::is_valid_point(point)
     }
 
-    fn faces() -> &'static [CairoFace] {
+    fn faces(&self) -> &[CairoFace] {
         &FACES
     }
 
-    fn face_between(from: CairoPoint, to: CairoPoint) -> Option<CairoFace> {
+    fn face_between(&self, from: CairoPoint, to: CairoPoint) -> Option<CairoFace> {
         let offsets = Self::offsets(from)?;
         if !Self::is_valid_point(to) {
             return None;
@@ -203,11 +204,11 @@ impl Tessellation for CairoTessellation {
 
     /// The Cairo pentagon has no non-trivial rotational symmetry.  Its one
     /// reflection fixes the long side and swaps the two pairs of short sides.
-    fn rotation_symmetries() -> &'static [&'static [usize]] {
+    fn rotation_symmetries(&self) -> &[&[usize]] {
         &[&[0, 1, 2, 3, 4]]
     }
 
-    fn mirror_symmetries() -> &'static [&'static [usize]] {
+    fn mirror_symmetries(&self) -> &[&[usize]] {
         &[&[0, 4, 3, 2, 1]]
     }
 
@@ -215,7 +216,7 @@ impl Tessellation for CairoTessellation {
     /// The coordinate model is intentionally affine: translation and
     /// reflection are left to the rendering layer, as with the other core
     /// tessellations.
-    fn cartesian(point: CairoPoint) -> (f64, f64) {
+    fn cartesian(&self, point: CairoPoint) -> (f64, f64) {
         (point.x as f64, point.y as f64)
     }
 }

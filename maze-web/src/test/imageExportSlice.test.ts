@@ -8,6 +8,7 @@ import { DEFAULT_PNG_EXPORT_SETTINGS, DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTI
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { mmToPx, printCellMeasureMm, DPI_BY_DENSITY } from "../pixi/imageExport/printFit";
 import { TRI_TILE_SIZE } from "../pixi/triGeometry";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -90,7 +91,7 @@ describe("mazeStore image export", () => {
       cellSizeMm: 10,
       marginHMm: 5,
       marginVMm: 5,
-    }, { type: "triangle_rect" });
+    }, fieldOf("tri", { shape: "rect", cols: 1, rows: 1 }));
 
     expect(useMazeStore.getState().pngExportSettings.print.scale).toBeCloseTo(mmToPx(10, 300) / ((TRI_TILE_SIZE * 2) / Math.sqrt(3)));
   });
@@ -103,13 +104,13 @@ describe("mazeStore image export", () => {
         print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, density: "print_300", scale, scaleAutoFit: false },
       },
     });
-    const beforeMm = printCellMeasureMm({ type: "square" }, scale, DPI_BY_DENSITY.print_300);
+    const beforeMm = printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), scale, DPI_BY_DENSITY.print_300);
 
     useMazeStore.getState().setPrintDensity("high_600");
 
     const print = useMazeStore.getState().pngExportSettings.print;
     expect(print.scale).toBeCloseTo(scale * DPI_BY_DENSITY.high_600 / DPI_BY_DENSITY.print_300);
-    expect(printCellMeasureMm({ type: "square" }, print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
+    expect(printCellMeasureMm(fieldOf("square", { shape: "rect", cols: 1, rows: 1 }), print.scale, DPI_BY_DENSITY.high_600)).toBeCloseTo(beforeMm);
   });
 
   it("does not rescale the auto-fit print scale when density changes", () => {

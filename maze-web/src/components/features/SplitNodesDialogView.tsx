@@ -9,7 +9,7 @@ import { ui, typography, radius, spacing, indent, muted } from "../../styles/the
 import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type React from "react";
 import type { NodeLockKind } from "../../wasm/types";
 import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
@@ -113,7 +113,7 @@ export interface SplitNodesRow<E> {
 interface Props<E> {
   title: string;
   point: [number, number];
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   currentLevel: number;
   rows: SplitNodesRow<E>[];
   /** Every node's faces at once, in row order — the tile diagram draws all of them

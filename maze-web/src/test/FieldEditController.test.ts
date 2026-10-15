@@ -4,6 +4,7 @@ import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const activeControllers: FieldEditController[] = [];
 
@@ -22,7 +23,7 @@ function makeController() {
   const viewport = { x: 0, y: 0, scale: { x: 1, y: 1 } } as never;
   const controller = new FieldEditController(
     canvas,
-    () => makeProjection({ type: "square", width: 10, height: 10 }),
+    () => makeProjection(fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
     () => viewport,
     { startPan: vi.fn(), movePan: vi.fn(), endPan: vi.fn() },
     {
@@ -64,7 +65,7 @@ beforeEach(() => {
       [TEST_FLOOR_ID]: baseFloorFieldConfig({
         fieldEditMode: "custom",
         fieldPrimitive: "polygon",
-        tessellationConfig: { type: "square", width: 10, height: 10 },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
       }),
     },
   });
@@ -166,7 +167,7 @@ describe("FieldEditController polygon interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "polygon",
           fieldOperation: "remove",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
         }),
       },
     });
@@ -215,7 +216,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "polygon",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([
             encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1), encodePoint(1, 1), encodePoint(2, 0),
           ]),
@@ -255,7 +256,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
         }),
       },
@@ -280,7 +281,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0), encodePoint(1, 0)]),
         }),
       },
@@ -434,7 +435,7 @@ describe("FieldEditController select interaction", () => {
           fieldEditMode: "custom",
           fieldPrimitive: "point",
           fieldOperation: "select",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
           fieldPoints: new Set([encodePoint(0, 0)]),
         }),
       },
@@ -576,7 +577,7 @@ describe("FieldEditController point interaction", () => {
         [TEST_FLOOR_ID]: baseFloorFieldConfig({
           fieldEditMode: "custom",
           fieldPrimitive: "point",
-          tessellationConfig: { type: "square", width: 10, height: 10 },
+          fieldConfig: fieldOf("square", { shape: "rect", cols: 10, rows: 10 }),
         }),
       },
     });

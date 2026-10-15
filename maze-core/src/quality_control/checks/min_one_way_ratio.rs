@@ -116,6 +116,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "min_one_way_ratio";
 
@@ -126,7 +127,8 @@ mod tests {
     /// 10 field cells, 1 one-way edge -> 10 per 100 cells.
     fn maze_with_one_one_way_on_ten_cells() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(10, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -214,7 +216,8 @@ mod tests {
     /// the `required` rounding step.
     fn maze_with_100_one_ways_on_1000_cells() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(1000, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -267,7 +270,8 @@ mod tests {
     #[test]
     fn does_not_count_bidirectional_passage_as_one_way() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -298,7 +302,8 @@ mod tests {
         // minimum of 29 even though 29.9% genuinely doesn't meet a 30% minimum's neighborhood.
         // 299*100 = 29900 < 30*1000 = 30000, so this must still fire.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(1000, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -329,11 +334,14 @@ mod tests {
     fn maze_with_one_ways_on_two_floors() -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(10, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);

@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, CornerStyle } from "../../renderers/types";
 import type { LabelFontWeight } from "../../renderers/indexLabel";
 import { buildNodePositions } from "../../tessellationGeometry";
@@ -68,7 +68,7 @@ export function buildMazeMarkers(
   nodeById: Map<number, NodeDto>,
   start: number | null,
   finish: number | null,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   startStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.startMarker,
   finishStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.finishMarker,
   edges: EdgeDto[] = [],

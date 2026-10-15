@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { NODE_RADIUS } from "../renderConstants";
 
@@ -11,7 +11,7 @@ export interface VertexHighlightData {
   /** The single node currently occupying the slot, or `null` if never set / cleared. */
   id: number | null;
   color: number;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
 }
 
 /** Draws a `DebugValueKind.Vertex` debug value (GitHub issue #145's follow-up, e.g. Wilson's
@@ -27,7 +27,7 @@ export class VertexHighlightRenderer {
   // `MapHighlightRenderer`'s own cache for the same reason (avoids O(total node count) work on
   // every debug-step tick during scrubbing/autoplay).
   private cachedNodes: NodeDto[] | null = null;
-  private cachedCfg: TessellationConfig | null = null;
+  private cachedCfg: FieldConfig | null = null;
   private nodePos: Map<number, { x: number; y: number }> = new Map();
 
   constructor(container: Container) {

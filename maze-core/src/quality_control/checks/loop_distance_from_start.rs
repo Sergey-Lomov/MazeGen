@@ -69,6 +69,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "loop_distance_from_start";
 
@@ -78,7 +79,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = distance + 3;
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -149,7 +150,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = far_distance + 6;
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -243,7 +244,7 @@ mod tests {
     fn silent_when_no_cycle() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -274,9 +275,12 @@ mod tests {
     fn silent_when_cycle_enumeration_overflows() {
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
-                .unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(SIDE as usize, SIDE as usize),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -326,7 +330,7 @@ mod tests {
     fn maze_with_one_way_and_two_way_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 2), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

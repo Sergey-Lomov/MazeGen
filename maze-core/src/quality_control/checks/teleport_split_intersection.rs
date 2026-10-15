@@ -84,6 +84,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "teleport_split_intersection";
 
@@ -96,7 +97,7 @@ mod tests {
     ) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
         let extra = field.add_node_at(level, split_point, &mut ids);
@@ -133,7 +134,7 @@ mod tests {
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

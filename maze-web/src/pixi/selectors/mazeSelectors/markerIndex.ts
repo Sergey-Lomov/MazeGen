@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import type { MarkerIndexSettings } from "../../../store/imageExportTypes";
 import { getCellCenter } from "../../tessellationGeometry";
 import { formatIndexLabel } from "../../renderers/indexLabel";
@@ -103,7 +103,7 @@ function compareKeys(a: (number | string)[], b: (number | string)[]): number {
 export function buildMarkerIndexLabels(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   activeFloorIndex: number,
   style: MarkerIndexSettings,
   resolveEndpointVisual: ResolveMarkerEndpointVisual,

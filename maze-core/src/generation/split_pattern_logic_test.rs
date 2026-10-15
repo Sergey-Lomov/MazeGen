@@ -8,6 +8,7 @@ use crate::graph::EdgeKind;
 use crate::ids::NodeId;
 use crate::space::test_support::GappedSquareTessellation;
 use crate::space::{MultiLevelField, SquareFace, SquarePoint};
+use std::sync::Arc;
 
 fn empty_presets() -> PresetState {
     PresetState::empty()
@@ -137,10 +138,10 @@ fn resolve_face_rejects_a_required_connection_when_step_has_no_coordinate() {
     let east = SquarePoint { x: 1, y: 0 };
     let mut ids = crate::IdGenerator::new();
     let field: MultiLevelField<GappedSquareTessellation> =
-        MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), [origin, east], &mut ids).unwrap();
     let level = field.single_level_id();
     let face = SplitPatternFace {
-        face_index: GappedSquareTessellation::face_index(SquareFace::E).unwrap(),
+        face_index: GappedSquareTessellation.face_index(SquareFace::E).unwrap(),
         requirement: SplitFaceRequirement::Passage,
         sibling_target: None,
     };

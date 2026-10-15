@@ -9,6 +9,7 @@ import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDef
 import type { VectorByWallsSettings } from "../store/storeTypes";
 import { bridgeSplitNodes, bridgeSplitEdges } from "./splitTopologyFixtures";
 import * as m from "~/paraglide/messages";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // GitHub issue #584: ColorPickerPanel had no test file at all. Covers the colorWarnings memo's full
 // pipeline (field key -> overrideActiveProfileColor -> warnings attached to that field, GitHub issue
@@ -61,7 +62,7 @@ describe("ColorPickerPanel export warnings (GitHub issue #584)", () => {
       ...baseStoreState(),
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_walls",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" as const }],
       // Grid color equal to background -> zero contrast distance -> grid_low_contrast_background
@@ -172,7 +173,7 @@ describe("ColorPickerPanel label contrast warnings (GitHub issue #707 follow-up)
       ...baseStoreState(),
       showColorWarnings: true,
       openRenderModeSettings: "vector_by_walls",
-      activeTessellationConfig: { type: "square", width: 6, height: 6 },
+      activeFieldConfig: fieldOf("square", { shape: "rect", cols: 6, rows: 6 }),
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [{ from: 0, to: 1, kind: "basic" as const }],
       start: 0,

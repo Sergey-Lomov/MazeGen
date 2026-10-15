@@ -181,6 +181,7 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -208,10 +209,14 @@ mod tests {
 
     fn n_floor_maze(count: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..count)
             .map(|_| {
-                mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), square_rect(2, 1), &mut ids)
+                        .unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();
@@ -327,7 +332,8 @@ mod tests {
         // chain must skip both the 1<->2 and 2<->3 edges around the gap, never reconnect 1<->3
         // directly.
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
         let floors: Vec<_> = (0..5)
             .map(|i| {
                 let points = if i == 2 {
@@ -335,7 +341,9 @@ mod tests {
                 } else {
                     square_rect(2, 1)
                 };
-                mf.add_level(Field::<SquareTessellation>::new(points, &mut ids).unwrap())
+                mf.add_level(
+                    Field::<SquareTessellation>::new(Arc::default(), points, &mut ids).unwrap(),
+                )
             })
             .collect();
         let mut g = Graph::new();

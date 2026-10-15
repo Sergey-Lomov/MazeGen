@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { TILE_SIZE } from "../pixi/constants";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment.
 // Mock it with the same canonical (unit-tile-scale, flat_top/r0-equivalent) formulas
 // `maze-core::space`'s Tessellation impls use, so these tests stay pure formula checks -- see
 // `maze-core/src/space/{square,hex,triangle}.rs` for the source of truth these must match.
 vi.mock("../pixi/cartesianCache", () => ({
-  getCartesian: (x: number, y: number, cfg: { type: string }): [number, number] => {
-    if (cfg.type.startsWith("square")) return [x, y];
-    if (cfg.type.startsWith("hex")) {
+  getCartesian: (x: number, y: number, cfg: { tessellation: { kind: string } }): [number, number] => {
+    if (cfg.tessellation.kind === "square") return [x, y];
+    if (cfg.tessellation.kind === "hex") {
       const inradius = Math.sqrt(3) / 2;
       return [x * 1.5, -(y * inradius * 2 + x * inradius)];
     }
@@ -159,28 +160,28 @@ describe("hexVertices", () => {
 describe("cellCenter", () => {
   it("square_dispatches_to_squareCenter", () => {
     const node = { id: 0, x: 2, y: 3 };
-    const { x, y } = cellCenter(node, { type: "square", width: 10, height: 10 });
+    const { x, y } = cellCenter(node, fieldOf("square", { shape: "rect", cols: 10, rows: 10 }));
     expect(x).toBeCloseTo(squareCenter(2, 3).x);
     expect(y).toBeCloseTo(squareCenter(2, 3).y);
   });
 
   it("hex_parallelogram_dispatches_to_hexCenter", () => {
     const node = { id: 0, x: 1, y: 2 };
-    const { x, y } = cellCenter(node, { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" });
+    const { x, y } = cellCenter(node, fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 5 }, "flat_top"));
     expect(x).toBeCloseTo(hexCenter(1, 2, "flat_top").x);
     expect(y).toBeCloseTo(hexCenter(1, 2, "flat_top").y);
   });
 
   it("hex_hexagon_dispatches_to_hexCenter", () => {
     const node = { id: 0, x: -1, y: 1 };
-    const { x, y } = cellCenter(node, { type: "hex_hexagon", radius: 3, orientation: "pointy_top" });
+    const { x, y } = cellCenter(node, fieldOf("hex", { shape: "hexagon", radius: 3 }, "pointy_top"));
     expect(x).toBeCloseTo(hexCenter(-1, 1, "pointy_top").x);
     expect(y).toBeCloseTo(hexCenter(-1, 1, "pointy_top").y);
   });
 
   it("hex_parallelogram_default_orientation_is_flat_top", () => {
     const node = { id: 0, x: 1, y: 0 };
-    const { x, y } = cellCenter(node, { type: "hex_parallelogram", cols: 5, rows: 5 });
+    const { x, y } = cellCenter(node, fieldOf("hex", { shape: "parallelogram", cols: 5, rows: 5 }));
     expect(x).toBeCloseTo(hexCenter(1, 0, "flat_top").x);
     expect(y).toBeCloseTo(hexCenter(1, 0, "flat_top").y);
   });

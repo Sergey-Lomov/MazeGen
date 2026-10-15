@@ -4,7 +4,7 @@ Selects the tessellation kind (square / hex / triangle / Cairo) and its orientat
 
 ## Concepts
 
-**Preview state** — transient selection driven by dropdowns inside the card. Drives `GridOverlay` via `previewTessellationConfig` so the canvas updates live. Does not affect confirmed tessellation or field setup.
+**Preview state** — transient selection driven by dropdowns inside the card. Drives `GridOverlay` via `previewFieldConfig` so the canvas updates live. Does not affect confirmed tessellation or field setup.
 
 **Confirmed state** — committed on "Confirm tessellation". Authoritative source for all downstream features (field setup, generation). Stored in `tessellationKind`, `hexOrientation`, `triOrientation`.
 
@@ -38,15 +38,15 @@ Orientation dropdowns appear only when the relevant kind is selected in preview.
 | `previewKind` | Preview kind — tracks dropdown, not confirmed |
 | `previewHexOrientation` | Preview hex orientation |
 | `previewTriOrientation` | Preview triangle orientation |
-| `previewTessellationConfig` | Derived config for `GridOverlay` (always predefined shape, 10×10 / radius 5) |
+| `previewFieldConfig` | Derived config for `GridOverlay` (always predefined shape, 10×10 / radius 5) |
 
 ## Actions
 
-**`setPreviewKind(kind)`** — updates `previewKind` and rebuilds `previewTessellationConfig`. Does **not** reset orientation fields; preserves user's previous orientation choices.
+**`setPreviewKind(kind)`** — updates `previewKind` and rebuilds `previewFieldConfig`. Does **not** reset orientation fields; preserves user's previous orientation choices.
 
-**`setPreviewHexOrientation(ori)`** / **`setPreviewTriOrientation(ori)`** — update the respective preview orientation and rebuild `previewTessellationConfig`.
+**`setPreviewHexOrientation(ori)`** / **`setPreviewTriOrientation(ori)`** — update the respective preview orientation and rebuild `previewFieldConfig`.
 
-**`syncPreviewToConfirmed()`** — atomically copies `tessellationKind → previewKind`, `hexOrientation → previewHexOrientation`, `triOrientation → previewTriOrientation`, rebuilds `previewTessellationConfig`. Single `set()` call, no intermediate renders.
+**`syncPreviewToConfirmed()`** — atomically copies `tessellationKind → previewKind`, `hexOrientation → previewHexOrientation`, `triOrientation → previewTriOrientation`, rebuilds `previewFieldConfig`. Single `set()` call, no intermediate renders.
 
 **`confirmTessellation()`** — copies preview → confirmed, sets `tessellationConfirmed = true`, syncs preview fields to confirmed (via `buildPreviewState`), resets shape to `rect`/`parallelogram`/`rect`. If kind changed, clears maze (nodes, edges, start, finish, navNodes, navEdges, components, warnings, stats, error), all tessellation-dependent presets (including teleports, vertical passages, and elevators), and resets `freeFieldPoints` for the new kind.
 
@@ -61,4 +61,4 @@ Subtitle shown when confirmed: `"{Kind}"` for square; `"{Kind} · {orientation l
 
 ## Grid overlay interaction
 
-`GridOverlay` uses `previewTessellationConfig` when `fieldSetupOpen = false`. Changing any preview dropdown causes immediate canvas grid redraw at the preview shape (always 10 cols×rows or radius 5 — not configurable in this card).
+`GridOverlay` uses `previewFieldConfig` when `fieldSetupOpen = false`. Changing any preview dropdown causes immediate canvas grid redraw at the preview shape (always 10 cols×rows or radius 5 — not configurable in this card).

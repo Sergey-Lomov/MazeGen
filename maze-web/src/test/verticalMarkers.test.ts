@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { buildVerticalConnectionMarkers, selectVerticalPassagePairSet, selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
 import { buildNodePositions } from "../pixi/tessellationGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
 
 describe("buildVerticalConnectionMarkers — targetFloorIndices (GitHub issue #430)", () => {

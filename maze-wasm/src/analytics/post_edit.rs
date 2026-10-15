@@ -7,6 +7,7 @@ use maze_core::{
     space::{Field, MultiLevelField},
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Split-tile slot map: `(point, slot_id, level)` -> resolved `NodeId` (as `u64`).
 pub(crate) type SplitSlotMap = HashMap<([i32; 2], u32, u32), u64>;
@@ -285,6 +286,7 @@ pub(crate) fn resolve_preset_nodes_for_post_edit(
 /// minted node colliding with an id the client still has cached for a node outside this call's
 /// surviving set.
 pub(crate) fn build_field_from_nodes<T: Tessellation>(
+    tessellation: &Arc<T>,
     nodes: &[crate::dto::NodeDto],
     level_field_count: usize,
     xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
@@ -315,14 +317,19 @@ where
     let index_by_node: HashMap<u64, u32> = nodes.iter().map(|n| (n.id as u64, n.i)).collect();
     let level_fields: Vec<Field<T>> = entries_by_level
         .into_iter()
-        .map(|entries| Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p))))
+        .map(|entries| {
+            Field::from_id_points(
+                Arc::clone(tessellation),
+                entries.into_iter().map(|(id, p, _)| (id, p)),
+            )
+        })
         .collect::<Result<_, _>>()
         .map_err(|error| error.to_string())?;
     let mut level_fields = level_fields.into_iter();
     let first = level_fields
         .next()
         .ok_or_else(|| "level_fields must not be empty".to_string())?;
-    let mut field = MultiLevelField::new([first]);
+    let mut field = MultiLevelField::new(Arc::clone(tessellation), [first]);
     for level_field in level_fields {
         field.add_level(level_field);
     }

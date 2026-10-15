@@ -412,10 +412,11 @@ fn farthest_pair<T: Tessellation>(
     references: &[(NodeId, NodeId)],
     maze: &Maze<T>,
 ) -> Option<(NodeId, NodeId)> {
+    let tessellation = maze.field.tessellation();
     let ref_points: Vec<(f64, f64)> = references
         .iter()
         .filter_map(|r| maze.field.point_of(r.0))
-        .map(T::cartesian)
+        .map(|p| tessellation.cartesian(p))
         .collect();
     if ref_points.is_empty() {
         return None;
@@ -426,7 +427,7 @@ fn farthest_pair<T: Tessellation>(
         .filter(|p| !references.contains(p))
         .filter_map(|(a, b)| {
             let point = maze.field.point_of(a)?;
-            let (px, py) = T::cartesian(point);
+            let (px, py) = tessellation.cartesian(point);
             let min_dist = ref_points
                 .iter()
                 .map(|&(rx, ry)| ((px - rx).powi(2) + (py - ry).powi(2)).sqrt())
@@ -448,9 +449,10 @@ fn farthest_pair_combination<T: Tessellation>(
     if pairs.len() < 2 {
         return None;
     }
+    let tessellation = maze.field.tessellation();
     let points: Vec<Option<(f64, f64)>> = pairs
         .iter()
-        .map(|&(a, _)| maze.field.point_of(a).map(T::cartesian))
+        .map(|&(a, _)| maze.field.point_of(a).map(|p| tessellation.cartesian(p)))
         .collect();
     #[allow(clippy::type_complexity)]
     let mut best: Option<((NodeId, NodeId), (NodeId, NodeId), f64)> = None;

@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import {
   buildTeleportEdges,
@@ -250,7 +250,7 @@ function computeTeleportWarnings(
   startMarker: { id: number | null; size: number; borderWidth: number },
   finishMarker: { id: number | null; size: number; borderWidth: number },
   allNodes: NodeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edges: EdgeDto[],
 ): ExportWarning[] {
   const warnings: ExportWarning[] = [];
@@ -464,7 +464,7 @@ function mergeWarningsAcrossFloors(warningLists: ExportWarning[][], allNodes: No
 }
 
 export function computeVectorByWallsWarningsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByWallsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
   const warningLists = floors.map((floor) => {
@@ -482,7 +482,7 @@ export function computeVectorByWallsWarningsAcrossFloors(
 }
 
 export function computeVectorByCorridorsWarningsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: VectorByCorridorsSettings, start: number | null, finish: number | null,
 ): ExportWarning[] {
   const warningLists = floors.map((floor) => {
@@ -612,7 +612,7 @@ function teleportBadgeColorEntries(
   ctx: ColorVisibilityContext,
   background: VisibleColor | null,
   displayFloorIndex: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: "border" | "fill",
 ): ContrastEntry[] {
   const settings = ctx.settings;
@@ -633,7 +633,7 @@ function teleportBadgeColorEntries(
   });
 }
 
-function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cfg: TessellationConfig): { x: number; y: number; floorIndex: number }[] {
+function teleportBadgeCells(edges: TeleportEdge[], displayFloorIndex: number, cfg: FieldConfig): { x: number; y: number; floorIndex: number }[] {
   const cells: { x: number; y: number; floorIndex: number }[] = [];
   for (const edge of edges) {
     if (edge.toFloor !== undefined) {
@@ -679,7 +679,7 @@ type TextFitEntry = TextFitItem & {
 function collectTextFitEntries(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   teleportEdges: TeleportEdge[],
   settings: TextFitSettings,
   start: number | null,
@@ -773,7 +773,7 @@ function collectTextFitEntries(
 function computeMarkerIndexStopLineWarning(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   settings: VectorByWallsSettings | VectorByCorridorsSettings,
   verticalStyle: VerticalConnectionStyle,
   teleportEdges: TeleportEdge[],
@@ -845,7 +845,7 @@ function pushTextOverflowWarnings(warnings: ExportWarning[], entries: readonly T
 /** Every label across all floors, grouped by size control — the input of the "Auto-fit" buttons
  *  (GitHub issue #707). Empty array for a kind with nothing to fit. */
 export function computeTextFitItemsAcrossFloors(
-  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: TessellationConfig,
+  nodes: NodeDto[], edges: EdgeDto[], floors: WarningFloor[], cfg: FieldConfig,
   settings: TextFitSettings, start: number | null, finish: number | null,
 ): Record<TextFitKind, TextFitItem[]> {
   const result: Record<TextFitKind, TextFitItem[]> = { start: [], finish: [], elevator: [], teleport: [], markerIndex: [], floorLabel: [] };
@@ -884,7 +884,7 @@ function oneWayVerticalPassageEdges(edges: EdgeDto[], allEdges: EdgeDto[] = edge
 function splitContrastData(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   ctx: ColorVisibilityContext,
 ): { colors: (VisibleColor | null)[]; keys: string[]; nodes: number[] } {
   if (maxSplitNodeCount(nodes) === 0) return { colors: [], keys: [], nodes: [] };
@@ -956,7 +956,7 @@ function addCommonContrastWarnings(
   start: number | null,
   finish: number | null,
   displayFloorIndex: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): void {
   const settings = ctx.settings;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -1103,7 +1103,7 @@ function addCommonContrastWarnings(
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   rawSettings: VectorByWallsSettings,
   start: number | null,
   finish: number | null,
@@ -1301,7 +1301,7 @@ export function computeVectorByWallsWarnings(
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   rawSettings: VectorByCorridorsSettings,
   start: number | null,
   finish: number | null,

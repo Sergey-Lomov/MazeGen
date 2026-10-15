@@ -7,6 +7,7 @@ import { encodePoint } from "../pixi/tessellationProjection";
 import { edgeKey, nodeEndpoint } from "../pixi/postEditEndpoint";
 import { PostEditController } from "../pixi/PostEditController";
 import type { PostEditRenderer } from "../pixi/PostEditRenderer";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -69,8 +70,8 @@ beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     openCard: "post_edit",
-    activeTessellationConfig: { type: "square", width: 3, height: 1 },
-    floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 1 }, fieldPoints: cells }) },
+    activeFieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 1 }),
+    floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 1 }), fieldPoints: cells }) },
     postEditAutoConfirm: false,
     postEditAutoCompact: false,
     postEditActiveSplitNode: {},
@@ -134,8 +135,8 @@ describe("PostEditController element tools (GitHub issue #748)", () => {
       postEditTool: "move",
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 1 }, fieldPoints: cells }),
-        floor_2: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 1 }, fieldPoints: cells }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 1 }), fieldPoints: cells }),
+        floor_2: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 1 }), fieldPoints: cells }),
       },
     });
     const controller = makeController();

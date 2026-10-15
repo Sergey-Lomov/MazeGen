@@ -20,6 +20,7 @@ vi.mock("../pixi/fieldEditUtils", async () => {
 import { buildPresetListCells, filterPresetListCells, PRESET_LIST_TYPES, PRESET_LIST_TYPES_OFF_BY_DEFAULT, type PresetListInput, type PresetListType } from "../components/features/PresetList";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { PresetSplitLabelContext } from "../pixi/presetSplitLabels";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const emptyInput = (): PresetListInput => ({
   presetConnections: new Map(),
@@ -127,7 +128,7 @@ describe("buildPresetListCells", () => {
       splitPoints: { "2,2": [7] },
       presetConnections: new Map(),
       activeSplitNode: {},
-      cfgAt: () => ({ type: "square", width: 10, height: 10 }),
+      cfgAt: () => (fieldOf("square", { shape: "rect", cols: 10, rows: 10 })),
       inFieldCellsAt: () => new Set(),
     };
     const input = emptyInput();

@@ -50,7 +50,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // dialog's own point-keyed lookups (`pointNodeMap`, `originalNodeId`, `resolveActiveAt`) are
   // scoped to the active floor's own nodes first, same as `PostEditController`'s `getFloorNodes`.
   const nodes = useMemo(() => allNodes.filter((n) => (n.level ?? 0) === (level ?? 0)), [allNodes, level]);
-  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -75,12 +75,12 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     draftEdges: draftEdges ?? null,
     cfgAt: (rawLevel) => {
       const floor = floorFields[floors[rawLevel ?? 0]?.id ?? ""];
-      return floor ? floor.tessellationConfig : cfg;
+      return floor ? floor.fieldConfig : cfg;
     },
     inFieldCellsAt: (rawLevel) => {
       const floor = floorFields[floors[rawLevel ?? 0]?.id ?? ""];
       if (!floor) return inFieldCells;
-      return buildCellSet(buildActiveCells(floor.fieldPoints, floor.fieldEditMode, floor.tessellationConfig));
+      return buildCellSet(buildActiveCells(floor.fieldPoints, floor.fieldEditMode, floor.fieldConfig));
     },
   };
 
@@ -240,7 +240,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
   const semanticNames = splitNodeSemanticNames(
     nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })),
-    cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+    cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
   );
   // Formats one side of a link bubble — used for both the card's own endpoint and its partner, so
   // every node always gets an "(N{N})" suffix on whichever side it appears on, not just the

@@ -386,10 +386,10 @@ export function PresetList({ onClose }: { onClose: () => void }) {
       splitPoints: presetSplitPoints,
       presetConnections,
       activeSplitNode,
-      cfgAt: (level) => floorFields[floors[level]?.id]?.tessellationConfig ?? fallbackField.tessellationConfig,
+      cfgAt: (level) => floorFields[floors[level]?.id]?.fieldConfig ?? fallbackField.fieldConfig,
       inFieldCellsAt: (level) => {
         const field = floorFields[floors[level]?.id] ?? fallbackField;
-        return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig));
+        return buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig));
       },
     };
   }, [presetSplitPoints, presetConnections, activeSplitNode, floorFields, floors]);

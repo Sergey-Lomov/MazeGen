@@ -147,7 +147,7 @@ export class ExportFrameOverlay implements ViewportListener {
   private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
     const margin = this.resolveMargin(state);
-    const printFit = computePrintExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
+    const printFit = computePrintExportFit(state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
     if (printFit.sheetWidthPx <= 0 || printFit.sheetHeightPx <= 0) return null;
     const screenSize = this.getScreenSize();
     const layout = computeSheetScreenLayout(printFit.sheetWidthPx, printFit.sheetHeightPx, screenSize.width, screenSize.height);
@@ -161,7 +161,7 @@ export class ExportFrameOverlay implements ViewportListener {
   private currentDigitalFrameLayout(state: ReturnType<typeof useMazeStore.getState>): ScreenRect | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "digital" || state.activeRenderMode === null) return null;
     const margin = this.resolveMargin(state);
-    const fit = computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
+    const fit = computeDigitalExportFit(state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
     if (fit.width <= 0 || fit.height <= 0) return null;
     const { scale } = this.lastViewport;
     return {
@@ -184,7 +184,7 @@ export class ExportFrameOverlay implements ViewportListener {
     if (state.activeRenderMode === null) return;
     const margin = this.resolveMargin(state);
     const { scale, offsetXMm, offsetYMm } = computePrintPlacementFromViewport(
-      state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.syncingDepth++;
     try {
@@ -204,7 +204,7 @@ export class ExportFrameOverlay implements ViewportListener {
     if (state.activeRenderMode === null) return;
     const margin = this.resolveMargin(state);
     const { x, y, scale } = computeViewportFromPrintPlacement(
-      state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
+      state.activeFieldConfig, state.nodes, margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.lastViewport = { x, y, scale };
     // setViewportTransform synchronously fans out into onViewportChanged -> syncPlacementToViewport

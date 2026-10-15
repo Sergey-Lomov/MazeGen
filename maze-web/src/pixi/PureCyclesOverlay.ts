@@ -1,6 +1,6 @@
 import { Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { buildNodePositions } from "./tessellationGeometry";
@@ -22,7 +22,7 @@ export interface PureCyclesData {
   pureCycleNodeIds: Set<number>;
   /** Set of "from_maze_id,to_maze_id" keys for pure-cycle edges. */
   pureCycleEdgeKeys: Set<string>;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
    *  list) — needed to detect a pure-cycle edge whose other endpoint crosses to another floor
    *  (GitHub issue #339). Omitted callers draw no cross-floor badges. */

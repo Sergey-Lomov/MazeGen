@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import { getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import {
   type PostEditEndpoint, type LogicalCandidate, nodeEndpoint, splitEndpoint, edgeKey, endpointKey, endpointsEqual,
   buildLogicalCandidates, isDecidedPostEditEdge, resolvePartnerForPlacement,
@@ -127,7 +127,7 @@ function collectRotateMoves(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   level: number | undefined,
@@ -385,7 +385,7 @@ export function buildNeighborRedirectCommands(
 export function postEditSplitNodeFaceKinds(
   endpoint: PostEditEndpoint,
   point: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   edges: Record<string, PostEditEdge>,
   splitPoints: Record<string, number[]>,
@@ -425,7 +425,7 @@ function decidedFaceIndicesOf(
   candidatePoint: [number, number],
   candidateForms: PostEditEndpoint[],
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): Set<number> {
   const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
@@ -465,7 +465,7 @@ function selectExistingFaceOwner(
   neighborPoint: [number, number],
   targetFace: number,
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): LogicalCandidate | null {
   const matches = candidates.filter((c) => decidedFaceIndicesOf(neighborPoint, c.forms, edges, cfg, nodes).has(targetFace));
@@ -481,7 +481,7 @@ function selectOppositeFaceOwner(
   targetFace: number,
   degree: number,
   edges: Record<string, PostEditEdge>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: NodeDto[],
 ): LogicalCandidate | null {
   const matches = candidates.filter((c) => canCompleteOppositePair(decidedFaceIndicesOf(neighborPoint, c.forms, edges, cfg, nodes), targetFace, degree));
@@ -522,7 +522,7 @@ function selectOppositeFaceOwner(
 function resolveFaceOwner(
   point: [number, number],
   newNeighbor: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   edges: Record<string, PostEditEdge>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
@@ -600,7 +600,7 @@ export function rotateSplitPointNodes(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
@@ -759,7 +759,7 @@ export function rotateSplitPointBreaksNeighborShape(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
@@ -784,7 +784,7 @@ export function rotateSplitPointBreaksNeighborShape(
     if (neighborEndpoints.length < 2) continue; // not split — nothing to break
 
     const before = neighborEndpoints.map((ep) => postEditSplitNodeFaceKinds(ep, neighbor, cfg, cellSet, edges, splitPoints, activeSplitNode, nodes, level));
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
+    const canonicalOrder = cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
     const beforeKind = detectSplitSpecialShapeKind(before, canonicalOrder);
     if (beforeKind === null) continue; // wasn't recognized before — nothing to break
 

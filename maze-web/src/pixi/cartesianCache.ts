@@ -1,46 +1,52 @@
-import { tessellationFamily, type Tessellation as TessellationConfig } from "../fieldConfig";
-import { resolveFieldConfig } from "./tessellationCells";
+import type { FieldConfig, TessellationConfig } from "../fieldConfig";
+import { configAllCells } from "./tessellationCells";
 import { getCartesianCoords } from "../wasm/mazeService";
 
 /// Cache of canonical (unrotated, unit-tile-scale) Cartesian projections, keyed by "x,y" -- the
 /// single source of truth `tessellationGeometry.ts`'s low-level `squareCenter`/`hexCenter`/
 /// `triCenter` read from instead of duplicating `maze-core`'s projection formulas in TypeScript
-/// (see `maze-wasm::cartesian_coords`'s doc comment). Rebuilt whenever the tessellation kind
-/// changes via `warmCartesianCache` -- a single batched wasm call over every field cell, not one
-/// call per cell, since render loops call `getCellCenter` synchronously and per-call wasm
-/// round-trips would be far too slow for a hot path.
+/// (see `maze-wasm::cartesian_coords`'s doc comment). Rebuilt whenever the tessellation config
+/// (`{ kind, params }`) changes via `warmCartesianCache` -- a single batched wasm call over every
+/// field cell, not one call per cell, since render loops call `getCellCenter` synchronously and
+/// per-call wasm round-trips would be far too slow for a hot path.
 const cache = new Map<string, [number, number]>();
-let cachedKind: "square" | "hex" | "tri" | "cairo" | null = null;
+let cachedTessellation: string | null = null;
 
-function toWasmKind(cfg: TessellationConfig): "square" | "hex" | "tri" | "cairo" {
-  const family = tessellationFamily(cfg);
-  return family === "triangle" ? "tri" : family;
+/// Identity of a tessellation instance: the same `{ kind, params }` always builds an equivalent
+/// instance, so it is a complete cache key for the instance's projection. Memoized per config
+/// object: `getCartesian` runs on render hot paths and must not serialize on every call.
+const tessellationKeys = new WeakMap<TessellationConfig, string>();
+
+function tessellationKey(cfg: FieldConfig): string {
+  let key = tessellationKeys.get(cfg.tessellation);
+  if (key === undefined) {
+    key = JSON.stringify(cfg.tessellation);
+    tessellationKeys.set(cfg.tessellation, key);
+  }
+  return key;
 }
 
 function cellKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-/// Batched prewarm -- call once when the tessellation config's kind changes (confirmTessellation,
+/// Batched prewarm -- call once when the tessellation config changes (confirmTessellation,
 /// project load, generateWithSeed), not per-frame. Clears the cache first: cached coordinates are
-/// only valid for the tessellation kind they were computed under (a "square" (2,3) and a "hex"
-/// (2,3) project to different points), so a kind change invalidates everything already cached
-/// rather than merging in.
-export function warmCartesianCache(cfg: TessellationConfig): void {
-  const kind = toWasmKind(cfg);
+/// only valid for the tessellation instance they were computed under (a "square" (2,3) and a
+/// "hex" (2,3) project to different points), so a config change invalidates everything already
+/// cached rather than merging in.
+export function warmCartesianCache(cfg: FieldConfig): void {
   cache.clear();
-  cachedKind = kind;
-  const field = "kind" in cfg ? cfg : resolveFieldConfig(cfg);
-  const points = field.cells;
+  cachedTessellation = tessellationKey(cfg);
+  const points = configAllCells(cfg);
   if (points.length === 0) return;
-  // Cairo's canonical projection is the identity by contract. Keep this tiny projection local:
-  // older web WASM artifacts predate the Cairo enum and reject the otherwise valid request before
-  // the current artifact can be rebuilt.
-  if (kind === "cairo") {
+  // Cairo's canonical projection is the identity by contract, so it is served locally without a
+  // wasm round-trip.
+  if (cfg.tessellation.kind === "cairo") {
     for (const [x, y] of points) cache.set(cellKey(x, y), [x, y]);
     return;
   }
-  const coords = getCartesianCoords({ tessellation_type: kind, points });
+  const coords = getCartesianCoords({ tessellation: cfg.tessellation, points });
   for (let i = 0; i < points.length; i++) {
     const [x, y] = points[i];
     cache.set(cellKey(x, y), coords[i]);
@@ -54,12 +60,12 @@ export function warmCartesianCache(cfg: TessellationConfig): void {
 /// since prewarming covers exactly `configAllCells(cfg)`, not every possible coordinate).
 /// The fallback result is cached too, so a repeatedly-queried out-of-field point (e.g. hovering
 /// the same invalid preset edge every frame) only ever pays the wasm round-trip once.
-export function getCartesian(x: number, y: number, cfg: TessellationConfig): [number, number] {
-  const kind = toWasmKind(cfg);
-  if (kind === "cairo") {
-    if (cachedKind !== kind) {
+export function getCartesian(x: number, y: number, cfg: FieldConfig): [number, number] {
+  const tessellation = tessellationKey(cfg);
+  if (cfg.tessellation.kind === "cairo") {
+    if (cachedTessellation !== tessellation) {
       cache.clear();
-      cachedKind = kind;
+      cachedTessellation = tessellation;
     }
     const key = cellKey(x, y);
     const cached = cache.get(key);
@@ -68,16 +74,16 @@ export function getCartesian(x: number, y: number, cfg: TessellationConfig): [nu
     cache.set(key, coord);
     return coord;
   }
-  if (kind !== cachedKind) {
-    // Defensive: a caller queried before the cache was warmed for this kind (or the kind
-    // changed without going through warmCartesianCache) -- warm it now rather than silently
-    // serving stale/wrong-kind coordinates.
+  if (tessellation !== cachedTessellation) {
+    // Defensive: a caller queried before the cache was warmed for this tessellation (or the
+    // config changed without going through warmCartesianCache) -- warm it now rather than
+    // silently serving stale/wrong-tessellation coordinates.
     warmCartesianCache(cfg);
   }
   const key = cellKey(x, y);
   const cached = cache.get(key);
   if (cached) return cached;
-  const [coord] = getCartesianCoords({ tessellation_type: kind, points: [[x, y]] });
+  const [coord] = getCartesianCoords({ tessellation: cfg.tessellation, points: [[x, y]] });
   cache.set(key, coord);
   return coord;
 }

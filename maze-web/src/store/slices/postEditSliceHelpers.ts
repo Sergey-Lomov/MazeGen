@@ -470,7 +470,7 @@ export type PostEditPointEntitiesSourceState = Pick<
   MazeStore,
   | "nodes" | "postEditDraftSplitPoints" | "postEditDraftMeta" | "postEditDraftTeleports"
   | "postEditDraftVerticalPassages" | "postEditDraftElevators" | "postEditDraftEdges"
-  | "floors" | "floorFields" | "activeTessellationConfig" | "postEditActiveSplitNode"
+  | "floors" | "floorFields" | "activeFieldConfig" | "postEditActiveSplitNode"
 >;
 
 /** Builds the removable-entity list for the post-edit delete-tool picker dialog (GitHub issue
@@ -503,12 +503,12 @@ export function buildPostEditPointEntitiesAt(
   const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
   };
-  const cfgAt = (lvl: number | undefined): typeof state.activeTessellationConfig => {
+  const cfgAt = (lvl: number | undefined): typeof state.activeFieldConfig => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? field.tessellationConfig : state.activeTessellationConfig;
+    return field ? field.fieldConfig : state.activeFieldConfig;
   };
   const splitCtx: SplitLabelContext = {
     allNodes: state.nodes,
@@ -534,7 +534,7 @@ export function buildPostEditPointEntitiesAt(
  * delete picker's live-entity listing) needs to read directly. */
 export type PostEditResetLifelinesSourceState = Pick<
   MazeStore,
-  "nodes" | "postEditDraftSplitPoints" | "postEditActiveSplitNode" | "floors" | "floorFields" | "activeTessellationConfig"
+  "nodes" | "postEditDraftSplitPoints" | "postEditActiveSplitNode" | "floors" | "floorFields" | "activeFieldConfig"
   | "postEditBaseline" | "postEditCommands" | "postEditDraftEdges"
 >;
 
@@ -553,12 +553,12 @@ export function buildPostEditResetLifelinesAt(
   const inFieldCellsAt = (lvl: number | undefined): ReadonlySet<string> => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.tessellationConfig)) : new Set<string>();
+    return field ? buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, field.fieldConfig)) : new Set<string>();
   };
-  const cfgAt = (lvl: number | undefined): typeof state.activeTessellationConfig => {
+  const cfgAt = (lvl: number | undefined): typeof state.activeFieldConfig => {
     const floor = state.floors[lvl ?? 0];
     const field = floor ? state.floorFields[floor.id] : undefined;
-    return field ? field.tessellationConfig : state.activeTessellationConfig;
+    return field ? field.fieldConfig : state.activeFieldConfig;
   };
   const splitCtx: SplitLabelContext = {
     allNodes: state.nodes,

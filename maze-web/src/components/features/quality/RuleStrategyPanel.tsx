@@ -18,11 +18,11 @@ import type { QualitySelection } from "./types";
 // Mirrors `getPatterns` in `ParamFields.tsx` -- a malformed or missing `split_patterns` rule
 // param reads as "no patterns" (empty topology), same "invalid falls back to empty" contract
 // `parse_split_patterns_param` follows on the Rust side (GitHub issue #389).
-function parseRuleSplitPatterns(raw: string | undefined, tessellationConfig: ReturnType<typeof activeFloorTessellationOf>) {
+function parseRuleSplitPatterns(raw: string | undefined, fieldConfig: ReturnType<typeof activeFloorTessellationOf>) {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, tessellationConfig) : [];
+    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, fieldConfig) : [];
   } catch {
     return [];
   }
@@ -64,9 +64,9 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
     : null;
   const displayValues = passageOverrides ? { ...values, ...passageOverrides.values } : values;
 
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const addSplitPatternsOverride = strategy?.id === "add_split"
-    ? parseRuleSplitPatterns(slot.params.split_patterns, tessellationConfig)
+    ? parseRuleSplitPatterns(slot.params.split_patterns, fieldConfig)
     : undefined;
 
   return (

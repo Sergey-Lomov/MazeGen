@@ -780,10 +780,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     const slotIds = state.presetSplitPoints[key] ?? [];
     const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
-    const cells = resolveCells(field.tessellationConfig, customPts);
+    const cells = resolveCells(field.fieldConfig, customPts);
     const cellSet = buildCellSet(cells);
     const presetConnections = rotatePresetSplitPoint(
-      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet,
+      state.presetConnections, point, slotIds, direction, field.fieldConfig, cellSet,
       state.presetSplitPoints, state.presetActiveSplitNode, level,
     );
     if (presetConnections === state.presetConnections) return {};
@@ -860,9 +860,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       }, []);
 
       const field = activeFloorField(state);
-      const { offsets } = getNeighborData(field.tessellationConfig, point[0], point[1]);
+      const { offsets } = getNeighborData(field.fieldConfig, point[0], point[1]);
       const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
-      const cells = resolveCells(field.tessellationConfig, customPts);
+      const cells = resolveCells(field.fieldConfig, customPts);
       const inFieldCells = buildCellSet(cells);
       // Every one of the blueprint's declared faces gets a `passage`; every other in-field face
       // of the tile gets an explicit `wall` — presets default to `undefined` (optional), which
@@ -874,7 +874,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
         const endpoint = nodeEndpoints[nodeIndex];
         const requiredFaces = new Set(blueprint.nodeFaces[nodeIndex].map((face) =>
-          resolveBlueprintFaceIndex(blueprint, field.tessellationConfig, point, face),
+          resolveBlueprintFaceIndex(blueprint, field.fieldConfig, point, face),
         ));
         for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
           const [dx, dy] = offsets[faceIndex];

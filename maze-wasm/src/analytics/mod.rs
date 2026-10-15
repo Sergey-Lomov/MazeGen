@@ -5,12 +5,10 @@ mod snapshot_dto;
 pub use snapshot::build_analytics_snapshot;
 
 use crate::dto::{ComputeAnalyticsConfig, MazeSnapshot};
-use crate::generation_config::{self, GenerateConfig, TessellationType};
-use maze_core::{
-    Maze,
-    graph::Graph,
-    space::Tessellation,
-    space::{CairoPoint, HexPoint, SquarePoint, TriPoint},
+use crate::generation_config::{self, GenerateConfig};
+use maze_core::{Maze, graph::Graph, space::Tessellation};
+use maze_runner::runner::tessellation_factory::{
+    PointCodec, TessellationVisitor, build_tessellation,
 };
 use post_edit::{
     apply_split_points, build_field_from_nodes, build_graph_from_post_edit_edges,
@@ -19,6 +17,7 @@ use post_edit::{
 };
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -29,27 +28,23 @@ pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
 }
 
 fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, JsValue> {
-    match cfg.tessellation.tessellation_type {
-        TessellationType::Square => run_compute_analytics::<maze_core::space::SquareTessellation>(
-            cfg,
-            |p: SquarePoint| (p.x, p.y),
-            |[x, y]| Some(SquarePoint { x, y }),
-        ),
-        TessellationType::Hex => run_compute_analytics::<maze_core::space::HexTessellation>(
-            cfg,
-            |p: HexPoint| (p.q, p.r),
-            |[q, r]| Some(HexPoint { q, r }),
-        ),
-        TessellationType::Tri => run_compute_analytics::<maze_core::space::TriTessellation>(
-            cfg,
-            |p: TriPoint| (p.col, p.row),
-            |[col, row]| Some(TriPoint { col, row }),
-        ),
-        TessellationType::Cairo => run_compute_analytics::<maze_core::space::CairoTessellation>(
-            cfg,
-            |p: CairoPoint| (p.x, p.y),
-            |[x, y]| Some(CairoPoint { x, y }),
-        ),
+    let tessellation = cfg.tessellation.clone();
+    build_tessellation(&tessellation, ComputeAnalyticsVisitor { cfg })
+        .map_err(|e| JsValue::from_str(&e))?
+}
+
+/// Runs `run_compute_analytics` on the tessellation instance built from `cfg.tessellation`.
+struct ComputeAnalyticsVisitor {
+    cfg: ComputeAnalyticsConfig,
+}
+
+impl TessellationVisitor for ComputeAnalyticsVisitor {
+    type Output = Result<JsValue, JsValue>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+        run_compute_analytics(self.cfg, tessellation, codec.to_xy, |[x, y]| {
+            Some((codec.from_xy)(x, y))
+        })
     }
 }
 
@@ -129,15 +124,16 @@ fn score_weights_from_strategies<'a>(
         .map(|s| maze_core::repair::strategies::ScoreWeights::from_raw_overrides(&s.params))
 }
 
-fn run_compute_analytics<T: Tessellation + 'static>(
+fn run_compute_analytics<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
+    tessellation: Arc<T>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
 ) -> Result<JsValue, JsValue>
 where
     T::Point: Copy,
 {
-    let snapshot = run_compute_analytics_core::<T>(cfg, point_to_xy, xy_to_point)
+    let snapshot = run_compute_analytics_core(cfg, tessellation, point_to_xy, xy_to_point)
         .map_err(|e| JsValue::from_str(&e))?;
 
     snapshot
@@ -151,8 +147,9 @@ where
 /// happy-path assembly) is exercisable by native `cargo test`, mirroring the
 /// `build_field_from_nodes`/`apply_split_points`/`build_graph_from_post_edit_edges` split in
 /// `post_edit.rs` and `runner.rs`'s `run_initial_generation`.
-fn run_compute_analytics_core<T: Tessellation + 'static>(
+fn run_compute_analytics_core<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
+    tessellation: Arc<T>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
 ) -> Result<MazeSnapshot, String>
@@ -166,8 +163,12 @@ where
         return Err("level_fields must not be empty".to_string());
     }
 
-    let (field, existing_by_index, index_by_node, level_ids) =
-        build_field_from_nodes::<T>(&cfg.nodes, cfg.level_fields.len(), &xy_to_point)?;
+    let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes(
+        &tessellation,
+        &cfg.nodes,
+        cfg.level_fields.len(),
+        &xy_to_point,
+    )?;
 
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -343,14 +344,20 @@ mod tests {
         }
 
         fn run(cfg: ComputeAnalyticsConfig) -> Result<MazeSnapshot, String> {
-            run_compute_analytics_core::<SquareTessellation>(cfg, point_to_xy, xy_to_point)
+            run_compute_analytics_core::<SquareTessellation>(
+                cfg,
+                Arc::default(),
+                point_to_xy,
+                xy_to_point,
+            )
         }
 
         #[test]
         fn cairo_post_edit_analytics_rebuilds_nodes_from_integer_wire_coordinates() {
             let cfg = ComputeAnalyticsConfig {
                 tessellation: generation_config::TessellationConfig {
-                    tessellation_type: generation_config::TessellationType::Cairo,
+                    kind: maze_runner::config::TessellationKind::Cairo,
+                    params: serde_json::Map::new(),
                 },
                 level_fields: vec![vec![[2, 1], [2, 3]]],
                 nodes: vec![
@@ -383,6 +390,7 @@ mod tests {
 
             let snapshot = run_compute_analytics_core::<CairoTessellation>(
                 cfg,
+                Arc::default(),
                 |p: CairoPoint| (p.x, p.y),
                 |[x, y]| Some(CairoPoint { x, y }),
             )
@@ -396,12 +404,13 @@ mod tests {
         #[test]
         fn cairo_post_edit_analytics_rejects_invalid_wire_points() {
             let mut cfg = base_cfg();
-            cfg.tessellation.tessellation_type = generation_config::TessellationType::Cairo;
+            cfg.tessellation.kind = maze_runner::config::TessellationKind::Cairo;
             cfg.nodes[0].x = 0;
             cfg.nodes[0].y = 0;
 
             let error = match run_compute_analytics_core::<CairoTessellation>(
                 cfg,
+                Arc::default(),
                 |p: CairoPoint| (p.x, p.y),
                 |[x, y]| Some(CairoPoint { x, y }),
             ) {
@@ -425,7 +434,11 @@ mod tests {
             let mut cfg = base_cfg();
             cfg.split_points = vec![([0, 0], 0, 0)];
             let snapshot1 = run(cfg).expect("call 1 (add slot 0) must succeed");
-            assert_eq!(snapshot1.nodes.len(), 3, "call 1 must mint exactly one split node");
+            assert_eq!(
+                snapshot1.nodes.len(),
+                3,
+                "call 1 must mint exactly one split node"
+            );
             let slot0_node = snapshot1
                 .nodes
                 .iter()
@@ -471,7 +484,11 @@ mod tests {
                 .collect();
             cfg3.split_points = vec![([0, 0], 1, 0)];
             let snapshot3 = run(cfg3).expect("call 3 (re-add as slot 1) must succeed");
-            assert_eq!(snapshot3.nodes.len(), 3, "call 3 must mint exactly one split node");
+            assert_eq!(
+                snapshot3.nodes.len(),
+                3,
+                "call 3 must mint exactly one split node"
+            );
             let slot1_node = snapshot3
                 .nodes
                 .iter()
@@ -868,7 +885,13 @@ mod tests {
             let split_points = vec![(([0, 0]), 0u32, 0u32)];
 
             let (field, existing_by_index, index_by_node, level_ids) =
-                build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_point).unwrap();
+                build_field_from_nodes::<SquareTessellation>(
+                    &Arc::default(),
+                    &nodes,
+                    1,
+                    &xy_to_point,
+                )
+                .unwrap();
             let mut graph = Graph::new();
             for node in field.all_node_ids() {
                 graph.add_node(node);
@@ -1025,7 +1048,13 @@ mod tests {
                 },
             ];
             let (field, existing_by_index, index_by_node, level_ids) =
-                build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_point).unwrap();
+                build_field_from_nodes::<SquareTessellation>(
+                    &Arc::default(),
+                    &nodes,
+                    1,
+                    &xy_to_point,
+                )
+                .unwrap();
             let mut graph = Graph::new();
             for node in field.all_node_ids() {
                 graph.add_node(node);

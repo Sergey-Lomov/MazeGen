@@ -3,169 +3,99 @@ import { cellsInsideShape, shapeForPrimitive, type ShapeOrigin } from "./shapeSe
 import { primitiveCells } from "./primitiveGeometry";
 import { makeProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
-import type { FieldConfig as TessellationConfig, ResolvedField } from "../fieldConfig";
+import { hexOrientationOf, type FieldConfig, type ResolvedField } from "../fieldConfig";
 
-export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
-  switch (cfg.type) {
+export function configOriginOffset(cfg: FieldConfig): { ox: number; oy: number } {
+  const { shape } = cfg;
+  switch (cfg.tessellation.kind) {
     case "square":
-      return { ox: Math.floor(cfg.width / 2), oy: Math.floor(cfg.height / 2) };
-    case "square_circle":
-    case "square_triangle": return { ox: 0, oy: 0 };
-    case "hex_rectangle": return { ox: 0, oy: 0 };
-    case "hex_parallelogram":
-      return { ox: Math.floor(cfg.cols / 2), oy: Math.floor(cfg.rows / 2) };
-    case "hex_circle": return { ox: 0, oy: 0 };
-    case "hex_triangle": return { ox: 0, oy: 0 };
-    case "hex_hexagon":
-      return { ox: 0, oy: 0 };
-    case "triangle_rect": {
+      return shape.shape === "rect" ? { ox: Math.floor(shape.cols / 2), oy: Math.floor(shape.rows / 2) } : { ox: 0, oy: 0 };
+    case "hex":
+      return shape.shape === "parallelogram" ? { ox: Math.floor(shape.cols / 2), oy: Math.floor(shape.rows / 2) } : { ox: 0, oy: 0 };
+    case "tri":
       // Each configured column contains two adjacent opposite-orientation triangles.
-      return { ox: cfg.cols, oy: Math.floor(cfg.rows / 2) };
-    }
-    case "triangle_triangle": {
-      const { ox, oy } = triCenterOffset(triTriangleRaw(cfg.side));
-      return { ox, oy };
-    }
-    case "triangle_circle": return { ox: 0, oy: 0 };
-    case "triangle_hexagon": {
-      const { ox, oy } = triCenterOffset(triHexagonRaw(cfg.radius));
-      return { ox, oy };
-    }
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom": return { ox: 0, oy: 0 };
+      if (shape.shape === "rect") return { ox: shape.cols, oy: Math.floor(shape.rows / 2) };
+      if (shape.shape === "triangle") return triCenterOffset(triTriangleRaw(shape.side));
+      if (shape.shape === "hexagon") return triCenterOffset(triHexagonRaw(shape.radius));
+      return { ox: 0, oy: 0 };
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom": return { ox: 0, oy: 0 };
+      return { ox: 0, oy: 0 };
   }
 }
 
-export function configAllCells(cfg: TessellationConfig): [number, number][] {
-  switch (cfg.type) {
-    case "square": {
-      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("rectangle", base, { width: cfg.width, height: cfg.height }), "center", centeredOrigin(base, cfg.width, cfg.height));
-    }
-    case "square_circle": {
-      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
-    }
-    case "square_triangle": {
-      const base = { type: "square", width: 0, height: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
-    }
-    case "hex_rectangle": {
-      return hexRectangleCells(cfg.cols, cfg.rows, cfg.orientation ?? "flat_top");
-    }
-    case "hex_parallelogram": {
-      return axialRectangleCells(cfg.cols, cfg.rows);
-    }
-    case "hex_circle": {
-      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
-    }
-    case "hex_triangle": {
-      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
-    }
-    case "hex_hexagon": {
-      const base = { type: "hex_hexagon", radius: 0, orientation: cfg.orientation } as TessellationConfig;
-      const frameSide = cfg.radius * 4;
-      const dragDistance = Math.max(0, (frameSide - 1) * TILE_SIZE / 2);
-      return primitiveCells("hexagon", {
-        startGrid: { x: 0, y: 0 },
-        endGrid: { x: 0, y: 0 },
-        startWorld: { x: 0, y: 0 },
-        endWorld: { x: dragDistance, y: dragDistance },
-        gridRadius: cfg.radius,
-        kind: "hex",
-        config: base,
-        latticeRadius: cfg.radius,
-        symmetric: true,
-        constrainSquare: true,
-      });
-    }
-    case "triangle_rect": {
-      return triangularRectangleCells(cfg.cols, cfg.rows);
-    }
-    case "triangle_triangle": {
-      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
-      return primitiveCells("equilateral_triangle", {
-        startGrid: { x: 0, y: 0 },
-        endGrid: { x: 0, y: 0 },
-        gridRadius: cfg.side,
-        kind: "triangle",
-        config: base,
-        latticeSide: cfg.side,
-      });
-    }
-    case "triangle_circle": {
-      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
-      return primitiveCells("circle", {
-        startGrid: { x: 0, y: 0 },
-        endGrid: { x: 0, y: 0 },
-        gridRadius: cfg.radius,
-        kind: "triangle",
-        config: base,
-        latticeRadius: cfg.radius,
-        symmetric: true,
-      });
-    }
-    case "triangle_hexagon": {
-      const base = { type: "triangle_rect", cols: 0, rows: 0, orientation: cfg.orientation } as TessellationConfig;
-      const frameSide = cfg.radius * 4;
-      const dragDistance = Math.max(0, (frameSide - 1) * TILE_SIZE / 2);
-      return primitiveCells("hexagon", {
-        startGrid: { x: 0, y: 0 },
-        endGrid: { x: 0, y: 0 },
-        startWorld: { x: 0, y: 0 },
-        endWorld: { x: dragDistance, y: dragDistance },
-        gridRadius: cfg.radius,
-        kind: "triangle",
-        config: base,
-        latticeRadius: cfg.radius,
-        symmetric: true,
-        constrainSquare: true,
-      });
-    }
-    case "cairo": {
-      return cairoRectangleCells(cfg.cols, cfg.rows);
-    }
-    case "cairo_circle": {
-      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: cfg.radius }));
-    }
-    case "cairo_triangle": {
-      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: cfg.side }));
-    }
-    case "cairo_hexagon": {
-      const base = { type: "cairo", cols: 0, rows: 0 } as TessellationConfig;
-      return cellsInsideShape(base, shapeForPrimitive("hexagon", base, { width: 0, height: 0, radius: cfg.radius }));
-    }
-    case "cairo_custom":
-      return cfg.points.map(([x, y]) => [x, y]);
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom":
-      return cfg.points.map(([x, y]) => [x, y]);
+/** Hex/tri hexagon presets: a symmetric, square-constrained hexagon primitive of `radius`. */
+function latticeHexagonCells(cfg: FieldConfig, radius: number): [number, number][] {
+  const frameSide = radius * 4;
+  const dragDistance = Math.max(0, (frameSide - 1) * TILE_SIZE / 2);
+  return primitiveCells("hexagon", {
+    startGrid: { x: 0, y: 0 },
+    endGrid: { x: 0, y: 0 },
+    startWorld: { x: 0, y: 0 },
+    endWorld: { x: dragDistance, y: dragDistance },
+    gridRadius: radius,
+    kind: cfg.tessellation.kind,
+    config: cfg,
+    latticeRadius: radius,
+    symmetric: true,
+    constrainSquare: true,
+  });
+}
+
+export function configAllCells(cfg: FieldConfig): [number, number][] {
+  const { shape } = cfg;
+  if (shape.shape === "custom") return shape.points.map(([x, y]) => [x, y]);
+  const base: FieldConfig = { ...cfg, shape: { shape: "custom", points: [] } };
+  const kind = cfg.tessellation.kind;
+  switch (shape.shape) {
+    case "rect":
+      if (kind === "square") {
+        return cellsInsideShape(base, shapeForPrimitive("rectangle", base, { width: shape.cols, height: shape.rows }), "center", centeredOrigin(base, shape.cols, shape.rows));
+      }
+      if (kind === "hex") return hexRectangleCells(shape.cols, shape.rows, hexOrientationOf(cfg));
+      if (kind === "tri") return triangularRectangleCells(shape.cols, shape.rows);
+      return cairoRectangleCells(shape.cols, shape.rows);
+    case "parallelogram":
+      return axialRectangleCells(shape.cols, shape.rows);
+    case "circle":
+      if (kind === "tri") {
+        return primitiveCells("circle", {
+          startGrid: { x: 0, y: 0 },
+          endGrid: { x: 0, y: 0 },
+          gridRadius: shape.radius,
+          kind,
+          config: base,
+          latticeRadius: shape.radius,
+          symmetric: true,
+        });
+      }
+      return cellsInsideShape(base, shapeForPrimitive("circle", base, { width: 0, height: 0, radius: shape.radius }));
+    case "triangle":
+      if (kind === "tri") {
+        return primitiveCells("equilateral_triangle", {
+          startGrid: { x: 0, y: 0 },
+          endGrid: { x: 0, y: 0 },
+          gridRadius: shape.side,
+          kind,
+          config: base,
+          latticeSide: shape.side,
+        });
+      }
+      return cellsInsideShape(base, shapeForPrimitive("triangle", base, { width: 0, height: 0, side: shape.side }));
+    case "hexagon":
+      if (kind === "cairo") {
+        return cellsInsideShape(base, shapeForPrimitive("hexagon", base, { width: 0, height: 0, radius: shape.radius }));
+      }
+      return latticeHexagonCells(base, shape.radius);
   }
 }
 
 /**
- * Converts the editor's detailed shape configuration into the only representation runtime code
- * needs. Keep all `*_circle`/`*_triangle`/`*_custom` knowledge in this module.
+ * Converts the editor's preset shape into the only representation runtime code needs: the same
+ * tessellation and orientation with an explicit cell list. Keep all preset-shape knowledge in
+ * this module.
  */
-export function resolveFieldConfig(cfg: TessellationConfig): ResolvedField {
-  const cells = configAllCells(cfg);
-  if (cfg.type.startsWith("square")) return { type: "square", width: 0, height: 0, kind: "square", cells };
-  if (cfg.type.startsWith("hex")) {
-    return { type: "hex_parallelogram", cols: 0, rows: 0, kind: "hex", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "flat_top") as "flat_top" | "pointy_top", cells };
-  }
-  if (cfg.type.startsWith("cairo")) return { type: "cairo", cols: 0, rows: 0, kind: "cairo", cells };
-  return { type: "triangle_rect", cols: 0, rows: 0, kind: "triangle", orientation: (("orientation" in cfg ? cfg.orientation : undefined) ?? "r0") as "r0" | "r90" | "r180" | "r270", cells };
+export function resolveFieldConfig(cfg: FieldConfig): ResolvedField {
+  return { ...cfg, shape: { shape: "custom", points: configAllCells(cfg) } };
 }
 
 /** A centered Cairo rectangle with the same fundamental-square layout as maze-core's
@@ -271,7 +201,7 @@ function hexRectangleCells(cols: number, rows: number, orientation: "flat_top" |
   return cells;
 }
 
-function centeredOrigin(cfg: TessellationConfig, width: number, height: number): ShapeOrigin {
+function centeredOrigin(cfg: FieldConfig, width: number, height: number): ShapeOrigin {
   const projection = makeProjection(cfg);
   const center = projection.gridToScreen(0, 0);
   return {

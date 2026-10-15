@@ -124,6 +124,7 @@ mod tests {
     use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn missing_issue(missing: u32) -> MissingOneWaysIssue {
         let entries = if missing == 0 {
@@ -136,7 +137,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(side, side), &mut ids)
+                .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -187,7 +190,7 @@ mod tests {
     fn apply_does_not_pick_an_already_connected_pair() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -222,7 +225,7 @@ mod tests {
     fn apply_does_not_add_when_both_directions_locked() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -257,7 +260,7 @@ mod tests {
     fn apply_uses_the_only_free_direction_when_one_is_locked() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -294,9 +297,12 @@ mod tests {
     #[test]
     fn apply_restricts_candidates_to_the_named_level() {
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a]);
         let level_b = mf.add_level(field_b);
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
@@ -329,10 +335,14 @@ mod tests {
         // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
         // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 edges total, not 6.
         let mut ids = IdGenerator::new();
-        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let field_a =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_b =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let field_c =
+            crate::space::Field::new(Arc::default(), square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), [field_a]);
         let level_b = mf.add_level(field_b);
         let level_c = mf.add_level(field_c);
         let level_a = mf.levels_ordered().next().unwrap();

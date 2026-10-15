@@ -21,7 +21,7 @@
 
 use maze_core::space::Tessellation;
 use maze_runner::GenerateConfig;
-use maze_runner::runner::prepare::{Prepared, TessellationVisitor, dispatch};
+use maze_runner::runner::prepare::{Prepared, PreparedVisitor, dispatch};
 use maze_runner::runner::stages::{run_check_only, run_generation, run_repair, seed_graph};
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
@@ -59,10 +59,10 @@ struct TimeStage<'a> {
     stage: Stage,
 }
 
-impl TessellationVisitor for TimeStage<'_> {
+impl PreparedVisitor for TimeStage<'_> {
     type Output = f64;
 
-    fn visit<T: Tessellation + 'static>(self, prepared: Prepared<T>) -> Result<f64, String> {
+    fn visit<T: Tessellation>(self, prepared: Prepared<T>) -> Result<f64, String> {
         let config = self.config;
         let mut seeded = seed_graph(prepared, config)?;
         let started = Instant::now();

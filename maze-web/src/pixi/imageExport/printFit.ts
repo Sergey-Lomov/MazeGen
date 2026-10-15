@@ -1,5 +1,5 @@
 import { contentWorldBounds, type ContentBoundsBasis } from "./contentBounds";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { ExportMargin } from "./exportMargins";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import { PAPER_SIZES_MM } from "./paperSizes";
@@ -41,11 +41,11 @@ export function pxToMm(px: number, dpi: number): number {
 
 /** World-space length of the print-sizing measure at scale 1: square side, or circumcircle
  * diameter for regular hexagons and triangles. */
-export function cellMeasureWorldUnits(config: Pick<TessellationConfig, "type">): number {
-  if (config.type === "hex_rectangle" || config.type === "hex_circle" || config.type === "hex_triangle" || config.type === "hex_parallelogram" || config.type === "hex_hexagon" || config.type === "hex_custom") {
+export function cellMeasureWorldUnits(config: Pick<FieldConfig, "tessellation">): number {
+  if (config.tessellation.kind === "hex") {
     return TILE_SIZE * 2;
   }
-  if (config.type === "triangle_rect" || config.type === "triangle_triangle" || config.type === "triangle_circle" || config.type === "triangle_hexagon" || config.type === "tri_custom") {
+  if (config.tessellation.kind === "tri") {
     return (TRI_TILE_SIZE * 2) / SQRT_3;
   }
   return TILE_SIZE;
@@ -53,24 +53,20 @@ export function cellMeasureWorldUnits(config: Pick<TessellationConfig, "type">):
 
 /** World-space length of one geometric cell side at scale 1. Hexagons use TILE_SIZE as their
  * circumradius/side length, while triangles use TRI_TILE_SIZE as their side length. */
-export function cellSideWorldUnits(config: Pick<TessellationConfig, "type">): number {
-  return config.type === "triangle_rect"
-    || config.type === "triangle_triangle"
-    || config.type === "triangle_circle"
-    || config.type === "triangle_hexagon"
-    || config.type === "tri_custom"
+export function cellSideWorldUnits(config: Pick<FieldConfig, "tessellation">): number {
+  return config.tessellation.kind === "tri"
     ? TRI_TILE_SIZE
     : TILE_SIZE;
 }
 
 /** Converts the print-sizing measure (square side or polygon circumcircle diameter) to a
  * geometric cell side in millimeters. */
-export function printMeasureToCellSideMm(config: Pick<TessellationConfig, "type">, measureMm: number): number {
+export function printMeasureToCellSideMm(config: Pick<FieldConfig, "tessellation">, measureMm: number): number {
   return measureMm * cellSideWorldUnits(config) / cellMeasureWorldUnits(config);
 }
 
 /** Physical print-sizing measure represented by a print scale. */
-export function printCellMeasureMm(config: Pick<TessellationConfig, "type">, scale: number, dpi: number): number {
+export function printCellMeasureMm(config: Pick<FieldConfig, "tessellation">, scale: number, dpi: number): number {
   return pxToMm(cellMeasureWorldUnits(config) * scale, dpi);
 }
 
@@ -84,7 +80,7 @@ export function resolveSheetSizeMm(settings: PrintExportSettings): { widthMm: nu
   return settings.orientation === "landscape" ? { widthMm: h, heightMm: w } : { widthMm: w, heightMm: h };
 }
 
-function rawContentSizePx(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[], margin: ExportMargin, scale: number, basis: ContentBoundsBasis = "cell") {
+function rawContentSizePx(cfg: FieldConfig, nodes: { x: number; y: number; id: number }[], margin: ExportMargin, scale: number, basis: ContentBoundsBasis = "cell") {
   const { minX, minY, width, height } = contentWorldBounds(cfg, nodes, margin, basis);
   return { minXWorld: minX, minYWorld: minY, widthPx: width * scale, heightPx: height * scale };
 }
@@ -122,7 +118,7 @@ export interface PrintFit {
  * comparison — content can be small enough to fit but still poke past an edge under an off-center
  * anchor (including "custom"). */
 export function computePrintExportFit(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
@@ -198,7 +194,7 @@ export function computeSheetScreenLayout(sheetWidthPx: number, sheetHeightPx: nu
  * origin, then divide by the frame's own screen-fit downscale (`frameLayout.w / sheetWidthPx`) to
  * undo it, landing in the same pixel space `computePrintExportFit`'s `scale`/`x`/`y` operate in. */
 export function computePrintPlacementFromViewport(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
@@ -237,7 +233,7 @@ export function computePrintPlacementFromViewport(
  * `computePrintExportFit`'s own `x`/`y`/`scale` rather than re-deriving placement, so it stays
  * correct for every anchor including "custom" without duplicating `placeInBox`'s math. */
 export function computeViewportFromPrintPlacement(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
@@ -265,7 +261,7 @@ export function computeViewportFromPrintPlacement(
  * sheet/DPI/margin/maze change while `print.scaleAutoFit` is on, keeping `print.scale` in
  * lockstep; a one-time caller (e.g. a manual "fit now" action) can just call this once instead. */
 export function computeAutoFitPrintScale(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,

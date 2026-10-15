@@ -116,10 +116,12 @@ mod tests {
     use super::*;
     use crate::graph::{EdgeKind, Graph};
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = crate::IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(n, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

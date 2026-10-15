@@ -8,6 +8,7 @@ use crate::repair::strategies::{OneWayToPassageStrategy, OneWayToWallStrategy};
 use crate::space::{SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn strategy(protect_route: bool) -> OneWayGroupSelectStrategy {
     OneWayGroupSelectStrategy { protect_route }
@@ -59,7 +60,8 @@ fn fix_target_nested_passage<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> 
 fn maze_with_two_one_ways() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let field = square_rect(4, 1);
-    let field = crate::space::MultiLevelField::single_level(field, &mut ids).unwrap();
+    let field =
+        crate::space::MultiLevelField::single_level(Arc::default(), field, &mut ids).unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -157,7 +159,8 @@ fn apply_fixes_exactly_one_edge_from_a_group_larger_than_two() {
     // per call -- see GitHub issue #200's follow-up review).
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(11, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -207,7 +210,8 @@ fn apply_fixes_to_remove_edges_from_a_single_group_in_one_call() {
     // iteration per excess edge.
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(11, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -254,7 +258,8 @@ fn apply_stops_once_to_remove_is_reached_even_with_more_candidates_left() {
     // (as opposed to draining the whole group).
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(11, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -303,7 +308,8 @@ fn apply_fixes_a_shared_edge_once_but_decrements_to_remove_in_every_group_it_app
     // e_shared alone, e_b survives untouched).
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -357,7 +363,8 @@ fn problematic_priority_favors_highest_membership_edge_even_when_its_group_is_no
     // first in the list.
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(8, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -455,7 +462,8 @@ fn apply_with_passage_nested_resolves_a_shared_edge_across_two_groups_without_a_
     // nested strategy again.
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -515,7 +523,8 @@ fn problematic_priority_picks_the_edge_in_more_groups() {
     // random tie-break is never actually exercised regardless of seed.
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -625,7 +634,8 @@ fn protect_route_disabled_allows_a_route_critical_edge_to_be_picked() {
 fn resolving_shared_edge_drops_the_other_group_without_a_second_fix() {
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {
@@ -714,7 +724,8 @@ fn protect_route_leaves_a_fully_protected_group_untouched() {
     use crate::space::SquarePoint;
     let mut ids = IdGenerator::new();
     let field: crate::space::MultiLevelField<SquareTessellation> =
-        crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        crate::space::MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids)
+            .unwrap();
     let field_level = field.single_level_id();
     let mut g = Graph::new();
     for node in field.all_node_ids() {

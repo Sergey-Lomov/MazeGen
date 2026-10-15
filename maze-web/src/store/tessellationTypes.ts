@@ -1,12 +1,11 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig, PresetFieldShape, PresetFieldShapeName, TessellationKind, HexOrientation, TriOrientation } from "../fieldConfig";
 
-export type TessellationKind = "square" | "hex" | "triangle" | "cairo";
+export type { TessellationKind, HexOrientation, TriOrientation };
+/** Per-kind shape selection in the field editor; `free` selects the custom (free-drawn) shape. */
 export type SquareShape = "rect" | "circle" | "triangle" | "free";
-export type HexShape = "rectangle" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
+export type HexShape = "rect" | "circle" | "triangle" | "parallelogram" | "hexagon" | "free";
 export type TriangleShape = "rect" | "triangle" | "hexagon" | "circle" | "free";
 export type CairoShape = "rect" | "circle" | "triangle" | "hexagon" | "free";
-export type HexOrientation = "flat_top" | "pointy_top";
-export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive =
   | "point" | "rectangle" | "circle" | "triangle" | "equilateral_triangle" | "hexagon" | "parallelogram" | "polygon" | "symmetry" | "magic_wand";
 export type FieldOperation = "add" | "remove" | "select";
@@ -38,9 +37,9 @@ export type PendingFieldEdit =
   | { kind: "setHexShape"; shape: HexShape }
   | { kind: "setTriangleShape"; shape: TriangleShape }
   | { kind: "setCairoShape"; shape: CairoShape }
-  | { kind: "setTessellationConfig"; config: TessellationConfig }
-  | { kind: "setTessellationConfigForFloors"; config: TessellationConfig; applyToAllStandardFloors: boolean }
-  | { kind: "setTessellationConfigsForFloors"; configs: Record<string, TessellationConfig>; applyToAllStandardFloors: boolean }
+  | { kind: "setFieldConfig"; config: FieldConfig }
+  | { kind: "setFieldConfigForFloors"; config: FieldConfig; applyToAllStandardFloors: boolean }
+  | { kind: "setFieldConfigsForFloors"; configs: Record<string, FieldConfig>; applyToAllStandardFloors: boolean }
   | { kind: "addFieldPoint"; x: number; y: number }
   | { kind: "removeFieldPoint"; x: number; y: number }
   | { kind: "addFieldPoints"; cells: [number, number][] }
@@ -66,11 +65,11 @@ export interface TessellationState {
   previewKind: TessellationKind;
   previewHexOrientation: HexOrientation;
   previewTriOrientation: TriOrientation;
-  previewTessellationConfig: TessellationConfig;
+  previewFieldConfig: FieldConfig;
   /** Snapshot of the (active floor's) field config taken at generate time — maze-wide, since
    * generation/post-edit/analytics are not yet multi-floor-aware (GitHub issue #355 tracks
    * migrating this once they are; see Specs/floors.md's Non-goals). */
-  activeTessellationConfig: TessellationConfig;
+  activeFieldConfig: FieldConfig;
   showFieldOverlay: boolean;
   showFieldOrigin: boolean;
   showPrimitiveFrame: boolean;
@@ -138,9 +137,9 @@ export interface FloorFieldConfig {
   hexShape: HexShape;
   triangleShape: TriangleShape;
   cairoShape: CairoShape;
-  /** Saved params per predefined config type, preserved across shape/mode switches. */
-  savedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>;
-  tessellationConfig: TessellationConfig;
+  /** Saved params per preset shape, preserved across shape/mode switches. */
+  savedShapes: Partial<Record<PresetFieldShapeName, PresetFieldShape>>;
+  fieldConfig: FieldConfig;
   /** Per-kind free-field points, preserved when switching shapes within same kind. */
   freeFieldPoints: Record<TessellationKind, Set<number>>;
   /**
@@ -176,9 +175,9 @@ export interface FloorFieldsActions {
   setHexShape: (shape: HexShape) => void;
   setTriangleShape: (shape: TriangleShape) => void;
   setCairoShape: (shape: CairoShape) => void;
-  setTessellationConfig: (cfg: TessellationConfig) => void;
-  setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => void;
-  setTessellationConfigsForFloors: (configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean) => void;
+  setFieldConfig: (cfg: FieldConfig) => void;
+  setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => void;
+  setFieldConfigsForFloors: (configs: Record<string, FieldConfig>, applyToAllStandardFloors: boolean) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;

@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { decodePoint, encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { computeSymmetryPreview, symmetryCandidateCells } from "../../pixi/symmetry";
@@ -24,7 +24,7 @@ function guardFieldEdit(state: MazeState, pending: PendingFieldEdit, apply: () =
     : apply();
 }
 
-function applyTessellationConfigsForFloors(state: MazeState, configs: Record<string, TessellationConfig>, applyToAllStandardFloors: boolean): Partial<MazeState> {
+function applyFieldConfigsForFloors(state: MazeState, configs: Record<string, FieldConfig>, applyToAllStandardFloors: boolean): Partial<MazeState> {
   const targetIds = applyToAllStandardFloors
     ? state.floors.filter((floor) => state.floorFields[floor.id].fieldEditMode !== "custom").map((floor) => floor.id)
     : [state.activeFloorId];
@@ -42,7 +42,7 @@ function applyTessellationConfigsForFloors(state: MazeState, configs: Record<str
       state.hexOrientation,
       state.triOrientation,
       field.freeFieldPoints,
-      field.savedConfigs,
+      field.savedShapes,
     );
     floorFields[floor.id] = {
       ...field,
@@ -50,8 +50,8 @@ function applyTessellationConfigsForFloors(state: MazeState, configs: Record<str
       hexShape: derived.hexShape,
       triangleShape: derived.triangleShape,
       cairoShape: derived.cairoShape,
-      savedConfigs: derived.savedConfigs,
-      tessellationConfig: cfg,
+      savedShapes: derived.savedShapes,
+      fieldConfig: cfg,
       freeFieldPoints: derived.freeFieldPoints,
       isEditingField: derived.isEditingField,
       fieldPoints: derived.fieldPoints,
@@ -72,9 +72,9 @@ function applyTessellationConfigsForFloors(state: MazeState, configs: Record<str
   };
 }
 
-function applyTessellationConfigForFloors(state: MazeState, cfg: TessellationConfig, applyToAllStandardFloors: boolean): Partial<MazeState> {
+function applyFieldConfigForFloors(state: MazeState, cfg: FieldConfig, applyToAllStandardFloors: boolean): Partial<MazeState> {
   const configs = Object.fromEntries(state.floors.map((floor) => [floor.id, cfg]));
-  return applyTessellationConfigsForFloors(state, configs, applyToAllStandardFloors);
+  return applyFieldConfigsForFloors(state, configs, applyToAllStandardFloors);
 }
 
 export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsState & FloorFieldsActions> = (set, get) => ({
@@ -83,31 +83,31 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
 
   setSquareShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setSquareShape", shape }, () => makeShapeSetter("squareShape", "square")(shape)(state))),
   setHexShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setHexShape", shape }, () => makeShapeSetter("hexShape", "hex")(shape)(state))),
-  setTriangleShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setTriangleShape", shape }, () => makeShapeSetter("triangleShape", "triangle")(shape)(state))),
+  setTriangleShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setTriangleShape", shape }, () => makeShapeSetter("triangleShape", "tri")(shape)(state))),
   setCairoShape: (shape) => set((state) => guardFieldEdit(state, { kind: "setCairoShape", shape }, () => makeShapeSetter("cairoShape", "cairo")(shape)(state))),
 
-  setTessellationConfig: (cfg: TessellationConfig) => {
-    get().setTessellationConfigForFloors(cfg, false);
+  setFieldConfig: (cfg: FieldConfig) => {
+    get().setFieldConfigForFloors(cfg, false);
   },
 
-  setTessellationConfigForFloors: (cfg: TessellationConfig, applyToAllStandardFloors: boolean) => {
+  setFieldConfigForFloors: (cfg: FieldConfig, applyToAllStandardFloors: boolean) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
     if (state.mazeDirty || state.postEditDirty) {
-      set({ fieldEditConfirmation: { kind: "setTessellationConfigForFloors", config: cfg, applyToAllStandardFloors } });
+      set({ fieldEditConfirmation: { kind: "setFieldConfigForFloors", config: cfg, applyToAllStandardFloors } });
       return;
     }
-    set(applyTessellationConfigForFloors(state, cfg, applyToAllStandardFloors));
+    set(applyFieldConfigForFloors(state, cfg, applyToAllStandardFloors));
   },
 
-  setTessellationConfigsForFloors: (configs, applyToAllStandardFloors) => {
+  setFieldConfigsForFloors: (configs, applyToAllStandardFloors) => {
     const state = get();
     if (state.backgroundAutoFillPreview !== null) return;
     if (state.mazeDirty || state.postEditDirty) {
-      set({ fieldEditConfirmation: { kind: "setTessellationConfigsForFloors", configs, applyToAllStandardFloors } });
+      set({ fieldEditConfirmation: { kind: "setFieldConfigsForFloors", configs, applyToAllStandardFloors } });
       return;
     }
-    set(applyTessellationConfigsForFloors(state, configs, applyToAllStandardFloors));
+    set(applyFieldConfigsForFloors(state, configs, applyToAllStandardFloors));
   },
 
   addFieldPoint: (x, y) => set((state) => guardFieldEdit(state, { kind: "addFieldPoint", x, y }, () => withFieldPointsEdit(state, (pts) => {
@@ -129,8 +129,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     if (state.mazeDirty || state.postEditDirty) return { fieldEditConfirmation: { kind: "setFieldEditMode", mode } };
     const field = activeFloorField(state);
     if (mode === "custom") {
-      const cfg = field.tessellationConfig;
-      const isAlreadyCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom" || cfg.type === "cairo_custom";
+      const cfg = field.fieldConfig;
+      const isAlreadyCustom = cfg.shape.shape === "custom";
       let fieldPoints: Set<number>;
       if (isAlreadyCustom) {
         fieldPoints = field.freeFieldPoints[state.tessellationKind];
@@ -139,17 +139,17 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         fieldPoints = new Set(cells.map(([x, y]) => encodePoint(x, y)));
       }
       const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
-      const tessellationConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+      const fieldConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
       return {
-        ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point", fieldDirty: true }),
+        ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, fieldConfig, fieldPrimitive: "point", fieldDirty: true }),
         ...buildResetDownstreamState(),
         backgroundAutoFillPreview: null,
         debugStale: debugStaleOf(state),
       };
     }
-    const cfg = buildPredefinedConfig(state.tessellationKind, field.hexShape, field.triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs, field.squareShape, field.cairoShape);
+    const cfg = buildPredefinedConfig(state.tessellationKind, field.hexShape, field.triangleShape, state.hexOrientation, state.triOrientation, field.savedShapes, field.squareShape, field.cairoShape);
     return {
-      ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
+      ...withActiveFloorField(state, { fieldEditMode: mode, isEditingField: false, fieldConfig: cfg, fieldPrimitive: "point", fieldDirty: true }),
       ...buildResetDownstreamState(),
       backgroundAutoFillPreview: null,
       debugStale: debugStaleOf(state),
@@ -236,8 +236,8 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       && (state.symmetryPolygon.length < 3 || !state.symmetryPolygonFinished)) return {};
     const preview = computeSymmetryPreview(
       field.fieldPoints,
-      symmetryCandidateCells(field.fieldPoints, field.tessellationConfig, axis, decodePoint),
-      field.tessellationConfig,
+      symmetryCandidateCells(field.fieldPoints, field.fieldConfig, axis, decodePoint),
+      field.fieldConfig,
       {
         scope: state.symmetryScope,
         sourceSide: state.symmetrySourceSide,
@@ -291,7 +291,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
     const fieldPoints = new Set(points);
     const field = activeFloorField(state);
     const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
-    const tessellationConfig = buildFreeConfig(
+    const fieldConfig = buildFreeConfig(
       state.tessellationKind,
       fieldPoints,
       state.hexOrientation,
@@ -303,7 +303,7 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
         isEditingField: true,
         fieldPoints,
         freeFieldPoints,
-        tessellationConfig,
+        fieldConfig,
         fieldDirty: true,
       }),
       ...buildResetDownstreamState(),
@@ -322,9 +322,9 @@ export const createFloorFieldSlice: StateCreator<MazeStore, [], [], FloorFieldsS
       case "setHexShape": get().setHexShape(pending.shape); break;
       case "setTriangleShape": get().setTriangleShape(pending.shape); break;
       case "setCairoShape": get().setCairoShape(pending.shape); break;
-      case "setTessellationConfig": get().setTessellationConfig(pending.config); break;
-      case "setTessellationConfigForFloors": get().setTessellationConfigForFloors(pending.config, pending.applyToAllStandardFloors); break;
-      case "setTessellationConfigsForFloors": get().setTessellationConfigsForFloors(pending.configs, pending.applyToAllStandardFloors); break;
+      case "setFieldConfig": get().setFieldConfig(pending.config); break;
+      case "setFieldConfigForFloors": get().setFieldConfigForFloors(pending.config, pending.applyToAllStandardFloors); break;
+      case "setFieldConfigsForFloors": get().setFieldConfigsForFloors(pending.configs, pending.applyToAllStandardFloors); break;
       case "addFieldPoint": get().addFieldPoint(pending.x, pending.y); break;
       case "removeFieldPoint": get().removeFieldPoint(pending.x, pending.y); break;
       case "addFieldPoints": get().addFieldPoints(pending.cells); break;

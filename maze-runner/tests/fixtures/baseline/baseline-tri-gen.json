@@ -1,6 +1,7 @@
 {
   "tessellation": {
-    "tessellation_type": "tri"
+    "kind": "tri",
+    "params": {}
   },
   "stages": [
     {

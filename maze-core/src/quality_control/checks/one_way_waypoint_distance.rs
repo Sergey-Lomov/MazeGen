@@ -93,6 +93,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "one_way_waypoint_distance";
 
@@ -105,7 +106,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let width = one_way_from + 2;
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -188,7 +189,7 @@ mod tests {
         // Any's "closer of both" reduction happens to also catch it.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -232,7 +233,7 @@ mod tests {
         // never be flagged, regardless of distance, since it isn't a one-way.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -272,7 +273,7 @@ mod tests {
         // detection.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -313,7 +314,7 @@ mod tests {
         // reachable at a much closer distance via a separate path, so the min catches it via `to`.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -354,7 +355,7 @@ mod tests {
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(12, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -482,7 +483,7 @@ mod tests {
     fn silent_when_one_way_endpoint_unreachable_from_waypoint() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

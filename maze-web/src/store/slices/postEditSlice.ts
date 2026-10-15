@@ -378,7 +378,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const {
       postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints,
-      activeTessellationConfig, nodes, start, finish, stages,
+      activeFieldConfig, nodes, start, finish, stages,
     } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
@@ -486,7 +486,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
 
     const config = {
-      tessellation: fieldConfigToWasm(activeTessellationConfig),
+      tessellation: fieldConfigToWasm(activeFieldConfig),
       level_fields,
       nodes: prunedNodes,
       edges: wasmEdges,
@@ -1076,12 +1076,12 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     const slotIds = state.postEditDraftSplitPoints[key] ?? [];
     const field = activeFloorField(state);
-    const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig);
+    const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeFieldConfig);
     const cellSet = buildCellSet(cells);
     const floorNodes = state.nodes.filter((n) => (n.level ?? 0) === (level ?? 0));
     const before = state.postEditDraftEdges;
     const rotatedNodes = rotateSplitPointNodes(
-      before, point, slotIds, direction, state.activeTessellationConfig,
+      before, point, slotIds, direction, state.activeFieldConfig,
       cellSet, floorNodes, state.postEditActiveSplitNode, state.postEditDraftSplitPoints, level,
     );
     if (rotatedNodes.length === 0) return;
@@ -1140,9 +1140,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const nextActiveSplitNode = { ...state.postEditActiveSplitNode };
     delete nextActiveSplitNode[key];
 
-    const { offsets } = getNeighborData(state.activeTessellationConfig, point[0], point[1]);
+    const { offsets } = getNeighborData(state.activeFieldConfig, point[0], point[1]);
     const field = activeFloorField(state);
-    const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig);
+    const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeFieldConfig);
     const inFieldCells = buildCellSet(cells);
     const currentEdges = state.postEditDraftEdges ?? {};
 
@@ -1160,7 +1160,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       const endpoint = nodeEndpoints[nodeIndex];
       if (!endpoint) continue;
       for (const authoredFaceIndex of blueprint.nodeFaces[nodeIndex]) {
-        const faceIndex = resolveBlueprintFaceIndex(blueprint, state.activeTessellationConfig, point, authoredFaceIndex);
+        const faceIndex = resolveBlueprintFaceIndex(blueprint, state.activeFieldConfig, point, authoredFaceIndex);
         // Guards against a caller passing a blueprint authored for a different tile degree
         // (normal UI flow always picks one via `blueprintsForDegree`, so this only matters for
         // a direct/programmatic `applySplitBlueprint` call) — `offsets[faceIndex]` would

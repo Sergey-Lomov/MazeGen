@@ -4,11 +4,12 @@ import { baseStoreState } from "./storeTestHelpers";
 import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
 import { buildPresetPointEntities } from "../pixi/pointEntities";
 import * as m from "~/paraglide/messages";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
-/** Patches the active floor's own field config — presetConnectionsSlice reads tessellationConfig/
+/** Patches the active floor's own field config — presetConnectionsSlice reads fieldConfig/
  * fieldPoints/isEditingField through floorFields[activeFloorId] (GitHub issue #338). */
-function setActiveFieldConfig(patch: { tessellationConfig?: TessellationConfig; isEditingField?: boolean; fieldPoints?: Set<number> }) {
+function setActiveFieldConfig(patch: { fieldConfig?: FieldConfig; isEditingField?: boolean; fieldPoints?: Set<number> }) {
   const state = useMazeStore.getState();
   useMazeStore.setState({
     floorFields: {
@@ -38,7 +39,7 @@ beforeEach(() => {
     autoLock: true,
     defaultEdgeState: "undefined",
   });
-  setActiveFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, isEditingField: false, fieldPoints: new Set<number>() });
+  setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }), isEditingField: false, fieldPoints: new Set<number>() });
 });
 
 describe("mazeStore preset connections", () => {
@@ -87,7 +88,7 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsTool recomputes autoLockedNodes when fully surrounding a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({ presetConnectionsTool: "wall" });
     useMazeStore.getState().applyPresetConnectionsTool("-1,0-0,0", [-1, 0], [0, 0]);
     const s = useMazeStore.getState();
@@ -114,7 +115,7 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsToolAt('reset', ...) restores the default and recomputes auto-locks", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       defaultEdgeState: "wall",
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "undefined", source: "user" }]]),
@@ -147,7 +148,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections removes entries outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["5,5-6,5", { from: presetEndpoint([5, 5]), to: presetEndpoint([6, 5]), state: "wall", source: "user" }]]),
     });
@@ -156,7 +157,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections clears start/finish markers that fall outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetStart: presetEndpoint([5, 5]),
       presetFinish: presetEndpoint([0, 0]),
@@ -168,21 +169,21 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections clears a generation source outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({ presetGenSource: presetEndpoint([5, 5]) });
     useMazeStore.getState().clearInvalidPresetConnections();
     expect(useMazeStore.getState().presetGenSource).toBeNull();
   });
 
   it("clearInvalidPresetConnections clears locks outside the field", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({ lockedNodes: new Map([["5,5", "both"]]) });
     useMazeStore.getState().clearInvalidPresetConnections();
     expect(useMazeStore.getState().lockedNodes.size).toBe(0);
   });
 
   it("clearInvalidPresetConnections removes list metadata for invalid entities", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) });
     useMazeStore.setState({
       presetSplitPoints: { "99,99": [0] },
       presetSplitPointIds: { "99,99": "s1" },
@@ -235,7 +236,7 @@ describe("mazeStore preset connections", () => {
 
   it("setDefaultEdgeState('wall') fills all interior edges as walls", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.getState().setDefaultEdgeState("wall");
     const s = useMazeStore.getState();
     expect(s.defaultEdgeState).toBe("wall");
@@ -244,7 +245,7 @@ describe("mazeStore preset connections", () => {
   });
 
   it("setDefaultEdgeState('undefined') removes default-sourced entries", () => {
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "default" }]]),
     });
@@ -254,15 +255,15 @@ describe("mazeStore preset connections", () => {
 
   it("setDefaultEdgeState('wall') fills interior edges on every floor, not just the active one (GitHub issue #434)", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
+    const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
     const state = useMazeStore.getState();
     useMazeStore.setState({
       floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
       activeFloorId: "f0",
       floorFields: {
         ...state.floorFields,
-        f0: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
-        f1: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
+        f0: { ...state.floorFields[state.activeFloorId], fieldConfig: cfg },
+        f1: { ...state.floorFields[state.activeFloorId], fieldConfig: cfg },
       },
     });
     useMazeStore.getState().setDefaultEdgeState("wall");
@@ -341,7 +342,7 @@ describe("mazeStore preset connections", () => {
 
   it("setAutoLock(true) recomputes autoLockedNodes", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) });
     useMazeStore.setState({
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "user" }]]),
       autoLock: false,
@@ -566,11 +567,11 @@ describe("mazeStore preset connections", () => {
   describe("applyPresetSplitBlueprint (GitHub issue #235)", () => {
     // Square field is centered on the origin (`ox = floor(width/2)`, see `configAllCells`) —
     // width 9 covers x,y in [-4, 4], wide enough for the origin plus every one of its neighbors.
-    const wideField = { type: "square" as const, width: 9, height: 9 };
+    const wideField = fieldOf("square", { shape: "rect", cols: 9, rows: 9 });
     const square = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
 
     it("mints one slot per extra blueprint node and wires passage connections to in-field neighbors", () => {
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
@@ -594,7 +595,7 @@ describe("mazeStore preset connections", () => {
 
     it("replaces an existing split point entirely, dropping stale slots/connections", () => {
       const staleTarget = presetEndpoint([0, 0], 5);
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [5] },
         presetConnections: new Map([["0,0:5-5,5", { from: staleTarget, to: presetEndpoint([5, 5]), state: "passage" as const, source: "user" as const }]]),
@@ -606,7 +607,7 @@ describe("mazeStore preset connections", () => {
     });
 
     it("preserves a preset start marker assigned to a slot while applying a blueprint", () => {
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0] },
         presetStart: presetEndpoint([0, 0], 0),
@@ -621,7 +622,7 @@ describe("mazeStore preset connections", () => {
     it("moves occupied preset elements from a dropped slot onto the original node", () => {
       const oldSlot = presetEndpoint([0, 0], 5);
       const singleNode = { id: 1, degree: 4, nodeFaces: [[0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [5] },
         presetStart: oldSlot,
@@ -648,7 +649,7 @@ describe("mazeStore preset connections", () => {
       // Square tiles have 4 faces (offsets.length === 4) — a hex blueprint's face index 5 has
       // nothing to destructure from `offsets[5]` on a square tile.
       const oversized = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       expect(() => useMazeStore.getState().applyPresetSplitBlueprint([0, 0], oversized)).not.toThrow();
       // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
@@ -658,8 +659,8 @@ describe("mazeStore preset connections", () => {
     it("skips a face pointing outside the field instead of writing a connection to it", () => {
       // width=3 centers cells at x,y in [-1, 1] — the origin's east neighbor (1,0) is in-field,
       // but its own east neighbor (2,0) (face 0 of a shifted point) would be out of field.
-      const narrowField = { type: "square" as const, width: 1, height: 1 };
-      setActiveFieldConfig({ tessellationConfig: narrowField });
+      const narrowField = fieldOf("square", { shape: "rect", cols: 1, rows: 1 });
+      setActiveFieldConfig({ fieldConfig: narrowField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
@@ -669,7 +670,7 @@ describe("mazeStore preset connections", () => {
 
     it("clears presetSplitPoints for a single-node blueprint (no extra slots to mint)", () => {
       const singleNode = { id: 0, degree: 4, nodeFaces: [[0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({
         presetSplitPoints: { "0,0": [0, 1] },
         presetActiveSplitNode: {},
@@ -686,7 +687,7 @@ describe("mazeStore preset connections", () => {
       // node0(original): S,N faces. node1(slot0): E,W faces — slot0 is the node that actually
       // faces the neighboring cell on either side.
       const eastWestBlueprint = { id: 0, degree: 4, nodeFaces: [[1, 3], [0, 2]] };
-      setActiveFieldConfig({ tessellationConfig: wideField });
+      setActiveFieldConfig({ fieldConfig: wideField });
       useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
 
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], eastWestBlueprint);
@@ -731,7 +732,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
     }
@@ -989,7 +990,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().movePresetVerticalPassageEndpoint(1, "from", [1, 0]);
         // Shrink floor 1's field so [1, 0] no longer exists there, between the defer and the pick.
         useMazeStore.setState((state) => ({
-          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], tessellationConfig: { type: "square", width: 1, height: 1 } } },
+          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) } },
         }));
         useMazeStore.getState().applyPresetSplitTargetPick(9);
         const s = useMazeStore.getState();
@@ -1038,7 +1039,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().movePresetElevatorEndpoint(1, 0, [1, 0]);
         // Shrink floor 1's field so [1, 0] no longer exists there, between the defer and the pick.
         useMazeStore.setState((state) => ({
-          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], tessellationConfig: { type: "square", width: 1, height: 1 } } },
+          floorFields: { ...state.floorFields, [FLOOR_2_ID]: { ...state.floorFields[FLOOR_2_ID], fieldConfig: fieldOf("square", { shape: "rect", cols: 1, rows: 1 }) } },
         }));
         useMazeStore.getState().applyPresetSplitTargetPick(4);
         const s = useMazeStore.getState();
@@ -1223,7 +1224,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
       openPrompt({ tool: "elevator" });
@@ -1238,7 +1239,7 @@ describe("mazeStore preset connections", () => {
         floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
         floorFields: {
           ...state.floorFields,
-          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) },
         },
       });
       openPrompt({ tool: "vertical_passage_one_way" });

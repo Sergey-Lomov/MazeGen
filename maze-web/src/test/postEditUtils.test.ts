@@ -10,6 +10,7 @@ import { canCompleteOppositePair, hasCompleteOppositePair } from "../pixi/splitF
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const noSplits = () => undefined;
 
@@ -180,7 +181,7 @@ describe("floorScopedTeleportEdges", () => {
 
 // --- rotateSplitPointNodes ---
 
-const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareCfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 // SQUARE_NEIGHBOR_OFFSETS order: [0]=E(1,0), [1]=N(0,1), [2]=W(-1,0), [3]=S(0,-1) — direction 1
 // rotates E->N->W->S->E, direction -1 the reverse.
 const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1", "1,-1", "-1,-1"]);
@@ -200,7 +201,7 @@ const wallTo = (from: PostEditEndpoint, to: PostEditEndpoint): PostEditEdge => (
 
 describe("rotateSplitPointNodes — full-snapshot result (GitHub issue #548 compaction follow-up)", () => {
   it("rotates Cairo's five face slots without assuming four or six faces", () => {
-    const cairoCfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cairoCfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     const from = nodeEndpoint(1);
     const oldNeighbor = nodeEndpoint(2);
     const edges: Record<string, PostEditEdge> = {

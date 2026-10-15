@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { hexOrientationOf, type FieldConfig } from "../../fieldConfig";
 
 /** A connector bend axis, as a unit direction vector — a segment along this axis can run either
  *  way (`(ux, uy)` and `(-ux, -uy)` are the same axis). */
@@ -45,36 +45,15 @@ const CAIRO_AXES: Axis[] = [
  *  because they can coincide with Cairo cell edges. This is a
  *  display-only routing concern (not a tessellation concept core cares about — some tessellations
  *  have no meaningful "face axis" at all), so it lives entirely on the web side. */
-export function getConnectorAxes(cfg: TessellationConfig): Axis[] {
-  switch (cfg.type) {
+export function getConnectorAxes(cfg: FieldConfig): Axis[] {
+  switch (cfg.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return SQUARE_AXES;
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      return orientation === "pointy_top" ? AXES_0_60_120 : AXES_30_90_150;
-    }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom":
+    case "hex":
+      return hexOrientationOf(cfg) === "pointy_top" ? AXES_0_60_120 : AXES_30_90_150;
+    case "tri":
       return AXES_0_60_120;
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return CAIRO_AXES;
-    default:
-      cfg satisfies never;
-      return SQUARE_AXES;
   }
 }

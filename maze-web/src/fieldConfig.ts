@@ -1,42 +1,85 @@
-export type FieldConfig =
-  | { type: "square"; width: number; height: number }
-  | { type: "square_circle"; radius: number }
-  | { type: "square_triangle"; side: number }
-  | { type: "hex_parallelogram"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "hex_hexagon"; radius: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "hex_rectangle"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "hex_circle"; radius: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "hex_triangle"; side: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "triangle_rect"; cols: number; rows: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "triangle_triangle"; side: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "triangle_hexagon"; radius: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "triangle_circle"; radius: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "cairo"; cols: number; rows: number }
-  | { type: "cairo_circle"; radius: number }
-  | { type: "cairo_triangle"; side: number }
-  | { type: "cairo_hexagon"; radius: number }
-  | { type: "square_custom"; points: [number, number][] }
-  | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
-  | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "cairo_custom"; points: [number, number][] };
+/** Registered tessellation kinds — mirrors `maze-runner`'s `TessellationKind` wire values. */
+export type TessellationKind = "square" | "hex" | "tri" | "cairo";
 
 /**
- * The field after its editor-only shape definition has been resolved. Runtime consumers must use
- * this form: a new preset shape changes only the resolver, never geometry, rendering, or export.
+ * A tessellation instance config, `{ kind, params }` — the same shape the wasm wire and project
+ * files carry. Core builds the instance deterministically from it; the built-in kinds take no
+ * params.
  */
-export type ResolvedField =
-  | { type: "square"; width: 0; height: 0; kind: "square"; cells: [number, number][] }
-  | { type: "hex_parallelogram"; cols: 0; rows: 0; kind: "hex"; orientation: "flat_top" | "pointy_top"; cells: [number, number][] }
-  | { type: "triangle_rect"; cols: 0; rows: 0; kind: "triangle"; orientation: "r0" | "r90" | "r180" | "r270"; cells: [number, number][] }
-  | { type: "cairo"; cols: 0; rows: 0; kind: "cairo"; cells: [number, number][] };
+export interface TessellationConfig {
+  kind: TessellationKind;
+  params: Record<string, unknown>;
+}
 
-/** Accept legacy editor configurations at the field-configuration boundary only. */
-export type Tessellation = FieldConfig | ResolvedField;
+export type HexOrientation = "flat_top" | "pointy_top";
+export type TriOrientation = "r0" | "r90" | "r180" | "r270";
+/** Display-only orientation; never part of the tessellation config or the field shape. */
+export type DisplayOrientation = HexOrientation | TriOrientation;
+
+/**
+ * A floor's field shape, independent of the tessellation kind. Which shapes a kind offers is UI
+ * registry metadata (`FIELD_SHAPES_BY_KIND`); `custom` carries the cell list directly.
+ */
+export type FieldShape =
+  | { shape: "rect"; cols: number; rows: number }
+  | { shape: "parallelogram"; cols: number; rows: number }
+  | { shape: "circle"; radius: number }
+  | { shape: "triangle"; side: number }
+  | { shape: "hexagon"; radius: number }
+  | { shape: "custom"; points: [number, number][] };
+
+export type FieldShapeName = FieldShape["shape"];
+export type PresetFieldShape = Exclude<FieldShape, { shape: "custom" }>;
+export type PresetFieldShapeName = PresetFieldShape["shape"];
+
+/** Preset shapes each kind offers, in UI order. `custom` (free drawing) is available for every kind. */
+export const FIELD_SHAPES_BY_KIND: Record<TessellationKind, readonly PresetFieldShapeName[]> = {
+  square: ["rect", "circle", "triangle"],
+  hex: ["rect", "parallelogram", "hexagon", "circle", "triangle"],
+  tri: ["rect", "triangle", "hexagon", "circle"],
+  cairo: ["rect", "circle", "triangle", "hexagon"],
+};
+
+/**
+ * A floor field as runtime code consumes it: the maze-wide tessellation config, its maze-wide
+ * display orientation (hex/tri only) and the floor's own shape. Kind, params and shape are
+ * separate settings — never a combined type tag.
+ */
+export interface FieldConfig {
+  tessellation: TessellationConfig;
+  orientation?: DisplayOrientation;
+  shape: FieldShape;
+}
+
+/** A `FieldConfig` whose shape has been resolved to its explicit cell list. */
+export type ResolvedField = FieldConfig & { shape: { shape: "custom"; points: [number, number][] } };
 
 /** Family lookup safe for hot paths: it never resolves the field's cells. */
-export function tessellationFamily(config: Tessellation): "square" | "hex" | "triangle" | "cairo" {
-  if ("kind" in config) return config.kind;
-  return config.type.startsWith("square") ? "square"
-    : config.type.startsWith("hex") ? "hex"
-      : config.type.startsWith("tri") ? "triangle" : "cairo";
+export function tessellationFamily(config: FieldConfig): TessellationKind {
+  return config.tessellation.kind;
+}
+
+/** A `{ kind, params }` config for one of the built-in, parameterless kinds. */
+export function tessellationConfigOf(kind: TessellationKind): TessellationConfig {
+  return { kind, params: {} };
+}
+
+export function hexOrientationOf(config: FieldConfig): HexOrientation {
+  return (config.orientation as HexOrientation | undefined) ?? "flat_top";
+}
+
+export function triOrientationOf(config: FieldConfig): TriOrientation {
+  return (config.orientation as TriOrientation | undefined) ?? "r0";
+}
+
+export function isCustomField(config: FieldConfig): config is ResolvedField {
+  return config.shape.shape === "custom";
+}
+
+/** An empty field of `kind` — for geometry calls that only need the tessellation and orientation. */
+export function kindFieldConfig(kind: TessellationKind, orientation?: DisplayOrientation): FieldConfig {
+  const shape: FieldShape = { shape: "custom", points: [] };
+  return orientation === undefined
+    ? { tessellation: tessellationConfigOf(kind), shape }
+    : { tessellation: tessellationConfigOf(kind), orientation, shape };
 }

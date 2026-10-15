@@ -102,6 +102,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "min_loops_count";
 
@@ -111,7 +112,8 @@ mod tests {
 
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -171,9 +173,12 @@ mod tests {
     fn silent_when_graph_analytics_overflows() {
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
-                .unwrap();
+        let field = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(SIDE as usize, SIDE as usize),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -214,11 +219,14 @@ mod tests {
     fn maze_with_a_triangle_on_two_floors() -> Maze<SquareTessellation> {
         use crate::space::Field;
         let mut ids = IdGenerator::new();
-        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
-        let bottom =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
-        let top =
-            mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
+        let mut mf: MultiLevelField<SquareTessellation> =
+            MultiLevelField::new(Arc::default(), std::iter::empty());
+        let bottom = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
+        );
+        let top = mf.add_level(
+            Field::<SquareTessellation>::new(Arc::default(), square_rect(3, 1), &mut ids).unwrap(),
+        );
         let mut g = Graph::new();
         for node in mf.all_node_ids() {
             g.add_node(node);

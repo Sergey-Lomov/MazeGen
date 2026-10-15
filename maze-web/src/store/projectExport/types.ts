@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldShape, PresetFieldShape, TessellationKind } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
@@ -112,10 +112,11 @@ export interface ProjectFileFloors {
  * (storeTypes.ts), minus `fieldPoints`/`isEditingField` (both re-derived on load from
  * `freeFieldPoints`/shape, same as the pre-#338 maze-wide `tessellation` section always did). */
 export interface ProjectFileFloorField {
-  config: TessellationConfig;
-  savedConfigs: TessellationConfig[];
+  /** The floor's own field shape; the tessellation kind/params are maze-wide (`tessellation`). */
+  shape: FieldShape;
+  savedShapes: PresetFieldShape[];
   /** Per-kind free-field points, as flat coordinate arrays keyed by kind. */
-  freeFieldPoints: Record<"square" | "hex" | "triangle" | "cairo", [number, number][]>;
+  freeFieldPoints: Record<TessellationKind, [number, number][]>;
   fieldEditMode: "default" | "custom";
 }
 
@@ -178,7 +179,7 @@ export interface ProjectFile {
    * moved to `floorFields` (GitHub issue #338). `hexOrientation`/`triOrientation` are always
    * present (unlike the pre-#338 shape) since they're no longer derivable from a single shared
    * `config`. */
-  tessellation: { kind: "square" | "hex" | "triangle" | "cairo"; hexOrientation: HexOrientation; triOrientation: TriOrientation };
+  tessellation: { kind: TessellationKind; params: Record<string, unknown>; hexOrientation: HexOrientation; triOrientation: TriOrientation };
   /** One entry per floor id in `floors.floors`, its own field-shape state (GitHub issue #338). */
   floorFields: Record<string, ProjectFileFloorField>;
   generation: {
@@ -251,4 +252,4 @@ export interface ProjectFile {
 // v4 -> v5 (GitHub issue #564): stable ids for one-way edges/split points; `suppressGenerationPair`
 // and the `suppressPair(s)` fields removed; generation-baked vertical passages/elevators are now
 // full baseline draft entries. Breaking, no migration — same policy as v3 -> v4.
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;

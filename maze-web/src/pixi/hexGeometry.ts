@@ -1,5 +1,5 @@
 import { TILE_SIZE } from "./constants";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, kindFieldConfig, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import { squareCenter } from "./squareGeometry";
 import { triCenter } from "./triGeometry";
 import { getCartesian } from "./cartesianCache";
@@ -21,26 +21,20 @@ function rotateDeg(x: number, y: number, deg: number): Pos {
 /// `pointy_top` (0° for `flat_top`, i.e. no rotation). Verified numerically that `pointy_top` is
 /// exactly a 30° rotation of the same canonical point as `flat_top` for every (q, r) — not an
 /// independent projection formula — so this stays a single source of truth instead of needing a
-/// second core-side formula per hex orientation. `cfg` needs only its `type` discriminant;
-/// callers without a full config in hand may pass a minimal `{ type: "hex_hexagon", radius: 0 }`.
-export function hexCenter(q: number, r: number, orientation: "flat_top" | "pointy_top", cfg: TessellationConfig = { type: "hex_hexagon", radius: 0 }): Pos {
+/// second core-side formula per hex orientation. `cfg` needs only its tessellation; callers
+/// without a full config in hand may pass `kindFieldConfig("hex")`.
+export function hexCenter(q: number, r: number, orientation: "flat_top" | "pointy_top", cfg: FieldConfig = kindFieldConfig("hex")): Pos {
   const [ux, uy] = getCartesian(q, r, cfg);
   const { x, y } = rotateDeg(ux * TILE_SIZE, uy * TILE_SIZE, orientation === "pointy_top" ? 30 : 0);
   return { x, y };
 }
 
-export function cellCenter(node: { x: number; y: number }, cfg: TessellationConfig): Pos {
-  if (cfg.type === "square" || cfg.type === "square_circle" || cfg.type === "square_triangle" || cfg.type === "square_custom") {
-    return squareCenter(node.x, node.y, cfg);
-  } else if (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
-    return hexCenter(node.x, node.y, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top", cfg);
-  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_circle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
-    return triCenter(node.x, node.y, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0", cfg);
-  } else if (cfg.type === "cairo" || cfg.type === "cairo_circle" || cfg.type === "cairo_triangle" || cfg.type === "cairo_hexagon" || cfg.type === "cairo_custom") {
-    return cairoCenter(node.x, node.y);
-  } else {
-    cfg satisfies never;
-    throw new Error(`unknown tessellation type: ${(cfg as { type: string }).type}`);
+export function cellCenter(node: { x: number; y: number }, cfg: FieldConfig): Pos {
+  switch (cfg.tessellation.kind) {
+    case "square": return squareCenter(node.x, node.y, cfg);
+    case "hex": return hexCenter(node.x, node.y, hexOrientationOf(cfg), cfg);
+    case "tri": return triCenter(node.x, node.y, triOrientationOf(cfg), cfg);
+    case "cairo": return cairoCenter(node.x, node.y);
   }
 }
 

@@ -114,6 +114,7 @@ mod tests {
     use crate::graph::nav::build_nav_graph;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     /// Triangle a->b->c->a, with `a` also pinned (degree-2 corridor exemption is irrelevant
     /// here since every node in a 3-cycle has exactly one outgoing/incoming edge, already a
@@ -121,7 +122,7 @@ mod tests {
     fn triangle_cycle() -> (NavGraph, Vec<usize>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -179,7 +180,7 @@ mod tests {
     fn line_graph(len: usize) -> (Graph, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(len, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -224,7 +225,7 @@ mod tests {
     fn unreachable_node_absent_from_map() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -249,7 +250,7 @@ mod tests {
     fn directed_only_one_way_edge_blocks_reverse_distance() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -269,5 +270,4 @@ mod tests {
         let reverse = compute_distance_map(&nav, nav_a, DistanceDirection::Reverse);
         assert_eq!(reverse.get(&nav_b), None); // no directed path b -> a
     }
-
 }

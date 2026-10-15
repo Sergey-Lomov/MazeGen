@@ -6,6 +6,7 @@ use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_d
 use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use crate::{Graph, IdGenerator};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     let mut map = std::collections::HashMap::new();
@@ -21,7 +22,7 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 fn maze_with_all_split_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -44,7 +45,7 @@ fn maze_with_all_split_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
 fn maze_with_mixed_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -186,7 +187,7 @@ fn any_scope_cuts_some_eligible_edge() {
 fn cutting_a_bidirectional_passage_removes_both_directions() {
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();
@@ -261,7 +262,7 @@ fn scored_selection_prefers_the_edge_shared_by_more_routes() {
     // second cut, leaving e3's route to be cut independently for the strategy to succeed overall.
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(6, 1), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
     let slot0 = field.node_at(field_level, p).unwrap();

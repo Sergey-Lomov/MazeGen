@@ -61,13 +61,14 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "teleport_geometric_length";
 
     fn maze_with_teleport(from: (i32, i32), to: (i32, i32)) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -246,7 +247,7 @@ mod tests {
     fn ignores_basic_edges() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -280,7 +281,7 @@ mod tests {
         // independently, since the check operates per-edge, not per-pair.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(20, 20), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -333,10 +334,15 @@ mod tests {
     fn maze_with_cross_floor_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(20, 20), &mut ids).unwrap();
         let bottom = field.single_level_id();
         let top = field.add_level(
-            crate::space::Field::<SquareTessellation>::new(square_rect(20, 20), &mut ids).unwrap(),
+            crate::space::Field::<SquareTessellation>::new(
+                Arc::default(),
+                square_rect(20, 20),
+                &mut ids,
+            )
+            .unwrap(),
         );
         let mut g = Graph::new();
         for node in field.all_node_ids() {

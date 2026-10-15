@@ -2,7 +2,7 @@ import { makeProjection, encodePoint, decodePoint } from "./tessellationProjecti
 import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getNeighborData, rotateFaceIndex } from "./tessellationGeometry";
 import type { NodeLockKind, PresetConnectionState } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 import { type SplitFaceKind, canCompleteOppositePair, hasCompleteOppositePair, detectSplitSpecialShapeKind } from "./splitFaceLayout";
 import { selectByTiering, type PairState } from "./postEditEndpoint";
@@ -196,7 +196,7 @@ export function setOnLevel(set: Set<string>, level: number | undefined): Set<str
 export function pickTeleportEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   teleports: PresetTeleportEntry[],
 ): PresetTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
@@ -221,7 +221,7 @@ export function pickTeleportEndpointAt(
 export function pickVerticalPassageEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   passages: PresetVerticalPassageEntry[],
   activeLevel: number | undefined,
 ): PresetVerticalPassageEndpointHit | null {
@@ -250,7 +250,7 @@ export function pickVerticalPassageEndpointAt(
 export function pickElevatorEndpointAt(
   viewportX: number,
   viewportY: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   elevators: PresetElevatorEntry[],
   activeLevel: number | undefined,
 ): PresetElevatorEndpointHit | null {
@@ -342,7 +342,7 @@ export function edgeKey(a: [number, number], b: [number, number]): string {
   return `${fa[0]},${fa[1]}-${fb[0]},${fb[1]}`;
 }
 
-export function resolveCells(cfg: TessellationConfig, customPoints?: Set<number>): [number, number][] {
+export function resolveCells(cfg: FieldConfig, customPoints?: Set<number>): [number, number][] {
   if (customPoints && customPoints.size > 0)
     return Array.from(customPoints).map(k => decodePoint(k) as [number, number]);
   return configAllCells(cfg);
@@ -353,14 +353,14 @@ export function resolveCells(cfg: TessellationConfig, customPoints?: Set<number>
  * multi-floor validity/auto-lock function below takes a `resolveFieldAt` callback instead of a
  * single `cfg`, since a flat, maze-wide preset collection can hold entries for several floors at
  * once, each with its own field shape (`FloorFieldConfig`, GitHub issue #338). */
-export type ResolveFieldAt = (level: number | undefined) => { cfg: TessellationConfig; customPoints?: Set<number> } | undefined;
+export type ResolveFieldAt = (level: number | undefined) => { cfg: FieldConfig; customPoints?: Set<number> } | undefined;
 
 /** One floor's own field, for `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340) —
  * `level` is that floor's 0-based index (matches `PresetEndpoint.level`; the first entry is
  * implicitly floor 0). */
 export interface LevelField {
   level: number | undefined;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   customPoints?: Set<number>;
 }
 
@@ -525,7 +525,7 @@ export function resolvePresetSplitTargets(
 export function presetSplitNodeFaceKinds(
   endpoint: PresetEndpoint,
   point: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   inFieldCells: Set<string>,
   presetConnections: Map<string, PresetConnectionEntry>,
   presetSplitPoints: Record<string, number[]>,
@@ -585,7 +585,7 @@ function presetDecidedFaceIndicesOf(
   candidatePoint: [number, number],
   candidateForms: PresetEndpoint[],
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]>,
 ): Set<number> {
   const { offsets } = getNeighborData(cfg, candidatePoint[0], candidatePoint[1]);
@@ -626,7 +626,7 @@ function selectExistingPresetFaceOwner(
   neighborPoint: [number, number],
   targetFace: number,
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetSplitPoints: Record<string, number[]>,
 ): PresetEndpoint | null {
   const matches = candidates.filter((c) => presetDecidedFaceIndicesOf(neighborPoint, [c], presetConnections, cfg, presetSplitPoints).has(targetFace));
@@ -650,7 +650,7 @@ function selectExistingPresetFaceOwner(
 function resolvePresetFaceOwner(
   point: [number, number],
   newNeighbor: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   presetConnections: Map<string, PresetConnectionEntry>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
@@ -707,7 +707,7 @@ export function rotatePresetSplitPoint(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
@@ -819,7 +819,7 @@ export function rotatePresetSplitPointBreaksNeighborShape(
   point: [number, number],
   slotIds: number[],
   direction: 1 | -1,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   cellSet: Set<string>,
   presetSplitPoints: Record<string, number[]>,
   presetActiveSplitNode: Record<string, PresetEndpoint>,
@@ -839,7 +839,7 @@ export function rotatePresetSplitPointBreaksNeighborShape(
     const before = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(
       ep, neighbor, cfg, cellSet, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
     ));
-    const canonicalOrder = cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
+    const canonicalOrder = cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(neighbor[0], neighbor[1]) : undefined;
     if (detectSplitSpecialShapeKind(before, canonicalOrder) === null) continue; // wasn't recognized before — nothing to break
 
     const afterKinds = neighborEndpoints.map((ep) => presetSplitNodeFaceKinds(

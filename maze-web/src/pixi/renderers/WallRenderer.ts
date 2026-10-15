@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getSharedEdgeSegment } from "../tessellationGeometry";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
@@ -152,7 +152,7 @@ export class WallRenderer {
 
   render(
     data: { edges: WallEdge[] },
-    cfg?: TessellationConfig,
+    cfg?: FieldConfig,
     solidStyleOverride?: WallStyleOverride,
     oneWayStyleOverride?: OneWayStyleOverride,
     extraWalls?: Point[][],
@@ -310,7 +310,7 @@ export class WallRenderer {
 
   private getEdgeSegment(
     edge: WallEdge,
-    cfg: TessellationConfig,
+    cfg: FieldConfig,
   ): { v0: { x: number; y: number }; v1: { x: number; y: number } } | null {
     return getSharedEdgeSegment(edge.a, edge.b, cfg);
   }

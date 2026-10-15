@@ -75,6 +75,7 @@ mod tests {
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     const TEST_ID: &str = "split_pattern_shape";
 
@@ -108,7 +109,7 @@ mod tests {
     fn maze_with_middle_split() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, mid, &mut ids);
@@ -234,7 +235,7 @@ mod tests {
     fn silent_when_no_split_tiles_exist() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

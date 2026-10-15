@@ -2,6 +2,7 @@ use super::tests::{default_params, empty_presets, generate_default_split};
 use super::*;
 use crate::generation::test_utils::make_field_graph_ids;
 use crate::space::MultiLevelField;
+use std::sync::Arc;
 
 fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {
     graph
@@ -261,8 +262,12 @@ fn teleport_is_deterministic_for_fixed_seed() {
 fn teleport_single_node_field_never_panics() {
     let mut ids = crate::ids::IdGenerator::new();
     let mut field: MultiLevelField<crate::space::SquareTessellation> =
-        MultiLevelField::single_level(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids)
-            .unwrap();
+        MultiLevelField::single_level(
+            Arc::default(),
+            vec![crate::space::SquarePoint { x: 0, y: 0 }],
+            &mut ids,
+        )
+        .unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
@@ -299,7 +304,7 @@ fn teleport_fragmented_field_frontier_empty_branch_stays_connected() {
     let mut points: Vec<SquarePoint> = crate::space::square_rect(3, 3);
     points.push(SquarePoint { x: 100, y: 100 });
     let mut field: MultiLevelField<crate::space::SquareTessellation> =
-        MultiLevelField::single_level(points, &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), points, &mut ids).unwrap();
     let level = field.single_level_id();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

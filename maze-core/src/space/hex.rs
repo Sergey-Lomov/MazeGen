@@ -16,13 +16,14 @@ pub enum HexFace {
     SE,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct HexTessellation;
 
 impl Tessellation for HexTessellation {
     type Point = HexPoint;
     type Face = HexFace;
 
-    fn step(point: HexPoint, face: HexFace) -> Option<HexPoint> {
+    fn step(&self, point: HexPoint, face: HexFace) -> Option<HexPoint> {
         Some(match face {
             HexFace::E => HexPoint {
                 q: point.q + 1,
@@ -51,11 +52,11 @@ impl Tessellation for HexTessellation {
         })
     }
 
-    fn is_valid_point(_point: HexPoint) -> bool {
+    fn is_valid_point(&self, _point: HexPoint) -> bool {
         true
     }
 
-    fn faces() -> &'static [HexFace] {
+    fn faces(&self) -> &[HexFace] {
         &[
             HexFace::E,
             HexFace::NE,
@@ -66,7 +67,7 @@ impl Tessellation for HexTessellation {
         ]
     }
 
-    fn face_between(from: HexPoint, to: HexPoint) -> Option<HexFace> {
+    fn face_between(&self, from: HexPoint, to: HexPoint) -> Option<HexFace> {
         match (to.q - from.q, to.r - from.r) {
             (1, 0) => Some(HexFace::E),
             (1, -1) => Some(HexFace::NE),
@@ -82,7 +83,7 @@ impl Tessellation for HexTessellation {
     /// unit tile size — same formula as `maze-web`'s `hexCenter` (flat_top branch), minus the
     /// `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side concerns
     /// — see `Tessellation::cartesian`'s doc comment).
-    fn cartesian(point: HexPoint) -> (f64, f64) {
+    fn cartesian(&self, point: HexPoint) -> (f64, f64) {
         let inradius = 3f64.sqrt() / 2.0;
         let (q, r) = (point.q as f64, point.r as f64);
         (q * 1.5, -(r * inradius * 2.0 + q * inradius))
@@ -90,7 +91,7 @@ impl Tessellation for HexTessellation {
 
     /// Faces in `[E, NE, NW, W, SW, SE]` order (indices 0-5) — a genuinely angular order (60° per
     /// step), so every rotation is just a cyclic shift of that index list.
-    fn rotation_symmetries() -> &'static [&'static [usize]] {
+    fn rotation_symmetries(&self) -> &[&[usize]] {
         &[
             &[0, 1, 2, 3, 4, 5], // identity
             &[1, 2, 3, 4, 5, 0], // 60°
@@ -104,7 +105,7 @@ impl Tessellation for HexTessellation {
     /// Three independent mirror axes, each through a pair of opposite face directions: E-W,
     /// NE-SW, NW-SE. Each axis fixes the two faces sitting on it and swaps the remaining two
     /// pairs.
-    fn mirror_symmetries() -> &'static [&'static [usize]] {
+    fn mirror_symmetries(&self) -> &[&[usize]] {
         &[
             &[0, 5, 4, 3, 2, 1], // mirror across the E-W axis
             &[2, 1, 0, 5, 4, 3], // mirror across the NE-SW axis

@@ -38,25 +38,25 @@ fn no_split_config() -> SplitGenerationConfig {
 
 #[test]
 fn face_index_face_at_round_trip_square() {
-    for f in crate::space::SquareTessellation::faces() {
-        let idx = crate::space::SquareTessellation::face_index(*f).unwrap();
-        assert!(crate::space::SquareTessellation::face_at(idx) == Some(*f));
+    for f in crate::space::SquareTessellation.faces() {
+        let idx = crate::space::SquareTessellation.face_index(*f).unwrap();
+        assert!(crate::space::SquareTessellation.face_at(idx) == Some(*f));
     }
 }
 
 #[test]
 fn face_index_face_at_round_trip_hex() {
-    for f in crate::space::HexTessellation::faces() {
-        let idx = crate::space::HexTessellation::face_index(*f).unwrap();
-        assert!(crate::space::HexTessellation::face_at(idx) == Some(*f));
+    for f in crate::space::HexTessellation.faces() {
+        let idx = crate::space::HexTessellation.face_index(*f).unwrap();
+        assert!(crate::space::HexTessellation.face_at(idx) == Some(*f));
     }
 }
 
 #[test]
 fn face_index_face_at_round_trip_tri() {
-    for f in crate::space::TriTessellation::faces() {
-        let idx = crate::space::TriTessellation::face_index(*f).unwrap();
-        assert!(crate::space::TriTessellation::face_at(idx) == Some(*f));
+    for f in crate::space::TriTessellation.faces() {
+        let idx = crate::space::TriTessellation.face_index(*f).unwrap();
+        assert!(crate::space::TriTessellation.face_at(idx) == Some(*f));
     }
 }
 

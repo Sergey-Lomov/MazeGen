@@ -133,11 +133,16 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn maze_with_two_vertical_passages() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

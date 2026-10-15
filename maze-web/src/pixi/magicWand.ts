@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { decodePoint, encodePoint } from "./tessellationProjection";
 import { getCellNeighborOffsets } from "./tessellationGeometry";
 
@@ -6,7 +6,7 @@ export type MagicWandCells = [number, number][];
 
 export function connectedMagicWandCells(
   start: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   occupied: Set<number>,
 ): MagicWandCells | null {
   const startKey = encodePoint(start[0], start[1]);

@@ -808,7 +808,7 @@ export interface ImageExportActions {
   setPrintCustomSize: (widthMm: number, heightMm: number) => void;
   setPrintOrientation: (orientation: PaperOrientation) => void;
   setPrintMargins: (marginHMm: number, marginVMm: number) => void;
-  setPrintFieldSizing: (input: PrintFieldSizingInput, config: Pick<FieldConfig, "type">) => void;
+  setPrintFieldSizing: (input: PrintFieldSizingInput, config: Pick<FieldConfig, "tessellation">) => void;
   setPrintScale: (scale: number) => void;
   setPrintScaleAutoFit: (autoFit: boolean) => void;
   setPrintAnchor: (anchor: PrintAnchor) => void;

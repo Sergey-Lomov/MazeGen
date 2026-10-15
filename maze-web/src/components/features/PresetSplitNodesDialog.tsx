@@ -46,7 +46,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
-  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -68,11 +68,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     splitPoints,
     presetConnections,
     activeSplitNode,
-    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.fieldConfig ?? cfg,
     inFieldCellsAt: (targetLevel) => {
       const targetFloor = floorFields[floors[targetLevel]?.id ?? ""];
       return targetFloor
-        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.fieldConfig))
         : inFieldCells;
     },
   };
@@ -143,7 +143,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const semanticNames = useMemo(
     () => splitNodeSemanticNames(
       nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })),
-      cfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+      cfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [slots, cfg, point, inFieldCells, presetConnections],

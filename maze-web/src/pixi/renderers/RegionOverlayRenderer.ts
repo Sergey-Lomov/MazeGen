@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { RegionHighlightRenderer } from "./RegionHighlightRenderer";
 import { NODE_RADIUS } from "../renderConstants";
 import { attachFloorBadgeNavigation, computeRegionBadgeRingPos, drawFloorBadge } from "./floorBadge";
@@ -20,7 +20,7 @@ export interface RegionOverlayData {
   /** One fill color per `components` index. */
   componentColors: number[];
   alpha: number;
-  cfg: TessellationConfig;
+  cfg: FieldConfig;
   /** Unscoped edge list (every floor) — needed to find `vertical_passage`/`elevator` edges that
    *  stay within one SCC region while crossing to another floor (GitHub issue #345). Cross-floor
    *  teleports are handled separately via `teleportEdges` (see its own doc comment) — a teleport's
@@ -104,7 +104,7 @@ export function buildRegionTeleportMarkers(
   components: number[][],
   teleportEdges: TeleportEdge[],
   unscopedNodeById: Map<number, NodeDto>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   componentColors: number[],
 ): RegionTeleportMarker[] {
   const componentOf = new Map<number, number>();

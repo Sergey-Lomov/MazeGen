@@ -2,7 +2,7 @@ import { squareCenter, squareVertices } from "./squareGeometry";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triCenter, triVertices, TRI_TILE_SIZE } from "./triGeometry";
 import type { TriOrientation } from "./triGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitPattern } from "../wasm/types";
 import { cairoCenter, CAIRO_CENTER_SCALE, cairoCanonicalFaceOrder, cairoEdgeVerts, cairoNeighborOffsets, cairoVertices, isCairoPoint } from "./cairoGeometry";
@@ -26,35 +26,16 @@ export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
  *  (halfway between its 4 edge directions). Hex: 30° (halfway between its 6 edge directions).
  *  Triangle: 60° (halfway between its 3 edge directions). Cairo: 36° (half of the 72° spacing
  *  between its 5 evenly distributed split-node slots). */
-export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
-  switch (cfg.type) {
+export function getSplitCircleRotationDeg(cfg: FieldConfig): number {
+  switch (cfg.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return 45;
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom":
+    case "hex":
       return 30;
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom":
+    case "tri":
       return 60;
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return 36;
-    default:
-      cfg satisfies never;
-      return 0;
   }
 }
 
@@ -66,38 +47,22 @@ export {
   buildNodePositions,
 } from "./splitNodeGeometry";
 
-export function getCellVertices(x: number, y: number, cfg: TessellationConfig): Pos[] | null {
-  switch (cfg.type) {
-    case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom": {
+export function getCellVertices(x: number, y: number, cfg: FieldConfig): Pos[] | null {
+  switch (cfg.tessellation.kind) {
+    case "square": {
       const c = squareCenter(x, y, cfg);
       return squareVertices(c.x, c.y);
     }
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    case "hex": {
+      const ori = hexOrientationOf(cfg);
       const c = hexCenter(x, y, ori, cfg);
       return hexVertices(c.x, c.y, ori);
     }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom": {
-      const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
+    case "tri": {
+      const ori = triOrientationOf(cfg);
       return triVertices(x, y, ori);
     }
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return cairoVertices(x, y);
     default:
       return null;
@@ -109,14 +74,14 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
  * all 4 sides (correct only for squares), this reflects each tessellation's real per-axis extent
  * (e.g. a flat-top hex's vertical half-extent is `TILE_SIZE * sin(60°)`, not `TILE_SIZE`) — needed
  * wherever a tight, gap-free fit around the maze matters (PNG export's "edge to edge" canvas). */
-export function exactCellBounds(nodes: { x: number; y: number; id: number }[], cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } {
+export function exactCellBounds(nodes: { x: number; y: number; id: number }[], cfg: FieldConfig): { minX: number; minY: number; maxX: number; maxY: number } {
   return cellBounds(nodes.map(({ x, y }) => [x, y]), cfg);
 }
 
 /** Exact world-space bounds of a cell-coordinate set. */
 export function cellBounds(
   cells: readonly [number, number][],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [x, y] of cells) {
@@ -165,7 +130,7 @@ export function pointInPolygon(point: Pos, vertices: Pos[]): boolean {
  * cell center or the midpoint between two adjacent cell centers (a split-neighbor's shared-face
  * midpoint), so it always lies within the convex hull of all cell centers — this bbox safely
  * bounds every segment endpoint too, not just the centers themselves. */
-export function cellCenterBounds(nodes: { x: number; y: number; id: number }[], cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } {
+export function cellCenterBounds(nodes: { x: number; y: number; id: number }[], cfg: FieldConfig): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of nodes) {
     const c = getCellCenter(n.x, n.y, cfg);
@@ -177,35 +142,19 @@ export function cellCenterBounds(nodes: { x: number; y: number; id: number }[], 
   return { minX, minY, maxX, maxY };
 }
 
-export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Pos {
-  switch (cfg.type) {
+export function getCellCenter(x: number, y: number, cfg: FieldConfig): Pos {
+  switch (cfg.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return squareCenter(x, y, cfg);
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    case "hex": {
+      const ori = hexOrientationOf(cfg);
       return hexCenter(x, y, ori, cfg);
     }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom": {
-      const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
+    case "tri": {
+      const ori = triOrientationOf(cfg);
       return triCenter(x, y, ori, cfg);
     }
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return cairoCenter(x, y);
     default:
       return { x: 0, y: 0 };
@@ -308,7 +257,7 @@ function nearestTriCoord(worldX: number, worldY: number, orientation: TriOrienta
 /// wall unpredictably). Deterministic and symmetric by construction — the same world point always
 /// resolves to the same grid coordinate regardless of caller/context, so a badge computed once from
 /// a world-space midpoint reads identically from either floor it's drawn on.
-export function nearestCellCoord(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
+export function nearestCellCoord(worldX: number, worldY: number, cfg: FieldConfig): [number, number] {
   const [x, y] = nearestCellCoordRaw(worldX, worldY, cfg);
   // `Math.round` can produce a signed `-0` for a world point that lands exactly on a coordinate's
   // own negative-side boundary — a real grid coordinate is never negative zero, and leaving it in
@@ -341,70 +290,39 @@ function nearestCairoCoord(worldX: number, worldY: number): [number, number] {
   return best ? [best.x, best.y] : [Math.round(x), Math.round(y)];
 }
 
-function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
-  switch (cfg.type) {
+function nearestCellCoordRaw(worldX: number, worldY: number, cfg: FieldConfig): [number, number] {
+  switch (cfg.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return nearestSquareCoord(worldX, worldY);
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    case "hex": {
+      const ori = hexOrientationOf(cfg);
       return nearestHexCoord(worldX, worldY, ori);
     }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom": {
-      const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
+    case "tri": {
+      const ori = triOrientationOf(cfg);
       return nearestTriCoord(worldX, worldY, ori);
     }
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return nearestCairoCoord(worldX, worldY);
-    default:
-      cfg satisfies never;
-      return [0, 0];
   }
 }
 
 export function getNeighborData(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   x: number,
   y: number,
 ): { offsets: [number, number][]; edgeVerts: [number, number][] } {
-  switch (cfg.type) {
+  switch (cfg.tessellation.kind) {
     case "square":
-    case "square_circle":
-    case "square_triangle":
-    case "square_custom":
       return { offsets: SQUARE_NEIGHBOR_OFFSETS, edgeVerts: SQUARE_EDGE_VERTS };
-    case "hex_rectangle":
-    case "hex_circle":
-    case "hex_triangle":
-    case "hex_parallelogram":
-    case "hex_hexagon":
-    case "hex_custom": {
-      const ori = (cfg as { orientation?: string }).orientation ?? "flat_top";
+    case "hex": {
+      const ori = hexOrientationOf(cfg);
       return {
         offsets: ori === "flat_top" ? HEX_NEIGHBOR_OFFSETS_FLAT : HEX_NEIGHBOR_OFFSETS_POINTY,
         edgeVerts: HEX_EDGE_VERTS,
       };
     }
-    case "triangle_rect":
-    case "triangle_triangle":
-    case "triangle_circle":
-    case "triangle_hexagon":
-    case "tri_custom": {
+    case "tri": {
       const up = (x + y) % 2 === 0;
       return {
         offsets: up ? TRI_NEIGHBOR_OFFSETS_UP : TRI_NEIGHBOR_OFFSETS_DOWN,
@@ -412,17 +330,13 @@ export function getNeighborData(
       };
     }
     case "cairo":
-    case "cairo_circle":
-    case "cairo_triangle":
-    case "cairo_hexagon":
-    case "cairo_custom":
       return { offsets: cairoNeighborOffsets(x, y), edgeVerts: cairoEdgeVerts(x, y) };
     default:
       return { offsets: [], edgeVerts: [] };
   }
 }
 
-export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: number): [number, number][] {
+export function getCellNeighborOffsets(cfg: FieldConfig, x: number, y: number): [number, number][] {
   return getNeighborData(cfg, x, y).offsets;
 }
 
@@ -432,7 +346,7 @@ export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: nu
  * generic index shift for the established tessellations and derive Cairo's order from the actual
  * neighbor-vector angles so rotation advances to the physically adjacent edge. */
 export function rotateFaceIndex(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   x: number,
   y: number,
   faceIndex: number,
@@ -441,7 +355,7 @@ export function rotateFaceIndex(
   const offsets = getNeighborData(cfg, x, y).offsets;
   const n = offsets.length;
   if (n === 0) return faceIndex;
-  if (!cfg.type.startsWith("cairo")) return (faceIndex + direction + n) % n;
+  if (cfg.tessellation.kind !== "cairo") return (faceIndex + direction + n) % n;
 
   const order = cairoCanonicalFaceOrder(x, y);
   const position = order.indexOf(faceIndex);
@@ -470,17 +384,18 @@ const SPLIT_FACE_INDEX_WEB_TO_CORE: Record<string, number[]> = {
  *  authoring order) to `maze-core`'s `Tessellation::faces()` ordering — the one conversion point
  *  at the wasm-config-serialization boundary (`buildGenerateConfig`), so neither side's internal
  *  ordering has to change (GitHub issue #273). Identity for triangle tessellations. */
-export function splitFaceIndexToCore(cfg: TessellationConfig, faceIndex: number): number {
-  const t = cfg.type;
-  if (t.startsWith("hex")) {
-    const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-    return SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`][faceIndex];
+export function splitFaceIndexToCore(cfg: FieldConfig, faceIndex: number): number {
+  const table = splitFaceIndexTable(cfg);
+  return table ? table[faceIndex] : faceIndex;
+}
+
+function splitFaceIndexTable(cfg: FieldConfig): number[] | undefined {
+  switch (cfg.tessellation.kind) {
+    case "hex": return SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${hexOrientationOf(cfg)}`];
+    case "square": return SPLIT_FACE_INDEX_WEB_TO_CORE.square;
+    case "cairo": return SPLIT_FACE_INDEX_WEB_TO_CORE.cairo;
+    case "tri": return undefined;
   }
-  if (t === "square" || t === "square_custom") {
-    return SPLIT_FACE_INDEX_WEB_TO_CORE.square[faceIndex];
-  }
-  if (t.startsWith("cairo")) return SPLIT_FACE_INDEX_WEB_TO_CORE.cairo[faceIndex];
-  return faceIndex;
 }
 
 /** Converts a `SplitPattern[]` from web `face_index` ordering (`TileFaceEditor`'s authoring order)
@@ -491,7 +406,7 @@ export function splitFaceIndexToCore(cfg: TessellationConfig, faceIndex: number)
  *  strategy's own patterns, round-tripped as a raw JSON param string, entirely independent of
  *  `state.splitPatterns`). Neither the project file (`serializeProject`) nor the param string's own
  *  *stored* value are converted — only the moment a pattern list is stringified/sent to wasm. */
-export function splitPatternsToCore(patterns: SplitPattern[], cfg: TessellationConfig): SplitPattern[] {
+export function splitPatternsToCore(patterns: SplitPattern[], cfg: FieldConfig): SplitPattern[] {
   return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToCore(cfg, i));
 }
 
@@ -501,17 +416,8 @@ export function splitPatternsToCore(patterns: SplitPattern[], cfg: TessellationC
  *  issue #273) needs to be shown/edited again in `TileFaceEditor`-based UI, which only ever reads
  *  web ordering. Built once per tessellation instead of inverting per-call — each table is its own
  *  permutation, so this is just the array's own inverse index mapping. */
-export function splitFaceIndexToWeb(cfg: TessellationConfig, faceIndex: number): number {
-  const t = cfg.type;
-  let table: number[] | undefined;
-  if (t.startsWith("hex")) {
-    const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-    table = SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`];
-  } else if (t === "square" || t === "square_custom") {
-    table = SPLIT_FACE_INDEX_WEB_TO_CORE.square;
-  } else if (t.startsWith("cairo")) {
-    table = SPLIT_FACE_INDEX_WEB_TO_CORE.cairo;
-  }
+export function splitFaceIndexToWeb(cfg: FieldConfig, faceIndex: number): number {
+  const table = splitFaceIndexTable(cfg);
   if (!table) return faceIndex;
   const webIndex = table.indexOf(faceIndex);
   return webIndex === -1 ? faceIndex : webIndex;
@@ -519,7 +425,7 @@ export function splitFaceIndexToWeb(cfg: TessellationConfig, faceIndex: number):
 
 /** Inverse of `splitPatternsToCore` — converts a `SplitPattern[]` already in core ordering back to
  *  web ordering, for display/editing in `TileFaceEditor`-based UI (GitHub issue #273). */
-export function splitPatternsToWeb(patterns: SplitPattern[], cfg: TessellationConfig): SplitPattern[] {
+export function splitPatternsToWeb(patterns: SplitPattern[], cfg: FieldConfig): SplitPattern[] {
   return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToWeb(cfg, i));
 }
 
@@ -558,7 +464,7 @@ export interface TileSide {
  * disagreement here made the two sides split a multi-node face in mirrored order (GitHub issue
  * #235 follow-up: reported as differing node positions on a shared hex face between the dialog
  * and the canvas for the exact same data). */
-export function getTileDiagram(x: number, y: number, cfg: TessellationConfig): { vertices: Pos[]; sides: TileSide[] } | null {
+export function getTileDiagram(x: number, y: number, cfg: FieldConfig): { vertices: Pos[]; sides: TileSide[] } | null {
   const verts = getCellVertices(x, y, cfg);
   if (!verts) return null;
   const center = getCellCenter(x, y, cfg);
@@ -589,7 +495,7 @@ export function getTileDiagram(x: number, y: number, cfg: TessellationConfig): {
 export function getSharedEdgeSegment(
   a: [number, number],
   b: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): { v0: Pos; v1: Pos } | null {
   const less = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
   const [fa, fb] = less ? [a, b] : [b, a];

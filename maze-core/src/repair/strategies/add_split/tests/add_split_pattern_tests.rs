@@ -10,6 +10,7 @@ use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::test_support::GappedSquareTessellation;
 use crate::space::{MultiLevelField, SquareFace, SquarePoint, SquareTessellation, square_rect};
 use rand::SeedableRng;
+use std::sync::Arc;
 
 fn two_node_passage_pattern() -> SplitPattern {
     // SquareFace order [N, S, E, W] — node 1 gets an East face (index 2), matching node 0's
@@ -189,7 +190,7 @@ fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
     let east = SquarePoint { x: 1, y: 0 };
     let mut ids = IdGenerator::new();
     let field: MultiLevelField<GappedSquareTessellation> =
-        MultiLevelField::single_level([origin, east], &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), [origin, east], &mut ids).unwrap();
     let level = field.single_level_id();
     let at = field.node_at(level, origin).unwrap();
     let mut graph = Graph::new();
@@ -200,7 +201,7 @@ fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
     let pattern = SplitPattern {
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: GappedSquareTessellation::face_index(SquareFace::E).unwrap(),
+            face_index: GappedSquareTessellation.face_index(SquareFace::E).unwrap(),
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -344,7 +345,7 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
     // that direction — not silently onto (0,1)'s unconnected slot-0.
     let mut ids = IdGenerator::new();
     let mut field: MultiLevelField<SquareTessellation> =
-        MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        MultiLevelField::single_level(Arc::default(), square_rect(3, 3), &mut ids).unwrap();
     let field_level = field.single_level_id();
     let west_point = SquarePoint { x: 0, y: 1 };
     let west_slot1 = field.add_node_at(field_level, west_point, &mut ids);

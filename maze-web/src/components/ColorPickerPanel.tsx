@@ -103,7 +103,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
   const edges = useMazeStore((s: MazeState) => s.edges);
   const floors = useMazeStore((s: MazeState) => s.floors);
   const showColorWarnings = useMazeStore((s: MazeState) => s.showColorWarnings);
-  const cfg = useMazeStore((s: MazeState) => s.activeTessellationConfig);
+  const cfg = useMazeStore((s: MazeState) => s.activeFieldConfig);
   const start = useMazeStore((s: MazeState) => s.start);
   const finish = useMazeStore((s: MazeState) => s.finish);
   const projectColorGroups = useMemo(() => {
@@ -131,7 +131,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, onCancel,
 
   const colorWarnings = useMemo(() => {
     if (!showColorWarnings || !field || !openMode) return [];
-    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeTessellationConfig: cfg, start, finish } as MazeState;
+    const snapshot = { openRenderModeSettings: openMode, vectorByWallsSettings: wallsSettings, vectorByCorridorsSettings: corridorsSettings, nodes, edges, floors, activeFieldConfig: cfg, start, finish } as MazeState;
     const overridden = overrideActiveProfileColor(snapshot, field.key, working);
     if (!overridden || !cfg) return [];
     const warnings = openMode === "vector_by_walls"

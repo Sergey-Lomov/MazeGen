@@ -98,12 +98,13 @@ mod tests {
     use crate::graph::{EdgeKind, Graph};
     use crate::meta::MazeMeta;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     /// 1x3 corridor: n0 -> n1 -> n2, start = n0, finish = n2.
     fn maze_with_corridor_route() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -147,7 +148,7 @@ mod tests {
     fn route_direction_is_none_for_a_pair_not_on_the_route() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 2), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

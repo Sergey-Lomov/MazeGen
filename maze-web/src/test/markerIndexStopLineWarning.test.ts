@@ -3,12 +3,13 @@ import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings, compute
 import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors/state";
 import { stopLineOverlapsRoundedRect } from "../pixi/renderers/verticalConnectionGeometry";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 import { canvas } from "../pixi/colorTokens";
 import { DEFAULT_SHARED_STYLE_SOURCE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportSlice";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // GitHub issue #744 — `marker_index_covers_stop_line`.
 
@@ -17,7 +18,7 @@ vi.mock("../wasm/mazeService", () => ({
 }));
 
 const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
-const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
+const squareCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 
 const defaultMarker: MarkerSettings = {
   shape: "circle", cornerStyle: "miter", fillColor: canvas.node.start, borderColor: canvas.node.start,

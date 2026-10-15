@@ -1,4 +1,4 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitSpecialShapeKind } from "./renderers/types";
 import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
@@ -18,7 +18,7 @@ export function splitHubPoint(
   center: Pos,
   slotIndex: number,
   slotCount: number,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): Pos {
   const rotationRad = (getSplitCircleRotationDeg(cfg) * Math.PI) / 180;
   const angle = rotationRad + (2 * Math.PI * slotIndex) / slotCount;
@@ -67,7 +67,7 @@ const SQUARE_BRIDGE_CROSS_OFFSET_FRAC = 0.25;
  *  this node's own two connected face indices (`getNeighborData`'s ordering), `slotIndex` this
  *  node's position within its point's node list (only meaningful/needed for square `"bridge"`). */
 export function specialSplitNodePoint(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   center: Pos,
   kind: SplitSpecialShapeKind,
   faces: number[],
@@ -76,7 +76,7 @@ export function specialSplitNodePoint(
   point?: [number, number],
 ): Pos | null {
   if (kind === "cairo_diagonal_divider") {
-    if (!point || !cfg.type.startsWith("cairo")) return null;
+    if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
     const order = cairoCanonicalFaceOrder(point[0], point[1]);
@@ -109,7 +109,7 @@ export function specialSplitNodePoint(
   }
 
   if (kind === "cairo_adjacent_divider") {
-    if (!point || !cfg.type.startsWith("cairo")) return null;
+    if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
     const order = cairoCanonicalFaceOrder(point[0], point[1]);
@@ -147,7 +147,7 @@ export function specialSplitNodePoint(
   }
 
   if (kind === "cairo_bridge_2x3") {
-    if (!point || !cfg.type.startsWith("cairo")) return null;
+    if (!point || cfg.tessellation.kind !== "cairo") return null;
     const vertices = getCellVertices(point[0], point[1], cfg);
     const { edgeVerts } = getNeighborData(cfg, point[0], point[1]);
     const order = cairoCanonicalFaceOrder(point[0], point[1]);
@@ -185,7 +185,7 @@ export function specialSplitNodePoint(
     return null;
   }
 
-  if (cfg.type === "hex_rectangle" || cfg.type === "hex_circle" || cfg.type === "hex_triangle" || cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+  if (cfg.tessellation.kind === "hex") {
     const vertices = getCellVertices(0, 0, cfg);
     const { edgeVerts } = getNeighborData(cfg, 0, 0);
     if (!vertices) return null;
@@ -288,7 +288,7 @@ export function specialSplitNodePoint(
     };
   }
 
-  if (cfg.type !== "square" && cfg.type !== "square_custom") return null;
+  if (cfg.tessellation.kind !== "square") return null;
 
   if (kind === "diagonal") {
     const [a, b] = [...faces].sort((x, y) => x - y);
@@ -321,7 +321,7 @@ export function splitPointFaceKindsByNode<Id extends string | number>(
   pointNodes: { id: Id; x: number; y: number }[],
   byTile: ReadonlyMap<string, { id: Id; x: number; y: number }[]>,
   directed: ReadonlySet<string>,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): SplitFaceKind[][] {
   const { offsets } = getNeighborData(cfg, pointNodes[0].x, pointNodes[0].y);
   return pointNodes.map((pn) =>
@@ -352,7 +352,7 @@ export function splitPointFaceKindsByNode<Id extends string | number>(
  * graph-renderer hierarchy. */
 export function buildNodePositions<Id extends string | number>(
   nodes: { id: Id; x: number; y: number }[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   directedPairs: { from: Id; to: Id }[] = [],
 ): Map<Id, Pos> {
   const byTile = new Map<string, typeof nodes>();
@@ -382,14 +382,14 @@ export function buildNodePositions<Id extends string | number>(
     let kind: SplitSpecialShapeKind | null = null;
     if ((group.length === 2 || group.length === 3) && directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
-      const canonicalOrder = cfg.type.startsWith("cairo")
+      const canonicalOrder = cfg.tessellation.kind === "cairo"
         ? cairoCanonicalFaceOrder(group[0].x, group[0].y) : undefined;
       kind = detectSplitSpecialShapeKind(faceKindsByNode, canonicalOrder);
     }
 
     const connectedFacesByNode = kind && faceKindsByNode
       ? faceKindsByNode.map((kinds) => {
-        if (!cfg.type.startsWith("cairo")) return connectedFaceIndices(kinds);
+        if (cfg.tessellation.kind !== "cairo") return connectedFaceIndices(kinds);
         const order = cairoCanonicalFaceOrder(group[0].x, group[0].y);
         return order.filter((rawFace) => kinds[rawFace] !== "wall");
       })

@@ -60,6 +60,7 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     fn no_params() -> StrategyParams {
         build_params(
@@ -74,8 +75,12 @@ mod tests {
     #[test]
     fn apply_removes_flagged_vertical_passage() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -113,8 +118,12 @@ mod tests {
     #[test]
     fn apply_removes_both_directions_of_a_two_way_vertical_passage() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -152,8 +161,12 @@ mod tests {
     #[test]
     fn apply_does_not_remove_a_reverse_basic_edge_mistaken_for_a_vertical_passage_reverse() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -191,8 +204,12 @@ mod tests {
     #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut ids = IdGenerator::new();
-        let field =
-            crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(3, 1),
+            &mut ids,
+        )
+        .unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

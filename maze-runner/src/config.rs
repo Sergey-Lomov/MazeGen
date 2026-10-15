@@ -5,7 +5,7 @@ pub use crate::config_dto::{
     PresetConnectionDto, PresetConnectionStateDto, PresetElevatorDto, PresetEndpointDto,
     PresetVerticalPassageDto, QcRuleConfig, SplitFaceRequirementDto, SplitGenerationConfigDto,
     SplitPatternDto, SplitPatternFaceDto, StageConfig, StrategyConfig, TessellationConfig,
-    TessellationType, VerticalPassageDirectionDto,
+    TessellationKind, VerticalPassageDirectionDto,
 };
 use maze_core::{
     RepairLimits,
@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct GenerateConfig {
-    /// Tessellation kind/orientation — maze-wide, shared by every level (GitHub issue #338:
+    /// Tessellation instance config — maze-wide, shared by every level (GitHub issue #338:
     /// kind is confirmed once, not per floor; see Specs/field-editor.md on the web side).
     #[serde(default)]
     pub tessellation: TessellationConfig,

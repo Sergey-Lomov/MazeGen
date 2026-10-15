@@ -2,7 +2,7 @@ import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { getSharedEdgeSegment, getCellCenter } from "../tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { drawRoundedPolygon } from "./markerShapes";
 import { WALL_THICKNESS } from "../renderConstants";
 
@@ -164,7 +164,7 @@ export function drawOneWayWallHighlight(
   g: Graphics,
   from: [number, number],
   to: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   width: number,
   alpha: number,
@@ -210,7 +210,7 @@ export function drawCellBoundaryHighlight(
   g: Graphics,
   from: [number, number],
   to: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   fillAlpha = 0.25,
   borderWidth = 3,
@@ -272,7 +272,7 @@ export function splitWallAndLineEdges<TId>(
   g: Graphics,
   edges: { from: TId; to: TId; asWall: boolean }[],
   cellOf: (id: TId) => [number, number] | undefined,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   color: number,
   fillAlpha = 0.25,
   borderWidth = 3,

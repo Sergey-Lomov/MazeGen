@@ -116,7 +116,7 @@ describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
 
     // The frame's own screen centre (computeSheetScreenLayout of the current print fit).
     const s = useMazeStore.getState();
-    const fit = computePrintExportFit(s.activeTessellationConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
+    const fit = computePrintExportFit(s.activeFieldConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
     const layout = computeSheetScreenLayout(fit.sheetWidthPx, fit.sheetHeightPx, SCREEN.width, SCREEN.height);
     const cx = layout.x + layout.w / 2;
     const cy = layout.y + layout.h / 2;

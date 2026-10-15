@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { presetEdgeKey } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { TILE_SIZE } from "../pixi/constants";
 import { canvas } from "../pixi/colorTokens";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock it with the canonical square formula (see
@@ -18,7 +19,7 @@ const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, bui
 const { getCellCenter } = await import("../pixi/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
-const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
 const cells: [number, number][] = [[-1, 0], [0, 0]];
 
 function connEntry(
@@ -52,7 +53,7 @@ describe("buildPresetMarkers", () => {
   });
 
   it("uses the special split-shape anchor for a preset endpoint slot (GitHub issue #447)", () => {
-    const splitCfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const splitCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const connections = new Map<string, PresetConnectionEntry>();
     const add = (key: string, from: ReturnType<typeof presetEndpoint>, to: ReturnType<typeof presetEndpoint>) =>
       connections.set(key, { from, to, state: "passage", source: "user" });
@@ -76,7 +77,7 @@ describe("buildPresetMarkers", () => {
     // shape-aware anchor. This pins that documented fallback so a future caller forgetting
     // `withoutLevel` (the exact regression in GitHub issue #589's `PresetConnectionsRenderer`) is
     // caught by a visibly wrong position rather than a subtle one.
-    const splitCfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const splitCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
     const connections = new Map<string, PresetConnectionEntry>();
     const add = (key: string, from: ReturnType<typeof presetEndpoint>, to: ReturnType<typeof presetEndpoint>) =>
       connections.set(key, { from, to, state: "passage", source: "user" });

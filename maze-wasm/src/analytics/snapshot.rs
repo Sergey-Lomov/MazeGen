@@ -544,6 +544,7 @@ mod tests {
     use maze_core::ids::IdGenerator;
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
     use maze_core::space::{Field, MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     #[test]
     fn pushes_cycle_analysis_overflowed_issue_on_overflow() {
@@ -551,9 +552,12 @@ mod tests {
         // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field =
-            MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids)
-                .unwrap();
+        let field = MultiLevelField::single_level(
+            Arc::default(),
+            square_rect(SIDE as usize, SIDE as usize),
+            &mut ids,
+        )
+        .unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -610,7 +614,8 @@ mod tests {
     #[test]
     fn no_overflow_issue_on_sparse_graph() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -654,7 +659,8 @@ mod tests {
     fn statistics_dto_reflects_cells_passages_and_elements() {
         // 3x1 line: a-b bidirectional (open passage), b-c wall (no edge at all).
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -720,7 +726,8 @@ mod tests {
         // node pair once per its own node count — a 2-node split point appeared 2x (4 entries
         // instead of 2), a 3-node split point 3x, etc.
         let mut ids = IdGenerator::new();
-        let mut field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let mut field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
         let extra = field.add_node_at(level, p, &mut ids);
@@ -770,10 +777,12 @@ mod tests {
         // `build_analytics_snapshot`, not just `compute_elevator_stop_count_scoped` in isolation.
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level0 = field.single_level_id();
-        let _level1 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
-        let level2 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
+        let _level1 =
+            field.add_level(Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap());
+        let level2 =
+            field.add_level(Field::new(Arc::default(), square_rect(2, 1), &mut ids).unwrap());
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -828,7 +837,8 @@ mod tests {
     #[test]
     fn region_classes_empty_when_start_or_finish_unset() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -866,7 +876,8 @@ mod tests {
     #[test]
     fn region_classes_populated_when_start_and_finish_set() {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(3, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { borderCompensatedRadius, drawMarkerShape, drawMarkerUnderlay, drawMarkerWithBorder, markerBoundingHalfExtent } from "./markerShapes";
@@ -70,7 +70,7 @@ export class TeleportRenderer {
     /** The active tessellation, so `"orthogonal"` connectors bend along that tessellation's own
      *  face directions (GitHub issue #297) instead of always assuming a square grid. Omitted by
      *  callers without a config in hand, which falls back to the original square (h/v) behavior. */
-    cfg?: TessellationConfig;
+    cfg?: FieldConfig;
     /** World positions of the start/finish markers (GitHub issue #300) — an `"orthogonal"`
      *  connector always avoids cutting through these, same weight as another connector's own
      *  endpoint. Required (not optional) so a caller can't silently forget it the way
@@ -113,7 +113,7 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
-    cfg: TessellationConfig | undefined,
+    cfg: FieldConfig | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
@@ -147,7 +147,7 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
-    cfg: TessellationConfig | undefined,
+    cfg: FieldConfig | undefined,
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],

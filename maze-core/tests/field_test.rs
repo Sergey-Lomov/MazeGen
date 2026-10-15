@@ -1,9 +1,10 @@
 use maze_core::IdGenerator;
 use maze_core::space::{Field, SquarePoint, SquareTessellation, square_rect};
+use std::sync::Arc;
 
 fn make_field(width: usize, height: usize) -> Field<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    Field::new(square_rect(width, height), &mut ids).unwrap()
+    Field::new(Arc::default(), square_rect(width, height), &mut ids).unwrap()
 }
 
 #[test]

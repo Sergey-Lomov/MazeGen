@@ -12,10 +12,13 @@ use maze_core::space::{MultiLevelField, SquarePoint, SquareTessellation, square_
 use maze_core::{Graph, IdGenerator, Maze, NodeId};
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = MultiLevelField::single_level(square_rect(n_cols, n_rows), &mut ids).unwrap();
+    let field =
+        MultiLevelField::single_level(Arc::default(), square_rect(n_cols, n_rows), &mut ids)
+            .unwrap();
     let mut graph = Graph::new();
     for node in field.all_node_ids() {
         graph.add_node(node);
@@ -158,8 +161,12 @@ fn random_endpoints_idempotent_when_both_set() {
 #[test]
 fn random_endpoints_empty_graph_returns_failed() {
     let mut ids = IdGenerator::new();
-    let field =
-        MultiLevelField::<SquareTessellation>::single_level(square_rect(1, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(
+        Arc::default(),
+        square_rect(1, 1),
+        &mut ids,
+    )
+    .unwrap();
     let graph = Graph::new();
     let mut maze = Maze::new(field, graph);
     let mut rng = make_rng();

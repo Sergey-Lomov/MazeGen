@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -22,7 +23,7 @@ vi.mock("../wasm/mazeService", () => ({
 
 const { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } = await import("../pixi/PresetConnectionsRenderer");
 
-const cfg: TessellationConfig = { type: "square", width: 4, height: 4 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 const proj = makeProjection(cfg);
 const posOf = (x: number, y: number) => {
   const { x: px, y: py } = proj.gridToScreen(x, y);

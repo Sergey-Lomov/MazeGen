@@ -1,7 +1,7 @@
 mod nested_strategy_tests {
     use crate::config::{
         CheckInstanceConfig, GenerateConfig, QcRuleConfig, StageConfig, StrategyConfig,
-        TessellationType,
+        TessellationKind,
     };
     use crate::runner::rule_factory::build_qc_and_repair;
     use crate::runner::run_from_config;
@@ -158,7 +158,8 @@ mod nested_strategy_tests {
     fn config_with_points(points: Vec<[i32; 2]>) -> GenerateConfig {
         GenerateConfig {
             tessellation: crate::config::TessellationConfig {
-                tessellation_type: TessellationType::Square,
+                kind: TessellationKind::Square,
+                params: serde_json::Map::new(),
             },
             level_fields: vec![points],
             ..Default::default()
@@ -589,6 +590,7 @@ mod build_check_tests {
     use crate::runner::qc_kind_registry::check_kind_for_type;
     use maze_core::space::{SquareTessellation, Tessellation};
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     // Same rationale as `build_strategy_tests::every_known_id_builds_a_strategy_whose_own_strategy_id_matches`
     // above, but for `build_check`: its match arms hand-pair a string literal with a
@@ -770,7 +772,7 @@ mod build_check_tests {
         // fallback of 0.0.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -982,13 +984,14 @@ mod rule_level_params_tests {
 /// of which were exercised by any existing fixture/test (every prior config used exactly one
 /// `level_fields` entry).
 mod level_fields_tests {
-    use crate::config::{GenerateConfig, TessellationConfig, TessellationType};
+    use crate::config::{GenerateConfig, TessellationConfig, TessellationKind};
     use crate::runner::run_from_config;
 
     fn config_with_level_fields(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
         GenerateConfig {
             tessellation: TessellationConfig {
-                tessellation_type: TessellationType::Square,
+                kind: TessellationKind::Square,
+                params: serde_json::Map::new(),
             },
             level_fields,
             ..Default::default()
@@ -1060,14 +1063,15 @@ mod level_fields_tests {
 /// multi-level generation pipeline as the existing tessellations, while its integer coordinate
 /// space rejects unused pairs such as (0, 0).
 mod cairo_dispatch_tests {
-    use crate::config::{GenerateConfig, TessellationConfig, TessellationType};
+    use crate::config::{GenerateConfig, TessellationConfig, TessellationKind};
     use crate::runner::run_from_config;
     use maze_core::space::{CairoPoint, CairoTessellation};
 
     fn cairo_config(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
         GenerateConfig {
             tessellation: TessellationConfig {
-                tessellation_type: TessellationType::Cairo,
+                kind: TessellationKind::Cairo,
+                params: serde_json::Map::new(),
             },
             level_fields,
             ..Default::default()
@@ -1094,16 +1098,13 @@ mod cairo_dispatch_tests {
     fn json_wire_config_accepts_cairo_tessellation() {
         let config: GenerateConfig = serde_json::from_str(
             r#"{
-                "tessellation": { "tessellation_type": "cairo" },
+                "tessellation": { "kind": "cairo", "params": {} },
                 "level_fields": [[[2, 1], [2, 3]]]
             }"#,
         )
         .expect("the Cairo wire tag must deserialize");
 
-        assert!(matches!(
-            config.tessellation.tessellation_type,
-            TessellationType::Cairo
-        ));
+        assert!(matches!(config.tessellation.kind, TessellationKind::Cairo));
         run_from_config(710, &config).expect("a deserialized Cairo config must run");
     }
 
@@ -1133,9 +1134,11 @@ mod cairo_dispatch_tests {
         // while keeping the remaining shape connected.
         points.remove(2);
         assert!(points.iter().all(|[x, y]| *x < 0 && *y < 0));
-        assert!(points
-            .iter()
-            .all(|[x, y]| CairoTessellation::is_valid_point(CairoPoint::new(*x, *y))));
+        assert!(
+            points
+                .iter()
+                .all(|[x, y]| CairoTessellation::is_valid_point(CairoPoint::new(*x, *y)))
+        );
 
         let config = cairo_config(vec![points.clone(), points]);
         let first = run_from_config(715, &config).expect("custom multi-floor Cairo must run");

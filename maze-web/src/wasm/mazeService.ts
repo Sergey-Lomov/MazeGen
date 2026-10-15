@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig, WasmTessellationConfig } from "./types";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 
 function isNodeDto(v: unknown): v is NodeDto {
@@ -278,6 +278,6 @@ export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
 /// source of truth for tile geometry: `tessellationGeometry.ts`'s `getCellCenter` scales and
 /// (for hex/tri) rotates this per the caller's tessellation config, rather than duplicating the
 /// per-tessellation projection formulas in TypeScript.
-export function getCartesianCoords(config: { tessellation_type: "square" | "hex" | "tri" | "cairo"; points: [number, number][] }): [number, number][] {
+export function getCartesianCoords(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): [number, number][] {
   return getWasm().cartesian_coords(config) as [number, number][];
 }

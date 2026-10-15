@@ -9,11 +9,12 @@ import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBuilders";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { getCellVertices, pointInPolygon } from "../pixi/tessellationGeometry";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_SHARED_STYLE, DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_FLOOR_LABEL_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
+import { fieldOf } from "./fieldConfigFixtures";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
 // only ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`).
@@ -168,19 +169,19 @@ const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: t
 const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, junctionRadius: 4, join: "miter", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...DEFAULT_VERTICAL_SHARED_STYLE, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, floorLabel: DEFAULT_FLOOR_LABEL_SETTINGS, ...sharedStyleSource, links: DEFAULT_VECTOR_BY_CORRIDORS_LINKS };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
-// reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
+// reference-equality of `nodes`/`edges`/`activeFieldConfig` (same convention as
 // `VectorByWallsRenderer`'s own cache), so a fresh literal on every call would look like a data
 // change even when a test means to vary only `vectorByCorridorsSettings`.
 const stableNodes: NodeDto[] = [];
 const stableEdges: EdgeDto[] = [];
-const stableCfg: TessellationConfig = { type: "square", width: 4, height: 4 };
+const stableCfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 4, rows: 4 });
 
 function baseState(overrides: Record<string, unknown> = {}) {
   return {
     openCard: "image_export",
     nodes: stableNodes,
     edges: stableEdges,
-    activeTessellationConfig: stableCfg,
+    activeFieldConfig: stableCfg,
     vectorByCorridorsSettings: settingsA,
     vectorByCorridorsSectionsExpanded: {},
     floors: [{ id: "floor_1", title: "Floor 1" }],
@@ -882,7 +883,7 @@ describe("VectorByCorridorsRenderer", () => {
     // (verified directly against squareCenter's own Y-flip/half-tile-offset convention).
     const nodes: NodeDto[] = [];
     for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) nodes.push({ id: y * 3 + x, x, y, i: 0 });
-    currentState = baseState({ nodes, vectorByCorridorsSettings: settingsA, activeTessellationConfig: { type: "square", width: 3, height: 3 } });
+    currentState = baseState({ nodes, vectorByCorridorsSettings: settingsA, activeFieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 3 }) });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
 
     const asAny = renderer as unknown as {
@@ -921,7 +922,7 @@ describe("VectorByCorridorsRenderer", () => {
     expect(backgroundGrid.background.rect).toHaveBeenCalledTimes(1);
     expect(backgroundGrid.grid.render).toHaveBeenCalledWith(
       { viewport: { x: 10, y: 20, w: 800, h: 600, scale: 2 }, color: settingsB.gridColor },
-      currentState.activeTessellationConfig,
+      currentState.activeFieldConfig,
     );
   });
 
@@ -1449,7 +1450,7 @@ describe("VectorByCorridorsRenderer", () => {
     });
 
     it("clips a Cairo bridge gap as a cell-bounded polygon with independently limited ends", () => {
-      const cfg: TessellationConfig = { type: "cairo", cols: 3, rows: 3 };
+      const cfg: FieldConfig = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
       const vertices = getCellVertices(2, 1, cfg)!;
       const face = (index: number) => ({ v0: vertices[index], v1: vertices[(index + 1) % vertices.length] });
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
@@ -1463,7 +1464,7 @@ describe("VectorByCorridorsRenderer", () => {
         }],
       });
       currentState = baseState({
-        activeTessellationConfig: cfg,
+        activeFieldConfig: cfg,
         vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 10 },
       });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);

@@ -1,5 +1,5 @@
 import type { NodeDto } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import type { Pos } from "../tessellationGeometry";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
@@ -21,7 +21,7 @@ export interface RegionGeometry {
 export function buildRegionGeometry(
   regionNodeIds: number[],
   nodes: NodeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): RegionGeometry {
   const nodeById = new Map<number, NodeDto>();
   for (const node of nodes) nodeById.set(node.id, node);

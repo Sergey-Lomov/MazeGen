@@ -160,7 +160,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
     // the same check `run_generate_typed` runs, via the shared `validate_split_patterns`.
-    let degree = T::faces().len();
+    let degree = field.tessellation().faces().len();
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)
         .map_err(|e| JsValue::from_str(&e))?;
 

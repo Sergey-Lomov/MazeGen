@@ -24,16 +24,16 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPa
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,
-  floorFields: { fieldEditMode: "default" | "custom"; fieldPoints: Set<number>; tessellationConfig: TessellationConfig }[],
+  floorFields: { fieldEditMode: "default" | "custom"; fieldPoints: Set<number>; fieldConfig: FieldConfig }[],
 ): FeatureStatus {
   if (!tessellationConfirmed) return "unavailable";
   const totalCount = floorFields.reduce(
-    (sum, f) => sum + (f.fieldEditMode === "custom" ? f.fieldPoints.size : configCellCount(f.tessellationConfig)),
+    (sum, f) => sum + (f.fieldEditMode === "custom" ? f.fieldPoints.size : configCellCount(f.fieldConfig)),
     0,
   );
   if (totalCount === 0) return "critical";
@@ -80,7 +80,7 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
   const labels: Record<TessellationKind, () => string> = {
     square: m["tessellation.square"],
     hex: m["tessellation.hex"],
-    triangle: m["tessellation.triangle"],
+    tri: m["tessellation.triangle"],
     cairo: m["tessellation.cairo"],
   };
   return labels[kind]();
@@ -248,7 +248,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     if (!tessellationConfirmed) return undefined;
     const label = getTessellationKindLabel(tessellationKind);
     if (tessellationKind === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
-    if (tessellationKind === "triangle") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
+    if (tessellationKind === "tri") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
     return label;
   }
 

@@ -1,5 +1,5 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { FieldConfig } from "../../fieldConfig";
 import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../tessellationGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
@@ -49,7 +49,7 @@ export function fitTeleportBadgeFontSize(labels: string[], r: number, textPaddin
 /// them by `slot`/`slotCount`. When there are more badges than vertices, use an even circular
 /// distribution instead of reusing corners. Falls back to a fixed 45° when the tessellation has no
 /// vertex geometry (`getCellVertices` returns `null`, e.g. an unrecognized `cfg.type`).
-function vertexAngle(cell: [number, number], center: Pos, cfg: TessellationConfig, slot: number, slotCount: number): number {
+function vertexAngle(cell: [number, number], center: Pos, cfg: FieldConfig, slot: number, slotCount: number): number {
   const vertices = getCellVertices(cell[0], cell[1], cfg);
   if (!vertices || vertices.length === 0) return Math.PI / 4;
   if (slotCount > vertices.length) return -Math.PI / 2 + (slot / slotCount) * 2 * Math.PI;
@@ -58,7 +58,7 @@ function vertexAngle(cell: [number, number], center: Pos, cfg: TessellationConfi
   return Math.atan2(v.y - center.y, v.x - center.x);
 }
 
-export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: TessellationConfig, slotCount: number): boolean {
+export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: FieldConfig, slotCount: number): boolean {
   const vertices = getCellVertices(cell[0], cell[1], cfg);
   return vertices !== null && vertices.length > 0 && slotCount > vertices.length;
 }
@@ -141,7 +141,7 @@ export function drawFloorBadge(
 export function computeCrossFloorBadgePos(
   onFloorCell: [number, number],
   offFloorCell: [number, number],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   badgeRadius: number,
   tileRadius: number,
   slot = 0,
@@ -177,7 +177,7 @@ export function computeCrossFloorBadgePos(
  *  centered on the cell, starting straight up (`-90°`) and going clockwise, so badges never overlap
  *  each other or (mostly) the cell's own perimeter stroke. See `Specs/floors.md`'s "Cross-floor
  *  region badges" section for the full feature description. */
-export function computeRegionBadgeRingPos(cell: [number, number], cfg: TessellationConfig, badgeRadius: number, slot: number, slotCount: number): Pos {
+export function computeRegionBadgeRingPos(cell: [number, number], cfg: FieldConfig, badgeRadius: number, slot: number, slotCount: number): Pos {
   const center = getCellCenter(cell[0], cell[1], cfg);
   if (slotCount <= 1) return center;
   // Ring radius accounts for the badge's own stroke (drawn outward, `alignment: 0`) — otherwise

@@ -186,6 +186,7 @@ mod tests {
     use crate::repair::strategies::test_utils::apply_and_commit;
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     // `select_merge_candidates` needs no Maze/Graph/Field setup at all — pure sort/shuffle logic
     // over plain sizes, unlike the rest of this file's tests which all build a real maze just to
@@ -361,7 +362,8 @@ mod tests {
     /// adjacent in a chain: 0-1-2-3.
     fn maze_4_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);
@@ -533,7 +535,8 @@ mod tests {
         // Block every possible bridge -- nested ExpandRegionPassageStrategy must fail to find
         // any candidate, and that Failed must propagate through unchanged.
         let mut ids = IdGenerator::new();
-        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field =
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

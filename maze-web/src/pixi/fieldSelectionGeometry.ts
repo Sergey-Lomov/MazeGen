@@ -2,7 +2,7 @@ import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
 import { getCellVertices as geometryCellVertices } from "./tessellationGeometry";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { hexOrientationOf, triOrientationOf, type FieldConfig } from "../fieldConfig";
 import type { TessellationKind } from "./primitiveGeometry";
 import type { WorldPoint } from "./primitiveGeometry";
 
@@ -12,7 +12,7 @@ export type BoundarySegment = [WorldPoint, WorldPoint];
 export function selectionBoundarySegments(
   cells: [number, number][],
   kind: TessellationKind,
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): BoundarySegment[] {
   const edges = new Map<string, BoundarySegment>();
   for (const [x, y] of cells) {
@@ -30,7 +30,7 @@ export function selectionBoundarySegments(
   return [...edges.values()];
 }
 
-function cellVertices(x: number, y: number, kind: TessellationKind, cfg: TessellationConfig): WorldPoint[] {
+function cellVertices(x: number, y: number, kind: TessellationKind, cfg: FieldConfig): WorldPoint[] {
   if (kind === "square") {
     const h = TILE_SIZE / 2;
     const cx = x * TILE_SIZE + h;
@@ -43,12 +43,12 @@ function cellVertices(x: number, y: number, kind: TessellationKind, cfg: Tessell
     ];
   }
   if (kind === "hex") {
-    const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    const orientation = hexOrientationOf(cfg);
     const center = hexCenter(x, y, orientation, cfg);
     return hexVertices(center.x, center.y, orientation).map((point) => ({ x: point.x, y: -point.y }));
   }
   if (kind === "cairo") return geometryCellVertices(x, y, cfg)?.map((point) => ({ x: point.x, y: -point.y })) ?? [];
-  const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
+  const orientation = triOrientationOf(cfg);
   return triVertices(x, y, orientation).map((point) => ({ x: point.x, y: -point.y }));
 }
 

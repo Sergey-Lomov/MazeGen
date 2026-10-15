@@ -24,11 +24,11 @@ export class TessellationRenderer {
       const shouldShow = state.openCard === "basic_config" || state.openCard === "floors";
       if (openChanged) {
         this.root.visible = shouldShow;
-        if (shouldShow) this.redraw(state.previewTessellationConfig);
+        if (shouldShow) this.redraw(state.previewFieldConfig);
       }
 
-      if (shouldShow && state.previewTessellationConfig !== prev.previewTessellationConfig) {
-        this.redraw(state.previewTessellationConfig);
+      if (shouldShow && state.previewFieldConfig !== prev.previewFieldConfig) {
+        this.redraw(state.previewFieldConfig);
       }
     });
 
@@ -41,7 +41,7 @@ export class TessellationRenderer {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     if (this.root.visible) {
-      const cfg = useMazeStore.getState().previewTessellationConfig;
+      const cfg = useMazeStore.getState().previewFieldConfig;
       this.redraw(cfg);
     }
   }

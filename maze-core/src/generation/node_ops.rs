@@ -190,11 +190,12 @@ mod tests {
     use crate::IdGenerator;
     use crate::graph::EdgeKind;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
+    use std::sync::Arc;
 
     fn field_with_extra_node() -> (MultiLevelField<SquareTessellation>, Graph, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(2, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p0 = SquarePoint { x: 0, y: 0 };
         let slot0 = field.node_at(level, p0).unwrap();
@@ -244,7 +245,7 @@ mod tests {
     fn try_remove_node_refuses_to_remove_a_points_last_remaining_node() {
         let mut ids = IdGenerator::new();
         let mut field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(1, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let p0 = SquarePoint { x: 0, y: 0 };
         let slot0 = field.node_at(level, p0).unwrap();
@@ -308,7 +309,7 @@ mod tests {
     ) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
             g.add_node(node);

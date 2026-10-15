@@ -6,6 +6,7 @@ import { PostEditRenderer } from "../pixi/PostEditRenderer";
 import { VerticalConnectionRenderer } from "../pixi/renderers/VerticalConnectionRenderer";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { EdgeDto, NodeDto } from "../wasm/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock("../pixi/cartesianCache", () => ({
 }));
 
 const SECOND_FLOOR_ID = "floor_2";
-const TESS = { type: "square" as const, width: 2, height: 1 };
+const TESS = fieldOf("square", { shape: "rect", cols: 2, rows: 1 });
 // Two floors of a 2x1 grid: (0,0) is node 0 / node 1, (1,0) is node 2 / node 3.
 const NODES: NodeDto[] = [
   { id: 0, x: 0, y: 0, i: 0, level: 0 },
@@ -43,10 +44,10 @@ describe("PostEditRenderer vertical markers (GitHub issue #564)", () => {
       ...baseStoreState(),
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: SECOND_FLOOR_ID, title: "Floor 2" }],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: TESS }),
-        [SECOND_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: TESS }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: TESS }),
+        [SECOND_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: TESS }),
       },
-      activeTessellationConfig: TESS,
+      activeFieldConfig: TESS,
       postEditActiveSplitNode: {},
       postEditDragOverride: null,
       postEditAutoConfirm: false,

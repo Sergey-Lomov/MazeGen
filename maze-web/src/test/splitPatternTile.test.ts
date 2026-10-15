@@ -2,22 +2,23 @@ import { describe, it, expect } from "vitest";
 import { degreeFor, patternAnchorPoint, resizePatternNodes, removePatternNode, tileNodesForPattern, tileNodesForTopology } from "../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../pixi/splitPatternTitles";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
+import { fieldOf } from "./fieldConfigFixtures";
 
 describe("degreeFor", () => {
   it("returns 4 for square", () => {
-    expect(degreeFor({ type: "square", width: 3, height: 3 })).toBe(4);
+    expect(degreeFor(fieldOf("square", { shape: "rect", cols: 3, rows: 3 }))).toBe(4);
   });
 
   it("returns 6 for hex", () => {
-    expect(degreeFor({ type: "hex_parallelogram", width: 3, height: 3, orientation: "flat_top" } as never)).toBe(6);
+    expect(degreeFor(fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top") as never)).toBe(6);
   });
 
   it("returns 3 for triangle", () => {
-    expect(degreeFor({ type: "triangle_rect", width: 3, height: 3 } as never)).toBe(3);
+    expect(degreeFor(fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }) as never)).toBe(3);
   });
 
   it("returns 5 for Cairo even though the coordinate origin is not a tile", () => {
-    const cfg = { type: "cairo", cols: 3, rows: 3 } as const;
+    const cfg = fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 });
     expect(patternAnchorPoint(cfg)).toEqual([2, 1]);
     expect(degreeFor(cfg)).toBe(5);
   });
@@ -113,7 +114,7 @@ describe("removePatternNode", () => {
 describe("tileNodesForTopology", () => {
   const PASSAGE: SplitFaceRequirement = { kind: "passage" };
   const WALL: SplitFaceRequirement = { kind: "wall" };
-  const cfg = { type: "square", width: 3, height: 3 } as const;
+  const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
   it("converts core face positions to web face positions per node", () => {
     // Square core order is [N, S, E, W] (indices 0-3); splitFaceIndexToCore's web->core table is

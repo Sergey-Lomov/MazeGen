@@ -117,6 +117,7 @@ mod tests {
     use crate::meta::MazeMeta;
     use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
     use crate::{Graph, IdGenerator};
+    use std::sync::Arc;
 
     /// start(0) -- 1 -- ... -- (width-1) along y=0, with `finish` set at the far end (so both
     /// `distance_from_start` and `distance_from_finish` are always defined), plus a branch off
@@ -125,7 +126,7 @@ mod tests {
     fn maze_with_corridor(width: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(width, 2), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(width, 2), &mut ids).unwrap();
         let field_level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {
@@ -178,14 +179,18 @@ mod tests {
         let (maze, nodes) = maze_with_corridor(6);
         let any = WaypointDistances::new(&maze, Waypoint::Any).unwrap();
         // width 6: node 3 is 3 tiles from start (node 0), 2 tiles from finish (node 5).
-        assert_eq!(any.distance_to(nodes[3]), Some(2), "closer of the two must win");
+        assert_eq!(
+            any.distance_to(nodes[3]),
+            Some(2),
+            "closer of the two must win"
+        );
     }
 
     #[test]
     fn distance_to_is_none_for_an_unreachable_node() {
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> =
-            MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            MultiLevelField::single_level(Arc::default(), square_rect(4, 1), &mut ids).unwrap();
         let level = field.single_level_id();
         let mut g = Graph::new();
         for node in field.all_node_ids() {

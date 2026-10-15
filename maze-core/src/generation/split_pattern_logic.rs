@@ -31,9 +31,9 @@ pub struct ResolvedFace {
 
 #[derive(Debug, Clone)]
 struct Adaptation {
-    /// Index into `T::rotation_symmetries()`.
+    /// Index into `Tessellation::rotation_symmetries()`.
     rotation: usize,
-    /// Index into `T::mirror_symmetries()`, or `None` when no mirror was applied.
+    /// Index into `Tessellation::mirror_symmetries()`, or `None` when no mirror was applied.
     mirror: Option<usize>,
     faces: Vec<ResolvedFace>,
 }
@@ -168,12 +168,13 @@ fn resolve_face<T: Tessellation>(
     mirror: Option<usize>,
     builder: &mut AdaptationBuilder,
 ) -> bool {
+    let tessellation = field.tessellation();
     let Some(resolved_index) =
-        crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)
+        crate::space::transform_face_index(tessellation, face.face_index, rotation, mirror)
     else {
         return false;
     };
-    let Some(tess_face) = T::face_at(resolved_index) else {
+    let Some(tess_face) = tessellation.face_at(resolved_index) else {
         return false;
     };
 
@@ -187,7 +188,8 @@ fn resolve_face<T: Tessellation>(
         return true;
     }
 
-    let neighbor = T::step(point, tess_face)
+    let neighbor = tessellation
+        .step(point, tess_face)
         .and_then(|neighbor_point| field.nodes_at(level, neighbor_point).first().copied());
 
     match face.requirement {
@@ -394,7 +396,8 @@ fn enumerate_adaptations<T: Tessellation>(
     let Some(point) = field.point_of(src) else {
         return Vec::new();
     };
-    let degree = T::faces().len();
+    let tessellation = field.tessellation();
+    let degree = tessellation.faces().len();
     if degree == 0 {
         return Vec::new();
     }
@@ -403,11 +406,11 @@ fn enumerate_adaptations<T: Tessellation>(
     let parent_bwd = parent.is_some_and(|p| graph.edge_between(p, src).is_some());
 
     let mirror_choices: Vec<Option<usize>> = std::iter::once(None)
-        .chain((0..T::mirror_symmetries().len()).map(Some))
+        .chain((0..tessellation.mirror_symmetries().len()).map(Some))
         .collect();
 
     let mut results = Vec::new();
-    for rotation in 0..T::rotation_symmetries().len() {
+    for rotation in 0..tessellation.rotation_symmetries().len() {
         for &mirror in &mirror_choices {
             if let Some(adaptation) = try_adaptation(
                 field,

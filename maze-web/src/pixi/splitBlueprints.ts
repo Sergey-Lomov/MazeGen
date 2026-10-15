@@ -18,7 +18,7 @@
 import { splitPatternNodeColor } from "./splitPatternTile";
 import type { TileFace, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 import { cairoCanonicalFaceOrder } from "./cairoGeometry";
 
 export interface SplitNodeBlueprint {
@@ -106,17 +106,17 @@ export function blueprintsForDegree(degree: number): SplitNodeBlueprint[] {
  *  declares `passage` faces (everything else defaults to `wall`), no `one_way`/`undefined`. */
 export function resolveBlueprintFaceIndex(
   blueprint: SplitNodeBlueprint,
-  cfg: TessellationConfig | undefined,
+  cfg: FieldConfig | undefined,
   point: [number, number] | undefined,
   faceIndex: number,
 ): number {
-  if (blueprint.faceIndexMode !== "cairo_canonical" || !cfg?.type.startsWith("cairo") || !point) return faceIndex;
+  if (blueprint.faceIndexMode !== "cairo_canonical" || cfg?.tessellation.kind !== "cairo" || !point) return faceIndex;
   return cairoCanonicalFaceOrder(point[0], point[1])[faceIndex] ?? faceIndex;
 }
 
 export function tileNodesForBlueprint(
   blueprint: SplitNodeBlueprint,
-  cfg?: TessellationConfig,
+  cfg?: FieldConfig,
   point?: [number, number],
 ): TileFaceNode[] {
   return blueprint.nodeFaces.map((faces, nodeIndex): TileFaceNode => {
@@ -179,7 +179,7 @@ export function fittingRotation(
  *  `handleAddPattern` default for a freshly added pattern. */
 export function blueprintToSplitPattern(
   blueprint: SplitNodeBlueprint,
-  cfg?: TessellationConfig,
+  cfg?: FieldConfig,
   point?: [number, number],
 ): SplitPattern {
   return {

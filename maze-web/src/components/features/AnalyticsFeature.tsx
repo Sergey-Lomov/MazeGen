@@ -143,7 +143,7 @@ export function AnalyticsFeature() {
   const issues = useMazeStore(useShallow(selectAnalyticsIssues));
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
 
   const statistics = postEditAnalytics?.statistics ?? generatedStatistics;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
@@ -281,7 +281,7 @@ export function AnalyticsFeature() {
         <DetailedReportPanel
           statistics={statistics}
           floors={floors}
-          cfg={tessellationConfig}
+          cfg={fieldConfig}
           nodes={nodes}
           onClose={() => setDetailedReportOpen(false)}
         />

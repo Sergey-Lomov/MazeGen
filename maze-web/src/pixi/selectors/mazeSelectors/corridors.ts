@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
+import type { FieldConfig } from "../../../fieldConfig";
 import { getCellCenter, getCellVertices, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { buildSplitPointKeys } from "./split";
@@ -51,7 +51,7 @@ export type CorridorSegment = {
 export function buildCorridorSegments(
   nodes: NodeDto[],
   edges: EdgeDto[],
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
 ): CorridorSegment[] {
   const nodeById = new Map<number, NodeDto>();
   const nodeByCoord = new Map<string, NodeDto>();

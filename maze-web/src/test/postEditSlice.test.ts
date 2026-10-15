@@ -23,6 +23,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 
 import { computeAnalyticsAsync as computeAnalytics } from "../wasm/mazeService";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const n = nodeEndpoint;
 const key01 = edgeKey(n(0), n(1));
@@ -65,7 +66,7 @@ beforeEach(() => {
   vi.mocked(computeAnalytics).mockReset();
   vi.mocked(computeAnalytics).mockResolvedValue(mockSnapshot);
   useMazeStore.setState({
-    activeTessellationConfig: { type: "square", width: 2, height: 1 },
+    activeFieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }),
     postEditAutoConfirm: false,
     postEditAutoCompact: false,
     _nextPostEditTeleportId: 1,
@@ -456,7 +457,7 @@ describe("mazeStore post-edit actions", () => {
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.level_fields).toEqual([configAllCells({ type: "square", width: 10, height: 10 })]);
+    expect(call?.level_fields).toEqual([configAllCells(fieldOf("square", { shape: "rect", cols: 10, rows: 10 }))]);
   });
 
   it("confirmPostEdit sends one level_fields entry per floor, in floors order (GitHub issue #359)", async () => {
@@ -464,16 +465,16 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.setState({
       floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: SECOND_FLOOR_ID, title: "Floor 2" }],
       floorFields: {
-        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } }),
-        [SECOND_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 2, rows: 1 }) }),
+        [SECOND_FLOOR_ID]: baseFloorFieldConfig({ fieldConfig: fieldOf("square", { shape: "rect", cols: 3, rows: 4 }) }),
       },
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
     expect(call?.level_fields).toEqual([
-      configAllCells({ type: "square", width: 2, height: 1 }),
-      configAllCells({ type: "square", width: 3, height: 4 }),
+      configAllCells(fieldOf("square", { shape: "rect", cols: 2, rows: 1 })),
+      configAllCells(fieldOf("square", { shape: "rect", cols: 3, rows: 4 })),
     ]);
   });
 
@@ -2347,7 +2348,7 @@ describe("mazeStore split-node actions", () => {
           bToA: es(splitEndpoint([2, 2], 0), n(301), "basic"),
         },
       ],
-    }, { activeTessellationConfig: { type: "square", width: 5, height: 5 } });
+    }, { activeFieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }) });
 
     useMazeStore.getState().rotateSplitPoint([2, 2], 1);
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0]);
@@ -2362,10 +2363,10 @@ describe("mazeStore split-node actions", () => {
 describe("mazeStore applySplitBlueprint", () => {
   const square: SplitNodeBlueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]], titleKey: "split_pattern_title.bridge" };
 
-  // `activeTessellationConfig` square field is centered on the origin (`ox = floor(width/2)`,
+  // `activeFieldConfig` square field is centered on the origin (`ox = floor(width/2)`,
   // see `configAllCells`) - width 9 covers x,y in [-4, 4], comfortably wide enough for a point
   // at the origin plus every one of its 4 neighbors.
-  const wideField = { type: "square" as const, width: 9, height: 9 };
+  const wideField = fieldOf("square", { shape: "rect", cols: 9, rows: 9 });
 
   it("mints one slot per extra blueprint node and wires passages to existing neighbors", () => {
     seedPostEdit({
@@ -2375,7 +2376,7 @@ describe("mazeStore applySplitBlueprint", () => {
       ],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
@@ -2398,7 +2399,7 @@ describe("mazeStore applySplitBlueprint", () => {
       ],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditCommands).toHaveLength(1);
@@ -2426,7 +2427,7 @@ describe("mazeStore applySplitBlueprint", () => {
       ],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField, postEditTool: "wall" });
+    }, { activeFieldConfig: wideField, postEditTool: "wall" });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const slot0 = splitEndpoint([0, 0], 0);
     expect(useMazeStore.getState().postEditActiveSplitNode["0,0"]).toEqual(slot0);
@@ -2449,7 +2450,7 @@ describe("mazeStore applySplitBlueprint", () => {
       ],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const slot0 = splitEndpoint([0, 0], 0);
     const before = useMazeStore.getState().postEditCommands;
@@ -2472,7 +2473,7 @@ describe("mazeStore applySplitBlueprint", () => {
       ],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0]);
 
@@ -2504,7 +2505,7 @@ describe("mazeStore applySplitBlueprint", () => {
         { kind: "setEdge", edge: es(n(0), staleTarget, "basic") },
       ],
       nextSplitSlotId: { "0,0": 6 },
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     // `square` needs exactly one slot (2 nodes total: original + 1) - the existing slot 5 is reused
@@ -2531,7 +2532,7 @@ describe("mazeStore applySplitBlueprint", () => {
         { kind: "setEdge", edge: es(n(0), target6, "basic") },
       ],
       nextSplitSlotId: { "0,0": 7 },
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([5]);
@@ -2547,7 +2548,7 @@ describe("mazeStore applySplitBlueprint", () => {
         { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
         { kind: "setMeta", slot: "start", endpoint: target },
       ],
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
@@ -2565,7 +2566,7 @@ describe("mazeStore applySplitBlueprint", () => {
         { kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" },
         { kind: "setMeta", slot: "finish", endpoint: target },
       ],
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
@@ -2587,7 +2588,7 @@ describe("mazeStore applySplitBlueprint", () => {
         { kind: "addElevator", id: "e1", floors: [oldSlot, n(1)] },
       ],
       nextSplitSlotId: { "0,0": 6 },
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
 
     useMazeStore.getState().applySplitBlueprint([0, 0], singleNode);
     const s = useMazeStore.getState();
@@ -2611,7 +2612,7 @@ describe("mazeStore applySplitBlueprint", () => {
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
       edges: [],
       start: null, finish: null,
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     expect(() => useMazeStore.getState().applySplitBlueprint([0, 0], oversized)).not.toThrow();
     const s = useMazeStore.getState();
     // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
@@ -2634,7 +2635,7 @@ describe("mazeStore applySplitBlueprint", () => {
       edges: [],
       start: null, finish: null,
       commands: [{ kind: "setEdge", edge: es(n(10), n(1), "basic") }],
-    }, { activeTessellationConfig: wideField });
+    }, { activeFieldConfig: wideField });
     expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0]);
 
     // Square offsets: index0=E(1,0) index2=W(-1,0). node0(original) has no faces here; node1(slot0)
@@ -2656,7 +2657,7 @@ describe("mazeStore applySplitBlueprint", () => {
 });
 
 describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #545)", () => {
-  const wideField = { type: "square" as const, width: 9, height: 9 };
+  const wideField = fieldOf("square", { shape: "rect", cols: 9, rows: 9 });
 
   it("records a single updateSplitNodeFaces command, not a setEdgePair, when wiring a freshly-added slot's face", () => {
     seedPostEdit({
@@ -2665,7 +2666,7 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
       start: null, finish: null,
       commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
       nextSplitSlotId: { "0,0": 1 },
-    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    }, { activeFieldConfig: wideField, postEditTool: "passage" });
     const slot0 = splitEndpoint([0, 0], 0);
     useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
     const s = useMazeStore.getState();
@@ -2687,7 +2688,7 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
       start: null, finish: null,
       commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
       nextSplitSlotId: { "0,0": 1 },
-    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    }, { activeFieldConfig: wideField, postEditTool: "passage" });
     const slot0 = splitEndpoint([0, 0], 0);
     useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
     useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(2)), slot0, n(2));
@@ -2711,7 +2712,7 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
       start: null, finish: null,
       commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
       nextSplitSlotId: { "0,0": 1 },
-    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    }, { activeFieldConfig: wideField, postEditTool: "passage" });
     // Node 0 is the split point's original node (i:0) - editing ITS face is editing the split, same
     // as editing slot0's face above, and must log the same command kind.
     useMazeStore.getState().applyPostEditTool(edgeKey(n(0), n(1)), n(0), n(1));
@@ -2732,7 +2733,7 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
       start: null, finish: null,
       commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
       nextSplitSlotId: { "0,0": 1 },
-    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    }, { activeFieldConfig: wideField, postEditTool: "passage" });
     useMazeStore.getState().applyPostEditTool(edgeKey(n(0), n(1)), n(0), n(1));
     expect(useMazeStore.getState().postEditCommands).toHaveLength(2);
     useMazeStore.getState().resetPostEditPoint([0, 0]);
@@ -2748,7 +2749,7 @@ describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #
       start: null, finish: null,
       commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
       nextSplitSlotId: { "0,0": 1 },
-    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    }, { activeFieldConfig: wideField, postEditTool: "passage" });
     const slot0 = splitEndpoint([0, 0], 0);
     useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
     expect(useMazeStore.getState().postEditCommands).toHaveLength(2);

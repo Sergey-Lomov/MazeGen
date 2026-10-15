@@ -51,9 +51,10 @@ vi.mock("pixi.js", () => {
 const { MazeGraphRenderer } = await import("../pixi/MazeGraphRenderer");
 const { Graphics: FakeGraphics, BitmapText: FakeText, Container } = await import("pixi.js");
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
+import { fieldOf } from "./fieldConfigFixtures";
 
-const cfg: TessellationConfig = { type: "square", width: 6, height: 6 };
+const cfg: FieldConfig = fieldOf("square", { shape: "rect", cols: 6, rows: 6 });
 const n = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });
 
 /** Collects every descendant recursively (badge fill + digit Text land in the same overlay

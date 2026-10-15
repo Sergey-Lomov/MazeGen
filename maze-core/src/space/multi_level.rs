@@ -1,6 +1,7 @@
 use crate::ids::{IdGenerator, NodeId};
 use crate::space::{Field, Tessellation};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Stable identifier for one level (floor) inside a `MultiLevelField`. Never an index into any
 /// `Vec` — never reused, never renumbered when other levels are added/removed/reordered (GitHub
@@ -20,6 +21,7 @@ pub struct LevelId(u32);
 /// only where a bare geometric point is otherwise ambiguous (point-based lookup/creation) or for
 /// managing the level set itself.
 pub struct MultiLevelField<T: Tessellation> {
+    tessellation: Arc<T>,
     levels: HashMap<LevelId, Field<T>>,
     level_order: Vec<LevelId>,
     node_to_level: HashMap<NodeId, LevelId>,
@@ -29,6 +31,7 @@ pub struct MultiLevelField<T: Tessellation> {
 impl<T: Tessellation> Clone for MultiLevelField<T> {
     fn clone(&self) -> Self {
         Self {
+            tessellation: Arc::clone(&self.tessellation),
             levels: self.levels.clone(),
             level_order: self.level_order.clone(),
             node_to_level: self.node_to_level.clone(),
@@ -39,8 +42,9 @@ impl<T: Tessellation> Clone for MultiLevelField<T> {
 
 impl<T: Tessellation> MultiLevelField<T> {
     /// Empty aggregator, no levels yet — internal starting point for `single_level`/`new`.
-    fn empty() -> Self {
+    fn empty(tessellation: Arc<T>) -> Self {
         Self {
+            tessellation,
             levels: HashMap::new(),
             level_order: Vec::new(),
             node_to_level: HashMap::new(),
@@ -52,11 +56,12 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// replacement for every existing `Field::new` call site during the single-level migration
     /// (GitHub issue #334). The resulting level's id is retrievable via `single_level_id()`.
     pub fn single_level(
+        tessellation: Arc<T>,
         points: impl IntoIterator<Item = T::Point>,
         ids: &mut IdGenerator,
     ) -> Result<Self, &'static str> {
-        let field = Field::new(points, ids)?;
-        let mut mf = Self::empty();
+        let field = Field::new(Arc::clone(&tessellation), points, ids)?;
+        let mut mf = Self::empty(tessellation);
         mf.add_level(field);
         Ok(mf)
     }
@@ -64,8 +69,8 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// Builds a multi-level aggregator from already-constructed `Field`s, one level per entry in
     /// iteration order. General-purpose constructor for future multi-level scenarios — not used
     /// by the single-level migration itself (`single_level` covers that).
-    pub fn new(levels: impl IntoIterator<Item = Field<T>>) -> Self {
-        let mut mf = Self::empty();
+    pub fn new(tessellation: Arc<T>, levels: impl IntoIterator<Item = Field<T>>) -> Self {
+        let mut mf = Self::empty(tessellation);
         for field in levels {
             mf.add_level(field);
         }
@@ -81,7 +86,15 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// signalling a broken invariant (mirrors `Field::from_id_points`'s duplicate-id
     /// `debug_assert!` convention). The global per-`Maze` `IdGenerator` is expected to guarantee
     /// uniqueness, but the aggregator does not blindly trust callers of `new`/`add_level`.
+    ///
+    /// Debug-asserts `field` uses this aggregator's tessellation instance (every level of a maze
+    /// shares one instance). Zero-sized tessellations carry no data, so any two of their
+    /// instances are interchangeable and the identity check is skipped for them.
     pub fn add_level(&mut self, field: Field<T>) -> LevelId {
+        debug_assert!(
+            size_of::<T>() == 0 || Arc::ptr_eq(field.shared_tessellation(), &self.tessellation),
+            "add_level: field uses a different tessellation instance",
+        );
         let level = LevelId(self.next_level_id);
         self.next_level_id += 1;
         for node in field.all_node_ids() {
@@ -127,6 +140,16 @@ impl<T: Tessellation> MultiLevelField<T> {
     /// at least one). QC/repair/routing/analytics/post-edit are all multi-floor-aware as of the
     /// GitHub issue #333 epic; the only remaining caller is `io::render_ascii`, a debug/example
     /// tool that only ever renders one floor by design.
+    /// The tessellation instance shared by every level.
+    pub fn tessellation(&self) -> &T {
+        &self.tessellation
+    }
+
+    /// The shared handle of `tessellation()`, for building another field on the same instance.
+    pub fn shared_tessellation(&self) -> &Arc<T> {
+        &self.tessellation
+    }
+
     pub fn single_level_id(&self) -> LevelId {
         self.level_order[0]
     }

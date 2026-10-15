@@ -51,12 +51,12 @@ export function PostEditElevatorFloorDialog({ onClose }: Props) {
     for (let index = 0; index < floors.length; index++) {
       // Each row's own floor config (GitHub issue #611's bug class) — a shared active-floor config
       // would mis-resolve face topology for every floor row other than the currently active one.
-      const rowCfg = floorFields[floors[index].id].tessellationConfig;
+      const rowCfg = floorFields[floors[index].id].fieldConfig;
       const geometry = buildSplitFloorGeometry(point, index, nodes, draftEdges, draftTeleports, splitPoints, rowCfg);
       if (!geometry) continue;
       const kind = detectSplitSpecialShapeKind(
         geometry.faceKindsByNode,
-        rowCfg.type.startsWith("cairo") ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
+        rowCfg.tessellation.kind === "cairo" ? cairoCanonicalFaceOrder(point[0], point[1]) : undefined,
       );
       result.set(index, kind !== null ? splitPointShapeName(kind) : m["post_edit.split_cell_label"]());
     }

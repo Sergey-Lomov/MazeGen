@@ -1,5 +1,5 @@
 import { makeProjection, type TessellationProjection } from "./tessellationProjection";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldConfig } from "../fieldConfig";
 
 /** The small viewport surface controllers need from Pixi. Keeping this structural makes the
  * pointer primitives usable in unit tests and independent from either editor renderer. */
@@ -36,7 +36,7 @@ export function pointerCellAt(
 }
 
 export function pointerCellAtConfig(
-  cfg: TessellationConfig,
+  cfg: FieldConfig,
   viewportX: number,
   viewportY: number,
 ): [number, number] {

@@ -1,15 +1,12 @@
 use super::resolve_start;
-use crate::config::{
-    GenerateConfig, TessellationType, build_generation_config, build_generation_source_mode,
-};
+use super::tessellation_factory::{PointCodec, TessellationVisitor, build_tessellation};
+use crate::config::{GenerateConfig, build_generation_config, build_generation_source_mode};
 use maze_core::{
     generation::GenerationConfig,
     ids::IdGenerator,
-    space::{
-        CairoPoint, CairoTessellation, Field, HexPoint, HexTessellation, MultiLevelField,
-        SquarePoint, SquareTessellation, Tessellation, TriPoint, TriTessellation,
-    },
+    space::{Field, MultiLevelField, Tessellation},
 };
+use std::sync::Arc;
 
 /// Everything a pipeline stage needs before generation starts, resolved from a
 /// `GenerateConfig` for one concrete tessellation: the multi-level field, the id generator that
@@ -24,58 +21,58 @@ pub struct Prepared<T: Tessellation> {
     pub point_to_xy: fn(T::Point) -> (i32, i32),
 }
 
-/// Consumer of a `Prepared` field — the single place where the runtime `TessellationType` turns
-/// into a compile-time `T`, so every runner entry point (full run, canonical baselines,
-/// benchmarks) shares one dispatch.
-pub trait TessellationVisitor {
+/// Consumer of a `Prepared` field. Every runner entry point (full run, canonical baselines,
+/// benchmarks) shares one tessellation dispatch: `dispatch` builds the instance through
+/// `build_tessellation` and hands the prepared field to this visitor.
+pub trait PreparedVisitor {
     type Output;
-    fn visit<T: Tessellation + 'static>(
-        self,
-        prepared: Prepared<T>,
-    ) -> Result<Self::Output, String>;
+    fn visit<T: Tessellation>(self, prepared: Prepared<T>) -> Result<Self::Output, String>;
 }
 
-/// Builds the field described by `config.level_fields` for `config`'s tessellation and hands it
-/// to `visitor`.
-pub fn dispatch<V: TessellationVisitor>(
+/// Builds the field described by `config.level_fields` on `config`'s tessellation instance and
+/// hands it to `visitor`.
+pub fn dispatch<V: PreparedVisitor>(
     seed: u64,
     config: &GenerateConfig,
     visitor: V,
 ) -> Result<V::Output, String> {
-    match config.tessellation.tessellation_type {
-        TessellationType::Square => visitor.visit(prepare::<SquareTessellation>(
+    build_tessellation(
+        &config.tessellation,
+        PrepareThen {
             seed,
             config,
-            |x, y| SquarePoint { x, y },
-            |p| (p.x, p.y),
-        )?),
-        TessellationType::Hex => visitor.visit(prepare::<HexTessellation>(
-            seed,
-            config,
-            |q, r| HexPoint { q, r },
-            |p| (p.q, p.r),
-        )?),
-        TessellationType::Tri => visitor.visit(prepare::<TriTessellation>(
-            seed,
-            config,
-            |col, row| TriPoint { col, row },
-            |p| (p.col, p.row),
-        )?),
-        TessellationType::Cairo => visitor.visit(prepare::<CairoTessellation>(
-            seed,
-            config,
-            |x, y| CairoPoint { x, y },
-            |p| (p.x, p.y),
-        )?),
+            visitor,
+        },
+    )?
+}
+
+/// Adapts a `PreparedVisitor` to the tessellation factory: prepares the field on the built
+/// instance, then forwards it.
+struct PrepareThen<'a, V> {
+    seed: u64,
+    config: &'a GenerateConfig,
+    visitor: V,
+}
+
+impl<V: PreparedVisitor> TessellationVisitor for PrepareThen<'_, V> {
+    type Output = Result<V::Output, String>;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: PointCodec<T>) -> Self::Output {
+        self.visitor
+            .visit(prepare(self.seed, self.config, tessellation, codec)?)
     }
 }
 
 fn prepare<T: Tessellation>(
     seed: u64,
     config: &GenerateConfig,
-    point_from_xy: fn(i32, i32) -> T::Point,
-    point_to_xy: fn(T::Point) -> (i32, i32),
+    tessellation: Arc<T>,
+    codec: PointCodec<T>,
 ) -> Result<Prepared<T>, String> {
+    let PointCodec {
+        from_xy: point_from_xy,
+        to_xy: point_to_xy,
+    } = codec;
     let to_pts = |raw: &[[i32; 2]]| -> Vec<T::Point> {
         raw.iter().map(|&[x, y]| point_from_xy(x, y)).collect()
     };
@@ -98,14 +95,15 @@ fn prepare<T: Tessellation>(
     );
 
     let mut ids = IdGenerator::new();
-    let mut field =
-        MultiLevelField::<T>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+    let mut field = MultiLevelField::single_level(Arc::clone(&tessellation), first_pts, &mut ids)
+        .map_err(|e| e.to_string())?;
     for raw in rest {
         let pts = to_pts(raw);
         if pts.is_empty() {
             return Err("level_fields entry must not be empty".to_string());
         }
-        let level = Field::<T>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+        let level =
+            Field::new(Arc::clone(&tessellation), pts, &mut ids).map_err(|e| e.to_string())?;
         field.add_level(level);
     }
 

@@ -58,9 +58,9 @@ type NodeRef = number;
  *  dropdown read as confusing and siblings aren't meant to link to each other directly); a
  *  follow-up issue tracks removing the field itself from both sides. */
 export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Props) {
-  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
-  const degree = degreeFor(tessellationConfig);
-  const anchorPoint = patternAnchorPoint(tessellationConfig);
+  const fieldConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const degree = degreeFor(fieldConfig);
+  const anchorPoint = patternAnchorPoint(fieldConfig);
   const [activeNode, setActiveNode] = useState(0);
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -155,7 +155,7 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
             ))}
           </Inline>
           <TileFaceEditor
-            point={anchorPoint} cfg={tessellationConfig} nodes={tileNodes} activeIndex={activeNode}
+            point={anchorPoint} cfg={fieldConfig} nodes={tileNodes} activeIndex={activeNode}
             onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={() => {}}
             showRotateControls={false}
           />

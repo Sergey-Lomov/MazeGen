@@ -8,6 +8,7 @@ import type { PostEditCommand } from "../store/postEditCommandTypes";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
+import { fieldOf } from "./fieldConfigFixtures";
 
 const es = (from: PostEditEndpoint, to: PostEditEndpoint, kind: PostEditEdgeState["kind"], _legacyId?: string): PostEditEdgeState => ({ kind, from, to });
 
@@ -21,9 +22,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
         squareShape: "rect",
         hexShape: "parallelogram",
         triangleShape: "rect",
-        tessellationConfig: { type: "square", width: 5, height: 5 },
-        savedConfigs: {},
-        freeFieldPoints: { square: new Set<number>(), hex: new Set<number>(), triangle: new Set<number>() },
+        fieldConfig: fieldOf("square", { shape: "rect", cols: 5, rows: 5 }),
+        savedShapes: {},
+        freeFieldPoints: { square: new Set<number>(), hex: new Set<number>(), tri: new Set<number>() },
         isEditingField: false,
         fieldPoints: new Set<number>(),
         fieldEditMode: "default",
@@ -132,11 +133,11 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     state.floorFields.floor_1 = {
       ...state.floorFields.floor_1,
       cairoShape: "free",
-      tessellationConfig: { type: "cairo_custom", points: [[-3, 2], [2, 1]] },
+      fieldConfig: fieldOf("cairo", { shape: "custom", points: [[-3, 2], [2, 1]] }),
       freeFieldPoints: {
         square: new Set(),
         hex: new Set(),
-        triangle: new Set(),
+        tri: new Set(),
         cairo: new Set([(-3 << 16) | 2, (2 << 16) | 1]),
       },
       isEditingField: true,
@@ -533,16 +534,26 @@ describe("parseAndValidate — malformed input", () => {
     expect(() => parseAndValidate(data)).toThrow(/newer than supported/);
   });
 
-  it("throws on unknown tessellation type", () => {
+  it("throws on unknown field shape", () => {
     const data = valid();
-    data.floorFields.floor_1.config.type = "not_a_real_type";
-    expect(() => parseAndValidate(data)).toThrow(/Unknown tessellation config type/);
+    data.floorFields.floor_1.shape.shape = "not_a_real_shape";
+    expect(() => parseAndValidate(data)).toThrow(/Unknown field shape/);
   });
 
-  it("throws on invalid hex orientation", () => {
+  it("throws on a field shape or saved shape the kind does not offer", () => {
     const data = valid();
-    data.floorFields.floor_1.config = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "sideways" };
-    expect(() => parseAndValidate(data)).toThrow(/Invalid hex orientation/);
+    data.floorFields.floor_1.shape = { shape: "parallelogram", cols: 3, rows: 3 };
+    expect(() => parseAndValidate(data)).toThrow(/floorFields\.floor_1\.shape: kind "square" does not offer shape "parallelogram"/);
+
+    const saved = valid();
+    saved.floorFields.floor_1.savedShapes = [{ shape: "hexagon", radius: 2 }];
+    expect(() => parseAndValidate(saved)).toThrow(/savedShapes\[0\]: kind "square" does not offer shape "hexagon"/);
+  });
+
+  it("throws on tessellation params the kind does not accept", () => {
+    const data = valid();
+    data.tessellation.params = { rings: 3 };
+    expect(() => parseAndValidate(data)).toThrow(/does not accept param "rings"/);
   });
 
   it("throws on invalid postEditEdge kind", () => {
@@ -611,10 +622,10 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     });
   });
 
-  it("defaults floorFields.<floorId>.savedConfigs to empty array when absent", () => {
+  it("defaults floorFields.<floorId>.savedShapes to empty array when absent", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.floorFields.floor_1.savedConfigs).toEqual([]);
+    expect(result.floorFields.floor_1.savedShapes).toEqual([]);
   });
 
   it("falls back to basic_config when ui.openCard is not a valid FeatureId", () => {
@@ -782,7 +793,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete data.dirtyFlags;
     delete data.debug;
     delete data.ui;
-    delete data.floorFields.floor_1.savedConfigs;
+    delete data.floorFields.floor_1.savedShapes;
     return data;
   }
 });

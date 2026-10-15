@@ -25,7 +25,7 @@ export function usePresetPointEntities(
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const activeFloorIndex = useMazeStore((s) => Math.max(s.floors.findIndex((f) => f.id === s.activeFloorId), 0));
-  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -40,11 +40,11 @@ export function usePresetPointEntities(
     splitPoints: presetSplitPoints,
     presetConnections,
     activeSplitNode: presetActiveSplitNode,
-    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.tessellationConfig ?? cfg,
+    cfgAt: (targetLevel) => floorFields[floors[targetLevel]?.id ?? ""]?.fieldConfig ?? cfg,
     inFieldCellsAt: (targetLevel) => {
       const targetFloor = floorFields[floors[targetLevel]?.id ?? ""];
       return targetFloor
-        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.tessellationConfig))
+        ? buildCellSet(buildActiveCells(targetFloor.fieldPoints, targetFloor.fieldEditMode, targetFloor.fieldConfig))
         : inFieldCells;
     },
   }), [presetSplitPoints, presetConnections, presetActiveSplitNode, floorFields, floors, cfg, inFieldCells]);
