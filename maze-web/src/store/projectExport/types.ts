@@ -254,3 +254,22 @@ export interface ProjectFile {
 // and the `suppressPair(s)` fields removed; generation-baked vertical passages/elevators are now
 // full baseline draft entries. Breaking, no migration — same policy as v3 -> v4.
 export const CURRENT_VERSION = 5;
+
+/** Project files are plain JSON saved under a dedicated extension, so the load dialog shows only
+ *  project files (not debug configs or other JSON). */
+export const PROJECT_FILE_EXTENSION = ".maze";
+
+type PlatformInfo = Pick<Navigator, "userAgent" | "platform" | "maxTouchPoints">;
+
+/** iOS/iPadOS file pickers map `accept` to system file types (UTIs); an unknown extension like
+ *  `.maze` has none, so the picker can grey out every file. iPadOS reports a desktop Mac user agent,
+ *  hence the touch-points check. */
+function isIOS(nav: PlatformInfo): boolean {
+  return /iPad|iPhone|iPod/.test(nav.userAgent) || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+}
+
+/** `accept` value for the project load dialog: the project extension, or no filter on iOS/iPadOS
+ *  (see `isIOS`). */
+export function projectFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : PROJECT_FILE_EXTENSION;
+}

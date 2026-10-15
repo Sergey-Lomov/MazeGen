@@ -1,7 +1,7 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
-import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
+import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -149,11 +149,13 @@ export function serializeProject(state: MazeState): ProjectFile {
 
 export function downloadProjectFile(state: MazeState): void {
   const data = serializeProject(state);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  // Neutral MIME type: with `application/json` some browsers (Safari, mobile) append `.json` to the
+  // name, and the resulting `.maze.json` file no longer passes the load dialog's extension filter.
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "maze-project.json";
+  a.download = `maze-project${PROJECT_FILE_EXTENSION}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

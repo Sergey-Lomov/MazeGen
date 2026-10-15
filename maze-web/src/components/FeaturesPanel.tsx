@@ -18,7 +18,7 @@ import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
@@ -442,7 +442,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
           ref={fileInputRef}
           type="file"
           name="project-file"
-          accept=".json"
+          accept={projectFileAccept(navigator)}
           style={{ display: "none" }}
           onChange={handleFileChange}
         />
