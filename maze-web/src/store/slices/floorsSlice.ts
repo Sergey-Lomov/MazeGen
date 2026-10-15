@@ -65,7 +65,8 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     const trimmed = title.trim();
     if (!trimmed) return;
     set((state) => ({
-      floors: state.floors.map((f) => f.id === id ? { ...f, title: trimmed } : f),
+      // An unchanged commit (rename opened and confirmed as-is) must not mark the title custom.
+      floors: state.floors.map((f) => f.id === id && f.title !== trimmed ? { ...f, title: trimmed, titleCustomized: true } : f),
     }));
   },
 

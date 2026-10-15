@@ -266,6 +266,11 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
   try { obj = assertObject(v, path); } catch { return fallback; }
   return {
     enabled: optBool(obj, "enabled", fallback.enabled),
+    // Floor labels predate label modes (GitHub issue #747): keep index-based output for saved
+    // settings without a mode.
+    labelMode: obj.labelMode === undefined
+      ? "index"
+      : optEnum(obj, "labelMode", ["index", "title"] as const, fallback.labelMode),
     prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
@@ -686,6 +691,11 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string, link
   };
 }
 
+function hasFloorLabelSettings(obj: Record<string, unknown> | null): boolean {
+  return [obj?.vectorByWallsSettings, obj?.vectorByCorridorsSettings].some((settings) =>
+    settings != null && typeof settings === "object" && (settings as Record<string, unknown>).floorLabel != null);
+}
+
 export function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
@@ -711,6 +721,9 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
       ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)
       : {},
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
+    // A file saved before GitHub issue #747 that already carries floor-label settings keeps them
+    // as-is; one without them gets the mode chosen on the next first open of Image Export.
+    floorLabelModeChosen: optBool(obj, "floorLabelModeChosen", hasFloorLabelSettings(obj)),
     vectorByWallsLinks: linksMatchDefaults(vectorByWallsLinks, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : vectorByWallsLinks,
     vectorByCorridorsLinks: linksMatchDefaults(vectorByCorridorsLinks, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : vectorByCorridorsLinks,
   };

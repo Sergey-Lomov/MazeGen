@@ -135,6 +135,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       vectorByCorridorsSettings: state.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
       pngExportSettings: state.pngExportSettings,
+      floorLabelModeChosen: state.floorLabelModeChosen,
       vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
       vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
     },

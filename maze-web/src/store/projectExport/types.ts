@@ -88,6 +88,8 @@ export interface ProjectFileImageExport {
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;
   pngExportSettings: PngExportSettings;
+  /** See `ImageExportState.floorLabelModeChosen`. */
+  floorLabelModeChosen: boolean;
   /** `vectorByWallsSettings.links`, persisted only when it deviates from
    * `DEFAULT_VECTOR_BY_WALLS_LINKS` (GitHub issue #651) — `null` for a project untouched since
    * load (or saved before this issue existed), meaning "use the current defaults as-is" rather than
@@ -101,7 +103,7 @@ export interface ProjectFileImageExport {
 /** Floor list — GitHub issue #335, epic #333. See `FloorsState`'s doc comment for why
  * `nextFloorNumber` must be persisted rather than recomputed from `floors` on load. */
 export interface ProjectFileFloors {
-  floors: { id: string; title: string }[];
+  floors: { id: string; title: string; titleCustomized?: boolean }[];
   nextFloorNumber: number;
   /** Active floor selection (GitHub issue #354) — absent in project files saved before this
    * issue, defaulting to `floors[0].id` on load (see `validateFloors` in validatePrimitives.ts). */

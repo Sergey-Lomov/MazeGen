@@ -8,6 +8,7 @@ import { createGenerationSlice, generateWithSeed } from "./slices/generationSlic
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
+import { chooseFloorLabelModeOnce } from "./floorLabelModeChoice";
 import { createFloorsSlice } from "./slices/floorsSlice";
 import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
@@ -249,11 +250,14 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       vectorByCorridorsSettings: file.imageExport.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,
+      floorLabelModeChosen: file.imageExport.floorLabelModeChosen,
       // floors
       floors: file.floors.floors,
       nextFloorNumber: file.floors.nextFloorNumber,
       activeFloorId,
     });
+    // A project saved with Image Export open lands on it without a `setOpenCard` call.
+    if (file.ui.openCard === "image_export") set(chooseFloorLabelModeOnce(get()));
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
     // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below

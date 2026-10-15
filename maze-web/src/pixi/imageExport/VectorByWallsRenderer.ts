@@ -673,6 +673,7 @@ export class VectorByWallsRenderer {
       activeFloorIndex,
       state.floors.length,
       floorColor,
+      state.floors[activeFloorIndex]?.title,
     );
 
     this.renderWarningHighlight(state);

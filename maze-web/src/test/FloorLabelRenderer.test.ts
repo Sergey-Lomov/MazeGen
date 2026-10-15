@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as BASE_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
+
+// Floor labels are disabled by default; the renderer is exercised enabled.
+const DEFAULT_VECTOR_BY_WALLS_SETTINGS = { ...BASE_WALLS_SETTINGS, floorLabel: { ...BASE_WALLS_SETTINGS.floorLabel, enabled: true } };
 
 class FakeContainer {
   children: unknown[] = [];
@@ -64,5 +67,17 @@ describe("FloorLabelRenderer", () => {
     const label = layer.children[0] as FakeBitmapText;
     expect(label.x).toBeCloseTo(expectedX);
     expect(label.y).toBe(200);
+  });
+
+  it("renders the active floor title in title mode", () => {
+    renderer.render({
+      ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+      labelMode: "title",
+      backgroundShape: "none",
+    }, { x: 100, y: 200 }, 0, 2, 0xffffff, "Ground");
+
+    const layer = root.children[0] as FakeContainer;
+    const label = layer.children[0] as FakeBitmapText;
+    expect(label.options.text).toBe("Ground");
   });
 });

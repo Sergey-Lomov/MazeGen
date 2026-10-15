@@ -4,7 +4,7 @@ import { VectorByWallsSettingsPanel } from "../components/features/VectorByWalls
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as BASE_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as BASE_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { convertFloorLabelPosition, floorLabelCenter, floorLabelPosition, floorLabelText, floorLabelTextX } from "../pixi/renderers/FloorLabelRenderer";
 import { FloorLabelDragController } from "../pixi/imageExport/FloorLabelDragController";
@@ -20,6 +20,10 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableStrategies: vi.fn(() => []),
 }));
 
+// Floor labels are disabled by default; these tests exercise them enabled.
+const DEFAULT_VECTOR_BY_WALLS_SETTINGS = { ...BASE_WALLS_SETTINGS, floorLabel: { ...BASE_WALLS_SETTINGS.floorLabel, enabled: true } };
+const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS = { ...BASE_CORRIDORS_SETTINGS, floorLabel: { ...BASE_CORRIDORS_SETTINGS.floorLabel, enabled: true } };
+
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
@@ -30,9 +34,21 @@ beforeEach(() => {
 });
 
 describe("export floor labels", () => {
+  it("is disabled by default", () => {
+    expect(BASE_WALLS_SETTINGS.floorLabel.enabled).toBe(false);
+    expect(BASE_CORRIDORS_SETTINGS.floorLabel.enabled).toBe(false);
+  });
+
   it("combines the configured prefix with the selected floor-number style", () => {
-    expect(floorLabelText({ ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, prefix: "Level ", labelType: "letters" }, 1)).toBe("Level B");
-    expect(floorLabelText({ ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, prefix: "F", labelType: "roman" }, 3)).toBe("FIV");
+    expect(floorLabelText({ ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, labelMode: "index", prefix: "Level ", labelType: "letters" }, 1)).toBe("Level B");
+    expect(floorLabelText({ ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, labelMode: "index", prefix: "F", labelType: "roman" }, 3)).toBe("FIV");
+  });
+
+  it("uses the configured floor title and falls back to an index when no title is available", () => {
+    const settings = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, labelMode: "title" as const, prefix: "Level ", labelType: "roman" as const };
+    expect(floorLabelText(settings, 1, "Mezzanine")).toBe("Mezzanine");
+    expect(floorLabelText(settings, 1, "  ")).toBe("Level II");
+    expect(floorLabelText(settings, 1)).toBe("Level II");
   });
 
   it("centers the label on the active floor independently of the viewport", () => {
@@ -116,11 +132,31 @@ describe("export floor labels", () => {
   });
 
   it("places the prefix inside the Label subsection", () => {
-    useMazeStore.setState({ floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }], vectorByWallsSectionsExpanded: { floors: true } });
+    const current = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      vectorByWallsSectionsExpanded: { floors: true },
+      vectorByWallsSettings: { ...current, floorLabel: { ...current.floorLabel, labelMode: "index" } },
+    });
     render(<VectorByWallsSettingsPanel />);
     const labelHeader = screen.getAllByText(m["image_export.floors.label_subsection"]())[0];
     const prefix = screen.getByText(m["image_export.floors.prefix"]());
     expect(labelHeader.compareDocumentPosition(prefix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("switches between floor-title and index label controls", () => {
+    const current = useMazeStore.getState().vectorByWallsSettings;
+    useMazeStore.setState({
+      floors: [{ id: "floor_1", title: "Ground" }, { id: "floor_2", title: "Upper" }],
+      vectorByWallsSectionsExpanded: { floors: true },
+      vectorByWallsSettings: { ...current, floorLabel: { ...current.floorLabel, labelMode: "title" } },
+    });
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.floors.prefix"]())).not.toBeInTheDocument();
+    const mode = document.querySelector(`select[name="${m["image_export.floors.label_mode"]()}"]`)!;
+    fireEvent.change(mode, { target: { value: "index" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+    expect(screen.getByText(m["image_export.floors.prefix"]())).toBeInTheDocument();
   });
 
   it("edits horizontal alignment in the Label subsection", () => {
@@ -251,15 +287,15 @@ describe("export floor labels", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.floorLabel.positionsByFloorId.floor_1).toEqual({ mode: "free", x: 3, y: 4 });
   });
 
-  it("hides every dependent floor setting when Show floors is disabled", () => {
+  it("hides every dependent floor setting when Show floor captions is disabled", () => {
     useMazeStore.setState({
       floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
       vectorByWallsSectionsExpanded: { floors: true },
     });
     render(<VectorByWallsSettingsPanel />);
-    expect(screen.getByText(m["image_export.floors.prefix"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.floors.label_mode"]())).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: m["image_export.floors.show"]() }));
-    expect(screen.queryByText(m["image_export.floors.prefix"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.floors.label_mode"]())).not.toBeInTheDocument();
     expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.enabled).toBe(false);
   });
 
@@ -353,6 +389,15 @@ describe("export floor labels", () => {
     );
     expect(items.floorLabel).toHaveLength(2);
     expect(items.floorLabel.every((item) => item.plateShape === "parallelogram")).toBe(true);
+  });
+
+  it("uses every floor title for floor-label auto-fit", () => {
+    const items = computeTextFitItemsAcrossFloors(
+      [{ id: 0, x: 0, y: 0, i: 0 }], [], [{ id: "floor_1", title: "Ground" }, { id: "floor_2", title: "Observation deck" }],
+      { type: "square", width: 4, height: 4 },
+      { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, floorLabel: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, labelMode: "title" } }, null, null,
+    );
+    expect(items.floorLabel.map((item) => item.text)).toEqual(["Ground", "Observation deck"]);
   });
 
   it("allows floor-label auto-fit to use the larger font-size range", () => {

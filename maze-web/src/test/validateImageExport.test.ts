@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MARKER_TEXT_SIZE } from "../pixi/renderConstants";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings } from "../store/projectExport/validateImageExport";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, validateVectorByWallsSettings, optRenderStyle, validateVectorByCorridorsSettings, validateLinks, validateMarkerSettings, validateMarkerIndexSettings, validateFloorLabelSettings, validateImageExport } from "../store/projectExport/validateImageExport";
 import { DEFAULT_MARKER_INDEX_SETTINGS, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS } from "../store/slices/parameterLinksDefaults";
 import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
@@ -348,5 +348,20 @@ describe("validateFloorLabelSettings", () => {
     expect(validateFloorLabelSettings({}, "path", fallback).textAlignment).toBe("center");
     expect(validateFloorLabelSettings({ textAlignment: "right" }, "path", fallback).textAlignment).toBe("right");
     expect(validateFloorLabelSettings({ textAlignment: "diagonal" }, "path", fallback).textAlignment).toBe("center");
+  });
+
+  it("keeps old floor labels index-based and validates the title mode", () => {
+    const fallback = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, labelMode: "title" as const };
+    expect(validateFloorLabelSettings({}, "path", fallback).labelMode).toBe("index");
+    expect(validateFloorLabelSettings({ labelMode: "title" }, "path", fallback).labelMode).toBe("title");
+    expect(validateFloorLabelSettings({ labelMode: "future" }, "path", fallback).labelMode).toBe("title");
+    expect(validateFloorLabelSettings(undefined, "path", fallback).labelMode).toBe("title");
+  });
+
+  it("treats saved floor-label settings as an already chosen label mode", () => {
+    expect(validateImageExport(undefined, "imageExport").floorLabelModeChosen).toBe(false);
+    expect(validateImageExport({ vectorByCorridorsSettings: {} }, "imageExport").floorLabelModeChosen).toBe(false);
+    expect(validateImageExport({ vectorByWallsSettings: { floorLabel: { prefix: "L" } } }, "imageExport").floorLabelModeChosen).toBe(true);
+    expect(validateImageExport({ floorLabelModeChosen: false, vectorByWallsSettings: { floorLabel: {} } }, "imageExport").floorLabelModeChosen).toBe(false);
   });
 });

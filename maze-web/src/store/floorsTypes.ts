@@ -8,6 +8,10 @@ export interface RootActions {
 export interface FloorState {
   id: string;
   title: string;
+  /** True once the user renamed this floor (GitHub issue #747). Floor-label settings created
+   * while any floor carries a custom title default to title-based labels. Absent means the title
+   * is still the generated "Floor N" default. */
+  titleCustomized?: boolean;
 }
 
 export interface FloorsState {
@@ -38,7 +42,7 @@ export interface FloorsActions {
   /** No-op if `id` is the only remaining floor. No confirmation here — the caller (FloorsFeature)
    * gates destructive removal behind ConfirmModal before calling this. */
   removeFloor: (id: string) => void;
-  /** No-op on an empty/whitespace-only title. */
+  /** No-op on an empty/whitespace-only or unchanged title. */
   renameFloor: (id: string, title: string) => void;
   /** Adjacent swap in `floors` order. No-op at either end of the list. */
   moveFloor: (id: string, direction: "up" | "down") => void;

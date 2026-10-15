@@ -397,6 +397,7 @@ export interface BadgeSettings extends MarkerAppearance, TextStyleFields {
 }
 
 export type FloorLabelBackgroundShape = "none" | "rectangle" | "parallelogram";
+export type FloorLabelMode = "index" | "title";
 
 export const FLOOR_LABEL_ANCHORS = [
   "top_left", "top_center", "top_right",
@@ -416,6 +417,7 @@ export type FloorLabelPosition =
 export interface FloorLabelSettings extends TextStyleFields {
   textAlignment: TextHorizontalAlignment;
   enabled: boolean;
+  labelMode: FloorLabelMode;
   prefix: string;
   labelType: IndexLabelStyle;
   backgroundShape: FloorLabelBackgroundShape;
@@ -793,6 +795,10 @@ export interface ImageExportState {
    *  removes the entry point, it does not disable the underlying link mechanism). */
   linkIconVisibility: LinkIconVisibility;
   vectorByWallsSettings: VectorByWallsSettings;
+  /** Whether both renderers' `floorLabel.labelMode` has been chosen from the floor titles yet
+   * (GitHub issue #747). False until the Image Export card is first opened; that open (or a
+   * project load that lands on it) picks `defaultFloorLabelMode` and sets this true. */
+  floorLabelModeChosen: boolean;
   /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
    * mirrors `vectorByWallsSectionsExpanded`. */
   vectorByCorridorsSectionsExpanded: Record<string, boolean>;

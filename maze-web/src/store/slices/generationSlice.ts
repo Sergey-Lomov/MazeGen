@@ -4,6 +4,7 @@ import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig } from "../../wasm/types";
 import type { MazeStore, GenerationState, GenerationActions, QcRuleState } from "../storeTypes";
 import { debugStaleOf, buildResetDownstreamState } from "../storeHelpers";
+import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
 import { resolveCheckKind, defaultParamsFor, newRule, newStage } from "./generationSliceHelpers";
 import { generateWithSeed, generateWithSeedAsync } from "./generateConfigBuilder";
 import { createGenerationRulesSlice } from "./generationSliceRules";
@@ -180,6 +181,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setRandomSeed: (v) => set({ randomSeed: v }),
 
   setOpenCard: (card) => set((state) => ({
+    ...(card === "image_export" ? chooseFloorLabelModeOnce(state) : {}),
     openCard: card,
     ...(state.openCard === "preset_connections" && card !== "preset_connections"
       ? { highlightInvalidPresets: false, highlightIsolatedNodes: false, highlightOrphanSplitNodes: false }

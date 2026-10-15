@@ -25,7 +25,8 @@ type P =
   | "elevatorBadges.fillColor"
   | "markerIndex.enabled"
   | "markerIndex.fillColor"
-  | "backgroundColor";
+  | "backgroundColor"
+  | "floorLabel.labelType";
 
 const registry: Record<P, ParamDescriptor> = Object.fromEntries(
   [
@@ -35,7 +36,7 @@ const registry: Record<P, ParamDescriptor> = Object.fromEntries(
     "twoWayArrowColor", "decorativeStairsArrowColor", "oneWayArrowColor",
     "decorativeStairsOneWayArrowColor", "elevatorArrowColor", "decorativeElevator.fillColor",
     "elevatorBadges.enabled", "elevatorBadges.cornerStyle", "elevatorBadges.fillColor",
-    "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor",
+    "markerIndex.enabled", "markerIndex.fillColor", "backgroundColor", "floorLabel.labelType",
   ].map((p) => [p, { type: "color", equals: Object.is, label: p, group: [], format: String }]),
 ) as unknown as Record<P, ParamDescriptor>;
 
@@ -55,6 +56,12 @@ function active(path: P, ctx: Partial<ParamActivityContext> = {}, settings: Para
 }
 
 describe("isPathActive", () => {
+  it("marks the floor-label index style inactive in title mode", () => {
+    const floorLabel = { enabled: true, backgroundShape: "rectangle" as const };
+    expect(active("floorLabel.labelType", { hasMultipleFloors: true }, { floorLabel: { ...floorLabel, labelMode: "index" } })).toBe(true);
+    expect(active("floorLabel.labelType", { hasMultipleFloors: true }, { floorLabel: { ...floorLabel, labelMode: "title" } })).toBe(false);
+  });
+
   it("hides teleport fields when the maze has no teleports", () => {
     expect(active("teleportMarker.fillColor", { hasTeleports: false })).toBe(false);
   });

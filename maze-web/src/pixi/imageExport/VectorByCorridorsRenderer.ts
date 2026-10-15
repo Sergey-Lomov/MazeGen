@@ -491,6 +491,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       activeFloorIndex,
       state.floors.length,
       settings.color,
+      state.floors[activeFloorIndex]?.title,
     );
 
     this.renderWarningHighlight(state);

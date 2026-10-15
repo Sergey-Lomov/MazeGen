@@ -14,6 +14,8 @@ import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   DEFAULT_PNG_EXPORT_SETTINGS,
+  defaultFloorLabelMode,
+  withFloorLabelMode,
 } from "./imageExportDefaults";
 
 export {
@@ -132,6 +134,7 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   showColorWarnings: true,
   linkIconVisibility: "linked",
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+  floorLabelModeChosen: false,
   vectorByCorridorsSectionsExpanded: {},
   vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   hoveredTeleportNodeIds: null,
@@ -383,7 +386,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const { settings, links } = forceLinks(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links);
       return { vectorByCorridorsSettings: markLinked({ ...settings, links }) };
     }),
-  resetVectorByCorridorsSettings: () => set({ vectorByCorridorsSettings: markLinked(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS) }),
+  resetVectorByCorridorsSettings: () => set((s) => ({
+    vectorByCorridorsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, defaultFloorLabelMode(s.floors))),
+  })),
   setVectorByCorridorsLinkEnabled: (target, enabled) =>
     set((s) => {
       const { settings, links } = setLinkEnabledByTarget(s.vectorByCorridorsSettings, s.vectorByCorridorsSettings.links, target, enabled);
@@ -523,7 +528,9 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
       const { settings, links } = forceLinks(s.vectorByWallsSettings, s.vectorByWallsSettings.links);
       return { vectorByWallsSettings: markLinked({ ...settings, links }) };
     }),
-  resetVectorByWallsSettings: () => set({ vectorByWallsSettings: markLinked(DEFAULT_VECTOR_BY_WALLS_SETTINGS) }),
+  resetVectorByWallsSettings: () => set((s) => ({
+    vectorByWallsSettings: markLinked(withFloorLabelMode(DEFAULT_VECTOR_BY_WALLS_SETTINGS, defaultFloorLabelMode(s.floors))),
+  })),
   setVectorByWallsLinkEnabled: (target, enabled) =>
     set((s) => {
       const { settings, links } = setLinkEnabledByTarget(s.vectorByWallsSettings, s.vectorByWallsSettings.links, target, enabled);

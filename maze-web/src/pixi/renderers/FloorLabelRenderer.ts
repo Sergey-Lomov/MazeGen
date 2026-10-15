@@ -14,7 +14,8 @@ export interface FloorBounds {
   maxY: number;
 }
 
-export function floorLabelText(settings: FloorLabelSettings, floorIndex: number): string {
+export function floorLabelText(settings: FloorLabelSettings, floorIndex: number, floorTitle?: string): string {
+  if (settings.labelMode === "title" && floorTitle?.trim()) return floorTitle;
   return `${settings.prefix}${formatIndexLabel(floorIndex, settings.labelType)}`;
 }
 
@@ -114,11 +115,12 @@ export class FloorLabelRenderer {
     floorIndex: number,
     floorCount: number,
     surfaceColor: number,
+    floorTitle?: string,
   ): void {
     this.clear();
     if (!settings.enabled || floorCount <= 1 || !center) return;
 
-    const text = floorLabelText(settings, floorIndex);
+    const text = floorLabelText(settings, floorIndex, floorTitle);
     const label = makeCenteredLabel(
       text,
       msdfFontFamily(settings.textFontWeight),

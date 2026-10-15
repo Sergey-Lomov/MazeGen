@@ -333,6 +333,27 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().activeFloorId).toBe(secondFloorId);
   });
 
+  it("loadProject landing on Image Export picks the floor-label mode only if not chosen yet (GitHub issue #747)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], openCard: "image_export", floorLabelModeChosen: false });
+    useMazeStore.getState().renameFloor(useMazeStore.getState().floors[0].id, "Ground");
+    const file = serializeProject(useMazeStore.getState());
+
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().floorLabelModeChosen).toBe(true);
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("title");
+
+    useMazeStore.getState().loadProject({
+      ...file,
+      imageExport: {
+        ...file.imageExport,
+        floorLabelModeChosen: true,
+        vectorByWallsSettings: { ...file.imageExport.vectorByWallsSettings, floorLabel: { ...file.imageExport.vectorByWallsSettings.floorLabel, labelMode: "index" } },
+      },
+    });
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.labelMode).toBe("index");
+  });
+
   it("loadProject restores Cairo custom field points on the floor state", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     const points = new Set([encodePoint(1, 2), encodePoint(2, 1)]);

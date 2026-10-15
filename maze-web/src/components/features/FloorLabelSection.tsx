@@ -84,18 +84,30 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
           </div>}
           <SubsectionHeader label={m["image_export.floors.label_subsection"]()} expanded={expanded.label} onToggle={() => toggle("label")} />
           {expanded.label && <div style={styles.group}>
-            <LinkedTextFieldRow label={m["image_export.floors.prefix"]()} value={settings.prefix} onChange={(prefix) => onChange({ prefix })} linkTarget={null} inputWidth={120} />
             <LinkedSelectRow
-              label={m["image_export.floors.label"]()}
-              value={settings.labelType}
+              label={m["image_export.floors.label_mode"]()}
               options={[
-                { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
-                { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
-                { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+                { value: "index", label: m["image_export.floors.label_mode_index"]() },
+                { value: "title", label: m["image_export.floors.label_mode_title"]() },
               ]}
-              onChange={(labelType) => onChange({ labelType })}
-              linkTarget={"floorLabel.labelType" as P}
+              value={settings.labelMode}
+              onChange={(labelMode) => onChange({ labelMode })}
+              linkTarget={null}
             />
+            {settings.labelMode === "index" && <>
+              <LinkedTextFieldRow label={m["image_export.floors.prefix"]()} value={settings.prefix} onChange={(prefix) => onChange({ prefix })} linkTarget={null} inputWidth={120} />
+              <LinkedSelectRow
+                label={m["image_export.floors.label"]()}
+                value={settings.labelType}
+                options={[
+                  { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+                  { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+                  { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+                ]}
+                onChange={(labelType) => onChange({ labelType })}
+                linkTarget={"floorLabel.labelType" as P}
+              />
+            </>}
             <LinkedSelectRow
               label={m["image_export.floors.weight"]()}
               value={settings.textFontWeight}

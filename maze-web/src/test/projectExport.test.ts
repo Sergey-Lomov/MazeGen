@@ -109,6 +109,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
     vectorByCorridorsSectionsExpanded: {},
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+    floorLabelModeChosen: true,
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
@@ -731,6 +732,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2, activeFloorId: "floor_1" });
   });
 
+  it("round-trips a customized floor title", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [{ id: "floor_1", title: "Ground", titleCustomized: true }];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toEqual([{ id: "floor_1", title: "Ground", titleCustomized: true }]);
+  });
+
   it("drops a malformed floor entry (missing title) and keeps the rest", () => {
     const data = valid_without_optional_sections();
     (data.floors as { floors: unknown[] }).floors = [
@@ -802,6 +810,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });
@@ -997,6 +1006,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
       vectorByCorridorsSectionsExpanded: {},
       pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+      floorLabelModeChosen: false,
       vectorByWallsLinks: null,
       vectorByCorridorsLinks: null,
     });

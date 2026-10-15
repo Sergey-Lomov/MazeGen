@@ -6,7 +6,7 @@ Field shape is per-floor (GitHub issue #338, see `Specs/field-editor.md`). Prese
 
 ## Concepts
 
-**Floor** — `{ id, title }`. `id` is a client-minted UUID (`floor_${crypto.randomUUID()}`), stable across renames/reorders, never reused. `title` is user-editable text, defaulting to `"Floor N"` at creation time.
+**Floor** — `{ id, title, titleCustomized? }`. `id` is a client-minted UUID (`floor_${crypto.randomUUID()}`), stable across renames/reorders, never reused. `title` is user-editable text, defaulting to `"Floor N"` at creation time. `titleCustomized` becomes `true` once the floor is renamed (GitHub issue #747); absent means the title is still the generated default. It selects the default floor-label mode of newly created image-export settings (see `Specs/image-export.md`).
 
 **Storage order is bottom-to-top** — `floors[0]` is "Floor 1" (the bottom floor), the last array entry is the newest/topmost floor. `addFloor` appends, which is exactly "add on top". The UI renders the reverse of this order (topmost floor first on screen) and maps its visual up/down arrows accordingly — the on-screen "up" arrow moves an entry toward the *end* of the `floors` array, not the start.
 
@@ -29,7 +29,7 @@ Field shape is per-floor (GitHub issue #338, see `Specs/field-editor.md`). Prese
 
 **`removeFloor(id)`** — no-op if `id` is the only remaining floor or unknown. No confirmation inside the action itself — `FloorsFeature` gates destructive removal behind `ConfirmModal` before calling this, and additionally calls `reset()` first when the removal would discard a generation/post-edit result (see "Loss detection" below). Every preset entry naming the removed floor is dropped (GitHub issue #340: it has nowhere to go), and every preset on a floor above it has its `level` shifted down by one to track that floor's new array position (`dropPresetLevelOnFloorRemove`, `storeHelpers.ts`) — mirrors how this action already deletes the removed id's own `FloorFieldConfig` entry; see `Specs/preset-connections.md`'s "Multi-floor presets".
 
-**`renameFloor(id, title)`** — no-op on an empty/whitespace-only title (trimmed before storing).
+**`renameFloor(id, title)`** — no-op on an empty/whitespace-only title (trimmed before storing) and on a title equal to the current one (so confirming the rename field unchanged does not count as customizing it). Otherwise stores the title and marks the floor `titleCustomized: true`.
 
 **`moveFloor(id, direction)`** — adjacent swap within `floors` in array-index terms (`"up"` = toward index 0 = toward Floor 1, `"down"` = toward the end = toward the newest floor). No-op at either array end or for an unknown id. The UI's own up/down buttons invert this mapping to match the reversed on-screen order — see "Concepts" above. Since `PresetEndpoint.level` is a positional index into `floors` (GitHub issue #340), the swap also remaps every preset's `level` through the same two indices (`remapPresetLevelsOnFloorSwap`, `storeHelpers.ts`) so each preset keeps pointing at the same floor it did before the move — see `Specs/preset-connections.md`'s "Multi-floor presets".
 
@@ -67,7 +67,7 @@ Reorder uses its own `floors.confirm_reorder` message (never the field/preset me
 
 ## Persistence (project file)
 
-`floors: { floors: { id, title }[], nextFloorNumber }` — optional section on disk (absent in files saved before this feature existed); `validate.ts`'s `validateFloors` defaults to a single floor (`nextFloorNumber: 2`) when the section is missing entirely. A malformed individual floor entry (non-string `id`/`title`) is dropped rather than failing the whole load; an entry sharing an `id` with an earlier one is dropped too (would otherwise collide as a React list key). If every entry is dropped, falls back to the same single-floor default as a missing section. In the post-validation `ProjectFile` type this field is *not* optional — same convention as `dirtyFlags`/`analytics`/`ui` — the optionality is only on the raw JSON on disk.
+`floors: { floors: { id, title, titleCustomized? }[], nextFloorNumber }` — optional section on disk (absent in files saved before this feature existed); `validate.ts`'s `validateFloors` defaults to a single floor (`nextFloorNumber: 2`) when the section is missing entirely. A malformed individual floor entry (non-string `id`/`title`) is dropped rather than failing the whole load; an entry sharing an `id` with an earlier one is dropped too (would otherwise collide as a React list key). If every entry is dropped, falls back to the same single-floor default as a missing section. In the post-validation `ProjectFile` type this field is *not* optional — same convention as `dirtyFlags`/`analytics`/`ui` — the optionality is only on the raw JSON on disk.
 
 ## Floor switcher (`FloorSwitcher.tsx`, GitHub issue #336)
 
