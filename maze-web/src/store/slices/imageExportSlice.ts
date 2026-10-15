@@ -126,6 +126,7 @@ const FLOOR_LABEL_OVERRIDABLE = [
 
 const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportActions => ({
   activeRenderMode: null,
+  floorLabelDrag: null,
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   showColorWarnings: true,
@@ -139,7 +140,62 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   exportFormatSettingsCovered: false,
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
-  setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
+  setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  startFloorLabelDrag: (renderMode) => set((s) => {
+    const floorLabel = renderMode === "vector_by_walls"
+      ? s.vectorByWallsSettings.floorLabel
+      : s.vectorByCorridorsSettings.floorLabel;
+    const position = floorLabel.positionsByFloorId[s.activeFloorId];
+    if (!position || position.mode === "anchored") return {};
+    return {
+      floorLabelDrag: {
+        renderMode,
+        floorId: s.activeFloorId,
+        initialPosition: position.mode === "cell"
+          ? { ...position, cell: [...position.cell] as [number, number] }
+          : { ...position },
+      },
+    };
+  }),
+  updateFloorLabelDragPosition: (position) => set((s) => {
+    const drag = s.floorLabelDrag;
+    if (!drag || drag.initialPosition.mode !== position.mode) return {};
+    if (drag.renderMode === "vector_by_walls") {
+      const floorLabel = s.vectorByWallsSettings.floorLabel;
+      return { vectorByWallsSettings: markLinked({
+        ...s.vectorByWallsSettings,
+        floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: position } },
+      }) };
+    }
+    const floorLabel = s.vectorByCorridorsSettings.floorLabel;
+    return { vectorByCorridorsSettings: markLinked({
+      ...s.vectorByCorridorsSettings,
+      floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: position } },
+    }) };
+  }),
+  finishFloorLabelDrag: () => set({ floorLabelDrag: null }),
+  cancelFloorLabelDrag: () => set((s) => {
+    const drag = s.floorLabelDrag;
+    if (!drag) return {};
+    if (drag.renderMode === "vector_by_walls") {
+      const floorLabel = s.vectorByWallsSettings.floorLabel;
+      return {
+        floorLabelDrag: null,
+        vectorByWallsSettings: markLinked({
+          ...s.vectorByWallsSettings,
+          floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: drag.initialPosition } },
+        }),
+      };
+    }
+    const floorLabel = s.vectorByCorridorsSettings.floorLabel;
+    return {
+      floorLabelDrag: null,
+      vectorByCorridorsSettings: markLinked({
+        ...s.vectorByCorridorsSettings,
+        floorLabel: { ...floorLabel, positionsByFloorId: { ...floorLabel.positionsByFloorId, [drag.floorId]: drag.initialPosition } },
+      }),
+    };
+  }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
   // A newly (re)opened panel is never covered on open — reset here rather than left stale from
   // whatever the previously open format's covered state happened to be.

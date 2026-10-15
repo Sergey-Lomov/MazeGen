@@ -10,7 +10,7 @@ import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
-import { FloorLabelRenderer, floorLabelCenter } from "../renderers/FloorLabelRenderer";
+import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { computeVectorByWallsWarnings, computeVectorByWallsWarningsAcrossFloors } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -485,7 +485,7 @@ export class VectorByWallsRenderer {
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
     const cellBounds = exactCellBounds(floorNodes, state.activeTessellationConfig);
     return measureContentMargin(
-      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
+      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
   }
@@ -669,7 +669,7 @@ export class VectorByWallsRenderer {
 
     this.floorLabel.render(
       state.vectorByWallsSettings.floorLabel,
-      floorLabelCenter(exactCellBounds(nodes, cfg)),
+      floorLabelPosition(state.vectorByWallsSettings.floorLabel, state.activeFloorId, exactCellBounds(nodes, cfg), cfg),
       activeFloorIndex,
       state.floors.length,
       floorColor,

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // `msdfFont.ts` (GitHub issue #352) is pure glue over pixi's `Assets`/`Cache`/`BitmapText`:
 //  - `msdfFontFamily` maps a weight to the baked atlas `face`;
@@ -126,5 +128,14 @@ describe("loadMsdfFont", () => {
     await loadMsdfFont();
     await loadMsdfFont();
     expect(assetsLoad.mock.calls.length).toBe(callCountAfterFirst);
+  });
+});
+
+describe("baked MSDF atlases", () => {
+  it.each(["regular", "bold"])("contains every requested extra glyph in the %s descriptor", (weight) => {
+    const descriptor = readFileSync(resolve(process.cwd(), `public/fonts/roboto-${weight}-msdf.fnt`), "utf8");
+    for (const codePoint of [35, 43, 45, 61, 8470]) {
+      expect(descriptor).toContain(`<char id="${codePoint}"`);
+    }
   });
 });

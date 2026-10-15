@@ -82,6 +82,7 @@ export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
   borderWidth: 2,
   fillColor: 0xf0c900,
   borderColor: canvas.vertical.default,
+  positionsByFloorId: {},
 };
 
 /** Defaults for the "Vertical connections" section's own "Shared style" source values (GitHub

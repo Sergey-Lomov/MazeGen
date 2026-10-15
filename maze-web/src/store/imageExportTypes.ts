@@ -393,7 +393,21 @@ export interface BadgeSettings extends MarkerAppearance, TextStyleFields {
 
 export type FloorLabelBackgroundShape = "none" | "rectangle" | "parallelogram";
 
-/** Label overlaid at the geometric center of the active floor for multi-floor mazes. */
+export const FLOOR_LABEL_ANCHORS = [
+  "top_left", "top_center", "top_right",
+  "center_left", "center", "center_right",
+  "bottom_left", "bottom_center", "bottom_right",
+] as const satisfies readonly Exclude<PrintAnchor, "custom">[];
+
+export type FloorLabelAnchor = (typeof FLOOR_LABEL_ANCHORS)[number];
+
+/** Per-floor label placement. Missing entries use the backward-compatible centered anchor. */
+export type FloorLabelPosition =
+  | { mode: "anchored"; anchor: FloorLabelAnchor }
+  | { mode: "cell"; cell: [number, number] }
+  | { mode: "free"; x: number; y: number };
+
+/** Label overlaid on the active floor for multi-floor mazes. */
 export interface FloorLabelSettings extends TextStyleFields {
   enabled: boolean;
   prefix: string;
@@ -406,6 +420,15 @@ export interface FloorLabelSettings extends TextStyleFields {
   borderWidth: number;
   fillColor: number;
   borderColor: number;
+  /** Placement is keyed by stable floor id, so floor reorder and rename preserve it. */
+  positionsByFloorId: Record<string, FloorLabelPosition>;
+}
+
+/** Transient canvas-drag session. The snapshot lets Escape restore the activation position. */
+export interface FloorLabelDragState {
+  renderMode: RenderModeId;
+  floorId: string;
+  initialPosition: Extract<FloorLabelPosition, { mode: "cell" | "free" }>;
 }
 
 /** Groups the four "Shared style" source values (GitHub issue #322, generalized by #643) — each is
@@ -744,6 +767,7 @@ export interface ImageExportState {
    * the user hasn't picked one yet — a radio group with no default selection, not independent
    * toggles. */
   activeRenderMode: RenderModeId | null;
+  floorLabelDrag: FloorLabelDragState | null;
   /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
    * set by clicking the active switcher item (clicking an inactive item switches the active mode
    * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
@@ -795,6 +819,10 @@ export interface ImageExportState {
 
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
+  startFloorLabelDrag: (renderMode: RenderModeId) => void;
+  updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
+  finishFloorLabelDrag: () => void;
+  cancelFloorLabelDrag: () => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
   setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
   setExportFormatSettingsCovered: (covered: boolean) => void;

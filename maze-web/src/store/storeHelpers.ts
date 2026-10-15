@@ -512,7 +512,7 @@ export function buildResetDownstreamState() {
     postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null,
     _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null,
     postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null,
-    postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null,
+    postEditDirty: false, mazeDirty: false, activeRenderMode: null, floorLabelDrag: null, openRenderModeSettings: null,
     postEditDraftSplitPoints: {},
     postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null,
     _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null,

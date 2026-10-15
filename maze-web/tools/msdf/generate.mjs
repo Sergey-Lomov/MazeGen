@@ -12,7 +12,7 @@
 // switches — MSDF glyph shapes are baked, not synthesized, so a bold look needs its own atlas.
 //
 // Charset — only the glyphs canvas labels actually draw:
-//   digits 0-9, ':', Latin and Cyrillic letters (uppercase and lowercase), '(' ')' ',' space.
+//   digits 0-9, ':', '#', '№', '+', '-', '=', Latin and Cyrillic letters (uppercase and lowercase), '(' ')' ',' space.
 //   Lowercase glyphs are required by the free-form floor-label prefix.
 // Extend `CHARSET` and re-run `npm run gen:msdf` when a new label introduces a new glyph.
 
@@ -24,7 +24,7 @@ import generateBMFont from "msdf-bmfont-xml";
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(here, "../../public/fonts");
 
-const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:(), АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:(),#+-=№ АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя";
 
 const WEIGHTS = [
   { src: "Roboto-Regular.ttf", out: "roboto-regular-msdf" },

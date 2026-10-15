@@ -858,11 +858,42 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
     const state = makeState({
       activeRenderMode: "vector_by_walls",
       openRenderModeSettings: "vector_by_walls",
-      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, floorColor: 0x123456, wallThickness: 7, teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } } },
+      vectorByWallsSettings: {
+        ...DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+        floorColor: 0x123456,
+        wallThickness: 7,
+        teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } },
+        floorLabel: {
+          ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel,
+          positionsByFloorId: {
+            floor_1: { mode: "cell", cell: [2, 3] },
+            floor_2: { mode: "free", x: -12.5, y: 40 },
+          },
+        },
+      },
     });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.imageExport).toEqual(serialized.imageExport);
+  });
+
+  it("keeps valid floor-label positions and discards malformed entries", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId = {
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+      bad_anchor: { mode: "anchored", anchor: "outside" },
+      fractional_cell: { mode: "cell", cell: [1.5, 2] },
+      incomplete_free: { mode: "free", x: 1 },
+      unknown: { mode: "future" },
+    };
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.floorLabel.positionsByFloorId).toEqual({
+      anchored: { mode: "anchored", anchor: "bottom_right" },
+      cell: { mode: "cell", cell: [-2, 7] },
+      free: { mode: "free", x: 1.5, y: -3.25 },
+    });
   });
 
   it("omits vectorByWallsLinks/vectorByCorridorsLinks when links are untouched (GitHub issue #651)", () => {

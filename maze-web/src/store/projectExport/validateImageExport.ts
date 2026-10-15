@@ -1,7 +1,7 @@
 import {
   type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
-  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings,
+  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
@@ -276,7 +276,29 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
     borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
     fillColor: optNumber(obj, "fillColor", fallback.fillColor),
     borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    positionsByFloorId: validateFloorLabelPositions(obj.positionsByFloorId, fallback.positionsByFloorId),
   };
+}
+
+function validateFloorLabelPositions(v: unknown, fallback: FloorLabelSettings["positionsByFloorId"]): FloorLabelSettings["positionsByFloorId"] {
+  if (v == null) return fallback;
+  if (typeof v !== "object" || Array.isArray(v)) return fallback;
+  const result: FloorLabelSettings["positionsByFloorId"] = {};
+  const anchors = new Set<FloorLabelAnchor>(FLOOR_LABEL_ANCHORS);
+  for (const [floorId, raw] of Object.entries(v)) {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const value = raw as Record<string, unknown>;
+    if (value.mode === "anchored" && typeof value.anchor === "string" && anchors.has(value.anchor as FloorLabelAnchor)) {
+      result[floorId] = { mode: "anchored", anchor: value.anchor as FloorLabelAnchor };
+    } else if (value.mode === "cell" && Array.isArray(value.cell) && value.cell.length === 2
+      && value.cell.every((n) => typeof n === "number" && Number.isInteger(n))) {
+      result[floorId] = { mode: "cell", cell: [value.cell[0] as number, value.cell[1] as number] };
+    } else if (value.mode === "free" && typeof value.x === "number" && Number.isFinite(value.x)
+      && typeof value.y === "number" && Number.isFinite(value.y)) {
+      result[floorId] = { mode: "free", x: value.x, y: value.y };
+    }
+  }
+  return result;
 }
 
 function validateMarkerIndexCoverage(v: unknown, path: string, fallback: MarkerIndexSettings["coverage"]): MarkerIndexSettings["coverage"] {

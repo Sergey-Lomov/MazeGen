@@ -199,6 +199,7 @@ export function VectorByCorridorsSettingsPanel() {
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   const rawEffectiveEndpoints = useMemo(
     () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
@@ -432,6 +433,7 @@ export function VectorByCorridorsSettingsPanel() {
           <SectionHeader label={m["image_export.floors.section"]()} expanded={isExpanded("floors")} onToggle={() => toggleSection("floors")} />
           {isExpanded("floors") && (
             <FloorLabelSection
+              renderMode="vector_by_corridors"
               settings={settings.floorLabel}
               onChange={patchFloorLabel}
               fields={{ fill: PC.floorLabelFill, border: PC.floorLabelBorder, text: PC.floorLabelText }}
@@ -441,6 +443,9 @@ export function VectorByCorridorsSettingsPanel() {
                 border: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelText.at(settings.floorLabel.textColor), bg],
                 text: [PC.floorLabelFill.at(settings.floorLabel.fillColor), PC.floorLabelBorder.at(settings.floorLabel.borderColor), corridor, bg],
               }}
+              activeFloorId={activeFloorId}
+              activeFloorTitle={floors.find((item) => item.id === activeFloorId)?.title ?? ""}
+              floorIds={floors.map((item) => item.id)}
             />
           )}
           <div style={styles.divider} />

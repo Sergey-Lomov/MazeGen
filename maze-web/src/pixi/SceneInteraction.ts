@@ -38,6 +38,14 @@ export class SceneInteraction {
   private onKeyDown = (e: KeyboardEvent) => {
     if (isTypingTarget(e.target)) return;
     const state = useMazeStore.getState();
+    if (state.floorLabelDrag !== null
+      && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
+      e.preventDefault();
+      if (e.code === "Escape") state.cancelFloorLabelDrag();
+      else state.finishFloorLabelDrag();
+      this.deps.getController(state)?.cancelPointerGesture();
+      return;
+    }
     if (backgroundImageEditMode(state) !== null
       && (e.code === "Escape" || e.code === "Enter" || e.code === "Space")) {
       e.preventDefault();
@@ -63,6 +71,16 @@ export class SceneInteraction {
 
   private onWindowPointerDown = (e: PointerEvent) => {
     const state = useMazeStore.getState();
+    if (state.floorLabelDrag !== null && !this.isInsideCanvas(e.target)) {
+      const target = e.target as Element | null;
+      if (!target?.closest?.("[data-floor-label-drag-control]")) {
+        const controller = this.deps.getController(state);
+        state.finishFloorLabelDrag();
+        controller?.cancelPointerGesture();
+        setCanvasCursor(this.deps.app.canvas, "");
+      }
+      return;
+    }
     if (backgroundImageEditMode(state) === null || this.isInsideCanvas(e.target)) return;
     // Mode buttons live in the side panel, outside the canvas. Let their click handlers
     // toggle the current mode; otherwise this capture listener would disable the mode on

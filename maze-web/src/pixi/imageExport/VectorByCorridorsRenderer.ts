@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
-import { FloorLabelRenderer, floorLabelCenter } from "../renderers/FloorLabelRenderer";
+import { FloorLabelRenderer, floorLabelPosition } from "../renderers/FloorLabelRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
@@ -259,7 +259,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
     const cellBounds = cellCenterBounds(floorNodes, state.activeTessellationConfig);
     return measureContentMargin(
-      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer],
+      [this.corridorsContainer, this.splitShapesLayer, this.markerWidenContainer, this.teleportContainer, this.markersContainer, this.verticalContainer, this.markerIndexGapContainer, this.markerIndexBodyContainer, this.floorLabelContainer],
       cellBounds,
     );
   }
@@ -487,7 +487,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     this.floorLabel.render(
       settings.floorLabel,
-      floorLabelCenter(exactCellBounds(nodes, cfg)),
+      floorLabelPosition(settings.floorLabel, state.activeFloorId, exactCellBounds(nodes, cfg), cfg),
       activeFloorIndex,
       state.floors.length,
       settings.color,
