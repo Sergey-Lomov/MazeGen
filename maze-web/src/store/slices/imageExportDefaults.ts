@@ -72,6 +72,7 @@ export const DEFAULT_FLOOR_LABEL_SETTINGS: FloorLabelSettings = {
   labelType: "letters",
   textColor: canvas.floor.default,
   textFontWeight: "bold",
+  textAlignment: "center",
   textSize: DEFAULT_ELEVATOR_BADGE_TEXT_SIZE,
   textMargin: DEFAULT_TEXT_MARGIN,
   backgroundShape: "rectangle",

@@ -106,6 +106,17 @@ export function FloorLabelSection<P extends string>({ renderMode, settings, onCh
               onChange={(textFontWeight) => onChange({ textFontWeight })}
               linkTarget={"floorLabel.textFontWeight" as P}
             />
+            <LinkedSelectRow
+              label={m["image_export.floors.alignment"]()}
+              value={settings.textAlignment}
+              options={[
+                { value: "left", label: m["image_export.floors.alignment_left"]() },
+                { value: "center", label: m["image_export.floors.alignment_center"]() },
+                { value: "right", label: m["image_export.floors.alignment_right"]() },
+              ]}
+              onChange={(textAlignment) => onChange({ textAlignment })}
+              linkTarget={null}
+            />
             <LinkedSliderRow label={m["image_export.floors.size"]()} value={settings.textSize} onChange={(textSize) => onChange({ textSize })} min={FLOOR_LABEL_TEXT_SIZE_RANGE.min} max={FLOOR_LABEL_TEXT_SIZE_RANGE.max} step={FLOOR_LABEL_TEXT_SIZE_RANGE.step} format={String} linkTarget={"floorLabel.textSize" as P} trailingAction={<AutoFitButton resolve={(ctx) => ctx.fitFor("floorLabel")} onApply={(textSize) => onChange({ textSize })} />} />
             <LinkedSliderRow label={m["image_export.floors.padding"]()} value={settings.textMargin} onChange={(textMargin) => onChange({ textMargin })} min={TEXT_MARGIN_RANGE.min} max={TEXT_MARGIN_RANGE.max} step={TEXT_MARGIN_RANGE.step} format={String} linkTarget={"floorLabel.textMargin" as P} />
             <LinkedColorRow label={m["image_export.floors.text_color"]()} color={settings.textColor} onChange={(textColor) => onChange({ textColor })} field={fields.text} defaultColor={defaults.text} priorityColors={priorities.text} linkTarget={"floorLabel.textColor" as P} />

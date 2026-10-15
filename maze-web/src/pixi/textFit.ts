@@ -26,9 +26,12 @@ import { markerPolygonPoints } from "./renderers/markerShapes";
  *  empty space, not ink, so it is trimmed off every measured extent. */
 const MSDF_GLYPH_PADDING = 4;
 
-interface TextExtent {
+export interface TextExtent {
   width: number;
   height: number;
+  /** Horizontal ink bounds relative to `makeCenteredLabel`'s transform origin. */
+  left: number;
+  right: number;
 }
 
 /** A label with the plate it must fit into — the unit the warnings and auto-fit operate on. */
@@ -56,8 +59,11 @@ export interface TextFitItem {
 export function measureText(text: string, fontWeight: LabelFontWeight, fontSize: number): TextExtent {
   const font = Cache.get<AbstractBitmapFont<unknown>>(`${msdfFontFamily(fontWeight)}-bitmap`);
   const glyphs = Array.from(text);
-  if (glyphs.length === 0) return { width: 0, height: 0 };
-  if (!font) return { width: glyphs.length * fontSize * 0.6, height: fontSize * 0.7 };
+  if (glyphs.length === 0) return { width: 0, height: 0, left: 0, right: 0 };
+  if (!font) {
+    const width = glyphs.length * fontSize * 0.6;
+    return { width, height: fontSize * 0.7, left: -width / 2, right: width / 2 };
+  }
 
   const scale = fontSize / font.baseMeasurementFontSize;
   let cursor = 0;
@@ -80,8 +86,13 @@ export function measureText(text: string, fontWeight: LabelFontWeight, fontSize:
     }
     cursor += glyph.xAdvance;
   }
-  if (!Number.isFinite(minLeft)) return { width: 0, height: 0 };
-  return { width: (maxRight - minLeft) * scale, height: (maxBottom - minTop) * scale };
+  if (!Number.isFinite(minLeft)) return { width: 0, height: 0, left: 0, right: 0 };
+  return {
+    width: (maxRight - minLeft) * scale,
+    height: (maxBottom - minTop) * scale,
+    left: (minLeft - cursor / 2) * scale,
+    right: (maxRight - cursor / 2) * scale,
+  };
 }
 
 function pointInPolygon(x: number, y: number, pts: number[]): boolean {
@@ -256,6 +267,20 @@ function itemMargin(item: TextFitItem): number {
   return Math.max(item.margin ?? DEFAULT_TEXT_MARGIN, 0);
 }
 
+/** Conservative inner half-extents for rectangular text frames. Parallelograms use their
+ *  narrowest horizontal slice so rendering, overflow validation, and auto-fit share one frame. */
+export function rectangularTextFrameHalfExtents(
+  width: number,
+  height: number,
+  shape: "rectangle" | "parallelogram",
+  margin: number,
+): { hw: number; hh: number } {
+  const innerWidth = Math.max(width - Math.max(margin, 0) * 2, 0);
+  const innerHeight = Math.max(height - Math.max(margin, 0) * 2, 0);
+  const skew = shape === "parallelogram" ? Math.min(innerHeight * 0.45, innerWidth * 0.2) : 0;
+  return { hw: Math.max(innerWidth / 2 - skew, 0), hh: innerHeight / 2 };
+}
+
 /** Radius of the shape the ink must stay inside: the plate's circle-equivalent radius less the
  *  text margin. */
 function plateRadius(item: TextFitItem): number {
@@ -266,19 +291,15 @@ function plateRadius(item: TextFitItem): number {
 function plateHalfExtents(item: TextFitItem): { hw: number; hh: number } | null {
   if (item.plateWidth === undefined || item.plateHeight === undefined) return null;
   if (item.plateShape === "parallelogram") return null;
-  const margin = itemMargin(item);
-  return { hw: Math.max(item.plateWidth / 2 - margin, 0), hh: Math.max(item.plateHeight / 2 - margin, 0) };
+  return rectangularTextFrameHalfExtents(item.plateWidth, item.plateHeight, "rectangle", itemMargin(item));
 }
 
 function parallelogramInnerHalfExtents(item: TextFitItem): { hw: number; hh: number } | null {
   if (item.plateWidth === undefined || item.plateHeight === undefined || item.plateShape !== "parallelogram") return null;
-  const width = Math.max(item.plateWidth - itemMargin(item) * 2, 0);
-  const height = Math.max(item.plateHeight - itemMargin(item) * 2, 0);
-  const skew = Math.min(height * 0.45, width * 0.2);
   // Use the narrowest horizontal slice of the plate. This is deliberately stricter than checking
   // only the text's current y-coordinates: BitmapText's ink pivot can differ by a few pixels from
   // the metric box, and the label must remain clear of both slanted sides in that case too.
-  return { hw: Math.max(width / 2 - skew, 0), hh: height / 2 };
+  return rectangularTextFrameHalfExtents(item.plateWidth, item.plateHeight, "parallelogram", itemMargin(item));
 }
 
 /** Whether `item` drawn at `fontSize` px exceeds its plate shape. */

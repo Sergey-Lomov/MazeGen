@@ -342,4 +342,11 @@ describe("validateFloorLabelSettings", () => {
     expect(validateFloorLabelSettings({ textSize: 999, width: 999 }, "path", fallback)).toMatchObject({ textSize: 72, width: 250 });
     expect(validateFloorLabelSettings({ textSize: 1, width: 1 }, "path", fallback)).toMatchObject({ textSize: 6, width: 20 });
   });
+
+  it("defaults old projects to centered text and preserves valid alignment", () => {
+    const fallback = DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel;
+    expect(validateFloorLabelSettings({}, "path", fallback).textAlignment).toBe("center");
+    expect(validateFloorLabelSettings({ textAlignment: "right" }, "path", fallback).textAlignment).toBe("right");
+    expect(validateFloorLabelSettings({ textAlignment: "diagonal" }, "path", fallback).textAlignment).toBe("center");
+  });
 });

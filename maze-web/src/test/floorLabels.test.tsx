@@ -6,7 +6,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../store/slices/parameterLinksDefaults";
-import { convertFloorLabelPosition, floorLabelCenter, floorLabelPosition, floorLabelText } from "../pixi/renderers/FloorLabelRenderer";
+import { convertFloorLabelPosition, floorLabelCenter, floorLabelPosition, floorLabelText, floorLabelTextX } from "../pixi/renderers/FloorLabelRenderer";
 import { FloorLabelDragController } from "../pixi/imageExport/FloorLabelDragController";
 import { requiredTextPlateDimensions, textOverflows } from "../pixi/textFit";
 import { maxFittingFontSize } from "../pixi/textFit";
@@ -37,6 +37,22 @@ describe("export floor labels", () => {
 
   it("centers the label on the active floor independently of the viewport", () => {
     expect(floorLabelCenter({ minX: -30, minY: 10, maxX: 90, maxY: 70 })).toEqual({ x: 30, y: 40 });
+  });
+
+  it("aligns text inside the frame without moving the frame center", () => {
+    const base = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, width: 100, height: 40, textMargin: 5 };
+    expect(floorLabelTextX({ ...base, textAlignment: "left" }, 200, { left: -15, right: 15 })).toBe(170);
+    expect(floorLabelTextX({ ...base, textAlignment: "center" }, 200, { left: -15, right: 15 })).toBe(200);
+    expect(floorLabelTextX({ ...base, textAlignment: "right" }, 200, { left: -15, right: 15 })).toBe(230);
+    expect(floorLabelTextX({ ...base, textAlignment: "left" }, 200, { left: -60, right: 60 })).toBe(215);
+    expect(floorLabelTextX({ ...base, textAlignment: "right" }, 200, { left: -60, right: 60 })).toBe(185);
+    expect(floorLabelTextX({ ...base, textAlignment: "left" }, 200, { left: -12, right: 18 })).toBe(167);
+    expect(floorLabelTextX({ ...base, textAlignment: "right" }, 200, { left: -12, right: 18 })).toBe(227);
+  });
+
+  it("keeps aligned text inside the narrow part of a parallelogram", () => {
+    const settings = { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorLabel, backgroundShape: "parallelogram" as const, textAlignment: "left" as const, width: 100, height: 40, textMargin: 5 };
+    expect(floorLabelTextX(settings, 200, { left: -15, right: 15 })).toBe(183.5);
   });
 
   it("resolves all three per-floor positioning modes", () => {
@@ -105,6 +121,14 @@ describe("export floor labels", () => {
     const labelHeader = screen.getAllByText(m["image_export.floors.label_subsection"]())[0];
     const prefix = screen.getByText(m["image_export.floors.prefix"]());
     expect(labelHeader.compareDocumentPosition(prefix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("edits horizontal alignment in the Label subsection", () => {
+    useMazeStore.setState({ floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }], vectorByWallsSectionsExpanded: { floors: true } });
+    render(<VectorByWallsSettingsPanel />);
+    const select = document.querySelector(`select[name="${m["image_export.floors.alignment"]()}"]`)!;
+    fireEvent.change(select, { target: { value: "right" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.floorLabel.textAlignment).toBe("right");
   });
 
   it("edits the active floor's placement without changing shared label style", () => {

@@ -100,16 +100,21 @@ export interface PngExportSettings {
  *  entries for groups no longer present are simply never looked up again, not pruned). */
 /** Shared label-style half of every badge-like consumer (GitHub issue #701) — start/finish marker
  *  captions, elevator badges and teleport floor badges all configure their text the same way:
- *  color, font weight, an **absolute** font size in px and a margin (not a fraction of the badge/marker
- *  diameter). `MarkerSettings` carries these optionally (only start/finish expose them in the UI);
- *  the badge settings require them. */
+ *  color, font weight, an **absolute** font size in px, a margin (not a fraction of the badge/marker
+ *  diameter), and reusable horizontal alignment. Alignment is optional while only floor labels
+ *  expose it; consumers that omit it remain centered. `MarkerSettings` carries these optionally
+ *  (only start/finish expose them in the UI); the badge settings require the original fields. */
+export type TextHorizontalAlignment = "left" | "center" | "right";
+
 export interface TextStyleFields {
   textColor: number;
   textFontWeight: LabelFontWeight;
+  /** Horizontal placement inside the configured frame. Omitted consumers remain centered. */
+  textAlignment?: TextHorizontalAlignment;
   /** Font size in px. */
   textSize: number;
   /** Margin in px (`TEXT_MARGIN_RANGE`, default `DEFAULT_TEXT_MARGIN`): how far the glyph ink must
-   *  stay from the plate edge. Used by the overflow warnings and auto-fit only. */
+   *  stay from the plate edge. Also positions left/right-aligned floor-label text. */
   textMargin: number;
 }
 
@@ -409,6 +414,7 @@ export type FloorLabelPosition =
 
 /** Label overlaid on the active floor for multi-floor mazes. */
 export interface FloorLabelSettings extends TextStyleFields {
+  textAlignment: TextHorizontalAlignment;
   enabled: boolean;
   prefix: string;
   labelType: IndexLabelStyle;

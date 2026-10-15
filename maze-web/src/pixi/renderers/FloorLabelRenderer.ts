@@ -5,6 +5,7 @@ import { getCellCenter, nearestCellCoord } from "../tessellationGeometry";
 import { formatIndexLabel } from "./indexLabel";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { drawRoundedPolygon, drawRoundedRect, offsetPolygonPath } from "./markerShapes";
+import { measureText, rectangularTextFrameHalfExtents, type TextExtent } from "../textFit";
 
 export interface FloorBounds {
   minX: number;
@@ -15,6 +16,20 @@ export interface FloorBounds {
 
 export function floorLabelText(settings: FloorLabelSettings, floorIndex: number): string {
   return `${settings.prefix}${formatIndexLabel(floorIndex, settings.labelType)}`;
+}
+
+/** Horizontal text centre inside the label frame. The frame centre remains the placement anchor. */
+export function floorLabelTextX(
+  settings: FloorLabelSettings,
+  centerX: number,
+  textBounds: Pick<TextExtent, "left" | "right">,
+): number {
+  if (settings.textAlignment === "center") return centerX;
+  const shape = settings.backgroundShape === "parallelogram" ? "parallelogram" : "rectangle";
+  const { hw } = rectangularTextFrameHalfExtents(settings.width, settings.height, shape, settings.textMargin);
+  return settings.textAlignment === "left"
+    ? centerX - hw - textBounds.left
+    : centerX + hw - textBounds.right;
 }
 
 /** Geometric center of the active floor's cell bounds, independent of viewport pan and zoom. */
@@ -103,13 +118,14 @@ export class FloorLabelRenderer {
     this.clear();
     if (!settings.enabled || floorCount <= 1 || !center) return;
 
+    const text = floorLabelText(settings, floorIndex);
     const label = makeCenteredLabel(
-      floorLabelText(settings, floorIndex),
+      text,
       msdfFontFamily(settings.textFontWeight),
       settings.textSize,
       settings.textColor,
     );
-    label.x = center.x;
+    label.x = floorLabelTextX(settings, center.x, measureText(text, settings.textFontWeight, settings.textSize));
     label.y = center.y;
 
     if (settings.backgroundShape === "none") {

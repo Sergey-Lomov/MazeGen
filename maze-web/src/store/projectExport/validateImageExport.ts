@@ -1,7 +1,7 @@
 import {
   type MarkerSettings, type MarkerAppearance, type BadgeSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
-  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, FLOOR_LABEL_ANCHORS,
+  type DigitalExportSettings, type PrintExportSettings, type FloorLabelSettings, type FloorLabelAnchor, type TextHorizontalAlignment, FLOOR_LABEL_ANCHORS,
 } from "../storeTypes";
 import type { MarkerShape, ElevatorBadgeFontWeight, CornerStyle, TeleportGroupOverride } from "../../pixi/renderers/types";
 import { TELEPORT_GROUP_ROLES } from "../teleportGroupLinks";
@@ -83,6 +83,10 @@ function clampTextMargin(value: number): number {
 
 function readTextMargin(obj: Record<string, unknown> | null, fallback: number): number {
   return clampTextMargin(optNumber(obj, "textMargin", fallback));
+}
+
+function readTextAlignment(obj: Record<string, unknown> | null, fallback: TextHorizontalAlignment = "center"): TextHorizontalAlignment {
+  return optEnum(obj, "textAlignment", ["left", "center", "right"] as const, fallback);
 }
 
 /** `BadgeSettings` fields (GitHub issue #701): the shared marker look plus label type and the
@@ -265,6 +269,7 @@ export function validateFloorLabelSettings(v: unknown, path: string, fallback: F
     prefix: typeof obj.prefix === "string" ? obj.prefix : fallback.prefix,
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     textFontWeight: optElevatorBadgeFontWeight(obj, "textFontWeight", fallback.textFontWeight),
+    textAlignment: readTextAlignment(obj, fallback.textAlignment),
     textSize: Math.min(FLOOR_LABEL_TEXT_SIZE_RANGE.max, Math.max(FLOOR_LABEL_TEXT_SIZE_RANGE.min, optNumber(obj, "textSize", fallback.textSize))),
     textMargin: readTextMargin(obj, fallback.textMargin),
     textColor: optNumber(obj, "textColor", fallback.textColor),
