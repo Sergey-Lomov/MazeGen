@@ -298,7 +298,7 @@ export interface PostEditSeed {
 
 /** Builds the full post-edit store patch for a scenario (GitHub issue #543): a real
  *  `postEditBaseline` built from the generation snapshot, the given command log replayed on top of
- *  it, and the legacy `postEditDraft*`/`postEditSuppressed*` mirror fields derived from the result.
+ *  it, and the legacy `postEditDraft*` mirror fields derived from the result.
  *
  *  Post-edit actions read `postEditBaseline.derived` as their source of truth, never the legacy
  *  mirror fields — seeding a scenario by `setState`-ing `postEditDraftEdges` & co. alone silently
