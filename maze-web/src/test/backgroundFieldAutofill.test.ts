@@ -87,14 +87,14 @@ describe("buildBackgroundFieldPreview", () => {
   it("classifies large cells deterministically", () => {
     const largeImage = {
       ...image,
-      naturalWidth: 4000,
-      naturalHeight: 4000,
+      naturalWidth: 400,
+      naturalHeight: 400,
       displayWidth: 400,
       displayHeight: 400,
       centerX: 200,
       centerY: -200,
     };
-    const pixels = new Uint8ClampedArray(4000 * 4000 * 4);
+    const pixels = new Uint8ClampedArray(400 * 400 * 4);
     for (let offset = 0; offset < pixels.length; offset += 4) {
       pixels[offset] = 255;
       pixels[offset + 3] = 255;
@@ -102,7 +102,7 @@ describe("buildBackgroundFieldPreview", () => {
     const result = buildBackgroundFieldPreview(
       largeImage,
       config,
-      { data: pixels, width: 4000, height: 4000 },
+      { data: pixels, width: 400, height: 400 },
       "transparent",
       0xffffff,
       0.5,
@@ -112,28 +112,48 @@ describe("buildBackgroundFieldPreview", () => {
   });
 
   it("refines cells near the threshold deterministically", () => {
-    const largeImage = {
-      ...image,
-      naturalWidth: 4000,
-      naturalHeight: 4000,
-      displayWidth: 400,
-      displayHeight: 400,
-      centerX: 200,
-      centerY: -200,
-    };
-    const pixels = new Uint8ClampedArray(4000 * 4000 * 4);
-    for (let sourceY = 0; sourceY < 4000; sourceY++) {
-      for (let sourceX = 0; sourceX < 2200; sourceX++) {
-        const offset = (sourceY * 4000 + sourceX) * 4;
+    // One 40x40 cell at one source pixel per world unit: the 41x41 source span starts at
+    // step 4, refines to step 2, then to exact sampling. Opaque columns are x % 8 in
+    // {0, 1, 2, 3, 5}, so both coarse passes see exactly half the cell opaque (inside the
+    // refinement band, not above the threshold) while the exact pass sees 5/8.
+    const size = 40;
+    const smallImage = { ...image, naturalWidth: size, naturalHeight: size };
+    const opaqueColumns = new Set([0, 1, 2, 3, 5]);
+    const pixels = new Uint8ClampedArray(size * size * 4);
+    for (let sourceY = 0; sourceY < size; sourceY++) {
+      for (let sourceX = 0; sourceX < size; sourceX++) {
+        if (!opaqueColumns.has(sourceX % 8)) continue;
+        const offset = (sourceY * size + sourceX) * 4;
         pixels[offset] = 255;
         pixels[offset + 3] = 255;
       }
     }
-    const first = buildBackgroundFieldPreview(largeImage, config, { data: pixels, width: 4000, height: 4000 }, "transparent", 0xffffff, 0.5);
-    const second = buildBackgroundFieldPreview(largeImage, config, { data: pixels, width: 4000, height: 4000 }, "transparent", 0xffffff, 0.5);
+    const pixelData = { data: pixels, width: size, height: size };
+    const first = buildBackgroundFieldPreview(smallImage, config, pixelData, "transparent", 0xffffff, 0.5);
+    const second = buildBackgroundFieldPreview(smallImage, config, pixelData, "transparent", 0xffffff, 0.5);
 
-    expect(first).toEqual(second);
-    expect(first).toContain(encodePoint(0, 0));
+    expect(first).toEqual(new Set([encodePoint(0, 0)]));
+    expect(second).toEqual(first);
+  });
+
+  it("does not refine cells for thresholds near the edge", () => {
+    // At threshold 0.05 the denser single pass uses step 2 on the 41x41 span, so it only
+    // reads even columns. With only odd columns opaque it sees no foreground; a refined
+    // pass would see half the cell opaque and fill it.
+    const size = 40;
+    const smallImage = { ...image, naturalWidth: size, naturalHeight: size };
+    const pixels = new Uint8ClampedArray(size * size * 4);
+    for (let sourceY = 0; sourceY < size; sourceY++) {
+      for (let sourceX = 1; sourceX < size; sourceX += 2) {
+        const offset = (sourceY * size + sourceX) * 4;
+        pixels[offset] = 255;
+        pixels[offset + 3] = 255;
+      }
+    }
+
+    const result = buildBackgroundFieldPreview(smallImage, config, { data: pixels, width: size, height: size }, "transparent", 0xffffff, 0.05);
+
+    expect(result).toEqual(new Set());
   });
 
   it("reads the top-left source pixel and builds from decoded image data", async () => {
