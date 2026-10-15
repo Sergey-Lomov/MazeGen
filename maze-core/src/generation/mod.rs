@@ -57,6 +57,7 @@ pub use split_pattern::{
     OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern, SplitPatternFace,
     validate_split_patterns,
 };
+pub use split_pattern_logic::{ResolvedFace, split_adaptation_candidates};
 pub use types::{
     ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, LockedNode,
     NodeLockKind, PresetConnection, PresetConnectionState, PresetElevator, PresetEndpoint,

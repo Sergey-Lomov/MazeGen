@@ -1,3 +1,4 @@
+pub mod canonical;
 pub mod config;
 mod config_dto;
 pub mod runner;

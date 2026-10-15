@@ -3,6 +3,7 @@ use crate::Maze;
 use crate::event_log::ScopeGuard;
 use crate::generation::PresetState;
 use crate::ids::NodeId;
+use crate::meta::MazeMeta;
 use crate::repair::MutationCommand;
 use crate::space::Tessellation;
 
@@ -74,6 +75,15 @@ pub fn apply_commands<T: Tessellation>(
                 .level_of(*at)
                 .zip(maze.field.point_of(*at))
                 .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
+            _ => None,
+        };
+        // The point a removed node lives on, resolved while still live — after `RemoveNode`
+        // applies, `meta.start`/`meta.finish` pointing at that node move to the point's remaining
+        // slot-0 (see `retarget_endpoints`).
+        let removed_node_point = match &cmd {
+            MutationCommand::RemoveNode { node } => {
+                maze.field.level_of(*node).zip(maze.field.point_of(*node))
+            }
             _ => None,
         };
         // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
@@ -256,6 +266,24 @@ pub fn apply_commands<T: Tessellation>(
                 }
             }
         };
+        // A removed or replaced node may be the maze's start/finish: move the endpoint onto the
+        // point's surviving node instead of leaving `meta` pointing at a node no longer in the
+        // field.
+        let mut retargeted: Vec<QcEvent> = Vec::new();
+        if ok {
+            match (&cmd, removed_node_point, &replaced_nodes) {
+                (MutationCommand::RemoveNode { node }, Some((level, point)), _) => {
+                    let survivors = maze.field.nodes_at(level, point).to_vec();
+                    retargeted = retarget_endpoints(&mut maze.meta, &[*node], &survivors);
+                }
+                (MutationCommand::ReplacePointNodes { .. }, _, Some(new_nodes)) => {
+                    if let Some(old_nodes) = old_point_nodes.as_deref() {
+                        retargeted = retarget_endpoints(&mut maze.meta, old_nodes, new_nodes);
+                    }
+                }
+                _ => {}
+            }
+        }
         if ok {
             applied += 1;
         }
@@ -271,8 +299,46 @@ pub fn apply_commands<T: Tessellation>(
         {
             log.emit(event);
         }
+        if let Some(log) = event_log.as_mut() {
+            for event in retargeted {
+                log.emit(event);
+            }
+        }
     }
     ApplyOutcome { proposed, applied }
+}
+
+/// Moves `meta.start`/`meta.finish` off any node in `removed` onto one of `survivors` (the nodes
+/// now at the same point, slot-0 first), returning the matching `StartSet`/`FinishSet` events so
+/// an event-log replay sees the endpoint move too. Each endpoint takes the first survivor the other
+/// endpoint doesn't already hold, so two endpoints on one split point never collapse into one node
+/// while the point still has two; with a single survivor both land on it.
+fn retarget_endpoints(
+    meta: &mut MazeMeta,
+    removed: &[NodeId],
+    survivors: &[NodeId],
+) -> Vec<QcEvent> {
+    let pick = |other: Option<NodeId>| {
+        survivors
+            .iter()
+            .copied()
+            .find(|&n| Some(n) != other)
+            .or_else(|| survivors.first().copied())
+    };
+    let mut events = Vec::new();
+    if meta.start.is_some_and(|n| removed.contains(&n))
+        && let Some(survivor) = pick(meta.finish.filter(|n| !removed.contains(n)))
+    {
+        meta.start = Some(survivor);
+        events.push(QcEvent::StartSet(survivor));
+    }
+    if meta.finish.is_some_and(|n| removed.contains(&n))
+        && let Some(survivor) = pick(meta.start)
+    {
+        meta.finish = Some(survivor);
+        events.push(QcEvent::FinishSet(survivor));
+    }
+    events
 }
 
 /// Builds the `QcEvent` mirroring `cmd` — the mutating variant when `applied`, the matching

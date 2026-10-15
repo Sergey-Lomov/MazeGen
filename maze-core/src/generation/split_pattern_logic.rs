@@ -17,15 +17,16 @@ use std::collections::HashSet;
 
 /// One face resolved against `src`'s actual field position for one candidate adaptation —
 /// intermediate representation `enumerate_adaptations` builds and `adaptation_respects_presets`/
-/// `apply_pattern_adaptation` consume.
+/// `apply_pattern_adaptation` consume. Public so `split_adaptation_candidates` can expose the
+/// candidate set to canonical baselines (GitHub issue #753).
 #[derive(Debug, Clone)]
-struct ResolvedFace {
-    node_index: usize,
-    requirement: SplitFaceRequirement,
-    sibling_target: Option<usize>,
+pub struct ResolvedFace {
+    pub node_index: usize,
+    pub requirement: SplitFaceRequirement,
+    pub sibling_target: Option<usize>,
     /// `None` for a `Wall` face pointing off-field, or for a `sibling_target` face (no outside
     /// neighbor involved at all). `Some(neighbor)` otherwise.
-    neighbor: Option<NodeId>,
+    pub neighbor: Option<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -322,6 +323,39 @@ fn try_adaptation<T: Tessellation>(
         mirror,
         faces: builder.faces,
     })
+}
+
+/// Every valid adaptation of `pattern` at `src`, as resolved face lists only — the candidate set
+/// `handle_pattern_split` picks from, without the tessellation-specific `rotation`/`mirror`
+/// indices that produced each one. Same inputs and semantics as `enumerate_adaptations`. Used by
+/// `maze-runner`'s canonical baselines (GitHub issue #753), which compare candidate sets
+/// order-independently.
+#[allow(clippy::too_many_arguments)]
+pub fn split_adaptation_candidates<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    preset_state: &PresetState,
+    visited: &HashSet<NodeId>,
+    pattern: &SplitPattern,
+    src: NodeId,
+    bridge: Option<NodeId>,
+    parent: Option<NodeId>,
+    cyclic_fired: bool,
+) -> Vec<Vec<ResolvedFace>> {
+    enumerate_adaptations(
+        graph,
+        field,
+        preset_state,
+        visited,
+        pattern,
+        src,
+        bridge,
+        parent,
+        cyclic_fired,
+    )
+    .into_iter()
+    .map(|adaptation| adaptation.faces)
+    .collect()
 }
 
 /// Deterministically enumerates every `rotation x mirror` combination of `pattern` against `src`'s

@@ -55,6 +55,15 @@ any other unreachable-node case, left for QC to catch (or not) like other reacha
 instead of aborting the whole generation. The pattern editor's own diagnostics strip (see below)
 surfaces this case client-side before generation ever runs.
 
+## Adaptation candidates (`split_adaptation_candidates`)
+
+`enumerate_adaptations` (`split_pattern_logic.rs`) is private; `split_adaptation_candidates`
+exposes the same candidate set publicly as `Vec<Vec<ResolvedFace>>` — each candidate's resolved
+faces (`node_index`, `requirement`, `sibling_target`, `neighbor`) without the `rotation`/`mirror`
+indices that produced it. Same inputs and semantics; pure and RNG-free. Consumed by
+`maze-runner`'s canonical baselines (see `baselines.md`), which compare candidate sets
+order-independently.
+
 ## Applying a pattern (`apply_pattern_adaptation`, `split_logic.rs`)
 
 Mints `node_count - 1` new nodes (node 0 reuses `src`), immediately marks **every** minted node

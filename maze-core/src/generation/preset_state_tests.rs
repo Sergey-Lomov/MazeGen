@@ -1491,3 +1491,14 @@ fn build_preset_state_elevator_with_fewer_than_two_resolved_endpoints_connects_n
     assert!(graph.edges().next().is_none());
     assert!(log.finish().iter().next().is_none());
 }
+
+/// A pinned start/finish is the user's explicit choice — repair must never remove its node.
+#[test]
+fn pinned_endpoints_are_locked_for_removal() {
+    let mut state = PresetState::empty();
+    state.preset_start = Some(3);
+    state.preset_finish = Some(5);
+    assert!(state.is_node_locked_for_removal(3));
+    assert!(state.is_node_locked_for_removal(5));
+    assert!(!state.is_node_locked_for_removal(4));
+}

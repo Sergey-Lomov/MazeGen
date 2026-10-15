@@ -4,7 +4,7 @@ use maze_core::{
     quality_control::{QualityControlEngine, RuleTrait, Stage},
     space::Tessellation,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn build_qc_and_repair<T: Tessellation + 'static>(
     config: &GenerateConfig,
@@ -41,4 +41,23 @@ pub fn build_qc_and_repair<T: Tessellation + 'static>(
     // longer a separate "all rules" list a strategy-bearing rule could fail to appear in.
 
     Ok(QualityControlEngine::new(stages))
+}
+
+/// Maps each check *instance* id (`"<rule_id>:<local_id>"`, the key issue groups are attributed
+/// to) to its check *type* id — the `check_types` argument of
+/// `maze_core::quality_control::resolve_issue_payload`.
+pub fn build_check_types(config: &GenerateConfig) -> HashMap<String, String> {
+    let mut check_types: HashMap<String, String> = HashMap::new();
+    for stage_cfg in &config.stages {
+        for rule_cfg in &stage_cfg.rules {
+            let mut seen_local_ids: HashSet<&str> = HashSet::new();
+            for instance in &rule_cfg.checks {
+                if seen_local_ids.insert(instance.local_id.as_str()) {
+                    let instance_id = format!("{}:{}", rule_cfg.id, instance.local_id);
+                    check_types.insert(instance_id, instance.type_id.clone());
+                }
+            }
+        }
+    }
+    check_types
 }

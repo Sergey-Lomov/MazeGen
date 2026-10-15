@@ -102,16 +102,20 @@ impl PresetState {
     }
 
     /// Whether `node` is preset-protected against removal — the pure-preset slice of
-    /// `generation::node_ops::node_removal_allowed` (its `locked_out`/`locked_in`/`preset_edges`
-    /// checks only, not the structural "last node at its point" check, which isn't a preset fact).
+    /// `generation::node_ops::node_removal_allowed` (its `locked_out`/`locked_in`/`preset_edges`/
+    /// pinned-endpoint checks only, not the structural "last node at its point" check, which isn't a preset fact).
     /// This is the actual criterion `remove_node_feasible`/`replace_point_nodes_feasible` use to
     /// decline a repair command — the correct "can repair ever touch this node" predicate for
     /// split-tile/split-node issue payloads' `preset_locked` flag (GitHub issue #245), unlike
     /// `is_preset_locked_node` above, which only applies to preset-*declared* (minted) nodes and
     /// says nothing about a pre-existing tile node whose own preset edge still blocks its removal.
+    /// A pinned `preset_start`/`preset_finish` node is locked too: it is the user's explicit
+    /// choice, and removing it would silently move the endpoint (GitHub issue #753).
     pub fn is_node_locked_for_removal(&self, node: NodeId) -> bool {
         self.locked_out.contains(&node)
             || self.locked_in.contains(&node)
+            || self.preset_start == Some(node)
+            || self.preset_finish == Some(node)
             || self
                 .preset_edges
                 .iter()

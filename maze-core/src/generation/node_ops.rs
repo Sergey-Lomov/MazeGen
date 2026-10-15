@@ -60,14 +60,7 @@ pub(crate) fn try_remove_node<T: Tessellation>(
     if !remove_node_feasible(field, preset_state, node) {
         return false;
     }
-    let incident: Vec<crate::ids::EdgeId> = graph
-        .outgoing_edges(node)
-        .map(|e| e.id)
-        .chain(graph.edges().filter(|e| e.to == node).map(|e| e.id))
-        .collect();
-    for id in incident {
-        graph.remove_initial_edge(id);
-    }
+    graph.remove_node(node);
     field.remove_node_at(node);
     true
 }
@@ -160,14 +153,7 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
         .expect("replace_point_nodes_feasible confirmed this point exists");
     let old_nodes: Vec<NodeId> = field.nodes_at(level, point).to_vec();
     for &old in &old_nodes {
-        let incident: Vec<crate::ids::EdgeId> = graph
-            .outgoing_edges(old)
-            .map(|e| e.id)
-            .chain(graph.edges().filter(|e| e.to == old).map(|e| e.id))
-            .collect();
-        for id in incident {
-            graph.remove_initial_edge(id);
-        }
+        graph.remove_node(old);
     }
     let mut new_nodes = Vec::with_capacity(nodes.len());
     for _ in nodes {

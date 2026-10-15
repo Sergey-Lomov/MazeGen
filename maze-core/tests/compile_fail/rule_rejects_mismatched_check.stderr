@@ -4,7 +4,11 @@ error[E0277]: the trait bound `MinLoopsCountCheck: Check<SquareTessellation, Inv
 9 | ...ing(), Box::new(MinLoopsCountCheck { instance_id: "a".to_string(), min_loops: 1, floor_scope: FloorScope::WholeMaze })),
   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Check<SquareTessellation, InvalidLoopIssue>` is not implemented for `MinLoopsCountCheck`
   |
-  = help: the trait `Check<SquareTessellation, InvalidLoopIssue>` is not implemented for `MinLoopsCountCheck`
-          but trait `Check<SquareTessellation, MissingLoopsIssue>` is implemented for it
+help: the trait `Check<SquareTessellation, InvalidLoopIssue>` is not implemented for `MinLoopsCountCheck`
+      but trait `Check<SquareTessellation, MissingLoopsIssue>` is implemented for it
+ --> src/quality_control/checks/min_loops_count.rs
+  |
+  | impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = help: for that trait implementation, expected `MissingLoopsIssue`, found `InvalidLoopIssue`
   = note: required for the cast from `Box<MinLoopsCountCheck>` to `Box<dyn Check<SquareTessellation, InvalidLoopIssue>>`

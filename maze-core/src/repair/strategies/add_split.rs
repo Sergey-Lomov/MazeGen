@@ -636,6 +636,5 @@ mod tests {
         assert_eq!(maze_a.field.node_count(), maze_b.field.node_count());
     }
 
-    #[path = "../../add_split_pattern_tests.rs"]
     mod add_split_pattern_tests;
 }

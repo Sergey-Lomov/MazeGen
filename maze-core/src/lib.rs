@@ -83,27 +83,13 @@ impl<T: Tessellation> Maze<T> {
         node
     }
 
-    /// Removes `node`, clearing every edge incident to it (both directions) first — the atomic
-    /// graph+field counterpart of `add_node_at` (GitHub issue #221). No caller in this codebase
-    /// yet — see `MultiLevelField::remove_node_at`'s doc comment for why (groundwork for a
-    /// future repair `MutationCommand::RemoveNode`, not used by the WASM/PostEdit flow).
-    ///
-    /// `Graph` itself gains no `remove_node` here — whether a "dead" `Node` entry should linger
-    /// in `graph.nodes` after its edges are gone, or whether `Graph` needs a real removal API
-    /// mirroring its existing `Vec<Option<Edge>>` tombstone pattern, is a real question but one
-    /// deliberately left open for whichever issue introduces the first actual caller of this
-    /// method (`MutationCommand::RemoveNode` or similar) to decide with a concrete use case in
-    /// hand.
+    /// Removes `node` from both the graph (with every edge incident to it, both directions) and
+    /// the field — the atomic graph+field counterpart of `add_node_at` (GitHub issue #221). No
+    /// caller in this codebase yet — repair goes through the preset-aware
+    /// `generation::try_remove_node`, which removes the node from `Graph` the same way, so no
+    /// dead `Node` entry lingers in `graph.nodes` (it would otherwise count as its own SCC).
     pub fn remove_node_at(&mut self, node: NodeId) {
-        let incident: Vec<ids::EdgeId> = self
-            .graph
-            .outgoing_edges(node)
-            .map(|e| e.id)
-            .chain(self.graph.edges().filter(|e| e.to == node).map(|e| e.id))
-            .collect();
-        for id in incident {
-            self.graph.remove_initial_edge(id);
-        }
+        self.graph.remove_node(node);
         self.field.remove_node_at(node);
     }
 

@@ -524,21 +524,7 @@ pub fn build_qc_and_repair_with_types<T: Tessellation + 'static>(
     ),
     String,
 > {
-    use std::collections::HashSet;
-
-    let mut check_types: HashMap<String, String> = HashMap::new();
-    for stage_cfg in &config.stages {
-        for rule_cfg in &stage_cfg.rules {
-            let mut seen_local_ids: HashSet<&str> = HashSet::new();
-            for instance in &rule_cfg.checks {
-                if seen_local_ids.insert(instance.local_id.as_str()) {
-                    let instance_id = format!("{}:{}", rule_cfg.id, instance.local_id);
-                    check_types.insert(instance_id, instance.type_id.clone());
-                }
-            }
-        }
-    }
-
+    let check_types = maze_runner::runner::build_check_types(config);
     let qc_engine = maze_runner::runner::build_qc_and_repair::<T>(config)?;
     Ok((qc_engine, check_types))
 }

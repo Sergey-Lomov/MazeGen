@@ -1,30 +1,27 @@
 pub(crate) mod check_factory;
+pub mod prepare;
 pub(crate) mod qc_kind_registry;
 pub(crate) mod rule_factory;
 pub(crate) mod rule_params;
+pub mod stages;
 pub(crate) mod strategy_factory;
 #[cfg(test)]
 mod tests;
 
-use crate::config::{
-    GenerateConfig, PresetEndpointDto, TessellationType, build_generation_config,
-    build_generation_source_mode, build_repair_limits,
-};
+use crate::config::{GenerateConfig, PresetEndpointDto};
 use maze_core::{
     GenerationTiming, RegionClass,
     event_log::{DebugTape, EventLog},
-    generation::{
-        GenerationConfig, PresetEndpoint, build_preset_state, generate_maze,
-        resolve_generation_start,
-    },
+    generation::{PresetEndpoint, resolve_generation_start},
     graph::Graph,
-    ids::IdGenerator,
     quality_control::{Issue, QcEvent},
-    space::{MultiLevelField, Tessellation},
+    space::Tessellation,
 };
+use prepare::{Prepared, TessellationVisitor, dispatch};
+use stages::{Repaired, run_generation, run_repair, seed_graph};
 use std::collections::HashMap;
 
-pub use rule_factory::build_qc_and_repair;
+pub use rule_factory::{build_check_types, build_qc_and_repair};
 
 /// Result of a single `run_from_config` call — everything a test might want to inspect.
 pub struct MazeRunResult {
@@ -59,9 +56,8 @@ pub fn resolve_start<P: Copy>(
     seed: u64,
     to_xy: impl Fn(P) -> (i32, i32),
 ) -> P {
-    let pinned = gen_source_xy.and_then(|[px, py]| {
-        pts.iter().copied().find(|&p| to_xy(p) == (px, py))
-    });
+    let pinned =
+        gen_source_xy.and_then(|[px, py]| pts.iter().copied().find(|&p| to_xy(p) == (px, py)));
     resolve_generation_start(pts, pinned, mode, seed, to_xy)
 }
 
@@ -73,259 +69,66 @@ fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
     }
 }
 
-fn run_generate_typed<T: Tessellation + 'static>(
-    seed: u64,
-    mut field: MultiLevelField<T>,
-    mut ids: IdGenerator,
-    start: T::Point,
-    config: &GenerateConfig,
-    gen_config: GenerationConfig,
-    point_from_xy: impl Fn(i32, i32) -> T::Point,
-) -> Result<MazeRunResult, String> {
-    use maze_core::generation::pipeline::build_maze;
+/// Full generation+repair run for one concrete tessellation — `run_from_config`'s visitor.
+struct FullRun<'a> {
+    config: &'a GenerateConfig,
+}
 
-    let degree = T::faces().len();
-    maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
+impl TessellationVisitor for FullRun<'_> {
+    type Output = MazeRunResult;
 
-    let mut graph = Graph::new();
-    for node in field.all_node_ids() {
-        graph.add_node(node);
-    }
+    fn visit<T: Tessellation + 'static>(
+        self,
+        prepared: Prepared<T>,
+    ) -> Result<MazeRunResult, String> {
+        let config = self.config;
+        let mut seeded = seed_graph(prepared, config)?;
+        let start_reassignment = run_generation(&mut seeded, config);
+        let mut qc_log = config.debug_events.then(EventLog::new);
+        let Repaired {
+            maze,
+            remaining_issues,
+            timing,
+            ..
+        } = run_repair(seeded, config, start_reassignment, qc_log.as_mut())?;
+        let qc_tape = qc_log.map(EventLog::finish);
 
-    let mut preset_state = build_preset_state(
-        &mut graph,
-        &mut field,
-        &mut ids,
-        &gen_config.preset_connections,
-        &gen_config.preset_vertical_passages,
-        &gen_config.preset_elevators,
-        &gen_config.locked_nodes,
-        &gen_config.split_points,
-        &point_from_xy,
-        None,
-        None,
-    )?;
+        let start_node = maze.meta.start;
+        let finish_node = maze.meta.finish;
+        let mut region_sizes: HashMap<RegionClass, Vec<usize>> = HashMap::new();
 
-    // `start_id` re-resolves the same gen_source marker `resolve_start` already used to pick
-    // `start` geometrically, but now against `PresetState` — a slot-addressed gen_source needs
-    // the split node `build_preset_state` just created above, which `resolve_start` (geometry
-    // only, no `Field`/`NodeId` access) can't have resolved on its own.
-    let level = field.single_level_id();
-    let start_id = config
-        .preset_gen_source
-        .as_ref()
-        .and_then(|dto| {
-            preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
+        if start_node.is_some() && finish_node.is_some() {
+            let scc = maze.analysis.scc(&maze.graph);
+            let classes = maze
+                .analysis
+                .region_classes(&maze.graph, &maze.field, &maze.meta);
+            for (&comp_id, &cls) in &classes {
+                region_sizes
+                    .entry(cls)
+                    .or_default()
+                    .push(scc.components[comp_id].len());
+            }
+            for sizes in region_sizes.values_mut() {
+                sizes.sort_unstable_by(|a, b| b.cmp(a));
+            }
+        }
+
+        Ok(MazeRunResult {
+            remaining_issues,
+            timing,
+            region_sizes,
+            start: start_node,
+            finish: finish_node,
+            graph: maze.graph.clone(),
+            qc_tape,
         })
-        .or_else(|| field.nodes_at(level, start).first().copied())
-        .ok_or_else(|| "start node not found".to_string())?;
-
-    // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s
-    // `run_generate` (see `Specs`'s generation-card "QC experiment" mode). The graph built by
-    // `build_preset_state` above (preset connections only) is fed straight into `build_maze`.
-    let mut start_reassignment = None;
-    if !config.qc_experiment {
-        start_reassignment = generate_maze(
-            &mut graph,
-            &mut field,
-            &mut ids,
-            seed,
-            start_id,
-            gen_config,
-            &preset_state,
-        );
     }
-
-    let qc_engine = build_qc_and_repair::<T>(config)?;
-    let limits = build_repair_limits(config)?;
-    // The node each explicit `preset_start`/`preset_finish` marker resolves to, if any — the
-    // user's pinned choice, distinct from a generator-chosen endpoint. Recorded on `PresetState`
-    // so the issue-payload resolver can flag a pinned `start`/`finish` element `preset_locked`
-    // (GitHub issue #376 follow-up).
-    let pinned_start = config.preset_start.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
-    });
-    let pinned_finish = config.preset_finish.as_ref().and_then(|dto| {
-        preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto))
-    });
-    preset_state.preset_start = pinned_start;
-    preset_state.preset_finish = pinned_finish;
-
-    // A split hit on the traversal-seed node reassigns `start_id` mid-run (GitHub issue #222) —
-    // only honored when there's no explicit `preset_start` pinning a human's fixed choice.
-    let preset_start = pinned_start.or_else(|| start_reassignment.map(|r| r.reassigned_to));
-    let preset_finish = pinned_finish;
-    let repair_preset_state = preset_state.for_repair(config.qc_experiment);
-    let mut qc_log = config.debug_events.then(EventLog::new);
-    let (maze, remaining_issues, timing) = build_maze(
-        field,
-        graph,
-        seed,
-        qc_engine,
-        &repair_preset_state,
-        limits,
-        preset_start,
-        preset_finish,
-        qc_log.as_mut(),
-        None,
-    );
-    let qc_tape = qc_log.map(EventLog::finish);
-
-    let start_node = maze.meta.start;
-    let finish_node = maze.meta.finish;
-    let mut region_sizes: HashMap<RegionClass, Vec<usize>> = HashMap::new();
-
-    if start_node.is_some() && finish_node.is_some() {
-        let scc = maze.analysis.scc(&maze.graph);
-        let classes = maze
-            .analysis
-            .region_classes(&maze.graph, &maze.field, &maze.meta);
-        for (&comp_id, &cls) in &classes {
-            region_sizes
-                .entry(cls)
-                .or_default()
-                .push(scc.components[comp_id].len());
-        }
-        for sizes in region_sizes.values_mut() {
-            sizes.sort_unstable_by(|a, b| b.cmp(a));
-        }
-    }
-
-    Ok(MazeRunResult {
-        remaining_issues,
-        timing,
-        region_sizes,
-        start: start_node,
-        finish: finish_node,
-        graph: maze.graph.clone(),
-        qc_tape,
-    })
 }
 
 /// Parse JSON config and run the full generation+repair pipeline for the given seed.
 /// Use this as the entry point in all integration tests.
 pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResult, String> {
-    let mut ids = IdGenerator::new();
-    let gen_config = build_generation_config(config);
-
-    let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
-    let gen_source_mode = build_generation_source_mode(&config.generation_source_mode);
-
-    if config.level_fields.is_empty() {
-        return Err("level_fields must not be empty".to_string());
-    }
-
-    match config.tessellation.tessellation_type {
-        TessellationType::Square => {
-            use maze_core::space::{SquarePoint, SquareTessellation};
-            let to_pts = |raw: &[[i32; 2]]| -> Vec<SquarePoint> {
-                raw.iter().map(|&[x, y]| SquarePoint { x, y }).collect()
-            };
-            let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() {
-                return Err("level_fields[0] must not be empty".to_string());
-            }
-            let start =
-                resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| (p.x, p.y));
-            let mut field =
-                MultiLevelField::<SquareTessellation>::single_level(first_pts, &mut ids)
-                    .map_err(|e| e.to_string())?;
-            for raw in &config.level_fields[1..] {
-                let pts = to_pts(raw);
-                if pts.is_empty() {
-                    return Err("level_fields entry must not be empty".to_string());
-                }
-                let level = maze_core::space::Field::<SquareTessellation>::new(pts, &mut ids)
-                    .map_err(|e| e.to_string())?;
-                field.add_level(level);
-            }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| {
-                SquarePoint { x, y }
-            })
-        }
-        TessellationType::Hex => {
-            use maze_core::space::{HexPoint, HexTessellation};
-            let to_pts = |raw: &[[i32; 2]]| -> Vec<HexPoint> {
-                raw.iter().map(|&[q, r]| HexPoint { q, r }).collect()
-            };
-            let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() {
-                return Err("level_fields[0] must not be empty".to_string());
-            }
-            let start =
-                resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| (p.q, p.r));
-            let mut field = MultiLevelField::<HexTessellation>::single_level(first_pts, &mut ids)
-                .map_err(|e| e.to_string())?;
-            for raw in &config.level_fields[1..] {
-                let pts = to_pts(raw);
-                if pts.is_empty() {
-                    return Err("level_fields entry must not be empty".to_string());
-                }
-                let level = maze_core::space::Field::<HexTessellation>::new(pts, &mut ids)
-                    .map_err(|e| e.to_string())?;
-                field.add_level(level);
-            }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| {
-                HexPoint { q, r }
-            })
-        }
-        TessellationType::Tri => {
-            use maze_core::space::{TriPoint, TriTessellation};
-            let to_pts = |raw: &[[i32; 2]]| -> Vec<TriPoint> {
-                raw.iter()
-                    .map(|&[col, row]| TriPoint { col, row })
-                    .collect()
-            };
-            let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() {
-                return Err("level_fields[0] must not be empty".to_string());
-            }
-            let start = resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| {
-                (p.col, p.row)
-            });
-            let mut field = MultiLevelField::<TriTessellation>::single_level(first_pts, &mut ids)
-                .map_err(|e| e.to_string())?;
-            for raw in &config.level_fields[1..] {
-                let pts = to_pts(raw);
-                if pts.is_empty() {
-                    return Err("level_fields entry must not be empty".to_string());
-                }
-                let level = maze_core::space::Field::<TriTessellation>::new(pts, &mut ids)
-                    .map_err(|e| e.to_string())?;
-                field.add_level(level);
-            }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| {
-                TriPoint { col, row }
-            })
-        }
-        TessellationType::Cairo => {
-            use maze_core::space::{CairoPoint, CairoTessellation};
-            let to_pts = |raw: &[[i32; 2]]| -> Vec<CairoPoint> {
-                raw.iter().map(|&[x, y]| CairoPoint { x, y }).collect()
-            };
-            let first_pts = to_pts(&config.level_fields[0]);
-            if first_pts.is_empty() {
-                return Err("level_fields[0] must not be empty".to_string());
-            }
-            let start = resolve_start(&first_pts, gen_source_xy, gen_source_mode, seed, |p| {
-                (p.x, p.y)
-            });
-            let mut field = MultiLevelField::<CairoTessellation>::single_level(first_pts, &mut ids)
-                .map_err(|e| e.to_string())?;
-            for raw in &config.level_fields[1..] {
-                let pts = to_pts(raw);
-                if pts.is_empty() {
-                    return Err("level_fields entry must not be empty".to_string());
-                }
-                let level = maze_core::space::Field::<CairoTessellation>::new(pts, &mut ids)
-                    .map_err(|e| e.to_string())?;
-                field.add_level(level);
-            }
-            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| {
-                CairoPoint { x, y }
-            })
-        }
-    }
+    dispatch(seed, config, FullRun { config })
 }
 
 /// Load JSON fixture file and run `run_from_config`.
