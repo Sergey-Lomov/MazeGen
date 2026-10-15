@@ -14,6 +14,7 @@ import { EntityBubbleRow } from "./EntityBubbleRow";
 import { usePostEditSplitLabelContext } from "./usePostEditSplitLabelContext";
 import { LinkedToggleRow, LinkedColorRow, LinkedSelectRow, LinkedSliderRow } from "./LinkedRows";
 import { useLinkContext } from "./LinkContext";
+import { useLocale } from "../../i18n/useLocale";
 import { buildGroupLinks, groupRolePath, isGroupRoleLinked, resolveGroupOverrides } from "../../store/teleportGroupLinks";
 import { LinkStatusIcon } from "../LinkStatusIcon";
 import type { ParamDescriptor, ParamLink } from "../../store/parameterLinks";
@@ -134,6 +135,7 @@ function TeleportGroupCell({
   const fillColor = effective?.fillColor ?? defaultFillColor;
   const borderColor = effective?.borderColor ?? defaultBorderColor;
   const { registry } = useLinkContext<string>();
+  const { locale } = useLocale();
   const groupLinks = useMemo(() => buildGroupLinks(links, override), [links, override]);
   // Virtual registry: the group's own role parameters, labelled after the common marker's ones, so the
   // icon's tooltip names "Group N / <parameter>" for a rebound source.
@@ -148,7 +150,8 @@ function TeleportGroupCell({
       reg[groupRolePath(role)] = { ...common, group: [groupName], ...(role === "borderColor" ? { label: m["image_export.vector_by_walls.teleport_group_secondary_color_label"]() } : {}) };
     }
     return reg;
-  }, [registry, index]);
+    // `locale`: the copied labels/groups are resolved at spread time (GitHub issue #742).
+  }, [registry, index, locale]);
   const noop = () => {};
   const activePaths = useMemo(() => new Set<string>(), []);
   const linkToggle = (role: TeleportGroupRole, currentValue: number | MarkerShape | undefined) => (

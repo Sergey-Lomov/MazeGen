@@ -577,7 +577,11 @@ to a `ParamDescriptor` (`{ type, equals, label, group, format }`) — same-`type
 `"number" | "color" | "cornerStyle" | "markerShape" | "verticalArrowStyle" | "indexLabelStyle" |
 "labelFontWeight" | "boolean"`) is the only constraint on what can link to what; `equals` is
 `Object.is` in every case (a `"color"` value is just a packed 24-bit RGB number, same representation
-every other color field in the app uses — see `store/colorMath.ts`). `settings.links:
+every other color field in the app uses — see `store/colorMath.ts`). The registries are module-level
+constants, so a descriptor's `label`/`group` are getters over message thunks, resolved in the current
+locale on every read (GitHub issue #742) — a UI language switch relabels the links dialog, link
+editor and link-icon tooltips without a remount; a memoized copy of a descriptor (spread snapshots
+the getters, e.g. `TeleportGroupCell`'s virtual group registry) must list `locale` as a dependency. `settings.links:
 ParamLink<...>[]` (persisted — see "Persistence" below) holds the live graph for that mode, seeded
 from `DEFAULT_VECTOR_BY_WALLS_LINKS`/`DEFAULT_VECTOR_BY_CORRIDORS_LINKS` (`parameterLinksDefaults.ts`),
 which reproduce the table above as plain equality links (each link's `enabled: false` is exactly the

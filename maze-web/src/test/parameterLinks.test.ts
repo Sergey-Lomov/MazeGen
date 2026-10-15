@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { setLocale } from "~/paraglide/runtime";
 import { applyModifiers, applyColorModifiers, type ColorModifier, type ParamLink } from "../store/parameterLinks";
 import { colorToRgb, colorToHsl, colorToOklch } from "../store/colorMath";
-import { VECTOR_BY_WALLS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
+import { VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY } from "../store/parameterLinksRegistry";
 import { addLink, propagate, writeLinkedParam, applyLinkedPatch, propagateLinkedSources } from "../store/slices/parameterLinksEngine";
 
 describe("applyModifiers", () => {
@@ -87,6 +88,36 @@ describe("registry color descriptors", () => {
   it("formats a color field's value as #rrggbb", () => {
     expect(VECTOR_BY_WALLS_PARAM_REGISTRY.floorColor.type).toBe("color");
     expect(VECTOR_BY_WALLS_PARAM_REGISTRY.floorColor.format(0x336699)).toBe("#336699");
+  });
+
+  it("resolves label and group in the current locale on every read (GitHub issue #742)", () => {
+    const entry = VECTOR_BY_WALLS_PARAM_REGISTRY.markerSize;
+    expect(entry.label).toBe("Marker size");
+    expect(entry.group).toEqual(["Shared style"]);
+    setLocale("ru", { reload: false });
+    try {
+      expect(entry.label).toBe("Размер маркера");
+      expect(entry.group).toEqual(["Общий стиль"]);
+    } finally {
+      setLocale("en", { reload: false });
+    }
+  });
+
+  it("resolves a non-empty label and group for every entry of both registries in every locale", () => {
+    try {
+      for (const locale of ["en", "ru"] as const) {
+        setLocale(locale, { reload: false });
+        for (const registry of [VECTOR_BY_WALLS_PARAM_REGISTRY, VECTOR_BY_CORRIDORS_PARAM_REGISTRY]) {
+          for (const [path, entry] of Object.entries(registry)) {
+            expect(entry.label, `${locale}: ${path}`).not.toBe("");
+            expect(entry.group.length, `${locale}: ${path}`).toBeGreaterThan(0);
+            expect(entry.group.every((segment) => segment !== ""), `${locale}: ${path}`).toBe(true);
+          }
+        }
+      }
+    } finally {
+      setLocale("en", { reload: false });
+    }
   });
 });
 
