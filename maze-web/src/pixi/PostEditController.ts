@@ -765,9 +765,8 @@ export class PostEditController extends BaseController {
 
       if (this.draggingVerticalPassageEndpoint) {
         if (this.verticalPassageDragMoved) {
-          // Commits the whole gesture as a single `moveVerticalPassageEndpoint` command plus its
-          // suppression pairs (GitHub issue #545) — mirrors `movePostEditVerticalPassageEndpoint`'s
-          // own per-move suppression, now issued once on release instead of once per move.
+          // Commits the whole gesture as a single `moveVerticalPassageEndpoint` command (GitHub
+          // issue #545), issued once on release instead of once per move.
           const override = useMazeStore.getState().postEditDragOverride;
           if (override?.kind === "verticalPassageEndpoint" && override.id === this.draggingVerticalPassageEndpoint.id) {
             const state = useMazeStore.getState();

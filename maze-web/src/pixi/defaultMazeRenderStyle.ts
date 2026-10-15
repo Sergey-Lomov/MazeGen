@@ -1,5 +1,5 @@
 import type { OneWayStyleOverride, TeleportLineStyle, WallStyleOverride } from "./renderers/types";
-import type { VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle } from "./renderers/types";
 import type { MarkerStyle } from "./selectors/mazeSelectors";
 import { canvas } from "./colorTokens";
 import { TILE_SIZE } from "./constants";

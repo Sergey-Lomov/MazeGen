@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildMarkerIndexEndpointResolver } from "../pixi/imageExport/exportStyleBuilders";
 import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
 
 const teleportStyle = (patch: Partial<TeleportLineStyle> = {}): TeleportLineStyle => ({
   shape: "circle", cornerStyle: "round", size: 0.2,

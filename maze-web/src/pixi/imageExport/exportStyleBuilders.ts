@@ -1,6 +1,6 @@
 import { useMazeStore } from "../../store/mazeStore";
 import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/types";
 import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
 import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";

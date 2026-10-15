@@ -185,8 +185,7 @@ Used for:
 - debug event-tree edge/cycle references;
 - link bubbles in Manage Split Nodes;
 - link bubbles in Preset Connections;
-- ordinary same-floor link entities in Post-edit, including
-  `suppress_generation_pair` rows in the Changes Panel.
+- ordinary same-floor link entities in Post-edit.
 
 For a cross-floor Post-edit link, the line is replaced by independent endpoint-cell
 highlights on the active floor.

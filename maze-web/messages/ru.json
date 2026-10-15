@@ -2398,6 +2398,8 @@
   "image_export.vector_by_walls.warning_teleport_badge_text_overflow_description": "Номер этажа на бейдже телепорта шире или выше самого бейджа. Уменьшите размер текста или увеличьте бейдж.",
   "image_export.vector_by_walls.warning_marker_index_text_overflow": "Индекс маркера не помещается",
   "image_export.vector_by_walls.warning_marker_index_text_overflow_description": "Индекс маркера шире или выше своей подложки. Уменьшите размер текста или увеличьте подложку.",
+  "image_export.vector_by_walls.warning_marker_index_covers_stop_line": "Индекс маркера перекрывает стоп-линию",
+  "image_export.vector_by_walls.warning_marker_index_covers_stop_line_description": "Подложка индекса маркера вместе с рамкой перекрывает стоп-линию маркера одностороннего вертикального прохода. Этот конец прохода трудно отличить от двустороннего.",
   "image_export.vector_by_walls.warning_elevator_indistinguishable": "Элеваторы неразличимы",
   "image_export.vector_by_walls.warning_elevator_indistinguishable_description": "Два несвязанных элеватора находятся в одной ячейке, при этом ни индексы маркеров, ни бейджи этажей элеватора не включены, поэтому игрок не может понять, куда ведёт каждый из них.",
   "image_export.vector_by_walls.section_marker_index": "Индексы маркеров",

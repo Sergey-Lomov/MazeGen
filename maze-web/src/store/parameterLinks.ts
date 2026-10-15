@@ -25,7 +25,9 @@ export type ParamType = "number" | "color" | "cornerStyle" | "markerShape" | "ve
  *  outside any group; every current entry has a non-empty `group`, including the four "Shared
  *  style" source fields. `format` renders a raw value the same way the settings panel itself
  *  displays it (e.g. `"round"` → "Скругление"), used by the parameter-links dialog's current-value
- *  line; defaults to `String(v)` for plain numbers. */
+ *  line; defaults to `String(v)` for plain numbers. Registry entries expose `label`/`group` as
+ *  getters resolved in the current locale on every read (GitHub issue #742) — spreading a
+ *  descriptor (`{ ...descriptor }`) snapshots them, so a memoized copy must depend on the locale. */
 export interface ParamDescriptor {
   type: ParamType;
   equals: (a: unknown, b: unknown) => boolean;

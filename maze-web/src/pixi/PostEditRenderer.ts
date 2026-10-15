@@ -654,18 +654,17 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // the entity round-trips fine through the "Changes"/link-bubble UI (which already reads through
     // an unscoped resolver).
     const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, overrideElevators, unscopedResolveSplit);
-    const allVerticalEdges = draftVerticalEdges;
     // Positioning split-node vertical markers also needs the ordinary directed graph edges so
     // bridge/diagonal special shapes can be recognized. Keep the vertical subset above separate
     // for pair/arrival semantics, while feeding the full confirmed + draft graph to the selector.
-    const allMarkerEdges = [...allVerticalEdges, ...unscopedActiveEdges];
+    const allMarkerEdges = [...draftVerticalEdges, ...unscopedActiveEdges];
     const floorScopedVerticalEdges = draftVerticalEdges.filter((e) => {
       const fromNode = nodeById.get(e.from);
       return fromNode !== undefined;
     });
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
       nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
-      selectVerticalPassagePairSet(allVerticalEdges), allMarkerEdges,
+      selectVerticalPassagePairSet(draftVerticalEdges), allMarkerEdges,
     );
 
     // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue

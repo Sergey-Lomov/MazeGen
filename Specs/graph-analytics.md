@@ -483,9 +483,10 @@ the outer `Vec` and each group's node iteration is unspecified.
 Public on `Graph` (not `stats.rs`-private) because both the Rust analytics side
 (`compute_vertical_stats`) and the web post-edit store need the same "what does this elevator
 actually connect" answer — the web side has its own connected-component BFS,
-`elevatorComponent` (`maze-web/src/pixi/postEditUtils.ts`), used by `postEditSlice.ts` for two
-things: un-suppressing a generation-time elevator's *entire* mesh on point reset, and seeding the
-elevator-edit dialog's current floor set when clicking an existing elevator marker. `elevatorComponent`
+`elevatorComponent` (`maze-web/src/pixi/postEditVerticalUtils.ts`, re-exported via
+`postEditUtils.ts`), used by `extractPostEditElevators` to turn generation's `elevator` edges into
+baseline elevator entries (one per connected component, GitHub issue #564) and by `markerIndex.ts`
+for image-export elevator numbering. `elevatorComponent`
 takes every BFS start id at once (not one call per id) so a multi-node point (a split point with
 several nodes on the same floor) builds the adjacency map only once.
 

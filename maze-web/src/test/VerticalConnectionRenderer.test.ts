@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
-import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/VerticalConnectionRenderer";
-import { patternVisualTipFraction, patternBaseFraction } from "../pixi/renderers/VerticalConnectionRenderer";
+import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../pixi/renderers/types";
+import { patternVisualTipFraction, patternBaseFraction, oneWayStopLineShape } from "../pixi/renderers/verticalConnectionGeometry";
 
 const navigateToFloorMock = vi.fn();
 vi.mock("../pixi/renderers/floorNavigation", () => ({
@@ -874,6 +874,52 @@ describe("VerticalConnectionRenderer", () => {
     expect(g.fillCalls[0]).toBe(0x666666);
     expect(g.fillCalls[1]).toBe(0x555555);
     expect(g.fillCalls.at(-1)).toBe(style.oneWayArrowColor);
+  });
+
+  it("draws the stop line exactly where `oneWayStopLineShape` puts it, for every arrow style and end (GitHub issue #744)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    for (const arrowStyle of ["triangle", "chevron", "arrow"] as const) {
+      for (const arrowFilled of [true, false]) {
+        for (const direction of ["up", "down"] as const) {
+          const style = baseStyle({ oneWayArrowStyle: arrowStyle });
+          const m = marker({ pos: [10, 20], filled: false, arrowFilled, direction });
+          g.calls.length = 0;
+          render(renderer, { markers: [m], style });
+          const shape = oneWayStopLineShape(m, style);
+          expect(shape?.kind).toBe("roundedRect");
+          if (shape?.kind !== "roundedRect") continue;
+          expect(g.calls.filter((c) => c.method === "roundRect").at(-1)?.args).toEqual([shape.x, shape.y, shape.w, shape.h, shape.radius]);
+        }
+      }
+    }
+  });
+
+  it("draws the decorative stairs' stop line exactly where `oneWayStopLineShape` puts it (GitHub issue #744)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const style = baseStyle({ style: "decorative", decorativeStairsOneWay: { lineColor: 0x111111, lineWidth: 3, size: 17.6 } });
+    for (const arrowFilled of [true, false]) {
+      for (const direction of ["up", "down"] as const) {
+        const m = marker({ pos: [10, 20], filled: false, arrowFilled, direction });
+        g.calls.length = 0;
+        render(renderer, { markers: [m], style });
+        const shape = oneWayStopLineShape(m, style);
+        expect(shape?.kind).toBe("segment");
+        if (shape?.kind !== "segment") continue;
+        expect(shape.halfWidth).toBe(1.5);
+        expect(g.calls.slice(-2).map((c) => [c.method, ...c.args])).toEqual([["moveTo", shape.x0, shape.y0], ["lineTo", shape.x1, shape.y1]]);
+      }
+    }
+  });
+
+  it("has no stop line for two-way passages, elevators and the sign arrow style", () => {
+    expect(oneWayStopLineShape(marker({ direction: "up" }), baseStyle())).toBeNull();
+    expect(oneWayStopLineShape(marker({ kind: "elevator", direction: "up" }), baseStyle())).toBeNull();
+    expect(oneWayStopLineShape(marker({ filled: false, direction: "up" }), baseStyle({ oneWayArrowStyle: "sign" }))).toBeNull();
+    expect(oneWayStopLineShape(marker({ filled: false }), baseStyle())).toBeNull();
   });
 
   describe("elevator floor-number badges (GitHub issue #430)", () => {
