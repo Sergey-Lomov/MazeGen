@@ -8,6 +8,10 @@ a random node count with unconstrained face assignment.
 
 ## Wire types (`maze-core/src/generation/split_pattern.rs`, mirrored by `wasm/types.ts`)
 
+> **Current model.** Face indexing, per-tessellation ownership and symmetry handling below are
+> superseded by "Target model: patterns on shape templates" at the end of this file (GitHub epic
+> #752, implemented in #758/#764).
+
 - **`SplitFaceRequirement`** — `Passage | OneWay(direction) | Wall | Unspecified`. `Wall` is the
   only requirement satisfiable off-field (a face pointing past the tessellation's boundary).
   `Unspecified` leaves the face open to the ordinary corridor/junction logic like any other free
@@ -188,3 +192,66 @@ The Generation feature card shows a `"warning"` status when pattern mode is on, 
 and the pattern list is empty — a dead-weight config (splitting is enabled but has nothing to draw
 from, so it silently never fires). Gated on `initialConfig.method === "custom_vertex_based"` (the
 only method pattern mode applies to, per `GenerationFeature.tsx`'s `isVertexBased`).
+
+## Target model: patterns on shape templates (GitHub epic #752)
+
+Target contract written by GitHub issue #754. Shape templates, the allowed transform group and the
+face chain are defined in `space.md` ("Target model: extensible tessellation" → "Shape
+templates").
+
+### Pattern data
+
+- `SplitPattern` gains `shape`, the key of a `ShapeDescriptor` (`regular:4`, `cairo_pentagon`,
+  `<kind>:<name>`, …), carried by the core type, the wasm/runner DTOs and the project format.
+- `SplitPatternFace.face_index` is a **canonical** index into the descriptor's circular face
+  order (`0..face_count`), never a position in a particular cell's `faces_of`.
+- Patterns belong to a descriptor, not to a tessellation. On a tessellation change, the web keeps
+  every pattern whose descriptor is in the new tessellation's `shape_descriptors()` and drops the
+  rest.
+
+### Validation (`validate_split_patterns`)
+
+Against the active tessellation instance. Rejected:
+- a `shape` the tessellation does not provide;
+- a `face_index >= face_count` of the pattern's descriptor;
+- a `node_count != faces.len()`, unchanged.
+
+A node without `Passage`/`OneWay` faces stays allowed (GitHub issue #238).
+
+### Two-level applicability
+
+1. **Variants (descriptor level).** A pattern is a candidate for cell `c` only if
+   `shape_of(c)` is `Some` and its descriptor key equals `pattern.shape`. Its variants are
+   exactly the elements of `c`'s allowed transform group. Each variant maps every pattern face
+   through the face chain `canonical → transformed → local`. Variants that produce an identical
+   local face assignment are deduplicated. No other source of variants exists: the old
+   rotation/mirror tables and `transform_face_index` are removed.
+2. **Topology (application level).** Each variant is checked face by face on application:
+   - `neighbor(c, local_face)` plus field membership resolves the outside neighbor (`Wall` is the
+     only requirement satisfiable without one);
+   - then the existing adaptation checks run: parent-edge direction/kind match, visited state and
+     sibling targets.
+
+Consequences:
+- A cell with no template, or with no pattern for its descriptor, is never split in pattern mode
+  (the split roll does not fire for it).
+- Weighted selection competes only among the patterns whose descriptor matches the cell.
+- Triangle candidate sets become a strict superset of the old ones (reflections are now in the
+  group).
+
+### Consumers
+
+`split_pattern_logic` (adaptation search), `split_adaptation_candidates`, `split_topology`,
+`split_pattern_match` (a built tile matches a pattern when some allowed variant reproduces its
+face assignment), repair `split_core`, and per-face QC checks all use the same two-level rule and
+the same face chain. None of them reads a tessellation-wide face list or symmetry table.
+
+### Pattern UI
+
+`TileFaceEditor`, face rotation and bridge/diagonal detection are driven by the descriptor:
+- template geometry from core;
+- canonical face order;
+- the descriptor's full group while authoring (a pattern has no cell);
+- the cell's allowed group for post-edit/preset tiles.
+
+`SPLIT_FACE_INDEX_WEB_TO_CORE` is removed: web and core share canonical indices.

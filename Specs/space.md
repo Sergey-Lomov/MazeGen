@@ -6,6 +6,9 @@ Module: `maze-core/src/space/`.
 
 ## Tessellation
 
+> **Current API.** Superseded by "Target model: extensible tessellation" at the end of this file
+> (GitHub epic #752). Each sub-issue rewrites the affected parts of this section when it lands.
+
 ```rust
 pub trait Tessellation {
     type Point: Copy + Eq + Hash;
@@ -115,3 +118,217 @@ Raw `Field<T>` remains in use only:
 - At `maze-wasm`'s post-edit path (`analytics/post_edit.rs`'s `build_field_from_nodes`), which constructs via `Field::from_id_points` (preserving client-supplied ids) and then wraps the result with `MultiLevelField::new([field])`.
 
 Built on top of this layer since: add/remove/reorder floors UI (#335), and — as of #337 — `CustomVertexBased` generation, which builds a field from `GenerateConfig.level_fields` (`maze-wasm`'s `dispatch_generate`/`build_multi_level_field`) and connects levels via `EdgeKind::VerticalPassage`/`Elevator` (`Specs/generation.md`'s "Vertical Connections"). As of #338, each level's own field *shape* is independent — `level_fields` carries one point-set per floor — though tessellation *kind* (`T`) is still fixed maze-wide (a `MultiLevelField<T>` uses one `T` for every level it holds — `Maze<T>`'s existing single-`T`-per-maze design). QC/repair/routing during generation is multi-floor-aware. `compute_analytics` (post-edit's confirm step and analytics/snapshot recompute) is genuinely multi-level as of GitHub issue #359 — `ComputeAnalyticsConfig` gained its own `level_fields`, mirroring `GenerateConfig`'s; `maze-wasm`'s `build_analytics_snapshot` always surfaces every floor now — the `all_levels: bool` param that used to gate this was removed (GitHub issue #355), since every real caller had passed `true` since #359 — see `Specs/floors.md`'s "`compute_analytics` multi-level awareness" section. Not yet built: a `LevelId`-aware project file format, or a wire-level way to vary tessellation kind itself between levels.
+
+## Target model: extensible tessellation (GitHub epic #752)
+
+Target contracts written by GitHub issue #754 ahead of the code changes in #755–#765. Core is the
+single source of topology, geometry and field operations. A new tessellation (mixed-shape 4.8.8,
+radial, Voronoi, …) is added by a core implementation plus a factory/registry entry, without
+touching any consumer. Rules: generics only in core (no `dyn Tessellation`, no enum of
+tessellations inside algorithms), no allocations on hot paths (`faces_of`, `neighbor`,
+`is_straight`), deterministic results everywhere.
+
+### Instance and config
+
+- A tessellation is an **instance**, not a marker type. It is built deterministically from a
+  config `{ kind, params }`: the same config always yields the same cell set, face order,
+  neighbor relation, shapes and geometry. An instance may carry data (lookup tables, ring sizes,
+  Voronoi sites). Invalid params are rejected by the factory with a reason (`Result`), never a
+  panic.
+- One instance per maze, shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (every
+  level uses the same instance). The existing tessellations are zero-sized instances.
+- Algorithm code is generic over `T: Tessellation`. Branching on `kind` is allowed only in
+  factories (`maze-wasm`, `maze-runner`), registries (web UI metadata: name, orientations,
+  default params) and serialization. It is forbidden in generation, QC, repair, editor and
+  renderers.
+- Wire, project and fixture formats store `{ "kind": "<kind>", "params": { … } }` (no combined
+  values like `cairo_circle`; field shape is a separate setting). No migration of old formats.
+
+### Topology contract
+
+```rust
+pub trait Tessellation: Send + Sync + 'static {
+    type CellId: Copy + Eq + Ord + Hash + Debug;
+    type Face: Copy + Eq + Hash + Debug;
+
+    fn is_valid_cell(&self, cell: Self::CellId) -> bool;
+    fn faces_of(&self, cell: Self::CellId) -> &[Self::Face];
+    fn neighbor(&self, cell: Self::CellId, face: Self::Face) -> Option<(Self::CellId, Self::Face)>;
+    fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
+    fn shape_descriptors(&self) -> &[ShapeDescriptor];
+    fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
+}
+```
+
+The sketch fixes semantics, not exact signatures.
+
+- **`CellId`** is opaque. It is valid only within the instance that produced it (equivalently,
+  within the same config). Consumers never decode it or do arithmetic on it. The only exceptions
+  are the tessellation implementation itself and, in the web, the geometry access layer (where
+  `CellId` is a branded type). `Ord` exists only for deterministic ordering and tie-breaks. Its
+  wire encoding is defined by the tessellation and round-trips only under the same config.
+- **Precondition.** Passing a `CellId` that is not valid for the instance, or a face not in
+  `faces_of(cell)`, to any topology method is a precondition violation (`debug_assert`), not a
+  `None` result.
+- **Face.** A face is a contiguous piece of a cell's boundary with exactly one neighbor (or no
+  neighbor at the edge of the tessellation's space). A geometric side touching two neighbors is
+  two faces. A cell has at most one face toward any given neighbor, so a cell's neighbors are
+  pairwise distinct (`Field::neighbors` relies on this).
+- **`faces_of(cell)`** is allocation-free (a slice borrowed from static or instance-owned data)
+  and may differ per cell (mixed and radial tilings). Order is the canonical circular order:
+  counter-clockwise along the cell boundary, starting at a tessellation-defined first face that
+  is stable for the instance. (#756 keeps the current order; #758 switches to circular order.)
+- **`neighbor(cell, face) -> Option<(cell', face')>`** returns the adjacent cell and the face of
+  `cell'` that is the same boundary piece. `None` means no cell exists there in the
+  tessellation's space. Reciprocity is mandatory and tested for every tessellation:
+  `neighbor(c, f) == Some((c', f'))` implies `neighbor(c', f') == Some((c, f))`. Field
+  membership is separate: a `Field` neighbor is a tessellation neighbor that is also in the
+  field's cell set.
+- **`is_straight(cell, in_face, out_face)`** has a geometric definition. Let `A` be the contact
+  point of `in_face`, `C` the center of `cell`, and `B` the contact point of `out_face` (see
+  "Geometry"). The triple is straight iff `in_face != out_face`, `dot(C − A, B − C) > 0`, and
+  `|cross(C − A, B − C)| <= STRAIGHT_TOLERANCE · |C − A| · |B − C|`.
+  `STRAIGHT_TOLERANCE = 1e-6` only absorbs floating-point noise; it is not an "almost straight"
+  threshold. Implementations may answer from a table for speed, but a test checks every table
+  against the geometric definition. Consequence: a triangle cell has no straight triple (every
+  pass through it turns by 60°). The old face-identity check reports `Left → Left` /
+  `Right → Right` as straight. Cairo straightness likewise follows geometry, not face-slot
+  identity. Staging: #756 introduces the per-cell `is_straight` with the old face-identity
+  semantics as tables, so canonical baselines still match. #759 switches it to the geometric
+  definition, adds the table-vs-geometry test, and documents the resulting tri/Cairo generation
+  changes together with the `cell_scale` change before its baseline update. Consumers
+  (`graph::classify`, `generation::vertex_based`) call
+  `Field::is_straight(from, via, to)`, which resolves the faces of `via` toward `from` and `to`.
+
+### Shape templates
+
+- **`ShapeDescriptor`** is a reusable topological template: a stable key, a face count `n`, the
+  canonical circular face order `0..n` (counter-clockwise), and the template's symmetry group.
+  The group is a list of permutations of canonical indices (`perm[i]` = image of canonical face
+  `i`). Element 0 is the identity, and the list is closed under composition. The group is
+  computed once per descriptor and cached. Descriptor families:
+  - `RegularPolygon { n }`: dihedral group, `n` rotations + `n` reflections; key `regular:<n>`.
+  - `CairoPentagon`: identity + the reflection that fixes the long side; key `cairo_pentagon`.
+  - Tessellation-registered templates: key `<kind>:<name>`.
+
+  Descriptors are equal iff their keys are equal. Geometrically identical cells with different
+  face counts get different descriptors: a square whose one side is split into two faces is a
+  5-face template, not `RegularPolygon { 4 }`. A descriptor also provides template geometry
+  (a unit-scale outline in template coordinates) for UI drawing. Topology never uses it.
+- **`shape_of(cell) -> Option<CellShape>`** returns:
+  - the cell's descriptor;
+  - `local_to_canonical`: a bijection from local face index (position in `faces_of(cell)`) to
+    canonical index;
+  - the cell's **allowed transform group**: a subgroup of the descriptor's group (contains the
+    identity, closed under composition), given as indices into the descriptor's group. It is the
+    full group by default. A tessellation restricts it where a template symmetry is not
+    realizable for that cell.
+
+  `None` means the cell has no template. It still has full topology and geometry, but split
+  patterns never apply to it.
+- **Face chain** `local → canonical → transformed → local`: for transform `g` in the allowed
+  group, canonical face `k` of a template-relative object (for example a split-pattern face)
+  lands on local face `local_to_canonical⁻¹(g[k])`. Reading a built cell back into template terms
+  uses `local_to_canonical`. Every step is a bijection, so the chain is invertible.
+- **Triangle** gets its full group: 3 rotations + 3 reflections. The old empty mirror table was
+  an artifact of non-circular face order.
+- The descriptor-level split-pattern contract (two-level applicability) lives in
+  `split-patterns.md`.
+
+### Geometry
+
+A separate API from topology (an extension trait over `Tessellation`). Coordinates are world
+units, math convention (x right, y up, counter-clockwise positive). There is no screen Y flip,
+orientation or pixel scale (see "Display transform").
+
+- **Scale.** `cell_scale(cell) = sqrt(area(cell))`. For regular tessellations the world unit is
+  chosen so a cell's area is 1. Distance-based QC thresholds are expressed in `cell_scale` units.
+  This is an intentional scale change for hex/tri/Cairo versus the old `cartesian`, explained in
+  #759 before its baseline update.
+- **Point queries:**
+  - `center(cell)`.
+  - `contact_point(cell, face)`: the point where a corridor crosses the face, by default the
+    arc-length midpoint of the face's segment chain. It is identical from both sides of the face.
+  - `area(cell)`, `cell_scale(cell)`.
+  - Point and region queries take a **scope**: either a cell set (e.g. a field level's cells, for
+    selection and hit-testing) or the whole tessellation space (e.g. the field editor adding
+    cells outside the current field). Candidates outside the scope are never returned and never
+    win a tie-break.
+  - `cell_at(point, scope)`: the in-scope cell whose closed boundary contains `point` (within
+    `GEOM_EPS`). On shared boundaries and vertices the minimal `CellId` among the in-scope
+    candidates wins. A point covered by no in-scope cell returns `None`.
+  - `cells_in_region(region, mode, scope)`, with region a closed polygon. Modes:
+    - `Intersects`: cell and region share at least one point, boundaries included.
+    - `Contained`: the whole cell boundary lies inside the region.
+    - `CenterInside`: `center(cell)` lies inside the region.
+
+    Boundary tests use `GEOM_EPS`. The result is sorted by `CellId`. The tool picks the mode,
+    never the tessellation.
+- **`GEOM_EPS`** is the single world-unit tolerance (`1e-9`) for every geometric equality,
+  containment and boundary test. It is distinct from `STRAIGHT_TOLERANCE` (relative, angular) and
+  from `flatten` tolerance (caller-provided).
+- **Canonical edge key.** Each face pair `(c, f) ↔ (c', f')` has key `(owner, owner_face)`, where
+  owner is the side with the smaller `CellId`. A face with no neighbor is owned by its cell.
+  Edge geometry is computed deterministically from the key and cached only for the requested
+  area, never as a precomputed map of the whole (possibly infinite) space. Both cells get the
+  same segments: the owner's run counter-clockwise along its boundary, and the other cell gets
+  them reversed. Paired faces are therefore identical as segments and as flattened polylines.
+- **Segments** (kinds: `Line`, `CircularArc`; more may be added) expose operations on a
+  normalized parameter `t ∈ [0, 1]`, linear in arc length:
+  - `point(t)` and `tangent(t)` (unit length).
+  - `split(t) -> (Segment, Segment)`: the two halves share the split point exactly.
+  - `length()`.
+  - `reversed()`: `reversed().point(t) == point(1 − t)`.
+  - `flatten(tolerance) -> polyline`: endpoints are exactly `point(0)` / `point(1)`, the maximum
+    distance between the polyline and the true curve is at most `tolerance` (world units), the
+    output is deterministic, and a line flattens to its two endpoints.
+  - `path_commands()`.
+
+  Consumers never inspect the segment kind: drawing uses path commands, geometric operations use
+  polylines.
+- **Path commands:** `MoveTo(p)`, `LineTo(p)`, `ArcTo { center, radius, start_angle, end_angle,
+  ccw }`. Every renderer (Pixi, SVG, PNG) supports all three. A new segment kind adds its own
+  command (e.g. `CubicTo` for Bézier segments) together with renderer support.
+- **`BoundaryPath(cell)`** is the concatenation of each face's segment chain in `faces_of` order.
+  Invariants, tested per tessellation:
+  - closed: the last end equals the first start;
+  - exact joints: each segment's end is the next one's start, emitted as identical coordinates;
+  - no self-intersection;
+  - counter-clockwise (positive signed area);
+  - face order along the path equals `faces_of(cell)`.
+
+### Field operations
+
+Field-editing operations work on cell sets and live in core:
+
+- **translate** by a world vector, which must be a translation symmetry of the tessellation;
+- **reflect** across an axis (a world line), which must be a reflection symmetry;
+- **preset field shapes** built from named params (the ported `square_rect`, `hex_hexagon`,
+  `tri_*`, `cairo_rect` and the web generators from `storeHelpers`/`fieldConfig`).
+
+Availability is separate from execution. The tessellation exposes which operations it supports
+(and its preset list with param schemas) so the UI can hide unavailable tools. Execution returns
+`Result<cells, FieldOpError>`, where the error carries a reason:
+
+- `Unavailable`;
+- `NotASymmetry`;
+- `OutsideTessellation`: a mapped cell does not exist;
+- `ConnectivityBroken`: the resulting cell set is disconnected.
+
+Results are sorted by `CellId`.
+
+### Display transform
+
+A single web-side affine transform (rotation, reflection, scale, translation) applies to every
+visual coordinate: cells, walls, markers, labels and export. Its inverse applies to hit-testing
+and editor input. Hex flat/pointy and tri r0–r270 become instances of it. Core geometry knows
+nothing about it, and changing it never invalidates geometry.
+
+### Geometry snapshot lifecycle
+
+`maze-wasm` exports immutable region snapshots for a cell set. A snapshot holds, per cell, the
+boundary path commands, the flattened polylines (at the requested tolerance), the center and
+`cell_scale`; per face, the contact point and segment data. Point queries (`cell_at`,
+`cells_in_region`) are exported too. A snapshot is bound to the tessellation instance identity
+and the field version (incremented on every cell-set change). The web geometry access layer
+invalidates it when either changes, and never because of the display transform.
