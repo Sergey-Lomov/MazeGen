@@ -10,6 +10,7 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { setLinkEnabledByTarget, forceLinks, addLink, removeLink, writeLinkedParam, applyLinkedPatch, markLinked, setParamValue, propagateLinkedSources, type Linked } from "./parameterLinksEngine";
 import type { VectorByWallsParamPath, VectorByCorridorsParamPath } from "../parameterLinksRegistry";
 import { mergeGroupOverridePatch } from "../teleportGroupLinks";
+import { chooseFloorLabelModeOnce } from "../floorLabelModeChoice";
 import {
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -43,6 +44,15 @@ const corridorsParam = (path: VectorByCorridorsParamPath, value: unknown) => (s:
 
 type VectorByWallsSettings = MazeStore["vectorByWallsSettings"];
 type VectorByCorridorsSettings = MazeStore["vectorByCorridorsSettings"];
+
+/** `preset` with `current`'s maze-bound fields — see `ImageExportActions.loadVisualPreset`. */
+function withMazeBound<S extends VectorByWallsSettings | VectorByCorridorsSettings>(preset: S, current: S): S {
+  return {
+    ...preset,
+    teleportGroupOverrides: current.teleportGroupOverrides,
+    floorLabel: { ...preset.floorLabel, positionsByFloorId: current.floorLabel.positionsByFloorId },
+  };
+}
 
 /** `set` as the slice sees it (GitHub issue #704): `vectorBy*Settings` may only be assigned a
  *  `Linked` value, so every write to them goes through a link-aware helper (`wallsParam`,
@@ -144,6 +154,24 @@ const buildImageExportSlice = (set: GuardedSet): ImageExportState & ImageExportA
   pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode, floorLabelDrag: null }),
+  loadVisualPreset: (preset) => set((s) => {
+    const p = preset.imageExport;
+    const update = {
+      // A style saved before any mode was picked keeps this project's current choice.
+      activeRenderMode: p.activeRenderMode ?? s.activeRenderMode,
+      floorLabelDrag: null,
+      hoveredExportWarningKey: null,
+      showColorWarnings: p.showColorWarnings,
+      linkIconVisibility: p.linkIconVisibility,
+      pngExportSettings: p.pngExportSettings,
+      floorLabelModeChosen: p.floorLabelModeChosen,
+      vectorByWallsSettings: markLinked(withMazeBound(p.vectorByWallsSettings, s.vectorByWallsSettings)),
+      vectorByCorridorsSettings: markLinked(withMazeBound(p.vectorByCorridorsSettings, s.vectorByCorridorsSettings)),
+    };
+    // A preset saved before its floor-label mode was chosen gets one picked for this project's
+    // floors, same as a first open of the Image Export card.
+    return { ...update, ...chooseFloorLabelModeOnce({ ...s, ...update }) } as GuardedUpdate;
+  }),
   startFloorLabelDrag: (renderMode) => set((s) => {
     const floorLabel = renderMode === "vector_by_walls"
       ? s.vectorByWallsSettings.floorLabel

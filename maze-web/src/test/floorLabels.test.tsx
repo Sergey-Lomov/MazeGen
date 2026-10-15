@@ -125,7 +125,7 @@ describe("export floor labels", () => {
     useMazeStore.setState({ floors: [{ id: "floor_1", title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }] });
     render(<Panel />);
     const floorHeader = screen.getByText(m["image_export.floors.section"]());
-    const precedingHeader = screen.getByText(preceding === "tiles" ? m["image_export.vector_by_walls.section_tiles"]() : m["image_export.vector_by_corridors.section_cells"]());
+    const precedingHeader = screen.getByText(preceding === "tiles" ? m["image_export.vector_by_walls.section_tiles"]() : m["image_export.vector_by_corridors.section_corridors"]());
     const nextHeader = screen.getByText(m["image_export.vector_by_walls.section_markers"]());
     expect(precedingHeader.compareDocumentPosition(floorHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(floorHeader.compareDocumentPosition(nextHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

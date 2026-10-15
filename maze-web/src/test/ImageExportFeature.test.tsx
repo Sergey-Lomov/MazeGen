@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ImageExportFeature } from "../components/features/ImageExportFeature";
 import { SidePanel } from "../components/SidePanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { serializeProject, serializeVisualPreset } from "../store/projectExport";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -128,5 +129,29 @@ describe("ImageExportFeature", () => {
 
     rerender(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
     expect(useMazeStore.getState().exportFormatSettingsCovered).toBe(false);
+  });
+
+  describe("style preset load (GitHub issue #750)", () => {
+    function pickPresetFile(content: unknown, container: HTMLElement) {
+      const input = container.querySelector('input[name="visual-preset-file"]') as HTMLInputElement;
+      const file = new File([JSON.stringify(content)], "style.mazestyle");
+      fireEvent.change(input, { target: { files: [file] } });
+    }
+
+    it("applies a picked style preset", async () => {
+      const preset = serializeVisualPreset({ ...useMazeStore.getState(), showColorWarnings: false });
+      useMazeStore.setState({ showColorWarnings: true, error: null });
+      const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+      pickPresetFile(preset, container);
+      await waitFor(() => expect(useMazeStore.getState().showColorWarnings).toBe(false));
+      expect(useMazeStore.getState().error).toBeNull();
+    });
+
+    it("shows a dedicated message when a project file is picked", async () => {
+      useMazeStore.setState({ error: null });
+      const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+      pickPresetFile(serializeProject(useMazeStore.getState()), container);
+      await waitFor(() => expect(useMazeStore.getState().error).toBe(m["image_export.visual_preset.load_error_project_file"]()));
+    });
   });
 });

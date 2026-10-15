@@ -16,9 +16,10 @@ import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
+import { readJsonFile } from "./jsonFile";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
-import { downloadProjectFile, parseAndValidate, projectFileAccept } from "../store/projectExport";
+import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
@@ -211,26 +212,18 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const reader = new FileReader();
-    reader.onerror = () => setError(m["project.load_error_io"]());
-    reader.onload = (ev) => {
+    readJsonFile(file, (json) => {
       try {
-        const text = ev.target?.result as string;
-        let json: unknown;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          setError(m["project.load_error_json"]());
+        loadProject(parseAndValidate(json));
+      } catch (err) {
+        if (err instanceof FileKindMismatchError) {
+          setError(m["project.load_error_visual_preset"]());
           return;
         }
-        const projectFile = parseAndValidate(json);
-        loadProject(projectFile);
-      } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(m["project.load_error"]({ message }));
       }
-    };
-    reader.readAsText(file);
+    }, setError);
   }
 
   function handleToggle(id: FeatureId) {

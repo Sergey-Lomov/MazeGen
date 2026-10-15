@@ -1,6 +1,6 @@
 # Image Export Feature
 
-The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today.
+The Image Export feature card lets the user pick one maze **rendering mode** for image export, then configure that mode's own settings, then export it through one of the **export formats** the card's second button group offers. Only PNG is implemented today. Below the export formats, "Save style" / "Load style" buttons save and load the card's whole visual configuration as a standalone style file (GitHub issue #750 — see `Specs/project-file.md`'s "Visual preset" section).
 
 ## Feature Card Status
 
@@ -227,7 +227,8 @@ passage between two geometrically adjacent cells draws as a stroked line between
 (`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
-Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Cells" section, a
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Corridor" section (section id `cells`, kept for
+persisted expand state), a
 collapsible "Waypoints" section, a "One-ways" section (GitHub issue #312, hidden entirely when the
 maze has no one-way basic edge — same `hasOneWays` check `VectorByWallsSettingsPanel` uses, placed
 before "Teleports" per that panel's own section order), a "Teleports" section (hidden entirely when
@@ -235,7 +236,7 @@ the maze has no teleport edge), and a warnings section (`vectorByCorridorsSectio
 collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
 `VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
-- **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
+- **"Corridor"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`), **Rendering mode** (a Contour/Line
   `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
   `join === "round"`-gated "Round junctions" toggle; shown only for the round join; see the "Rendering
@@ -254,7 +255,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `padding` param and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms; a
   "Marker widen shape" select sets `markerWidenShape` (`"match_marker"` default — each patch draws
   in that marker's own shape, `"circle"`/`"square"` — every patch draws in that one fixed shape
-  regardless of the marker's own, `"square"`'s corners following the Cells section's own `join`
+  regardless of the marker's own, `"square"`'s corners following the Corridor section's own `join`
   rather than a separate corner-style setting).
 - **"Waypoints"** (GitHub issue #311) — start/finish marker appearance, `startMarker`/`finishMarker:
   MarkerSettings` fields on `VectorByCorridorsSettings`, identical shape and defaults to
@@ -287,7 +288,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   corridor, default 0.5), `oneWayLength` (0.1-1, a *multiplier* of the chevron's own full opening
   width `oneWayWidth * thickness` rather than an absolute pixel size — so the chevron's opening angle
   stays constant as `oneWayWidth`/`thickness` change instead of visibly flattening/sharpening on its
-  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Cells section's own `join`).
+  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Corridor section's own `join`).
   Drawn via `drawOneWayChevronRow` (`pixi/renderers/wallUtils.ts`) — reuses `drawOneWayChevron` per
   chevron rather than a hand-rolled multi-chevron path, spacing adjacent chevrons by
   `chevronRowStep = length + gap + thickness` (both `VectorByCorridorsRenderer` and
@@ -332,7 +333,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   does, and a marker's floor-colored gap ring must cut through the corridor's own color rather than
   the canvas background behind it; and every teleport marker also gets its own widen patch under the corridor
   stroke (`buildTeleportWidenMarkers`, `VectorByCorridorsRenderer.ts` — exported, unit-tested
-  directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
+  directly), reusing the Corridor section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
   group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
   `TeleportRenderer` actually draws there). A cross-floor badge endpoint (a coordinate tagged
@@ -371,7 +372,7 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   actually read since `style` is always `"abstract"` for this mode. The occluding-color parameter
   reuses the convention this mode's Teleports/Waypoints sections already use in place of a separate
   `floorColor` field. Every vertical marker also gets its own widen patch under the corridor stroke
-  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Cells section's
+  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Corridor section's
   `markerWidenPadding`/`markerWidenShape` the same way `buildTeleportWidenMarkers` does. "Shared
   style" integration (GitHub issue #322, generalized by #643) is identical to "Vector by walls"':
   `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`/`elevatorBadges`' own `cornerStyle`/

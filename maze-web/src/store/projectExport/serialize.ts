@@ -1,7 +1,7 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
-import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
+import { CURRENT_VERSION, PROJECT_FILE_EXTENSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField, type ProjectFileImageExport } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
 import { linksMatchDefaults } from "../slices/parameterLinksEngine";
 import { DEFAULT_VECTOR_BY_WALLS_LINKS, DEFAULT_VECTOR_BY_CORRIDORS_LINKS } from "../slices/parameterLinksDefaults";
@@ -125,20 +125,7 @@ export function serializeProject(state: MazeState): ProjectFile {
         },
     backgroundImageManualPositioning: state.backgroundImageManualPositioning ?? false,
     backgroundImageCropping: state.backgroundImageCropping ?? false,
-    imageExport: {
-      activeRenderMode: state.activeRenderMode,
-      openRenderModeSettings: state.openRenderModeSettings,
-      vectorByWallsSettings: state.vectorByWallsSettings,
-      vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
-      showColorWarnings: state.showColorWarnings,
-      linkIconVisibility: state.linkIconVisibility,
-      vectorByCorridorsSettings: state.vectorByCorridorsSettings,
-      vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
-      pngExportSettings: state.pngExportSettings,
-      floorLabelModeChosen: state.floorLabelModeChosen,
-      vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
-      vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
-    },
+    imageExport: serializeImageExport(state),
     floors: {
       floors: state.floors,
       nextFloorNumber: state.nextFloorNumber,
@@ -147,17 +134,38 @@ export function serializeProject(state: MazeState): ProjectFile {
   };
 }
 
-export function downloadProjectFile(state: MazeState): void {
-  const data = serializeProject(state);
-  // Neutral MIME type: with `application/json` some browsers (Safari, mobile) append `.json` to the
-  // name, and the resulting `.maze.json` file no longer passes the load dialog's extension filter.
+export function serializeImageExport(state: MazeState): ProjectFileImageExport {
+  return {
+    activeRenderMode: state.activeRenderMode,
+    openRenderModeSettings: state.openRenderModeSettings,
+    vectorByWallsSettings: state.vectorByWallsSettings,
+    vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
+    showColorWarnings: state.showColorWarnings,
+    linkIconVisibility: state.linkIconVisibility,
+    vectorByCorridorsSettings: state.vectorByCorridorsSettings,
+    vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
+    pngExportSettings: state.pngExportSettings,
+    floorLabelModeChosen: state.floorLabelModeChosen,
+    vectorByWallsLinks: linksMatchDefaults(state.vectorByWallsSettings.links, DEFAULT_VECTOR_BY_WALLS_LINKS) ? null : state.vectorByWallsSettings.links,
+    vectorByCorridorsLinks: linksMatchDefaults(state.vectorByCorridorsSettings.links, DEFAULT_VECTOR_BY_CORRIDORS_LINKS) ? null : state.vectorByCorridorsSettings.links,
+  };
+}
+
+/** Downloads `data` as pretty-printed JSON under `fileName`. Neutral MIME type: with
+ *  `application/json` some browsers (Safari, mobile) append `.json` to the name, and the resulting
+ *  `.maze.json`/`.mazestyle.json` file no longer passes the load dialog's extension filter. */
+export function downloadJsonFile(data: unknown, fileName: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `maze-project${PROJECT_FILE_EXTENSION}`;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export function downloadProjectFile(state: MazeState): void {
+  downloadJsonFile(serializeProject(state), `maze-project${PROJECT_FILE_EXTENSION}`);
 }

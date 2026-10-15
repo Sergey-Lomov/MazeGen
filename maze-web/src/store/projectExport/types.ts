@@ -273,3 +273,36 @@ function isIOS(nav: PlatformInfo): boolean {
 export function projectFileAccept(nav: PlatformInfo): string | undefined {
   return isIOS(nav) ? undefined : PROJECT_FILE_EXTENSION;
 }
+
+/** Standalone visual preset (GitHub issue #750): the Image Export renderer/export settings and their
+ *  parameter links, without generation settings or maze content. `kind` tells it apart from a
+ *  project file, which has no `kind` field. */
+export const VISUAL_PRESET_KIND = "maze-visual-preset";
+export const VISUAL_PRESET_VERSION = 1;
+export const VISUAL_PRESET_FILE_EXTENSION = ".mazestyle";
+
+/** `ProjectFileImageExport` minus the per-section expanded/collapsed UI state. The renderer
+ *  settings omit maze-bound data (`floorLabel.positionsByFloorId`, `teleportGroupOverrides`) when
+ *  saved; loading keeps the target project's values for those. */
+export type VisualPresetImageExport = Omit<ProjectFileImageExport, "openRenderModeSettings" | "vectorByWallsSectionsExpanded" | "vectorByCorridorsSectionsExpanded">;
+
+export interface VisualPresetFile {
+  kind: typeof VISUAL_PRESET_KIND;
+  version: number;
+  imageExport: VisualPresetImageExport;
+}
+
+/** Raised when a project file is loaded as a visual preset or the other way round, so the UI can
+ *  show a dedicated message instead of a generic validation error. */
+export class FileKindMismatchError extends Error {
+  constructor(readonly expected: "project" | "visual_preset", readonly found: "project" | "visual_preset") {
+    super(`Expected a ${expected} file, got a ${found} file`);
+    this.name = "FileKindMismatchError";
+  }
+}
+
+/** `accept` value for the visual preset load dialog — same iOS/iPadOS exception as
+ *  `projectFileAccept`. */
+export function visualPresetFileAccept(nav: PlatformInfo): string | undefined {
+  return isIOS(nav) ? undefined : VISUAL_PRESET_FILE_EXTENSION;
+}

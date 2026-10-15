@@ -349,7 +349,7 @@ export function VectorByCorridorsSettingsPanel() {
       <div style={styles.divider} />
 
       <SectionHeader
-        label={m["image_export.vector_by_corridors.section_cells"]()}
+        label={m["image_export.vector_by_corridors.section_corridors"]()}
         expanded={isExpanded("cells")}
         onToggle={() => toggleSection("cells")}
       />

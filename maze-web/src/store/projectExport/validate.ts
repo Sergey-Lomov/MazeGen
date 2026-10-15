@@ -1,5 +1,7 @@
 import {
   CURRENT_VERSION,
+  VISUAL_PRESET_KIND,
+  FileKindMismatchError,
   type ProjectFile,
   type ProjectFileDirtyFlags,
   type ProjectFileAnalytics,
@@ -57,6 +59,7 @@ function migrateToLatest(data: unknown, fromVersion: number): unknown {
 
 export function parseAndValidate(raw: unknown): ProjectFile {
   const obj = assertObject(raw, "root");
+  if (obj.kind === VISUAL_PRESET_KIND) throw new FileKindMismatchError("project", "visual_preset");
 
   const version = assertNumber(obj.version, "version");
   if (version > CURRENT_VERSION)

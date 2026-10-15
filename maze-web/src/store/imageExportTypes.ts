@@ -831,6 +831,10 @@ export interface ImageExportState {
 
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
+  /** Replaces the visual configuration and its parameter links with a loaded visual preset
+   *  (GitHub issue #750), keeping this project's maze-bound settings (floor-label positions,
+   *  teleport group overrides). Generation settings and maze data are untouched. */
+  loadVisualPreset: (preset: import("./projectExport").VisualPresetFile) => void;
   startFloorLabelDrag: (renderMode: RenderModeId) => void;
   updateFloorLabelDragPosition: (position: Extract<FloorLabelPosition, { mode: "cell" | "free" }>) => void;
   finishFloorLabelDrag: () => void;

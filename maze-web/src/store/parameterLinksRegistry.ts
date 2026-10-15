@@ -192,7 +192,7 @@ const G = {
   oneWays: () => [m["image_export.vector_by_walls.section_one_ways"]()],
   splits: () => [m["image_export.vector_by_walls.section_splits"]()],
   background: () => [m["image_export.vector_by_walls.section_background"]()],
-  cells: () => [m["image_export.vector_by_corridors.section_cells"]()],
+  cells: () => [m["image_export.vector_by_corridors.section_corridors"]()],
 };
 
 /** "Vector by walls" mode's linkable parameter registry (GitHub issue #643) — one entry per field
@@ -428,7 +428,7 @@ export const VECTOR_BY_CORRIDORS_PARAM_REGISTRY = {
   verticalArrowStyle: descriptor("verticalArrowStyle", () => m["image_export.param_links.vertical_shared_arrow_style"](), G.verticalSharedStyle),
   verticalArrowCornerStyle: descriptor("cornerStyle", () => m["image_export.param_links.vertical_shared_arrow_corner_style"](), G.verticalSharedStyle),
 
-  join: descriptor("cornerStyle", () => m["image_export.vector_by_corridors.join"](), () => [m["image_export.vector_by_corridors.section_cells"]()]),
+  join: descriptor("cornerStyle", () => m["image_export.vector_by_corridors.join"](), () => [m["image_export.vector_by_corridors.section_corridors"]()]),
   oneWayJoin: descriptor("cornerStyle", () => m["image_export.vector_by_walls.one_way_join"](), () => [m["image_export.vector_by_walls.section_one_ways"]()]),
   "startMarker.cornerStyle": descriptor("cornerStyle", () => m["image_export.vector_by_walls.marker_corner_style"](), G.markersStart),
   "startMarker.size": descriptor("number", () => m["image_export.vector_by_walls.marker_size"](), G.markersStart),
