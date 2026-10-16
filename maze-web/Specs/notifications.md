@@ -46,6 +46,7 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 | `preset_connections` | `edit_refusal.teleport_outside_field` | notice | placing a teleport endpoint outside the field |
 | `post_edit` / `preset_connections` | `vertical_drag.failed_passage`, `vertical_drag.failed_elevator` | notice | a vertical drag cannot resolve the matching point on another floor |
 | `project_load` / `quality_preset_load` / `visual_preset_load` | `file_load.read_failed`, `file_load.invalid_json` | error | `readJsonFile` I/O or JSON syntax failure |
+| `field_setup` | `field_edit.auto_fill_preview_active` | notice | canvas click (not a pan gesture) during the background auto-fill preview (#772) |
 | `project_load` | `project.load_error`, `project.load_error_quality_preset`, `project.load_error_visual_preset` | error | invalid project file / file of another kind |
 | `quality_preset_load` | `quality.preset.load_error`, `quality.preset.load_error_project_file`, `quality.preset.load_error_visual_preset` | error | invalid quality preset / file of another kind |
 | `visual_preset_load` | `image_export.visual_preset.load_error`, `image_export.visual_preset.load_error_project_file`, `image_export.visual_preset.load_error_quality_preset` | error | invalid style preset / file of another kind |
@@ -172,3 +173,16 @@ the value already stored.
   while fixed width/height have minimum 1.
 - RGB, HSL and OKLCH typed channel values retain their responsive clamp-on-input behavior, but a
   range hint appears only on blur. Slider movement and OKLCH gamut conversion do not show hints.
+
+## Blocked-action explanations (GitHub issue #772)
+
+Field-setup notices live in `src/notifications/fieldSetupNotifications.ts`, separate from the
+post-edit/preset `editRefusalNotifications.ts`.
+
+- Floors: the disabled "Remove floor" button of the last floor is wrapped in a `Tooltip`
+  (`floors.remove_last_floor_hint`). An empty (whitespace-only) floor rename is reverted on commit
+  and shows a field hint (`floors.empty_title_hint`) anchored to the floor's title text.
+- Field editor: canvas clicks during the auto-fill preview raise the `field_edit.auto_fill_preview_active`
+  notice; pan gestures (space / middle button) do not.
+- Quality: the "+ Add check" row of a rule with no addable checks is disabled with a `Tooltip`
+  (`quality.no_checks_for_kind`); the former `AlertModal` is removed. The row is keyboard-operable (Enter/Space) while enabled.

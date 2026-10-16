@@ -11,7 +11,7 @@ import { RuleStrategyPanel } from "./RuleStrategyPanel";
 import { RuleCheckRow } from "./RuleCheckRow";
 import { RuleParamsSection } from "./RuleParamsSection";
 import { ConfirmModal } from "../../ConfirmModal";
-import { AlertModal } from "../../AlertModal";
+import { Tooltip } from "../../Tooltip";
 import { Switch } from "../../Switch";
 import { RemoveIconButton } from "../../RemoveIconButton";
 import { EditIconButton } from "../../EditIconButton";
@@ -53,6 +53,30 @@ function selectionBelongsToRule(selection: QualitySelection, ruleId: string, che
   return selection.ruleId === ruleId;
 }
 
+// "+ Add check" row. With nothing addable it is disabled (focusable via the Tooltip wrapper) and
+// explains why instead of opening an empty picker (GitHub issue #772).
+function AddCheckRow({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Tooltip block content={disabled ? m["quality.no_checks_for_kind"]() : undefined}>
+      <div
+        className={disabled ? undefined : "hoverable"}
+        style={disabled ? { ...styles.ruleAddCheckRow, opacity: 0.4 } : styles.ruleAddCheckRow}
+        role="button"
+        tabIndex={disabled ? undefined : 0}
+        aria-disabled={disabled}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onClick();
+          }
+        }}
+        title={disabled ? undefined : m["quality.add_check"]()}
+      >{`+ ${m["quality.add_check"]()}`}</div>
+    </Tooltip>
+  );
+}
+
 interface Props {
   stages: QualityStageVM[];
   selection: QualitySelection;
@@ -86,7 +110,6 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const [newRuleStep, setNewRuleStep] = useState<NewRuleStep>(null);
   const [strategyDialogRuleId, setStrategyDialogRuleId] = useState<string | null>(null);
   const [addToRuleId, setAddToRuleId] = useState<string | null>(null);
-  const [noCandidatesAlertOpen, setNoCandidatesAlertOpen] = useState(false);
   const [removeConfirmRuleId, setRemoveConfirmRuleId] = useState<string | null>(null);
   const [renamingRuleId, setRenamingRuleId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -114,12 +137,13 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
       }));
   }
 
+  // Cheap existence check for render: avoids mapping every candidate just to learn there are none.
+  function hasCandidates(slot: StrategySlotVM): boolean {
+    return availableChecks.some((c) => c.issue_kinds[0] === slot.kind && isEntityVisible(c.visibility, floorCount));
+  }
+
   function handleAddCheckClick(slot: StrategySlotVM) {
-    if (candidatesFor(slot).length === 0) {
-      setNoCandidatesAlertOpen(true);
-    } else {
-      setAddToRuleId(slot.ruleId);
-    }
+    if (hasCandidates(slot)) setAddToRuleId(slot.ruleId);
   }
 
   // Step 2 confirm: skip the strategy step entirely when no strategy handles this kind
@@ -329,12 +353,10 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                               />
                             );
                           })}
-                          <div
-                            className="hoverable"
-                            style={styles.ruleAddCheckRow}
+                          <AddCheckRow
+                            disabled={!hasCandidates(slot)}
                             onClick={() => handleAddCheckClick(slot)}
-                            title={m["quality.add_check"]()}
-                          >{`+ ${m["quality.add_check"]()}`}</div>
+                          />
                         </div>
                         <div style={styles.ruleCardDivider} />
                         <RuleStrategyPanel
@@ -409,9 +431,6 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           />
         );
       })()}
-      {noCandidatesAlertOpen && (
-        <AlertModal message={m["quality.no_checks_for_kind"]()} onClose={() => setNoCandidatesAlertOpen(false)} />
-      )}
       {removeConfirmRuleId !== null && (
         <ConfirmModal
           message={m["quality.confirm_remove_rule"]()}

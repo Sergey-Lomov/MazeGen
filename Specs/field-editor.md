@@ -447,7 +447,7 @@ opacity are persisted with the image. Files saved before issue #674 default to t
 below-grid/50% behavior.
 
 Closing the settings panel or hiding the underlay cancels any in-progress auto-fill preview and
-restores the committed field; it does not apply an unconfirmed candidate.
+restores the committed field; it does not apply an unconfirmed candidate. While the preview is active, canvas edit clicks are ignored and raise the `field_edit.auto_fill_preview_active` notice (deduplicated; pan gestures with space or the middle button are not affected) (GitHub issue #772).
 
 The same settings panel provides a `Crop` mode (GitHub issue #680), separate from the existing
 manual positioning mode, here called `Transform`. The modes are mutually exclusive and can be

@@ -4,6 +4,8 @@ import { encodePoint, makeProjection } from "../pixi/tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig, baseStoreState, TEST_FLOOR_ID } from "./storeTestHelpers";
 import type { PrimitiveWorldGeometry } from "../pixi/primitiveGeometry";
+import { resetNotifications, useNotificationStore } from "../notifications/notificationStore";
+import { AUTO_FILL_PREVIEW_ACTIVE } from "../notifications/fieldSetupNotifications";
 
 const activeControllers: FieldEditController[] = [];
 
@@ -56,6 +58,7 @@ function lastPolygon(updates: PrimitiveWorldGeometry[]): Extract<PrimitiveWorldG
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState({
     ...baseStoreState(),
     backgroundAutoFillPreview: null,
@@ -545,6 +548,36 @@ describe("FieldEditController point interaction", () => {
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldPoints).toEqual(originalPoints);
     expect(commits).toHaveLength(0);
     expect(controller.getHoverCell(20, -20)).toBeNull();
+  });
+
+  it("explains ignored canvas clicks during an auto-fill preview with a notice", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+    controller.onPointerDown(20, -20, 0);
+    controller.onPointerUp();
+
+    const notices = useNotificationStore.getState().notices;
+    expect(notices.map((n) => n.code)).toEqual([AUTO_FILL_PREVIEW_ACTIVE]);
+  });
+
+  it("does not show the auto-fill notice for pan gestures during a preview", () => {
+    useMazeStore.setState({ backgroundAutoFillPreview: new Set([encodePoint(3, 3)]) });
+    const { controller } = makeController();
+
+    controller.onPointerDown(20, -20, 1);
+    controller.onPointerUp();
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
+  });
+
+  it("does not show the auto-fill notice for clicks without a preview", () => {
+    const { controller } = makeController();
+    click(controller, 20, -20);
+
+    expect(useNotificationStore.getState().notices).toHaveLength(0);
   });
 
   it("inverts add/remove with RMB", () => {

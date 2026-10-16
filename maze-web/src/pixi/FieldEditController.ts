@@ -1,3 +1,4 @@
+import { notifyAutoFillPreviewActive } from "../notifications/fieldSetupNotifications";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationProjection } from "./tessellationProjection";
 import type { Container } from "pixi.js";
@@ -203,6 +204,8 @@ export class FieldEditController {
         this.gestureActive = true;
         this.gestureButton = button;
         this.panCallbacks.startPan(canvasX, canvasY);
+      } else {
+        notifyAutoFillPreviewActive();
       }
       return;
     }
