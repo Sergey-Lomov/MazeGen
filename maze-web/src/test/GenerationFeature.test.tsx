@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { GenerationFeature } from "../components/features/GenerationFeature";
+import { GenerationFeature, generationErrorText } from "../components/features/GenerationFeature";
+import { setLocale } from "../i18n/localeStore";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 
@@ -16,6 +17,7 @@ beforeEach(() => {
     generationStatus: "idle",
     debugMode: false,
     error: null,
+    registryError: null,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
     postEditDirty: false,
@@ -195,5 +197,52 @@ describe("GenerationFeature — vertex-based settings panel", () => {
 
     act(() => { useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } }); });
     expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — registry load failure (GitHub issue #769)", () => {
+  it("shows a persistent status line and disables Generate with a tooltip reason", () => {
+    const generateAsync = vi.fn(() => Promise.resolve());
+    useMazeStore.setState({ registryError: "wasm load failed", generateAsync });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.getByText(m["generation.registry_error"]({ message: "wasm load failed" }))).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: m["generation.generate"]() });
+    expect(button).toBeDisabled();
+    expect(screen.getByText(m["generation.registry_error_tooltip"]())).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(generateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows no registry status line or tooltip and keeps Generate enabled without a registry error", () => {
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.queryByText(m["generation.registry_error"]({ message: "wasm load failed" }))).toBeNull();
+    expect(screen.queryByText(m["generation.registry_error_tooltip"]())).toBeNull();
+    expect(screen.getByRole("button", { name: m["generation.generate"]() })).toBeEnabled();
+  });
+
+  it("does not show a generation error unless the status is error", () => {
+    useMazeStore.setState({ error: { kind: "run_failed", message: "stale" }, generationStatus: "done" });
+    render(<GenerationFeature canGenerate={true} />);
+    expect(screen.queryByText("stale")).toBeNull();
+  });
+});
+
+describe("GenerationFeature — generation error status line (GitHub issue #769)", () => {
+  afterEach(() => setLocale("en"));
+
+  it("translates a stored free-field error at render time, following the locale", () => {
+    useMazeStore.setState({ error: { kind: "free_field_too_small" }, generationStatus: "error" });
+    const { rerender } = render(<GenerationFeature canGenerate={true} />);
+    expect(screen.getByText(m["generation.error_free_field_too_small"]({}, { locale: "en" }))).toBeInTheDocument();
+
+    act(() => setLocale("ru"));
+    rerender(<GenerationFeature canGenerate={true} />);
+    expect(screen.getByText(m["generation.error_free_field_too_small"]({}, { locale: "ru" }))).toBeInTheDocument();
+  });
+
+  it("shows a failed run's raw message as is", () => {
+    expect(generationErrorText({ kind: "run_failed", message: "bad wasm" })).toBe("bad wasm");
   });
 });

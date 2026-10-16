@@ -3,6 +3,14 @@ import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
 
+/** A generation-run failure stored as data, not text, so the generation card translates it at
+ *  render time and a locale switch re-translates it in place (GitHub issue #769). */
+export type GenerationError =
+  /** The free field being edited has fewer than 2 cells. */
+  | { kind: "free_field_too_small" }
+  /** WASM generation threw; `message` is its raw technical text, shown as is. */
+  | { kind: "run_failed"; message: string };
+
 export interface GenerationState {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -16,7 +24,13 @@ export interface GenerationState {
   showMaze: boolean;
   selectedNode: number | null;
   issues: IssueDto[];
-  error: string | null;
+  /** Last generation-run error, shown in the generation card while `generationStatus === "error"`.
+   *  Only generation runs write it (GitHub issue #769); other failures go to toasts. */
+  error: GenerationError | null;
+  /** WASM registry load failure (`loadRegistry`). Kept apart from `error` so seed changes and
+   *  generation runs never erase it; cleared only by a successful `loadRegistry`. While set, the
+   *  generation card shows it as a persistent status line and disables Generate. */
+  registryError: string | null;
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
@@ -311,7 +325,6 @@ export interface GenerationActions {
   toggleKruskalDsuGroups: () => void;
   /** Sets `debugSearchQuery` (raw substring typed into the debug event tree's search field). */
   setDebugSearchQuery: (query: string) => void;
-  setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
   /** Replaces the whole quality control configuration (rules, stages, strategy params, repair
    *  limits) with a loaded quality preset's (GitHub issue #751). Everything else in the project

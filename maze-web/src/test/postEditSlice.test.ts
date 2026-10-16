@@ -11,6 +11,8 @@ import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 import type { PostEditEdgeState } from "../store/postEditTypes";
 import { parsePostEditIdNumber } from "../pixi/postEditIdFormat";
 import { compactPostEditCommands } from "../pixi/postEditCompaction";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails, noticeCodes } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -61,6 +63,7 @@ function seedPostEdit(
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   vi.mocked(computeAnalytics).mockReset();
   vi.mocked(computeAnalytics).mockResolvedValue(mockSnapshot);
@@ -744,10 +747,31 @@ describe("mazeStore post-edit actions", () => {
     expect(computeAnalytics).not.toHaveBeenCalled();
   });
 
-  it("confirmPostEdit stores error message when computeAnalytics throws", async () => {
+  it("confirmPostEdit stores postEditRefreshError and raises an error toast when computeAnalytics throws (GitHub issue #769)", async () => {
     vi.mocked(computeAnalytics).mockImplementation(() => { throw new Error("analytics failed"); });
     await useMazeStore.getState().confirmPostEdit();
-    expect(useMazeStore.getState().error).toBe("analytics failed");
+    expect(useMazeStore.getState().postEditRefreshError).toBe("analytics failed");
+    expect(useMazeStore.getState().error).toBeNull();
+    expect(errorCards()).toEqual(["post_edit/post_edit.refresh_failed"]);
+    expect(errorDetails("post_edit.refresh_failed")).toBe("analytics failed");
+  });
+
+  it("confirmPostEdit clears postEditRefreshError without a toast on the next successful refresh", async () => {
+    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    await useMazeStore.getState().confirmPostEdit();
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+    expect(errorCards()).toEqual([]);
+  });
+
+  it("confirmPostEdit ignores a stale failure superseded by a newer request", async () => {
+    let rejectFirst: (err: Error) => void = () => {};
+    vi.mocked(computeAnalytics).mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }));
+    const first = useMazeStore.getState().confirmPostEdit();
+    await useMazeStore.getState().confirmPostEdit();
+    rejectFirst(new Error("stale"));
+    await first;
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+    expect(errorCards()).toEqual([]);
   });
 
   it("confirmPostEdit increments the request id on every call", async () => {
@@ -1964,7 +1988,19 @@ describe("mazeStore split-node actions", () => {
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["2,2"]).toEqual([0]);
-    expect(s.error).toContain("start/finish");
+    expect(noticeCodes()).toEqual(["post_edit/post_edit.remove_endpoint_node_rejected"]);
+  });
+
+  it("removeSplitNode raises no notice when the target is not an endpoint", () => {
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0, pointId: "s1" },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1, pointId: "s1" },
+      ],
+    });
+    useMazeStore.getState().removeSplitNode([2, 2], 1);
+    expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0]);
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("removeSplitNode resets the active node to the original when the removed slot was active", () => {
@@ -2552,7 +2588,7 @@ describe("mazeStore applySplitBlueprint", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
     expect(s.postEditDraftMeta?.start).toEqual(target);
-    expect(s.error).toBeNull();
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("preserves a finish marker assigned to a slot while applying a blueprint", () => {
@@ -2570,7 +2606,7 @@ describe("mazeStore applySplitBlueprint", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
     expect(s.postEditDraftMeta?.finish).toEqual(target);
-    expect(s.error).toBeNull();
+    expect(noticeCodes()).toEqual([]);
   });
 
   it("moves every occupied post-edit element from a dropped slot onto Node 0", () => {

@@ -87,6 +87,13 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
+  it("clears a stale post-edit refresh error on a new generation (GitHub issue #769)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ postEditRefreshError: "analytics failed" });
+    useMazeStore.getState().generate();
+    expect(useMazeStore.getState().postEditRefreshError).toBeNull();
+  });
+
   it("normalizes the generated field for runtime consumers", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     const config = { type: "hex_triangle" as const, side: 4, orientation: "pointy_top" as const };
@@ -258,7 +265,8 @@ describe("mazeStore.generate", () => {
       }) },
     });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBeTruthy();
+    expect(useMazeStore.getState().error).toEqual({ kind: "free_field_too_small" });
+    expect(useMazeStore.getState().generationStatus).toBe("error");
     expect(generateMaze).not.toHaveBeenCalled();
   });
 
@@ -278,13 +286,13 @@ describe("mazeStore.generate", () => {
   it("stores error string on Error throw", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw new Error("bad wasm"); });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("bad wasm");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "bad wasm" });
   });
 
   it("stores string error when non-Error thrown", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw "raw error"; });
     useMazeStore.getState().generate();
-    expect(useMazeStore.getState().error).toBe("raw error");
+    expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "raw error" });
   });
 
   it("clears selectedNode on generate", () => {

@@ -120,14 +120,14 @@ describe("mazeStore setters", () => {
   });
 
   it("setSeed updates seed and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
     useMazeStore.getState().setSeed(99);
     expect(useMazeStore.getState().seed).toBe(99);
     expect(useMazeStore.getState().error).toBeNull();
   });
 
   it("setTessellationConfig updates config and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
+    useMazeStore.setState({ error: { kind: "run_failed", message: "old error" } });
     useMazeStore.getState().setTessellationConfig({ type: "hex_parallelogram", cols: 5, rows: 7, orientation: "pointy_top" });
     const cfg = activeField().tessellationConfig;
     expect(cfg).toMatchObject({ type: "hex_parallelogram", cols: 5, rows: 7, orientation: "pointy_top" });

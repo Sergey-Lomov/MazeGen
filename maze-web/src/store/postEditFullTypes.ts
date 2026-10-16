@@ -178,6 +178,10 @@ export interface PostEditState {
   postEditMeta: PostEditMeta | null;
   /** Analytics over confirmed graph. null until first confirmPostEdit completes. */
   postEditAnalytics: PostEditAnalytics | null;
+  /** Message of the last failed `confirmPostEdit` analytics refresh (GitHub issue #769), shown as
+   *  a persistent status line in the post-edit card. Cleared by the next successful refresh and by
+   *  anything that rebuilds post-edit state (generation, project load, downstream reset). */
+  postEditRefreshError: string | null;
   /** Incremented on each confirmPostEdit call; stale async results are discarded. */
   _postEditRequestId: number;
   /** start/finish as generated — restored on resetPostEdit. */

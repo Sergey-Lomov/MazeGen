@@ -10,6 +10,16 @@ import { generateWithSeed, generateWithSeedAsync } from "./generateConfigBuilder
 import { createGenerationRulesSlice } from "./generationSliceRules";
 import { createGenerationStagesSlice } from "./generationSliceStages";
 import { createGenerationDebugSlice } from "./generationSliceDebug";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
+import * as m from "~/paraglide/messages";
+
+const REGISTRY_LOAD_FAILED = "generation.registry_load_failed";
+registerNotificationCode(REGISTRY_LOAD_FAILED, { category: "error", message: () => m[REGISTRY_LOAD_FAILED]() });
+
+/** In-flight `loadRegistry` call, shared by overlapping callers (React StrictMode runs the mount
+ *  effect twice in dev) so one failure is reported once, not as a second toast occurrence. */
+let registryLoadInFlight: Promise<void> | null = null;
 
 export { fieldConfigToWasm, buildGenerateConfig, buildValidPresetConnections, generateWithSeed, generateWithSeedAsync, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
@@ -51,6 +61,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   selectedNode: null,
   issues: [],
   error: null,
+  registryError: null,
   registryLoaded: false,
   availableChecks: [],
   availableStrategies: [],
@@ -92,7 +103,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   splitPatterns: [],
 
   loadRegistry: () => {
-    return initWasm().then(() => {
+    if (registryLoadInFlight) return registryLoadInFlight;
+    registryLoadInFlight = initWasm().then(() => {
       const checks = getAvailableChecks();
       const strategies = getAvailableStrategies();
       const ruleParams = getAvailableRuleParams();
@@ -124,7 +136,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
           const stages = state.stages.length > 0
             ? [{ ...state.stages[0], ruleIds: defaultRules.map((r) => r.id) }, ...state.stages.slice(1)]
             : [newStage(0, defaultRules.map((r) => r.id))];
-          return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules: defaultRules, stages };
+          return { registryLoaded: true, registryError: null, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules: defaultRules, stages };
         }
         // Reload: rules left empty by the registry filter are dropped (see
         // Specs/quality-feature.md's "Default State") — their ids must also be scrubbed from
@@ -135,13 +147,15 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
           .filter((g) => g.checks.length > 0);
         const survivingIds = new Set(rules.map((r) => r.id));
         const stages = state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => survivingIds.has(id)) }));
-        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules, stages };
+        return { registryLoaded: true, registryError: null, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules, stages };
       });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Failed to load WASM registry:", msg);
-      set({ error: msg });
-    });
+      set({ registryError: msg });
+      notify({ source: "generation", code: REGISTRY_LOAD_FAILED, details: msg });
+    }).finally(() => { registryLoadInFlight = null; });
+    return registryLoadInFlight;
   },
 
   generate: () => {
@@ -228,8 +242,6 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     elementsConfig: { ...state.elementsConfig, [key]: value },
     debugStale: debugStaleOf(state),
   })),
-
-  setError: (msg) => set({ error: msg }),
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   loadQualityPreset: (quality) => set((state) => ({

@@ -37,9 +37,13 @@ Legacy project files saved as `.json` are not offered by the filtered picker; re
 
 The selected file is read as text and `JSON.parse`d by `readJsonFile` (`components/jsonFile.ts`,
 shared with the style load dialog), validated by `parseAndValidate` (recovering
-missing/malformed optional sections to defaults), and applied via `loadProject`. Failures surface
-through `setError`: I/O error (`project.load_error_io`), invalid JSON (`project.load_error_json`),
-or a validation error (`project.load_error`).
+missing/malformed optional sections to defaults), and applied via `loadProject`. Failures are
+`error` toasts (`Specs/notifications.md` in `maze-web`) under source `project_load`: I/O error
+(`file_load.read_failed`), invalid JSON (`file_load.invalid_json`), a file of another kind
+(`project.load_error_quality_preset` / `project.load_error_visual_preset`) or a validation error
+(`project.load_error`, validator message in the toast details). Validation runs before
+`loadProject`, so a rejected file changes no state. The style and quality preset loads follow the
+same rules under sources `visual_preset_load` / `quality_preset_load`.
 
 ## Visual preset (style file)
 

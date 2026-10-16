@@ -4,6 +4,8 @@ import { Button } from "../Button";
 import { Inline } from "../Layout";
 import { AlertModal } from "../AlertModal";
 import { readJsonFile } from "../jsonFile";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
 import {
   downloadQualityPresetFile, prepareQualityPresetLoad, qualityPresetFileAccept, FileKindMismatchError,
   type ProjectFileQuality,
@@ -39,6 +41,17 @@ function useCommitOnBlur(value: number, commit: (v: number) => void, clampMin: n
   };
 }
 
+const QUALITY_PRESET_LOAD_SOURCE = "quality_preset_load";
+
+const QUALITY_PRESET_LOAD_CODES = {
+  invalid: "quality.preset.load_error",
+  projectFile: "quality.preset.load_error_project_file",
+  visualPreset: "quality.preset.load_error_visual_preset",
+} as const;
+for (const code of Object.values(QUALITY_PRESET_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
+
 export function QualityFeature() {
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const openCard = useMazeStore((s) => s.openCard);
@@ -47,7 +60,6 @@ export function QualityFeature() {
   const setRepairMaxIterations = useMazeStore((s) => s.setRepairMaxIterations);
   const setRepairTimeBudgetSecs = useMazeStore((s) => s.setRepairTimeBudgetSecs);
   const loadQualityPreset = useMazeStore((s) => s.loadQualityPreset);
-  const setError = useMazeStore((s) => s.setError);
   const presetInputRef = useRef<HTMLInputElement>(null);
   const [skippedIds, setSkippedIds] = useState<string[] | null>(null);
 
@@ -72,25 +84,25 @@ export function QualityFeature() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    readJsonFile(file, (json) => {
+    readJsonFile(file, QUALITY_PRESET_LOAD_SOURCE, (json) => {
       let quality: ProjectFileQuality;
       let skipped: string[];
       try {
         ({ quality, skipped } = prepareQualityPresetLoad(json, useMazeStore.getState()));
       } catch (err) {
         if (err instanceof FileKindMismatchError) {
-          setError(err.found === "project"
-            ? m["quality.preset.load_error_project_file"]()
-            : m["quality.preset.load_error_visual_preset"]());
+          notify({
+            source: QUALITY_PRESET_LOAD_SOURCE,
+            code: err.found === "project" ? QUALITY_PRESET_LOAD_CODES.projectFile : QUALITY_PRESET_LOAD_CODES.visualPreset,
+          });
           return;
         }
-        const message = err instanceof Error ? err.message : String(err);
-        setError(m["quality.preset.load_error"]({ message }));
+        notify({ source: QUALITY_PRESET_LOAD_SOURCE, code: QUALITY_PRESET_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
         return;
       }
       loadQualityPreset(quality);
       if (skipped.length > 0) setSkippedIds(skipped);
-    }, setError);
+    });
   }
 
   return (

@@ -186,6 +186,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
+      postEditRefreshError: null,
       postEditTool: "wall" as const,
       postEditDirty: file.dirtyFlags.postEdit,
       presetsDirty: file.dirtyFlags.presets,

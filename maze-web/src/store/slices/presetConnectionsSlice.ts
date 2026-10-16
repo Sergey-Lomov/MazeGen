@@ -12,6 +12,12 @@ import { resolveBlueprintFaceIndex } from "../../pixi/splitBlueprints";
 import type { NodeLockKind } from "../../wasm/types";
 import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnectionsState, type PresetConnectionsActions } from "../storeTypes";
 import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
+import * as m from "~/paraglide/messages";
+
+const REMOVE_ENDPOINT_NODE_REJECTED = "preset_connections.remove_endpoint_node_rejected";
+registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { category: "notice", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
 
 /** Plain 0-based active floor index (0 = floor 0), unlike `activeFloorLevel` (`undefined` = floor
  * 0) — `buildPresetPointEntities`'s `activeFloorLevel` param needs this convention to match
@@ -625,7 +631,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if ((meta.start && presetEndpointIsSplit(meta.start, target))
       || (meta.finish && presetEndpointIsSplit(meta.finish, target))
       || (meta.genSource && presetEndpointIsSplit(meta.genSource, target))) {
-      set({ error: "Cannot remove a node assigned as start/finish/gen-source — reassign it first." });
+      notify({ source: "preset_connections", code: REMOVE_ENDPOINT_NODE_REJECTED });
       return;
     }
 

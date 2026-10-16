@@ -30,6 +30,21 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 - Notice dedup key: `source + code` + stable serialization (sorted keys) of the `dedupParams`
   subset of `params`. Error cards aggregate by `source + code` only.
 
+## Integrations (GitHub issue #769)
+
+| Source | Code | Category | Trigger |
+|---|---|---|---|
+| `generation` | `generation.registry_load_failed` | error | `loadRegistry` failed (details: message) |
+| `post_edit` | `post_edit.refresh_failed` | error | `confirmPostEdit` analytics refresh failed (details: message) |
+| `post_edit` | `post_edit.remove_endpoint_node_rejected` | notice | removing a split node assigned as start/finish |
+| `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | notice | removing a preset split node assigned as start/finish/gen-source |
+| `project_load` / `quality_preset_load` / `visual_preset_load` | `file_load.read_failed`, `file_load.invalid_json` | error | `readJsonFile` I/O or JSON syntax failure |
+| `project_load` | `project.load_error`, `project.load_error_quality_preset`, `project.load_error_visual_preset` | error | invalid project file / file of another kind |
+| `quality_preset_load` | `quality.preset.load_error`, `quality.preset.load_error_project_file`, `quality.preset.load_error_visual_preset` | error | invalid quality preset / file of another kind |
+| `visual_preset_load` | `image_export.visual_preset.load_error`, `image_export.visual_preset.load_error_project_file`, `image_export.visual_preset.load_error_quality_preset` | error | invalid style preset / file of another kind |
+
+Validation errors carry the validator message in `details`.
+
 ## Notice zone
 
 | Rule | Value |
@@ -49,7 +64,11 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
   updated ones and a repeat never stays hidden in the collapsed group.
 - At most 20 occurrences across all cards; the oldest is dropped, emptied cards are removed.
 - The 2 bottom (most recently updated) cards are visible; the rest collapse into an "N more errors" row that expands all.
-- "Details" lists occurrences newest first with message, details and "Copy". Cards never expire.
+- "Details" is a disclosure toggle (chevron right/down, `aria-expanded`) that expands the card in place
+  with occurrences newest first. Each shows its details and, only when it differs from the card's
+  headline, its own message, so expanding never repeats the headline. The toggle is hidden when no
+  occurrence has anything to add. Each occurrence has an icon-only copy button (lucide `Copy`,
+  `aria-label` "Copy") that copies message + details and briefly shows a check mark. Cards never expire.
 
 ## UI
 

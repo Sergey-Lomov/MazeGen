@@ -6,6 +6,8 @@ import { baseStoreState } from "./storeTestHelpers";
 import { serializeProject, QUALITY_PRESET_KIND, QUALITY_PRESET_VERSION } from "../store/projectExport";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 import * as m from "~/paraglide/messages";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -42,6 +44,7 @@ function pickPresetFile(content: unknown, container: HTMLElement) {
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState({
     ...baseStoreState(),
     error: null,
@@ -62,22 +65,31 @@ describe("QualityFeature quality preset load (GitHub issue #751)", () => {
     const rules = useMazeStore.getState().rules;
     expect(rules.map((r) => r.checks.map((c) => c.typeId))).toEqual([["min_loop_length"]]);
     expect(rules[0].strategyId).toBeNull();
-    expect(useMazeStore.getState().error).toBeNull();
+    expect(errorCards()).toEqual([]);
     expect(screen.getByText(m["quality.preset.skipped_ids"]({ ids: "removed_check, removed_strategy" }))).toBeTruthy();
   });
 
-  it("shows a dedicated message and changes nothing when a project file is picked", async () => {
+  it("raises a dedicated error toast and changes nothing when a project file is picked", async () => {
     const { container } = render(<QualityFeature />);
     pickPresetFile(serializeProject(useMazeStore.getState()), container);
-    await waitFor(() => expect(useMazeStore.getState().error).toBe(m["quality.preset.load_error_project_file"]()));
+    await waitFor(() => expect(errorCards()).toEqual(["quality_preset_load/quality.preset.load_error_project_file"]));
     expect(useMazeStore.getState().rules).toEqual([]);
   });
 
   it("rejects a malformed preset without applying any part of it", async () => {
     const { container } = render(<QualityFeature />);
     pickPresetFile({ ...preset, quality: { ...preset.quality, stages: [{ id: "s1", name: "S1", ruleIds: [] }] } }, container);
-    await waitFor(() => expect(useMazeStore.getState().error).toMatch(/not assigned to any stage/));
+    await waitFor(() => expect(errorCards()).toEqual(["quality_preset_load/quality.preset.load_error"]));
+    expect(errorDetails("quality.preset.load_error")).toMatch(/not assigned to any stage/);
     expect(useMazeStore.getState().rules).toEqual([]);
     expect(useMazeStore.getState().repairMaxIterations).not.toBe(42);
+  });
+
+  it("raises an error toast and changes nothing for a file that is not JSON", async () => {
+    const { container } = render(<QualityFeature />);
+    const input = container.querySelector('input[name="quality-preset-file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["{not json"], "rules.mazequality")] } });
+    await waitFor(() => expect(errorCards()).toEqual(["quality_preset_load/file_load.invalid_json"]));
+    expect(useMazeStore.getState().repairMaxIterations).toBe(100);
   });
 });

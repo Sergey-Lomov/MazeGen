@@ -45,6 +45,14 @@ import {
   buildPostEditResetLifelinesAt, postEditDragOverridesEqual,
 } from "./postEditSliceHelpers";
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
+import * as m from "~/paraglide/messages";
+
+const REFRESH_FAILED = "post_edit.refresh_failed";
+const REMOVE_ENDPOINT_NODE_REJECTED = "post_edit.remove_endpoint_node_rejected";
+registerNotificationCode(REFRESH_FAILED, { category: "error", message: () => m[REFRESH_FAILED]() });
+registerNotificationCode(REMOVE_ENDPOINT_NODE_REJECTED, { category: "notice", message: () => m[REMOVE_ENDPOINT_NODE_REJECTED]() });
 
 function endpointTouchesPoint(
   endpoint: PostEditEndpoint,
@@ -165,6 +173,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditTeleportEdges: [],
   postEditMeta: null,
   postEditAnalytics: null,
+  postEditRefreshError: null,
   _postEditRequestId: 0,
   _generatedStart: null,
   _generatedFinish: null,
@@ -552,12 +561,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditEdges: edgesSnapshot,
         postEditTeleportEdges: teleportEdgesSnapshot,
         postEditMeta: metaSnapshot,
+        postEditRefreshError: null,
         showRouteOverlay: snapshot.route_info != null ? state.showRouteOverlay : false,
       }));
     } catch (err) {
       if (get()._postEditRequestId !== requestId) return;
       const msg = err instanceof Error ? err.message : String(err);
-      set({ error: msg });
+      set({ postEditRefreshError: msg });
+      notify({ source: "post_edit", code: REFRESH_FAILED, details: msg });
     }
   },
 
@@ -1030,7 +1041,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // Structural comparison (not a resolved id) — rejects the removal the same way whether or
     // not this split node has been confirmed yet.
     if (meta && ((meta.start && endpointsEqual(meta.start, target)) || (meta.finish && endpointsEqual(meta.finish, target)))) {
-      set({ error: "Cannot remove a node assigned as start/finish — reassign start/finish first." });
+      notify({ source: "post_edit", code: REMOVE_ENDPOINT_NODE_REJECTED });
       return;
     }
 

@@ -10,8 +10,18 @@ import { Button } from "../Button";
 import { SettingsIconButton } from "../SettingsIconButton";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
+import { Tooltip } from "../Tooltip";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
+import type { GenerationError } from "../../store/generationTypes";
 import * as m from "~/paraglide/messages";
+
+/** Status-line text of a generation-run error in the current locale. */
+export function generationErrorText(error: GenerationError): string {
+  switch (error.kind) {
+    case "free_field_too_small": return m["generation.error_free_field_too_small"]();
+    case "run_failed": return error.message;
+  }
+}
 
 interface Props {
   canGenerate: boolean;
@@ -30,6 +40,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const generationStatus = useMazeStore((s) => s.generationStatus);
   const debugMode = useMazeStore((s) => s.debugMode);
   const error = useMazeStore((s) => s.error);
+  const registryError = useMazeStore((s) => s.registryError);
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const qcExperiment = useMazeStore((s) => s.qcExperiment);
   const vertexSettingsPanelOpen = useMazeStore((s) => s.vertexSettingsPanelOpen);
@@ -158,6 +169,7 @@ export function GenerationFeature({ canGenerate }: Props) {
     setPendingAction(null);
   }
 
+  const generateBlocked = !canGenerate || registryError !== null;
   const canSeedBack = seedHistory.length > 0 && seedHistoryIndex > 0;
   const canSeedForward = seedHistoryIndex < seedHistory.length - 1;
 
@@ -232,9 +244,12 @@ export function GenerationFeature({ canGenerate }: Props) {
         <VertexBasedSettingsPanel onClose={() => setVertexSettingsPanelOpen(false)} />
       )}
 
-      {/* Status line */}
+      {/* Status lines */}
+      {registryError !== null && (
+        <div style={styles.statusError}>{m["generation.registry_error"]({ message: registryError })}</div>
+      )}
       {generationStatus === "error" && error && (
-        <div style={styles.statusError}>{error}</div>
+        <div style={styles.statusError}>{generationErrorText(error)}</div>
       )}
 
       {/* Debug toggle */}
@@ -272,19 +287,21 @@ export function GenerationFeature({ canGenerate }: Props) {
       </div>
 
       {/* Action buttons */}
-      <div style={styles.btnRow}>
-        <Button
-          variant="primary"
-          layoutStyle={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
-          disabled={!canGenerate || generationInProgress}
-          aria-busy={generationInProgress}
-          onClick={handleGenerate}
-        >
-          {spinnerVisible
-            ? <span className="generation-spinner" aria-hidden="true" />
-            : m["generation.generate"]()}
-        </Button>
-      </div>
+      <Tooltip content={registryError !== null ? m["generation.registry_error_tooltip"]() : undefined} block>
+        <div style={styles.btnRow}>
+          <Button
+            variant="primary"
+            layoutStyle={{ ...styles.btnGenerate, ...(generateBlocked ? styles.btnDisabled : {}) }}
+            disabled={generateBlocked || generationInProgress}
+            aria-busy={generationInProgress}
+            onClick={handleGenerate}
+          >
+            {spinnerVisible
+              ? <span className="generation-spinner" aria-hidden="true" />
+              : m["generation.generate"]()}
+          </Button>
+        </div>
+      </Tooltip>
 
       {algorithmDialogOpen && (
         <AlgorithmSelectDialog onClose={() => setAlgorithmDialogOpen(false)} />

@@ -17,6 +17,8 @@ import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
 import { readJsonFile } from "./jsonFile";
+import { registerNotificationCode } from "../notifications/notificationRegistry";
+import { notify } from "../notifications/notificationStore";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate, projectFileAccept, FileKindMismatchError } from "../store/projectExport";
@@ -27,6 +29,17 @@ import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
+
+const PROJECT_LOAD_SOURCE = "project_load";
+
+const PROJECT_LOAD_CODES = {
+  invalid: "project.load_error",
+  qualityPreset: "project.load_error_quality_preset",
+  visualPreset: "project.load_error_visual_preset",
+} as const;
+for (const code of Object.values(PROJECT_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,
@@ -119,13 +132,17 @@ export interface GenerationCardData {
 /// Pattern mode on + a positive split chance + no patterns defined is a dead-weight config —
 /// splitting is enabled but has nothing to draw from, so it silently never fires. Only
 /// `custom_vertex_based` even has pattern mode (see `GenerationFeature.tsx`'s `isVertexBased`).
+/// A failed WASM registry load blocks generation outright (GitHub issue #769), so it wins over
+/// every other reading.
 export function computeGenerationCard(
   tessellationConfirmed: boolean,
   method: string,
   splitPatternMode: boolean,
   splitChance: number,
   patternCount: number,
+  registryFailed = false,
 ): GenerationCardData {
+  if (registryFailed) return { status: "critical", comment: m["generation.registry_load_failed"]() };
   if (!tessellationConfirmed) return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
 
   const splitPatternsMissing = method === "custom_vertex_based" && splitPatternMode && splitChance > 0 && patternCount === 0;
@@ -175,6 +192,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const splitPatternMode = useMazeStore((s) => s.splitPatternMode);
   const splitPatterns = useMazeStore((s) => s.splitPatterns);
+  const registryFailed = useMazeStore((s) => s.registryError !== null);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
@@ -184,7 +202,6 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const loadProject = useMazeStore((s) => s.loadProject);
-  const setError = useMazeStore((s) => s.setError);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -212,18 +229,21 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    readJsonFile(file, (json) => {
+    readJsonFile(file, PROJECT_LOAD_SOURCE, (json) => {
+      // Validation runs before `loadProject`, so a rejected file leaves the store untouched.
+      let project: ReturnType<typeof parseAndValidate>;
       try {
-        loadProject(parseAndValidate(json));
+        project = parseAndValidate(json);
       } catch (err) {
         if (err instanceof FileKindMismatchError) {
-          setError(err.found === "quality_preset" ? m["project.load_error_quality_preset"]() : m["project.load_error_visual_preset"]());
+          notify({ source: PROJECT_LOAD_SOURCE, code: err.found === "quality_preset" ? PROJECT_LOAD_CODES.qualityPreset : PROJECT_LOAD_CODES.visualPreset });
           return;
         }
-        const message = err instanceof Error ? err.message : String(err);
-        setError(m["project.load_error"]({ message }));
+        notify({ source: PROJECT_LOAD_SOURCE, code: PROJECT_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
+        return;
       }
-    }, setError);
+      loadProject(project);
+    });
   }
 
   function handleToggle(id: FeatureId) {
@@ -324,7 +344,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     : m["status.quality_configured"]();
 
   const { status: generationStatus, comment: generationComment } = computeGenerationCard(
-    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length,
+    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length, registryFailed,
   );
 
   return (

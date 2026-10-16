@@ -4,6 +4,8 @@ import { baseStoreState } from "./storeTestHelpers";
 import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
 import { buildPresetPointEntities } from "../pixi/pointEntities";
 import * as m from "~/paraglide/messages";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes } from "./notificationTestHelpers";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 /** Patches the active floor's own field config — presetConnectionsSlice reads tessellationConfig/
@@ -29,6 +31,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     tessellationKind: "square",
@@ -391,6 +394,7 @@ describe("mazeStore preset connections", () => {
       });
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       expect(useMazeStore.getState().presetActiveSplitNode["0,0"]).toBeUndefined();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("removePresetSplitNode leaves an unrelated connection untouched", () => {
@@ -411,7 +415,7 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().removePresetSplitNode([0, 0], 0);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
-      expect(s.error).toContain("start/finish/gen-source");
+      expect(noticeCodes()).toEqual(["preset_connections/preset_connections.remove_endpoint_node_rejected"]);
     });
 
     it("removePresetSplitNode is rejected when the slot is assigned as presetFinish", () => {
@@ -559,7 +563,7 @@ describe("mazeStore preset connections", () => {
 
     it("is a no-op (still recomputes, no error) when nothing at the point", () => {
       useMazeStore.getState().resetPresetPoint([9, 9]);
-      expect(useMazeStore.getState().error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
   });
 
@@ -615,7 +619,7 @@ describe("mazeStore preset connections", () => {
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
       expect(s.presetStart).toEqual(presetEndpoint([0, 0], 0));
-      expect(s.error).toBeNull();
+      expect(noticeCodes()).toEqual([]);
     });
 
     it("moves occupied preset elements from a dropped slot onto the original node", () => {

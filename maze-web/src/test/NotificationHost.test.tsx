@@ -110,25 +110,69 @@ describe("NotificationHost", () => {
     });
     const card = screen.getByTestId("error-card");
     expect(within(card).getByTestId("error-count")).toHaveTextContent("×2");
-    fireEvent.click(within(card).getByText("Details"));
+    fireEvent.click(within(card).getByRole("button", { name: "Details" }));
     const items = within(screen.getByTestId("error-details")).getAllByRole("listitem");
-    expect(items.map((li) => li.textContent)).toEqual([
-      expect.stringContaining("trace 2"),
-      expect.stringContaining("trace 1"),
-    ]);
-    expect(within(items[0]).getByText("Copy")).toBeInTheDocument();
+    // The latest occurrence's message is the headline, so only its details are added; an older
+    // occurrence with a different message shows that message too.
+    expect(items.map((li) => li.textContent)).toEqual(["trace 2", "Failed 1trace 1"]);
+    expect(within(items[0]).getByRole("button", { name: "Copy" })).toBeInTheDocument();
     fireEvent.click(within(card).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByTestId("error-card")).toBeNull();
   });
 
-  it("copies an occurrence's message and details", () => {
+  it("expands and collapses details in place with aria-expanded", () => {
+    renderHost();
+    act(() => notify({ source: "a", code: "host.error", params: { n: 1 }, details: "trace" }));
+    const toggle = screen.getByRole("button", { name: "Details" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.querySelector("svg")).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(screen.getByTestId("error-card")).getAllByText("Failed 1")).toHaveLength(1);
+    expect(screen.getByText("trace")).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("error-details")).toBeNull();
+  });
+
+  it("has no details toggle when there is nothing to add to the headline", () => {
+    renderHost();
+    act(() => {
+      notify({ source: "a", code: "host.error", params: { n: 1 } });
+      notify({ source: "a", code: "host.error", params: { n: 1 } });
+    });
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  });
+
+  it("copies an occurrence's message and details with an icon button", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     renderHost();
     act(() => notify({ source: "a", code: "host.error", params: { n: 7 }, details: "stack" }));
-    fireEvent.click(screen.getByText("Details"));
-    fireEvent.click(screen.getByText("Copy"));
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    const copy = screen.getByRole("button", { name: "Copy" });
+    expect(copy.textContent).toBe("");
+    await act(async () => { fireEvent.click(copy); });
     expect(writeText).toHaveBeenCalledWith("Failed 7\nstack");
+  });
+
+  it("shows a check mark after copying and restores the copy icon", async () => {
+    vi.useFakeTimers();
+    try {
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      renderHost();
+      act(() => notify({ source: "a", code: "host.error", params: { n: 7 }, details: "stack" }));
+      fireEvent.click(screen.getByRole("button", { name: "Details" }));
+      const copy = screen.getByRole("button", { name: "Copy" });
+      const iconBefore = copy.innerHTML;
+      await act(async () => { fireEvent.click(copy); });
+      expect(copy.innerHTML).not.toBe(iconBefore);
+      act(() => { vi.advanceTimersByTime(1500); });
+      expect(copy.innerHTML).toBe(iconBefore);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("makes every button keyboard-focusable", async () => {

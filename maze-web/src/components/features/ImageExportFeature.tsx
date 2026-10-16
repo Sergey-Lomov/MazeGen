@@ -11,8 +11,21 @@ import { RENDER_MODES, resolveRenderMode } from "./imageExportRegistry";
 import { EXPORT_FORMATS, resolveExportFormat } from "./exportFormatRegistry";
 import { downloadPngExport } from "./pngExport";
 import { readJsonFile } from "../jsonFile";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import { notify } from "../../notifications/notificationStore";
 import { downloadVisualPresetFile, parseVisualPreset, visualPresetFileAccept, FileKindMismatchError } from "../../store/projectExport";
 import * as m from "~/paraglide/messages";
+
+const VISUAL_PRESET_LOAD_SOURCE = "visual_preset_load";
+
+const VISUAL_PRESET_LOAD_CODES = {
+  invalid: "image_export.visual_preset.load_error",
+  projectFile: "image_export.visual_preset.load_error_project_file",
+  qualityPreset: "image_export.visual_preset.load_error_quality_preset",
+} as const;
+for (const code of Object.values(VISUAL_PRESET_LOAD_CODES)) {
+  registerNotificationCode(code, { category: "error", message: () => m[code]() });
+}
 
 export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: PngExportSettings) => Promise<Blob | null> }) {
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
@@ -24,7 +37,6 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   const setExportFormatSettingsCovered = useMazeStore((s) => s.setExportFormatSettingsCovered);
   const pngExportSettings = useMazeStore((s) => s.pngExportSettings);
   const loadVisualPreset = useMazeStore((s) => s.loadVisualPreset);
-  const setError = useMazeStore((s) => s.setError);
   const presetInputRef = useRef<HTMLInputElement>(null);
 
   function handleClick(mode: RenderModeId) {
@@ -51,20 +63,24 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    readJsonFile(file, (json) => {
+    readJsonFile(file, VISUAL_PRESET_LOAD_SOURCE, (json) => {
+      // Parsed before `loadVisualPreset`, so a rejected file leaves the store untouched.
+      let preset: ReturnType<typeof parseVisualPreset>;
       try {
-        loadVisualPreset(parseVisualPreset(json));
+        preset = parseVisualPreset(json);
       } catch (err) {
         if (err instanceof FileKindMismatchError) {
-          setError(err.found === "quality_preset"
-            ? m["image_export.visual_preset.load_error_quality_preset"]()
-            : m["image_export.visual_preset.load_error_project_file"]());
+          notify({
+            source: VISUAL_PRESET_LOAD_SOURCE,
+            code: err.found === "quality_preset" ? VISUAL_PRESET_LOAD_CODES.qualityPreset : VISUAL_PRESET_LOAD_CODES.projectFile,
+          });
           return;
         }
-        const message = err instanceof Error ? err.message : String(err);
-        setError(m["image_export.visual_preset.load_error"]({ message }));
+        notify({ source: VISUAL_PRESET_LOAD_SOURCE, code: VISUAL_PRESET_LOAD_CODES.invalid, details: err instanceof Error ? err.message : String(err) });
+        return;
       }
-    }, setError);
+      loadVisualPreset(preset);
+    });
   }
 
   const openMode = openRenderModeSettings ? resolveRenderMode(openRenderModeSettings) : null;

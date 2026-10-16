@@ -253,7 +253,7 @@ function prepareGeneration(get: StoreGet, set: StoreSet, qcExperiment: boolean) 
   const state = get();
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) {
-    set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
+    set({ error: { kind: "free_field_too_small" }, generationStatus: "error" });
     return null;
   }
   const activeTessellation = activeFloorTessellationOf(state);
@@ -380,6 +380,7 @@ function applyGenerationResult(
       // non-empty.
       postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports, () => undefined),
       postEditMeta: draftMeta,
+      postEditRefreshError: null,
       postEditAnalytics: {
         statistics: snapshot.statistics,
         routeInfo: snapshot.route_info,
@@ -413,7 +414,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     applyGenerationResult(generateMaze(seed, prepared.config), get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    set({ error: msg, generationStatus: "error" });
+    set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
   }
 }
 
@@ -425,7 +426,7 @@ export async function generateWithSeedAsync(seed: number, get: StoreGet, set: St
     applyGenerationResult(result, get, set, prepared.activeTessellation, prepared.debugMode);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    set({ error: msg, generationStatus: "error" });
+    set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
   }
 }
 

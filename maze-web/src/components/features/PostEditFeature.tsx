@@ -4,7 +4,7 @@ import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
 import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
-import { typography, spacing, indent } from "../../styles/theme";
+import { typography, spacing, indent, ui } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
 import { BackgroundImageToggle } from "../BackgroundImageToggle";
@@ -75,6 +75,7 @@ export function PostEditFeature() {
   const confirmPostEdit     = useMazeStore((s) => s.confirmPostEdit);
   const resetPostEdit       = useMazeStore((s) => s.resetPostEdit);
   const postEditAnalytics   = useMazeStore((s) => s.postEditAnalytics);
+  const postEditRefreshError = useMazeStore((s) => s.postEditRefreshError);
   const postEditFocusedPoint = useMazeStore((s) => s.postEditFocusedPoint);
   const setPostEditFocusedPoint = useMazeStore((s) => s.setPostEditFocusedPoint);
   const openCard = useMazeStore((s) => s.openCard);
@@ -155,6 +156,9 @@ export function PostEditFeature() {
 
   return (
     <Stack gap="groupGap">
+      {postEditRefreshError !== null && (
+        <div style={styles.statusError}>{m["post_edit.refresh_error"]({ message: postEditRefreshError })}</div>
+      )}
       {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.tools"]()}</span>
@@ -287,5 +291,9 @@ const styles: Record<string, React.CSSProperties> = {
   // One indent level for a section's own content, relative to its `sectionLabel`.
   nestedContent: {
     paddingLeft: indent.tree,
+  },
+  statusError: {
+    ...typography.body,
+    color: ui.text.error,
   },
 };

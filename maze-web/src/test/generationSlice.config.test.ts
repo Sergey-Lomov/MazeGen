@@ -432,13 +432,6 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.getState().addSplitNode([0, 0]);
     expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0, 1]);
   });
-
-  it("setError sets and clears the error message", () => {
-    useMazeStore.getState().setError("boom");
-    expect(useMazeStore.getState().error).toBe("boom");
-    useMazeStore.getState().setError(null);
-    expect(useMazeStore.getState().error).toBeNull();
-  });
 });
 
 describe("mazeStore.qcExperiment toggle", () => {

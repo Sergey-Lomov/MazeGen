@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { useLocale } from "../../i18n/useLocale";
 import { notificationMessage } from "../../notifications/notificationRegistry";
 import {
@@ -137,49 +137,74 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const latest = card.occurrences[card.occurrences.length - 1];
   const count = card.occurrences.length;
+  const headline = notificationMessage(card.code, latest.params);
+  // Newest first. An occurrence's message is shown only when it differs from the headline, so
+  // expanding adds the technical details under the card instead of repeating its own text.
+  const entries = [...card.occurrences].reverse().map((o) => {
+    const message = notificationMessage(card.code, o.params);
+    return { id: o.id, message, ownMessage: message !== headline ? message : null, details: o.details };
+  });
+  const expandable = entries.some((e) => e.details || e.ownMessage);
   return (
     <div data-testid="error-card" style={{ ...styles.toast, ...paletteStyle("critical"), flexDirection: "column", alignItems: "stretch" }}>
       <div style={styles.cardHeader}>
-        <span style={styles.message}>{notificationMessage(card.code, latest.params)}</span>
+        <span style={styles.message}>{headline}</span>
         {count > 1 && <span data-testid="error-count" style={styles.counter}>×{count}</span>}
         <CloseButton onClick={() => closeErrorCard(card.key)} />
       </div>
-      <div>
-        <button
-          type="button"
-          className="hoverable"
-          aria-expanded={detailsOpen}
-          style={styles.textBtn}
-          onClick={() => setDetailsOpen((v) => !v)}
-        >
-          {m["notifications.details"]()}
-        </button>
-      </div>
-      {detailsOpen && (
+      {expandable && (
+        <div>
+          <button
+            type="button"
+            className="hoverable"
+            aria-expanded={detailsOpen}
+            style={styles.disclosureBtn}
+            onClick={() => setDetailsOpen((v) => !v)}
+          >
+            {detailsOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+            {m["notifications.details"]()}
+          </button>
+        </div>
+      )}
+      {expandable && detailsOpen && (
         <ul data-testid="error-details" style={styles.details}>
-          {[...card.occurrences].reverse().map((o) => {
-            const message = notificationMessage(card.code, o.params);
-            const copyText = o.details ? `${message}\n${o.details}` : message;
-            return (
-              <li key={o.id} style={styles.occurrence}>
-                <span style={styles.message}>{message}</span>
-                {o.details && <pre style={styles.detailsText}>{o.details}</pre>}
-                <div>
-                  <button
-                    type="button"
-                    className="hoverable"
-                    style={styles.textBtn}
-                    onClick={() => { void navigator.clipboard?.writeText(copyText).catch(() => {}); }}
-                  >
-                    {m["notifications.copy"]()}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+          {entries.map((e, i) => (
+            <li key={e.id} style={i > 0 ? { ...styles.occurrence, ...styles.occurrenceSeparated } : styles.occurrence}>
+              <div style={styles.occurrenceText}>
+                {e.ownMessage && <span style={styles.message}>{e.ownMessage}</span>}
+                {e.details && <pre style={styles.detailsText}>{e.details}</pre>}
+              </div>
+              <CopyButton text={e.details ? `${e.message}\n${e.details}` : e.message} />
+            </li>
+          ))}
         </ul>
       )}
     </div>
+  );
+}
+
+const COPY_CONFIRM_MS = 1500;
+
+/** Icon-only copy button; shows a check mark for a moment after a successful copy. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPY_CONFIRM_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const label = m["notifications.copy"]();
+  return (
+    <button
+      type="button"
+      className="hoverable"
+      style={styles.iconBtn}
+      aria-label={label}
+      title={label}
+      onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {}); }}
+    >
+      {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+    </button>
   );
 }
 
@@ -219,7 +244,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
       className="hoverable"
       aria-label={m["notifications.close"]()}
       title={m["notifications.close"]()}
-      style={styles.closeBtn}
+      style={styles.iconBtn}
       onClick={onClick}
     >
       <X size={14} />
@@ -299,7 +324,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "inherit",
     flexShrink: 0,
   },
-  closeBtn: {
+  iconBtn: {
     background: "none",
     border: "none",
     color: "inherit",
@@ -310,14 +335,17 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     borderRadius: radius.sm,
   },
-  textBtn: {
+  disclosureBtn: {
     ...typography.caption,
     background: "none",
     border: "none",
     cursor: "default",
-    padding: "0 2px",
+    padding: "0 2px 0 0",
     borderRadius: radius.sm,
     color: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
   },
   closeAll: {
     ...embeddedNotificationStyle,
@@ -340,10 +368,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   occurrence: {
     display: "flex",
-    flexDirection: "column",
-    gap: spacing.elementsGap,
+    alignItems: "flex-start",
+    gap: spacing.rowGap,
+  },
+  occurrenceSeparated: {
     borderTop: "1px solid currentColor",
     paddingTop: spacing.itemGap,
+  },
+  occurrenceText: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.elementsGap,
   },
   detailsText: {
     ...typography.caption,

@@ -6,6 +6,8 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { serializeProject, serializeVisualPreset, serializeQualityPreset } from "../store/projectExport";
 import * as m from "~/paraglide/messages";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -18,6 +20,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 
 beforeEach(() => {
+  resetNotifications();
   // `openExportFormatSettings` reset alongside the render-mode fields (GitHub issue #629's tests
   // added a case that sets it and never explicitly clears it — without resetting it here too, a
   // later test would inherit that leftover "png" and misread its own gear click as a close-toggle
@@ -140,25 +143,35 @@ describe("ImageExportFeature", () => {
 
     it("applies a picked style preset", async () => {
       const preset = serializeVisualPreset({ ...useMazeStore.getState(), showColorWarnings: false });
-      useMazeStore.setState({ showColorWarnings: true, error: null });
+      useMazeStore.setState({ showColorWarnings: true });
       const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
       pickPresetFile(preset, container);
       await waitFor(() => expect(useMazeStore.getState().showColorWarnings).toBe(false));
-      expect(useMazeStore.getState().error).toBeNull();
+      expect(errorCards()).toEqual([]);
     });
 
-    it("shows a dedicated message when a project file is picked", async () => {
-      useMazeStore.setState({ error: null });
+    it("raises a dedicated error toast and changes nothing when a project file is picked", async () => {
+      useMazeStore.setState({ showColorWarnings: true });
       const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
-      pickPresetFile(serializeProject(useMazeStore.getState()), container);
-      await waitFor(() => expect(useMazeStore.getState().error).toBe(m["image_export.visual_preset.load_error_project_file"]()));
+      pickPresetFile(serializeProject({ ...useMazeStore.getState(), showColorWarnings: false }), container);
+      await waitFor(() => expect(errorCards()).toEqual(["visual_preset_load/image_export.visual_preset.load_error_project_file"]));
+      expect(useMazeStore.getState().showColorWarnings).toBe(true);
     });
 
-    it("shows a dedicated message when a quality preset is picked", async () => {
-      useMazeStore.setState({ error: null });
+    it("raises a dedicated error toast when a quality preset is picked", async () => {
       const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
       pickPresetFile(serializeQualityPreset(useMazeStore.getState()), container);
-      await waitFor(() => expect(useMazeStore.getState().error).toBe(m["image_export.visual_preset.load_error_quality_preset"]()));
+      await waitFor(() => expect(errorCards()).toEqual(["visual_preset_load/image_export.visual_preset.load_error_quality_preset"]));
+    });
+
+    it("raises an error toast with details and changes nothing for a malformed style preset", async () => {
+      const preset = serializeVisualPreset({ ...useMazeStore.getState(), showColorWarnings: false });
+      useMazeStore.setState({ showColorWarnings: true });
+      const { container } = render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
+      pickPresetFile({ ...preset, version: 999 }, container);
+      await waitFor(() => expect(errorCards()).toEqual(["visual_preset_load/image_export.visual_preset.load_error"]));
+      expect(errorDetails("image_export.visual_preset.load_error")).toBeTruthy();
+      expect(useMazeStore.getState().showColorWarnings).toBe(true);
     });
   });
 });
