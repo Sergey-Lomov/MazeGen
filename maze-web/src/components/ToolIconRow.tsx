@@ -5,7 +5,7 @@ import type { ToolGlyphKey } from "./features/toolGlyphs";
 import { spacing } from "../styles/theme";
 
 interface Props<T extends string> {
-  tools: readonly (readonly [T, string])[];
+  tools: readonly (readonly [T, string, string?])[];
   activeTool: T;
   onPick: (tool: T) => void;
   glyphFor?: (tool: T) => ToolGlyphKey;
@@ -16,12 +16,13 @@ interface Props<T extends string> {
 export function ToolIconRow<T extends string>({ tools, activeTool, onPick, glyphFor, isDanger }: Props<T>) {
   return (
     <div style={styles.row}>
-      {tools.map(([tool, label]) => (
+      {tools.map(([tool, title, description]) => (
         <ToolIconButton
           key={tool}
           selected={activeTool === tool}
           danger={isDanger?.(tool) ?? false}
-          title={label}
+          title={title}
+          description={description}
           onClick={() => onPick(tool)}
         >
           <ToolGlyph tool={glyphFor?.(tool) ?? tool as ToolGlyphKey} />

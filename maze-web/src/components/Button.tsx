@@ -1,5 +1,6 @@
 import type React from "react";
 import { buttonClass, buttonStyle } from "../styles/shared";
+import { Tooltip } from "./Tooltip";
 
 export type ButtonVariant = "primary" | "secondary" | "toggle" | "toggle-selected" | "destructive" | "toggle-danger" | "toggle-danger-selected";
 
@@ -10,6 +11,7 @@ type Props = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "className" | "
 };
 
 /** Text button bound to the shared semantic visual system. */
-export function Button({ variant, layoutStyle, type = "button", ...props }: Props) {
-  return <button {...props} type={type} className={buttonClass(variant)} style={{ ...buttonStyle(variant), ...layoutStyle }} />;
+export function Button({ variant, layoutStyle, type = "button", title, ...props }: Props) {
+  const button = <button {...props} type={type} className={buttonClass(variant)} style={{ ...buttonStyle(variant), ...layoutStyle }} />;
+  return title ? <Tooltip content={title}>{button}</Tooltip> : button;
 }

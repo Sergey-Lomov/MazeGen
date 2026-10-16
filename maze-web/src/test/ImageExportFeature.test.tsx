@@ -8,6 +8,7 @@ import { serializeProject, serializeVisualPreset, serializeQualityPreset } from 
 import * as m from "~/paraglide/messages";
 import { resetNotifications } from "../notifications/notificationStore";
 import { errorCards, errorDetails } from "./notificationTestHelpers";
+import { getTooltipControl } from "./tooltipTestUtils";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -77,7 +78,7 @@ describe("ImageExportFeature", () => {
   it("clicking the PNG format's gear opens its settings panel without clearing the render-mode one", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
-    fireEvent.click(screen.getByTitle(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
+    fireEvent.click(getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
     expect(useMazeStore.getState().openExportFormatSettings).toBe("png");
     expect(useMazeStore.getState().openRenderModeSettings).toBe("vector_by_walls");
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeInTheDocument();
@@ -98,7 +99,7 @@ describe("ImageExportFeature", () => {
     useMazeStore.setState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
     render(<ImageExportFeature onExportPng={() => Promise.resolve(null)} />);
 
-    fireEvent.click(screen.getByTitle(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
+    fireEvent.click(getTooltipControl(m["image_export.format.settings_tooltip"]({ format: m["image_export.format.png.label"]() })));
     const wallsBackground = screen.getByText(m["image_export.vector_by_walls.section_background"]());
     expect(screen.getByText(m["image_export.format.png.digital.scale"]())).toBeVisible();
     expect(wallsBackground).not.toBeVisible();

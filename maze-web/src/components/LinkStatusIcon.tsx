@@ -4,6 +4,7 @@ import { Link, Unlink, ArrowDown, X } from "lucide-react";
 import { ui, typography, controlRowHeight } from "../styles/theme";
 import { Modal } from "./Modal";
 import { LinkEditor, linkModifiersSuffix } from "./features/ParameterLinksDialog";
+import { Tooltip } from "./Tooltip";
 import type { ParamDescriptor, ParamLink, ParamModifier, ColorModifier } from "../store/parameterLinks";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
@@ -99,17 +100,18 @@ export function LinkStatusIcon<P extends string>({
     const hint = unsupportedHint ?? m["link_status.unsupported_hint"]();
     return (
       <>
-        <span
-          className="hoverable"
-          style={styles.wrapper}
-          title={`${m["link_status.header_unsupported"]()}\n${hint}`}
-          onClick={() => setShowUnsupportedInfo(true)}
-        >
-          <Unlink size={iconSize} color={ui.text.disabled} strokeWidth={2.5} />
-          <span style={styles.badge}>
-            <X size={badgeSize} color={ui.text.error} strokeWidth={2.5} />
+        <Tooltip content={`${m["link_status.header_unsupported"]()}\n${hint}`}>
+          <span
+            className="hoverable"
+            style={styles.wrapper}
+            onClick={() => setShowUnsupportedInfo(true)}
+          >
+            <Unlink size={iconSize} color={ui.text.disabled} strokeWidth={2.5} />
+            <span style={styles.badge}>
+              <X size={badgeSize} color={ui.text.error} strokeWidth={2.5} />
+            </span>
           </span>
-        </span>
+        </Tooltip>
         {showUnsupportedInfo && (
           <Modal title={m["link_status.header_unsupported"]()} onClose={() => setShowUnsupportedInfo(false)}>
             <div style={typography.body}>{hint}</div>
@@ -188,7 +190,8 @@ export function LinkStatusIcon<P extends string>({
 
   return (
     <>
-      <span className="hoverable" style={styles.wrapper} title={tooltip} onClick={handleClick}>
+      <Tooltip content={tooltip}>
+        <span className="hoverable" style={styles.wrapper} onClick={handleClick}>
         <ChainIcon size={iconSize} color={chainColor} strokeWidth={2.5} />
         {/* Rule 1/4: driving indicator (green) whenever a driving link exists, active or
          *  disabled — indicators stay colored even while the chain itself goes disabled-gray.
@@ -204,7 +207,8 @@ export function LinkStatusIcon<P extends string>({
            *  own broken (`Unlink`) glyph's job to communicate, not a separate indicator. */}
           {hasOutgoing && <ArrowDown size={badgeSize} color={ui.text.info} strokeWidth={2.5} />}
         </span>
-      </span>
+        </span>
+      </Tooltip>
       {editing && (
         <LinkEditor
           registry={registry}

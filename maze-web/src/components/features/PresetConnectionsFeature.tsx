@@ -29,11 +29,11 @@ import { PresetLockSettingsDialog } from "../dialogs/PresetLockSettingsDialog";
 import { PresetList } from "./PresetList";
 import * as m from "~/paraglide/messages";
 
-function getEdgeTools(): [PresetConnectionTool, string][] {
+function getEdgeTools(): [PresetConnectionTool, string, string?][] {
   return [
     ["wall", m["preset.wall"]()],
     ["passage", m["preset.passage"]()],
-    ["reset", `${m["preset.reset"]()}\n${m["preset.reset_tooltip"]()}`],
+    ["reset", m["preset.reset"](), m["preset.reset_tooltip"]()],
     ["one_way", m["preset.one_way"]()],
   ];
 }
@@ -252,7 +252,7 @@ export function PresetConnectionsFeature() {
             ...getGenerationTools(),
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["clear", m["preset.clear_tool"]()],
+            ["clear", m["preset.clear_tool"](), m["preset.clear_tooltip"]()],
           ]}
           activeTool={tool}
           onPick={setTool}

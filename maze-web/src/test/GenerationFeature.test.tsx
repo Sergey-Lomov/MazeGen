@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
+import { getTooltipControl } from "./tooltipTestUtils";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -178,20 +179,20 @@ describe("GenerationFeature — vertex-based settings panel", () => {
     render(<GenerationFeature canGenerate={true} />);
 
     expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    fireEvent.click(getTooltipControl(m["generation.vertex_settings"]()));
     expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
   });
 
   it("does not show the gear icon for a non-vertex-based algorithm", () => {
     render(<GenerationFeature canGenerate={true} />);
-    expect(screen.queryByTitle(m["generation.vertex_settings"]())).not.toBeInTheDocument();
+    expect(() => getTooltipControl(m["generation.vertex_settings"]())).toThrow();
   });
 
   it("closes the settings panel when the algorithm switches away from custom_vertex_based", () => {
     useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, cyclicity: 0.0 } });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    fireEvent.click(getTooltipControl(m["generation.vertex_settings"]()));
     expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
 
     act(() => { useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } }); });

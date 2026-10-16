@@ -1,11 +1,14 @@
 import { Settings } from "lucide-react";
 import { ui } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 export function SettingsIconButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (
-    <button type="button" className="hoverable" style={styles.button} onClick={onClick} title={title} aria-label={title}>
-      <Settings size={16} color={ui.text.tertiary} />
-    </button>
+    <Tooltip content={title}>
+      <button type="button" className="hoverable" style={styles.button} onClick={onClick} aria-label={title}>
+        <Settings size={16} color={ui.text.tertiary} />
+      </button>
+    </Tooltip>
   );
 }
 

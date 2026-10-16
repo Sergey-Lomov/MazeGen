@@ -217,11 +217,15 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const polygonTool = screen.getByRole("button", { name: /Polygon/ });
-    expect(polygonTool).toHaveAttribute("title", expect.stringContaining("Shift: move vertices freely."));
+    const description = document.getElementById(polygonTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("PolygonShift: move vertices freely.");
     fireEvent.click(screen.getByRole("button", { name: "Remove (-)" }));
     expect(useMazeStore.getState().floorFields[TEST_FLOOR_ID].fieldOperation).toBe("remove");
     fireEvent.click(screen.getByRole("button", { name: /Select/ }));
-    expect(screen.getByRole("button", { name: /Symmetry/ })).toBeDisabled();
+    const symmetryTool = screen.getByRole("button", { name: /Symmetry/ });
+    expect(symmetryTool).toBeDisabled();
+    const symmetryDescription = document.getElementById(symmetryTool.parentElement?.getAttribute("aria-describedby")!);
+    expect(symmetryDescription).toHaveTextContent("SymmetryUnavailable in Select mode.");
   });
 
   it("labels the connected-area tool and explains its effect", () => {
@@ -233,7 +237,8 @@ describe("FieldSetupFeature — Copy floor button", () => {
     render(<FieldSetupFeature />);
 
     const tool = screen.getByRole("button", { name: /Connected Area/ });
-    expect(tool).toHaveAttribute("title", "Connected Area\nAffects all connected cells.");
+    const description = document.getElementById(tool.parentElement?.getAttribute("aria-describedby")!);
+    expect(description).toHaveTextContent("Connected AreaAffects all connected cells.");
   });
 
   it("applies print sizing to standard floors but preserves custom floors", () => {

@@ -167,10 +167,10 @@ export function PostEditFeature() {
             ...getTeleportTools(),
             ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
             ...(floors.length > 1 ? getVerticalTools() : []),
-            ["reset", m["post_edit.reset_tool"]()],
             ["move", m["tools.move"]()],
             ["settings", m["tools.settings"]()],
-            ["delete", m["post_edit.delete_tool"]()],
+            ["reset", m["post_edit.reset_tool"](), m["post_edit.reset_tooltip"]()],
+            ["delete", m["post_edit.delete_tool"](), m["post_edit.delete_tooltip"]()],
           ]}
           activeTool={tool}
           onPick={setTool}

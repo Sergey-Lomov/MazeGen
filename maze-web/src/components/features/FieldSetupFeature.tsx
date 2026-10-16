@@ -347,11 +347,12 @@ export function FieldSetupFeature() {
               key={tool.key}
               selected={fieldPrimitive === tool.primitive}
               disabled={fieldEditLocked || (tool.primitive === "symmetry" && fieldOperation === "select")}
-              title={tool.primitive === "polygon"
-                ? tool.label + "\n" + m["field.polygon.shift_tooltip"]()
-                : tool.primitive === "magic_wand"
-                  ? tool.label + "\n" + m["field.connected_area.tooltip"]()
-                  : tool.label}
+              title={tool.label}
+              description={tool.primitive === "symmetry" && fieldOperation === "select"
+                ? m["field.symmetry.select_disabled"]()
+                : tool.primitive === "polygon"
+                ? m["field.polygon.shift_tooltip"]()
+                : tool.primitive === "magic_wand" ? m["field.connected_area.tooltip"]() : undefined}
               onClick={() => {
                 setFieldPrimitive(tool.primitive);
               }}

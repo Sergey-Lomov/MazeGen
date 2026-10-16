@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { FloorsFeature } from "../components/features/FloorsFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
+import { getTooltipControl, getTooltipControlWithin } from "./tooltipTestUtils";
 
 function setFloors(titles: string[]) {
   useMazeStore.setState({
@@ -15,7 +16,7 @@ function setFloors(titles: string[]) {
 
 function startRename(floorTitle: string) {
   const row = screen.getByText(floorTitle).closest("div") as HTMLElement;
-  fireEvent.click(row.querySelector(`button[title="${m["floors.rename_floor"]()}"]`) as HTMLElement);
+  fireEvent.click(getTooltipControlWithin(row, m["floors.rename_floor"]()));
   return screen.getByRole("textbox") as HTMLInputElement;
 }
 
@@ -26,13 +27,13 @@ describe("FloorsFeature blocked-action explanations", () => {
     setFloors(["Floor 1"]);
     render(<FloorsFeature />);
     expect(screen.getByText(m["floors.remove_last_floor_hint"](), { selector: "[hidden]" })).toBeInTheDocument();
-    expect(screen.getByTitle(m["floors.remove_floor"]())).toBeDisabled();
+    expect(getTooltipControl(m["floors.remove_floor"]())).toBeDisabled();
   });
 
   it("shows no remove tooltip while several floors exist", () => {
     render(<FloorsFeature />);
     expect(screen.queryByText(m["floors.remove_last_floor_hint"](), { selector: "[hidden]" })).toBeNull();
-    expect(screen.getAllByTitle(m["floors.remove_floor"]())[0]).not.toBeDisabled();
+    expect(getTooltipControl(m["floors.remove_floor"]())).not.toBeDisabled();
   });
 
   it("reverts an empty rename and shows a field hint", () => {

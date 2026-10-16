@@ -1,5 +1,6 @@
 import React from "react";
 import { ui, typography, controlRowHeight } from "../styles/theme";
+import { Tooltip } from "./Tooltip";
 
 export function HoverIconButton({ onClick, title, children, fixedHeight }: {
   onClick: () => void;
@@ -11,15 +12,16 @@ export function HoverIconButton({ onClick, title, children, fixedHeight }: {
   fixedHeight?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
-      title={title}
-      onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
-      onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
-    >
-      {children}
-    </button>
+    <Tooltip content={title}>
+      <button
+        onClick={onClick}
+        style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
+        onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
+        onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

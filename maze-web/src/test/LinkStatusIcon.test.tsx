@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LinkStatusIcon } from "../components/LinkStatusIcon";
+import { getTooltipAnchor } from "./tooltipTestUtils";
 import { useMazeStore } from "../store/mazeStore";
 import type { ParamDescriptor, ParamLink } from "../store/parameterLinks";
 
@@ -43,14 +44,14 @@ describe("LinkStatusIcon", () => {
       link({ modifiers: [{ op: "mul", value: 2 }] }),
       link({ id: "l2", source: "b", target: "c", modifiers: [{ op: "add", value: 3 }] }),
     ]);
-    const title = screen.getByTitle(/Driving link/).getAttribute("title") ?? "";
+    const title = document.getElementById(getTooltipAnchor(/Driving link/).getAttribute("aria-describedby")!)?.textContent ?? "";
     expect(title).toContain("A × 2");
     expect(title).toContain("C + 3");
   });
 
   it("lists color modifiers of the driving link in the tooltip", () => {
     renderIcon("b", [link({ colorModifiers: [{ model: "oklch", channel: "oklch-l", op: "sub", value: 15 }] })]);
-    expect(screen.getByTitle(/Driving link/).getAttribute("title")).toContain("− 15");
+    expect(document.getElementById(getTooltipAnchor(/Driving link/).getAttribute("aria-describedby")!)?.textContent).toContain("− 15");
   });
 
   it("lists modifiers of a derived link in group mode", () => {
@@ -66,35 +67,35 @@ describe("LinkStatusIcon", () => {
         alwaysVisible
       />,
     );
-    expect(screen.getByTitle(/Driving link/).getAttribute("title")).toContain("A × 2");
+    expect(document.getElementById(getTooltipAnchor(/Driving link/).getAttribute("aria-describedby")!)?.textContent).toContain("A × 2");
   });
 
   it("renders the unsupported state with a red X badge when target is null", () => {
     renderIcon(null, []);
-    const icon = screen.getByTitle(/Links not supported/);
+    const icon = getTooltipAnchor(/Links not supported/);
     expect(icon.querySelector("svg")).toBeTruthy();
   });
 
   it("renders no badge at all when the field is linkable but has no link", () => {
     const { container } = renderIcon("b", []);
-    expect(screen.getByTitle(/No links/)).toBeTruthy();
+    expect(getTooltipAnchor(/No links/)).toBeTruthy();
     // Only the chain glyph's own <svg> — no corner-badge <svg> alongside it.
     expect(container.querySelectorAll("svg").length).toBe(1);
   });
 
   it("shows the driving-disabled header and no badge when overridden with no dependents", () => {
     renderIcon("b", [link({ enabled: false })]);
-    expect(screen.getByTitle(/Driving link disabled/)).toBeTruthy();
+    expect(getTooltipAnchor(/Driving link disabled/)).toBeTruthy();
   });
 
   it("shows the driving-active header when the driving link is enabled", () => {
     renderIcon("b", [link({ enabled: true })]);
-    expect(screen.getByTitle(/Driving link active/)).toBeTruthy();
+    expect(getTooltipAnchor(/Driving link active/)).toBeTruthy();
   });
 
   it("shows 'No driving link' when the field is only ever a source", () => {
     renderIcon("a", [link({ source: "a", target: "b", enabled: true })]);
-    expect(screen.getByTitle(/No driving link/)).toBeTruthy();
+    expect(getTooltipAnchor(/No driving link/)).toBeTruthy();
   });
 
   it("respects linkIconVisibility=never by rendering nothing", () => {
@@ -112,7 +113,7 @@ describe("LinkStatusIcon", () => {
   it("respects linkIconVisibility=linked by still showing linked fields", () => {
     useMazeStore.setState({ linkIconVisibility: "linked" });
     renderIcon("b", [link({ enabled: true })]);
-    expect(screen.getByTitle(/Driving link active/)).toBeTruthy();
+    expect(getTooltipAnchor(/Driving link active/)).toBeTruthy();
   });
 
   it("uses a custom unsupportedHint over the generic one", () => {
@@ -127,6 +128,6 @@ describe("LinkStatusIcon", () => {
         unsupportedHint="Custom explanation"
       />,
     );
-    expect(screen.getByTitle(/Custom explanation/)).toBeTruthy();
+    expect(getTooltipAnchor(/Custom explanation/)).toBeTruthy();
   });
 });

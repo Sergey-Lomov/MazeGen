@@ -20,6 +20,11 @@ Two sub-modes toggled inside the card:
 cells; Select previews existing cells. Space or middle mouse pans the camera. Camera does not move
 while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
 
+The mode and tool buttons use accessible tooltips. A mode label includes its selection hotkey in
+parentheses (for example, `Add (+)`). A separate tertiary-colored line explains any
+keyboard-modified behavior (for example, `Shift: move vertices freely`). Symmetry alone adds
+`Unavailable in Select mode.` while Select is active, because that operation cannot reflect cells.
+
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
 ### Available predefined shapes
