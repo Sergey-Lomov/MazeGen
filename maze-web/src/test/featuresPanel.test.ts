@@ -212,11 +212,6 @@ describe("computeGenerationCard", () => {
     expect(result.status).toBe("set");
   });
 
-  it("is critical when the WASM registry failed to load, over every other reading (GitHub issue #769)", () => {
-    expect(computeGenerationCard(true, "recursive_backtracker", false, 0.0, 0, true))
-      .toEqual({ status: "critical", comment: m["generation.registry_load_failed"]() });
-    expect(computeGenerationCard(false, "custom_vertex_based", true, 0.5, 0, true).status).toBe("critical");
-  });
 });
 
 describe("computeImageExportCard", () => {

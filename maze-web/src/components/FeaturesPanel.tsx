@@ -132,17 +132,13 @@ export interface GenerationCardData {
 /// Pattern mode on + a positive split chance + no patterns defined is a dead-weight config —
 /// splitting is enabled but has nothing to draw from, so it silently never fires. Only
 /// `custom_vertex_based` even has pattern mode (see `GenerationFeature.tsx`'s `isVertexBased`).
-/// A failed WASM registry load blocks generation outright (GitHub issue #769), so it wins over
-/// every other reading.
 export function computeGenerationCard(
   tessellationConfirmed: boolean,
   method: string,
   splitPatternMode: boolean,
   splitChance: number,
   patternCount: number,
-  registryFailed = false,
 ): GenerationCardData {
-  if (registryFailed) return { status: "critical", comment: m["generation.registry_load_failed"]() };
   if (!tessellationConfirmed) return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
 
   const splitPatternsMissing = method === "custom_vertex_based" && splitPatternMode && splitChance > 0 && patternCount === 0;
@@ -192,7 +188,6 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const splitPatternMode = useMazeStore((s) => s.splitPatternMode);
   const splitPatterns = useMazeStore((s) => s.splitPatterns);
-  const registryFailed = useMazeStore((s) => s.registryError !== null);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
@@ -344,7 +339,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     : m["status.quality_configured"]();
 
   const { status: generationStatus, comment: generationComment } = computeGenerationCard(
-    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length, registryFailed,
+    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length,
   );
 
   return (

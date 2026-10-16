@@ -313,6 +313,20 @@ describe("mazeStore.loadRegistry", () => {
     expect(useMazeStore.getState().registryError).toBe("fatal");
   });
 
+  it("adds a retry failure to the existing registry error card", async () => {
+    resetNotifications();
+    vi.mocked(initWasm)
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockRejectedValueOnce(new Error("retry failure"));
+
+    await useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
+
+    expect(errorCards()).toEqual(["generation/generation.registry_load_failed"]);
+    expect(useNotificationStore.getState().errors[0].occurrences).toHaveLength(2);
+    expect(errorDetails("generation.registry_load_failed")).toBe("retry failure");
+  });
+
   it("keeps registryError across seed changes", async () => {
     vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
     await useMazeStore.getState().loadRegistry();

@@ -10,6 +10,7 @@ import { notify, resetNotifications, useNotificationStore } from "../notificatio
 import { resetAnnouncer } from "../notifications/announcer";
 import { setLocale } from "../i18n/localeStore";
 import { overlay } from "../styles/theme";
+import { useMazeStore } from "../store/mazeStore";
 
 registerNotificationCode("host.notice", {
   category: "notice",
@@ -173,6 +174,26 @@ describe("NotificationHost", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("retries a failed WASM registry load from its error card", async () => {
+    let resolveLoad!: () => void;
+    const loadRegistry = vi.fn(() => new Promise<void>((resolve) => { resolveLoad = resolve; }));
+    useMazeStore.setState({ registryError: "fetch failed", loadRegistry });
+    renderHost();
+    act(() => notify({ source: "generation", code: "generation.registry_load_failed", details: "fetch failed" }));
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    expect(loadRegistry).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+
+    await act(async () => {
+      useMazeStore.setState({ registryError: null });
+      resolveLoad();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId("error-card")).toBeNull();
   });
 
   it("makes every button keyboard-focusable", async () => {

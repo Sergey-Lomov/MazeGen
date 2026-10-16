@@ -3,12 +3,12 @@ import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
 
-/** A generation-run failure stored as data, not text, so the generation card translates it at
- *  render time and a locale switch re-translates it in place (GitHub issue #769). */
+/** A generation-run failure stored as data for generation state; the user-facing error is emitted
+ *  through the notification channel (GitHub issue #769). */
 export type GenerationError =
   /** The free field being edited has fewer than 2 cells. */
   | { kind: "free_field_too_small" }
-  /** WASM generation threw; `message` is its raw technical text, shown as is. */
+  /** WASM generation threw; `message` is retained as error-card detail text. */
   | { kind: "run_failed"; message: string };
 
 export interface GenerationState {
@@ -24,12 +24,11 @@ export interface GenerationState {
   showMaze: boolean;
   selectedNode: number | null;
   issues: IssueDto[];
-  /** Last generation-run error, shown in the generation card while `generationStatus === "error"`.
-   *  Only generation runs write it (GitHub issue #769); other failures go to toasts. */
+  /** Last generation-run error. Only generation runs write it (GitHub issue #769). */
   error: GenerationError | null;
   /** WASM registry load failure (`loadRegistry`). Kept apart from `error` so seed changes and
-   *  generation runs never erase it; cleared only by a successful `loadRegistry`. While set, the
-   *  generation card shows it as a persistent status line and disables Generate. */
+   *  generation runs never erase it; cleared only by a successful `loadRegistry`. While set,
+   *  Generate stays disabled. */
   registryError: string | null;
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];

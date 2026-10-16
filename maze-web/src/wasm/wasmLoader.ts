@@ -8,6 +8,11 @@ export function initWasm(): Promise<void> {
     initPromise = import("./pkg/maze_wasm").then(async (pkg) => {
       await pkg.default();
       wasmModule = pkg;
+    }).catch((error: unknown) => {
+      // A rejected promise must not poison later user-initiated retries. Concurrent callers
+      // still share this attempt until it settles.
+      initPromise = null;
+      throw error;
     });
   }
   return initPromise;

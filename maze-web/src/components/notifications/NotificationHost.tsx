@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { useLocale } from "../../i18n/useLocale";
+import { useMazeStore } from "../../store/mazeStore";
 import { notificationMessage } from "../../notifications/notificationRegistry";
 import {
   ERROR_VISIBLE_CARDS,
@@ -152,6 +153,9 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
         {count > 1 && <span data-testid="error-count" style={styles.counter}>×{count}</span>}
         <CloseButton onClick={() => closeErrorCard(card.key)} />
       </div>
+      {card.source === "generation" && card.code === "generation.registry_load_failed" && (
+        <RegistryRetryButton cardKey={card.key} />
+      )}
       {expandable && (
         <div>
           <button
@@ -180,6 +184,26 @@ function ErrorCardView({ card }: { card: ErrorCard }) {
         </ul>
       )}
     </div>
+  );
+}
+
+function RegistryRetryButton({ cardKey }: { cardKey: string }) {
+  const loadRegistry = useMazeStore((s) => s.loadRegistry);
+  const [pending, setPending] = useState(false);
+
+  function retry() {
+    if (pending) return;
+    setPending(true);
+    void loadRegistry().finally(() => {
+      if (useMazeStore.getState().registryError === null) closeErrorCard(cardKey);
+      setPending(false);
+    });
+  }
+
+  return (
+    <button type="button" className="hoverable" style={styles.retryButton} disabled={pending} onClick={retry}>
+      {pending ? m["common.loading"]() : m["generation.retry_registry_load"]()}
+    </button>
   );
 }
 
@@ -346,6 +370,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 2,
+  },
+  retryButton: {
+    ...typography.caption,
+    alignSelf: "flex-start",
+    background: "none",
+    border: "1px solid currentColor",
+    borderRadius: radius.sm,
+    color: "inherit",
+    cursor: "default",
+    padding: "2px 6px",
   },
   closeAll: {
     ...embeddedNotificationStyle,

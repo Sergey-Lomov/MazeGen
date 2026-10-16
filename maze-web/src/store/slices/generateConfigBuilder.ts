@@ -14,6 +14,14 @@ import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
 import { splitPatternsToCore } from "../../pixi/tessellationGeometry";
+import { notify } from "../../notifications/notificationStore";
+import { registerNotificationCode } from "../../notifications/notificationRegistry";
+import * as m from "~/paraglide/messages";
+
+const GENERATION_FREE_FIELD_TOO_SMALL = "generation.free_field_too_small";
+const GENERATION_RUN_FAILED = "generation.run_failed";
+registerNotificationCode(GENERATION_FREE_FIELD_TOO_SMALL, { category: "error", message: () => m["generation.error_free_field_too_small"]() });
+registerNotificationCode(GENERATION_RUN_FAILED, { category: "error", message: () => m[GENERATION_RUN_FAILED]() });
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -254,6 +262,7 @@ function prepareGeneration(get: StoreGet, set: StoreSet, qcExperiment: boolean) 
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) {
     set({ error: { kind: "free_field_too_small" }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_FREE_FIELD_TOO_SMALL });
     return null;
   }
   const activeTessellation = activeFloorTessellationOf(state);
@@ -415,6 +424,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
   }
 }
 
@@ -427,6 +437,7 @@ export async function generateWithSeedAsync(seed: number, get: StoreGet, set: St
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: { kind: "run_failed", message: msg }, generationStatus: "error" });
+    notify({ source: "generation", code: GENERATION_RUN_FAILED, details: msg });
   }
 }
 

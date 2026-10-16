@@ -5,6 +5,8 @@ import { fieldConfigToWasm, resolveAlgorithmKind } from "../store/slices/generat
 import { configAllCells } from "../pixi/tessellationCells";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import type { DebugArenaHandle } from "../store/storeTypes";
+import { resetNotifications } from "../notifications/notificationStore";
+import { errorCards, errorDetails } from "./notificationTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -24,6 +26,7 @@ import { initWasm } from "../wasm/wasmLoader";
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+  resetNotifications();
 });
 
 function source(kind: DebugArenaHandle["algorithmKind"]): DebugArenaHandle["sources"][number] {
@@ -268,6 +271,7 @@ describe("mazeStore.generate", () => {
     expect(useMazeStore.getState().error).toEqual({ kind: "free_field_too_small" });
     expect(useMazeStore.getState().generationStatus).toBe("error");
     expect(generateMaze).not.toHaveBeenCalled();
+    expect(errorCards()).toEqual(["generation/generation.free_field_too_small"]);
   });
 
   it("sets error when isEditingField and fieldPoints.size === 0", () => {
@@ -287,6 +291,8 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockImplementation(() => { throw new Error("bad wasm"); });
     useMazeStore.getState().generate();
     expect(useMazeStore.getState().error).toEqual({ kind: "run_failed", message: "bad wasm" });
+    expect(errorCards()).toEqual(["generation/generation.run_failed"]);
+    expect(errorDetails("generation.run_failed")).toBe("bad wasm");
   });
 
   it("stores string error when non-Error thrown", () => {

@@ -23,14 +23,14 @@ async function bootstrap() {
   const root = document.getElementById("root")!;
   const isCorridorGeometryRoute = window.location.pathname === "/corridor-geometry";
   document.documentElement.classList.toggle("corridor-geometry-route", isCorridorGeometryRoute);
-  try {
-    await initWasm();
-  } catch (err) {
-    root.textContent = `Failed to load WASM: ${err instanceof Error ? err.message : String(err)}`;
-    return;
-  }
 
   if (isCorridorGeometryRoute) {
+    try {
+      await initWasm();
+    } catch (err) {
+      root.textContent = `Failed to load WASM: ${err instanceof Error ? err.message : String(err)}`;
+      return;
+    }
     createRoot(root).render(
       <StrictMode>
         <CorridorGeometryTestPage />

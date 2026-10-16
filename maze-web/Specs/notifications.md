@@ -35,6 +35,7 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 | Source | Code | Category | Trigger |
 |---|---|---|---|
 | `generation` | `generation.registry_load_failed` | error | `loadRegistry` failed (details: message) |
+| `generation` | `generation.free_field_too_small`, `generation.run_failed` | error | generation cannot start / generation execution failed (details: message for the latter) |
 | `post_edit` | `post_edit.refresh_failed` | error | `confirmPostEdit` analytics refresh failed (details: message) |
 | `post_edit` | `post_edit.remove_endpoint_node_rejected` | notice | removing a split node assigned as start/finish |
 | `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | notice | removing a preset split node assigned as start/finish/gen-source |
@@ -102,6 +103,9 @@ repeat updates the coordinates in place instead of creating another toast.
   Escape does not close toasts.
 - Toasts have no live roles. `announce()` feeds `Announcer`: error cards assertive once on
   creation; notices polite once when they become visible. Field hints use the same `announce()`.
+
+The `generation.registry_load_failed` card includes Retry. It retries `loadRegistry`; a successful
+retry closes that card, and a failed retry adds another occurrence to it.
 
 # Tooltip and field-anchored hints
 
