@@ -47,6 +47,10 @@ import {
 import { formatPostEditId } from "../../pixi/postEditIdFormat";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
+import {
+  notifyEditRefusal, notifyVerticalDragFailure,
+  SPLIT_FACE_OWNER_AMBIGUOUS, SPLIT_ROTATION_OUTSIDE_FIELD,
+} from "../../notifications/editRefusalNotifications";
 import * as m from "~/paraglide/messages";
 
 const REFRESH_FAILED = "post_edit.refresh_failed";
@@ -192,7 +196,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditChangesOpen: true,
   postEditChangesEntityFilter: null,
   postEditDragOverride: null,
-  postEditDragFailureMessage: null,
   postEditEntityPickPrompt: null,
   postEditMoveRequest: null,
   postEditConnectionSettingsPrompt: null,
@@ -1095,6 +1098,13 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       before, point, slotIds, direction, state.activeTessellationConfig,
       cellSet, floorNodes, state.postEditActiveSplitNode, state.postEditDraftSplitPoints, level,
     );
+    if (rotatedNodes.refusalReason) {
+      notifyEditRefusal(
+        "post_edit",
+        rotatedNodes.refusalReason === "outside_field" ? SPLIT_ROTATION_OUTSIDE_FIELD : SPLIT_FACE_OWNER_AMBIGUOUS,
+      );
+      return;
+    }
     if (rotatedNodes.length === 0) return;
     appendPostEditCommand(get, set, { kind: "rotateSplitPoint", point, level, nodes: rotatedNodes });
     if (get().postEditAutoConfirm) {
@@ -1361,7 +1371,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
     const resolved = resolveVerticalPassageMove(target, end, newNode, state.nodes, resolveNodeLevel, endpoint, otherEndpoint);
     if ("failure" in resolved) {
-      set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "vertical_passage" } });
+      notifyVerticalDragFailure("post_edit", "vertical_passage", resolved.failure.point, resolved.failure.level);
       return;
     }
     appendPostEditCommand(get, set, {
@@ -1483,7 +1493,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const overridesByLevel = new Map<number, PostEditEndpoint>([[level, endpoint], ...(otherEndpoints ?? []).map((o): [number, PostEditEndpoint] => [o.level, o.endpoint])]);
     const resolved = resolveElevatorMove(target, { id, level }, newNode, state.nodes, resolveNodeLevel, overridesByLevel);
     if ("failure" in resolved) {
-      set({ postEditDragFailureMessage: { ...resolved.failure, entityKind: "elevator" } });
+      notifyVerticalDragFailure("post_edit", "elevator", resolved.failure.point, resolved.failure.level);
       return;
     }
     // `resolved.own`/`.others` are already the correct final `PostEditEndpoint` for each floor —
@@ -1500,8 +1510,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       void get().confirmPostEdit();
     }
   },
-
-  dismissPostEditDragFailureMessage: () => set({ postEditDragFailureMessage: null }),
 
   requestPostEditSplitTarget: (prompt) => set({ postEditSplitTargetPrompt: prompt }),
 

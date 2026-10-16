@@ -38,12 +38,21 @@ notify({ source: "feature", code: "feature.code", params: { x: 1, floor: 2 }, de
 | `post_edit` | `post_edit.refresh_failed` | error | `confirmPostEdit` analytics refresh failed (details: message) |
 | `post_edit` | `post_edit.remove_endpoint_node_rejected` | notice | removing a split node assigned as start/finish |
 | `preset_connections` | `preset_connections.remove_endpoint_node_rejected` | notice | removing a preset split node assigned as start/finish/gen-source |
+| `post_edit` / `preset_connections` | `edit_refusal.split_boundary_face` | notice | clicking a split-dialog face at the field boundary |
+| `post_edit` / `preset_connections` | `edit_refusal.split_rotation_outside_field` | notice | rotating a split would move a connection outside the field |
+| `post_edit` | `edit_refusal.split_face_owner_ambiguous` | notice | rotating a connection onto a split face with no unambiguous owner |
+| `post_edit` | `edit_refusal.split_connection_reset` | notice | resetting a split connection through the edge branch |
+| `post_edit` | `edit_refusal.unconfirmed_split_node` | notice | assigning a vertex element to an unconfirmed split node |
+| `preset_connections` | `edit_refusal.teleport_outside_field` | notice | placing a teleport endpoint outside the field |
+| `post_edit` / `preset_connections` | `vertical_drag.failed_passage`, `vertical_drag.failed_elevator` | notice | a vertical drag cannot resolve the matching point on another floor |
 | `project_load` / `quality_preset_load` / `visual_preset_load` | `file_load.read_failed`, `file_load.invalid_json` | error | `readJsonFile` I/O or JSON syntax failure |
 | `project_load` | `project.load_error`, `project.load_error_quality_preset`, `project.load_error_visual_preset` | error | invalid project file / file of another kind |
 | `quality_preset_load` | `quality.preset.load_error`, `quality.preset.load_error_project_file`, `quality.preset.load_error_visual_preset` | error | invalid quality preset / file of another kind |
 | `visual_preset_load` | `image_export.visual_preset.load_error`, `image_export.visual_preset.load_error_project_file`, `image_export.visual_preset.load_error_quality_preset` | error | invalid style preset / file of another kind |
 
 Validation errors carry the validator message in `details`.
+Vertical-drag notices carry the formatted target as `coords` and use empty `dedupParams`, so a
+repeat updates the coordinates in place instead of creating another toast.
 
 ## Notice zone
 
@@ -82,7 +91,7 @@ Validation errors carry the validator message in `details`.
 - Error zone above notice zone; new items appended at the bottom.
 - Every toast/card has a close button; "Close all" per zone, below its items, when the zone has
   2+ items (visible + queued).
-- Colors only from `notificationPalette` (as `WarningBubble`): notices `info`, errors `critical`;
+- Colors only from `notificationPalette` (as `WarningBubble`): notices `warning` (every notice is a refused user action), errors `critical`;
   dark palette background, palette text color for text and border. Everything inside a toast
   (buttons, counter, details, countdown line) inherits the text color. Box style is
   `embeddedNotificationStyle`. "Close all" and "N more errors" are bubbles in their zone's palette.

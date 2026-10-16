@@ -1,12 +1,14 @@
-import { useState } from "react";
 import { RotateCcw, RotateCw } from "lucide-react";
 import { getSplitCircleRotationDeg, getTileDiagram } from "../../pixi/tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../../pixi/splitFaceLayout";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { ui, radius, spacing, typography } from "../../styles/theme";
+import { ui, spacing, typography } from "../../styles/theme";
 import { disabledOf } from "../../styles/palette";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import {
+  type EditRefusalSource, notifyEditRefusal, SPLIT_BOUNDARY_FACE,
+} from "../../notifications/editRefusalNotifications";
 
 /** What a tile's face currently shows for one node, for the "Manage split nodes" dialog's
  * large-tile diagram (GitHub issue #234). `"one_way_out"`/`"one_way_in"` are relative to that
@@ -15,7 +17,7 @@ export type TileFaceKind = SplitFaceKind;
 
 export interface TileFace {
   kind: TileFaceKind;
-  /** No neighboring tile outside the field on this side — not clickable, shows a hint instead.
+  /** No neighboring tile exists on this side — clicking reports a refusal notice in editors.
    * Identical for every node at this point (a property of the side itself), but carried per-face
    * for convenience at the call site. */
   boundary: boolean;
@@ -48,6 +50,8 @@ interface Props {
    *  pattern's card in the settings list) where rotate controls would have nothing meaningful to
    *  do. Defaults to `true` (shown), matching every existing caller. */
   showRotateControls?: boolean;
+  /** Owning editor for boundary-face refusal feedback. Omitted by read-only previews. */
+  notificationSource?: EditRefusalSource;
 }
 
 /** Large single-tile diagram, rendered in the field's own tessellation — shows every node's
@@ -59,7 +63,7 @@ interface Props {
  * connection") too, but desaturated (`disabledOf`) to read as tentative rather than a real
  * passage. A `wall` face draws nothing at all for that node (forbidding a face is drawn as an
  * *absence*, not a distinct color). A boundary side (no neighboring tile outside the field) is not
- * clickable — clicking it shows an inline hint instead. The active node's own segments/connectors
+ * clickable — clicking it reports a refusal notice in editing contexts. The active node's own segments/connectors
  * always draw last (on top of every other node's).
  *
  * The geometric layout itself (dividing a face among connected nodes, straightening a 2-passage
@@ -68,8 +72,10 @@ interface Props {
  * node's connector (hub/straight-through line to a face's own segment) and the face segment itself
  * always match: a one-way's arrowhead sits only on the connector, never on the along-face
  * segment. */
-export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate, showRotateControls = true }: Props) {
-  const [boundaryHint, setBoundaryHint] = useState(false);
+export function TileFaceEditor({
+  point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate,
+  showRotateControls = true, notificationSource,
+}: Props) {
   const diagram = getTileDiagram(point[0], point[1], cfg);
   if (!diagram) return null;
 
@@ -163,9 +169,15 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
           return (
             <g
               key={side.index}
-              onClick={() => (!boundary ? onFaceClick(side.index) : setBoundaryHint(true))}
-              onContextMenu={(e) => { e.preventDefault(); if (!boundary) onFaceRightClick(side.index); }}
-              onMouseLeave={() => setBoundaryHint(false)}
+              onClick={() => {
+                if (!boundary) onFaceClick(side.index);
+                else if (notificationSource) notifyEditRefusal(notificationSource, SPLIT_BOUNDARY_FACE);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!boundary) onFaceRightClick(side.index);
+                else if (notificationSource) notifyEditRefusal(notificationSource, SPLIT_BOUNDARY_FACE);
+              }}
               style={{ cursor: "default" }}
             >
               <line x1={side.v0.x} y1={side.v0.y} x2={side.v1.x} y2={side.v1.y}
@@ -227,9 +239,6 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
           );
         })}
       </svg>
-      {boundaryHint && (
-        <div style={styles.hint}>{m["post_edit.split_boundary_hint"]()}</div>
-      )}
     </div>
     {showRotateControls && (
       <div style={styles.rotateRow}>
@@ -286,18 +295,6 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     maxWidth: "100%",
     maxHeight: "100%",
-  },
-  hint: {
-    ...typography.body,
-    position: "absolute",
-    bottom: spacing.groupGap,
-    left: spacing.groupGap,
-    right: spacing.groupGap,
-    padding: spacing.itemGap,
-    background: ui.bg.warning,
-    color: ui.text.warning,
-    borderRadius: radius.md,
-    textAlign: "center",
   },
   rotateRow: {
     display: "flex",

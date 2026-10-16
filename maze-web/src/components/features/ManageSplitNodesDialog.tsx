@@ -331,6 +331,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       wouldBreakNeighborShape={(direction) => draftEdges !== null && rotateSplitPointBreaksNeighborShape(
         draftEdges, point, slots, direction, cfg, inFieldCells, nodes, activeSplitNode, splitPoints, level,
       )}
+      notificationSource="post_edit"
       onHoverLink={(row, link) => {
         const from = resolveEndpointToHoverPoint(row.endpoint, nodeById);
         const to = resolveEndpointToHoverPoint(link.otherEndpoint, nodeById);

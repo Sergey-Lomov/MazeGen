@@ -3,7 +3,6 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { typography, spacing, indent, ui } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { ToggleRow } from "../ToggleRow";
@@ -94,8 +93,6 @@ export function PostEditFeature() {
   const cancelPostEditEntityDelete = useMazeStore((s) => s.cancelPostEditEntityDelete);
   const postEditResetPrompt = useMazeStore((s) => s.postEditResetPrompt);
   const cancelPostEditReset = useMazeStore((s) => s.cancelPostEditReset);
-  const postEditDragFailureMessage = useMazeStore((s) => s.postEditDragFailureMessage);
-  const dismissPostEditDragFailureMessage = useMazeStore((s) => s.dismissPostEditDragFailureMessage);
   const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
   const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
@@ -209,8 +206,6 @@ export function PostEditFeature() {
       {postEditResetPrompt && (
         <PostEditResetDialog onClose={cancelPostEditReset} />
       )}
-
-      {postEditDragFailureMessage && <VerticalDragFailureAlert failure={postEditDragFailureMessage} onClose={dismissPostEditDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <div style={styles.nestedContent}>

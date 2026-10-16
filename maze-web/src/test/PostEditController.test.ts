@@ -7,6 +7,10 @@ import { encodePoint } from "../pixi/tessellationProjection";
 import { edgeKey, nodeEndpoint } from "../pixi/postEditEndpoint";
 import { PostEditController } from "../pixi/PostEditController";
 import type { PostEditRenderer } from "../pixi/PostEditRenderer";
+import { resetNotifications } from "../notifications/notificationStore";
+import { noticeCodes } from "./notificationTestHelpers";
+import { SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE } from "../notifications/editRefusalNotifications";
+import { splitEndpoint } from "../pixi/postEditEndpoint";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -66,6 +70,7 @@ function seed(overrides: Partial<PostEditSeed> = {}, extra: Partial<ReturnType<t
 }
 
 beforeEach(() => {
+  resetNotifications();
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     openCard: "post_edit",
@@ -165,6 +170,39 @@ describe("PostEditController element tools (GitHub issue #748)", () => {
     // The 1|2 face is a wall: the settings tool has nothing to configure there.
     controller.onPointerDown(80, -20, 0);
     expect(useMazeStore.getState().postEditCommands).toHaveLength(1);
+    expect(noticeCodes()).toEqual([]);
+  });
+
+  it("reports a reset attempt on a split connection once", () => {
+    seed({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 3, x: 0, y: 0, i: 1 },
+        { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 2, y: 0, i: 0 },
+      ],
+      start: null,
+    }, { postEditTool: "reset" });
+    const controller = makeController();
+
+    controller.onPointerDown(40, -20, 0);
+    controller.onPointerDown(40, -20, 0);
+
+    expect(noticeCodes()).toEqual([`post_edit/${SPLIT_CONNECTION_RESET}`]);
+  });
+
+  it("reports assignment to an unconfirmed split node and leaves metadata unchanged", () => {
+    seed({
+      edges: [], start: null, finish: null,
+      commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0, pointId: "s1" }],
+    }, {
+      postEditTool: "set_finish",
+      postEditActiveSplitNode: { "0,0": splitEndpoint([0, 0], 0) },
+    });
+    const controller = makeController();
+
+    click(controller, 0);
+
+    expect(useMazeStore.getState().postEditDraftMeta?.finish).toBeNull();
+    expect(noticeCodes()).toEqual([`post_edit/${UNCONFIRMED_SPLIT_NODE}`]);
   });
 
   it("moving a teleport endpoint onto its other endpoint's split tile takes the free node", () => {

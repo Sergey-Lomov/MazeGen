@@ -888,7 +888,8 @@ describe("rotatePresetSplitPoint", () => {
       [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
     ]);
     const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet, {}, {});
-    expect(result).toBe(connections); // same reference — untouched
+    expect(result).toEqual(connections);
+    expect(result.refusalReason).toBe("outside_field");
   });
 
   it("rotating onto a neighbor whose split slot already forms a finished bridge doesn't add a 3rd face to it (GitHub issue #580 preset counterpart)", () => {

@@ -11,6 +11,7 @@ import { recordOnLevel } from "./fieldEditUtils";
 import type { ResolvedRotateNode, ResolvedSplitEdgeFace } from "../store/postEditCommandTypes";
 import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { cairoCanonicalFaceOrder } from "./cairoGeometry";
+import { refusedRotation, type SplitRotationResult } from "./splitRotationResult";
 
 export {
   extractPostEditTeleports,
@@ -592,9 +593,8 @@ function resolveFaceOwner(
  * produce). Computed by applying `collectRotateMoves`' raw re-key list to a scratch copy of `edges`,
  * then reading each node's resulting wiring back via `currentSplitNodeFaces` — replay has no
  * tessellation/field access (`PostEditReplayContext` is identity-only), so this resolution only
- * happens once, here, at construction time. Returns `[]` if the rotation must be refused (a moved
- * connection would land outside the field) — the caller treats an empty node list as "nothing to
- * do", same as the old diff-shaped `moves` convention. */
+ * happens once, here, at construction time. A refusal returns `[]` with `refusalReason` set to
+ * `outside_field` or `ambiguous_face_owner`; a plain empty array means there was nothing to move. */
 export function rotateSplitPointNodes(
   edges: Record<string, PostEditEdge>,
   point: [number, number],
@@ -606,9 +606,10 @@ export function rotateSplitPointNodes(
   activeSplitNode: Record<string, PostEditEndpoint>,
   splitPoints: Record<string, number[]>,
   level?: number,
-): ResolvedRotateNode[] {
+): SplitRotationResult<ResolvedRotateNode[]> {
   const moves = collectRotateMoves(edges, point, slotIds, direction, cfg, cellSet, nodes, level);
-  if (moves === undefined || moves.length === 0) return [];
+  if (moves === undefined) return refusedRotation([], "outside_field");
+  if (moves.length === 0) return [];
 
   const levelSplitPoints = recordOnLevel(splitPoints, level);
   const splitPointsAt = (p: [number, number]) => levelSplitPoints[`${p[0]},${p[1]}`] ?? [];
@@ -641,6 +642,7 @@ export function rotateSplitPointNodes(
     ...slotIds.map((slotId) => splitEndpoint(point, slotId, level)),
   ];
   const resolvedOwners = moves.map((m) => resolveFaceOwner(point, m.newNeighbor, cfg, edges, nodes, activeSplitNode, assignedThisRotation, level, splitPointsAt));
+  if (resolvedOwners.some((owner) => owner === null)) return refusedRotation([], "ambiguous_face_owner");
   for (const newOther of resolvedOwners) {
     if (!newOther) continue;
     for (const pf of pointForms) {

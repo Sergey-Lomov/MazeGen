@@ -93,13 +93,13 @@ function NoticeZone({ notices, queuedCount }: { notices: NoticeItem[]; queuedCou
       onMouseLeave={() => setNoticeZonePaused(false)}
     >
       {notices.map((n) => (
-        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle("info") }}>
+        <div key={n.id} data-testid="notice-toast" style={{ ...styles.toast, ...paletteStyle("warning") }}>
           <span style={styles.message}>{notificationMessage(n.code, n.params)}</span>
           <CloseButton onClick={() => closeNotice(n.id)} />
           <CountdownBar key={n.expiresAt} notice={n} paused={paused} />
         </div>
       ))}
-      {notices.length + queuedCount >= 2 && <CloseAllButton severity="info" onClick={closeAllNotices} />}
+      {notices.length + queuedCount >= 2 && <CloseAllButton severity="warning" onClick={closeAllNotices} />}
     </section>
   );
 }
@@ -252,7 +252,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function CloseAllButton({ severity, onClick }: { severity: "info" | "critical"; onClick: () => void }) {
+function CloseAllButton({ severity, onClick }: { severity: "warning" | "critical"; onClick: () => void }) {
   return (
     <div style={styles.zoneHeader}>
       <button type="button" className="hoverable" style={{ ...styles.closeAll, ...paletteStyle(severity) }} onClick={onClick}>
@@ -264,7 +264,7 @@ function CloseAllButton({ severity, onClick }: { severity: "info" | "critical"; 
 
 /** Same pairing as `WarningBubble`: dark palette background, light palette text and border.
  *  Everything inside a toast inherits the text color — no colors of its own. */
-function paletteStyle(severity: "info" | "critical"): React.CSSProperties {
+function paletteStyle(severity: "warning" | "critical"): React.CSSProperties {
   const { bg, text } = notificationPalette(severity);
   return { background: bg, color: text, borderColor: text };
 }

@@ -520,7 +520,7 @@ export function buildResetDownstreamState() {
     postEditActiveSplitNode: {}, postEditDraftSplitPointIds: {}, _nextPostEditSplitPointId: 1,
     postEditFocusedPoint: null, postEditHoveredEntity: null, postEditEntityDeletePrompt: null,
     postEditResetPrompt: null, postEditChangesOpen: false, postEditChangesEntityFilter: null,
-    postEditDragOverride: null, postEditDragFailureMessage: null,
+    postEditDragOverride: null,
     postEditEntityPickPrompt: null, postEditMoveRequest: null, postEditConnectionSettingsPrompt: null,
   };
 }

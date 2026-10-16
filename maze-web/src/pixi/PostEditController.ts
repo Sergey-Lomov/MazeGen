@@ -19,6 +19,9 @@ import { postEditEntitiesForPurpose } from "./entityToolKinds";
 import type { PostEditPointEntityDescriptor } from "./postEditPointEntities";
 import type { FieldEdge } from "./fieldEditUtils";
 import { cancelPendingPointerAction, isPointerModalOpen, resetPointerHover } from "./pointerInteraction";
+import {
+  notifyEditRefusal, SPLIT_CONNECTION_RESET, UNCONFIRMED_SPLIT_NODE,
+} from "../notifications/editRefusalNotifications";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -518,6 +521,10 @@ export class PostEditController extends BaseController {
         this.renderer.updateCellHover(null);
         this.renderer.updateHover(edge, true);
         this.continueEdgeDrag(edge, (e) => {
+          if (isSplitCell(e.from, nodeMap) || isSplitCell(e.to, nodeMap)) {
+            notifyEditRefusal("post_edit", SPLIT_CONNECTION_RESET);
+            return;
+          }
           const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode, level);
           if (nodeKey) {
             useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
@@ -527,8 +534,13 @@ export class PostEditController extends BaseController {
         return;
       }
       const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
-      // Split connections can't be reset via the edge branch (GitHub issue #327) — outside the
-      // near-edge zone, or when the near-edge hit touches a split point, fall back to cell hover.
+      // Split connections can only be reset as a whole point, never through the edge branch.
+      // Keep edge-zone hover so the attempted edge reset can report its refusal on pointerdown.
+      if (edge && (isSplitCell(edge.from, nodeMap) || isSplitCell(edge.to, nodeMap))) {
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(edge, true);
+        return;
+      }
       if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
         this.renderer.updateCellHover(null);
         this.renderer.updateHover(edge, true);
@@ -782,16 +794,21 @@ export class PostEditController extends BaseController {
         return;
       }
 
-      // A split node not yet confirmed (`nodeId` undefined) can't be set as start/finish or
-      // teleport-clicked yet — no-op, not an error (see postEditEndpoint.ts's doc comment; the
-      // same click works once the node is confirmed). Split points were already handled at the top
-      // of this branch (GitHub issue #474) — every path from here targets a plain single-node point.
+      // A split node not yet confirmed (`nodeId` undefined) can't host a vertex element yet; report
+      // that refusal so the user knows to confirm first. Confirmed split points were already handled
+      // at the top of this branch (GitHub issue #474), where they open the node picker.
       if (placement) this.placeVertexAt(placement.endpoint, placement.nodeId, tool);
+      else if (endpoint?.kind === "split") notifyEditRefusal("post_edit", UNCONFIRMED_SPLIT_NODE);
       return;
     }
 
     if (tool === "reset" && button === 0) {
       const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      if (edge && (isSplitCell(edge.from, nodeMap) || isSplitCell(edge.to, nodeMap))) {
+        notifyEditRefusal("post_edit", SPLIT_CONNECTION_RESET);
+        this.renderer.updateHover(edge, true);
+        return;
+      }
       if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
         const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode);
         if (nodeKey) {
@@ -829,9 +846,11 @@ export class PostEditController extends BaseController {
         // Right click resets the edge to its generation-time state (GitHub issue #459), mirroring
         // PresetConnectionsController's own right-click reset — regardless of which edge tool is active.
         // A split connection can't be reset via the edge branch (GitHub issue #327), same as the
-        // dedicated Reset tool: fall through to a no-op there (whole-point reset stays Reset-tool-only).
+        // dedicated Reset tool: report the refusal (whole-point reset stays Reset-tool-only).
         if (!isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
           useMazeStore.getState().applyPostEditToolAt("reset", nodeKey.key, nodeKey.from, nodeKey.to);
+        } else {
+          notifyEditRefusal("post_edit", SPLIT_CONNECTION_RESET);
         }
       } else if (button === 0) {
         useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
@@ -1100,8 +1119,8 @@ export class PostEditController extends BaseController {
 
   /** Starts or completes a two-click teleport placement at the given node. No-op on completion
    * if the node equals the pending origin node. `nodeId` is always an already-resolved real
-   * node — a split node not yet confirmed can't be teleport-clicked yet (see the VERTEX_TOOLS
-   * no-op guard in `onPointerDown`). Both `nodeId` and the stored `postEditTeleportPendingFrom`
+   * node — a split node not yet confirmed can't be teleport-clicked yet (the VERTEX_TOOLS branch
+   * in `onPointerDown` reports that refusal). Both `nodeId` and the stored `postEditTeleportPendingFrom`
    * are bare resolved ids (not `PostEditEndpoint`s), so completion re-resolves each one through
    * `resolveNodeIdToEndpoint` before recording the teleport — a bare `nodeEndpoint(id)` here silently
    * dropped every teleport anchored on a split point's numbered slot (id belongs to a slot, not

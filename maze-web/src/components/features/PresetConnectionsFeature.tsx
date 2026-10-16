@@ -8,7 +8,6 @@ import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
 import { ToolIconRow } from "../ToolIconRow";
-import { VerticalDragFailureAlert } from "../VerticalDragFailureAlert";
 import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
@@ -117,8 +116,6 @@ export function PresetConnectionsFeature() {
   const cancelPresetConnectionSettings = useMazeStore((s) => s.cancelPresetConnectionSettings);
   const presetLockSettingsPrompt = useMazeStore((s) => s.presetLockSettingsPrompt);
   const cancelPresetLockSettings = useMazeStore((s) => s.cancelPresetLockSettings);
-  const presetDragFailureMessage = useMazeStore((s) => s.presetDragFailureMessage);
-  const dismissPresetDragFailureMessage = useMazeStore((s) => s.dismissPresetDragFailureMessage);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -307,8 +304,6 @@ export function PresetConnectionsFeature() {
       {presetLockSettingsPrompt && (
         <PresetLockSettingsDialog onClose={cancelPresetLockSettings} />
       )}
-
-      {presetDragFailureMessage && <VerticalDragFailureAlert failure={presetDragFailureMessage} onClose={dismissPresetDragFailureMessage} />}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <div style={styles.nestedContent}>

@@ -123,7 +123,7 @@ All dialog tokens live in `src/styles/theme.ts`.
 
 Preset and post-edit keep their endpoint models, selectors, previews, and store actions separate.
 Their genuinely common presentation is shared through `EntityChoiceDialog`, `ElevatorFloorPicker`,
-`SplitTargetPicker`, `VerticalDirectionPicker`, `ToolIconRow`, and `VerticalDragFailureAlert`.
+`SplitTargetPicker`, `VerticalDirectionPicker`, and `ToolIconRow`.
 `PresetSplitNodesDialog` and `ManageSplitNodesDialog` use the shared split-node orchestration helper
 for slot ordering, row/tile construction, node colors, semantic labels, and blueprint preparation;
 their endpoint resolution, link/entity assembly, mutations, and hover behavior remain adapters.

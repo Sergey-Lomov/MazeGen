@@ -16,3 +16,9 @@ export function noticeCodes(): string[] {
   const { notices, queue } = useNotificationStore.getState();
   return [...notices, ...queue].map((n) => `${n.source}/${n.code}`);
 }
+
+/** Params of the visible or queued notice with `code`. */
+export function noticeParams(code: string): Readonly<Record<string, string | number | boolean | null>> | undefined {
+  const { notices, queue } = useNotificationStore.getState();
+  return [...notices, ...queue].find((n) => n.code === code)?.params;
+}

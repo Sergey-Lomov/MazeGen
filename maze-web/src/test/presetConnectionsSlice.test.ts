@@ -5,7 +5,11 @@ import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
 import { buildPresetPointEntities } from "../pixi/pointEntities";
 import * as m from "~/paraglide/messages";
 import { resetNotifications } from "../notifications/notificationStore";
-import { noticeCodes } from "./notificationTestHelpers";
+import { noticeCodes, noticeParams } from "./notificationTestHelpers";
+import {
+  ELEVATOR_DRAG_FAILED, SPLIT_ROTATION_OUTSIDE_FIELD, VERTICAL_PASSAGE_DRAG_FAILED,
+} from "../notifications/editRefusalNotifications";
+import { formatTargetLabel } from "../pixi/targetLabel";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 /** Patches the active floor's own field config — presetConnectionsSlice reads tessellationConfig/
@@ -45,6 +49,21 @@ beforeEach(() => {
 });
 
 describe("mazeStore preset connections", () => {
+  it("a boundary-refused split rotation emits one notice and preserves connections", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } });
+    const from = presetEndpoint([-1, -1]);
+    const to = presetEndpoint([-1, 0]);
+    const key = "-1,-1--1,0";
+    useMazeStore.setState({
+      presetConnections: new Map([[key, { from, to, state: "passage", source: "user" }]]),
+    });
+
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+    useMazeStore.getState().rotatePresetSplitPoint([-1, -1], 1);
+
+    expect(useMazeStore.getState().presetConnections.get(key)?.state).toBe("passage");
+    expect(noticeCodes()).toEqual([`preset_connections/${SPLIT_ROTATION_OUTSIDE_FIELD}`]);
+  });
   it("setPresetConnectionsTool updates tool", () => {
     useMazeStore.getState().setPresetConnectionsTool("passage");
     expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
@@ -962,7 +981,8 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetVerticalPassages[0].from).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
+        expect(noticeParams(VERTICAL_PASSAGE_DRAG_FAILED)).toEqual({ coords: formatTargetLabel([9, 9], 1, true, undefined) });
       });
 
       it("picking a slot for the deferred vertical-passage drag commits with the split endpoint", () => {
@@ -998,7 +1018,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().applyPresetSplitTargetPick(9);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "vertical_passage", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${VERTICAL_PASSAGE_DRAG_FAILED}`]);
         expect(presetEndpointsEqual(s.presetVerticalPassages[0].from, presetEndpoint([0, 0]))).toBe(true);
       });
 
@@ -1047,7 +1067,7 @@ describe("mazeStore preset connections", () => {
         useMazeStore.getState().applyPresetSplitTargetPick(4);
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [1, 0] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
       });
 
@@ -1068,7 +1088,7 @@ describe("mazeStore preset connections", () => {
         const s = useMazeStore.getState();
         expect(s.presetSplitTargetPrompt).toBeNull();
         expect(s.presetElevators[0].floors[0]).toEqual(presetEndpoint([0, 0]));
-        expect(s.presetDragFailureMessage).toMatchObject({ entityKind: "elevator", level: 1, point: [9, 9] });
+        expect(noticeCodes()).toEqual([`preset_connections/${ELEVATOR_DRAG_FAILED}`]);
       });
 
       it("elevator with two split target floors ends up created after both picks", () => {

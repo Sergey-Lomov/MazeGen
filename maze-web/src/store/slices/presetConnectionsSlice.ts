@@ -14,6 +14,9 @@ import { isPresetLockTool, type MazeState, type MazeStore, type PresetConnection
 import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
 import { registerNotificationCode } from "../../notifications/notificationRegistry";
 import { notify } from "../../notifications/notificationStore";
+import {
+  notifyEditRefusal, notifyVerticalDragFailure, SPLIT_ROTATION_OUTSIDE_FIELD,
+} from "../../notifications/editRefusalNotifications";
 import * as m from "~/paraglide/messages";
 
 const REMOVE_ENDPOINT_NODE_REJECTED = "preset_connections.remove_endpoint_node_rejected";
@@ -140,7 +143,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetSplitTargetPrompt: null,
   presetEntityDeletePrompt: null,
   presetDragOverride: null,
-  presetDragFailureMessage: null,
   presetEntityPickPrompt: null,
   presetMoveRequest: null,
   presetConnectionSettingsPrompt: null,
@@ -454,7 +456,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     // more honest to catch it up front.
     const resolveFieldAt = resolveFieldAtOf(state);
     if (!cellExistsAt(resolveFieldAt, point, otherLevel)) {
-      set({ presetDragFailureMessage: { entityKind: "vertical_passage", level: otherLevel, point } });
+      notifyVerticalDragFailure("preset_connections", "vertical_passage", point, otherLevel);
       return;
     }
     // Both landing points (the dragged end's new point AND the other end's own point, same (x, y),
@@ -467,7 +469,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     );
     if (queue.length === 0) {
       const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, point, resolveFieldAt, picks[0], picks[1]);
-      if (result.failure) set({ presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } });
+      if (result.failure) notifyVerticalDragFailure("preset_connections", "vertical_passage", result.failure.point, result.failure.level);
       else set({ presetVerticalPassages: result.passages, presetsDirty: true, debugStale: debugStaleOf(state) });
       return;
     }
@@ -500,7 +502,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const resolveFieldAt = resolveFieldAtOf(state);
     for (const otherLevel of levels.filter((l) => l !== level)) {
       if (!cellExistsAt(resolveFieldAt, point, otherLevel)) {
-        set({ presetDragFailureMessage: { entityKind: "elevator", level: otherLevel, point } });
+        notifyVerticalDragFailure("preset_connections", "elevator", point, otherLevel);
         return;
       }
     }
@@ -511,7 +513,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if (queue.length === 0) {
       const overridesByLevel = new Map(orderedLevels.map((l, i) => [l, picks[i]!]));
       const result = moveElevatorEndpoint(state.presetElevators, { id, level }, point, resolveFieldAt, overridesByLevel);
-      if (result.failure) set({ presetDragFailureMessage: { entityKind: "elevator", ...result.failure } });
+      if (result.failure) notifyVerticalDragFailure("preset_connections", "elevator", result.failure.point, result.failure.level);
       else set({ presetElevators: result.elevators, presetsDirty: true, debugStale: debugStaleOf(state) });
       return;
     }
@@ -527,8 +529,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   },
 
   setPresetDragOverride: (override) => set({ presetDragOverride: override }),
-  dismissPresetDragFailureMessage: () => set({ presetDragFailureMessage: null }),
-
   // Always starts a new elevator, even on a point that already has one (GitHub issue #748).
   startPresetElevatorPlacement: (origin) => set({ presetElevatorPending: { origin, floors: new Set([origin.level ?? 0]) } }),
 
@@ -792,7 +792,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet,
       state.presetSplitPoints, state.presetActiveSplitNode, level,
     );
-    if (presetConnections === state.presetConnections) return {};
+    if (presetConnections.refusalReason) {
+      notifyEditRefusal("preset_connections", SPLIT_ROTATION_OUTSIDE_FIELD);
+      return {};
+    }
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
 
@@ -1049,7 +1052,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         if (own && other && entry) {
           const point = own.point;
           const result = moveVerticalPassageEndpoint(state.presetVerticalPassages, { id: action.id, end: action.end }, point, resolveFieldAtOf(state), own, other);
-          if (result.failure) set({ presetDragFailureMessage: { entityKind: "vertical_passage", ...result.failure } });
+          if (result.failure) notifyVerticalDragFailure("preset_connections", "vertical_passage", result.failure.point, result.failure.level);
           else set({ presetVerticalPassages: result.passages, presetsDirty: true, debugStale: debugStaleOf(state) });
         } else {
           console.error("applyPresetSplitTargetPick: move_vertical_passage_endpoint queue drained with an unresolved pick", { action, picks });
@@ -1061,7 +1064,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
           const overridesByLevel = new Map(resolved.map((r) => [r.level, r.endpoint]));
           const point = resolved[0].endpoint.point;
           const result = moveElevatorEndpoint(state.presetElevators, { id: action.id, level: action.levels[0] }, point, resolveFieldAtOf(state), overridesByLevel);
-          if (result.failure) set({ presetDragFailureMessage: { entityKind: "elevator", ...result.failure } });
+          if (result.failure) notifyVerticalDragFailure("preset_connections", "elevator", result.failure.point, result.failure.level);
           else set({ presetElevators: result.elevators, presetsDirty: true, debugStale: debugStaleOf(state) });
         } else {
           console.error("applyPresetSplitTargetPick: move_elevator_endpoint queue drained with an unresolved pick", { action, picks });

@@ -118,6 +118,9 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 3. Clicking the same cell *and* the same floor as the pending origin is a no-op (does not complete or cancel) — the same `(x, y)` on a *different* floor is a legitimate second endpoint, not a same-point click.
 4. **Cancelling a pending placement**: ESC key, or RMB with no existing endpoint under the cursor, clears `presetTeleportPendingFrom` and the preview line — no entry is created.
 
+A teleport click outside the active floor field is rejected with
+`edit_refusal.teleport_outside_field`; it never starts or completes placement.
+
 ### Editing existing teleports
 
 Hit-testing an existing endpoint (`pickTeleportEndpointAt`, the pointer's cell determines the hit and the closest endpoint in that cell wins) while a teleport tool is active:
@@ -221,11 +224,11 @@ Single click, not a two-click gesture like teleports (GitHub issue #357 follow-u
 
 Hit-testing and right-click-to-delete on an *existing* endpoint (`pickVerticalPassageEndpointAt`) mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click always adds a new passage, offering every direction that has a cell on the adjacent floor, even where passages already exist (GitHub issue #748, superseding #495). Direction and type changes use the settings tool.
 
-**Drag-to-move** (GitHub issue #566): dragging an existing vertical-passage endpoint moves BOTH ends to the dragged point's `(x, y)` — a vertical passage's two ends are the same column on different floors, so moving only the dragged end would desync them. The drag is a live preview only (`presetDragOverride`, set on pointerdown/pointermove, read by `PresetConnectionsRenderer` in place of the entry's committed endpoint); nothing is written to `presetVerticalPassages`/`presetElevators` until pointerup. On release, `moveVerticalPassageEndpoint` (`fieldValidity.ts`) validates that the OTHER end's own floor has a cell at the new `(x, y)` (`cellExistsAt`) — if not, the whole drag is reverted (no state change) and `presetDragFailureMessage` is set so `PresetConnectionsFeature` can show an `AlertModal` naming the rejecting floor/point. The dragged end's own floor is never rejected: the pointermove handler already gates candidate points to `getCachedCellSet()` (the active floor's own valid cells) before a drag override is even set.
+**Drag-to-move** (GitHub issue #566): dragging an existing vertical-passage endpoint moves BOTH ends to the dragged point's `(x, y)` — a vertical passage's two ends are the same column on different floors, so moving only the dragged end would desync them. The drag is a live preview only (`presetDragOverride`, set on pointerdown/pointermove, read by `PresetConnectionsRenderer` in place of the entry's committed endpoint); nothing is written to `presetVerticalPassages`/`presetElevators` until pointerup. On release, `moveVerticalPassageEndpoint` (`fieldValidity.ts`) validates that the OTHER end's own floor has a cell at the new `(x, y)` (`cellExistsAt`) — if not, the whole drag is reverted (no state change) and emits `vertical_drag.failed_passage` with the rejecting floor/point. The dragged end's own floor is never rejected: the pointermove handler already gates candidate points to `getCachedCellSet()` (the active floor's own valid cells) before a drag override is even set.
 
 ### Elevator drag-to-move
 
-Same override-preview + commit-on-release mechanics as vertical-passage drag (GitHub issue #566), extended to elevators: an elevator's floors all share one `(x, y)` column, so dragging any one floor's own marker moves EVERY other floor's own endpoint to the same new point. On release, `moveElevatorEndpoint` (`fieldValidity.ts`) validates the new point against every OTHER floor's own field (`cellExistsAt`); if any of them has no cell there, the whole drag is reverted and `presetDragFailureMessage` is set the same way as the vertical-passage case (message wording picks "stop" instead of "passage" via `entityKind: "elevator"`).
+Same override-preview + commit-on-release mechanics as vertical-passage drag (GitHub issue #566), extended to elevators: an elevator's floors all share one `(x, y)` column, so dragging any one floor's own marker moves EVERY other floor's own endpoint to the same new point. On release, `moveElevatorEndpoint` (`fieldValidity.ts`) validates the new point against every OTHER floor's own field (`cellExistsAt`); if any of them has no cell there, the whole drag is reverted and emits `vertical_drag.failed_elevator` with the rejecting floor/point.
 
 ### Elevator placement
 
@@ -489,6 +492,11 @@ Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionE
 `lockedNodes` (the `Map<string, NodeLockKind>` powering the lock tools) is keyed the same way every other preset collection now is (`"x,y"`, `"x,y:slot"`, with optional `@level`) — locks address the exact original node or slot selected in the split picker.
 
 ### Rotating a split point (`rotatePresetSplitPoint`, GitHub issue #580)
+
+`rotatePresetSplitPoint` returns `refusalReason: "outside_field"` when a moved connection would
+leave the field. The store leaves presets unchanged and emits
+`edit_refusal.split_rotation_outside_field`. Boundary-face clicks use
+`edit_refusal.split_boundary_face`; the shared tile editor has no persistent inline hint.
 
 Cairo uses its five stable face slots directly. Rotation orders those slots by the actual
 neighbor-vector angles and moves each face to the adjacent physical offset, rather than treating

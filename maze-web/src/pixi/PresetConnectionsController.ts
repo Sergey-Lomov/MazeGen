@@ -11,6 +11,7 @@ import { BaseController } from "./BaseController";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { cancelPendingPointerAction, pointerCellAtConfig, resetPointerHover } from "./pointerInteraction";
 import { isPresetConnectionsModalOpen, teleportsOnLevel } from "./presetConnectionsInteraction";
+import { notifyEditRefusal, TELEPORT_OUTSIDE_FIELD } from "../notifications/editRefusalNotifications";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -539,7 +540,10 @@ export class PresetConnectionsController extends BaseController {
       // resolve through the active node and would otherwise silently drag/cycle/complete on it
       // without the dialog. Right click (remove) still falls through to the hit-tests.
       if (button === 0) {
-        if (!inField) return;
+        if (!inField) {
+          if (TELEPORT_TOOLS.has(tool)) notifyEditRefusal("preset_connections", TELEPORT_OUTSIDE_FIELD);
+          return;
+        }
         const slotIds = store.presetSplitPoints[splitKeyOf(coords, level)];
         if (slotIds && slotIds.length > 0) {
           const sortedSlotIds = [...slotIds].sort((a, b) => a - b);
@@ -867,10 +871,13 @@ export class PresetConnectionsController extends BaseController {
     if (kind) useMazeStore.getState().setLockedNode(coords[0], coords[1], kind);
   }
 
-  /** Starts or completes a two-click teleport placement at `coords`. No-op if the cell is outside
-   * the field, or (on completion) equal to the pending origin cell. */
+  /** Starts or completes a two-click teleport placement at `coords`. Reports a refusal if the cell
+   * is outside the field; remains a no-op when completion targets the pending origin cell. */
   private tryTeleportClick(coords: [number, number], tool: string): void {
-    if (!this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]))) return;
+    if (!this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]))) {
+      notifyEditRefusal("preset_connections", TELEPORT_OUTSIDE_FIELD);
+      return;
+    }
     const store = useMazeStore.getState();
     const level = activeFloorLevel(store);
     const pendingFrom = store.presetTeleportPendingFrom;
