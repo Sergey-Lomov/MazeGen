@@ -28,22 +28,23 @@ fn simple_two_node_pattern() -> SplitPattern {
     // Node 0 keeps face N (Passage to whatever's north) and a sibling edge to node 1 via face S.
     // Node 1 has its own sibling edge back (implicit, not separately encoded) and keeps face E.
     SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![
                 SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 },
                 SplitPatternFace {
-                    face_index: 1,
+                    face_index: 3,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: Some(1),
                 },
             ],
             vec![SplitPatternFace {
-                face_index: 2,
+                face_index: 0,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -272,20 +273,21 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
         .unwrap();
     let parent = field
         .node_at(field_level, SquarePoint { x: 2, y: 3 })
-        .unwrap(); // north neighbor (face 0)
+        .unwrap(); // north neighbor (canonical face 1)
     graph.add_bidirectional_edge(src, parent, crate::graph::EdgeKind::Basic);
-    // Rotated `simple_two_node_pattern` by hand: node 1 (the sibling) owns face 0 (N, Passage) —
+    // Rotated `simple_two_node_pattern` by hand: node 1 (the sibling) owns face 1 (N, Passage) —
     // the face that must catch `parent`. Node 0 keeps only its sibling-edge face.
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![SplitPatternFace {
-                face_index: 1,
+                face_index: 3,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: Some(1),
             }],
             vec![SplitPatternFace {
-                face_index: 0,
+                face_index: 1,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],

@@ -3,8 +3,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { baseStoreState, emptyFreePoints, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
 vi.mock("../wasm/mazeService", () => ({
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
@@ -45,6 +47,40 @@ function setActiveField(patch: Partial<ReturnType<typeof baseFloorFieldConfig>>)
 }
 
 describe("mazeStore preview/confirm flow", () => {
+  it("confirmTessellation keeps only split patterns whose shape template the new kind provides", () => {
+    const square = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1 };
+    const hex = { shape: "regular:6", node_count: 1, faces: [[]], weight: 1 };
+    useMazeStore.setState({ tessellationKind: "square", splitPatterns: [square, hex] });
+    useMazeStore.getState().setPreviewKind("hex");
+    useMazeStore.getState().confirmTessellation();
+    expect(useMazeStore.getState().splitPatterns).toEqual([hex]);
+  });
+
+  it("setTessellationKind keeps only split patterns whose shape template the new kind provides", () => {
+    const square = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1 };
+    const tri = { shape: "regular:3", node_count: 1, faces: [[]], weight: 1 };
+    useMazeStore.setState({ tessellationKind: "square", splitPatterns: [square, tri] });
+    useMazeStore.getState().setTessellationKind("tri");
+    expect(useMazeStore.getState().splitPatterns).toEqual([tri]);
+  });
+
+  it("confirmTessellation lets quality control drop split patterns the new kind cannot hold", () => {
+    const square = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1 };
+    const hex = { shape: "regular:6", node_count: 1, faces: [[]], weight: 1 };
+    useMazeStore.setState({
+      tessellationKind: "square",
+      availableChecks: [{ id: "split_pattern_shape", label: "", description: "", issue_kinds: ["invalid_split_tile"], params: [{ id: "patterns", label: "", kind: { type: "pattern_list", with_weights: false } }] }],
+      rules: [{
+        id: "r", name: null, kind: "invalid_split_tile", nextLocalCheckId: 1, strategyId: null, disabled: false,
+        ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false,
+        checks: [{ localId: 0, typeId: "split_pattern_shape", params: { patterns: JSON.stringify([square, hex]) }, disabled: false }],
+      }],
+    });
+    useMazeStore.getState().setPreviewKind("hex");
+    useMazeStore.getState().confirmTessellation();
+    expect(JSON.parse(useMazeStore.getState().rules[0].checks[0].params.patterns)).toEqual([hex]);
+  });
+
   it("setPreviewKind does not reset orientation", () => {
     useMazeStore.setState({ previewHexOrientation: "pointy_top", previewTriOrientation: "r90" });
     useMazeStore.getState().setPreviewKind("hex");

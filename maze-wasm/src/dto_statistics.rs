@@ -52,13 +52,16 @@ pub enum OneWayDirectionDto {
 }
 
 /// One group of maze-wide split tiles sharing the same canonical topology
-/// (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied at
-/// any rotation/mirror, with node creation order ignored. `topology[i]` is one node's
-/// per-face-position requirement list (length = tessellation degree); the outer list is sorted
+/// (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied
+/// through any allowed transform of the cell's shape template, with node creation order ignored.
+/// `topology[i]` is one node's requirement list per canonical face of `shape` (length = the
+/// template's face count); the outer list is sorted
 /// (order-independent — see `SplitTopology`'s doc comment), so it also serves as a stable
 /// dedup/lookup key on the web side (e.g. for a title registry keyed by serialized topology).
 #[derive(Serialize)]
 pub struct SplitGroupDto {
+    /// Key of the tiles' shape template (`ShapeDescriptor::key`).
+    pub shape: String,
     pub topology: Vec<Vec<SplitFaceRequirementDto>>,
     pub count: usize,
 }

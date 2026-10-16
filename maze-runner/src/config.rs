@@ -240,9 +240,9 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
 
 /// Builds `SplitGenerationConfig` from the wire DTO. `max_split_nodes` is clamped to `.max(1)` —
 /// only `0` is rejected; `1` is a valid, deliberate no-op (see
-/// `maze_core::generation::SplitGenerationConfig`'s doc comment). `face_index` is passed through
-/// unvalidated here — this layer isn't generic over a concrete `T: Tessellation`, so the
-/// degree-range check happens later, once `T` is known (`dispatch`/`run_generate_typed`).
+/// `maze_core::generation::SplitGenerationConfig`'s doc comment). `shape`/`face_index` are passed
+/// through unvalidated here — this layer isn't generic over a concrete `T: Tessellation`, so the
+/// check happens later, once `T` is known (`validate_split_patterns`).
 pub(crate) fn build_split_generation_config(
     dto: &SplitGenerationConfigDto,
 ) -> maze_core::generation::SplitGenerationConfig {
@@ -267,6 +267,7 @@ pub(crate) fn build_split_patterns(
     };
     dtos.iter()
         .map(|p| SplitPattern {
+            shape: p.shape.clone(),
             node_count: p.node_count,
             faces: p
                 .faces

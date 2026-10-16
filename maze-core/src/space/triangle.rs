@@ -30,12 +30,15 @@ static TRI_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
     LazyLock::new(|| [ShapeDescriptor::regular_polygon(3)]);
 
 /// `pointing_up` cells (`Base` neighbor at `row - 1`, above in `cartesian`): canonical
-/// counter-clockwise order `[Base, Left, Right]`.
-const TRI_BASE_ABOVE_LOCAL_TO_CANONICAL: [usize; 3] = [1, 2, 0];
+/// counter-clockwise order.
+const TRI_BASE_ABOVE_FACES: [TriFace; 3] = [TriFace::Base, TriFace::Left, TriFace::Right];
 
 /// Other cells (`Base` neighbor at `row + 1`, below in `cartesian`): canonical counter-clockwise
-/// order `[Base, Right, Left]`.
-const TRI_BASE_BELOW_LOCAL_TO_CANONICAL: [usize; 3] = [2, 1, 0];
+/// order.
+const TRI_BASE_BELOW_FACES: [TriFace; 3] = [TriFace::Base, TriFace::Right, TriFace::Left];
+
+/// `faces_of` is the canonical counter-clockwise order on both orientations.
+const TRI_LOCAL_TO_CANONICAL: [usize; 3] = [0, 1, 2];
 
 fn pointing_up(cell: TriPoint) -> bool {
     (cell.col + cell.row).rem_euclid(2) == 0
@@ -52,8 +55,14 @@ impl Tessellation for TriTessellation {
         true
     }
 
-    fn faces_of(&self, _cell: TriPoint) -> &[TriFace] {
-        &[TriFace::Left, TriFace::Right, TriFace::Base]
+    /// Counter-clockwise from `Base`; `Left`/`Right` swap circular positions between the two
+    /// orientations.
+    fn faces_of(&self, cell: TriPoint) -> &[TriFace] {
+        if pointing_up(cell) {
+            &TRI_BASE_ABOVE_FACES
+        } else {
+            &TRI_BASE_BELOW_FACES
+        }
     }
 
     fn neighbor(&self, cell: TriPoint, face: TriFace) -> Option<(TriPoint, TriFace)> {
@@ -82,16 +91,9 @@ impl Tessellation for TriTessellation {
         &*TRI_SHAPES
     }
 
-    /// Full dihedral group (3 rotations + 3 reflections). The local-to-canonical map depends on
-    /// the cell's orientation, since `[Left, Right, Base]` runs clockwise on one orientation and
-    /// counter-clockwise on the other.
-    fn shape_of(&self, cell: TriPoint) -> Option<CellShape<'_>> {
-        let local_to_canonical = if pointing_up(cell) {
-            &TRI_BASE_ABOVE_LOCAL_TO_CANONICAL
-        } else {
-            &TRI_BASE_BELOW_LOCAL_TO_CANONICAL
-        };
-        Some(CellShape::full(&TRI_SHAPES[0], local_to_canonical))
+    /// Full dihedral group (3 rotations + 3 reflections).
+    fn shape_of(&self, _cell: TriPoint) -> Option<CellShape<'_>> {
+        Some(CellShape::full(&TRI_SHAPES[0], &TRI_LOCAL_TO_CANONICAL))
     }
 
     /// Canonical (r0-equivalent) projection, unit tile scale — `S = 2.0` (triangle side length,
@@ -112,23 +114,6 @@ impl Tessellation for TriTessellation {
             -(row * h + 2.0 * h / 3.0)
         };
         (cx, cy)
-    }
-
-    /// Faces in `[Left, Right, Base]` order (indices 0-2). A triangle's only geometric symmetry is
-    /// its 3-fold rotation, a cyclic shift Left->Right->Base->Left.
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        &[
-            &[0, 1, 2], // identity
-            &[1, 2, 0], // 120°
-            &[2, 0, 1], // 240°
-        ]
-    }
-
-    /// Empty: `[Left, Right, Base]` runs in opposite circular directions on the two orientations,
-    /// so no single per-tessellation table describes a reflection. The triangle's reflections
-    /// are available per cell through `shape_of` (full dihedral group).
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        &[]
     }
 }
 

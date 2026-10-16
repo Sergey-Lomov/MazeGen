@@ -124,10 +124,10 @@ pub enum OneWayDirectionDto {
     Backward,
 }
 
-/// Wire shape for `maze_core::generation::SplitPatternFace`. `face_index` is passed through
-/// unvalidated here — this layer isn't generic over a concrete `T: Tessellation` yet, so the
-/// degree-range check happens later, in `dispatch`/`run_generate_typed` (see
-/// `Specs`/plan section 3.6).
+/// Wire shape for `maze_core::generation::SplitPatternFace`. `face_index` is a canonical index of
+/// the pattern's shape template, passed through unvalidated here — this layer isn't generic over a
+/// concrete `T: Tessellation` yet, so the shape/range check happens later
+/// (`validate_split_patterns`, once `T` is known).
 #[derive(Deserialize)]
 pub struct SplitPatternFaceDto {
     pub face_index: usize,
@@ -139,6 +139,8 @@ pub struct SplitPatternFaceDto {
 /// Wire shape for `maze_core::generation::SplitPattern`.
 #[derive(Deserialize)]
 pub struct SplitPatternDto {
+    /// Key of the `ShapeDescriptor` the pattern is authored for (`regular:4`, `cairo_pentagon`, …).
+    pub shape: String,
     pub node_count: usize,
     pub faces: Vec<Vec<SplitPatternFaceDto>>,
     #[serde(default = "default_pattern_weight")]

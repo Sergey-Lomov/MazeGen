@@ -1,7 +1,8 @@
 use super::debug_state::DebugGenerationState;
 use super::split_logic::{SplitOutcome, StartReassignment};
 use super::split_pattern::{
-    OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern,
+    OneWayDirection, PatternVariant, SplitFaceRequirement, SplitGenerationConfig, SplitPattern,
+    pattern_variants,
 };
 use super::split_shared::{
     apply_split_teleport, mark_connected, maybe_reassign_start, mint_split_nodes, sync_all_nodes,
@@ -31,17 +32,34 @@ pub struct ResolvedFace {
 
 #[derive(Debug, Clone)]
 struct Adaptation {
-    /// Index into `Tessellation::rotation_symmetries()`.
-    rotation: usize,
-    /// Index into `Tessellation::mirror_symmetries()`, or `None` when no mirror was applied.
-    mirror: Option<usize>,
+    /// Index into the cell's `descriptor().group()` (one of its allowed transforms).
+    transform: usize,
     faces: Vec<ResolvedFace>,
 }
 
+/// Whether `src`'s cell can take any pattern of `split_config` — the cell has a shape template
+/// and at least one pattern is declared for its descriptor. Pattern mode never splits any other
+/// cell (`try_split_src` treats it as ineligible).
+pub(super) fn cell_has_pattern<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    split_config: &SplitGenerationConfig,
+    src: NodeId,
+) -> bool {
+    let Some(point) = field.cell_of(src) else {
+        return false;
+    };
+    let shape = field.tessellation().shape_of(point);
+    split_config
+        .patterns
+        .iter()
+        .any(|pattern| pattern.applies_to(shape.as_ref()))
+}
+
 /// Pattern path (GitHub issue #222): rolls cyclicity once for the whole event, then loops picking
-/// a pattern by weight (excluding already-rejected ones), enumerating every rotation/mirror
-/// adaptation, and retrying another pattern when none validate. Returns `SplitOutcome::NoAdaptation`
-/// when every pattern is exhausted — same fallback as a missed roll.
+/// a pattern by weight among the patterns declared for `src`'s shape template (excluding
+/// already-rejected ones), enumerating every variant of the cell's allowed transform group, and
+/// retrying another pattern when none validate. Returns `SplitOutcome::NoAdaptation` when every
+/// pattern is exhausted — same fallback as a missed roll.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_pattern_split<T: Tessellation>(
     graph: &mut Graph,
@@ -71,7 +89,12 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
         });
     }
 
-    let mut remaining: Vec<usize> = (0..split_config.patterns.len()).collect();
+    let shape = field
+        .cell_of(src)
+        .and_then(|point| field.tessellation().shape_of(point));
+    let mut remaining: Vec<usize> = (0..split_config.patterns.len())
+        .filter(|&i| split_config.patterns[i].applies_to(shape.as_ref()))
+        .collect();
     while !remaining.is_empty() {
         let weights: Vec<f64> = remaining
             .iter()
@@ -80,17 +103,27 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
         let pattern_idx = remaining[crate::math::weighted_index(&weights, &mut state.rng)];
         let pattern = &split_config.patterns[pattern_idx];
 
-        let adaptations = enumerate_adaptations(
-            graph,
-            field,
-            preset_state,
-            &state.visited,
-            pattern,
-            src,
-            bridge,
-            parent,
-            cyclic_fired,
-        );
+        let adaptations = match &shape {
+            Some(shape) => {
+                let variants =
+                    state
+                        .pattern_variants
+                        .variants(&split_config.patterns, pattern_idx, shape);
+                enumerate_variant_adaptations(
+                    graph,
+                    field,
+                    preset_state,
+                    &state.visited,
+                    pattern,
+                    &variants,
+                    src,
+                    bridge,
+                    parent,
+                    cyclic_fired,
+                )
+            }
+            None => Vec::new(),
+        };
         if let Some(log) = scope.as_deref_mut() {
             log.emit(VertexBasedEvent::PatternAdaptationsComputed {
                 src,
@@ -108,8 +141,7 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
             log.emit(VertexBasedEvent::PatternAdaptationChosen {
                 src,
                 pattern: pattern_idx,
-                rotation: chosen.rotation,
-                mirror: chosen.mirror,
+                transform: chosen.transform,
             });
         }
         let node_count = pattern.node_count;
@@ -137,7 +169,7 @@ pub(super) fn handle_pattern_split<T: Tessellation>(
     SplitOutcome::NoAdaptation
 }
 
-/// Per-rotation/mirror scratch state threaded through `resolve_face` — tracks what a single
+/// Per-variant scratch state threaded through `resolve_face` — tracks what a single
 /// candidate adaptation has committed to so far, so later faces can be validated against earlier
 /// ones (no duplicate neighbor claims, at most one visited-neighbor face, bridge/parent coverage).
 struct AdaptationBuilder {
@@ -148,9 +180,10 @@ struct AdaptationBuilder {
     parent_targeted: bool,
 }
 
-/// Resolves one pattern face against `src`'s actual field position under one rotation/mirror,
-/// pushing it into `builder.faces` on success. Returns `false` when this face invalidates the
-/// whole adaptation (caller must abort the rest of this rotation/mirror combination).
+/// Resolves one pattern face, already mapped onto local face `local_face` of `src`'s cell by the
+/// variant, against `src`'s actual field position (`neighbor` plus field membership), pushing it
+/// into `builder.faces` on success. Returns `false` when this face invalidates the whole
+/// adaptation (caller must abort the rest of this variant).
 #[allow(clippy::too_many_arguments)]
 fn resolve_face<T: Tessellation>(
     field: &MultiLevelField<T>,
@@ -164,19 +197,11 @@ fn resolve_face<T: Tessellation>(
     cyclic_fired: bool,
     node_index: usize,
     face: &super::split_pattern::SplitPatternFace,
-    rotation: usize,
-    mirror: Option<usize>,
+    local_face: usize,
     builder: &mut AdaptationBuilder,
 ) -> bool {
     let tessellation = field.tessellation();
-    let Some(resolved_index) =
-        crate::space::transform_face_index(tessellation, face.face_index, rotation, mirror)
-    else {
-        return false;
-    };
-    let Some(&tess_face) = tessellation.faces_of(point).get(resolved_index) else {
-        return false;
-    };
+    let tess_face = tessellation.faces_of(point)[local_face];
 
     if face.sibling_target.is_some() {
         builder.faces.push(ResolvedFace {
@@ -262,8 +287,9 @@ fn resolve_face<T: Tessellation>(
     }
 }
 
-/// Tries one rotation/mirror combination against `pattern`, returning the resulting adaptation
-/// candidate if every face resolved and bridge/parent/preset requirements were all met.
+/// Tries one variant of `pattern` (topology level of the two-level applicability rule), returning
+/// the resulting adaptation candidate if every face resolved and bridge/parent/preset requirements
+/// were all met.
 #[allow(clippy::too_many_arguments)]
 fn try_adaptation<T: Tessellation>(
     field: &MultiLevelField<T>,
@@ -278,8 +304,7 @@ fn try_adaptation<T: Tessellation>(
     parent_fwd: bool,
     parent_bwd: bool,
     cyclic_fired: bool,
-    rotation: usize,
-    mirror: Option<usize>,
+    variant: &PatternVariant,
 ) -> Option<Adaptation> {
     let mut builder = AdaptationBuilder {
         faces: Vec::new(),
@@ -289,8 +314,10 @@ fn try_adaptation<T: Tessellation>(
         parent_targeted: parent.is_none(),
     };
 
-    for (node_index, node_faces) in pattern.faces.iter().enumerate() {
-        for face in node_faces {
+    for (node_index, (node_faces, local_faces)) in
+        pattern.faces.iter().zip(&variant.local_faces).enumerate()
+    {
+        for (face, &local_face) in node_faces.iter().zip(local_faces) {
             let ok = resolve_face(
                 field,
                 level,
@@ -303,8 +330,7 @@ fn try_adaptation<T: Tessellation>(
                 cyclic_fired,
                 node_index,
                 face,
-                rotation,
-                mirror,
+                local_face,
                 &mut builder,
             );
             if !ok {
@@ -321,15 +347,13 @@ fn try_adaptation<T: Tessellation>(
     }
 
     Some(Adaptation {
-        rotation,
-        mirror,
+        transform: variant.transform,
         faces: builder.faces,
     })
 }
 
 /// Every valid adaptation of `pattern` at `src`, as resolved face lists only — the candidate set
-/// `handle_pattern_split` picks from, without the tessellation-specific `rotation`/`mirror`
-/// indices that produced each one. Same inputs and semantics as `enumerate_adaptations`. Used by
+/// `handle_pattern_split` picks from, without the transform index that produced each one. Same inputs and semantics as `enumerate_adaptations`. Used by
 /// `maze-runner`'s canonical baselines (GitHub issue #753), which compare candidate sets
 /// order-independently.
 #[allow(clippy::too_many_arguments)]
@@ -360,8 +384,9 @@ pub fn split_adaptation_candidates<T: Tessellation>(
     .collect()
 }
 
-/// Deterministically enumerates every `rotation x mirror` combination of `pattern` against `src`'s
-/// actual field position, filtering out invalid ones. **Pure, RNG-free** — the only RNG draw in
+/// Deterministically enumerates every variant of `pattern` on `src`'s cell (`pattern_variants`:
+/// the cell's allowed transform group, deduplicated; empty when the pattern's shape is not the
+/// cell's) against `src`'s actual field position, filtering out invalid ones. **Pure, RNG-free** — the only RNG draw in
 /// the whole pattern path is the single pick from this function's result, in `handle_pattern_split`.
 /// A face is valid only if it lands on a real neighbor or is itself `Wall`; every `Passage`/
 /// `OneWay` face must resolve to an unvisited neighbor, except at most one face (when
@@ -390,28 +415,52 @@ fn enumerate_adaptations<T: Tessellation>(
     parent: Option<NodeId>,
     cyclic_fired: bool,
 ) -> Vec<Adaptation> {
-    let Some(level) = field.level_of(src) else {
+    let Some(shape) = field
+        .cell_of(src)
+        .and_then(|point| field.tessellation().shape_of(point))
+    else {
         return Vec::new();
     };
-    let Some(point) = field.cell_of(src) else {
+    enumerate_variant_adaptations(
+        graph,
+        field,
+        preset_state,
+        visited,
+        pattern,
+        &pattern_variants(pattern, &shape),
+        src,
+        bridge,
+        parent,
+        cyclic_fired,
+    )
+}
+
+/// `enumerate_adaptations` over already computed `variants` of `pattern` on `src`'s cell — the
+/// generation path passes them from `GenState`'s `PatternVariantCache`.
+#[allow(clippy::too_many_arguments)]
+fn enumerate_variant_adaptations<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    preset_state: &PresetState,
+    visited: &HashSet<NodeId>,
+    pattern: &SplitPattern,
+    variants: &[PatternVariant],
+    src: NodeId,
+    bridge: Option<NodeId>,
+    parent: Option<NodeId>,
+    cyclic_fired: bool,
+) -> Vec<Adaptation> {
+    let (Some(level), Some(point)) = (field.level_of(src), field.cell_of(src)) else {
         return Vec::new();
     };
-    let tessellation = field.tessellation();
-    if crate::space::symmetry_degree(tessellation) == 0 {
-        return Vec::new();
-    }
 
     let parent_fwd = parent.is_some_and(|p| graph.edge_between(src, p).is_some());
     let parent_bwd = parent.is_some_and(|p| graph.edge_between(p, src).is_some());
 
-    let mirror_choices: Vec<Option<usize>> = std::iter::once(None)
-        .chain((0..tessellation.mirror_symmetries().len()).map(Some))
-        .collect();
-
-    let mut results = Vec::new();
-    for rotation in 0..tessellation.rotation_symmetries().len() {
-        for &mirror in &mirror_choices {
-            if let Some(adaptation) = try_adaptation(
+    variants
+        .iter()
+        .filter_map(|variant| {
+            try_adaptation(
                 field,
                 preset_state,
                 visited,
@@ -424,14 +473,10 @@ fn enumerate_adaptations<T: Tessellation>(
                 parent_fwd,
                 parent_bwd,
                 cyclic_fired,
-                rotation,
-                mirror,
-            ) {
-                results.push(adaptation);
-            }
-        }
-    }
-    results
+                variant,
+            )
+        })
+        .collect()
 }
 
 /// Only pattern-local node 0 (= `src`) is subject to any preset constraint — every newly minted

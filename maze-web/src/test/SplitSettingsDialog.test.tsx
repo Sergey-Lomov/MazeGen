@@ -14,7 +14,7 @@ import { baseStoreState } from "./storeTestHelpers";
 import type { SplitPattern } from "../wasm/types";
 
 function pattern(weight: number): SplitPattern {
-  return { node_count: 2, faces: [[], []], weight };
+  return { shape: "regular:4", node_count: 2, faces: [[], []], weight };
 }
 
 beforeEach(() => {
@@ -73,7 +73,7 @@ describe("SplitSettingsDialog", () => {
   }
 
   it("closing the editor on a pattern left with no faces on any node drops it from the list", () => {
-    useMazeStore.setState({ splitPatterns: [pattern(1), { node_count: 2, faces: [[], []], weight: 5 }] });
+    useMazeStore.setState({ splitPatterns: [pattern(1), { shape: "regular:4", node_count: 2, faces: [[], []], weight: 5 }] });
     render(<SplitSettingsDialog onClose={vi.fn()} />);
     fireEvent.click(screen.getAllByTitle("Edit pattern")[1]);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
@@ -87,6 +87,7 @@ describe("SplitSettingsDialog", () => {
 
   it("closing the editor on a pattern with at least one face defined keeps it in the list", () => {
     const withFace: SplitPattern = {
+      shape: "regular:4",
       node_count: 2,
       faces: [[{ face_index: 0, requirement: { kind: "passage" } }], []],
       weight: 1,

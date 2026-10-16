@@ -82,14 +82,27 @@ UPDATE_BASELINES=1 cargo test -p maze-runner --test baselines
 - **#756 (per-cell neighbor contract)**, **#757 (shape templates)** — no behavior change; every
   baseline must match exactly.
 - **#758 (split logic on shape templates, canonical circular face order)** — the fixtures' split
-  patterns are authored as `face_index` in today's `faces_of` order. Translate them to the new
-  face order (or attach their `shape`) in the same change, so each pattern keeps its geometric
-  meaning; otherwise baselines diverge because the fixture changed, not the behavior. Then:
-  - `qc`/`repair` sections on fixed graphs must match canonically;
-  - `split_candidates` must match, except tri, whose candidate sets become strict supersets
-    (reflections are added) — the comparison needs a superset mode for that ticket;
-  - `generation` may change due to neighbor order; verify with invariants (connectivity, no new
-    unresolved QC issues) before updating.
+  patterns carry `shape` and canonical `face_index` values, translated from the old `faces_of`
+  positions so each keeps its geometric meaning: square `[N, S, E, W] → [1, 3, 0, 2]`, hex
+  identity, triangle through the pointing-up binding (`[1, 2, 0]`; any bijection is equivalent
+  under the full triangle group), Cairo through the `R` orientation's binding
+  (`[0, 1, 3, 2, 4]`). Observed, in two steps:
+  - Split logic on shape templates (old `faces_of` order kept): `qc`/`repair` matched exactly for
+    every tessellation, `split_candidates` matched exactly for square and hex, triangle candidate
+    sets became strict supersets at every probed key (reflections). Cairo matched exactly on `R`
+    cells and differed on `L`/`U`/`D` cells: the old slot-identity "rotation" was not a rigid
+    motion between orientations, because the face slots run in a different circular order there.
+    `generation` changed for every tessellation: the variant list is deduplicated (the old
+    rotation × mirror product listed many orientations twice), so the uniform pick sees a
+    different candidate count.
+  - Canonical circular `faces_of` (square, triangle, Cairo; hex was already circular): `qc` and
+    `split_candidates` unchanged; `repair` and `generation` changed for square, triangle and Cairo
+    through the new neighbor iteration order.
+
+  Both steps were checked with invariants on 12–40 seeds per tessellation before the update:
+  generation stays weakly connected after repair at the same rate as before, and the set of
+  remaining QC issue kinds after repair is unchanged (`excessive_scc_count`,
+  `region_needs_expansion` always, `unreachable_finish` at a comparable rate).
 - **#759 (core geometry)** — adds the geometry snapshot stage to the benchmark. Baselines change
   only where geometry is observable (see `expand_region_passage` above); explain any difference
   before updating.

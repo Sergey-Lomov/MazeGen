@@ -44,34 +44,49 @@ pub enum CairoTileKind {
 static CAIRO_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
     LazyLock::new(|| [ShapeDescriptor::cairo_pentagon()]);
 
-// Local `FACES` order to the canonical counter-clockwise order starting at `Twin` (the long side),
-// per orientation — the face slots are not in the same circular order on every orientation.
-/// R: `[Twin, NorthWest, SouthEast, NorthEast, SouthWest]`.
-const R_LOCAL_TO_CANONICAL: [usize; 5] = [0, 1, 3, 2, 4];
-/// U: `[Twin, SouthEast, NorthEast, SouthWest, NorthWest]`.
-const U_LOCAL_TO_CANONICAL: [usize; 5] = [0, 4, 2, 1, 3];
-/// L: `[Twin, SouthEast, SouthWest, NorthWest, NorthEast]`.
-const L_LOCAL_TO_CANONICAL: [usize; 5] = [0, 3, 4, 1, 2];
-/// D: `[Twin, NorthWest, SouthWest, NorthEast, SouthEast]`.
-const D_LOCAL_TO_CANONICAL: [usize; 5] = [0, 1, 3, 4, 2];
+// `faces_of` per orientation: the canonical counter-clockwise order starting at `Twin` (the long
+// side) — the face slots are not in the same circular order on every orientation.
+const R_FACES: [CairoFace; 5] = [
+    CairoFace::Twin,
+    CairoFace::NorthWest,
+    CairoFace::SouthEast,
+    CairoFace::NorthEast,
+    CairoFace::SouthWest,
+];
+const U_FACES: [CairoFace; 5] = [
+    CairoFace::Twin,
+    CairoFace::SouthEast,
+    CairoFace::NorthEast,
+    CairoFace::SouthWest,
+    CairoFace::NorthWest,
+];
+const L_FACES: [CairoFace; 5] = [
+    CairoFace::Twin,
+    CairoFace::SouthEast,
+    CairoFace::SouthWest,
+    CairoFace::NorthWest,
+    CairoFace::NorthEast,
+];
+const D_FACES: [CairoFace; 5] = [
+    CairoFace::Twin,
+    CairoFace::NorthWest,
+    CairoFace::SouthWest,
+    CairoFace::NorthEast,
+    CairoFace::SouthEast,
+];
+
+/// `faces_of` is the canonical order on every orientation.
+const CAIRO_LOCAL_TO_CANONICAL: [usize; 5] = [0, 1, 2, 3, 4];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CairoTessellation;
-
-const FACES: [CairoFace; 5] = [
-    CairoFace::Twin,
-    CairoFace::NorthWest,
-    CairoFace::NorthEast,
-    CairoFace::SouthEast,
-    CairoFace::SouthWest,
-];
 
 /// One direct transition: the face, its integer coordinate offset, and the
 /// destination cell's face on the same boundary piece.
 type Transition = (CairoFace, (i32, i32), CairoFace);
 
 // These are the direct coordinate transitions of the standard Cairo model,
-// in `FACES` order (so a face's discriminant indexes its entry).
+// in `CairoFace` discriminant order (so a face's discriminant indexes its entry).
 // They are deliberately tables, rather than a geometric search: every entry
 // is an integer offset and every reverse transition appears in the table of
 // the destination orientation, as the entry's back face.
@@ -128,7 +143,7 @@ impl CairoTessellation {
         let transition = Self::offsets(cell)?[face as usize];
         debug_assert!(
             transition.0 == face,
-            "Cairo transition tables must follow FACES order"
+            "Cairo transition tables must follow CairoFace discriminant order"
         );
         Some(transition)
     }
@@ -203,7 +218,13 @@ impl Tessellation for CairoTessellation {
             Self::is_valid_cell(cell),
             "faces_of: invalid Cairo cell {cell:?}"
         );
-        &FACES
+        match Self::tile_kind(cell) {
+            Some(CairoTileKind::R) => &R_FACES,
+            Some(CairoTileKind::U) => &U_FACES,
+            Some(CairoTileKind::L) => &L_FACES,
+            Some(CairoTileKind::D) => &D_FACES,
+            None => &[],
+        }
     }
 
     fn neighbor(&self, cell: CairoPoint, face: CairoFace) -> Option<(CairoPoint, CairoFace)> {
@@ -226,16 +247,6 @@ impl Tessellation for CairoTessellation {
             .is_some_and(|(_, _, previous_face)| previous_face == out_face)
     }
 
-    /// The Cairo pentagon has no non-trivial rotational symmetry.  Its one
-    /// reflection fixes the long side and swaps the two pairs of short sides.
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        &[&[0, 1, 2, 3, 4]]
-    }
-
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        &[&[0, 4, 3, 2, 1]]
-    }
-
     fn shape_descriptors(&self) -> &[ShapeDescriptor] {
         &*CAIRO_SHAPES
     }
@@ -245,13 +256,8 @@ impl Tessellation for CairoTessellation {
             Self::is_valid_cell(cell),
             "shape_of: invalid Cairo cell {cell:?}"
         );
-        let local_to_canonical = match Self::tile_kind(cell)? {
-            CairoTileKind::R => &R_LOCAL_TO_CANONICAL,
-            CairoTileKind::U => &U_LOCAL_TO_CANONICAL,
-            CairoTileKind::L => &L_LOCAL_TO_CANONICAL,
-            CairoTileKind::D => &D_LOCAL_TO_CANONICAL,
-        };
-        Some(CellShape::full(&CAIRO_SHAPES[0], local_to_canonical))
+        Self::tile_kind(cell)?;
+        Some(CellShape::full(&CAIRO_SHAPES[0], &CAIRO_LOCAL_TO_CANONICAL))
     }
 
     /// Canonical unit-scale projection of the integer tile-centre coordinate.

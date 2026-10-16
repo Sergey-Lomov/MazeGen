@@ -339,6 +339,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
       splitMaxNodes: 3,
       splitPatterns: [
         {
+          shape: "regular:4",
           node_count: 2,
           faces: [
             [
@@ -372,7 +373,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("drops a malformed split pattern without failing the whole file", () => {
     const state = makeState({ splitPatternMode: true, splitMaxNodes: 2, splitPatterns: [] });
     const raw = JSON.parse(JSON.stringify(serializeProject(state)));
-    raw.generation.splitGeneration.patterns = [{ node_count: "not a number" }, { garbage: true }];
+    raw.generation.splitGeneration.patterns = [{ shape: "regular:4", node_count: "not a number" }, { garbage: true }];
     const reparsed = parseAndValidate(raw);
     expect(reparsed.generation.splitGeneration.patterns).toEqual([]);
   });

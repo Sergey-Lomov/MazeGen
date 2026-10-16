@@ -14,7 +14,7 @@ use vertex_based_vertical::{
 pub(super) use super::add_edge_and_detect_direction;
 use super::debug_state::DebugGenerationState;
 use super::split_logic::{SplitOutcome, StartReassignment, try_split_src};
-use super::split_pattern::SplitGenerationConfig;
+use super::split_pattern::{PatternVariantCache, SplitGenerationConfig};
 use super::{
     ElementsConfig, GenerationParams, PresetState, can_connect, gaussian_weighted_index,
     try_add_edge, try_add_edge_kind,
@@ -45,6 +45,8 @@ pub(super) struct GenState {
     pub(super) in_reserve: HashSet<NodeId>,
     pub(super) rng: MazeRng,
     pub(super) all_nodes: Vec<NodeId>,
+    /// Split-pattern variants per (pattern, cell binding), computed once per run.
+    pub(super) pattern_variants: PatternVariantCache,
 }
 
 impl GenState {
@@ -59,6 +61,7 @@ impl GenState {
             in_reserve: HashSet::new(),
             rng: MazeRng::seed_from_u64(seed),
             all_nodes,
+            pattern_variants: PatternVariantCache::default(),
         };
         // preset_connected nodes are NOT added to visited upfront — this keeps them visible
         // as connection targets for free_neighbors. Exception: start itself may be preset_connected

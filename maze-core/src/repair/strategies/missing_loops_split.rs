@@ -517,17 +517,18 @@ mod tests {
         // every candidate outright.
         use crate::generation::{SplitFaceRequirement, SplitPattern, SplitPatternFace};
         let pattern = SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![],
                 vec![
                     SplitPatternFace {
-                        face_index: 2,
+                        face_index: 0,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },
                     SplitPatternFace {
-                        face_index: 0,
+                        face_index: 1,
                         requirement: SplitFaceRequirement::Passage,
                         sibling_target: None,
                     },

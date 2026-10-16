@@ -365,41 +365,42 @@ export function rotateFaceIndex(
 }
 
 /** Web-authored `face_index` values (GitHub issue #222's `SplitPattern`, authored/edited via
- *  `TileFaceEditor` against `getNeighborData`'s offset ordering) use a different per-tessellation
- *  face ordering than `maze-core`'s `Tessellation::faces()` (`SquareFace::faces() = [N, S, E, W]`,
- *  `HexFace::faces() = [E, NE, NW, W, SW, SE]`) — confirmed via delta-by-delta comparison, GitHub
- *  issue #273. Triangle's web/core orderings already agree (identity), so no entry is needed there.
- *  Maps a web-order `face_index` to core's ordering; both sides keep their own internal ordering
- *  (canvas geometry/hit-testing on the web side, `step`/`face_at`/wire format on the core side). */
+ *  `TileFaceEditor` against `getNeighborData`'s offset ordering at `patternAnchorPoint`) use a
+ *  different per-tessellation face ordering than core's canonical (counter-clockwise) face order of
+ *  the pattern's shape template (`ShapeDescriptor`, GitHub issue #758). Maps a web-order
+ *  `face_index` to the canonical index; both sides keep their own internal ordering (canvas
+ *  geometry/hit-testing on the web side, shape templates on the core side). Triangle's web order
+ *  `[Left, Right, Base]` is mapped through the anchor cell's (pointing-up) template binding; any
+ *  bijection is equivalent there, since a triangle's group contains every face permutation. Cairo's
+ *  web face slots use core's stable `[Twin, NorthWest, NorthEast, SouthEast, SouthWest]` order,
+ *  mapped through the anchor cell's (`D` orientation) template binding. */
 const SPLIT_FACE_INDEX_WEB_TO_CORE: Record<string, number[]> = {
-  square: [2, 0, 3, 1],
+  square: [0, 1, 2, 3],
   hex_flat_top: [0, 5, 4, 3, 2, 1],
   hex_pointy_top: [4, 3, 2, 1, 0, 5],
-  // Cairo's web face slots intentionally use core's stable
-  // [Twin, NorthWest, NorthEast, SouthEast, SouthWest] order.
-  cairo: [0, 1, 2, 3, 4],
+  tri: [1, 2, 0],
+  cairo: [0, 1, 3, 4, 2],
 };
 
 /** Converts a `SplitPattern.faces[].face_index` value from web ordering (`TileFaceEditor`'s
- *  authoring order) to `maze-core`'s `Tessellation::faces()` ordering — the one conversion point
- *  at the wasm-config-serialization boundary (`buildGenerateConfig`), so neither side's internal
- *  ordering has to change (GitHub issue #273). Identity for triangle tessellations. */
+ *  authoring order) to the canonical index of the pattern's shape template — the one conversion
+ *  point at the wasm-config-serialization boundary (`buildGenerateConfig`), so neither side's
+ *  internal ordering has to change (GitHub issue #273). */
 export function splitFaceIndexToCore(cfg: FieldConfig, faceIndex: number): number {
-  const table = splitFaceIndexTable(cfg);
-  return table ? table[faceIndex] : faceIndex;
+  return splitFaceIndexTable(cfg)[faceIndex] ?? faceIndex;
 }
 
-function splitFaceIndexTable(cfg: FieldConfig): number[] | undefined {
+function splitFaceIndexTable(cfg: FieldConfig): number[] {
   switch (cfg.tessellation.kind) {
     case "hex": return SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${hexOrientationOf(cfg)}`];
     case "square": return SPLIT_FACE_INDEX_WEB_TO_CORE.square;
     case "cairo": return SPLIT_FACE_INDEX_WEB_TO_CORE.cairo;
-    case "tri": return undefined;
+    case "tri": return SPLIT_FACE_INDEX_WEB_TO_CORE.tri;
   }
 }
 
 /** Converts a `SplitPattern[]` from web `face_index` ordering (`TileFaceEditor`'s authoring order)
- *  to `maze-core`'s `Tessellation::faces()` ordering, via `splitFaceIndexToCore` — the single
+ *  to the canonical face order of its shape template, via `splitFaceIndexToCore` — the single
  *  conversion point every wasm-bound `SplitPattern[]` payload must go through (GitHub issue #273):
  *  `buildGenerateConfig`'s `split_generation.patterns` (generation's own store-backed patterns) and
  *  `ParamFields.tsx`'s `pattern_list`/`split_generation_config` param editors (a repair/check
@@ -410,20 +411,18 @@ export function splitPatternsToCore(patterns: SplitPattern[], cfg: FieldConfig):
   return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToCore(cfg, i));
 }
 
-/** Inverse of `splitFaceIndexToCore` — core `Tessellation::faces()` ordering back to web
+/** Inverse of `splitFaceIndexToCore` — canonical template ordering back to web
  *  (`TileFaceEditor`'s authoring order). Used when a `SplitPattern[]` that was already converted to
  *  core ordering (a repair/check strategy's `pattern_list`/`split_generation_config` param, GitHub
  *  issue #273) needs to be shown/edited again in `TileFaceEditor`-based UI, which only ever reads
  *  web ordering. Built once per tessellation instead of inverting per-call — each table is its own
  *  permutation, so this is just the array's own inverse index mapping. */
 export function splitFaceIndexToWeb(cfg: FieldConfig, faceIndex: number): number {
-  const table = splitFaceIndexTable(cfg);
-  if (!table) return faceIndex;
-  const webIndex = table.indexOf(faceIndex);
+  const webIndex = splitFaceIndexTable(cfg).indexOf(faceIndex);
   return webIndex === -1 ? faceIndex : webIndex;
 }
 
-/** Inverse of `splitPatternsToCore` — converts a `SplitPattern[]` already in core ordering back to
+/** Inverse of `splitPatternsToCore` — converts a `SplitPattern[]` already in canonical ordering back to
  *  web ordering, for display/editing in `TileFaceEditor`-based UI (GitHub issue #273). */
 export function splitPatternsToWeb(patterns: SplitPattern[], cfg: FieldConfig): SplitPattern[] {
   return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToWeb(cfg, i));

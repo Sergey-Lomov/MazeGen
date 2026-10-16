@@ -131,26 +131,25 @@ fn field_neighbors_are_symmetric_and_ordered_by_faces() {
 }
 
 #[test]
-fn explicit_symmetry_tables_have_the_expected_shape() {
-    assert_eq!(
-        CairoTessellation.rotation_symmetries(),
-        &[&[0, 1, 2, 3, 4][..]]
-    );
-    assert_eq!(
-        CairoTessellation.mirror_symmetries(),
-        &[&[0, 4, 3, 2, 1][..]]
-    );
+fn every_cell_has_the_cairo_pentagon_template_over_all_five_faces() {
+    for cell in broad_points() {
+        let shape = CairoTessellation.shape_of(cell).unwrap();
+        assert_eq!(shape.descriptor().key(), "cairo_pentagon");
+        assert_eq!(shape.descriptor().group().len(), 2);
 
-    let cell = CairoPoint::new(-1, 2);
-    let mut faces = CairoTessellation.faces_of(cell).to_vec();
-    faces.sort_by_key(|face| match face {
-        CairoFace::Twin => 0,
-        CairoFace::NorthWest => 1,
-        CairoFace::NorthEast => 2,
-        CairoFace::SouthEast => 3,
-        CairoFace::SouthWest => 4,
-    });
-    assert_eq!(faces, CairoTessellation.faces_of(cell));
+        let mut faces = CairoTessellation.faces_of(cell).to_vec();
+        faces.sort_by_key(|face| *face as usize);
+        assert_eq!(
+            faces,
+            [
+                CairoFace::Twin,
+                CairoFace::NorthWest,
+                CairoFace::NorthEast,
+                CairoFace::SouthEast,
+                CairoFace::SouthWest,
+            ]
+        );
+    }
 }
 
 #[test]

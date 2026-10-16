@@ -54,8 +54,8 @@ pub use recursive_backtracker::{
 pub use split_logic::StartReassignment;
 pub(crate) use split_logic::split_is_eligible;
 pub use split_pattern::{
-    OneWayDirection, SplitFaceRequirement, SplitGenerationConfig, SplitPattern, SplitPatternFace,
-    validate_split_patterns,
+    OneWayDirection, PatternVariant, SplitFaceRequirement, SplitGenerationConfig, SplitPattern,
+    SplitPatternFace, pattern_variants, validate_split_patterns,
 };
 pub use split_pattern_logic::{ResolvedFace, split_adaptation_candidates};
 pub use types::{

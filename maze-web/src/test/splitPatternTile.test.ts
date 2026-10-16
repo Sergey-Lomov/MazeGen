@@ -24,13 +24,13 @@ describe("degreeFor", () => {
   });
 
   it("builds five-face pattern tiles for Cairo", () => {
-    const nodes = tileNodesForPattern({ node_count: 1, faces: [[]], weight: 1 }, 5);
+    const nodes = tileNodesForPattern({ shape: "cairo_pentagon", node_count: 1, faces: [[]], weight: 1 }, 5);
     expect(nodes[0].faces).toHaveLength(5);
   });
 });
 
 describe("resizePatternNodes", () => {
-  const pattern = (nodeCount: number, faces: SplitPattern["faces"]): SplitPattern => ({ node_count: nodeCount, faces, weight: 1.0 });
+  const pattern = (nodeCount: number, faces: SplitPattern["faces"]): SplitPattern => ({ shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 });
 
   it("truncates extra nodes' face lists when shrinking", () => {
     const p = pattern(3, [[{ face_index: 0, requirement: { kind: "passage" } }], [], [{ face_index: 1, requirement: { kind: "wall" } }]]);
@@ -56,12 +56,13 @@ describe("resizePatternNodes", () => {
 
 describe("removePatternNode", () => {
   it("is a no-op when only one node remains", () => {
-    const p: SplitPattern = { node_count: 1, faces: [[]], weight: 1.0 };
+    const p: SplitPattern = { shape: "regular:4", node_count: 1, faces: [[]], weight: 1.0 };
     expect(removePatternNode(p, 0)).toBe(p);
   });
 
   it("drops the removed node's face list and shifts remaining indices down", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 1 }],
@@ -80,6 +81,7 @@ describe("removePatternNode", () => {
 
   it("re-indexes a sibling_target above the removed index down by one", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 2 }],
@@ -98,6 +100,7 @@ describe("removePatternNode", () => {
 
   it("leaves a sibling_target below the removed index untouched", () => {
     const p: SplitPattern = {
+      shape: "regular:4",
       node_count: 3,
       faces: [
         [],
@@ -117,16 +120,16 @@ describe("tileNodesForTopology", () => {
   const cfg = fieldOf("square", { shape: "rect", cols: 3, rows: 3 });
 
   it("converts core face positions to web face positions per node", () => {
-    // Square core order is [N, S, E, W] (indices 0-3); splitFaceIndexToCore's web->core table is
-    // [2, 0, 3, 1], so web position 0 reads core position 2 (E), web 1 reads core 0 (N), web 2
-    // reads core 3 (W), web 3 reads core 1 (S).
+    // Hex flat_top canonical order is [E, NE, NW, W, SW, SE]; splitFaceIndexToCore's web->canonical
+    // table is [0, 5, 4, 3, 2, 1], so web position i reads canonical position table[i].
+    const hexCfg = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const topology: SplitFaceRequirement[][] = [
-      [PASSAGE, WALL, WALL, PASSAGE], // core: N=passage, S=wall, E=wall, W=passage
+      [PASSAGE, PASSAGE, WALL, WALL, WALL, WALL], // canonical: E, NE = passage
     ];
-    const nodes = tileNodesForTopology(topology, cfg);
+    const nodes = tileNodesForTopology(topology, hexCfg);
     expect(nodes).toHaveLength(1);
-    // web0(E)->core2=wall, web1(N)->core0=passage, web2(W)->core3=passage, web3(S)->core1=wall
-    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "passage", "passage", "wall"]);
+    // web0->E=passage, web1->SE=wall, …, web5->NE=passage
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["passage", "wall", "wall", "wall", "wall", "passage"]);
   });
 
   it("assigns each node a distinct color and no boundary flag", () => {
@@ -144,8 +147,8 @@ describe("titleKeyForTopology", () => {
 
   it("matches the square Bridge topology by exact structural equality", () => {
     const topology: SplitFaceRequirement[][] = [
-      [PASSAGE, PASSAGE, WALL, WALL],
-      [WALL, WALL, PASSAGE, PASSAGE],
+      [PASSAGE, WALL, PASSAGE, WALL],
+      [WALL, PASSAGE, WALL, PASSAGE],
     ];
     expect(titleKeyForTopology(topology)).toBe("split_pattern_title.bridge");
   });

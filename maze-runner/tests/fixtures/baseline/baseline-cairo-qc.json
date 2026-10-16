@@ -218,6 +218,7 @@
     "pattern_mode": true,
     "patterns": [
       {
+        "shape": "cairo_pentagon",
         "node_count": 2,
         "faces": [
           [
@@ -240,6 +241,7 @@
         "weight": 1.0
       },
       {
+        "shape": "cairo_pentagon",
         "node_count": 2,
         "faces": [
           [
@@ -259,7 +261,7 @@
           ],
           [
             {
-              "face_index": 2,
+              "face_index": 3,
               "requirement": {
                 "kind": "passage"
               }
@@ -269,6 +271,7 @@
         "weight": 1.0
       },
       {
+        "shape": "cairo_pentagon",
         "node_count": 3,
         "faces": [
           [
@@ -290,7 +293,7 @@
           ],
           [
             {
-              "face_index": 2,
+              "face_index": 3,
               "requirement": {
                 "kind": "passage"
               }

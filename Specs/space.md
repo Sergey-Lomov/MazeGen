@@ -18,8 +18,8 @@ pub trait Tessellation: Send + Sync + 'static {
     fn faces_of(&self, cell: Self::CellId) -> &[Self::Face];
     fn neighbor(&self, cell: Self::CellId, face: Self::Face) -> Option<(Self::CellId, Self::Face)>;
     fn is_straight(&self, cell: Self::CellId, in_face: Self::Face, out_face: Self::Face) -> bool;
-    fn rotation_symmetries(&self) -> &[&[usize]];
-    fn mirror_symmetries(&self) -> &[&[usize]];
+    fn shape_descriptors(&self) -> &[ShapeDescriptor];
+    fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
     fn cartesian(&self, cell: Self::CellId) -> (f64, f64);
     fn edge_position(&self, from: Self::CellId, to: Self::CellId) -> (f64, f64); // default: midpoint of endpoints
 }
@@ -38,7 +38,7 @@ fixture keys (`split_points`, `[x, y]` coordinates) are unchanged here — they 
 instance per maze is shared via `Arc<T>` by `Field<T>` and `MultiLevelField<T>` (accessors
 `tessellation() -> &T` and `shared_tessellation() -> &Arc<T>`). The four built-in tessellations
 are zero-sized instances (`#[derive(Default)]`). Free functions built on the trait
-(`transform_face_index`, `geometric_distance`, `geometric_edge_distance`, `floor_aware_distance`,
+(`face_index_toward`, `geometric_distance`, `geometric_edge_distance`, `floor_aware_distance`,
 `floor_aware_edge_distance`) take the instance as their first argument; consumers resolve it from
 the field (`maze.field.tessellation()`).
 
@@ -49,17 +49,19 @@ place where the runtime kind becomes a compile-time `T`: it builds the instance,
 the kind does not accept (`Err` with a reason; the built-in kinds accept none) and hands
 `Arc<T>` plus the kind's wire point codec (`CellCodec`) to a `TessellationVisitor`. `maze-runner`
 (full run, canonical baselines, benchmarks) and `maze-wasm` (generate, compute analytics,
-`cartesian_coords`) all dispatch through it.
+`cartesian_coords`, `tessellation_shapes`) all dispatch through it.
 
 **Per-cell neighbor contract (GitHub issue #756).** Passing an invalid cell, or a face not in
 `faces_of(cell)`, to `faces_of`/`neighbor`/`is_straight` is a precondition violation
 (`debug_assert`), not a `None` result.
 
-- **`faces_of(cell)`** — the cell's faces, allocation-free (a borrowed slice). Every built-in
-  tessellation returns the same order for all of its cells (`[N, S, E, W]`, `[E, NE, NW, W, SW,
-  SE]`, `[Left, Right, Base]`, `[Twin, NorthWest, NorthEast, SouthEast, SouthWest]`); the order
-  becomes the canonical circular one in #758. A cell has at most one face toward any neighbor, so
-  `Field::neighbors` never visits the same neighbor twice.
+- **`faces_of(cell)`** — the cell's faces, allocation-free (a borrowed slice), in the canonical
+  circular order (counter-clockwise, GitHub issue #758): square `[E, N, W, S]`, hex `[E, NE, NW,
+  W, SW, SE]`, triangle `[Base, Left, Right]` (pointing up, `Base` neighbor at `row - 1`) or
+  `[Base, Right, Left]` (the other orientation), Cairo from `Twin` per orientation (R `[Twin, NW,
+  SE, NE, SW]`, U `[Twin, SE, NE, SW, NW]`, L `[Twin, SE, SW, NW, NE]`, D `[Twin, NW, SW, NE,
+  SE]`). Triangle and Cairo order therefore differs per cell. A cell has at most one face toward
+  any neighbor, so `Field::neighbors` never visits the same neighbor twice.
 - **`neighbor(cell, face) -> Option<(cell', face')>`** — the adjacent cell and the face of `cell'`
   that is the same boundary piece; `None` when no cell exists there (built-in tessellations: only on `i32` coordinate overflow). Cairo's offset tables carry the back face directly, indexed by face discriminant.
   Reciprocal for every tessellation (`neighbor(cell', face') == Some((cell, face))`), checked by
@@ -76,7 +78,10 @@ the kind does not accept (`Err` with a reason; the built-in kinds accept none) a
   `faces_of(cell)` of the face reaching `other`, or `None` when `other` is not a tessellation
   neighbor. Used by the per-face split QC check.
 - **`is_valid_cell`** identifies whether a coordinate represents an actual tile. `Field::new` and `Field::from_id_cells` reject invalid points before storing them.
-- **`rotation_symmetries`/`mirror_symmetries`** — each tessellation states its own rotation/mirror symmetry as an explicit permutation table over face indices (positions in `faces_of`), never a shared arithmetic formula (GitHub issue #275: a hex-shaped `(index + rotation) % degree` silently breaks for square/tri, whose face order isn't angular). `transform_face_index<T>(face_index, rotation, mirror)` is the one shared function built on top of these tables — used by split-pattern adaptation search, repair's split strategies, and QC's split-pattern matching. `symmetry_degree<T>` (the identity permutation's length) is the face count those tables, and `validate_split_patterns`, are expressed over.
+- **`shape_descriptors`/`shape_of`** — the cell's shape template and allowed transform group (see
+  "Shape templates" below). They are the only source of split-pattern variants; the old
+  per-tessellation `rotation_symmetries`/`mirror_symmetries` tables, `transform_face_index` and
+  `symmetry_degree` were removed in GitHub issue #758.
 - **`cartesian`/`edge_position`** — pure geometry, no rendering-specific orientation. `geometric_distance<T>`/`geometric_edge_distance<T>` (free functions in `space::mod`) build on these for node-to-node/edge-to-edge Euclidean distance, unrelated to graph/nav distance (tile-hop count along real edges).
 
 ## Field\<T\>
@@ -222,7 +227,7 @@ The sketch fixes semantics, not exact signatures.
 - **`faces_of(cell)`** is allocation-free (a slice borrowed from static or instance-owned data)
   and may differ per cell (mixed and radial tilings). Order is the canonical circular order:
   counter-clockwise along the cell boundary, starting at a tessellation-defined first face that
-  is stable for the instance. (#756 keeps the current order; #758 switches to circular order.)
+  is stable for the instance. (Built-in tessellations use it since #758.)
 - **`neighbor(cell, face) -> Option<(cell', face')>`** returns the adjacent cell and the face of
   `cell'` that is the same boundary piece. `None` means no cell exists there in the
   tessellation's space. Reciprocity is mandatory and tested for every tessellation:
@@ -280,10 +285,13 @@ The sketch fixes semantics, not exact signatures.
 - The descriptor-level split-pattern contract (two-level applicability) lives in
   `split-patterns.md`.
 
-Status (GitHub issue #757): implemented in `space::shape` (`ShapeFamily`, `ShapeDescriptor`,
-`CellShape` with the face-chain methods `canonical_of_local`, `local_of_canonical`,
-`transformed_local`, `canonical_of_transformed_local`) and `Tessellation::shape_descriptors`/
-`shape_of` for square, hex, tri and Cairo; every built-in cell gets its full group.
+Status (GitHub issues #757, #758): implemented in `space::shape` (`ShapeFamily`,
+`ShapeDescriptor`, `CellShape` with the face-chain methods `canonical_of_local`,
+`local_of_canonical`, `transformed_local`, `canonical_of_transformed_local`) and
+`Tessellation::shape_descriptors`/`shape_of` for square (`regular:4`), hex (`regular:6`), tri
+(`regular:3`) and Cairo (`cairo_pentagon`); every built-in cell gets its full group. Split
+patterns, QC split matching, split topology and repair split planning consume it (see
+`split-patterns.md`).
 
 - Group element order: `RegularPolygon` lists rotations `i -> i + k` (`k = 0..n`) then
   reflections `i -> k - i` (mod `n`); `CairoPentagon` is `[identity, i -> -i mod 5]`; a
@@ -296,14 +304,9 @@ Status (GitHub issue #757): implemented in `space::shape` (`ShapeFamily`, `Shape
   debug-assert that `local_to_canonical` is a permutation of `0..face_count` and the allowed set
   contains the identity and indexes the group. Using a transform outside the allowed set is a
   debug-asserted precondition violation.
-- The legacy per-tessellation `mirror_symmetries` tables stay as they were until #758: tri's is
-  empty, and Cairo's `[0, 4, 3, 2, 1]` is geometrically correct only for the R/L orientations,
-  because face slots run in a different circular order on U/D. `shape_of` is correct for every
-  orientation. Since `faces_of`
-keeps its pre-#758 order, `local_to_canonical` is a non-identity map for square, tri (per
-orientation) and Cairo (per orientation). `shape_tests.rs` checks the canonical order against
-`cartesian` neighbor angles. Template geometry is not implemented yet. Consumers still use
-`rotation_symmetries`/`mirror_symmetries`.
+- Built-in `faces_of` is the canonical order (#758), so `local_to_canonical` is the identity for
+  every built-in cell; `shape_tests.rs` checks that, and checks the canonical order against
+  `cartesian` neighbor angles. Template geometry is not implemented yet.
 
 ### Geometry
 

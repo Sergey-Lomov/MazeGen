@@ -459,7 +459,7 @@
   "debug.tree.split_cyclic_rolled_not_fired": "Цикличность разделения {param}, бросок {roll} (≥ {param}) → грань к посещённому соседу запрещена",
   "debug.tree.split_cyclic_rolled_fired": "Цикличность разделения {param}, бросок {roll} (< {param}) → одна грань может вести к уже посещённому соседу",
   "debug.tree.pattern_adaptations_computed": "Паттерн {pattern}: найдено валидных адаптаций — {count}",
-  "debug.tree.pattern_adaptation_chosen": "Выбрана адаптация паттерна {pattern}: поворот {rotation}, зеркало {mirror}",
+  "debug.tree.pattern_adaptation_chosen": "Выбрана адаптация паттерна {pattern}: преобразование {transform}",
   "debug.tree.split_teleport_rolled_not_fired": "Шанс телепорта разделения {param}, бросок {roll} (≥ {param}) → без телепорта",
   "debug.tree.split_teleport_rolled_fired": "Шанс телепорта разделения {param}, бросок {roll} (< {param}) → телепорт закреплён за:",
   "debug.tree.split_start_reassigned": "Старт переназначен на узел разделения:",

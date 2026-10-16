@@ -153,7 +153,7 @@ export function validateSplitGeneration(v: unknown, path: string): { patternMode
 export function tryValidateSplitPattern(v: unknown): SplitPattern | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const obj = v as Record<string, unknown>;
-  if (typeof obj.node_count !== "number" || !Array.isArray(obj.faces)) return null;
+  if (typeof obj.shape !== "string" || typeof obj.node_count !== "number" || !Array.isArray(obj.faces)) return null;
   const faces: SplitPattern["faces"] = [];
   for (const nodeFaces of obj.faces) {
     if (!Array.isArray(nodeFaces)) return null;
@@ -166,7 +166,7 @@ export function tryValidateSplitPattern(v: unknown): SplitPattern | null {
     faces.push(validatedNodeFaces);
   }
   const weight = typeof obj.weight === "number" ? obj.weight : 1.0;
-  return { node_count: obj.node_count, faces, weight };
+  return { shape: obj.shape, node_count: obj.node_count, faces, weight };
 }
 
 export function tryValidateSplitPatternFace(v: unknown): SplitPattern["faces"][number][number] | null {

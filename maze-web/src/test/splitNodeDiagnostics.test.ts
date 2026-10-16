@@ -64,7 +64,7 @@ describe("splitNodeDiagnostics", () => {
 
 describe("patternEmptyNodeDiagnostics", () => {
   function pattern(faces: SplitPattern["faces"], nodeCount = faces.length): SplitPattern {
-    return { node_count: nodeCount, faces, weight: 1.0 };
+    return { shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 };
   }
 
   it("flags a node with an empty face list", () => {
@@ -85,7 +85,7 @@ describe("patternEmptyNodeDiagnostics", () => {
 
 describe("patternSiblingDiagnostics", () => {
   function pattern(faces: SplitPattern["faces"], nodeCount: number): SplitPattern {
-    return { node_count: nodeCount, faces, weight: 1.0 };
+    return { shape: "regular:4", node_count: nodeCount, faces, weight: 1.0 };
   }
 
   it("flags a sibling_target outside [0, node_count)", () => {

@@ -1,16 +1,16 @@
 # Split Patterns — Generation & Editor
 
 Split patterns (GitHub issue #222) are an alternative to `CustomVertexBased`'s plain
-`max_split_nodes` random-node-count splitting: an abstract, tessellation-relative template
+`max_split_nodes` random-node-count splitting: an abstract template bound to a cell shape template
 describing exactly how many nodes a split tile gets and which of its faces connect where. When
 `splitPatternMode` is on, every split roll picks one declared pattern (weighted) instead of minting
 a random node count with unconstrained face assignment.
 
 ## Wire types (`maze-core/src/generation/split_pattern.rs`, mirrored by `wasm/types.ts`)
 
-> **Current model.** Face indexing, per-tessellation ownership and symmetry handling below are
-> superseded by "Target model: patterns on shape templates" at the end of this file (GitHub epic
-> #752, implemented in #758/#764).
+> Core, wasm/runner DTOs and the project format follow "Patterns on shape templates" at the end
+> of this file (GitHub issue #758). The pattern UI still authors in web face order and converts at
+> the wasm boundary until #764.
 
 - **`SplitFaceRequirement`** — `Passage | OneWay(direction) | Wall | Unspecified`. `Wall` is the
   only requirement satisfiable off-field (a face pointing past the tessellation's boundary).
@@ -20,11 +20,13 @@ a random node count with unconstrained face assignment.
   face: `Forward` means the edge points away from this node, `Backward` means into it. Mirrors
   `PresetConnectionState`'s naming.
 - **`SplitPatternFace`** — `{ face_index, requirement, sibling_target }`. `face_index` is a
-  position into `Tessellation::faces_of` of the cell, always interpreted against the tessellation the pattern
-  is currently authored/applied for. `sibling_target: Some(i)` means this face must connect to
+  canonical index of the pattern's shape template (`0..face_count`, counter-clockwise), never a
+  position in a particular cell's `faces_of`. `sibling_target: Some(i)` means this face must connect to
   pattern-local node `i` (an inter-split edge — the two split nodes share the same point, never
   geometrically resolved against an outside neighbor); `None` means an ordinary outside neighbor.
-- **`SplitPattern`** — `{ node_count, faces: Vec<Vec<SplitPatternFace>>, weight }`. `faces[i]` is
+- **`SplitPattern`** — `{ shape, node_count, faces: Vec<Vec<SplitPatternFace>>, weight }`.
+  `shape` is a `ShapeDescriptor` key (`regular:4`, `regular:6`, `regular:3`, `cairo_pentagon`, …),
+  required in the wasm/runner DTO and the project file. `faces[i]` is
   pattern-local node `i`'s face list; node `0` always corresponds to the tile's pre-existing `src`
   node, every other index is newly minted when the pattern is applied. `weight` is the relative
   selection weight among patterns competing for the same split event — clamped to `.max(0.0)` at
@@ -35,18 +37,33 @@ a random node count with unconstrained face assignment.
   in non-pattern mode (the **total** node count on a split tile including `src` itself — an exact
   count, not a ceiling; `0` is invalid, clamped to `1`).
 
-**Patterns are per-tessellation, not portable** — a pattern's `face_index` values are only
-meaningful against the tessellation they were authored for. The active tessellation owns its own
-pattern list (`splitPatterns` in the store); switching tessellation discards it, the same as other
-tessellation-specific project settings.
+**Patterns belong to a shape template, not to a tessellation.** On a tessellation change
+(`confirmTessellation`, `setTessellationKind`) the store keeps every pattern of `splitPatterns`
+whose `shape` the new tessellation provides and drops the rest. The web keeps no copy of the
+template registry: `shapeTemplates.ts` asks core through the `tessellation_shapes` wasm export
+(`shape_descriptors()` keys plus `shape_of` per requested cell), memoized per tessellation config.
+`shapeKeysOf` gives a tessellation's keys; `patternShapeOf` gives the template of the pattern
+editor's anchor cell, which a new pattern gets as its `shape`.
+
+Quality control applies the same rule to its own config through `qcForTessellation`
+(`qcTessellationFilter.ts`): every pattern list in check params, rule-level `split_patterns`, and
+top-level/nested strategy params (`pattern_list`, `split_generation_config`) keeps only the
+surviving patterns. A check whose non-empty pattern filter (its own, or the rule-level one it
+consumes) loses every pattern is removed, since an empty filter means "any split tile".
+`add_split_config` weights are re-indexed to the surviving rule-level patterns, or reset to the
+`max_split_nodes` default when none survive. Strategy params are shared across rules while the
+rule-level pattern list is per rule, so the weights are re-indexed once, against the first rule
+using the strategy. `selectTessellationWouldLoseData` reports any such loss (generation or QC
+patterns); the confirm dialog evaluates it once, on click, and warns before it happens. Filtering
+runs on every confirmed tessellation config change (kind or `params`), not only on a kind change.
 
 ## Validation (`validate_split_patterns`)
 
-Shared by `maze-runner` and `maze-wasm`'s own generation entry points. Two independent failure
-modes:
-- `face_index` outside `[0, degree)` — meaningless against the active tessellation. Most likely a
-  hand-edited/stale project file; the UI itself can't produce one (patterns are edited per
-  tessellation via `TileFaceEditor`, which only ever emits in-range indices).
+Shared by `maze-runner` and `maze-wasm`'s own generation entry points, against the active
+tessellation instance. Rejected:
+- a `shape` the tessellation does not provide (`shape_descriptors()`);
+- a `face_index >= face_count` of the pattern's descriptor — most likely a hand-edited/stale
+  project file; the UI itself can't produce one;
 - `node_count` not matching `faces.len()` — the UI always keeps them in sync
   (`resizePatternNodes`/`removePatternNode` both resize `faces` alongside `node_count`), but a
   hand-edited/stale project file could have `node_count` larger than `faces.len()`;
@@ -63,8 +80,8 @@ surfaces this case client-side before generation ever runs.
 
 `enumerate_adaptations` (`split_pattern_logic.rs`) is private; `split_adaptation_candidates`
 exposes the same candidate set publicly as `Vec<Vec<ResolvedFace>>` — each candidate's resolved
-faces (`node_index`, `requirement`, `sibling_target`, `neighbor`) without the `rotation`/`mirror`
-indices that produced it. Same inputs and semantics; pure and RNG-free. Consumed by
+faces (`node_index`, `requirement`, `sibling_target`, `neighbor`) without the transform index that
+produced it. Same inputs and semantics; pure and RNG-free. Consumed by
 `maze-runner`'s canonical baselines (see `baselines.md`), which compare candidate sets
 order-independently.
 
@@ -193,11 +210,11 @@ and the pattern list is empty — a dead-weight config (splitting is enabled but
 from, so it silently never fires). Gated on `initialConfig.method === "custom_vertex_based"` (the
 only method pattern mode applies to, per `GenerationFeature.tsx`'s `isVertexBased`).
 
-## Target model: patterns on shape templates (GitHub epic #752)
+## Patterns on shape templates (GitHub epic #752)
 
-Target contract written by GitHub issue #754. Shape templates, the allowed transform group and the
-face chain are defined in `space.md` ("Target model: extensible tessellation" → "Shape
-templates").
+Contract written by GitHub issue #754, implemented in core, DTOs and the project format by #758
+(pattern UI: #764). Shape templates, the allowed transform group and the face chain are defined in
+`space.md` ("Target model: extensible tessellation" → "Shape templates").
 
 ### Pattern data
 
@@ -233,20 +250,38 @@ A node without `Passage`/`OneWay` faces stays allowed (GitHub issue #238).
      sibling targets.
 
 Consequences:
-- A cell with no template, or with no pattern for its descriptor, is never split in pattern mode
-  (the split roll does not fire for it).
+- A cell with no template, or with no pattern for its descriptor, is never split in pattern mode:
+  the split roll is still consumed (RNG parity) but `try_split_src` reports it ineligible
+  (`cell_has_pattern`).
 - Weighted selection competes only among the patterns whose descriptor matches the cell.
 - Triangle candidate sets become a strict superset of the old ones (reflections are now in the
   group).
+
+Implementation: `generation::pattern_variants(pattern, &CellShape) -> Vec<PatternVariant>`
+(`PatternVariant { transform, local_faces }`, `local_faces` parallel to `pattern.faces`; variants
+in `allowed_transforms` order, deduplicated by the `(node, local face, requirement,
+sibling_target)` set, first kept) is the single variant source. `SplitPattern::applies_to` is the
+descriptor-level check. The `PatternAdaptationChosen` debug event carries the chosen `transform`
+(an index into the cell's descriptor group).
 
 ### Consumers
 
 `split_pattern_logic` (adaptation search), `split_adaptation_candidates`, `split_topology`,
 `split_pattern_match` (a built tile matches a pattern when some allowed variant reproduces its
-face assignment), repair `split_core`, and per-face QC checks all use the same two-level rule and
-the same face chain. None of them reads a tessellation-wide face list or symmetry table.
+face assignment), repair `split_core` (variants shuffled, first valid kept), and per-face QC checks
+(bucketed by the split cell's own face toward each neighbor, `face_index_toward`) all use the same
+two-level rule and the same face chain. None of them reads a tessellation-wide face list or
+symmetry table. `canonical_split_topology` reads a tile back into template terms
+(`canonical_of_transformed_local`) under every allowed transform and keeps the minimum;
+`SplitTopology` (and the analytics `SplitGroupDto`) carry the template `shape` key, and the
+per-node requirement lists are indexed by canonical face.
 
 ### Pattern UI
+
+Interim (#758): the store and the project file keep web authoring order (`getNeighborData` offsets
+at `patternAnchorPoint`); `SPLIT_FACE_INDEX_WEB_TO_CORE` now maps it to canonical indices (square
+identity, hex per display orientation, triangle and Cairo through the anchor cell's binding —
+pointing-up triangle, `D` Cairo tile). Target (#764):
 
 `TileFaceEditor`, face rotation and bridge/diagonal detection are driven by the descriptor:
 - template geometry from core;

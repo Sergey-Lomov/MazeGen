@@ -8,6 +8,7 @@ import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
 import { degreeFor, patternAnchorPoint, tileNodesForPattern } from "../../pixi/splitPatternTile";
 import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
+import { patternShapeOf } from "../../pixi/shapeTemplates";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -71,7 +72,7 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights, locked
   }
 
   function handleAddPattern() {
-    const fresh: SplitPattern = { node_count: 2, faces: [[], []], weight: 1.0 };
+    const fresh: SplitPattern = { shape: patternShapeOf(fieldConfig), node_count: 2, faces: [[], []], weight: 1.0 };
     addPattern(fresh);
     setEditingIndex(patterns.length);
   }

@@ -1,63 +1,63 @@
 {
   "measurements": {
     "generation/baseline-cairo-gen": {
-      "median_ms": 2.6585559999999995,
-      "spread": 0.07211613864949563,
-      "threshold": 0.08
+      "median_ms": 2.5307913999999996,
+      "spread": 0.049799560722388836,
+      "threshold": 0.05
     },
     "generation/baseline-hex-gen": {
-      "median_ms": 7.477282307692307,
-      "spread": 0.044595696893986625,
+      "median_ms": 6.8897194,
+      "spread": 0.0172941827887312,
       "threshold": 0.05
     },
     "generation/baseline-square-gen": {
-      "median_ms": 6.462167333333333,
-      "spread": 0.04299856415561719,
+      "median_ms": 6.173135666666666,
+      "spread": 0.01921056111569884,
       "threshold": 0.05
     },
     "generation/baseline-tri-gen": {
-      "median_ms": 6.311772500000001,
-      "spread": 0.09512188335368572,
-      "threshold": 0.1
+      "median_ms": 6.845859066666667,
+      "spread": 0.04221893320503273,
+      "threshold": 0.05
     },
     "qc/baseline-cairo-qc": {
-      "median_ms": 8.7935597,
-      "spread": 0.07179686287909107,
-      "threshold": 0.08
+      "median_ms": 8.957671454545455,
+      "spread": 0.015002163813148426,
+      "threshold": 0.05
     },
     "qc/baseline-hex-qc": {
-      "median_ms": 16.985162833333334,
-      "spread": 0.056252370144582106,
-      "threshold": 0.06
+      "median_ms": 17.649039833333333,
+      "spread": 0.010772720128807063,
+      "threshold": 0.05
     },
     "qc/baseline-square-qc": {
-      "median_ms": 17.443025166666665,
-      "spread": 0.05420494195430609,
-      "threshold": 0.06
+      "median_ms": 18.1149685,
+      "spread": 0.01461031154060962,
+      "threshold": 0.05
     },
     "qc/baseline-tri-qc": {
-      "median_ms": 15.687385333333332,
-      "spread": 0.016489352931472315,
+      "median_ms": 16.521035857142856,
+      "spread": 0.03231413602732331,
       "threshold": 0.05
     },
     "repair/baseline-cairo-qc": {
-      "median_ms": 1465.773745,
-      "spread": 0.015479100425557061,
+      "median_ms": 1052.43238,
+      "spread": 0.008417993562683823,
       "threshold": 0.05
     },
     "repair/baseline-hex-qc": {
-      "median_ms": 1662.5613449999998,
-      "spread": 0.021373961392083193,
+      "median_ms": 1732.6553940000001,
+      "spread": 0.02358637507580462,
       "threshold": 0.05
     },
     "repair/baseline-square-qc": {
-      "median_ms": 2049.110322,
-      "spread": 0.02135813847117993,
+      "median_ms": 1928.2777869999998,
+      "spread": 0.012663550949259594,
       "threshold": 0.05
     },
     "repair/baseline-tri-qc": {
-      "median_ms": 1572.296738,
-      "spread": 0.019543133466705723,
+      "median_ms": 1542.1061869999999,
+      "spread": 0.02223133289329053,
       "threshold": 0.05
     }
   },

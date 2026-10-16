@@ -47,8 +47,10 @@ pub fn seed_graph<T: Tessellation>(
         cell_to_xy,
     } = prepared;
 
-    let degree = maze_core::space::symmetry_degree(field.tessellation());
-    maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
+    maze_core::generation::validate_split_patterns(
+        &gen_config.split_generation.patterns,
+        field.tessellation(),
+    )?;
 
     let mut graph = Graph::new();
     for node in field.all_node_ids() {

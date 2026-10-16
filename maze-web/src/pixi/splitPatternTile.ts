@@ -63,12 +63,12 @@ export function tileNodesForPattern(pattern: SplitPattern, degree: number): Tile
 /** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for a maze-wide split group's canonical
  *  topology (`SplitGroupDto.topology`, `maze_core::graph::split_topology`) — used by the analytics
  *  "pattern statistics" modal's preview thumbnails. Unlike `tileNodesForPattern`, `topology[node]`
- *  is a plain array indexed by `maze-core`'s `Tessellation::faces()` position directly (no
- *  `face_index` field to match against), so each web face position is converted to its
- *  corresponding core position via `splitFaceIndexToCore` before reading — the same conversion
- *  point `splitPatternsToCore` uses at the wasm-config-serialization boundary (GitHub issue #273),
- *  just read in the opposite direction (core value -> web slot) since this data already arrived
- *  from wasm in core ordering, unlike an authored `SplitPattern`. */
+ *  is a plain array indexed by the shape template's canonical face index directly (no
+ *  `face_index` field to match against), so each web face position is converted to its canonical
+ *  index via `splitFaceIndexToCore` before reading — the same conversion point
+ *  `splitPatternsToCore` uses at the wasm-config-serialization boundary (GitHub issue #273), just
+ *  read in the opposite direction (canonical value -> web slot) since this data already arrived
+ *  from wasm in canonical ordering, unlike an authored `SplitPattern`. */
 export function tileNodesForTopology(topology: SplitFaceRequirement[][], cfg: FieldConfig): TileFaceNode[] {
   const degree = degreeFor(cfg);
   return topology.map((nodeFaces, nodeIndex): TileFaceNode => ({

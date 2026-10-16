@@ -58,8 +58,8 @@ static PARAMS: [StrategyParam; 5] =
 ///
 /// **Pattern-based candidate** (rule-level `split_patterns` non-empty): a candidate point is
 /// picked at random, a pattern is picked honoring its resolved weight (see `resolved_patterns`
-/// below), and rotation/mirror are picked at random, then every one of the pattern's `node_count`
-/// new nodes — including node 0, the new slot-0 — has its own faces resolved against the point's
+/// below), and its variants (`pattern_variants`) are tried in random order; for each, every one
+/// of the pattern's `node_count` new nodes — including node 0, the new slot-0 — has its own faces resolved against the point's
 /// actual neighbors (`try_pattern_adaptation` — independent of generation's own
 /// `enumerate_adaptations`, since there is no frontier/visited state here; every neighbor is
 /// already part of the built maze). Each of the point's existing connections is matched against

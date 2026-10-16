@@ -96,15 +96,19 @@ mod tests {
     use maze_core::space::Tessellation;
     use std::sync::Arc;
 
-    /// Reports the built instance's `symmetry_degree` and the codec round-trip of one point.
+    /// Reports the built instance's shape template keys and the codec round-trip of one point.
     struct Probe;
 
     impl TessellationVisitor for Probe {
-        type Output = (usize, (i32, i32));
+        type Output = (Vec<String>, (i32, i32));
 
         fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
             (
-                maze_core::space::symmetry_degree(&*tessellation),
+                tessellation
+                    .shape_descriptors()
+                    .iter()
+                    .map(|descriptor| descriptor.key().to_string())
+                    .collect(),
                 (codec.to_xy)((codec.from_xy)(3, -2)),
             )
         }
@@ -119,15 +123,15 @@ mod tests {
 
     #[test]
     fn builds_every_kind_with_round_tripping_codec() {
-        for (kind, faces) in [
-            (TessellationKind::Square, 4),
-            (TessellationKind::Hex, 6),
-            (TessellationKind::Tri, 3),
-            (TessellationKind::Cairo, 5),
+        for (kind, shape) in [
+            (TessellationKind::Square, "regular:4"),
+            (TessellationKind::Hex, "regular:6"),
+            (TessellationKind::Tri, "regular:3"),
+            (TessellationKind::Cairo, "cairo_pentagon"),
         ] {
             assert_eq!(
                 build_tessellation(&config(kind), Probe),
-                Ok((faces, (3, -2)))
+                Ok((vec![shape.to_string()], (3, -2)))
             );
         }
     }

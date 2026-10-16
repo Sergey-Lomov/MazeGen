@@ -421,7 +421,9 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         groups
             .into_iter()
             .map(|(topology, count)| SplitGroupDto {
+                shape: topology.shape,
                 topology: topology
+                    .nodes
                     .into_iter()
                     .map(|node_faces| {
                         node_faces

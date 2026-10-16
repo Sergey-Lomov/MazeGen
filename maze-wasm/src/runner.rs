@@ -160,9 +160,11 @@ pub fn run_generate<T: Tessellation + 'static>(
     // Validates split patterns (GitHub issue #222) before generation runs — this is the
     // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
     // the same check `run_generate_typed` runs, via the shared `validate_split_patterns`.
-    let degree = maze_core::space::symmetry_degree(field.tessellation());
-    maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)
-        .map_err(|e| JsValue::from_str(&e))?;
+    maze_core::generation::validate_split_patterns(
+        &gen_config.split_generation.patterns,
+        field.tessellation(),
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
 
     // The "preset setup" source (GitHub issue #225) — one event per preset connection that
     // actually establishes an edge, narrated inline by `build_preset_state` itself (it's the only

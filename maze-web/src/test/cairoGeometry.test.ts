@@ -66,10 +66,10 @@ describe("Cairo geometry", () => {
     expect(getNeighborData(cfg, 2, 1).offsets).toHaveLength(5);
   });
 
-  it("keeps Cairo split-pattern face indices aligned with core", () => {
+  it("maps Cairo face slots to the anchor (D) cell's canonical template faces and back", () => {
+    expect([0, 1, 2, 3, 4].map((face) => splitFaceIndexToCore(cfg, face))).toEqual([0, 1, 3, 4, 2]);
     for (let face = 0; face < 5; face++) {
-      expect(splitFaceIndexToCore(cfg, face)).toBe(face);
-      expect(splitFaceIndexToWeb(cfg, face)).toBe(face);
+      expect(splitFaceIndexToWeb(cfg, splitFaceIndexToCore(cfg, face))).toBe(face);
     }
   });
 

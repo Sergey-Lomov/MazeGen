@@ -8,19 +8,20 @@ use crate::repair::params::build_params;
 use crate::repair::strategies::split_core;
 use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::space::test_support::GappedSquareTessellation;
-use crate::space::{MultiLevelField, SquareFace, SquarePoint, SquareTessellation, square_rect};
+use crate::space::{MultiLevelField, SquarePoint, SquareTessellation, square_rect};
 use rand::SeedableRng;
 use std::sync::Arc;
 
 fn two_node_passage_pattern() -> SplitPattern {
-    // SquareFace order [N, S, E, W] — node 1 gets an East face (index 2), matching node 0's
+    // `regular:4` canonical order [E, N, W, S] — node 1 gets an East face (index 0), matching node 0's
     // real East neighbor.
     SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 2,
+                face_index: 0,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -32,7 +33,7 @@ fn two_node_passage_pattern() -> SplitPattern {
 #[test]
 fn pattern_mode_adds_a_split_tile_matching_the_configured_pattern() {
     // 3x3 field (not a bare 1-row line) so every candidate point has a real neighbor in every
-    // direction — whichever rotation/mirror `plan_pattern_split` tries first, the pattern's
+    // direction — whichever variant `plan_pattern_split` tries first, the pattern's
     // single East face (after transform) always lands on a real neighbor, never off-field
     // (a degenerate case `try_pattern_adaptation` accepts as "nothing to add" under
     // `allow_add`, unrelated to this fix, that would otherwise make this test's outcome
@@ -85,11 +86,13 @@ fn pick_weighted_pattern_respects_configured_weight_not_uniform() {
     // `SplitPattern::weight` entirely. A near-zero-weight pattern must almost never be picked
     // against a heavily-weighted sibling.
     let low = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![vec![], vec![]],
         weight: 0.001,
     };
     let high = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![vec![], vec![]],
         weight: 999.0,
@@ -175,7 +178,7 @@ fn pattern_mode_never_produces_a_truncated_tile_when_a_required_face_points_off_
     );
     assert!(
         matches!(result, RepairResult::Failed),
-        "no rotation/mirror can satisfy an East-passage requirement on a field with no neighbors at all"
+        "no variant can satisfy an East-passage requirement on a field with no neighbors at all"
     );
     assert_eq!(
         maze.field.node_count(),
@@ -199,9 +202,10 @@ fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
     }
     let maze = Maze::new(field, graph);
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 1,
         faces: vec![vec![SplitPatternFace {
-            face_index: east_face_index(),
+            face_index: 0, // canonical East
             requirement: SplitFaceRequirement::Passage,
             sibling_target: None,
         }]],
@@ -214,8 +218,7 @@ fn pattern_mode_rejects_a_required_face_when_step_has_no_coordinate() {
             at,
             origin,
             &pattern,
-            0,
-            None,
+            &identity_variant(&pattern),
             true,
             true,
             None,
@@ -361,11 +364,12 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
 
     let point = maze.field.cell_of(at).unwrap();
     let pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 3,
+                face_index: 2,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -377,8 +381,7 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
         at,
         point,
         &pattern,
-        0,
-        None,
+        &identity_variant(&pattern),
         true,
         true,
         None,
@@ -399,11 +402,12 @@ fn pattern_mode_reuses_a_neighbors_non_slot0_node_that_already_owns_the_connecti
     );
 }
 
-/// Position of `SquareFace::E` in `GappedSquareTessellation`'s (uniform) face order.
-fn east_face_index() -> usize {
-    GappedSquareTessellation
-        .faces_of(SquarePoint { x: 0, y: 0 })
-        .iter()
-        .position(|&face| face == SquareFace::E)
-        .unwrap()
+/// The pattern's untransformed variant on a square cell.
+fn identity_variant(pattern: &SplitPattern) -> crate::generation::PatternVariant {
+    let shape = SquareTessellation
+        .shape_of(SquarePoint { x: 0, y: 0 })
+        .unwrap();
+    let variant = crate::generation::pattern_variants(pattern, &shape).remove(0);
+    assert_eq!(variant.transform, 0);
+    variant
 }

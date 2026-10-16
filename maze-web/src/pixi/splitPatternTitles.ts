@@ -8,11 +8,11 @@
  *
  *  Keyed by the exact canonical topology core already computed (`SplitGroupDto.topology`,
  *  `maze_core::graph::split_topology::canonical_split_topology`'s output) — since core already
- *  reduces every tile to one fixed representative among all rotations/mirrors/node orderings,
+ *  reduces every tile to one fixed representative among all allowed transforms/node orderings,
  *  matching here is plain structural equality (`topologyEquals`, below), no rotation search
- *  needed on this side. Each entry's `topology` value was computed once (not derived at runtime) by
- *  building the corresponding shape in `maze-core` and printing `canonical_split_topology`'s
- *  result — see the git history of this file for the throwaway diagnostic test used.
+ *  needed on this side. Each entry's `topology` is in the canonical face order of the shape
+ *  template, computed once (not derived at runtime) as the minimum, over the template's dihedral
+ *  group, of the sorted node rows — the same reduction `canonical_split_topology` performs.
  *
  *  Filtered by tile degree (`topology[0].length`), same convention as `blueprintsForDegree`. */
 
@@ -47,16 +47,16 @@ const SQUARE_TITLES: SplitPatternTitleEntry[] = [
   {
     // "Bridge" — two nodes, each a straight-through opposite-face pair.
     topology: [
-      [PASSAGE, PASSAGE, WALL, WALL],
-      [WALL, WALL, PASSAGE, PASSAGE],
+      [PASSAGE, WALL, PASSAGE, WALL],
+      [WALL, PASSAGE, WALL, PASSAGE],
     ],
     titleKey: "split_pattern_title.bridge",
   },
   {
     // "Diagonal divider" — two nodes, each an adjacent-face pair.
     topology: [
-      [PASSAGE, WALL, PASSAGE, WALL],
-      [WALL, PASSAGE, WALL, PASSAGE],
+      [PASSAGE, PASSAGE, WALL, WALL],
+      [WALL, WALL, PASSAGE, PASSAGE],
     ],
     titleKey: "split_pattern_title.diagonal_divider",
   },

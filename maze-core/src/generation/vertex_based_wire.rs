@@ -349,13 +349,11 @@ impl EncodeEventPayload for VertexBasedEvent {
             VertexBasedEvent::PatternAdaptationChosen {
                 src,
                 pattern,
-                rotation,
-                mirror,
+                transform,
             } => {
                 write_node_id(out, *src);
                 write_usize_as_u32(out, *pattern);
-                write_usize_as_u32(out, *rotation);
-                write_optional_usize_as_u32(out, *mirror);
+                write_usize_as_u32(out, *transform);
             }
             VertexBasedEvent::SplitTeleportRolled {
                 roll,
@@ -909,17 +907,11 @@ mod golden_tests {
         let event = VertexBasedEvent::PatternAdaptationChosen {
             src: 7,
             pattern: 7,
-            rotation: 7,
-            mirror: Some(9),
+            transform: 7,
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
-        assert_eq!(
-            bytes,
-            vec![
-                7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0, 1, 9, 0, 0, 0
-            ]
-        );
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0]);
     }
 
     #[test]

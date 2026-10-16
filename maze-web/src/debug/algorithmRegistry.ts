@@ -555,7 +555,7 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
     case "PatternAdaptationsComputed":
       return [{ kind: "text", text: m["debug.tree.pattern_adaptations_computed"]({ pattern: event.pattern, count: event.count }) }];
     case "PatternAdaptationChosen":
-      return [{ kind: "text", text: m["debug.tree.pattern_adaptation_chosen"]({ pattern: event.pattern, rotation: event.rotation, mirror: event.mirror ? "yes" : "no" }) }];
+      return [{ kind: "text", text: m["debug.tree.pattern_adaptation_chosen"]({ pattern: event.pattern, transform: event.transform }) }];
     case "SplitTeleportRolled":
       return event.fired && event.anchor !== null
         ? [{ kind: "text", text: m["debug.tree.split_teleport_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }) + " " }, { kind: "node", id: event.anchor }]

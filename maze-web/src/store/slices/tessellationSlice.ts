@@ -2,9 +2,11 @@ import type { StateCreator } from "zustand";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { resolveFieldConfig } from "../../pixi/tessellationCells";
 import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
-import type { NodeLockKind, SplitPattern } from "../../wasm/types";
+import type { NodeLockKind } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, FloorFieldConfig } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
+import { splitPatternsFor } from "../../pixi/shapeTemplates";
+import { qcForTessellation } from "./qcTessellationFilter";
 import { buildPreviewConfig, buildPreviewState, debugStaleOf, buildResetDownstreamState, defaultFloorFieldConfig, makeOrientationSetter } from "../storeHelpers";
 
 export const createTessellationSlice: StateCreator<MazeStore, [], [], TessellationState & TessellationActions> = (set) => ({
@@ -122,11 +124,12 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         postEditDraftSplitPoints: {},
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
-        // A split pattern's `face_index` values (GitHub issue #222) are relative to the
-        // tessellation they were authored against — meaningless (or silently wrong) once the
-        // tessellation kind changes, same rationale as `presetSplitPoints` above.
-        splitPatterns: [] as SplitPattern[],
       } : { debugStale: debugStaleOf(state) }),
+      // A split pattern belongs to a shape template, not a tessellation (GitHub issue #758): it
+      // survives any tessellation config change (kind or params) only when the new config provides
+      // its template. Both filters return the same references when nothing is dropped.
+      splitPatterns: splitPatternsFor(state.splitPatterns, freshField.fieldConfig.tessellation),
+      ...qcForTessellation(state, freshField.fieldConfig.tessellation),
       presetsDirty: false,
       mazeDirty: false,
       postEditDirty: false,
@@ -166,6 +169,8 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       presetSplitPointIds: {},
       _nextPresetSplitPointId: 1,
       presetEntityOrder: [],
+      splitPatterns: splitPatternsFor(state.splitPatterns, freshField.fieldConfig.tessellation),
+      ...qcForTessellation(state, freshField.fieldConfig.tessellation),
     };
   }),
 

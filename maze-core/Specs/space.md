@@ -73,9 +73,11 @@ table yields the reciprocal face and a neighbour relationship is bidirectional.
 arbitrary fields can supply any subset of valid Cairo points directly to
 `Field::new`.
 
-The pentagon has two 90-degree and three 120-degree corners.  Its explicit
-symmetry contract therefore contains the identity rotation and one reflection
-that fixes the long side and exchanges the two pairs of short sides.
+The pentagon has two 90-degree and three 120-degree corners.  Its shape
+template (`cairo_pentagon`) therefore has the identity and one reflection that
+fixes the long side and exchanges the two pairs of short sides.  `faces_of`
+lists each orientation's faces counter-clockwise from `Twin`, so the slot order
+differs per orientation (see `Specs/space.md`).
 
 ### SquareTessellation
 

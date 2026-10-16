@@ -30,15 +30,16 @@ export function BasicConfigFeature() {
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
   const confirmTessellation = useMazeStore((s) => s.confirmTessellation);
-  const wouldLoseData = useMazeStore(selectTessellationWouldLoseData);
 
   const [showConfirm, setShowConfirm] = useState(false);
 
   const isHex = previewKind === "hex";
   const isTri = previewKind === "tri";
 
+  // Read once on click rather than subscribed: the predicate filters every QC pattern list, and
+  // a subscription would rerun it on each unrelated store update while the preview differs.
   function handleConfirmTessellation() {
-    if (wouldLoseData) {
+    if (selectTessellationWouldLoseData(useMazeStore.getState())) {
       setShowConfirm(true);
     } else {
       confirmTessellation();

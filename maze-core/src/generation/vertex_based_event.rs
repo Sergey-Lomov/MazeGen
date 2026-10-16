@@ -273,9 +273,9 @@ pub enum VertexBasedEvent {
         cyclicity: f64,
         fired: bool,
     },
-    /// Every valid rotation/mirror adaptation found for the chosen pattern, before one is picked —
-    /// `count` is `adaptations.len()`, kept alongside since an empty result (pattern excluded,
-    /// loop retries another) is exactly as narratively interesting as a non-empty one.
+    /// Every valid adaptation (allowed-transform variant) found for the chosen pattern, before one
+    /// is picked — `count` is `adaptations.len()`, kept alongside since an empty result (pattern
+    /// excluded, loop retries another) is exactly as narratively interesting as a non-empty one.
     #[wire(tag = 29)]
     PatternAdaptationsComputed {
         src: NodeId,
@@ -283,16 +283,13 @@ pub enum VertexBasedEvent {
         count: usize,
     },
     /// The adaptation actually applied, picked uniformly at random from
-    /// `PatternAdaptationsComputed`'s candidate set. `rotation` indexes
-    /// `Tessellation::rotation_symmetries()`; `mirror` indexes `Tessellation::mirror_symmetries()`
-    /// (`None` when no mirror was applied) — see GitHub issue #275 (the old plain `bool` assumed
-    /// every tessellation has at most one mirror symmetry, which hex's 3 mirror axes violate).
+    /// `PatternAdaptationsComputed`'s candidate set. `transform` indexes the split cell's shape
+    /// template group (`ShapeDescriptor::group`), one of the cell's allowed transforms.
     #[wire(tag = 30)]
     PatternAdaptationChosen {
         src: NodeId,
         pattern: usize,
-        rotation: usize,
-        mirror: Option<usize>,
+        transform: usize,
     },
     /// The split event's once-per-event teleport roll (mirrors `TeleportRolled`, but rolled once
     /// for the whole split event rather than per resulting node — matches pattern mode's

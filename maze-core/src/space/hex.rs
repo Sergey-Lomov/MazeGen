@@ -96,30 +96,6 @@ impl Tessellation for HexTessellation {
         let (q, r) = (cell.q as f64, cell.r as f64);
         (q * 1.5, -(r * inradius * 2.0 + q * inradius))
     }
-
-    /// Faces in `[E, NE, NW, W, SW, SE]` order (indices 0-5) — a genuinely angular order (60° per
-    /// step), so every rotation is just a cyclic shift of that index list.
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        &[
-            &[0, 1, 2, 3, 4, 5], // identity
-            &[1, 2, 3, 4, 5, 0], // 60°
-            &[2, 3, 4, 5, 0, 1], // 120°
-            &[3, 4, 5, 0, 1, 2], // 180°
-            &[4, 5, 0, 1, 2, 3], // 240°
-            &[5, 0, 1, 2, 3, 4], // 300°
-        ]
-    }
-
-    /// Three independent mirror axes, each through a pair of opposite face directions: E-W,
-    /// NE-SW, NW-SE. Each axis fixes the two faces sitting on it and swaps the remaining two
-    /// pairs.
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        &[
-            &[0, 5, 4, 3, 2, 1], // mirror across the E-W axis
-            &[2, 1, 0, 5, 4, 3], // mirror across the NE-SW axis
-            &[4, 3, 2, 1, 0, 5], // mirror across the NW-SE axis
-        ]
-    }
 }
 
 pub fn hex_parallelogram(cols: usize, rows: usize) -> Vec<HexPoint> {

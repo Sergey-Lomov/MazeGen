@@ -388,14 +388,15 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         .node_at(field_level, SquarePoint { x: 0, y: 0 })
         .unwrap();
 
-    // SquareFace order [N, S, E, W] (indices 0-3). At (0,0) on a 3x3 grid: S (index 1) points
-    // off-field, E (index 2) has a real neighbor at (1,0).
+    // `regular:4` canonical order [E, N, W, S] (indices 0-3). At (0,0) on a 3x3 grid: S (index 3)
+    // points off-field, E (index 0) has a real neighbor at (1,0).
     let impossible_pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 1,
+                face_index: 3,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -403,11 +404,12 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
         weight: 1000.0,
     };
     let possible_pattern = SplitPattern {
+        shape: "regular:4".to_string(),
         node_count: 2,
         faces: vec![
             vec![],
             vec![SplitPatternFace {
-                face_index: 2,
+                face_index: 0,
                 requirement: SplitFaceRequirement::Passage,
                 sibling_target: None,
             }],
@@ -446,7 +448,9 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
 }
 
 #[test]
-fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
+fn try_split_src_is_ineligible_when_no_pattern_is_declared_for_the_cell_shape() {
+    // Pattern mode never splits a cell whose shape template has no pattern — a pattern for
+    // another template (here a hexagon on a square cell) does not count.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
     let field_level = field.single_level_id();
     let start = field
@@ -455,7 +459,12 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let split_config = SplitGenerationConfig {
         pattern_mode: true,
         max_split_nodes: 2,
-        patterns: vec![],
+        patterns: vec![SplitPattern {
+            shape: "regular:6".to_string(),
+            node_count: 1,
+            faces: vec![vec![]],
+            weight: 1.0,
+        }],
     };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -476,7 +485,7 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
         None,
         None,
     );
-    assert_eq!(outcome, SplitOutcome::NoAdaptation);
+    assert_eq!(outcome, SplitOutcome::Ineligible);
 }
 
 #[test]

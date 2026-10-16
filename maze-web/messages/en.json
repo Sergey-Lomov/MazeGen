@@ -451,7 +451,7 @@
   "debug.tree.split_cyclic_rolled_not_fired": "Split cyclicity {param}, roll {roll} (≥ {param}) → no already-visited neighbor allowed",
   "debug.tree.split_cyclic_rolled_fired": "Split cyclicity {param}, roll {roll} (< {param}) → one face may target an already-visited neighbor",
   "debug.tree.pattern_adaptations_computed": "Pattern {pattern}: {count} valid adaptation(s) found",
-  "debug.tree.pattern_adaptation_chosen": "Adaptation chosen for pattern {pattern}: rotation {rotation}, mirror {mirror}",
+  "debug.tree.pattern_adaptation_chosen": "Adaptation chosen for pattern {pattern}: transform {transform}",
   "debug.tree.split_teleport_rolled_not_fired": "Split teleport chance {param}, roll {roll} (≥ {param}) → no teleport",
   "debug.tree.split_teleport_rolled_fired": "Split teleport chance {param}, roll {roll} (< {param}) → teleport anchored at:",
   "debug.tree.split_start_reassigned": "Start reassigned to a split node:",

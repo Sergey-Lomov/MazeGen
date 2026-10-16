@@ -219,6 +219,27 @@ fn canonical_order_is_counter_clockwise_for_every_tessellation() {
     assert_canonical_order_is_counter_clockwise(&CairoTessellation, &cairo_cells());
 }
 
+/// Built-in `faces_of` is the canonical circular order itself (GitHub issue #758), so local and
+/// canonical face indices coincide.
+#[test]
+fn built_in_faces_of_is_the_canonical_order() {
+    fn identity<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
+        for &cell in cells {
+            let shape = tessellation.shape_of(cell).unwrap();
+            let n = shape.descriptor().face_count();
+            assert_eq!(
+                shape.local_to_canonical(),
+                (0..n).collect::<Vec<_>>(),
+                "{cell:?}"
+            );
+        }
+    }
+    identity(&SquareTessellation, &square_cells());
+    identity(&HexTessellation, &hex_cells());
+    identity(&TriTessellation, &tri_cells());
+    identity(&CairoTessellation, &cairo_cells());
+}
+
 #[test]
 fn every_built_in_cell_gets_its_full_group() {
     fn full<T: Tessellation>(tessellation: &T, cells: &[T::CellId]) {
@@ -246,15 +267,15 @@ fn every_built_in_cell_gets_its_full_group() {
 
 #[test]
 fn triangle_reflections_fix_one_side_and_swap_the_other_two() {
-    let local = |face: TriFace| {
-        TriTessellation
-            .faces_of(TriPoint { col: 0, row: 0 })
-            .iter()
-            .position(|&f| f == face)
-            .unwrap()
-    };
     // Both orientations: base above (`(0, 0)`) and base below (`(1, 0)`).
     for cell in [TriPoint { col: 0, row: 0 }, TriPoint { col: 1, row: 0 }] {
+        let local = |face: TriFace| {
+            TriTessellation
+                .faces_of(cell)
+                .iter()
+                .position(|&f| f == face)
+                .unwrap()
+        };
         let shape = TriTessellation.shape_of(cell).unwrap();
         // Maps each local face through a transform: local → canonical → transformed → local.
         let apply = |g: usize, face: TriFace| {

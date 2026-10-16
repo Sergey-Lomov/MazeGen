@@ -25,10 +25,10 @@ vi.mock("../pixi/cartesianCache", () => ({
 const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, rotateFaceIndex, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
 const { cairoCanonicalFaceOrder } = await import("../pixi/cairoGeometry");
 
-// `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
-// GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
+// Canonical (counter-clockwise) face order of `maze-core`'s shape templates (`Specs/space.md`,
+// GitHub issue #758) — used here only to name expected indices by face, not to duplicate the
 // mapping under test.
-const SQUARE_CORE_ORDER = ["N", "S", "E", "W"];
+const SQUARE_CORE_ORDER = ["E", "N", "W", "S"];
 const HEX_CORE_ORDER = ["E", "NE", "NW", "W", "SW", "SE"];
 
 // A face's `v0 -> v1` direction must agree with `getSharedEdgeSegment`'s own choice for that same
@@ -601,9 +601,9 @@ describe("splitFaceIndexToCore", () => {
     });
   });
 
-  it("is identity for triangle tessellations (web/core orders already agree)", () => {
+  it("maps triangle web faces [Left, Right, Base] through the anchor cell's template binding", () => {
     const cfg: FieldConfig = fieldOf("tri", { shape: "rect", cols: 3, rows: 3 });
-    for (let i = 0; i < 3; i++) expect(splitFaceIndexToCore(cfg, i)).toBe(i);
+    expect([0, 1, 2].map((i) => splitFaceIndexToCore(cfg, i))).toEqual([1, 2, 0]);
   });
 });
 
@@ -672,6 +672,7 @@ describe("splitPatternsToWeb round-trip", () => {
     const cfg: FieldConfig = fieldOf("hex", { shape: "parallelogram", cols: 3, rows: 3 }, "flat_top");
     const original: SplitPattern[] = [
       {
+        shape: "regular:4",
         node_count: 2,
         faces: [
           [{ face_index: 0, requirement: { kind: "passage" } }, { face_index: 3, requirement: { kind: "wall" } }],

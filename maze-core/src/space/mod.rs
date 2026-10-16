@@ -34,7 +34,8 @@ pub trait Tessellation: Send + Sync + 'static {
     /// Returns whether `cell` represents an actual tile in this tessellation's coordinate space.
     fn is_valid_cell(&self, cell: Self::CellId) -> bool;
 
-    /// The faces of `cell`, in a stable per-cell order — allocation-free (borrowed from static or
+    /// The faces of `cell`, in the canonical circular order: counter-clockwise along the cell
+    /// boundary from a tessellation-defined first face — allocation-free (borrowed from static or
     /// instance-owned data), and may differ per cell. A cell has at most one face toward any given
     /// neighbor, so the cells `neighbor` reaches through distinct faces are pairwise distinct
     /// (`Field::neighbors` relies on this). An invalid `cell` is a precondition violation.
@@ -64,36 +65,6 @@ pub trait Tessellation: Send + Sync + 'static {
     /// template — it still has full topology and geometry, but split patterns never apply to it.
     /// Allocation-free. An invalid `cell` is a precondition violation.
     fn shape_of(&self, cell: Self::CellId) -> Option<CellShape<'_>>;
-
-    /// Every rotational symmetry of one tile, as a permutation of face indices (positions in
-    /// `faces_of`, which every current tessellation orders identically for all of its cells) —
-    /// `rotation_symmetries()[k][i]` is the face index that face `i` maps to under the `k`-th
-    /// rotation. Element 0 is always the identity permutation (`[0, 1, ..., degree-1]`) — a
-    /// `SplitPattern` face untouched by "no rotation". Every table (here and in
-    /// `mirror_symmetries`) has exactly `symmetry_degree` columns — an invariant
-    /// `space::transform_face_index` relies on and `transform_face_index_tests`'s
-    /// `every_rotation_and_mirror_symmetry_is_a_valid_permutation_for_every_tessellation` checks
-    /// directly for every impl.
-    ///
-    /// **Why this exists, not arithmetic on the face index** (GitHub issue #275): face
-    /// order is whatever's natural to declare per tessellation — `HexFace`'s `[E, NE, NW, W, SW,
-    /// SE]` happens to be angular (each step is a real 60° turn), but `SquareFace`'s `[N, S, E,
-    /// W]` and `TriFace`'s `[Left, Right, Base]` aren't. A single formula like `(index +
-    /// rotation) % degree` silently assumes the hex case's angular order everywhere, which is
-    /// exactly the bug this fixes: applied to `[N, S, E, W]` it doesn't correspond to any real
-    /// 90°-turn permutation at all. Each tessellation instead states its own rotation/mirror
-    /// symmetry explicitly, in terms of its own faces — never derived from a shared arithmetic
-    /// rule, and never expressed in terms of what a split pattern or a specific pair of connected
-    /// tiles needs (this is pure tile geometry, reusable by any future caller, not just splits).
-    fn rotation_symmetries(&self) -> &[&[usize]];
-
-    /// Every mirror (reflection) symmetry of one tile, same permutation-table shape as
-    /// `rotation_symmetries` — empty when the tessellation's tile has no reflective symmetry at
-    /// all (`TriTessellation`: a triangle's 3-fold symmetry is rotation-only, swapping any two
-    /// sides while fixing the third is not realizable as a rotation of the tile itself). Unlike
-    /// `rotation_symmetries`, there is no implied identity element — an empty slice here means
-    /// "mirroring is not a thing for this tessellation", not "only identity".
-    fn mirror_symmetries(&self) -> &[&[usize]];
 
     /// Canonical Cartesian projection of `cell`, in unit tile scale (one tile = 1.0), with no
     /// rendering-specific orientation/rotation applied — a display-only concept (e.g. hex
@@ -129,53 +100,6 @@ pub trait Tessellation: Send + Sync + 'static {
         let (tx, ty) = self.cartesian(to);
         ((fx + tx) / 2.0, (fy + ty) / 2.0)
     }
-}
-
-/// Applies a rotation (index into `Tessellation::rotation_symmetries()`) then, optionally, a mirror (index
-/// into `Tessellation::mirror_symmetries()`) to `face_index`, returning the resulting face index —
-/// `None` if `face_index`/`rotation`/the mirror index is out of range for `T`. Shared by every
-/// split-pattern consumer that needs to reorient a `SplitPattern`'s stored face indices onto a
-/// specific cell's real faces: `generation::split_logic` (adaptation search during generation),
-/// `repair::strategies::add_split` (post-generation pattern-mode repair), and
-/// `quality_control::split_pattern_match` (checking whether a built tile matches any configured
-/// pattern) — GitHub issue #275 replaced 3 copies of an arithmetic formula that silently assumed
-/// every tessellation's face order was angular (true for hex, false for square/tri) with this
-/// single implementation built on each tessellation's own explicit symmetry tables.
-///
-/// No `degree` parameter — `symmetry_degree` is the single source of truth (every caller used to
-/// compute and pass it separately, a redundant value that could in principle drift from `T`'s own
-/// tables; `rotation_symmetries`'s doc comment states the invariant this relies on).
-pub fn transform_face_index<T: Tessellation>(
-    tessellation: &T,
-    face_index: usize,
-    rotation: usize,
-    mirror: Option<usize>,
-) -> Option<usize> {
-    if face_index >= symmetry_degree(tessellation) {
-        return None;
-    }
-    let rotated = *tessellation
-        .rotation_symmetries()
-        .get(rotation)?
-        .get(face_index)?;
-    match mirror {
-        None => Some(rotated),
-        Some(m) => tessellation
-            .mirror_symmetries()
-            .get(m)?
-            .get(rotated)
-            .copied(),
-    }
-}
-
-/// Number of face indices the symmetry tables (`rotation_symmetries`/`mirror_symmetries`), and
-/// therefore `SplitPattern` face indices, are expressed over — the length of the identity
-/// permutation `rotation_symmetries()[0]`. `0` for a tessellation with no symmetry table at all.
-pub fn symmetry_degree<T: Tessellation>(tessellation: &T) -> usize {
-    tessellation
-        .rotation_symmetries()
-        .first()
-        .map_or(0, |identity| identity.len())
 }
 
 /// Position in `faces_of(cell)` of the face through which `cell` reaches `other`, or `None` when

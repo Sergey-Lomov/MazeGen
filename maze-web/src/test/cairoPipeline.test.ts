@@ -6,8 +6,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { computeAnalyticsAsync, generateMaze } from "../wasm/mazeService";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
 vi.mock("../wasm/mazeService", () => ({
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   computeAnalyticsAsync: vi.fn(),

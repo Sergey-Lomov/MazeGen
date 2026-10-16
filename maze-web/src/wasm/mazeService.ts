@@ -281,3 +281,17 @@ export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
 export function getCartesianCoords(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): [number, number][] {
   return getWasm().cartesian_coords(config) as [number, number][];
 }
+
+/** Mirrors `maze-wasm`'s `TessellationShapes` — see `tessellation_shapes`'s doc comment. A cell
+ *  without a template comes back as `undefined` in `point_shapes`. */
+export interface TessellationShapes {
+  keys: string[];
+  point_shapes: (string | undefined)[];
+}
+
+/// Shape templates of the tessellation instance `config.tessellation` builds (GitHub issue #758):
+/// every template key it provides plus the template of each of `config.points`. The single source
+/// for shape keys on the web side — `shapeTemplates.ts` memoizes it per tessellation config.
+export function getTessellationShapes(config: { tessellation: WasmTessellationConfig; points: [number, number][] }): TessellationShapes {
+  return getWasm().tessellation_shapes(config) as TessellationShapes;
+}

@@ -241,7 +241,10 @@ route — `Specs/repair.md`'s "Score formula" section).
 ### `SplitTopology` and `canonical_split_topology`
 
 ```rust
-pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
+pub struct SplitTopology {
+    pub shape: String,                          // shape template key of the tile's cell
+    pub nodes: Vec<Vec<SplitFaceRequirement>>,  // per node, per canonical face; sorted
+}
 
 pub fn canonical_split_topology<T: Tessellation>(
     graph: &Graph,
@@ -254,18 +257,18 @@ A split tile's shape, independent of:
 - **which physical node happens to be listed first** — `nodes_at` order is creation order, not
   geometry; the canonical form's outer `Vec` is sorted, so node identity never matters, only the
   multiset of per-node face-requirement shapes.
-- **the tile's rotation/mirror orientation on the field** — every rotation/mirror the tessellation
-  supports (`Tessellation::rotation_symmetries`/`mirror_symmetries`, via `transform_face_index`) is
-  tried, and the lexicographically smallest resulting (sorted) candidate is kept as the one fixed
-  representative.
+- **the tile's orientation on the field** — the tile is read into canonical template faces
+  (`CellShape::canonical_of_transformed_local`) under every allowed transform of its cell's shape
+  template (GitHub issue #758), and the lexicographically smallest resulting (sorted) candidate is
+  kept as the one fixed representative. Tiles of different templates never compare equal (`shape`
+  is part of the value).
 
 Built on `reconstruct_tile_faces` (`quality_control::split_pattern_match`, made `pub(crate)` for
 this reuse) — the same per-node, per-face-position `Passage`/`OneWay`/`Wall` reconstruction
 `split_tile_matches_any` uses to check a tile against a configured `SplitPattern` list. Unlike that
 function, `canonical_split_topology` needs no candidate pattern list at all — it reduces a tile to
 one canonical value that can be grouped/compared with plain equality, no rotation search needed by
-the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
-(`space::symmetry_degree` zero).
+the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a cell without a shape template.
 
 ### `split_totals`
 
@@ -298,7 +301,8 @@ separate `SplitAnalyticsDto`/`MazeSnapshot.split_analytics` field:
 
 ```rust
 pub struct SplitGroupDto {
-    pub topology: Vec<Vec<SplitFaceRequirementDto>>,
+    pub shape: String,                               // SplitTopology::shape
+    pub topology: Vec<Vec<SplitFaceRequirementDto>>, // SplitTopology::nodes, canonical face order
     pub count: usize,
 }
 

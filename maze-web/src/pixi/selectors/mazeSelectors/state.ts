@@ -1,5 +1,7 @@
 import type { NodeDto, EdgeDto, IssueDto } from "../../../wasm/types";
 import type { MazeState } from "../../../store/mazeStore";
+import { splitPatternsFor } from "../../shapeTemplates";
+import { qcForTessellation } from "../../../store/slices/qcTessellationFilter";
 
 /** Narrows a maze-wide `{ nodes, edges, start, finish }` view down to one floor, by `activeFloorId`
  *  (GitHub issue #337/#347) — the single shared floor-scoping step every render-facing consumer of
@@ -93,10 +95,18 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
  * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
   "previewKind" | "tessellationKind" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  | "previewFieldConfig" | "splitPatterns" | "rules" | "strategyParams" | "availableChecks" | "availableStrategies" | "availableRuleParams"
 >): boolean {
-  if (s.previewKind === s.tessellationKind) return false;
-  const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
-  return anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
+  if (s.previewKind !== s.tessellationKind) {
+    const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
+    if (anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty) return true;
+  }
+  // Split patterns survive only when the new tessellation config provides their shape template
+  // (GitHub issue #758) — checked on any config change, not just a kind change.
+  const tessellation = s.previewFieldConfig.tessellation;
+  if (splitPatternsFor(s.splitPatterns, tessellation).length !== s.splitPatterns.length) return true;
+  const qc = qcForTessellation(s, tessellation);
+  return qc.rules !== s.rules || qc.strategyParams !== s.strategyParams;
 }
 
 /** True when removing `floorId` would discard field data configured on that floor (GitHub issue

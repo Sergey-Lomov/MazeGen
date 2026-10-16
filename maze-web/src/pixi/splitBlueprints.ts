@@ -20,6 +20,7 @@ import type { TileFace, TileFaceNode } from "../components/features/TileFaceEdit
 import type { SplitPattern } from "../wasm/types";
 import type { FieldConfig } from "../fieldConfig";
 import { cairoCanonicalFaceOrder } from "./cairoGeometry";
+import { patternShapeOf } from "./shapeTemplates";
 
 export interface SplitNodeBlueprint {
   /** Unique within its own degree's list — used as a stable React `key`, nothing else (no label
@@ -35,7 +36,7 @@ export interface SplitNodeBlueprint {
   /** i18n message key (paraglide, `split_pattern_title.*` — same registry `splitPatternTitles.ts`
    *  uses for a generation-time pattern's recognizable shape) for the "Changes" panel's
    *  `applySplitBlueprint` label (GitHub issue #545). Deliberately independent of
-   *  `titleKeyForTopology`'s exact structural match against core's rotation/mirror-canonicalized
+   *  `titleKeyForTopology`'s exact structural match against core's transform-canonicalized
    *  `SplitGroupDto.topology` — a blueprint here is authored raw, in whatever face order/rotation
    *  its own `nodeFaces` happens to use, so it can't reuse that matcher; set by hand instead,
    *  purely by eyeballing the shape against the registry's own entries. `undefined` for a
@@ -179,10 +180,11 @@ export function fittingRotation(
  *  `handleAddPattern` default for a freshly added pattern. */
 export function blueprintToSplitPattern(
   blueprint: SplitNodeBlueprint,
-  cfg?: FieldConfig,
+  cfg: FieldConfig,
   point?: [number, number],
 ): SplitPattern {
   return {
+    shape: patternShapeOf(cfg),
     node_count: blueprint.nodeFaces.length,
     faces: blueprint.nodeFaces.map((faces) => faces.map((face) => {
       const face_index = resolveBlueprintFaceIndex(blueprint, cfg, point, face);

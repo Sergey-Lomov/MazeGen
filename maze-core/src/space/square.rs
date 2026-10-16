@@ -30,8 +30,8 @@ impl SquareFace {
 static SQUARE_SHAPES: LazyLock<[ShapeDescriptor; 1]> =
     LazyLock::new(|| [ShapeDescriptor::regular_polygon(4)]);
 
-/// Local `[N, S, E, W]` to canonical counter-clockwise `[E, N, W, S]`.
-const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [1, 3, 0, 2];
+/// `faces_of` is already the canonical counter-clockwise order `[E, N, W, S]`.
+const SQUARE_LOCAL_TO_CANONICAL: [usize; 4] = [0, 1, 2, 3];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SquareTessellation;
@@ -45,7 +45,7 @@ impl Tessellation for SquareTessellation {
     }
 
     fn faces_of(&self, _cell: SquarePoint) -> &[SquareFace] {
-        &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
+        &[SquareFace::E, SquareFace::N, SquareFace::W, SquareFace::S]
     }
 
     fn neighbor(&self, cell: SquarePoint, face: SquareFace) -> Option<(SquarePoint, SquareFace)> {
@@ -79,24 +79,6 @@ impl Tessellation for SquareTessellation {
 
     fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
         (cell.x as f64, cell.y as f64)
-    }
-
-    /// Faces in `[N, S, E, W]` order (indices 0-3). 90°-clockwise rotation cycles N->E->S->W->N.
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        &[
-            &[0, 1, 2, 3], // identity
-            &[2, 3, 1, 0], // 90°:  N->E, S->W, E->S, W->N
-            &[1, 0, 3, 2], // 180°: N->S, S->N, E->W, W->E
-            &[3, 2, 0, 1], // 270°: N->W, S->E, E->N, W->S
-        ]
-    }
-
-    /// Two independent mirror axes: N-S (E<->W swap, N/S fixed) and E-W (N<->S swap, E/W fixed).
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        &[
-            &[0, 1, 3, 2], // mirror across the N-S axis
-            &[1, 0, 2, 3], // mirror across the E-W axis
-        ]
     }
 }
 

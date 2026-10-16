@@ -3,7 +3,7 @@ use maze_core::space::Tessellation;
 use maze_runner::runner::tessellation_factory::{
     CellCodec, TessellationVisitor, build_tessellation,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -59,9 +59,76 @@ impl TessellationVisitor for Project<'_> {
     }
 }
 
+/// Wire shape for `tessellation_shapes`: a tessellation config plus the cells whose own template
+/// the caller needs.
+#[derive(Deserialize)]
+struct TessellationShapesConfig {
+    tessellation: TessellationConfig,
+    points: Vec<[i32; 2]>,
+}
+
+/// Shape templates of one tessellation instance (GitHub issue #758): `keys` lists every
+/// `ShapeDescriptor::key` the instance provides (`Tessellation::shape_descriptors`), and
+/// `point_shapes[i]` is the template key of `points[i]` (`Tessellation::shape_of`), `None` for a
+/// cell without a template. `maze-web` reads this instead of keeping its own copy of the registry:
+/// it decides which split patterns survive a tessellation change and which template a newly
+/// authored pattern belongs to.
+#[derive(Serialize, Debug, PartialEq)]
+struct TessellationShapes {
+    keys: Vec<String>,
+    point_shapes: Vec<Option<String>>,
+}
+
+#[wasm_bindgen]
+pub fn tessellation_shapes(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: TessellationShapesConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+    let shapes = tessellation_shapes_for(&cfg).map_err(|e| JsValue::from_str(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&shapes).unwrap())
+}
+
+fn tessellation_shapes_for(cfg: &TessellationShapesConfig) -> Result<TessellationShapes, String> {
+    build_tessellation(
+        &cfg.tessellation,
+        Shapes {
+            points: &cfg.points,
+        },
+    )
+}
+
+struct Shapes<'a> {
+    points: &'a [[i32; 2]],
+}
+
+impl TessellationVisitor for Shapes<'_> {
+    type Output = TessellationShapes;
+
+    fn visit<T: Tessellation>(self, tessellation: Arc<T>, codec: CellCodec<T>) -> Self::Output {
+        TessellationShapes {
+            keys: tessellation
+                .shape_descriptors()
+                .iter()
+                .map(|d| d.key().to_string())
+                .collect(),
+            point_shapes: self
+                .points
+                .iter()
+                .map(|&[x, y]| {
+                    tessellation
+                        .shape_of((codec.from_xy)(x, y))
+                        .map(|shape| shape.descriptor().key().to_string())
+                })
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CartesianCoordsConfig, cartesian_coords_for};
+    use super::{
+        CartesianCoordsConfig, TessellationShapes, TessellationShapesConfig, cartesian_coords_for,
+        tessellation_shapes_for,
+    };
     use crate::generation_config::TessellationConfig;
     use maze_runner::config::TessellationKind;
 
@@ -77,6 +144,24 @@ mod tests {
         assert_eq!(
             cartesian_coords_for(&cfg),
             Ok(vec![[-6.0, -5.0], [3.0, 2.0]])
+        );
+    }
+
+    #[test]
+    fn tessellation_shapes_lists_templates_and_cell_bindings() {
+        let cfg = TessellationShapesConfig {
+            tessellation: TessellationConfig {
+                kind: TessellationKind::Square,
+                params: serde_json::Map::new(),
+            },
+            points: vec![[0, 0], [3, -2]],
+        };
+        assert_eq!(
+            tessellation_shapes_for(&cfg),
+            Ok(TessellationShapes {
+                keys: vec!["regular:4".to_string()],
+                point_shapes: vec![Some("regular:4".to_string()), Some("regular:4".to_string())],
+            })
         );
     }
 }

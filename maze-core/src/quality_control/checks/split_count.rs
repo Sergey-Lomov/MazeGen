@@ -13,7 +13,7 @@ pub const SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 /// Flags a deficit against a minimum split-tile count — see GitHub issue #247, part of epic #246.
 /// Mirrors `MinLoopsCountCheck`'s shape exactly, applied to split tiles instead of loops. When
 /// `patterns` is non-empty, only a split tile structurally matching one of the listed patterns
-/// (any rotation/mirror, see `split_tile_matches_any`) counts toward the total; an empty list
+/// (any allowed transform, see `split_tile_matches_any`) counts toward the total; an empty list
 /// means every split tile counts regardless of pattern. **Known limitation** (see GitHub issue
 /// #247/#253): this `patterns` list is independent from `AddSplitStrategy`'s own pattern
 /// selection — the repair strategy has no visibility into which patterns this check actually
@@ -208,15 +208,16 @@ mod tests {
         // all — the tile can never structurally match it), so the count-with-filter is 0.
         let maze = maze_with_split_tiles(2);
         let unmatched_pattern = SplitPattern {
+            shape: "regular:4".to_string(),
             node_count: 2,
             faces: vec![
                 vec![SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 }],
                 vec![SplitPatternFace {
-                    face_index: 0,
+                    face_index: 1,
                     requirement: SplitFaceRequirement::Passage,
                     sibling_target: None,
                 }],

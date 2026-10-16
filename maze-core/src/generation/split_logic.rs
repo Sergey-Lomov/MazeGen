@@ -1,7 +1,7 @@
 use super::debug_state::DebugGenerationState;
 use super::split_non_pattern::handle_non_pattern_split;
 use super::split_pattern::SplitGenerationConfig;
-use super::split_pattern_logic::handle_pattern_split;
+use super::split_pattern_logic::{cell_has_pattern, handle_pattern_split};
 use super::vertex_based::{GenState, VertexBasedEvent};
 use super::{ElementsConfig, GenerationParams, PresetState};
 use crate::event_log::ScopeGuard;
@@ -19,8 +19,9 @@ pub(super) enum SplitOutcome {
     Handled,
     /// The split roll missed.
     Miss,
-    /// The roll hit, but `src`'s tile is not eligible for splitting at all (locked, or already
-    /// pre-split via `split_points`).
+    /// The roll hit, but `src`'s tile is not eligible for splitting at all (locked, already
+    /// pre-split via `split_points`, or — in pattern mode — no pattern is declared for its shape
+    /// template).
     Ineligible,
     /// Pattern mode rolled a hit on an eligible node, but no pattern (or no adaptation of any
     /// pattern) could be found — falls back to ordinary handling exactly like a miss.
@@ -61,9 +62,10 @@ pub(crate) fn split_is_eligible<T: Tessellation>(
 
 /// Shared split-roll entry point, called from `step_from_frontier` and both `handle_empty_frontier`
 /// branches. Rolls `split_chance` (always consumed, regardless of value — same RNG-parity
-/// discipline as `teleport_chance`/`cyclicity`), then on a hit checks eligibility and dispatches to
-/// the pattern or non-pattern path. `bridge` is the pre-existing already-visited node the ordinary
-/// flow would unconditionally have connected `src` to this step (`None` from `step_from_frontier`,
+/// discipline as `teleport_chance`/`cyclicity`), then on a hit checks eligibility (in pattern mode
+/// also `cell_has_pattern`) and dispatches to the pattern or non-pattern path. `bridge` is the
+/// pre-existing already-visited node the ordinary flow would unconditionally have connected `src`
+/// to this step (`None` from `step_from_frontier`,
 /// `Some` from either `handle_empty_frontier` branch) — both split paths must honor that guarantee
 /// instead of silently dropping it. `parent` is `src`'s real, already-in-graph incoming/outgoing
 /// edge partner (`FrontierEntry.parent`, `Some` only from `step_from_frontier` — `handle_empty_frontier`'s
@@ -93,7 +95,9 @@ pub(super) fn try_split_src<T: Tessellation>(
 ) -> SplitOutcome {
     let roll = state.rng.random::<f64>();
     let fired = roll < elements.split_chance;
-    let eligible = fired && split_is_eligible(field, preset_state, src);
+    let eligible = fired
+        && split_is_eligible(field, preset_state, src)
+        && (!split_config.pattern_mode || cell_has_pattern(field, split_config, src));
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::SplitRolled {
             src,

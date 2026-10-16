@@ -1,6 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { blueprintsForDegree, rotateBlueprint, fittingRotation, blueprintToSplitPattern, tileNodesForBlueprint } from "../pixi/splitBlueprints";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
+
+vi.mock("../wasm/mazeService", () => ({ getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)) }));
 
 describe("blueprintsForDegree", () => {
   it("returns the built-in set for a known degree", () => {
@@ -102,7 +105,8 @@ describe("fittingRotation", () => {
 describe("blueprintToSplitPattern", () => {
   it("converts each node's required faces into a passage requirement, others absent", () => {
     const blueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
-    expect(blueprintToSplitPattern(blueprint)).toEqual({
+    expect(blueprintToSplitPattern(blueprint, fieldOf("square", { shape: "rect", cols: 3, rows: 3 }))).toEqual({
+      shape: "regular:4",
       node_count: 2,
       faces: [
         [{ face_index: 0, requirement: { kind: "passage" } }, { face_index: 2, requirement: { kind: "passage" } }],
@@ -114,7 +118,8 @@ describe("blueprintToSplitPattern", () => {
 
   it("handles a node with no required faces (empty face list)", () => {
     const blueprint = { id: 0, degree: 3, nodeFaces: [[0, 1], []] };
-    const pattern = blueprintToSplitPattern(blueprint);
+    const pattern = blueprintToSplitPattern(blueprint, fieldOf("tri", { shape: "rect", cols: 3, rows: 3 }));
+    expect(pattern.shape).toBe("regular:3");
     expect(pattern.node_count).toBe(2);
     expect(pattern.faces[1]).toEqual([]);
   });
@@ -122,6 +127,7 @@ describe("blueprintToSplitPattern", () => {
   it("stores Cairo canonical blueprint faces in the anchor tile's native slots", () => {
     const blueprint = blueprintsForDegree(5)[0];
     const pattern = blueprintToSplitPattern(blueprint, fieldOf("cairo", { shape: "rect", cols: 3, rows: 3 }), [2, 1]);
+    expect(pattern.shape).toBe("cairo_pentagon");
     expect(pattern.faces[0].map((face) => face.face_index)).toEqual([2, 4]);
     expect(pattern.faces[1].map((face) => face.face_index)).toEqual([3, 1]);
   });

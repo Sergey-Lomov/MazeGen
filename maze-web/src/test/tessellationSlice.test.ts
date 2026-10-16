@@ -3,8 +3,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { baseStoreState, emptyFreePoints, freeFieldEditState, hexPredefinedState, trianglePredefinedState, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { fieldOf } from "./fieldConfigFixtures";
+import { fakeTessellationShapes } from "./tessellationShapesFake";
 
 vi.mock("../wasm/mazeService", () => ({
+  getTessellationShapes: vi.fn((config: Parameters<typeof fakeTessellationShapes>[0]) => fakeTessellationShapes(config)),
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),

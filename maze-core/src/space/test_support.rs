@@ -41,14 +41,6 @@ impl Tessellation for GappedSquareTessellation {
         SquareTessellation.shape_of(cell)
     }
 
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        SquareTessellation.rotation_symmetries()
-    }
-
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        SquareTessellation.mirror_symmetries()
-    }
-
     fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
         SquareTessellation.cartesian(cell)
     }
@@ -87,14 +79,6 @@ impl Tessellation for ScaledSquareTessellation {
 
     fn shape_of(&self, cell: SquarePoint) -> Option<CellShape<'_>> {
         SquareTessellation.shape_of(cell)
-    }
-
-    fn rotation_symmetries(&self) -> &[&[usize]] {
-        SquareTessellation.rotation_symmetries()
-    }
-
-    fn mirror_symmetries(&self) -> &[&[usize]] {
-        SquareTessellation.mirror_symmetries()
     }
 
     fn cartesian(&self, cell: SquarePoint) -> (f64, f64) {
